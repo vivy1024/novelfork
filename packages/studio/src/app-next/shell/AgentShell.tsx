@@ -112,9 +112,17 @@ export function AgentShell({
   onLogout,
   children,
 }: AgentShellProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => route.kind === "book");
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
+  const previousRouteKindRef = useRef(route.kind);
+
+  useEffect(() => {
+    const previous = previousRouteKindRef.current;
+    previousRouteKindRef.current = route.kind;
+    if (route.kind === "book" && previous !== "book") setCollapsed(true);
+    if (route.kind !== "book" && previous === "book") setCollapsed(false);
+  }, [route.kind]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;

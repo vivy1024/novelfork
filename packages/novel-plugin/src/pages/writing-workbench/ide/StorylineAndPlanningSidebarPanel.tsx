@@ -16,7 +16,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Bookmark, BookOpen, ChevronDown, ChevronRight, FilePlus2, FileText, ListTree, Map as MapIcon, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useApi } from "@/hooks/use-api";
+import { invalidateApiPaths, useApi } from "@/hooks/use-api";
+import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { computeForeshadowingDebt, type ForeshadowingDebt } from "../../../engine/jingwei/foreshadowing-debt";
 import { NarrativeMemorySummary } from "../NarrativeMemoryPanel";
 import { LedgerProgressTable } from "../LedgerProgressTable";
@@ -344,16 +345,16 @@ export function StorylineAndPlanningSidebarPanel({
 }: StorylineAndPlanningSidebarPanelProps) {
   const [activeSubTab, setActiveSubTab] = useState<StorylineSubTab>("outline");
 
-  /** 跳转到统一的大屏「故事画布」：同一本书共用一个 Tab，画布内部切换 map/evolution/chronicle 视图。 */
-  const openProgressionCanvas = (view: "map" | "evolution" | "chronicle") => {
+  /** 跳转到统一的大屏「故事画布」：同一本书共用一个 Tab，画布内部切正图/推进/脉络。 */
+  const openProgressionCanvas = (view: "tree" | "board" | "chronicle") => {
     onOpen(createStoryProgressionNode(bookId, view));
   };
 
   const handleSubTabChange = (tab: StorylineSubTab) => {
     setActiveSubTab(tab);
     if (tab === "canvas") {
-      // 直接打开大屏画布（默认发展历程视图），消除"点了只看到一段说明文字"的空转。
-      openProgressionCanvas("evolution");
+      // 直接打开大屏画布（默认正图），消除"点了只看到一段说明文字"的空转。
+      openProgressionCanvas("tree");
     }
   };
 
@@ -373,6 +374,13 @@ export function StorylineAndPlanningSidebarPanel({
   const pendingCount = usePendingEventCount(bookId);
   // 驾驶舱需要伏笔统计，账本也需要同一份数据：hook 在顶层调用一次共享。
   const foreshadow = useStorylineForeshadowing(bookId, currentChapter);
+  useWritingProgressRefresh(bookId, () => {
+    invalidateApiPaths([
+      `/api/books/${encodeURIComponent(bookId)}/jingwei/entries`,
+      `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
+      `/api/books/${encodeURIComponent(bookId)}/state`,
+    ]);
+  });
 
   const plannedCount = useMemo(
     () => countPlannedOutlineNodes(outlineTreeNodes, draftedChapters),
@@ -514,13 +522,16 @@ export function StorylineAndPlanningSidebarPanel({
             <MapIcon className="size-8 text-primary/60" />
             <p className="text-xs font-medium text-foreground">故事画布已在中央打开</p>
             <p className="text-[11px] leading-relaxed">
-              发展历程 / 双螺旋编年史 / 故事地图三个视图共用同一个画布 Tab，在画布顶部切换。
+              正图 / 推进 / 发展历程 / 章节脉络 / 关系网共用同一个画布 Tab，全部是树，在画布顶部切换。
             </p>
-            <Button size="xs" variant="outline" className="h-7 justify-start text-[11px]" onClick={() => openProgressionCanvas("evolution")}>
-              📈 打开发展历程
+            <Button size="xs" variant="outline" className="h-7 justify-start text-[11px]" onClick={() => openProgressionCanvas("tree")}>
+              🌳 打开故事树
+            </Button>
+            <Button size="xs" variant="outline" className="h-7 justify-start text-[11px]" onClick={() => openProgressionCanvas("board")}>
+              📊 打开推进（下一章该写什么）
             </Button>
             <Button size="xs" variant="outline" className="h-7 justify-start text-[11px]" onClick={() => openProgressionCanvas("chronicle")}>
-              🧬 打开双螺旋编年史
+              🧬 打开章节脉络
             </Button>
           </div>
         )}

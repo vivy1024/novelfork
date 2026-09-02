@@ -30,6 +30,7 @@ function factCategoryFor(eventType: NarrativeEventType): string {
       return "location";
     case "hook_planted":
     case "hook_progressed":
+    case "hook_triggered":
     case "hook_resolved":
       return "hook";
     case "world_fact_introduced":

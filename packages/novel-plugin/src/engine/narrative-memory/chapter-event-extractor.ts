@@ -2,7 +2,13 @@ import { chatCompletion, type LLMClient } from "@vivy1024/novelfork-core";
 
 import { NarrativeEventTypeSchema } from "./types.js";
 import type { NarrativeEventDraft } from "./settlement-risk-gate.js";
+import { parseCausedBy } from "./causal-resolve.js";
 import { formatEntityDictionaryForPrompt, resolveEntity, type EntityDictionary } from "./entity-dictionary.js";
+import {
+  collectChapterMentions,
+  parseMentionedEntityNames,
+  type ChapterMention,
+} from "./chapter-mention.js";
 
 /** 当前台账中的一条 open fact，注入抽取 prompt 让 LLM 感知已有状态，只抽增量。 */
 export type CurrentLedgerFactSnapshot = Readonly<{
@@ -29,13 +35,15 @@ export type ChapterEventExtractorInput = Readonly<{
    * 缺省时行为与旧版一致（不做注入与归一化）。
    */
   entityDictionary?: EntityDictionaryInput;
-  llmExtractor?: (input: Readonly<{ bookId: string; chapterNumber: number; title?: string; content: string; currentLedger?: readonly CurrentLedgerFactSnapshot[]; entityDictionary?: EntityDictionaryInput }>) => Promise<readonly unknown[]>;
+  llmExtractor?: (input: Readonly<{ bookId: string; chapterNumber: number; title?: string; content: string; currentLedger?: readonly CurrentLedgerFactSnapshot[]; entityDictionary?: EntityDictionaryInput }>) => Promise<unknown>;
 }>;
 
 export type ChapterEventExtractionResult = Readonly<{
   drafts: readonly NarrativeEventDraft[];
   deduped: number;
   warnings: readonly string[];
+  /** 本章全量出场，供共现图使用；与增量事件分列。 */
+  mentionedEntities: readonly ChapterMention[];
 }>;
 
 function extractJsonArray(text: string): unknown[] {
@@ -54,16 +62,64 @@ export function parseLLMNarrativeEventDrafts(content: string): readonly unknown[
   }
 }
 
+export interface ParsedChapterExtraction {
+  readonly events: readonly unknown[];
+  readonly mentionedEntities: readonly string[];
+}
+
+function extractJsonValue(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
+  const raw = fenced ?? text.trim();
+  const objectStart = raw.indexOf("{");
+  const arrayStart = raw.indexOf("[");
+  if (objectStart >= 0 && (arrayStart < 0 || objectStart < arrayStart)) {
+    return JSON.parse(raw.slice(objectStart, raw.lastIndexOf("}") + 1));
+  }
+  if (arrayStart >= 0) {
+    return JSON.parse(raw.slice(arrayStart, raw.lastIndexOf("]") + 1));
+  }
+  return null;
+}
+
+/** 兼容旧数组与新对象 `{ events, mentionedEntities }`。 */
+export function parseLLMChapterExtraction(content: string): ParsedChapterExtraction {
+  try {
+    const parsed = extractJsonValue(content);
+    if (Array.isArray(parsed)) return { events: parsed, mentionedEntities: [] };
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const record = parsed as Record<string, unknown>;
+      const events = Array.isArray(record.events) ? record.events : [];
+      return { events, mentionedEntities: parseMentionedEntityNames(record.mentionedEntities) };
+    }
+  } catch {
+    // fall through
+  }
+  return { events: [], mentionedEntities: [] };
+}
+
+function unpackExtractorPayload(payload: unknown): { events: readonly unknown[]; mentionedEntities: readonly string[] } {
+  if (Array.isArray(payload)) return { events: payload, mentionedEntities: [] };
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const events = Array.isArray(record.events) ? record.events : [];
+    return { events, mentionedEntities: parseMentionedEntityNames(record.mentionedEntities) };
+  }
+  return { events: [], mentionedEntities: [] };
+}
+
 const EXTRACTOR_SYSTEM_PROMPT = [
   "你是网文小说叙事记忆结算器。只从用户提供的正式章节正文中抽取动态叙事变化。",
-  "返回严格 JSON 数组，不要输出解释。每项字段：eventType, subject, predicate, object, evidenceText, confidence, source。",
-  "eventType 只能是 character_state_changed, relationship_changed, location_changed, hook_planted, hook_progressed, hook_resolved, world_fact_introduced, timeline_advanced。",
+  "返回严格 JSON 对象，不要输出解释。字段：",
+  "1. events：数组。每项字段 eventType, subject, predicate, object, evidenceText, confidence, source, causedBy。",
+  "2. mentionedEntities：字符串数组。本章出场的全部实体（人物/地点/势力/物品），含未发生状态变化的配角。这一项要全量，与增量事件无关。",
+  "eventType 只能是 character_state_changed, relationship_changed, location_changed, hook_planted, hook_progressed, hook_triggered, hook_resolved, world_fact_introduced, timeline_advanced。",
   "evidenceText 必须是章节正文中的原文短摘录，source 固定为 settle。没有证据就不要输出该事件。",
-  "若用户消息提供了「官方实体名单」：subject 与 object（关系对象、地点宾语）必须优先使用名单中的名字或其列出的称呼；名单中没有的新实体才使用正文原名称。",
+  "causedBy 是可选字符串数组：只填本章或台账里真正导致本事件的前驱。可用同批 events 的 0 起始序号、subject，或 subject|predicate。对不上就省略，禁止猜测。",
+  "若用户消息提供了「官方实体名单」：subject、object 与 mentionedEntities 必须优先使用名单中的名字或其列出的称呼；名单中没有的新实体才使用正文原名称。",
   "不要写入静态 Lore/canon；只提出 NarrativeEvent 草案。",
-  "若提供了「当前叙事记忆台账」，只抽取相对台账发生变化或新增的状态；与台账一致、本章未改变的内容不要重复输出。",
+  "若提供了「当前叙事记忆台账」，events 只抽取相对台账发生变化或新增的状态；与台账一致、本章未改变的内容不要重复输出。mentionedEntities 不受此限制。",
   "对状态类变化（修为/位置/关系/情绪等），subject+predicate 标识状态槽位，object 是本章后的新值；同一槽位的新值会由系统自动作废旧值，你只需给出新值。",
-  "对伏笔：本章新埋用 hook_planted，已有伏笔被推进用 hook_progressed，被揭晓/回收用 hook_resolved。",
+  "对伏笔：本章新埋用 hook_planted；已有伏笔被提及/推进但触发条件尚未满足用 hook_progressed；触发条件已出现、该兑现但尚未兑现用 hook_triggered（object 写触发条件）；被揭晓/回收用 hook_resolved。同一条伏笔的后续事件 causedBy 必须指向它更早的 planted/progressed/triggered。",
 ].join("\n");
 
 function formatCurrentLedger(ledger: readonly CurrentLedgerFactSnapshot[]): string {
@@ -89,7 +145,7 @@ export function createLLMChapterEventExtractor(client: LLMClient, model: string)
       { role: "system", content: EXTRACTOR_SYSTEM_PROMPT },
       { role: "user", content: buildExtractorUserPrompt(input) },
     ], { temperature: 0.1, maxTokens: 2000 });
-    return parseLLMNarrativeEventDrafts(response.content);
+    return parseLLMChapterExtraction(response.content);
   };
 }
 
@@ -114,7 +170,7 @@ export function createRuntimeChapterEventExtractor(
       temperature: 0.1,
       maxTokens: 2000,
     });
-    return parseLLMNarrativeEventDrafts(response.text);
+    return parseLLMChapterExtraction(response.text);
   };
 }
 
@@ -134,6 +190,7 @@ function parseUnknownDraft(raw: unknown): NarrativeEventDraft | null {
   const parsedType = NarrativeEventTypeSchema.safeParse(eventType);
   if (!parsedType.success) return null;
   if (record.source !== "settle") return null;
+  const causedBy = parseCausedBy(record.causedBy);
   return {
     eventType: parsedType.data,
     subject: normalizeText(record.subject),
@@ -142,6 +199,7 @@ function parseUnknownDraft(raw: unknown): NarrativeEventDraft | null {
     evidenceText: normalizeText(record.evidenceText),
     confidence: confidence(record.confidence),
     source: "settle",
+    ...(causedBy.length > 0 ? { causedBy } : {}),
   };
 }
 
@@ -208,15 +266,15 @@ export async function extractNarrativeEventsFromChapter(input: ChapterEventExtra
   const warnings: string[] = [];
   const rawDrafts: NarrativeEventDraft[] = [];
 
-  const llmDrafts = await input.llmExtractor({
+  const llmPayload = unpackExtractorPayload(await input.llmExtractor({
     bookId: input.bookId,
     chapterNumber: input.chapterNumber,
     title: input.title,
     content: input.content,
     currentLedger: input.currentLedger,
     entityDictionary: input.entityDictionary,
-  });
-  for (const raw of llmDrafts) {
+  }));
+  for (const raw of llmPayload.events) {
     const draft = parseUnknownDraft(raw);
     if (draft) rawDrafts.push(draft);
     else warnings.push("丢弃无效事件草案：schema 不匹配。");
@@ -232,5 +290,11 @@ export async function extractNarrativeEventsFromChapter(input: ChapterEventExtra
   }
 
   const deduped = dedupeDrafts(validDrafts);
-  return { drafts: deduped.drafts, deduped: deduped.deduped, warnings };
+  const mentionedEntities = collectChapterMentions({
+    content: input.content,
+    dictionary: input.entityDictionary,
+    eventNames: deduped.drafts.flatMap((draft) => [draft.subject, draft.object]),
+    llmNames: llmPayload.mentionedEntities,
+  });
+  return { drafts: deduped.drafts, deduped: deduped.deduped, warnings, mentionedEntities };
 }

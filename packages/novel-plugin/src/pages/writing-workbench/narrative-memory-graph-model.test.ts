@@ -142,16 +142,22 @@ describe("narrative-memory-graph-model", () => {
   it("截断画布标签但保留原始实体标题", () => {
     const long = "这是一个非常长的真实小说实体或状态描述用于验证截断";
     expect(displayLabel(long, 12)).toBe("这是一个非常长的真实小…");
-    const model = buildNarrativeGraphModel({ facts: [{ ...facts[0]!, id: "long", subject: long }], events: [], view: "relationship" });
+    const model = buildNarrativeGraphModel({
+      facts: [{ ...facts[0]!, id: "long", subject: long, subjectEntryId: "entry-long" }],
+      events: [],
+      view: "relationship",
+    });
     const node = model.nodes.find((item) => item.entityName === long);
     expect(node?.title).toBe(long);
     expect(node?.displayTitle.length).toBeLessThan(node?.title.length ?? 0);
   });
 
-  it("关系图去重实体与边并产生稳定无重叠布局", () => {
+  it("关系图去掉事件短语脏节点，只保留像实体的名字", () => {
     const model = buildNarrativeGraphModel({ facts: [...facts, { ...facts[0]!, id: "fact-1" }], events: [], view: "relationship", focusEntity: "薛行之" });
-    expect(model.nodes.filter((node) => node.kind === "entity")).toHaveLength(6);
-    expect(model.edges).toHaveLength(4);
+    const names = model.nodes.filter((node) => node.kind === "entity").map((node) => node.entityName);
+    expect(names.sort((left, right) => left.localeCompare(right, "zh"))).toEqual(["鼻血", "薛建国", "薛行之"]);
+    expect(names).not.toContain("自费转诊");
+    expect(names).not.toContain("指尖电流与异常感知");
     expect(model.nodes.find((node) => node.entityName === "薛行之")?.depth).toBe(0);
     expectFiniteUniqueLayout(model.nodes);
     for (let left = 0; left < model.nodes.length; left += 1) {
@@ -161,13 +167,61 @@ describe("narrative-memory-graph-model", () => {
     }
   });
 
+  it("关系图优先画共现边，不把脏 object 画成实体", () => {
+    const model = buildNarrativeGraphModel({
+      facts,
+      events: [],
+      view: "relationship",
+      focusEntity: "薛行之",
+      cooccurrenceEdges: [
+        { source: "薛行之", target: "薛建国", coCount: 3, weight: 0.8 },
+        { source: "薛行之", target: "自费转诊", coCount: 1 },
+      ],
+    });
+    const names = model.nodes.filter((node) => node.kind === "entity").map((node) => node.entityName);
+    expect(names).toContain("薛行之");
+    expect(names).toContain("薛建国");
+    expect(names).not.toContain("自费转诊");
+    expect(model.edges.some((edge) => edge.kind === "cooccurrence" && edge.label.includes("同场"))).toBe(true);
+    expect(model.stats.cooccurrenceCount).toBe(2);
+  });
+
+  it("事件链把显式因果画成导致边", () => {
+    const model = buildNarrativeGraphModel({
+      facts: [],
+      events,
+      view: "event_chain",
+      causal: [
+        { id: "event-2", chapterNumber: 2, summary: "鼻血", eventType: "character_state_changed", causes: ["event-1"], causeSource: "explicit" },
+      ],
+    });
+    expect(model.edges.some((edge) => edge.kind === "causal" && edge.label === "导致")).toBe(true);
+    expect(model.stats.causalCount).toBe(1);
+  });
+
+  it("伏笔网络按阶段分列，不把事实短语当节点", () => {
+    const model = buildNarrativeGraphModel({
+      facts,
+      events: [],
+      view: "foreshadowing",
+      foreshadows: [
+        { id: "fs-1", label: "小瓶绿液", phase: "planted", setupChapter: 3 },
+        { id: "fs-1b", entryId: "e1", label: "小瓶绿液", phase: "triggered", setupChapter: 8 },
+      ],
+    });
+    expect(model.nodes.every((node) => node.kind === "foreshadow")).toBe(true);
+    expect(model.nodes).toHaveLength(2);
+    expect(model.edges.some((edge) => edge.kind === "foreshadow")).toBe(true);
+    expect(model.stats.foreshadowCount).toBe(2);
+  });
+
   it.each<[NarrativeMemoryView, "entity" | "event", number]>([
     // 泳道重构后（88c081ee）：夹具 3 事件分属「薛行之」「周工离职」两条泳道，
     // 泳道内串联产生 1 条边，跨泳道不连线——不再是全局线性链的 n-1 条。
     ["timeline", "event", 1],
     ["character_arc", "event", 1],
     ["event_chain", "event", 1],
-    ["conflict", "entity", 4],
+    ["conflict", "entity", 1],
   ])("为 %s 生成专属节点与连线", (view, kind, minimumEdges) => {
     const model = buildNarrativeGraphModel({ facts, events, view });
     expect(model.nodes.some((node) => node.kind === kind)).toBe(true);
@@ -250,8 +304,10 @@ describe("narrative-memory-graph-model", () => {
   it("视图值和中文入口映射明确", () => {
     expect(isNarrativeMemoryView("wave")).toBe(true);
     expect(isNarrativeMemoryView("anchor")).toBe(true);
+    expect(isNarrativeMemoryView("foreshadowing")).toBe(true);
     expect(isNarrativeMemoryView("浪潮视图")).toBe(false);
     expect(viewFromLabel("矛盾地图")).toBe("conflict");
+    expect(viewFromLabel("伏笔网络")).toBe("foreshadowing");
     expect(viewFromLabel("锚点时间线")).toBe("anchor");
     expect(viewFromLabel("不存在")).toBeUndefined();
   });

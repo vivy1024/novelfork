@@ -98,6 +98,128 @@ describe("chapter settlement service", () => {
     }
   });
 
+  it("writes explicit hook causes and foreshadow tri-state on settlement", async () => {
+    const storage = await createStorage();
+    try {
+      const plantedContent = "他发现瓶中绿液能催熟药草。";
+      await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 3,
+        content: plantedContent,
+      }, {
+        storage,
+        llmExtractor: async () => [{
+          eventType: "hook_planted",
+          subject: "小瓶",
+          predicate: "埋设",
+          object: "瓶中绿液能催熟药草",
+          evidenceText: plantedContent,
+          confidence: 0.9,
+          source: "settle",
+        }],
+      });
+
+      const progressedContent = "药园试验开始，绿液催熟药草。";
+      const result = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 8,
+        content: progressedContent,
+      }, {
+        storage,
+        llmExtractor: async () => [{
+          eventType: "hook_progressed",
+          subject: "小瓶",
+          predicate: "推进",
+          object: "药园试验",
+          evidenceText: progressedContent,
+          confidence: 0.9,
+          source: "settle",
+          causedBy: ["小瓶"],
+        }],
+      });
+
+      expect(result.status).toBe("completed");
+      const progressed = storage.sqlite.prepare<{ causedByJson: string | null }>(
+        `SELECT caused_by_json AS causedByJson FROM narrative_event WHERE event_type = 'hook_progressed' LIMIT 1`,
+      ).get();
+      expect(progressed?.causedByJson).toContain("chapter-settle");
+      const hook = storage.sqlite.prepare<{ status: string; label: string }>(
+        `SELECT status, label FROM narrative_foreshadow WHERE label = '小瓶' LIMIT 1`,
+      ).get();
+      expect(hook).toEqual({ status: "reinforced", label: "小瓶" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("writes CFPG triggered when the trigger condition event appears", async () => {
+    const storage = await createStorage();
+    try {
+      const plantedContent = "他发现瓶中绿液能催熟药草。";
+      await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 3,
+        content: plantedContent,
+      }, {
+        storage,
+        llmExtractor: async () => [{
+          eventType: "hook_planted",
+          subject: "小瓶",
+          predicate: "埋设",
+          object: "瓶中绿液能催熟药草",
+          evidenceText: plantedContent,
+          confidence: 0.9,
+          source: "settle",
+        }],
+      });
+
+      const triggeredContent = "药园试验开始，绿液催熟药草。";
+      const result = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 8,
+        content: triggeredContent,
+      }, {
+        storage,
+        llmExtractor: async () => [{
+          eventType: "hook_triggered",
+          subject: "小瓶",
+          predicate: "触发",
+          object: "药园试验开始",
+          evidenceText: triggeredContent,
+          confidence: 0.9,
+          source: "settle",
+          causedBy: ["小瓶"],
+        }],
+      });
+
+      expect(result.status).toBe("completed");
+      const hook = storage.sqlite.prepare<{
+        status: string;
+        triggerChapter: number | null;
+        triggerCondition: string | null;
+      }>(`
+        SELECT status, trigger_chapter AS triggerChapter, trigger_condition AS triggerCondition
+        FROM narrative_foreshadow WHERE label = '小瓶' LIMIT 1
+      `).get();
+      expect(hook).toEqual({
+        status: "triggered",
+        triggerChapter: 8,
+        triggerCondition: "药园试验开始",
+      });
+      const scores = storage.sqlite.prepare<{ featureId: string; numericValue: number }>(`
+        SELECT feature_id AS featureId, numeric_value AS numericValue
+        FROM narrative_structure_score
+        WHERE book_id = 'book-1' AND chapter_number = 8
+        ORDER BY feature_id
+      `).all();
+      expect(scores.map((row) => row.featureId)).toEqual(["EVT_CAU_002", "EVT_TML_001", "PLT_MOR_002", "PLT_TRG_001"]);
+      expect(scores.find((row) => row.featureId === "EVT_CAU_002")?.numericValue).toBe(1);
+      expect(scores.find((row) => row.featureId === "PLT_TRG_001")?.numericValue).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("事实写入失败时整体回滚，不登记结算台账", async () => {
     const storage = await createStorage();
     try {

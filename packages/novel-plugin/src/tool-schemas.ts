@@ -539,8 +539,12 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       status: { type: "string", enum: ["draft", "confirmed", "needs-review"], description: "条目状态（默认 confirmed）" },
       stagingId: stringSchema("拆书暂存候选 ID（确认提升或拒绝时传入）。"),
       stagingDecision: enumSchema(["promote", "reject"], "对 staging 候选的处理：promote（确认提升）| reject（拒绝，不进正式库）。"),
+      entries: arraySchema("一次写入多条静态设定（最多 20 条）。传入后忽略顶层单条 title/contentMd。", {
+        type: "object",
+        additionalProperties: true,
+      }),
     },
-    required: ["bookId", "title"],
+    required: ["bookId"],
     additionalProperties: false,
   },
   "scene.spec": {
@@ -626,7 +630,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       action: stringSchema("Pending NarrativeEvents 操作：list | create | approve | reject。"),
       eventId: stringSchema("approve/reject 时的事件 ID。"),
       chapterNumber: numberSchema("create 时的章节序号。"),
-      eventType: stringSchema("create 时的事件类型，如 character_state_changed | relationship_changed | hook_planted | timeline_advanced。"),
+      eventType: stringSchema("create 时的事件类型，如 character_state_changed | relationship_changed | hook_planted | hook_triggered | timeline_advanced。"),
       subject: stringSchema("create 时的事件主体。"),
       predicate: stringSchema("create 时的事件谓词/关系。"),
       object: stringSchema("create 时的事件客体/状态。"),
@@ -635,6 +639,10 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       layer: stringSchema("create 时的事实层：dynamic | canon | reference，默认 dynamic。"),
       reason: stringSchema("批准或拒绝原因（可选）。"),
       limit: numberSchema("list 返回数量上限（可选）。"),
+      events: arraySchema("一次创建多条 Pending 事件（最多 20 条）。传入后忽略顶层单条 subject/predicate/object。", {
+        type: "object",
+        additionalProperties: true,
+      }),
     },
     required: ["bookId", "action"],
     additionalProperties: false,

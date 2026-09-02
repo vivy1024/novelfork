@@ -135,13 +135,21 @@ function characterItem(character: DerivedCharacterState, named: boolean): WriteP
   };
 }
 
+function hookArmed(hook: DerivedHook): boolean {
+  const blob = `${hook.status} ${hook.notes} ${hook.expectedPayoff}`.toLowerCase();
+  return hook.status === "progressing" && /(triggered|已触发|枪已上膛|该兑现)/u.test(blob);
+}
+
 function hookItem(hook: DerivedHook, named: boolean): WriteProfileItem {
+  const armed = hookArmed(hook);
   return {
     id: `hook:${hook.hookId}`,
     title: hook.expectedPayoff || hook.notes || hook.hookId,
-    summary: `${hook.status} · 第${hook.startChapter}章起，最近第${hook.lastAdvancedChapter}章`,
+    summary: armed
+      ? `已触发未兑现 · 第${hook.startChapter}章起，最近第${hook.lastAdvancedChapter}章`
+      : `${hook.status} · 第${hook.startChapter}章起，最近第${hook.lastAdvancedChapter}章`,
     chapter: hook.lastAdvancedChapter,
-    named,
+    named: named || armed,
   };
 }
 
@@ -229,7 +237,8 @@ export function buildWriteProfile(input: BuildWriteProfileInput): WriteProfile {
   const hookCandidates = projection.hooks
     .filter((hook) => hook.status !== "resolved")
     .sort((left, right) => (
-      (left.status === "progressing" ? 0 : 1) - (right.status === "progressing" ? 0 : 1)
+      (hookArmed(right) ? 1 : 0) - (hookArmed(left) ? 1 : 0)
+      || (left.status === "progressing" ? 0 : 1) - (right.status === "progressing" ? 0 : 1)
       || right.lastAdvancedChapter - left.lastAdvancedChapter
       || left.hookId.localeCompare(right.hookId)
     ));

@@ -1,10 +1,9 @@
 import { readFile, access } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { ProjectConfigSchema, type ProjectConfig } from "../models/project.js";
+import { resolveGlobalEnvPath } from "./global-env.js";
 
-export const GLOBAL_CONFIG_DIR = join(homedir(), ".novelfork");
-export const GLOBAL_ENV_PATH = join(GLOBAL_CONFIG_DIR, ".env");
+export { GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, resolveGlobalConfigDir, resolveGlobalEnvPath } from "./global-env.js";
 
 function getEnvValue(...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -53,7 +52,8 @@ export async function loadProjectConfig(
   const { config: loadEnv } = await import("dotenv");
 
   // Priority: ~/.novelfork/.env > project .env overrides
-  loadEnv({ path: GLOBAL_ENV_PATH });
+  // Embedding 密钥不走这里，落到产品库 kv_store。
+  loadEnv({ path: resolveGlobalEnvPath() });
   loadEnv({ path: join(root, ".env"), override: true });
 
   const configPath = join(root, "novelfork.json");
@@ -117,6 +117,7 @@ export async function loadProjectConfig(
 
   if (apiFormat) llm.apiFormat = apiFormat;
   config.llm = llm;
+  delete config.embedding;
 
   if (defaultLanguage) config.language = defaultLanguage;
 

@@ -17,6 +17,8 @@ import {
   type NarrativeRetrievalDiagnostics,
   type NarrativeRetrievalPurpose,
 } from "./types.js";
+import type { ChapterMention } from "./chapter-mention.js";
+import { parseCausedBy } from "./causal-resolve.js";
 
 interface NarrativeFactRow {
   id: string;
@@ -54,6 +56,7 @@ interface NarrativeEventRow {
   riskLevel: NarrativeEvent["riskLevel"];
   subjectEntryId: string | null;
   objectEntryId: string | null;
+  causedByJson: string | null;
   createdAt: string;
   appliedAt: string | null;
 }
@@ -152,7 +155,8 @@ export const QueryNarrativeContextVectorsInputSchema = z.object({
   currentChapter: positiveInteger.optional(),
   entities: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
-  limit: positiveInteger.max(500).optional(),
+  // limit=0 is an internal full-scan mode used by entity embedding backfill.
+  limit: z.number().int().min(0).max(5000).optional(),
 });
 export type QueryNarrativeContextVectorsInput = Readonly<{
   bookId: string;
@@ -203,6 +207,7 @@ function factRowToRecord(row: NarrativeFactRow): NarrativeFact {
 }
 
 function eventRowToRecord(row: NarrativeEventRow): NarrativeEvent {
+  const causedBy = parseCausedBy(row.causedByJson);
   return NarrativeEventSchema.parse({
     id: row.id,
     bookId: row.bookId,
@@ -218,6 +223,7 @@ function eventRowToRecord(row: NarrativeEventRow): NarrativeEvent {
     riskLevel: row.riskLevel,
     subjectEntryId: row.subjectEntryId ?? undefined,
     objectEntryId: row.objectEntryId ?? undefined,
+    ...(causedBy.length > 0 ? { causedBy } : {}),
     createdAt: row.createdAt,
     appliedAt: row.appliedAt ?? undefined,
   });
@@ -286,6 +292,7 @@ const EVENT_SELECT = `
     risk_level AS riskLevel,
     subject_entry_id AS subjectEntryId,
     object_entry_id AS objectEntryId,
+    caused_by_json AS causedByJson,
     created_at AS createdAt,
     applied_at AS appliedAt
   FROM narrative_event
@@ -337,6 +344,7 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
       risk_level TEXT NOT NULL,
       subject_entry_id TEXT,
       object_entry_id TEXT,
+      caused_by_json TEXT,
       created_at TEXT NOT NULL,
       applied_at TEXT
     );
@@ -424,6 +432,20 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_character_kernel_unique ON character_kernel(book_id, character_id);
+
+    CREATE TABLE IF NOT EXISTS narrative_chapter_mention (
+      book_id TEXT NOT NULL,
+      chapter_number INTEGER NOT NULL,
+      position INTEGER NOT NULL,
+      entity_name TEXT NOT NULL,
+      entry_id TEXT,
+      source TEXT NOT NULL DEFAULT 'dictionary',
+      PRIMARY KEY (book_id, chapter_number, entity_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chapter_mention_book_chapter
+      ON narrative_chapter_mention(book_id, chapter_number, position);
+    CREATE INDEX IF NOT EXISTS idx_chapter_mention_entry
+      ON narrative_chapter_mention(book_id, entry_id);
   `);
 
   // 实体身份链：旧库的 narrative_event / narrative_fact 缺 subject_entry_id / object_entry_id 列，逐表逐列补齐。
@@ -444,12 +466,59 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
       }
     }
   }
+  const eventColumns = existingColumns("narrative_event");
+  if (!eventColumns.has("caused_by_json")) {
+    storage.sqlite.exec(`ALTER TABLE narrative_event ADD COLUMN caused_by_json TEXT`);
+  }
+
+  storage.sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS narrative_foreshadow (
+      id TEXT PRIMARY KEY NOT NULL,
+      book_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      entry_id TEXT,
+      setup_chapter INTEGER,
+      setup_event_id TEXT,
+      trigger_chapter INTEGER,
+      trigger_condition TEXT,
+      payoff_chapter INTEGER,
+      payoff_event_id TEXT,
+      status TEXT NOT NULL DEFAULT 'planted',
+      deadline_chapter INTEGER,
+      importance INTEGER NOT NULL DEFAULT 50,
+      evidence_text TEXT,
+      recorded_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      CHECK (status IN ('planted','reinforced','triggered','paying_off','paid_off','abandoned','contradicted'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_narrative_foreshadow_status
+      ON narrative_foreshadow(book_id, status, setup_chapter);
+  `);
 
   storage.sqlite.exec(`
     CREATE INDEX IF NOT EXISTS idx_narrative_event_subject_entry ON narrative_event(book_id, subject_entry_id);
     CREATE INDEX IF NOT EXISTS idx_narrative_event_object_entry ON narrative_event(book_id, object_entry_id);
     CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_subject_entry ON narrative_fact(book_id, subject_entry_id);
     CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_object_entry ON narrative_fact(book_id, object_entry_id);
+  `);
+
+  storage.sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS narrative_structure_score (
+      id TEXT PRIMARY KEY NOT NULL,
+      book_id TEXT NOT NULL,
+      chapter_number INTEGER,
+      feature_id TEXT NOT NULL,
+      dimension TEXT NOT NULL,
+      value TEXT NOT NULL,
+      numeric_value REAL,
+      deviation REAL,
+      model TEXT,
+      recorded_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_structure_score_unique
+      ON narrative_structure_score(book_id, chapter_number, feature_id);
+    CREATE INDEX IF NOT EXISTS idx_structure_score_dimension
+      ON narrative_structure_score(book_id, dimension);
   `);
 }
 
@@ -604,9 +673,10 @@ export function insertNarrativeEvent(storage: StorageDatabase, event: NarrativeE
       risk_level,
       subject_entry_id,
       object_entry_id,
+      caused_by_json,
       created_at,
       applied_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     parsed.id,
     parsed.bookId,
@@ -622,6 +692,7 @@ export function insertNarrativeEvent(storage: StorageDatabase, event: NarrativeE
     parsed.riskLevel,
     parsed.subjectEntryId ?? null,
     parsed.objectEntryId ?? null,
+    parsed.causedBy && parsed.causedBy.length > 0 ? JSON.stringify(parsed.causedBy) : null,
     parsed.createdAt,
     parsed.appliedAt ?? null,
   );
@@ -670,6 +741,7 @@ export function updateNarrativeEvent(storage: StorageDatabase, event: NarrativeE
         risk_level = ?,
         subject_entry_id = ?,
         object_entry_id = ?,
+        caused_by_json = ?,
         applied_at = ?
     WHERE book_id = ? AND id = ?
   `).run(
@@ -685,6 +757,7 @@ export function updateNarrativeEvent(storage: StorageDatabase, event: NarrativeE
     parsed.riskLevel,
     parsed.subjectEntryId ?? null,
     parsed.objectEntryId ?? null,
+    parsed.causedBy && parsed.causedBy.length > 0 ? JSON.stringify(parsed.causedBy) : null,
     parsed.appliedAt ?? null,
     parsed.bookId,
     parsed.id,
@@ -818,7 +891,8 @@ export function listHighRiskPendingNarrativeEvents(storage: StorageDatabase, inp
 export function queryNarrativeContextVectors(storage: StorageDatabase, input: QueryNarrativeContextVectorsInput): QueryNarrativeContextVectorsResult {
   ensureNarrativeMemorySchema(storage);
   const parsed = QueryNarrativeContextVectorsInputSchema.parse(input);
-  const limit = Math.max(1, Math.min(parsed.limit ?? 100, 500));
+  const unlimited = parsed.limit === 0;
+  const limit = unlimited ? Number.POSITIVE_INFINITY : Math.max(1, Math.min(parsed.limit ?? 100, 5000));
   const rows = storage.sqlite.prepare<NarrativeContextVectorRow>(`
     SELECT
       card_id AS cardId,
@@ -831,7 +905,6 @@ export function queryNarrativeContextVectors(storage: StorageDatabase, input: Qu
     FROM narrative_context_vector
     WHERE book_id = ? AND embedding_model_id = ?
     ORDER BY vector_updated_at DESC, card_id ASC
-    LIMIT 500
   `).all(parsed.bookId, parsed.embeddingModelId);
 
   const vectors: NarrativeContextVector[] = [];
@@ -967,4 +1040,170 @@ export function deleteCharacterKernel(storage: StorageDatabase, bookId: string, 
     DELETE FROM character_kernel WHERE book_id = ? AND character_id = ?
   `).run(bookId, characterId);
   return result.changes > 0;
+}
+
+export function replaceChapterMentions(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number,
+  mentions: readonly ChapterMention[],
+): void {
+  ensureNarrativeMemorySchema(storage);
+  storage.sqlite.prepare(
+    `DELETE FROM narrative_chapter_mention WHERE book_id = ? AND chapter_number = ?`,
+  ).run(bookId, chapterNumber);
+  const insert = storage.sqlite.prepare(`
+    INSERT INTO narrative_chapter_mention (book_id, chapter_number, position, entity_name, entry_id, source)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const mention of mentions) {
+    insert.run(bookId, chapterNumber, mention.position, mention.name, mention.entryId ?? null, mention.source);
+  }
+}
+
+export function queryChapterMentions(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber?: number,
+): ChapterMention[] {
+  ensureNarrativeMemorySchema(storage);
+  const rows = chapterNumber === undefined
+    ? storage.sqlite.prepare<{
+      entity_name: string;
+      entry_id: string | null;
+      position: number;
+      source: ChapterMention["source"];
+      chapter_number: number;
+    }>(`
+      SELECT entity_name, entry_id, position, source, chapter_number
+      FROM narrative_chapter_mention
+      WHERE book_id = ?
+      ORDER BY chapter_number ASC, position ASC, entity_name ASC
+    `).all(bookId)
+    : storage.sqlite.prepare<{
+      entity_name: string;
+      entry_id: string | null;
+      position: number;
+      source: ChapterMention["source"];
+    }>(`
+      SELECT entity_name, entry_id, position, source
+      FROM narrative_chapter_mention
+      WHERE book_id = ? AND chapter_number = ?
+      ORDER BY position ASC, entity_name ASC
+    `).all(bookId, chapterNumber);
+  return rows.map((row) => ({
+    name: row.entity_name,
+    ...(row.entry_id ? { entryId: row.entry_id } : {}),
+    position: row.position,
+    source: row.source,
+  }));
+}
+
+export function loadMentionsByChapter(storage: StorageDatabase, bookId: string): Map<number, string[]> {
+  ensureNarrativeMemorySchema(storage);
+  const rows = storage.sqlite.prepare<{
+    chapter_number: number;
+    entity_name: string;
+  }>(`
+    SELECT chapter_number, entity_name
+    FROM narrative_chapter_mention
+    WHERE book_id = ?
+    ORDER BY chapter_number ASC, position ASC, entity_name ASC
+  `).all(bookId);
+  const byChapter = new Map<number, string[]>();
+  for (const row of rows) {
+    const bucket = byChapter.get(row.chapter_number) ?? [];
+    bucket.push(row.entity_name);
+    byChapter.set(row.chapter_number, bucket);
+  }
+  return byChapter;
+}
+
+type ForeshadowMachineStatus = "planted" | "reinforced" | "triggered" | "paid_off";
+
+const FORESHADOW_STATUS_BY_EVENT: Record<string, ForeshadowMachineStatus> = {
+  hook_planted: "planted",
+  hook_progressed: "reinforced",
+  hook_triggered: "triggered",
+  hook_resolved: "paid_off",
+};
+
+function foreshadowId(bookId: string, subject: string): string {
+  return `fs:${bookId}:${encodeURIComponent(subject.trim())}`.slice(0, 200);
+}
+
+function foreshadowTriggerCondition(event: NarrativeEvent): string | null {
+  const fromObject = event.object.trim().slice(0, 400);
+  if (fromObject) return fromObject;
+  const fromEvidence = event.evidenceText.trim().slice(0, 400);
+  return fromEvidence || null;
+}
+
+/**
+ * 把本章伏笔事件接到 narrative_foreshadow 状态机（CFPG：planted → triggered → paid_off）。
+ * planted 新建或保持；progressed 只升格未触发态；triggered 写 trigger_chapter/condition，不覆盖已回收；
+ * resolved 写 payoff。表不存在时由 ensureNarrativeMemorySchema 建好。
+ */
+export function applyForeshadowEvents(
+  storage: StorageDatabase,
+  bookId: string,
+  events: readonly NarrativeEvent[],
+  now = Date.now(),
+): number {
+  ensureNarrativeMemorySchema(storage);
+  const upsert = storage.sqlite.prepare(`
+    INSERT INTO narrative_foreshadow (
+      id, book_id, label, entry_id, setup_chapter, setup_event_id,
+      trigger_chapter, trigger_condition,
+      payoff_chapter, payoff_event_id, status, evidence_text, recorded_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      status = CASE
+        WHEN excluded.status = 'paid_off' THEN 'paid_off'
+        WHEN narrative_foreshadow.status IN ('paid_off','abandoned','contradicted') THEN narrative_foreshadow.status
+        WHEN excluded.status = 'triggered' AND narrative_foreshadow.status IN ('planted','reinforced','triggered','paying_off') THEN 'triggered'
+        WHEN excluded.status = 'reinforced' AND narrative_foreshadow.status IN ('planted','reinforced') THEN 'reinforced'
+        ELSE narrative_foreshadow.status
+      END,
+      setup_chapter = COALESCE(narrative_foreshadow.setup_chapter, excluded.setup_chapter),
+      setup_event_id = COALESCE(narrative_foreshadow.setup_event_id, excluded.setup_event_id),
+      trigger_chapter = CASE
+        WHEN excluded.status = 'triggered' THEN COALESCE(narrative_foreshadow.trigger_chapter, excluded.trigger_chapter)
+        ELSE narrative_foreshadow.trigger_chapter
+      END,
+      trigger_condition = CASE
+        WHEN excluded.status = 'triggered' THEN COALESCE(narrative_foreshadow.trigger_condition, excluded.trigger_condition)
+        ELSE narrative_foreshadow.trigger_condition
+      END,
+      payoff_chapter = CASE WHEN excluded.status = 'paid_off' THEN excluded.payoff_chapter ELSE narrative_foreshadow.payoff_chapter END,
+      payoff_event_id = CASE WHEN excluded.status = 'paid_off' THEN excluded.payoff_event_id ELSE narrative_foreshadow.payoff_event_id END,
+      entry_id = COALESCE(narrative_foreshadow.entry_id, excluded.entry_id),
+      evidence_text = COALESCE(excluded.evidence_text, narrative_foreshadow.evidence_text),
+      updated_at = excluded.updated_at
+  `);
+  let written = 0;
+  for (const event of events) {
+    const status = FORESHADOW_STATUS_BY_EVENT[event.eventType];
+    if (!status) continue;
+    const label = event.subject.trim();
+    if (!label) continue;
+    upsert.run(
+      foreshadowId(bookId, label),
+      bookId,
+      label.slice(0, 200),
+      event.subjectEntryId ?? null,
+      status === "planted" ? event.chapterNumber : null,
+      status === "planted" ? event.id : null,
+      status === "triggered" ? event.chapterNumber : null,
+      status === "triggered" ? foreshadowTriggerCondition(event) : null,
+      status === "paid_off" ? event.chapterNumber : null,
+      status === "paid_off" ? event.id : null,
+      status,
+      event.evidenceText.slice(0, 400) || null,
+      now,
+      now,
+    );
+    written += 1;
+  }
+  return written;
 }

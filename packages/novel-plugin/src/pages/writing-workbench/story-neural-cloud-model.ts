@@ -277,6 +277,52 @@ export function buildNeuralCloudModel(input: {
   };
 }
 
+/**
+ * 节点半径按度数的**平方根**缩放。
+ *
+ * 用 sqrt 而不是线性：线性会让超级节点（主角、主线冲突）巨大化，
+ * 把周围点全压住——这正是「叠墙」的成因之一。sqrt 让差异可见但有界。
+ * 业界同款（sigma.js / Obsidian graph / Reagraph）。
+ */
+export function nodeRadius(degree: number, base = 3.2, k = 1.1, max = 9): number {
+  const safeDegree = Number.isFinite(degree) && degree > 0 ? degree : 0;
+  return Math.min(max, base + k * Math.sqrt(safeDegree));
+}
+
+/**
+ * 标签 LOD：低缩放只显示度数最高的若干节点，避免文字糊成一片。
+ * 返回「应当常显标签」的节点 id 集合（hover / 激活节点由渲染层额外补显）。
+ */
+export function pickLabeledNodeIds(
+  nodes: readonly NeuralCloudLayoutNode[],
+  edges: readonly NeuralCloudEdge[],
+  scale: number,
+): Set<string> {
+  // 缩放越大看得越细，可显示的标签越多
+  const budget = scale >= 1.3 ? nodes.length : scale >= 0.95 ? 40 : scale >= 0.7 ? 22 : 12;
+  const degree = new Map<string, number>();
+  for (const edge of edges) {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+  }
+  const ranked = [...nodes].sort((a, b) => (
+    (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0)
+    || b.radius - a.radius
+    || a.label.localeCompare(b.label, "zh")
+  ));
+  return new Set(ranked.slice(0, Math.max(0, budget)).map((node) => node.id));
+}
+
+/** 与某节点直接相连的邻居（含自身）：hover 时做 focus+context 高亮。 */
+export function neighborIds(edges: readonly NeuralCloudEdge[], nodeId: string): Set<string> {
+  const result = new Set<string>([nodeId]);
+  for (const edge of edges) {
+    if (edge.source === nodeId) result.add(edge.target);
+    else if (edge.target === nodeId) result.add(edge.source);
+  }
+  return result;
+}
+
 export function layoutNeuralCloud(
   nodes: readonly NeuralCloudNode[],
   edges: readonly NeuralCloudEdge[],
@@ -318,7 +364,8 @@ export function layoutNeuralCloud(
       ...node,
       x: spineX(chapter),
       y: 220,
-      radius: isHead ? 7.5 : 5.5,
+      // 章脊是骨架，比同度数的云点略大；当前章再加一档
+      radius: nodeRadius(degree.get(node.id) ?? 0, isHead ? 5 : 4, 0.9, isHead ? 9 : 7),
     });
   }
 
@@ -333,7 +380,7 @@ export function layoutNeuralCloud(
         ...node,
         x: spineX(chapter) + Math.cos(angle) * radius,
         y: 220 + Math.sin(angle) * radius * 0.72,
-        radius: 3.2 + Math.min(2.4, (degree.get(node.id) ?? 1) * 0.18),
+        radius: nodeRadius(degree.get(node.id) ?? 0),
       });
     });
   }
@@ -345,7 +392,7 @@ export function layoutNeuralCloud(
       ...node,
       x: 80 + column * 70,
       y: 420 + row * 42,
-      radius: 3,
+      radius: nodeRadius(degree.get(node.id) ?? 0),
     });
   });
 

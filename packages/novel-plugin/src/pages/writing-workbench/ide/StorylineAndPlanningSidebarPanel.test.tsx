@@ -8,6 +8,7 @@ import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 
 vi.mock("@/hooks/use-api", () => ({
   fetchJson: vi.fn(async () => ({})),
+  invalidateApiPaths: vi.fn(),
   useApi: (path: string | null) => {
     if (path?.includes("category=foreshadowing")) {
       return {
@@ -183,16 +184,15 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     );
   });
 
-  it("故事画布 Tab 点击即在中央打开画布（默认发展历程），并提供编年史快捷入口；经典图谱入口已移除", () => {
+  it("故事画布 Tab 点击即在中央打开画布，并提供故事树/推进/脉络快捷入口；经典图谱入口已移除", () => {
     const { onOpen } = renderPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "故事画布" }));
 
-    // 点击 tab 本身即打开 evolution 权威入口
     expect(onOpen).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "story-progression:book-1",
-        metadata: expect.objectContaining({ isStoryProgression: true, preferredView: "evolution" }),
+        metadata: expect.objectContaining({ isStoryProgression: true, preferredView: "tree" }),
       }),
     );
 
@@ -202,7 +202,22 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(screen.queryByRole("button", { name: /独立全屏故事地图/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /大纲总览/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /打开双螺旋编年史/ }));
+    // 快捷入口跟随画布的四视图：故事树（默认主视觉）/ 推进 / 章节脉络
+    fireEvent.click(screen.getByRole("button", { name: /打开故事树/ }));
+    expect(onOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ preferredView: "tree" }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /打开推进/ }));
+    expect(onOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ preferredView: "board" }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /打开章节脉络/ }));
     expect(onOpen).toHaveBeenLastCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({ preferredView: "chronicle" }),

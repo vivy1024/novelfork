@@ -9,6 +9,7 @@ import {
 import {
 	createCockpitRouter,
 	createComplianceRouter,
+	createEmbeddingSettingsRouter,
 	createFilterRouter,
 	createJingweiRouter,
 	createMarketRouter,
@@ -142,6 +143,8 @@ novelDomainRoutes.route(
 novelDomainRoutes.route("", asRuntimeRouter(createQualityTrendRouter(productRouterContext)));
 novelDomainRoutes.route("", asRuntimeRouter(createWritingModesRouter(productRouterContext)));
 novelDomainRoutes.route("", asRuntimeRouter(createMarketRouter()));
+// 独立 embedding 提供商：落到 NovelFork 产品库，不挤进 Runtime AI 供应商。
+novelDomainRoutes.route("", asRuntimeRouter(createEmbeddingSettingsRouter()));
 
 // Runtime state panel: knowledge / timeline / resource ledger from story/state.
 novelDomainRoutes.get("/api/books/:bookId/state", async (c) => {

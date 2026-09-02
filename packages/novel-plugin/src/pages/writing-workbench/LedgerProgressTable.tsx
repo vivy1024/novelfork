@@ -28,7 +28,7 @@ import {
 } from "../../engine/agents/pressure-ledger-kinds";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
-export const FORESHADOW_STATUSES = ["已埋设", "部分揭示", "唤醒中", "已回收", "已废弃"] as const;
+export const FORESHADOW_STATUSES = ["已埋设", "部分揭示", "唤醒中", "已触发", "已回收", "已废弃"] as const;
 export type ForeshadowStatus = (typeof FORESHADOW_STATUSES)[number];
 
 export const CONFLICT_STATUSES = ["未解决", "进行中", "已收束"] as const;
@@ -124,7 +124,13 @@ function normalizeConflictStatus(raw: string): ConflictStatus {
 }
 
 function normalizeForeshadowStatus(raw: string): ForeshadowStatus {
-  return FORESHADOW_STATUSES.includes(raw as ForeshadowStatus) ? (raw as ForeshadowStatus) : "已埋设";
+  if (FORESHADOW_STATUSES.includes(raw as ForeshadowStatus)) return raw as ForeshadowStatus;
+  if (raw === "triggered" || raw === "paying_off") return "已触发";
+  if (raw === "planted" || raw === "open" || raw === "pending") return "已埋设";
+  if (raw === "reinforced" || raw === "progressing" || raw === "partial") return "部分揭示";
+  if (raw === "paid_off" || raw === "resolved") return "已回收";
+  if (raw === "abandoned" || raw === "contradicted") return "已废弃";
+  return "已埋设";
 }
 
 function forgottenWarning(name: string, kind: PressureResourceKind, lastChapter: number, currentChapter: number): string {

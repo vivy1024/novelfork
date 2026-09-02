@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractNarrativeEventsFromChapter } from "./chapter-event-extractor.js";
+import { extractNarrativeEventsFromChapter, parseLLMChapterExtraction } from "./chapter-event-extractor.js";
 
 const baseInput = {
   bookId: "book-1",
@@ -18,6 +18,23 @@ const baseDrafts = [
   { eventType: "hook_planted", subject: "小瓶", predicate: "埋设", object: "瓶中绿液能催熟药草", evidenceText: "他发现瓶中绿液能催熟药草", confidence: 0.82, source: "settle" },
 ];
 
+describe("parseLLMChapterExtraction", () => {
+  it("reads object payload and mentionedEntities", () => {
+    const parsed = parseLLMChapterExtraction(JSON.stringify({
+      events: [{ eventType: "location_changed" }],
+      mentionedEntities: ["韩立", "药园"],
+    }));
+    expect(parsed.events).toHaveLength(1);
+    expect(parsed.mentionedEntities).toEqual(["韩立", "药园"]);
+  });
+
+  it("still accepts a bare event array", () => {
+    const parsed = parseLLMChapterExtraction(`[{"eventType":"location_changed"}]`);
+    expect(parsed.events).toHaveLength(1);
+    expect(parsed.mentionedEntities).toEqual([]);
+  });
+});
+
 describe("chapter event extractor", () => {
   it("extracts LLM event drafts into validated narrative events", async () => {
     const result = await extractNarrativeEventsFromChapter({
@@ -31,6 +48,52 @@ describe("chapter event extractor", () => {
       expect.objectContaining({ eventType: "hook_planted", subject: "小瓶", predicate: "埋设", source: "settle" }),
     ]));
     expect(result.drafts.every((draft) => draft.evidenceText.length > 0)).toBe(true);
+    expect(result.mentionedEntities.map((item) => item.name)).toEqual(
+      expect.arrayContaining(["韩立", "药园", "小瓶"]),
+    );
+  });
+
+  it("keeps causedBy refs from the LLM payload", async () => {
+    const result = await extractNarrativeEventsFromChapter({
+      ...baseInput,
+      llmExtractor: async () => [
+        { ...baseDrafts[0], causedBy: [] },
+        { ...baseDrafts[1], causedBy: ["0", "韩立"] },
+      ],
+    });
+    expect(result.drafts.find((draft) => draft.eventType === "hook_planted")?.causedBy).toEqual(["0", "韩立"]);
+  });
+
+  it("accepts hook_triggered drafts from the LLM payload", async () => {
+    const result = await extractNarrativeEventsFromChapter({
+      ...baseInput,
+      llmExtractor: async () => [{
+        eventType: "hook_triggered",
+        subject: "小瓶",
+        predicate: "触发",
+        object: "药园试验开始",
+        evidenceText: "他发现瓶中绿液能催熟药草",
+        confidence: 0.86,
+        source: "settle",
+      }],
+    });
+    expect(result.drafts).toEqual([
+      expect.objectContaining({ eventType: "hook_triggered", subject: "小瓶", object: "药园试验开始" }),
+    ]);
+  });
+
+  it("兼容旧数组 payload，并把 LLM 提及并进清单", async () => {
+    const result = await extractNarrativeEventsFromChapter({
+      ...baseInput,
+      llmExtractor: async () => ({
+        events: baseDrafts,
+        mentionedEntities: ["厉飞雨", "故事主线时间"],
+      }),
+    });
+    expect(result.mentionedEntities.map((item) => item.name)).toEqual(
+      expect.arrayContaining(["韩立", "药园", "小瓶", "厉飞雨"]),
+    );
+    expect(result.mentionedEntities.some((item) => item.name === "故事主线时间")).toBe(false);
   });
 
   it("merges duplicate drafts within the same chapter", async () => {

@@ -96,6 +96,37 @@ describe("buildWriteProfile", () => {
     expect(profile.trimReasons.some((item) => item.kind === "named-keep")).toBe(true);
   });
 
+  it("keeps triggered unpaid hooks at the front of the write profile", () => {
+    const profile = buildWriteProfile({
+      projection: projection({
+        hooks: [
+          {
+            hookId: "plain",
+            type: "mystery",
+            status: "open",
+            expectedPayoff: "普通伏笔",
+            notes: "",
+            startChapter: 1,
+            lastAdvancedChapter: 18,
+          },
+          {
+            hookId: "armed",
+            type: "mystery",
+            status: "progressing",
+            expectedPayoff: "小瓶绿液",
+            notes: "triggered 药园试验开始",
+            startChapter: 3,
+            lastAdvancedChapter: 8,
+          },
+        ],
+      }),
+      currentChapter: 12,
+      caps: { activeHooks: 1 },
+    });
+    expect(profile.activeHooks.items[0]?.id).toBe("hook:armed");
+    expect(profile.activeHooks.items[0]?.summary).toContain("已触发未兑现");
+  });
+
   it("honors custom write-profile caps and retitles recent summaries", () => {
     const profile = buildWriteProfile({
       projection: projection(),

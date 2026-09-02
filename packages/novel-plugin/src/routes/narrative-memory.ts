@@ -23,6 +23,10 @@ import { readChapterSettlementRecord, chapterContentFingerprint } from "../engin
 import { readLatestSettlementArtifact } from "../engine/narrative-memory/storage.js";
 import { readLatestAuditIssues, markChapterAuditStale } from "../engine/tools/health/audit-log-persist.js";
 import { backfillNarrativeEventEntityIds } from "../engine/narrative-memory/entity-id-backfill.js";
+import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embedding-provider.js";
+import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
+import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
+import { listStructureScores, scoreAndPersistNarrativeStructure } from "../engine/narrative-memory/structure-score.js";
 import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
 import { listCharacterKernels, getCharacterKernel } from "../engine/narrative-memory/storage.js";
@@ -290,6 +294,27 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
 
   // T8 · 存量事件身份链回填：用实体字典把旧事件的 subject/object 挂到经纬条目。
   // 幂等，只补缺失列；解析不到的行保持原样。返回计数供前端提示。
+  app.post(`${base}/backfill-entity-embeddings`, async (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const dictionary = buildEntityDictionary(storage(), bookId);
+      const result = await refreshBookEntityEmbeddings({ storage: storage(), bookId, dictionary });
+      const remaining = dictionary.entries.filter((entry) => entry.category !== "foreshadowing").length - result.reused - result.embedded;
+      return c.json({
+        ok: true,
+        ...result,
+        remaining: Math.max(0, remaining),
+        summary: result.skipped
+          ? result.skipped === "no-embedding-config"
+            ? "还没有配置向量模型，无法回填实体向量。"
+            : "这本书没有可嵌入的实体。"
+          : `写入 ${result.embedded} 条，复用 ${result.reused} 条${remaining > 0 ? `，还剩 ${remaining} 条` : ""}。`,
+      });
+    } catch (error) {
+      return c.json({ error: "embedding-backfill-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
   app.post(`${base}/backfill-entity-ids`, (c) => {
     const bookId = c.req.param("bookId");
     try {
@@ -303,6 +328,63 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       });
     } catch (error) {
       return c.json({ error: "backfill-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  app.post(`${base}/structure-score`, async (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const chapterNumber = Number(body.chapterNumber);
+      if (!Number.isInteger(chapterNumber) || chapterNumber <= 0) {
+        return invalidQuery(c, "chapterNumber 必须是正整数。");
+      }
+      const scores = scoreAndPersistNarrativeStructure(storage(), bookId, chapterNumber);
+      return c.json({
+        ok: true,
+        chapterNumber,
+        written: scores.length,
+        scores,
+        summary: `第${chapterNumber}章结构打分已写入 ${scores.length} 项（StoryScope 子集）。`,
+      });
+    } catch (error) {
+      return c.json({ error: "structure-score-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  app.get(`${base}/structure-score`, (c) => {
+    const bookId = c.req.param("bookId");
+    const chapterRaw = c.req.query("chapter");
+    const chapter = chapterRaw === undefined || chapterRaw === "" ? undefined : Number(chapterRaw);
+    if (chapter !== undefined && (!Number.isInteger(chapter) || chapter <= 0)) {
+      return invalidQuery(c, "chapter 必须是正整数。");
+    }
+    try {
+      const scores = listStructureScores(storage(), bookId, chapter);
+      return c.json({
+        ok: true,
+        chapterNumber: chapter ?? null,
+        scores,
+        summary: scores.length === 0 ? "尚无结构打分。" : `已读取 ${scores.length} 项结构打分。`,
+      });
+    } catch (error) {
+      return c.json({ error: "structure-score-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  app.post(`${base}/backfill-causal-links`, (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const result = backfillHookCausalLinks(storage(), bookId);
+      return c.json({
+        ok: true,
+        ...result,
+        summary: result.scanned === 0
+          ? "没有需要回填的伏笔事件。"
+          : `扫描 ${result.scanned} 条伏笔事件：新补因果 ${result.linked}，已有前驱跳过 ${result.skippedExisting}。`,
+      });
+    } catch (error) {
+      return c.json({ error: "causal-backfill-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 

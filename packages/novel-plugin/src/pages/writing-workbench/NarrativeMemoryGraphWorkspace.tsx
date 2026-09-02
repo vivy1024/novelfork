@@ -52,8 +52,12 @@ import {
   buildNarrativeGraphModel,
   clampChapterStep,
   SEQUENCE_CHAPTER_STEP_DEFAULT,
+  type GraphCausalNode,
+  type GraphCooccurrenceEdge,
   type GraphEdgeModel,
+  type GraphForeshadowNode,
   type GraphNodeModel,
+  type GraphQualitySummary,
   type NarrativeEvent,
   type NarrativeFact,
   type NarrativeGraphModel,
@@ -88,6 +92,14 @@ interface NarrativeGraphResponse {
   view?: NarrativeMemoryView;
   facts?: NarrativeFact[];
   events?: NarrativeEvent[];
+  cooccurrence?: {
+    edges?: GraphCooccurrenceEdge[];
+    unresolvedSamples?: string[];
+    semanticGainActive?: boolean;
+  };
+  causal?: GraphCausalNode[];
+  foreshadows?: GraphForeshadowNode[];
+  quality?: GraphQualitySummary;
 }
 
 type LoadState =
@@ -98,11 +110,12 @@ type LoadState =
 type ViewOption = { id: NarrativeMemoryView; label: string; icon: typeof Network; description: string };
 
 const VIEW_OPTIONS: ReadonlyArray<ViewOption> = [
-  { id: "relationship", label: "关系图", icon: Network, description: "实体与动态关系" },
+  { id: "relationship", label: "关系图", icon: Network, description: "实体共现与动态关系" },
   { id: "timeline", label: "时间线", icon: Clock, description: "按章节展开事件" },
   { id: "character_arc", label: "角色弧线", icon: GitBranch, description: "角色状态推进" },
+  { id: "foreshadowing", label: "伏笔网络", icon: GitBranch, description: "埋线、触发与回收" },
   { id: "conflict", label: "矛盾地图", icon: Swords, description: "冲突两侧与风险" },
-  { id: "event_chain", label: "事件链", icon: Route, description: "事件前后关系" },
+  { id: "event_chain", label: "事件链", icon: Route, description: "显式因果与前后关系" },
   { id: "wave", label: "浪潮视图", icon: Radio, description: "从中心向外传播" },
 ];
 
@@ -117,18 +130,21 @@ const NODE_ACCENTS: Record<GraphNodeModel["kind"], string> = {
   entity: "border-primary/40 bg-primary/[0.07]",
   fact: "border-accent-foreground/30 bg-accent/45",
   event: "border-ring/40 bg-ring/[0.06]",
+  foreshadow: "border-amber-400/50 bg-amber-500/[0.08]",
 };
 
 const NODE_BADGES: Record<GraphNodeModel["kind"], string> = {
   entity: "实体",
   fact: "状态",
   event: "事件",
+  foreshadow: "伏笔",
 };
 
 const MINIMAP_COLORS: Record<GraphNodeModel["kind"], string> = {
   entity: "hsl(var(--primary))",
   fact: "hsl(var(--accent-foreground))",
   event: "hsl(var(--ring))",
+  foreshadow: "hsl(38 92% 50%)",
 };
 
 /** 保证详情侧栏展开后，图谱主画布仍至少保留约 560px。 */
@@ -234,10 +250,24 @@ function NarrativeGraphNode({ data, selected }: NodeProps<FlowNode>) {
 
 function edgeColor(edge: GraphEdgeModel): string {
   if (isHighRisk(edge.riskLevel)) return "hsl(var(--destructive))";
+  if (edge.kind === "causal") return "hsl(var(--primary))";
+  if (edge.kind === "cooccurrence") return "hsl(var(--ring))";
+  if (edge.kind === "foreshadow") return "hsl(38 92% 50%)";
   if (edge.kind === "sequence") return "hsl(var(--ring))";
   if (edge.category === "relationship") return "hsl(var(--primary))";
   if (edge.category === "conflict") return "hsl(var(--destructive))";
   return "hsl(var(--muted-foreground))";
+}
+
+function graphLayersFrom(payload: NarrativeGraphResponse) {
+  return {
+    facts: payload.facts ?? [],
+    events: payload.events ?? [],
+    cooccurrenceEdges: payload.cooccurrence?.edges ?? [],
+    causal: payload.causal ?? [],
+    foreshadows: payload.foreshadows ?? [],
+    quality: payload.quality,
+  };
 }
 
 function NarrativeGraphEdge({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, data, selected }: EdgeProps<FlowEdge>) {
@@ -251,7 +281,7 @@ function NarrativeGraphEdge({ sourceX, sourceY, sourcePosition, targetX, targetY
       <BaseEdge
         path={path}
         interactionWidth={24}
-        style={{ stroke: color, strokeWidth: highlighted ? 2.5 : 1.5, opacity: highlighted ? 0.95 : 0.45, strokeDasharray: edge.kind === "sequence" ? "7 5" : undefined }}
+        style={{ stroke: color, strokeWidth: highlighted ? 2.5 : 1.5, opacity: highlighted ? 0.95 : 0.45, strokeDasharray: edge.kind === "sequence" || edge.kind === "cooccurrence" ? "7 5" : undefined }}
       />
       {data.showLabel || highlighted ? (
         <EdgeLabelRenderer>
@@ -916,7 +946,7 @@ export function NarrativeMemoryGraphWorkspace({
     setLoadState({ status: "loading" });
     setSelectedNodeId(null);
     // anchor 是前端线程导航视图，服务端仍按既有 timeline 数据契约取数。
-    const params = new URLSearchParams({ view: view === "anchor" ? "timeline" : view, scope: dataScope });
+    const params = new URLSearchParams({ view: view === "anchor" ? "timeline" : view, scope: dataScope, limit: "0" });
     if (focusEntity.trim()) params.set("focusEntity", focusEntity.trim());
     if (chapterFrom.trim()) params.set("chapterFrom", chapterFrom.trim());
     if (chapterTo.trim()) params.set("chapterTo", chapterTo.trim());
@@ -925,7 +955,14 @@ export function NarrativeMemoryGraphWorkspace({
         `/api/books/${encodeURIComponent(bookId)}/narrative-memory/graph?${params.toString()}`,
       );
       if (generation !== requestGeneration.current) return;
-      setLoadState({ status: "ready", payload: { facts: payload.facts ?? [], events: payload.events ?? [], view: payload.view } });
+      setLoadState({
+        status: "ready",
+        payload: {
+          ...graphLayersFrom(payload),
+          view: payload.view,
+          cooccurrence: payload.cooccurrence,
+        },
+      });
     } catch (cause) {
       if (generation !== requestGeneration.current) return;
       setLoadState({ status: "error", message: graphErrorMessage(cause) });
@@ -937,8 +974,7 @@ export function NarrativeMemoryGraphWorkspace({
   const model = useMemo(() => {
     if (loadState.status !== "ready") return null;
     return buildNarrativeGraphModel({
-      facts: loadState.payload.facts ?? [],
-      events: loadState.payload.events ?? [],
+      ...graphLayersFrom(loadState.payload),
       view,
       chapterStep,
       hiddenLanes,
@@ -949,8 +985,7 @@ export function NarrativeMemoryGraphWorkspace({
   const availableLanes = useMemo(() => {
     if (loadState.status !== "ready") return [] as SequenceLaneHeader[];
     const unfiltered = buildNarrativeGraphModel({
-      facts: loadState.payload.facts ?? [],
-      events: loadState.payload.events ?? [],
+      ...graphLayersFrom(loadState.payload),
       view,
       chapterStep,
       ...(focusEntity.trim() ? { focusEntity: focusEntity.trim() } : {}),
@@ -966,8 +1001,7 @@ export function NarrativeMemoryGraphWorkspace({
   useEffect(() => {
     if (initialChapter === undefined || loadState.status !== "ready") return;
     const probe = buildNarrativeGraphModel({
-      facts: loadState.payload.facts ?? [],
-      events: loadState.payload.events ?? [],
+      ...graphLayersFrom(loadState.payload),
       view,
       chapterStep,
       ...(focusEntity.trim() ? { focusEntity: focusEntity.trim() } : {}),
@@ -1019,8 +1053,7 @@ export function NarrativeMemoryGraphWorkspace({
     setLocateMiss(null);
     if (loadState.status === "ready") {
       const probe = buildNarrativeGraphModel({
-        facts: loadState.payload.facts ?? [],
-        events: loadState.payload.events ?? [],
+        ...graphLayersFrom(loadState.payload),
         view,
         chapterStep,
         ...(focusEntity.trim() ? { focusEntity: focusEntity.trim() } : {}),
@@ -1191,8 +1224,8 @@ export function NarrativeMemoryGraphWorkspace({
           {inspectorOpen && inspectorInSidebar ? <aside data-slot="narrative-memory-graph-inspector-sidebar" data-testid="narrative-graph-inspector-sidebar" className="w-[300px] shrink-0 border-l border-border bg-card"><Inspector node={selectedNode} onClose={() => setSelectedNodeId(null)} onOpenEntityDetail={onOpenEntityDetail} onOpenChapter={onOpenChapter} /></aside> : null}
         </div>
         <footer data-slot="narrative-memory-graph-footer" className="flex shrink-0 items-center justify-between gap-2 border-t border-border bg-card px-4 py-1.5 text-[10px] text-muted-foreground">
-          <div className="flex items-center gap-2"><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-primary" />实体</span><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-accent-foreground" />状态</span><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-ring" />事件</span></div>
-          <span>{model ? `${viewLabel(view)} · ${model.stats.factCount} 条事实 · ${model.stats.eventCount} 个事件` : "等待图谱数据"}</span>
+          <div className="flex items-center gap-2"><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-primary" />实体</span><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-accent-foreground" />状态</span><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-ring" />事件</span><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-amber-500" />伏笔</span></div>
+          <span>{model ? `${viewLabel(view)} · ${model.stats.entityCount} 个实体 · 共现 ${model.stats.cooccurrenceCount} · 因果 ${model.stats.causalCount} · 伏笔 ${model.stats.foreshadowCount}` : "等待图谱数据"}</span>
         </footer>
       </div>
     </TooltipProvider>

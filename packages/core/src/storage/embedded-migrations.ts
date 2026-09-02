@@ -1065,4 +1065,176 @@ CREATE INDEX IF NOT EXISTS "idx_chapter_state_delta_book_chapter"
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_chapter_state_delta_book_fingerprint"
   ON "chapter_state_delta"("book_id", "fingerprint");
 ` },
+  { name: "0032_narrative_entity_model.sql", sql: `-- 0032 叙事实体模型：给关系图一个可靠的骨架
+CREATE TABLE IF NOT EXISTS "narrative_entity" (
+  "id"               TEXT PRIMARY KEY NOT NULL,
+  "book_id"          TEXT NOT NULL,
+  "canonical_name"   TEXT NOT NULL,
+  "entity_type"      TEXT NOT NULL DEFAULT 'other',
+  "aliases_json"     TEXT NOT NULL DEFAULT '[]',
+  "attrs_json"       TEXT NOT NULL DEFAULT '{}',
+  "entry_id"         TEXT,
+  "first_chapter"    INTEGER,
+  "last_chapter"     INTEGER,
+  "lifecycle"        TEXT NOT NULL DEFAULT 'active',
+  "source"           TEXT NOT NULL DEFAULT 'inferred',
+  "confidence"       REAL NOT NULL DEFAULT 1.0,
+  "created_at"       INTEGER NOT NULL,
+  "updated_at"       INTEGER NOT NULL,
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_narrative_entity_book_name"
+  ON "narrative_entity"("book_id", "canonical_name");
+CREATE INDEX IF NOT EXISTS "idx_narrative_entity_book_type"
+  ON "narrative_entity"("book_id", "entity_type");
+CREATE INDEX IF NOT EXISTS "idx_narrative_entity_entry"
+  ON "narrative_entity"("book_id", "entry_id");
+CREATE TABLE IF NOT EXISTS "narrative_entity_alias" (
+  "book_id"    TEXT NOT NULL,
+  "alias"      TEXT NOT NULL,
+  "entity_id"  TEXT NOT NULL,
+  "confidence" REAL NOT NULL DEFAULT 1.0,
+  PRIMARY KEY ("book_id", "alias"),
+  FOREIGN KEY ("entity_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "idx_narrative_entity_alias_entity"
+  ON "narrative_entity_alias"("entity_id");
+CREATE TABLE IF NOT EXISTS "narrative_relation" (
+  "id"              TEXT PRIMARY KEY NOT NULL,
+  "book_id"         TEXT NOT NULL,
+  "subject_id"      TEXT NOT NULL,
+  "predicate"       TEXT NOT NULL,
+  "object_id"       TEXT NOT NULL,
+  "relation_kind"   TEXT NOT NULL DEFAULT 'related',
+  "sentiment"       TEXT,
+  "valid_from"      INTEGER,
+  "valid_to"        INTEGER,
+  "source_event_id" TEXT,
+  "evidence_text"   TEXT,
+  "confidence"      REAL NOT NULL DEFAULT 1.0,
+  "recorded_at"     INTEGER NOT NULL,
+  "invalidated_at"  INTEGER,
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE,
+  FOREIGN KEY ("subject_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE,
+  FOREIGN KEY ("object_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "idx_narrative_relation_subject"
+  ON "narrative_relation"("book_id", "subject_id");
+CREATE INDEX IF NOT EXISTS "idx_narrative_relation_object"
+  ON "narrative_relation"("book_id", "object_id");
+CREATE INDEX IF NOT EXISTS "idx_narrative_relation_valid"
+  ON "narrative_relation"("book_id", "valid_from", "valid_to");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_narrative_relation_triple"
+  ON "narrative_relation"("book_id", "subject_id", "predicate", "object_id", "valid_from");
+CREATE TABLE IF NOT EXISTS "narrative_event_participant" (
+  "book_id"   TEXT NOT NULL,
+  "event_id"  TEXT NOT NULL,
+  "entity_id" TEXT NOT NULL,
+  "role"      TEXT NOT NULL DEFAULT 'agent',
+  PRIMARY KEY ("event_id", "entity_id", "role"),
+  FOREIGN KEY ("entity_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "idx_event_participant_entity"
+  ON "narrative_event_participant"("book_id", "entity_id");
+CREATE INDEX IF NOT EXISTS "idx_event_participant_event"
+  ON "narrative_event_participant"("event_id");
+CREATE TABLE IF NOT EXISTS "narrative_state_change" (
+  "id"             TEXT PRIMARY KEY NOT NULL,
+  "book_id"        TEXT NOT NULL,
+  "entity_id"      TEXT NOT NULL,
+  "fluent"         TEXT NOT NULL,
+  "old_value"      TEXT,
+  "new_value"      TEXT NOT NULL,
+  "chapter_number" INTEGER NOT NULL,
+  "event_id"       TEXT,
+  "evidence_text"  TEXT,
+  "confidence"     REAL NOT NULL DEFAULT 1.0,
+  "recorded_at"    INTEGER NOT NULL,
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE,
+  FOREIGN KEY ("entity_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "idx_state_change_replay"
+  ON "narrative_state_change"("book_id", "entity_id", "fluent", "chapter_number");
+CREATE INDEX IF NOT EXISTS "idx_state_change_chapter"
+  ON "narrative_state_change"("book_id", "chapter_number");
+CREATE TABLE IF NOT EXISTS "narrative_knowledge" (
+  "id"           TEXT PRIMARY KEY NOT NULL,
+  "book_id"      TEXT NOT NULL,
+  "knower_id"    TEXT NOT NULL,
+  "fact_kind"    TEXT NOT NULL DEFAULT 'event',
+  "fact_ref"     TEXT NOT NULL,
+  "knows_from"   INTEGER NOT NULL,
+  "knows_until"  INTEGER,
+  "certainty"    TEXT NOT NULL DEFAULT 'knows',
+  "evidence_text" TEXT,
+  "recorded_at"  INTEGER NOT NULL,
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE,
+  FOREIGN KEY ("knower_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "idx_narrative_knowledge_knower"
+  ON "narrative_knowledge"("book_id", "knower_id", "knows_from");
+CREATE INDEX IF NOT EXISTS "idx_narrative_knowledge_fact"
+  ON "narrative_knowledge"("book_id", "fact_ref");
+CREATE TABLE IF NOT EXISTS "narrative_foreshadow" (
+  "id"               TEXT PRIMARY KEY NOT NULL,
+  "book_id"          TEXT NOT NULL,
+  "label"            TEXT NOT NULL,
+  "entry_id"         TEXT,
+  "setup_chapter"    INTEGER,
+  "setup_event_id"   TEXT,
+  "trigger_chapter"  INTEGER,
+  "trigger_condition" TEXT,
+  "payoff_chapter"   INTEGER,
+  "payoff_event_id"  TEXT,
+  "status"           TEXT NOT NULL DEFAULT 'planted',
+  "deadline_chapter" INTEGER,
+  "importance"       INTEGER NOT NULL DEFAULT 50,
+  "evidence_text"    TEXT,
+  "recorded_at"      INTEGER NOT NULL,
+  "updated_at"       INTEGER NOT NULL,
+  CHECK ("status" IN ('planted','reinforced','triggered','paying_off','paid_off','abandoned','contradicted')),
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "idx_narrative_foreshadow_status"
+  ON "narrative_foreshadow"("book_id", "status", "setup_chapter");
+CREATE INDEX IF NOT EXISTS "idx_narrative_foreshadow_deadline"
+  ON "narrative_foreshadow"("book_id", "deadline_chapter");
+CREATE TABLE IF NOT EXISTS "narrative_structure_score" (
+  "id"             TEXT PRIMARY KEY NOT NULL,
+  "book_id"        TEXT NOT NULL,
+  "chapter_number" INTEGER,
+  "feature_id"     TEXT NOT NULL,
+  "dimension"      TEXT NOT NULL,
+  "value"          TEXT NOT NULL,
+  "numeric_value"  REAL,
+  "deviation"      REAL,
+  "model"          TEXT,
+  "recorded_at"    INTEGER NOT NULL,
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_structure_score_unique"
+  ON "narrative_structure_score"("book_id", "chapter_number", "feature_id");
+CREATE INDEX IF NOT EXISTS "idx_structure_score_dimension"
+  ON "narrative_structure_score"("book_id", "dimension");
+` },
+  { name: "0033_chapter_mention.sql", sql: `-- 0033 本章提及清单：共现图要「谁在这一章出现过」，与增量事件分列。
+CREATE TABLE IF NOT EXISTS "narrative_chapter_mention" (
+  "book_id"         TEXT NOT NULL,
+  "chapter_number"  INTEGER NOT NULL,
+  "position"        INTEGER NOT NULL,
+  "entity_name"     TEXT NOT NULL,
+  "entry_id"        TEXT,
+  "source"          TEXT NOT NULL DEFAULT 'dictionary',
+  PRIMARY KEY ("book_id", "chapter_number", "entity_name"),
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "idx_chapter_mention_book_chapter"
+  ON "narrative_chapter_mention"("book_id", "chapter_number", "position");
+CREATE INDEX IF NOT EXISTS "idx_chapter_mention_entry"
+  ON "narrative_chapter_mention"("book_id", "entry_id");
+` },
+  { name: "0034_event_caused_by.sql", sql: `-- 0034 事件显式因果：前驱写在 narrative_event.caused_by_json。
+-- narrative_event 由 ensureNarrativeMemorySchema 维护；本文件只登记版本号。
+SELECT 1;
+` },
 ];

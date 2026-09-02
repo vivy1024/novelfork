@@ -32,6 +32,8 @@ export type NarrativeEventDraft = Readonly<{
    */
   subjectEntryId?: string;
   objectEntryId?: string;
+  /** LLM 给出的前驱引用（序号 / 事件 id / subject），结算时解析成事件 id。 */
+  causedBy?: readonly string[];
 }>;
 
 export type SettlementRiskDecision = Readonly<{
@@ -131,6 +133,7 @@ function isLowRiskEventType(eventType: NarrativeEventType): boolean {
   return eventType === "location_changed"
     || eventType === "hook_planted"
     || eventType === "hook_progressed"
+    || eventType === "hook_triggered"
     || eventType === "timeline_advanced";
 }
 

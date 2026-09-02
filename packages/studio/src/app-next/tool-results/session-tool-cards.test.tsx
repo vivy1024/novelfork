@@ -276,8 +276,8 @@ describe("memory.read 召回卡", () => {
   });
 });
 
-describe("memory.graph 图谱卡", () => {
-  it("列出事实与事件三元组", () => {
+describe("memory.graph / lore.read 故事树卡", () => {
+  it("没有经纬条目时如实说明，并交代事件走时间线", () => {
     render(<>{renderToolResult({
       toolName: "memory.graph",
       result: {
@@ -290,14 +290,39 @@ describe("memory.graph 图谱卡", () => {
           events: [
             { id: "e1", subject: "林舟", predicate: "结识", object: "苏晚", eventType: "relationship_changed", chapterNumber: 9, riskLevel: "low", status: "applied" },
           ],
+          cooccurrence: { edges: [{ source: "林舟", target: "苏晚", coCount: 2 }] },
+          causal: [{ id: "e1", chapterNumber: 9, summary: "结识", eventType: "relationship_changed", causes: [] }],
+          foreshadows: [{ id: "fs1", label: "旧伤来历", phase: "planted" }],
         },
       },
     })}</>);
 
-    expect(screen.getByTestId("tool-result-memory-graph")).toBeTruthy();
-    expect(screen.getByText("关系图")).toBeTruthy();
-    expect(screen.getByText("1 条事实 · 1 个事件")).toBeTruthy();
-    expect(screen.getByText("林舟 · 敌对 · 宗主")).toBeTruthy();
+    // 改造后统一走树卡：图数据不再渲染成三元组文本行
+    expect(screen.getByTestId("tool-result-lore-tree")).toBeTruthy();
+    // 这份 fixture 只有 facts/events、没有经纬条目：facts 是动态三元组，不当条目塞进树，
+    // 于是树为空并如实说明，同时 relationship 类事实仍派生出关系边。
+    const notice = screen.getByTestId("tool-result-lore-tree-no-entries");
+    expect(notice.textContent).toContain("没有返回经纬条目");
+    expect(notice.textContent).toContain("1 个事件");
+    expect(screen.getByText("1 条关系 · 1 个事件 · 共现 1 · 因果 1 · 伏笔 1")).toBeTruthy();
+  });
+
+  it("lore.read 走树卡，不再落 generic 吐原始结构", () => {
+    render(<>{renderToolResult({
+      toolName: "lore.read",
+      result: {
+        data: {
+          scope: "category",
+          entries: [
+            { id: "c1", category: "characters", title: "林舟", fields: { name: "林舟", roleType: "主角" } },
+            { id: "l1", category: "locations", title: "青石镇" },
+          ],
+        },
+      },
+    })}</>);
+
+    expect(screen.getByTestId("tool-result-lore-tree")).toBeTruthy();
+    expect(screen.getByText(/2 条条目/)).toBeTruthy();
   });
 });
 

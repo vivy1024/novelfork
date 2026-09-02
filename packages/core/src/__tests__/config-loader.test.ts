@@ -101,4 +101,32 @@ describe("loadProjectConfig local provider auth", () => {
     expect(config.llm.model).toBe("noop-model");
     expect(config.llm.apiKey).toBe("");
   });
+
+  it("ignores embedding secrets in novelfork.json because they live in product kv", async () => {
+    root = await mkdtemp(join(tmpdir(), "novelfork-config-loader-embed-"));
+    for (const key of ENV_KEYS) {
+      previousEnv.set(key, process.env[key]);
+      process.env[key] = "";
+    }
+    process.env.NOVELFORK_LLM_API_KEY = "chat-key";
+
+    await writeFile(join(root, "novelfork.json"), JSON.stringify({
+      name: "embed-project",
+      version: "0.1.0",
+      llm: {
+        provider: "openai",
+        baseUrl: "http://127.0.0.1:11434/v1",
+        model: "gpt-oss:20b",
+      },
+      embedding: {
+        baseUrl: "https://api.siliconflow.cn/v1",
+        model: "BAAI/bge-m3",
+        apiKey: "should-not-win",
+      },
+    }, null, 2), "utf-8");
+    await writeFile(join(root, ".env"), "", "utf-8");
+
+    const config = await loadProjectConfig(root);
+    expect(config).not.toHaveProperty("embedding");
+  });
 });

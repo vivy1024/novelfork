@@ -70,10 +70,19 @@ NovelFork 目前仍处于**初始开发与工程验证阶段**，尚未达到正
 - Runtime 更新链改为 fork-only：生产来源仅 `NarraFork/novelfork-runtime-private`；导入脚本默认不再 replay overlay。
 - 下线 PGI 问卷/ask 旧入口；recharts/@xyflow 独立 vendor 桶；Studio 补 node 内置浏览器桩。
 
+### 工作台 IDE、静默刷新与批量写入（2026-09-03）
+
+- 打开书籍时 Studio 壳层收成 48px 图标栏，工作台按 comfortable 摊开侧栏/编辑器/对话三栏；真窄窗仍走 overlay。
+- 写章/结算后派发 `novelfork:writing-progress`：侧栏、角色卡近章事实、写作就绪只重拉数据，不再把工作台卸成加载态。
+- `lore.write` / `jingwei.write` 支持 `entries[]`，`memory.events create` 支持 `events[]`，一次最多 20 条；canon 分类仍要 `reason` + `source`。
+- 写前强制注入已触发伏笔；`chapter.audit` / 故事推进展示结构打分。
+- 叙事记忆补共现、显式因果、实体向量、角色提及与四张 tidy-tree 正图；设置页增加独立 Embedding 提供商（密钥落产品库）。
+- 隔离环境 Browser 验证：壳层 48px、工作台 1232px comfortable 三栏全开；进度事件后工作台仍在、无加载态。Vite 需给 `writing-progress-event` 单独 alias。
+
 ### 版本与验证范围
 
-- 根产品版本 `0.0.3`；本次按发布要求只编译 Windows x64 单文件二进制。
-- 角色内核、叙事记忆、拆书暂存、章后状态 CAS、七栏预算与写作分层均有回归测试；真实书场结算质量仍待用户实测。
+- 根产品版本仍为 `0.0.3`，本轮不升号；按发布要求只编译 Windows x64 单文件二进制。
+- 角色内核、叙事记忆、拆书暂存、章后状态 CAS、七栏预算、写作分层、工作台静默刷新与批量写入均有回归测试；真实书场结算质量仍待用户实测。
 
 ## v0.0.2 (2026-08-14) — 投稿风险自检重构、叙事记忆全链路、作品级写作技能与经纬收敛
 

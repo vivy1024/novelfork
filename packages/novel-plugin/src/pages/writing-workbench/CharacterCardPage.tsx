@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 
 import type { JingweiEntryData, JingweiEntrySavePayload, RelatedEntryItem } from "./JingweiEntryEditor";
+import { useWritingProgressRefresh } from "./use-writing-progress-refresh";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -361,6 +362,10 @@ function useCharacterDevelopment(bookId: string | undefined, entryId: string, up
   useEffect(() => {
     void load();
   }, [load]);
+
+  useWritingProgressRefresh(bookId, () => {
+    void load(true);
+  });
 
   return { loadState, refresh: () => void load(true) };
 }

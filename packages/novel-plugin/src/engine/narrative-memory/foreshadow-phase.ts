@@ -20,8 +20,18 @@ export function foreshadowPhase(currentChapter: number, targetChapters: number |
   return "development";
 }
 
-/** 未回收状态集合（与 ForeshadowingBoard 的看板列对齐，含第五态唤醒中）。 */
-export const ACTIVE_HOOK_STATUSES: readonly string[] = ["已埋设", "部分揭示", "唤醒中"];
+/** 未回收状态集合（含 CFPG triggered / 经纬「唤醒中」）。 */
+export const ACTIVE_HOOK_STATUSES: readonly string[] = [
+  "已埋设",
+  "部分揭示",
+  "唤醒中",
+  "triggered",
+  "paying_off",
+  "planted",
+  "reinforced",
+  "open",
+  "progressing",
+];
 
 export interface DueHookInput {
   readonly title: string;

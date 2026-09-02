@@ -27,10 +27,35 @@ describe("AgentShell", () => {
     );
 
     expect(screen.getByTestId("agent-shell")).toBeTruthy();
-    expect(screen.getByTestId("shell-sidebar").textContent).toContain("第一本书");
-    expect(screen.getByTestId("shell-sidebar").textContent).not.toContain("主叙述者");
+    expect(screen.getByTestId("shell-sidebar").className).toContain("w-12");
     expect(screen.getByRole("button", { name: "第一本书" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByText("画布挂载点")).toBeTruthy();
+  });
+
+  it("opens the writing workbench with a collapsed shell rail so the IDE can keep three columns", () => {
+    render(
+      <AgentShell
+        route={{ kind: "book", bookId: "b1" }}
+        books={books}
+        sessions={sessions}
+        onNavigate={vi.fn()}
+      >
+        <div>画布挂载点</div>
+      </AgentShell>,
+    );
+
+    expect(screen.getByTestId("shell-sidebar").className).toContain("w-12");
+    expect(screen.getByRole("button", { name: "展开侧栏" })).toBeTruthy();
+  });
+
+  it("keeps the expanded shell rail on non-workbench routes", () => {
+    render(
+      <AgentShell route={{ kind: "home" }} books={books} sessions={sessions} onNavigate={vi.fn()}>
+        <div>首页</div>
+      </AgentShell>,
+    );
+
+    expect(screen.getByTestId("shell-sidebar").className).toContain("w-[250px]");
   });
 
   it("routes sidebar clicks through the shell owner", () => {

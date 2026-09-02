@@ -14,7 +14,11 @@ import {
 } from "../engine/narrative-memory/config.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
-import { ensureNarrativeMemorySchema, insertNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
+import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
+import { inferHookCausalLinks, parseCausedBy, resolveCausedByRefs } from "../engine/narrative-memory/causal-resolve.js";
+import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embedding-provider.js";
+import { scoreAndPersistNarrativeStructure } from "../engine/narrative-memory/structure-score.js";
+import { applyForeshadowEvents, ensureNarrativeMemorySchema, insertNarrativeEvent, replaceChapterMentions, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
@@ -296,13 +300,23 @@ function readExistingEvent(storage: StorageDatabase, id: string): NarrativeEvent
       source,
       status,
       risk_level AS riskLevel,
+      subject_entry_id AS subjectEntryId,
+      object_entry_id AS objectEntryId,
+      caused_by_json AS causedByJson,
       created_at AS createdAt,
       applied_at AS appliedAt
     FROM narrative_event
     WHERE id = ?
   `).get(id);
   if (!row) return undefined;
-  return NarrativeEventSchema.parse({ ...row, appliedAt: row.appliedAt ?? undefined });
+  const causedBy = parseCausedBy(row.causedByJson);
+  return NarrativeEventSchema.parse({
+    ...row,
+    subjectEntryId: row.subjectEntryId ?? undefined,
+    objectEntryId: row.objectEntryId ?? undefined,
+    ...(causedBy.length > 0 ? { causedBy } : {}),
+    appliedAt: row.appliedAt ?? undefined,
+  });
 }
 
 type PersistedSettlementEvents = Readonly<{
@@ -526,10 +540,10 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
 
   let extraction: ChapterEventExtractionResult;
+  const entityDictionary = buildEntityDictionary(storage, input.bookId);
   try {
     // 实体身份链：结算前从经纬构建实体字典，注入抽取 prompt 并在写入端归一化。
     // 字典为空（书还没有实体条目/表未建）时 extractNarrativeEventsFromChapter 内部按无字典降级。
-    const entityDictionary = buildEntityDictionary(storage, input.bookId);
     extraction = await extractNarrativeEventsFromChapter({
       bookId: input.bookId,
       chapterNumber: input.chapterNumber,
@@ -621,6 +635,21 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
 
   const events: NarrativeEvent[] = [];
+  const historyEvents = storage.sqlite.prepare<{
+    id: string;
+    chapterNumber: number;
+    eventType: string;
+    subject: string;
+    predicate: string;
+    object: string;
+  }>(`
+    SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object
+    FROM narrative_event
+    WHERE book_id = ? AND chapter_number <= ?
+    ORDER BY chapter_number ASC, created_at ASC
+  `).all(input.bookId, input.chapterNumber);
+  const pendingDrafts: NarrativeEventDraft[] = [];
+  const pendingDecisions: SettlementRiskDecision[] = [];
 
   for (const draft of draftPool) {
     const decision = decideSettlementRisk(draft, {
@@ -642,18 +671,34 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
       });
       continue;
     }
-    const event = materializeEvent(input, draft, decision, options.now?.() ?? new Date());
+    pendingDrafts.push(draft);
+    pendingDecisions.push(decision);
+  }
+
+  const now = options.now?.() ?? new Date();
+  const provisional = pendingDrafts.map((draft, index) => materializeEvent(input, draft, pendingDecisions[index]!, now));
+  const hookLinks = inferHookCausalLinks([...historyEvents, ...provisional]);
+  for (const [index, draft] of pendingDrafts.entries()) {
+    const event = provisional[index]!;
+    const resolved = resolveCausedByRefs({
+      refs: draft.causedBy ?? [],
+      current: event,
+      batch: provisional,
+      history: historyEvents,
+    });
+    const causedBy = [...new Set([...(hookLinks.get(event.id) ?? []), ...resolved])];
+    const withCauses = causedBy.length > 0 ? { ...event, causedBy } : { ...event };
     evidenceDrafts.push({
       eventType: draft.eventType,
       subject: draft.subject,
       predicate: draft.predicate,
       object: draft.object,
       ...(draft.confidence !== undefined ? { confidence: draft.confidence } : {}),
-      ...(decision.riskLevel ? { riskLevel: decision.riskLevel } : {}),
-      outcome: decision.decision === "auto_apply" ? "auto-apply" : "pending-review",
-      eventId: event.id,
+      ...(pendingDecisions[index]?.riskLevel ? { riskLevel: pendingDecisions[index]!.riskLevel } : {}),
+      outcome: pendingDecisions[index]?.decision === "auto_apply" ? "auto-apply" : "pending-review",
+      eventId: withCauses.id,
     });
-    events.push(event);
+    events.push(withCauses);
   }
 
   const settledAt = (input.confirmedAt ? new Date(input.confirmedAt) : (options.now?.() ?? new Date())).toISOString();
@@ -679,14 +724,23 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
         description: event.evidenceText,
       })),
     hooks: events.flatMap((event) => {
-      if (event.eventType !== "hook_planted" && event.eventType !== "hook_progressed" && event.eventType !== "hook_resolved") {
+      if (
+        event.eventType !== "hook_planted"
+        && event.eventType !== "hook_progressed"
+        && event.eventType !== "hook_triggered"
+        && event.eventType !== "hook_resolved"
+      ) {
         return [];
       }
       return [{
         hookId: event.subject,
         action: event.eventType === "hook_planted" ? "upsert" as const : event.eventType === "hook_resolved" ? "resolve" as const : "mention" as const,
         type: event.predicate,
-        status: event.eventType === "hook_resolved" ? "resolved" as const : event.eventType === "hook_planted" ? "open" as const : "progressing" as const,
+        status: event.eventType === "hook_resolved"
+          ? "resolved" as const
+          : event.eventType === "hook_planted"
+            ? "open" as const
+            : "progressing" as const,
         expectedPayoff: event.object,
         notes: event.evidenceText || event.object,
       }];
@@ -774,6 +828,10 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
           JSON.stringify(artifact),
           settledAt,
         );
+        replaceChapterMentions(storage, input.bookId, input.chapterNumber, extraction.mentionedEntities);
+        applyForeshadowEvents(storage, input.bookId, persisted.reducible);
+        backfillHookCausalLinks(storage, input.bookId);
+        scoreAndPersistNarrativeStructure(storage, input.bookId, input.chapterNumber, Date.parse(settledAt) || Date.now());
 
         return { persisted, applied, eventResults, downgradedPendingIds, record };
       },
@@ -810,6 +868,12 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
 
   const { persisted, applied, eventResults, downgradedPendingIds, record, stateRevision, stateFingerprint } = commit;
+
+  try {
+    await refreshBookEntityEmbeddings({ storage, bookId: input.bookId, dictionary: entityDictionary });
+  } catch (error) {
+    warnings.push(`实体语义向量未更新（不影响结算）：${error instanceof Error ? error.message : String(error)}`);
+  }
 
   // 角色内核重算（CharacterKernelConfig.enabled 时才生效）。
   // 失败只 warn 不阻断：内核是增强信息，结算主体（facts/events）已成功落库。

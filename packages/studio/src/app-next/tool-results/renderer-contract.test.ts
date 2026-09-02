@@ -31,7 +31,7 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "character.consistency",
   "hooks.manage",
   "jingwei.audit",
-  "jingwei.read",
+  // jingwei.read / lore.read 已改用 LoreTreeCard（故事树），不再走 generic。
   "jingwei.write",
   // 市场扫榜/查询/抽样目前走市场页，不在对话结果卡里做专属 UI。
   "market.query",
