@@ -44,3 +44,7 @@ export const randomUUID = unavailable("crypto.randomUUID") as unknown as () => s
 
 // ── node:module ─────────────────────────────────────────────────────
 export const createRequire = unavailable("module.createRequire");
+
+// ── node:os ─────────────────────────────────────────────────────────
+export const homedir = unavailable("os.homedir") as unknown as () => string;
+export const tmpdir = unavailable("os.tmpdir") as unknown as () => string;
