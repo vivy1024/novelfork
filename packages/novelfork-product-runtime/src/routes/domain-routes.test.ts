@@ -27,6 +27,9 @@ describe("novel domain product routes", () => {
 		expect(paths).toContain("GET /api/market/ranks");
 		expect(paths).toContain("GET /api/market/snapshots");
 		expect(paths).toContain("POST /api/market/scan");
+		expect(paths).toContain("GET /api/embedding");
+		expect(paths).toContain("PUT /api/embedding");
+		expect(paths).toContain("POST /api/embedding/test");
 	});
 
 	test("resolveDomainBookRoot falls back when storage is unavailable", () => {

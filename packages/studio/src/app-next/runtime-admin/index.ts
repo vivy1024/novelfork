@@ -5,6 +5,7 @@ export * from "./chapter-containers";
 export * from "./dependencies";
 export * from "./custom-subagents";
 export * from "./devices";
+export * from "./embedding-settings";
 export * from "./gateway";
 export * from "./hooks";
 export * from "./mcp";

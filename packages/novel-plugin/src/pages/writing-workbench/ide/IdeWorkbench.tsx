@@ -31,7 +31,9 @@ import { CharactersAndLoreSidebarPanel, type EntityFactLite } from "./Characters
 import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
 import { EntityDetailDrawer } from "../EntityDetailDrawer";
 import { JingweiSidebarToolbar } from "../jingwei/JingweiSidebarToolbar";
-import { WriteViewPanel, WRITING_PROGRESS_EVENT } from "../WriteViewPanel";
+import { WriteViewPanel } from "../WriteViewPanel";
+import { dispatchWritingProgress } from "../writing-progress-event";
+import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import type { GuidedSetupOutcome } from "../NewBookGuide";
 import { buildWriteRequestMessage } from "../write-request";
 import type { BeatBudgetItem } from "../../../handlers/beat-budget";
@@ -511,6 +513,11 @@ export function IdeWorkbench({
   const refreshFileTree = fileTree.refresh;
   const explorerNodes = fileTree.nodes;
 
+  useWritingProgressRefresh(bookId, () => {
+    void loadLoreSections();
+    refreshFileTree();
+  });
+
   // 有正文章节 → 自动跳过建书引导
   useEffect(() => {
     if (!bookId) return;
@@ -951,8 +958,8 @@ export function IdeWorkbench({
    */
   const handleSaveWithProgress = useCallback(async (node: WorkbenchResourceNode, content: string) => {
     await onSave(node, content);
-    window.dispatchEvent(new CustomEvent(WRITING_PROGRESS_EVENT, { detail: { reason: "chapter-save" } }));
-  }, [onSave]);
+    dispatchWritingProgress({ reason: "chapter-save", ...(bookId ? { bookId } : {}) });
+  }, [bookId, onSave]);
 
   /**
    * 建书十一问完成 → 把 Skills 启用确认与深追问交给叙述者。

@@ -55,9 +55,12 @@ describe("ide layout state", () => {
     expect(idePanesUseOverlay("comfortable")).toBe(false);
   });
 
-  it("subtracts the desktop shell rail when guessing the first layout mode", () => {
+  it("subtracts the collapsed desktop shell rail when guessing the first layout mode", () => {
     expect(initialIdeLayoutMode(1400)).toBe("comfortable");
-    expect(initialIdeLayoutMode(1100)).toBe("compact");
+    expect(initialIdeLayoutMode(1148)).toBe("comfortable");
+    expect(initialIdeLayoutMode(1147)).toBe("compact");
+    expect(initialIdeLayoutMode(828)).toBe("compact");
+    expect(initialIdeLayoutMode(827)).toBe("narrow");
     expect(initialIdeLayoutMode(767)).toBe("narrow");
   });
 });

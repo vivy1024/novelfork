@@ -26,6 +26,10 @@ describe("Narrative events", () => {
 
     expect(risk.riskLevel).toBe("low");
     expect(risk.status).toBe("applied");
+    expect(classifyNarrativeEventRisk({ eventType: "hook_triggered", layer: "dynamic", confidence: 0.9 })).toEqual({
+      riskLevel: "low",
+      status: "applied",
+    });
   });
 
   it("keeps canon and world fact events pending", () => {

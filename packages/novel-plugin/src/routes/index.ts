@@ -30,6 +30,7 @@ export { createWritingResourceRouter } from "./writing-resource.js";
 export { createWriteReadinessRouter, type CreateWriteReadinessRouterOptions } from "./write-readiness.js";
 export { createOverviewRouter } from "./overview.js";
 export { createMarketRouter } from "./market.js";
+export { createEmbeddingSettingsRouter } from "./embedding.js";
 export { createCockpitRouter, type CreateCockpitRouterOptions } from "./cockpit.js";
 export { createNarrativeMemoryRouter } from "./narrative-memory.js";
 export { createNarrativeLineRouter, type CreateNarrativeLineRouterOptions } from "./narrative-line.js";

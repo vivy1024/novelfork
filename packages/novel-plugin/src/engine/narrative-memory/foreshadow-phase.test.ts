@@ -44,6 +44,14 @@ describe("selectDueHooks（T2 到期窗口 top3）", () => {
     expect(due.map((hook) => hook.title)).toEqual(["唤醒甲"]);
   });
 
+  it("includes CFPG triggered status in the due window", () => {
+    const due = selectDueHooks([
+      { title: "上膛", status: "triggered", targetChapter: 10 },
+      { title: "已收", status: "paid_off", targetChapter: 9 },
+    ], 10);
+    expect(due.map((hook) => hook.title)).toEqual(["上膛"]);
+  });
+
   it("current 很小（即将写第 1 章）时窗口 [1,3] 正常召回开篇钩子", () => {
     const due = selectDueHooks([{ ...base, title: "a", targetChapter: 1 }], 0);
     // current=0 语义是「即将写第 1 章」：窗口 = 0+2，target 1 命中。

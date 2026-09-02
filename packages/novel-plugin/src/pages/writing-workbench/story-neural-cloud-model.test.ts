@@ -4,9 +4,14 @@ import type { NarrativeEvent, NarrativeFact } from "./narrative-memory-graph-mod
 import {
   activateNeuralCloud,
   buildNeuralCloudModel,
+  neighborIds,
   NEURAL_CLOUD_MAX_EDGES,
   NEURAL_CLOUD_MAX_NODES,
+  nodeRadius,
+  pickLabeledNodeIds,
   type JingweiCloudEntry,
+  type NeuralCloudEdge,
+  type NeuralCloudLayoutNode,
 } from "./story-neural-cloud-model";
 
 const entries: JingweiCloudEntry[] = [
@@ -101,5 +106,59 @@ describe("story-neural-cloud-model", () => {
     const model = buildNeuralCloudModel({ entries: [...dense, ...rels] });
     expect(model.nodes.length).toBeLessThanOrEqual(NEURAL_CLOUD_MAX_NODES);
     expect(model.edges.length).toBeLessThanOrEqual(NEURAL_CLOUD_MAX_EDGES);
+  });
+});
+
+describe("视觉基元（避免叠墙/糊字）", () => {
+  it("nodeRadius 按 sqrt(degree) 增长且有上界，超级节点不会压住周围", () => {
+    expect(nodeRadius(0)).toBeCloseTo(3.2, 5);
+    const d4 = nodeRadius(4);
+    const d16 = nodeRadius(16);
+    // sqrt: 度数翻 4 倍，增量只翻 2 倍（线性会翻 4 倍）
+    expect(d16 - 3.2).toBeCloseTo((d4 - 3.2) * 2, 5);
+    expect(nodeRadius(10_000)).toBeLessThanOrEqual(9);
+  });
+
+  it("nodeRadius 对非法度数退化为基准值，不产生 NaN 半径", () => {
+    expect(nodeRadius(Number.NaN)).toBeCloseTo(3.2, 5);
+    expect(nodeRadius(-5)).toBeCloseTo(3.2, 5);
+  });
+
+  it("pickLabeledNodeIds 按缩放分级限制标签数量", () => {
+    const nodes: NeuralCloudLayoutNode[] = Array.from({ length: 60 }, (_, index) => ({
+      id: `n${index}`,
+      kind: "character",
+      label: `节点${index}`,
+      x: index,
+      y: 0,
+      radius: 3,
+    }));
+    const edges: NeuralCloudEdge[] = nodes.slice(1).map((node, index) => ({
+      id: `e${index}`,
+      source: "n0",
+      target: node.id,
+      weight: 0.5,
+      kind: "relation",
+    }));
+
+    expect(pickLabeledNodeIds(nodes, edges, 0.5).size).toBe(12);
+    expect(pickLabeledNodeIds(nodes, edges, 0.8).size).toBe(22);
+    expect(pickLabeledNodeIds(nodes, edges, 1.0).size).toBe(40);
+    // 放大到看细节时全显
+    expect(pickLabeledNodeIds(nodes, edges, 1.4).size).toBe(nodes.length);
+    // 度数最高的中心节点一定入选
+    expect(pickLabeledNodeIds(nodes, edges, 0.5).has("n0")).toBe(true);
+  });
+
+  it("neighborIds 返回自身与一跳邻居，供 hover focus 使用", () => {
+    const edges: NeuralCloudEdge[] = [
+      { id: "e1", source: "a", target: "b", weight: 1, kind: "relation" },
+      { id: "e2", source: "c", target: "a", weight: 1, kind: "relation" },
+      { id: "e3", source: "d", target: "e", weight: 1, kind: "relation" },
+    ];
+    const focus = neighborIds(edges, "a");
+    expect([...focus].sort()).toEqual(["a", "b", "c"]);
+    // 无关节点不进焦点集（渲染层据此淡化）
+    expect(focus.has("d")).toBe(false);
   });
 });

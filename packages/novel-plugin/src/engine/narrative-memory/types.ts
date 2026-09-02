@@ -57,6 +57,7 @@ export const NarrativeEventTypeSchema = z.enum([
   "location_changed",
   "hook_planted",
   "hook_progressed",
+  "hook_triggered",
   "hook_resolved",
   "world_fact_introduced",
   "timeline_advanced",
@@ -177,6 +178,8 @@ export const NarrativeEventSchema = z.object({
   /** 实体身份链：subject/object 命中经纬实体字典时回填的 story_jingwei_entry.id。 */
   subjectEntryId: z.string().optional(),
   objectEntryId: z.string().optional(),
+  /** 显式因果前驱（narrative_event.id）。空数组视为缺省。 */
+  causedBy: z.array(nonEmptyString).optional(),
   createdAt: nonEmptyString,
   appliedAt: z.string().optional(),
 });
@@ -196,6 +199,8 @@ export type NarrativeEvent = Readonly<{
   /** 实体身份链：subject/object 对应的经纬条目 id（命中字典时回填）。 */
   subjectEntryId?: string;
   objectEntryId?: string;
+  /** 显式因果前驱事件 id；缺省表示本事件没有标注因果。 */
+  causedBy?: readonly string[];
   createdAt: string;
   appliedAt?: string;
 }>;

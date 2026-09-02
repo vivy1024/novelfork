@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-import type { LLMConfig } from "../models/project.js";
+import type { EmbeddingConfig, LLMConfig } from "../models/project.js";
 
 // === Streaming Monitor Types ===
 
@@ -158,6 +158,39 @@ export function createLLMClient(config: LLMConfig): LLMClient {
     }),
     defaults,
   };
+}
+
+export interface EmbeddingResult {
+  readonly model: string;
+  readonly dim: number;
+  readonly vectors: readonly (readonly number[])[];
+}
+
+/**
+ * OpenAI 兼容 /v1/embeddings。Anthropic 客户端没有 embeddings 接口，必须用独立 embedding 配置。
+ */
+export async function createEmbeddings(
+  config: EmbeddingConfig,
+  texts: readonly string[],
+): Promise<EmbeddingResult> {
+  const inputs = texts.map((text) => text.trim()).filter(Boolean);
+  if (inputs.length === 0) {
+    return { model: config.model, dim: config.dim, vectors: [] };
+  }
+  const extraHeaders = parseEnvHeaders();
+  const client = new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl,
+    ...(extraHeaders ? { defaultHeaders: extraHeaders } : {}),
+  });
+  const response = await client.embeddings.create({
+    model: config.model,
+    input: [...inputs],
+  });
+  const ordered = [...response.data].sort((left, right) => left.index - right.index);
+  const vectors = ordered.map((item) => item.embedding);
+  const dim = vectors[0]?.length ?? config.dim;
+  return { model: config.model, dim, vectors };
 }
 
 function parseEnvHeaders(): Record<string, string> | undefined {

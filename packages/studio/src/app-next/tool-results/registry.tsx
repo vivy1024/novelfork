@@ -5,8 +5,8 @@ import { ChapterAuditCard } from "./ChapterAuditCard";
 import { CockpitSnapshotCard } from "./CockpitSnapshotCard";
 import { GenericToolResultRenderer } from "./GenericToolResultCard";
 import { GuidedPlanCard } from "./GuidedPlanCard";
+import { LoreTreeCard } from "./LoreTreeCard";
 import { MemoryEventsCard } from "./MemoryEventsCard";
-import { MemoryGraphCard } from "./MemoryGraphCard";
 import { MemoryReadCard } from "./MemoryReadCard";
 import { NarrativeLineCard } from "./NarrativeLineCard";
 import { OutlineVolumeCard } from "./OutlineVolumeCard";
@@ -38,6 +38,7 @@ export const RESERVED_TOOL_RESULT_RENDERERS = [
   "memory-read",
   "memory-graph",
   "memory-events",
+  "lore-tree",
 ] as const;
 
 const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number], ToolResultRenderer> = {
@@ -55,8 +56,10 @@ const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number],
   "scene-spec": SceneSpecCard,
   "chapter-audit": ChapterAuditCard,
   "memory-read": MemoryReadCard,
-  "memory-graph": MemoryGraphCard,
+  // memory.graph 改走树：原来把图数据渲染成三元组文本行，本来是图却画成文字
+  "memory-graph": LoreTreeCard,
   "memory-events": MemoryEventsCard,
+  "lore-tree": LoreTreeCard,
 };
 
 const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDERERS)[number]> = {
@@ -92,6 +95,14 @@ const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDE
   "memory-graph": "memory-graph",
   "narrative-memory.events": "memory-events",
   "memory-events": "memory-events",
+  // lore.read / jingwei.read 此前没有任何渲染器登记，落到 generic 吐原始结构；
+  // 现在走树，与工作台「故事树」同一实现。
+  "lore.read": "lore-tree",
+  "lore-read": "lore-tree",
+  "lore-tree": "lore-tree",
+  "jingwei.read": "lore-tree",
+  "jingwei-read": "lore-tree",
+  "jingwei.read_brief": "lore-tree",
 };
 
 function rendererFromValue(value: unknown): string | null {

@@ -476,7 +476,7 @@ action=create | update | delete | retire。
   }),
   sessionTool({
     name: "memory.events",
-    description: "Pending NarrativeEvents 工具。用于创建、列出、批准或拒绝 Pending NarrativeEvents；approve 会写入 Narrative Memory facts，pending event 不等于 confirmed memory，更不能自动写入 Lore canon。",
+    description: "Pending NarrativeEvents 工具。用于创建、列出、批准或拒绝 Pending NarrativeEvents；approve 会写入 Narrative Memory facts，pending event 不等于 confirmed memory，更不能自动写入 Lore canon。create 可传 events[] 一次写入多条（最多 20）。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.events"]),
     risk: "draft-write",
     renderer: "narrative-memory.events",
@@ -601,6 +601,7 @@ action=create：创建新条目。必须传入 title、category、contentMd。
 action=update：更新已有条目（传 entryId 或 title 匹配）。
 action=delete：删除非 canon 条目。
 action=retire：退役错误/过期条目（含 canon）。不改 layer、不改正文；设 participates_in_ai=0 并 archived 软删。必须 reason；canon 另需 confirmCanonEdit=true。
+entries：一次写入多条（最多 20）。传入后忽略顶层单条 title/contentMd。
 
 边界：
 - 只写入静态设定、世界规则、平台规则、作者备注等 Lore 内容。

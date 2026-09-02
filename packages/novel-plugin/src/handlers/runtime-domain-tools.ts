@@ -202,7 +202,33 @@ async function chapterAudit(
     ...(typeof effectiveWordTarget === "number" ? { wordTarget: effectiveWordTarget } : {}),
     ...(Array.isArray(input.checks) ? { checks: stringArray(input.checks) } : {}),
   });
-  return ok(audit.summary, audit);
+  const softViolations = [...audit.softViolations];
+  let structureScores: unknown = [];
+  try {
+    const { listStructureScores, scoreAndPersistNarrativeStructure } = await import("../engine/narrative-memory/structure-score.js");
+    const storage = getStorageDatabase();
+    let scores = listStructureScores(storage, binding.bookId, chapterNumber);
+    if (scores.length === 0) {
+      scores = scoreAndPersistNarrativeStructure(storage, binding.bookId, chapterNumber);
+    }
+    structureScores = scores;
+    const warnings = scores.filter((row) => typeof row.deviation === "number" && row.deviation > 0.2);
+    if (warnings.length > 0) {
+      softViolations.push({
+        ruleId: "S8",
+        severity: "soft",
+        description: `结构打分偏高：${warnings.map((row) => `${row.value}=${row.numericValue}`).join("，")}。`,
+        suggestion: warnings.some((row) => row.featureId === "PLT_TRG_001")
+          ? "有已触发未兑现的伏笔，本章应推进或回收，不要只埋新坑。"
+          : warnings.some((row) => row.featureId === "PLT_MOR_002")
+            ? "悬置伏笔偏多，优先回收旧坑。"
+            : "本章事件缺少显式因果，结算或修订时补 causedBy。",
+      });
+    }
+  } catch {
+    structureScores = [];
+  }
+  return ok(audit.summary, { ...audit, softViolations, structureScores });
 }
 
 async function rewriteSegment(

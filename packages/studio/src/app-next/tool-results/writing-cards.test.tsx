@@ -329,6 +329,30 @@ describe("卡片健壮性", () => {
 });
 
 describe("pipeline.write 结果卡", () => {
+  it("写章成功后派发写作进度事件，不刷新整页", async () => {
+    const seen: string[] = [];
+    const handler = (event: Event) => {
+      seen.push((event as CustomEvent<{ bookId?: string }>).detail?.bookId ?? "");
+    };
+    window.addEventListener("novelfork:writing-progress", handler);
+    render(<>{renderToolResult({
+      toolName: "pipeline.write",
+      result: {
+        renderer: "pipeline.chapter-result",
+        data: {
+          title: "药园试探",
+          chapterNumber: 12,
+          wordCount: 3200,
+          auditPassed: true,
+          artifact: { kind: "chapter", id: "ch-12", metadata: { bookId: "book-1" } },
+        },
+      },
+    })}</>);
+    expect(screen.getByTestId("tool-result-pipeline")).toBeTruthy();
+    await waitFor(() => expect(seen).toEqual(["book-1"]));
+    window.removeEventListener("novelfork:writing-progress", handler);
+  });
+
   it("展示真实阶段状态、技能结果、结算重试和人工复核建议", () => {
     render(<>{renderToolResult({
       toolName: "pipeline.write",

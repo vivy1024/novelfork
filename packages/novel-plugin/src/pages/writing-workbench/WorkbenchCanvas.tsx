@@ -424,30 +424,20 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
 
   // 故事推进大屏画布 — 地图/发展历程/双螺旋三视图统一工作台（独立「故事画布」视图入口）
   if ((node.kind === "story-progression" || node.id.startsWith("story-progression:") || node.metadata?.isStoryProgression) && bookId) {
-    const preferredView = node.metadata?.preferredView;
-    const progressionView = preferredView === "map" || preferredView === "chronicle" ? preferredView : "evolution";
+    // metadata 是宽松的 record，取出来先收窄成 string；非法值由画布归一化到故事树
+    const rawPreferredView = node.metadata?.preferredView;
+    const preferredView = typeof rawPreferredView === "string" ? rawPreferredView : undefined;
+    // 旧视图名（map/evolution）由画布内部归一化到故事树，这里只需透传偏好值
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <Suspense fallback={<ToolPanelLoading />}>
           <StoryProgressionCanvas
             bookId={bookId}
-            initialView={progressionView}
+            initialView={preferredView}
             currentChapter={resolveCurrentChapter(nodes)}
-            runtimeFetch={runtimeFetch}
             onOpenChapter={onJumpToChapter}
             onOpenEntityDetail={onOpenEntityDetail}
             onSendToNarrator={onSendToNarrator}
-            onPromoteOutlineNode={(storyMapNode) => {
-              if (onPromoteOutline) {
-                onPromoteOutline({
-                  id: storyMapNode.id,
-                  kind: "story",
-                  title: storyMapNode.title,
-                  content: storyMapNode.summary,
-                  capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
-                });
-              }
-            }}
           />
         </Suspense>
       </div>
@@ -462,7 +452,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
           <NarrativeMemoryPanel
             bookId={bookId}
             currentChapter={resolveCurrentChapter(nodes)}
-            onOpenDevelopmentTimeline={() => onOpenResourceNode?.(createStoryProgressionNode(bookId, "evolution"))}
+            onOpenDevelopmentTimeline={() => onOpenResourceNode?.(createStoryProgressionNode(bookId, "timeline"))}
             onOpenChapter={onJumpToChapter}
           />
         </Suspense>

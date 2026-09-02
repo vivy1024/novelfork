@@ -79,4 +79,14 @@ describe("CharacterCardPage", () => {
     expect(urls.every((url) => url.includes("character-1"))).toBe(true);
     expect(urls.some((url) => decodeURIComponent(url).includes("行之") || decodeURIComponent(url).includes("薛公子"))).toBe(false);
   });
+
+  it("写章进度事件后重拉角色近章事实，不卸掉角色卡", async () => {
+    fetchJsonMock.mockResolvedValue({ groups: [], events: [], facts: [] });
+    render(<CharacterCardPage entry={entry} bookId="book-1" saving={false} onSave={vi.fn(async () => undefined)} />);
+    await waitFor(() => expect(screen.getByTestId("character-development-section")).toBeTruthy());
+    const before = fetchJsonMock.mock.calls.length;
+    window.dispatchEvent(new CustomEvent("novelfork:writing-progress", { detail: { reason: "pipeline.write", bookId: "book-1" } }));
+    await waitFor(() => expect(fetchJsonMock.mock.calls.length).toBeGreaterThan(before));
+    expect(screen.getByTestId("character-development-section")).toBeTruthy();
+  });
 });

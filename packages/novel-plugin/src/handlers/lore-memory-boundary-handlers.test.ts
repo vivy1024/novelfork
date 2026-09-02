@@ -133,6 +133,22 @@ describe("lore-memory-boundary handlers", () => {
     expect(facts.find((item) => item.sourceId === "e-1")).toMatchObject({ subject: "韩立", predicate: "状态", object: "更谨慎", layer: "dynamic", sourceId: "e-1" });
   });
 
+  it("creates a batch of pending memory events in one call", async () => {
+    const { handleMemoryEvents } = await import("./lore-memory-boundary-handlers.js");
+    const result = await handleMemoryEvents({
+      bookId: "book-1",
+      action: "create",
+      events: [
+        { chapterNumber: 12, eventType: "character_state_changed", subject: "韩立", predicate: "状态", object: "更谨慎", evidenceText: "韩立决定继续隐忍。" },
+        { chapterNumber: 12, eventType: "relationship_changed", subject: "韩立", predicate: "敌对", object: "墨大夫", evidenceText: "墨大夫已经起疑。" },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect((result.data.events as unknown[]).length).toBe(2);
+    expect(listPendingNarrativeEvents(activeStorage!, { bookId: "book-1" })).toHaveLength(2);
+  });
+
   it("honors the book lifecycle setting when an author approves an event", async () => {
     const { handleMemoryEvents } = await import("./lore-memory-boundary-handlers.js");
     const bookRoot = await createBookRoot({ ledger: { closeSupersededFacts: false } });
@@ -216,6 +232,8 @@ describe("lore-memory-boundary handlers", () => {
     if (!result.ok) return;
     expect((result.data.events as Array<{ id: string }>).map((item) => item.id)).toEqual(["e-rel"]);
     expect((result.data.facts as Array<{ id: string }>).map((item) => item.id)).toEqual(["f-rel"]);
+    expect(result.data.cooccurrence).toBeDefined();
+    expect((result.data.cooccurrence as { nodeCount: number }).nodeCount).toBeGreaterThan(0);
   });
 
   it("filters memory.graph by jingwei entry id instead of display names or aliases", async () => {

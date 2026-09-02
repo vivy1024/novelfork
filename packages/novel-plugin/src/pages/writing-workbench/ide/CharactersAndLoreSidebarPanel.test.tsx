@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../character-kernel-client", () => ({
+  fetchCharacterKernels: vi.fn(async () => []),
+}));
+
 import { CharactersAndLoreSidebarPanel } from "./CharactersAndLoreSidebarPanel";
 import type { EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";

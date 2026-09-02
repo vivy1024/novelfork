@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,6 +10,7 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
+import { dispatchWritingProgress } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/writing-progress-event";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -141,6 +143,19 @@ function readSkillWarnings(warnings: readonly string[]): string[] {
   return warnings.filter((warning) => warning.includes("写作技能") || warning.includes("Writing Skill"));
 }
 
+function PipelineProgressNotifier({
+  bookId,
+  chapterNumber,
+}: {
+  readonly bookId: string;
+  readonly chapterNumber: number | null;
+}) {
+  useEffect(() => {
+    dispatchWritingProgress({ reason: "pipeline.write", bookId });
+  }, [bookId, chapterNumber]);
+  return null;
+}
+
 function NextStep({ children }: { readonly children: string }) {
   return (
     <p className="flex items-start gap-1 text-xs text-muted-foreground">
@@ -235,9 +250,13 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
     : failed
       ? "章节管线未完成"
       : title || "章节结果";
+  const bookId = getString(asRecord(artifact?.resourceRef)?.bookId)
+    || getString(asRecord(artifact?.metadata)?.bookId)
+    || getString(payload.bookId);
 
   return (
     <Card data-testid="tool-result-pipeline" size="sm">
+      {!failed && bookId ? <PipelineProgressNotifier bookId={bookId} chapterNumber={chapterNumber} /> : null}
       <CardHeader>
         <CardTitle className="flex min-w-0 items-center gap-2">
           {failed ? <XCircle className="size-4 text-destructive" /> : <FileText className="size-4 text-primary" />}

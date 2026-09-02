@@ -160,7 +160,7 @@ describe("NarrativeMemoryGraphWorkspace", () => {
     const canvas = await screen.findByTestId("react-flow-canvas");
     expect(canvas.getAttribute("data-slot")).toBe("narrative-memory-graph-canvas");
     expect(screen.getByTestId("narrative-memory-graph-workspace").getAttribute("data-slot")).toBe("narrative-memory-graph-workspace");
-    expect(fetchJsonMock.mock.calls.some(([url]) => String(url).includes("view=timeline"))).toBe(true);
+    expect(fetchJsonMock.mock.calls.some(([url]) => String(url).includes("view=timeline") && String(url).includes("limit=0"))).toBe(true);
     expect(screen.getByTestId("react-flow-controls")).toBeTruthy();
     expect(screen.getByTestId("react-flow-minimap")).toBeTruthy();
     fitViewMock.mockClear();
@@ -175,7 +175,9 @@ describe("NarrativeMemoryGraphWorkspace", () => {
     await screen.findByTestId("react-flow-canvas");
 
     fireEvent.click(screen.getByRole("button", { name: "关系图" }));
-    await waitFor(() => expect(fetchJsonMock.mock.calls.some(([url]) => String(url).includes("view=relationship"))).toBe(true));
+    await waitFor(() => expect(fetchJsonMock.mock.calls.some(([url]) => String(url).includes("view=relationship") && String(url).includes("limit=0"))).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "伏笔网络" }));
+    await waitFor(() => expect(fetchJsonMock.mock.calls.some(([url]) => String(url).includes("view=foreshadowing"))).toBe(true));
 
     fireEvent.change(screen.getByPlaceholderText("聚焦实体，例如：薛行之"), { target: { value: "薛行之" } });
     fireEvent.click(screen.getByRole("button", { name: "聚焦" }));
@@ -194,6 +196,37 @@ describe("NarrativeMemoryGraphWorkspace", () => {
       expect(latestUrl).toContain("chapterFrom=2");
       expect(latestUrl).not.toContain("chapterTo=");
     });
+  });
+
+  it("关系图吃共现边并丢掉事件短语脏节点", async () => {
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/state")) return { timeline: { entries: [] } };
+      return {
+        view: "relationship",
+        facts: [
+          {
+            id: "fact-dirty",
+            subject: "薛行之",
+            predicate: "职业暴露病情需要",
+            object: "自费转诊",
+            category: "relationship",
+            layer: "dynamic",
+            confidence: 0.99,
+            sourceChapter: 1,
+          },
+        ],
+        events: [],
+        cooccurrence: { edges: [{ source: "薛行之", target: "薛建国", coCount: 3 }] },
+        causal: [{ id: "e1", chapterNumber: 2, summary: "鼻血", eventType: "character_state_changed", causes: ["e0"] }],
+        foreshadows: [{ id: "fs1", label: "小瓶绿液", phase: "planted" }],
+      };
+    });
+    render(<NarrativeMemoryGraphWorkspace bookId="book-1" initialView="relationship" />);
+    await screen.findByTestId("react-flow-canvas");
+    expect(screen.getByRole("button", { name: "薛行之" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "薛建国" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "自费转诊" })).toBeNull();
+    expect(screen.getByText(/共现 1/)).toBeTruthy();
   });
 
   it("选中实体后显示完整检查器并打开统一实体详情抽屉", async () => {
@@ -430,7 +463,7 @@ describe("findChapterFocus", () => {
   const modelOf = (nodes: GraphNodeModel[]): NarrativeGraphModel => ({
     nodes,
     edges: [],
-    stats: { nodeCount: nodes.length, edgeCount: 0, factCount: 0, eventCount: nodes.length, chapterCount: 2, entityCount: 0 },
+    stats: { nodeCount: nodes.length, edgeCount: 0, factCount: 0, eventCount: nodes.length, chapterCount: 2, entityCount: 0, cooccurrenceCount: 0, causalCount: 0, foreshadowCount: 0 },
   });
 
   it("返回当前章节点中心坐标与覆盖全图节点的竖线范围", () => {

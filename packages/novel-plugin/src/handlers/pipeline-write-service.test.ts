@@ -290,6 +290,20 @@ describe("pipeline.write narrative context integration helpers", () => {
     expect(contextPackage.selectedContext).toContainEqual(expect.objectContaining({ source: "narrative-memory/hard" }));
   });
 
+  it("puts armed triggered hooks into Writer selectedContext", () => {
+    const contextPackage = buildPipelineContextPackage({
+      chapterNumber: 12,
+      sceneSpec,
+      dueHooks: [
+        { title: "到期伏笔", excerpt: "该推进了", dueChapter: 12 },
+        { title: "小瓶", excerpt: "药园试验开始", dueChapter: 8, armed: true },
+      ],
+    });
+    const armed = contextPackage.selectedContext.find((item) => item.source === "runtime/hook_debt#小瓶");
+    expect(armed?.reason).toContain("枪已上膛");
+    expect(armed?.excerpt).toContain("[已触发]");
+  });
+
   it("summarizes retrieval diagnostics into chapter result metadata", () => {
     const metadata = buildPipelineChapterResultMetadata({ narrativeContext });
 

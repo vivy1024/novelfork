@@ -24,6 +24,8 @@ import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
 import type { WritingSkillAcknowledgement } from "./writing-skill-acknowledgement.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { createSiliconFlowEmbeddingProvider } from "../engine/narrative-memory/embedding-provider.js";
+import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
@@ -112,6 +114,7 @@ export interface PipelineAuditIssueCategories {
 
 export interface PipelineWriteOutput {
   readonly ok: true;
+  readonly bookId: string;
   readonly content: string;
   readonly title: string;
   readonly wordCount: number;
@@ -459,14 +462,14 @@ type BuildPipelineContextPackageInput = Readonly<{
   jingweiContext?: string;
   previousChapterTail?: string;
   /** T2 到期窗口伏笔（已由 collectDueHooks 筛选排序），激活 runtime/hook_debt 死管道。 */
-  dueHooks?: ReadonlyArray<{ title: string; excerpt: string; dueChapter: number }>;
+  dueHooks?: ReadonlyArray<{ title: string; excerpt: string; dueChapter: number; armed?: boolean }>;
 }>;
 
 const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"], string> = {
   hard: "硬规则与场景约束，写的时候不能直接丢掉。",
   state: "当前角色、地点、组织和正在发生的事。",
   timeline: "最近几章与时间线，用来接上前情。",
-  hooks: "还没收回的伏笔。",
+    hooks: "还没收回的伏笔；已触发未兑现的必须本章推进。",
   facts: "已经记下的叙事事实。",
   style: "文风与写作技能提示。",
   semantic: "按语义召回的相关记忆。",
@@ -485,7 +488,7 @@ function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): Co
  * T2 到期窗口取数：读 foreshadowing 条目（含第五态唤醒中），
  * 交给 selectDueHooks 纯函数筛选排序。字典式失败容错：查不到返回空。
  */
-function collectDueHooks(storage: StorageDatabase, bookId: string, currentChapter: number): Array<{ title: string; excerpt: string; dueChapter: number }> {
+function collectDueHooks(storage: StorageDatabase, bookId: string, currentChapter: number): Array<{ title: string; excerpt: string; dueChapter: number; armed?: boolean }> {
   try {
     const categories = getJingweiCategoryAliases("foreshadowing");
     const rows = storage.sqlite.prepare<{ title: string; content_md: string | null; fields_json: string | null }>(`
@@ -509,11 +512,33 @@ function collectDueHooks(storage: StorageDatabase, bookId: string, currentChapte
         seedText: String(row.content_md ?? "").slice(0, 120) || undefined,
       };
     });
-    return selectDueHooks(inputs, currentChapter).map((hook) => ({
+    const due = selectDueHooks(inputs, currentChapter).map((hook) => ({
       title: hook.title,
       excerpt: hook.seedText ?? "（无种子文本，详见伏笔看板）",
       dueChapter: hook.dueChapter,
     }));
+    let triggered: Array<{ title: string; excerpt: string; dueChapter: number; armed: boolean }> = [];
+    try {
+      triggered = storage.sqlite.prepare<{
+        label: string;
+        triggerChapter: number | null;
+        triggerCondition: string | null;
+        evidenceText: string | null;
+      }>(`
+        SELECT label, trigger_chapter AS triggerChapter, trigger_condition AS triggerCondition, evidence_text AS evidenceText
+        FROM narrative_foreshadow
+        WHERE book_id = ? AND status IN ('triggered','paying_off')
+      `).all(bookId).map((row) => ({
+        title: row.label,
+        excerpt: row.triggerCondition || row.evidenceText || "触发条件已满足，尚未兑现",
+        dueChapter: row.triggerChapter ?? currentChapter,
+        armed: true,
+      }));
+    } catch {
+      triggered = [];
+    }
+    const seen = new Set(triggered.map((hook) => hook.title));
+    return [...triggered, ...due.filter((hook) => !seen.has(hook.title))];
   } catch {
     return [];
   }
@@ -542,8 +567,12 @@ export function buildPipelineContextPackage(input: BuildPipelineContextPackageIn
       ...(input.dueHooks && input.dueHooks.length > 0
         ? input.dueHooks.map((hook) => ({
             source: `runtime/hook_debt#${hook.title}`,
-            reason: "本章应推进的伏笔（到期窗口内，强制关注）",
-            excerpt: `[第${hook.dueChapter}章应推进] ${hook.title} — ${hook.excerpt}`,
+            reason: hook.armed
+              ? "已触发未兑现的伏笔（枪已上膛，本章必须推进或兑现）"
+              : "本章应推进的伏笔（到期窗口内，强制关注）",
+            excerpt: hook.armed
+              ? `[已触发] ${hook.title} — ${hook.excerpt}`
+              : `[第${hook.dueChapter}章应推进] ${hook.title} — ${hook.excerpt}`,
           }))
         : []),
       ...(input.jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情（legacy compatibility）", excerpt: input.jingweiContext }] : []),
@@ -790,6 +819,12 @@ async function executePipelineWriteUnlocked(
           enabledChannels: memoryConfig?.retrieval.channels,
           waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
           semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
+          ...(memoryConfig?.retrieval.semanticEnabled
+            ? await (async () => {
+              const embeddingConfig = await loadEmbeddingConfig(storage);
+              return embeddingConfig ? { semanticProvider: createSiliconFlowEmbeddingProvider(embeddingConfig) } : {};
+            })()
+            : {}),
           ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
           ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
           ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
@@ -1281,6 +1316,7 @@ async function executePipelineWriteUnlocked(
 
     return {
       ok: true,
+      bookId,
       content: finalContent,
       title: writeOutput.title,
       wordCount,

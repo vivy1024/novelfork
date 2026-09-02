@@ -1,58 +1,49 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./NarrativeMemoryGraphWorkspace", () => ({
-  NarrativeMemoryGraphWorkspace: ({
-    bookId,
-    initialView,
-    mode,
-    dataScope,
-    currentChapter,
-    onOpenChapter,
-  }: {
-    bookId: string;
-    initialView?: string;
-    mode?: string;
-    dataScope?: string;
-    currentChapter?: number;
-    onOpenChapter?: (chapterNumber: number) => void;
-  }) => (
-    <div
-      data-testid="development-timeline-graph-probe"
-      data-book-id={bookId}
-      data-initial-view={initialView}
-      data-mode={mode}
-      data-scope={dataScope}
-      data-current-chapter={currentChapter}
-    >
-      <button type="button" onClick={() => onOpenChapter?.(12)}>打开来源第 12 章</button>
-    </div>
-  ),
+const fetchJson = vi.fn();
+
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: (...args: unknown[]) => fetchJson(...args),
+  ApiRequestError: class ApiRequestError extends Error {
+    status?: number;
+    constructor(message: string, status?: number) {
+      super(message);
+      this.status = status;
+    }
+  },
 }));
 
 import { DevelopmentTimelineView } from "./development-timeline";
 
+beforeEach(() => {
+  fetchJson.mockReset();
+  fetchJson.mockImplementation(async (url: string) => {
+    if (url.includes("narrative-memory/graph")) {
+      return {
+        events: [
+          { id: "e1", chapterNumber: 12, subject: "薛行之", predicate: "抵达", object: "西京", eventType: "location_changed" },
+        ],
+      };
+    }
+    return {
+      entries: [
+        { id: "s12", category: "chapter-summaries", title: "第 12 章", fields: { chapterNumber: 12 } },
+      ],
+    };
+  });
+});
+
 afterEach(cleanup);
 
 describe("DevelopmentTimelineView", () => {
-  it("以只读 scope 复用既有图谱数据源，并默认对齐 timeline 与当前章", () => {
+  it("以只读 scope 打开发展历程树，不再走 React Flow 图谱", async () => {
     render(<DevelopmentTimelineView bookId="book-1" currentChapter={18} />);
 
     const view = screen.getByTestId("development-timeline-view");
     expect(view.getAttribute("data-source-scope")).toBe("read");
-
-    const graph = screen.getByTestId("development-timeline-graph-probe");
-    expect(graph.getAttribute("data-book-id")).toBe("book-1");
-    expect(graph.getAttribute("data-initial-view")).toBe("timeline");
-    expect(graph.getAttribute("data-mode")).toBe("development");
-    expect(graph.getAttribute("data-scope")).toBe("read");
-    expect(graph.getAttribute("data-current-chapter")).toBe("18");
-  });
-
-  it("把来源章节回跳回调透传到图谱工作区", () => {
-    const onOpenChapter = vi.fn();
-    render(<DevelopmentTimelineView bookId="book-1" onOpenChapter={onOpenChapter} />);
-    fireEvent.click(screen.getByRole("button", { name: "打开来源第 12 章" }));
-    expect(onOpenChapter).toHaveBeenCalledWith(12);
+    await waitFor(() => expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("timeline"));
+    expect(screen.queryByTestId("canonical-tree-tab-worldview")).toBeNull();
+    expect(screen.getByTestId("tidy-tree-row-chapter:12")).toBeTruthy();
   });
 });

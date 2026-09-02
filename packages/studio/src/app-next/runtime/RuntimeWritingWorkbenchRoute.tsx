@@ -5,6 +5,7 @@ import type {
   WorkbenchCanvasContext,
   WorkbenchResourceNode,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
+import { WRITING_PROGRESS_EVENT, writingProgressBookId } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/writing-progress-event";
 
 import { runtimeJson } from "./auth";
 import {
@@ -207,13 +208,16 @@ export function RuntimeWritingWorkbenchRoute({
     setCreatingSession(false);
   }, [bookId]);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (options?: { readonly silent?: boolean }) => {
     const generation = ++reloadGenerationRef.current;
     reloadAbortRef.current?.abort();
     const controller = new AbortController();
     reloadAbortRef.current = controller;
-    setLoading(true);
-    setError(null);
+    const silent = options?.silent === true;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const [workspace, narrators] = await Promise.all([
         client.getWorkspace(bookId, { signal: controller.signal }),
@@ -248,6 +252,7 @@ export function RuntimeWritingWorkbenchRoute({
       ].join("|");
     } catch (cause) {
       if (controller.signal.aborted || generation !== reloadGenerationRef.current) return;
+      if (silent) return;
       setNodes([]);
       setNarrators([]);
       setActiveNarratorId(null);
@@ -256,7 +261,7 @@ export function RuntimeWritingWorkbenchRoute({
     } finally {
       if (generation === reloadGenerationRef.current && reloadAbortRef.current === controller) {
         reloadAbortRef.current = null;
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted && !silent) setLoading(false);
       }
     }
   }, [bookId, client]);
@@ -293,7 +298,7 @@ export function RuntimeWritingWorkbenchRoute({
       }
       if (fingerprint !== latestChapterFingerprintRef.current) {
         latestChapterFingerprintRef.current = fingerprint;
-        void reload();
+        void reload({ silent: true });
       }
     } catch {
       // 探测失败静默跳过——下一轮再试，不影响主流程。
@@ -312,6 +317,16 @@ export function RuntimeWritingWorkbenchRoute({
       probeAbortRef.current?.abort();
     };
   }, [probeWorkspaceChange]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const eventBookId = writingProgressBookId(event);
+      if (eventBookId && eventBookId !== bookId) return;
+      void reload({ silent: true });
+    };
+    window.addEventListener(WRITING_PROGRESS_EVENT, handler);
+    return () => window.removeEventListener(WRITING_PROGRESS_EVENT, handler);
+  }, [bookId, reload]);
 
   const handleSave = useCallback(async (node: WorkbenchResourceNode, content: string) => {
     if (!node.capabilities.edit) throw new Error("此 Runtime 资源不可编辑");

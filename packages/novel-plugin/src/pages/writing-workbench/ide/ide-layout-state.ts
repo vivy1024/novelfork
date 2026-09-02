@@ -52,9 +52,16 @@ export function idePanesUseOverlay(mode: IdeLayoutMode): boolean {
   return mode === "narrow";
 }
 
-/** 首屏估算：md 以上壳层侧栏约 250px，避免三栏先闪再折。 */
-export function initialIdeLayoutMode(viewportWidth = typeof window === "undefined" ? IDE_COMFORTABLE_MIN_WIDTH : window.innerWidth): IdeLayoutMode {
-  const shellRail = viewportWidth >= 768 ? 250 : 0;
+/** 工作台路由下壳层默认收成 48px 图标栏，其它路由仍是 250px 展开侧栏。 */
+export const IDE_SHELL_RAIL_COLLAPSED_WIDTH = 48;
+export const IDE_SHELL_RAIL_EXPANDED_WIDTH = 250;
+
+/** 首屏估算：md 以上扣掉壳层侧栏，避免三栏先闪再折。 */
+export function initialIdeLayoutMode(
+  viewportWidth = typeof window === "undefined" ? IDE_COMFORTABLE_MIN_WIDTH : window.innerWidth,
+  shellRailWidth = IDE_SHELL_RAIL_COLLAPSED_WIDTH,
+): IdeLayoutMode {
+  const shellRail = viewportWidth >= 768 ? shellRailWidth : 0;
   return ideLayoutModeFromWidth(viewportWidth - shellRail);
 }
 

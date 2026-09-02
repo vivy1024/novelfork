@@ -70,6 +70,21 @@ describe("jingwei.write staging promote/reject", () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
+  test("writes a batch of lore entries in one call", async () => {
+    const result = await handleJingweiWrite({
+      bookId: "book-1",
+      entries: [
+        { action: "create", title: "薛行之", category: "characters", contentMd: "主角。", reason: "建书初始化", source: "作者设定" },
+        { action: "create", title: "青云镇", category: "geography", contentMd: "开篇地点。", reason: "建书初始化", source: "作者设定" },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.results).toHaveLength(2);
+    const titles = storage.sqlite.prepare(`SELECT title FROM story_jingwei_entry WHERE book_id = 'book-1' AND deleted_at IS NULL`).all() as Array<{ title: string }>;
+    expect(titles.map((row) => row.title).sort()).toEqual(["薛行之", "青云镇"].sort());
+  });
+
   test("requires an explicit stagingDecision", async () => {
     const candidate = stage();
     const result = await handleJingweiWrite({ bookId: "book-1", stagingId: candidate.id, title: "被忽略" });

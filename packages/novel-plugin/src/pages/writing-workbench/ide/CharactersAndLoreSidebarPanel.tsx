@@ -7,7 +7,7 @@
  * 3. 顶部支持实时搜索、分类过滤与「新建角色 / 导入酒馆预设与角色卡」。
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Eye,
@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/hooks/use-api";
 import { fetchCharacterKernels, type CharacterKernelSummary } from "../character-kernel-client";
+import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { CATEGORY_META, normalizeCategory, type JingweiCategory } from "../../../engine/jingwei/unified-categories";
 import { workspaceForCategory } from "../lore-workspace-split";
 import { type ResourceTreeAction } from "../WorkbenchResourceTree";
@@ -93,21 +94,28 @@ export function CharactersAndLoreSidebarPanel({
   // 角色当前内核（每个角色的当前动机/情绪一行摘要），来自结算后写入的 character_kernel。
   // 这个角色册面板就是作者查「这个角色现在是谁」的地方——顺带把内核贴上来，不必再翻叙事记忆面板。
   const [kernelsByCharacterId, setKernelsByCharacterId] = useState<ReadonlyMap<string, CharacterKernelSummary>>(new Map());
-  useEffect(() => {
+  const kernelGenerationRef = useRef(0);
+  const loadKernels = useCallback(() => {
     if (!bookId) return;
-    let cancelled = false;
+    const generation = ++kernelGenerationRef.current;
     void fetchCharacterKernels(bookId)
       .then((list) => {
-        if (cancelled) return;
+        if (generation !== kernelGenerationRef.current) return;
         const map = new Map<string, CharacterKernelSummary>();
         for (const item of list) {
           if (item.entryStatus === "active") map.set(item.characterId, item);
         }
         setKernelsByCharacterId(map);
       })
-      .catch(() => setKernelsByCharacterId(new Map()));
-    return () => { cancelled = true; };
+      .catch(() => {
+        if (generation === kernelGenerationRef.current) setKernelsByCharacterId(new Map());
+      });
   }, [bookId]);
+  useEffect(() => {
+    loadKernels();
+    return () => { kernelGenerationRef.current += 1; };
+  }, [loadKernels]);
+  useWritingProgressRefresh(bookId, loadKernels);
 
   const showKernel = useCallback((characterId: string): CharacterKernelSummary | undefined => {
     return kernelsByCharacterId.get(characterId);

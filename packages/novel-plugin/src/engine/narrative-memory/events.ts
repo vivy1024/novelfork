@@ -72,7 +72,13 @@ export function classifyNarrativeEventRisk(input: NarrativeEventRiskInput): Narr
   if (input.eventType === "hook_resolved" || input.eventType === "character_state_changed") {
     return { riskLevel: "medium", status: confidence >= 0.75 ? "applied" : "pending" };
   }
-  if (input.eventType === "location_changed" || input.eventType === "hook_progressed" || input.eventType === "timeline_advanced" || input.eventType === "hook_planted") {
+  if (
+    input.eventType === "location_changed"
+    || input.eventType === "hook_progressed"
+    || input.eventType === "hook_triggered"
+    || input.eventType === "timeline_advanced"
+    || input.eventType === "hook_planted"
+  ) {
     return { riskLevel: "low", status: "applied" };
   }
   return { riskLevel: "medium", status: "pending" };

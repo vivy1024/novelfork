@@ -355,4 +355,38 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     expect(mocks.workbenchProps.at(-1)?.activeSessionId).toBe(createdNarrator.id);
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
+
+  it("写章进度事件只静默刷新，不把工作台卸成加载态", async () => {
+    const client = {
+      getWorkspace: vi.fn(async () => ({
+        book: { id: "book-1", title: "测试作品", capabilities: { read: true } },
+        resources: [{
+          id: "chapter:1",
+          kind: "chapter",
+          title: "第一章",
+          path: "chapters/0001_first.md",
+          capabilities: { read: true, update: true },
+          metadata: { updatedAt: "t1" },
+        }],
+        capabilities: { read: true, create: true, update: true },
+      })),
+      listNarrators: vi.fn(async () => [narrator]),
+    };
+
+    render(
+      <RuntimeWritingWorkbenchRoute
+        bookId="book-1"
+        onCanvasContextChange={vi.fn()}
+        onNavigateToConversation={vi.fn()}
+        client={client as never}
+      />,
+    );
+
+    await screen.findByTestId("ide-workbench-mock");
+    expect(client.getWorkspace).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new CustomEvent("novelfork:writing-progress", { detail: { reason: "pipeline.write", bookId: "book-1" } }));
+    await waitFor(() => expect(client.getWorkspace).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("ide-workbench-mock")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
 });

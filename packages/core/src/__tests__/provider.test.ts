@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type OpenAI from "openai";
-import { chatCompletion, type LLMClient } from "../llm/provider.js";
+import { chatCompletion, createEmbeddings, type LLMClient } from "../llm/provider.js";
 
 const ZERO_USAGE = {
   prompt_tokens: 11,
@@ -132,5 +132,18 @@ describe("chatCompletion stream fallback", () => {
     expect(create.mock.calls[1]?.[0]).toMatchObject({ stream: false });
     expect(error.message).toContain("stream:true");
     expect(error.message).not.toContain("\"stream\": false");
+  });
+});
+
+describe("createEmbeddings", () => {
+  it("returns empty vectors for empty input without calling the API", async () => {
+    const result = await createEmbeddings({
+      baseUrl: "https://api.siliconflow.cn/v1",
+      apiKey: "test-key",
+      model: "BAAI/bge-m3",
+      dim: 1024,
+    }, ["", "  "]);
+    expect(result.vectors).toEqual([]);
+    expect(result.dim).toBe(1024);
   });
 });

@@ -6,11 +6,17 @@ import {
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { createSiliconFlowEmbeddingProvider, loadEntityVectorsFromStore, similarityFromVectors } from "../engine/narrative-memory/embedding-provider.js";
+import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { createNarrativeEvent, persistNarrativeEvents } from "../engine/narrative-memory/events.js";
-import { ensureNarrativeMemorySchema, getNarrativeEventById, listPendingNarrativeEvents, queryNarrativeFacts, updateNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
+import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
+import { parseCausedBy } from "../engine/narrative-memory/causal-resolve.js";
+import { ensureNarrativeMemorySchema, getNarrativeEventById, listPendingNarrativeEvents, loadMentionsByChapter, queryNarrativeFacts, updateNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
+import { buildCooccurrenceFromEvents } from "../engine/narrative-memory/wave/narrative-cooccurrence-source.js";
+import { buildNarrativeGraph } from "../engine/narrative-taxonomy/narrative-graph.js";
 import type { NarrativeEvent, NarrativeEventType, NarrativeFactLayer, NarrativeRetrievalPurpose } from "../engine/narrative-memory/types.js";
 import { handleJingweiRead, type JingweiReadInput, type JingweiReadResult } from "./jingwei-read-unified.js";
 import { handleJingweiWrite, type JingweiWriteInput, type JingweiWriteResult } from "./jingwei-write-handler.js";
@@ -74,6 +80,8 @@ export interface MemoryEventsInput {
   editEvidenceText?: string;
   /** Trusted absolute book root injected by the Runtime/product router. */
   bookRoot?: string;
+  /** 一次创建多条 Pending 事件。传入后忽略顶层单条 subject/predicate/object。 */
+  events?: readonly Omit<MemoryEventsInput, "bookId" | "action" | "events" | "eventId" | "limit" | "reason" | "bookRoot">[];
 }
 
 type ToolResult =
@@ -131,6 +139,12 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     enabledChannels: memoryConfig?.retrieval.channels,
     waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
     semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
+    ...(memoryConfig?.retrieval.semanticEnabled
+      ? await (async () => {
+        const embeddingConfig = await loadEmbeddingConfig(storage);
+        return embeddingConfig ? { semanticProvider: createSiliconFlowEmbeddingProvider(embeddingConfig) } : {};
+      })()
+      : {}),
     ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
     ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
     ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
@@ -170,7 +184,7 @@ function graphEventTypes(view: MemoryGraphInput["view"]): Set<string> | undefine
     case "relationship": return new Set(["relationship_changed"]);
     case "timeline": return new Set(["timeline_advanced", "location_changed", "world_fact_introduced"]);
     case "character_arc": return new Set(["character_state_changed"]);
-    case "foreshadowing": return new Set(["hook_planted", "hook_progressed", "hook_resolved"]);
+    case "foreshadowing": return new Set(["hook_planted", "hook_progressed", "hook_triggered", "hook_resolved"]);
     case "conflict": return new Set(["relationship_changed", "world_fact_introduced"]);
     case "event_chain": return undefined;
     case "wave": return undefined;
@@ -299,15 +313,32 @@ export async function handleMemoryGraph(
     .filter((fact) => !factCategoryFilter || factCategoryFilter.has(fact.category))
     .filter((fact) => withinChapterRange(fact.sourceChapter ?? fact.validFromChapter, input.chapterRange))
     .filter((fact) => matchesFocusFact(fact, input.focusEntity, focusEntryId));
-  const allEvents = storage.sqlite.prepare(`
-    SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object,
-           subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId,
-           evidence_text AS evidenceText, confidence, source, status, risk_level AS riskLevel, created_at AS createdAt, applied_at AS appliedAt
-    FROM narrative_event
-    WHERE book_id = ?
-    ORDER BY chapter_number DESC, created_at DESC
-  `).all(bookId) as Record<string, unknown>[];
-  const filteredEvents = allEvents
+  let allEvents: Record<string, unknown>[] = [];
+  try {
+    allEvents = storage.sqlite.prepare(`
+      SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object,
+             subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId,
+             caused_by_json AS causedByJson,
+             evidence_text AS evidenceText, confidence, source, status, risk_level AS riskLevel, created_at AS createdAt, applied_at AS appliedAt
+      FROM narrative_event
+      WHERE book_id = ?
+      ORDER BY chapter_number DESC, created_at DESC
+    `).all(bookId) as Record<string, unknown>[];
+  } catch {
+    allEvents = storage.sqlite.prepare(`
+      SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object,
+             subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId,
+             evidence_text AS evidenceText, confidence, source, status, risk_level AS riskLevel, created_at AS createdAt, applied_at AS appliedAt
+      FROM narrative_event
+      WHERE book_id = ?
+      ORDER BY chapter_number DESC, created_at DESC
+    `).all(bookId) as Record<string, unknown>[];
+  }
+  const eventsWithCauses = allEvents.map((event) => {
+    const causedBy = parseCausedBy(event.causedByJson);
+    return causedBy.length > 0 ? { ...event, causedBy } : event;
+  });
+  const filteredEvents = eventsWithCauses
     .filter((event) => !eventTypeFilter || eventTypeFilter.has(String(event.eventType)))
     .filter((event) => withinChapterRange(event.chapterNumber, input.chapterRange))
     .filter((event) => matchesFocusEvent(event, input.focusEntity, focusEntryId));
@@ -317,9 +348,87 @@ export async function handleMemoryGraph(
     ? ` 当前结果已分页（事实 ${factPage.pagination.total} 条、事件 ${eventPage.pagination.total} 条），可传 limit=0 获取全部数据。`
     : "";
 
+  const dictionary = buildEntityDictionary(storage, bookId);
+  const mentionsByChapter = loadMentionsByChapter(storage, bookId);
+  const embeddingConfig = await loadEmbeddingConfig(storage);
+  const entityVectors = embeddingConfig
+    ? loadEntityVectorsFromStore(storage, bookId, embeddingConfig.model, embeddingConfig.dim)
+    : new Map<string, readonly number[]>();
+  const similarity = entityVectors.size > 0 ? similarityFromVectors(entityVectors) : undefined;
+  const cooccurrence = buildCooccurrenceFromEvents({
+    dictionary,
+    events: eventsWithCauses.map((event) => ({
+      id: String(event.id ?? ""),
+      chapterNumber: typeof event.chapterNumber === "number" ? event.chapterNumber : Number(event.chapterNumber),
+      subject: typeof event.subject === "string" ? event.subject : "",
+      object: typeof event.object === "string" ? event.object : "",
+    })),
+    mentionsByChapter,
+    ...(similarity ? { similarity, useNovelGain: true } : {}),
+  });
+  let foreshadowRecords: Array<{
+    id: string;
+    entryId: string | null;
+    label: string;
+    status: string;
+    setupChapter: number | null;
+    triggerChapter: number | null;
+    triggerCondition: string | null;
+    payoffChapter: number | null;
+  }> = [];
+  try {
+    foreshadowRecords = storage.sqlite.prepare<{
+      id: string;
+      entryId: string | null;
+      label: string;
+      status: string;
+      setupChapter: number | null;
+      triggerChapter: number | null;
+      triggerCondition: string | null;
+      payoffChapter: number | null;
+    }>(`
+      SELECT id, entry_id AS entryId, label, status,
+             setup_chapter AS setupChapter,
+             trigger_chapter AS triggerChapter,
+             trigger_condition AS triggerCondition,
+             payoff_chapter AS payoffChapter
+      FROM narrative_foreshadow
+      WHERE book_id = ?
+    `).all(bookId);
+  } catch {
+    foreshadowRecords = [];
+  }
+  const narrativeGraph = buildNarrativeGraph({
+    dictionary,
+    facts: filteredFacts,
+    foreshadowRecords: foreshadowRecords.map((row) => ({
+      id: row.id,
+      ...(row.entryId ? { entryId: row.entryId } : {}),
+      label: row.label,
+      status: row.status,
+      ...(row.setupChapter !== null ? { setupChapter: row.setupChapter } : {}),
+      ...(row.triggerChapter !== null ? { triggerChapter: row.triggerChapter } : {}),
+      ...(row.triggerCondition ? { triggerCondition: row.triggerCondition } : {}),
+      ...(row.payoffChapter !== null ? { payoffChapter: row.payoffChapter } : {}),
+    })),
+    events: eventsWithCauses.map((event) => ({
+      id: String(event.id ?? ""),
+      chapterNumber: typeof event.chapterNumber === "number" ? event.chapterNumber : Number(event.chapterNumber),
+      eventType: String(event.eventType ?? ""),
+      subject: typeof event.subject === "string" ? event.subject : "",
+      predicate: typeof event.predicate === "string" ? event.predicate : "",
+      object: typeof event.object === "string" ? event.object : "",
+      evidenceText: typeof event.evidenceText === "string" ? event.evidenceText : "",
+      riskLevel: typeof event.riskLevel === "string" ? event.riskLevel : undefined,
+      subjectEntryId: typeof event.subjectEntryId === "string" ? event.subjectEntryId : undefined,
+      causedBy: Array.isArray(event.causedBy) ? event.causedBy as string[] : undefined,
+    })),
+    currentChapter: projection.lastChapter,
+  });
+
   return {
     ok: true,
-    summary: `已读取 ${input.view} 记忆图谱：${factPage.items.length} 条事实，${eventPage.items.length} 个事件。${truncationSummary}`,
+    summary: `已读取 ${input.view} 记忆图谱：${factPage.items.length} 条事实，${eventPage.items.length} 个事件，共现 ${cooccurrence.graph.nodeCount} 节点/${cooccurrence.graph.edges.length} 边，显式因果 ${narrativeGraph.quality.explicitCausalEdges}。${truncationSummary}`,
     data: {
       view: input.view,
       focusEntity: input.focusEntity,
@@ -331,7 +440,19 @@ export async function handleMemoryGraph(
         facts: factPage.pagination,
         events: eventPage.pagination,
       },
-      note: "角色/关系/伏笔/时间线优先从 ChapterStateDelta 归约；NarrativeEvent 作为历史证据。手工备注不进入本图。",
+      cooccurrence: {
+        nodeCount: cooccurrence.graph.nodeCount,
+        edgeCount: cooccurrence.graph.edges.length,
+        resolvedTags: cooccurrence.resolvedTags,
+        unresolvedTags: cooccurrence.unresolvedTags,
+        unresolvedSamples: cooccurrence.unresolvedSamples,
+        semanticGainActive: cooccurrence.semanticGainActive,
+        edges: cooccurrence.graph.edges.slice(0, 80),
+      },
+      causal: narrativeGraph.causal.slice(0, 80),
+      foreshadows: narrativeGraph.foreshadows.slice(0, 80),
+      quality: narrativeGraph.quality,
+      note: "角色/关系/伏笔/时间线优先从 ChapterStateDelta 归约；共现走提及清单+别名归一；显式因果来自 causedBy / 伏笔三态。手工备注不进入本图。",
       stateRevision: projection.stateRevision,
       derived: {
         characters: projection.characters.length,
@@ -434,23 +555,42 @@ export async function handleMemoryEvents(input: MemoryEventsInput, storageOverri
   }
 
   if (action === "create") {
-    if (!input.chapterNumber || !input.eventType || !input.subject || !input.predicate || !input.object || !input.evidenceText) {
-      return { ok: false, error: "invalid-input", summary: "create 需要 chapterNumber、eventType、subject、predicate、object、evidenceText。" };
+    const drafts = Array.isArray(input.events) && input.events.length > 0
+      ? input.events
+      : [input];
+    if (drafts.length > 20) {
+      return { ok: false, error: "batch-too-large", summary: "一次最多创建 20 条 Pending NarrativeEvents。" };
     }
-    const event = createNarrativeEvent({
-      bookId,
-      chapterNumber: input.chapterNumber,
-      eventType: input.eventType,
-      subject: input.subject,
-      predicate: input.predicate,
-      object: input.object,
-      evidenceText: input.evidenceText,
-      confidence: input.confidence ?? 0.8,
-      source: "manual",
-      layer: input.layer ?? "dynamic",
-    });
-    const created = persistNarrativeEvents(storage, [{ ...event, status: "pending", appliedAt: undefined }])[0]!;
-    return { ok: true, summary: `已创建 Pending NarrativeEvent：${created.id}。`, data: { event: created } };
+    const createdEvents = [];
+    for (const [index, draft] of drafts.entries()) {
+      if (!draft.chapterNumber || !draft.eventType || !draft.subject || !draft.predicate || !draft.object || !draft.evidenceText) {
+        return { ok: false, error: "invalid-input", summary: `create 第 ${index + 1} 条需要 chapterNumber、eventType、subject、predicate、object、evidenceText。` };
+      }
+      createdEvents.push({
+        ...createNarrativeEvent({
+          bookId,
+          chapterNumber: draft.chapterNumber,
+          eventType: draft.eventType,
+          subject: draft.subject,
+          predicate: draft.predicate,
+          object: draft.object,
+          evidenceText: draft.evidenceText,
+          confidence: draft.confidence ?? 0.8,
+          source: "manual",
+          layer: draft.layer ?? "dynamic",
+        }),
+        status: "pending" as const,
+        appliedAt: undefined,
+      });
+    }
+    const created = persistNarrativeEvents(storage, createdEvents);
+    return {
+      ok: true,
+      summary: created.length === 1
+        ? `已创建 Pending NarrativeEvent：${created[0]!.id}。`
+        : `已批量创建 ${created.length} 条 Pending NarrativeEvents。`,
+      data: created.length === 1 ? { event: created[0], events: created } : { events: created },
+    };
   }
 
   if (!input.eventId) return { ok: false, error: "invalid-input", summary: "approve/reject 需要 eventId。" };

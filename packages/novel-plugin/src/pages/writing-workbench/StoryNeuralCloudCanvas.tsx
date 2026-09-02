@@ -18,7 +18,9 @@ import type { NarrativeEvent, NarrativeFact } from "./narrative-memory-graph-mod
 import {
   activateNeuralCloud,
   buildNeuralCloudModel,
+  neighborIds,
   NEURAL_CLOUD_KIND_COLOR,
+  pickLabeledNodeIds,
   type JingweiCloudEntry,
   type NeuralCloudActivation,
   type NeuralCloudLayoutNode,
@@ -207,15 +209,41 @@ export function StoryNeuralCloudCanvas({
       const muted = readCssColor("--muted-foreground", "#78716c");
       const foreground = readCssColor("--foreground", "#1f1a14");
 
+      // focus + context：hover 某点时只保留它和一跳邻居，其余淡到 0.1。
+      // 这是把「一团乱」变成「清晰局部」的关键，业界（sigma.js reducer / Obsidian）标配。
+      const hovered = hoverRef.current;
+      const focusSet = hovered ? neighborIds(model.edges, hovered) : null;
+      // 标签 LOD：按缩放级别限制常显标签数，避免文字互相覆盖
+      const labeled = pickLabeledNodeIds(model.nodes, model.edges, scale);
+
       ctx.lineCap = "round";
       for (const edge of model.edges) {
         const from = model.nodes.find((node) => node.id === edge.source);
         const to = model.nodes.find((node) => node.id === edge.target);
         if (!from || !to) continue;
         const active = litEdges.has(edge.id);
+        const inFocus = !focusSet || (focusSet.has(edge.source) && focusSet.has(edge.target));
+
+        const x1 = sx(from.x);
+        const y1 = sy(from.y);
+        const x2 = sx(to.x);
+        const y2 = sy(to.y);
         ctx.beginPath();
-        ctx.moveTo(sx(from.x), sy(from.y));
-        ctx.lineTo(sx(to.x), sy(to.y));
+        ctx.moveTo(x1, y1);
+        if (edge.kind === "sequence") {
+          // 章序是骨架，保持直线，读起来才像一条脊
+          ctx.lineTo(x2, y2);
+        } else {
+          // 轻微二次曲线：让平行边分开，避免多条边重叠成一根柱子
+          const mx = (x1 + x2) / 2;
+          const my = (y1 + y2) / 2;
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const length = Math.hypot(dx, dy) || 1;
+          const bow = Math.min(18, length * 0.12);
+          ctx.quadraticCurveTo(mx - (dy / length) * bow, my + (dx / length) * bow, x2, y2);
+        }
+
         if (active) {
           const hop = Math.max(
             lit?.get(edge.source)?.hop ?? 0,
@@ -228,8 +256,10 @@ export function StoryNeuralCloudCanvas({
           ctx.lineWidth = 1.2 + t * 1.6;
         } else {
           ctx.strokeStyle = edge.kind === "sequence" ? primary : muted;
-          ctx.globalAlpha = edge.kind === "sequence" ? 0.22 : 0.08;
-          ctx.lineWidth = edge.kind === "sequence" ? 1.4 : 0.8;
+          // 低透明度是避免「挤成柱」的第一手段；密集时叠加成密度感而非实心块
+          const baseAlpha = edge.kind === "sequence" ? 0.22 : 0.1;
+          ctx.globalAlpha = inFocus ? baseAlpha : 0.03;
+          ctx.lineWidth = edge.kind === "sequence" ? 1.3 : 0.7;
         }
         ctx.stroke();
         ctx.globalAlpha = 1;
@@ -238,14 +268,19 @@ export function StoryNeuralCloudCanvas({
       const breath = reduced ? 0 : Math.sin(now / 1400) * 0.4;
       for (const node of model.nodes) {
         const energy = lit?.get(node.id);
-        const hover = hoverRef.current === node.id;
+        const hover = hovered === node.id;
+        const inFocus = !focusSet || focusSet.has(node.id);
         const appearAt = (energy?.hop ?? 0) * MOTION.hop;
         const t = energy ? Math.max(0, Math.min(1, (elapsed - appearAt) / MOTION.short)) : 0;
         const radius = (node.radius + (hover ? 1.6 : 0) + (energy ? t * 2.2 : breath * 0.25)) * Math.max(scale, 0.85);
         ctx.beginPath();
         ctx.arc(sx(node.x), sy(node.y), radius, 0, Math.PI * 2);
         ctx.fillStyle = NEURAL_CLOUD_KIND_COLOR[node.kind];
-        ctx.globalAlpha = energy ? 0.45 + t * 0.55 : lit ? 0.18 : 0.72;
+        ctx.globalAlpha = energy
+          ? 0.45 + t * 0.55
+          : !inFocus
+            ? 0.1
+            : lit ? 0.18 : 0.72;
         ctx.fill();
         if (energy) {
           ctx.shadowColor = NEURAL_CLOUD_KIND_COLOR[node.kind];
@@ -254,12 +289,22 @@ export function StoryNeuralCloudCanvas({
           ctx.shadowBlur = 0;
         }
         ctx.globalAlpha = 1;
-        const showLabel = Boolean(energy) || hover || node.kind === "chapter";
+
+        // 标签显示条件：激活 / hover / 一跳邻居 / LOD 入选。标签画在点外侧下方。
+        const showLabel = Boolean(energy) || hover || (focusSet?.has(node.id) ?? false) || (inFocus && labeled.has(node.id));
         if (showLabel) {
           ctx.font = node.kind === "chapter" ? "600 11px sans-serif" : "500 10px sans-serif";
-          ctx.fillStyle = foreground;
           ctx.textAlign = "center";
-          ctx.fillText(node.label, sx(node.x), sy(node.y) - radius - 6);
+          const label = node.label.length > 12 ? `${node.label.slice(0, 11)}…` : node.label;
+          const ly = sy(node.y) - radius - 6;
+          // halo 描边：保证在任何底色上都可读
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = readCssColor("--background", "#0d1117");
+          ctx.globalAlpha = inFocus ? 0.9 : 0.35;
+          ctx.strokeText(label, sx(node.x), ly);
+          ctx.fillStyle = foreground;
+          ctx.fillText(label, sx(node.x), ly);
+          ctx.globalAlpha = 1;
         }
       }
 

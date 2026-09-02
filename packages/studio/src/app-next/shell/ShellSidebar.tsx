@@ -35,6 +35,8 @@ function NavButton({ label, active, onClick, collapsed }: { readonly label: stri
             "flex w-full items-center justify-center rounded-md p-1.5 text-xs transition",
             active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
+          aria-label={label}
+          aria-current={active ? "page" : undefined}
           onClick={onClick}
         >
           <BookOpen className="size-4" />
@@ -97,6 +99,8 @@ function NarratorNavButton({
             "relative flex w-full items-center justify-center rounded-md p-1.5 text-xs transition",
             active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
+          aria-label={label}
+          aria-current={active ? "page" : undefined}
           onClick={onClick}
         >
           <span className="text-[10px] font-bold">{label.charAt(0).toUpperCase()}</span>
@@ -469,6 +473,8 @@ export function ShellSidebar({
                       "flex w-full items-center justify-center rounded-md p-1.5 transition-colors",
                       isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
+                    aria-label={item.label}
+                    aria-current={isActive ? "page" : undefined}
                     onClick={() => onNavigate(item.route)}
                   >
                     <Icon className="size-4" />

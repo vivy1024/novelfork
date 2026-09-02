@@ -39,7 +39,7 @@ export interface JingweiWriteInput {
    * 只将条目退出 AI 可读集合（participates_in_ai=0 + soft-delete/archived）。
    */
   action?: "create" | "update" | "delete" | "retire";
-  title: string;
+  title?: string;
   contentMd?: string;
   summaryMd?: string;
   category?: string;
@@ -71,18 +71,24 @@ export interface JingweiWriteInput {
   stagingId?: string;
   /** 对 staging 候选的处理：promote 提升，reject 拒绝 */
   stagingDecision?: "promote" | "reject";
+  /** 一次写入多条静态设定。传入后忽略顶层单条 title/contentMd。 */
+  entries?: readonly Omit<JingweiWriteInput, "bookId" | "entries">[];
+}
+
+export interface JingweiWriteItemResult {
+  action: "created" | "updated" | "deleted" | "retired";
+  entryId: string;
+  bookId: string;
+  category?: string;
+  title?: string;
+  layer?: JingweiLayer;
 }
 
 export interface JingweiWriteSuccess {
   ok: true;
   summary: string;
-  data: {
-    action: "created" | "updated" | "deleted" | "retired";
-    entryId: string;
-    bookId: string;
-    category?: string;
-    title?: string;
-    layer?: JingweiLayer;
+  data: JingweiWriteItemResult & {
+    results?: readonly JingweiWriteItemResult[];
   };
 }
 
@@ -324,6 +330,35 @@ export async function handleJingweiWrite(
   options: { readonly storage?: StorageDatabase } = {},
 ): Promise<JingweiWriteResult> {
   const storage = options.storage ?? getStorageDatabase();
+  if (Array.isArray(input.entries) && input.entries.length > 0) {
+    if (input.entries.length > 20) {
+      return { ok: false, error: "batch-too-large", summary: "一次最多写入 20 条静态设定。" };
+    }
+    const results: JingweiWriteItemResult[] = [];
+    for (const [index, entry] of input.entries.entries()) {
+      const result = await handleJingweiWrite({ ...entry, bookId: input.bookId }, options);
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: result.error,
+          summary: `第 ${index + 1} 条写入失败：${result.summary}`,
+        };
+      }
+      results.push({
+        action: result.data.action,
+        entryId: result.data.entryId,
+        bookId: result.data.bookId,
+        ...(result.data.category ? { category: result.data.category } : {}),
+        ...(result.data.title ? { title: result.data.title } : {}),
+        ...(result.data.layer ? { layer: result.data.layer } : {}),
+      });
+    }
+    return {
+      ok: true,
+      summary: `已批量写入 ${results.length} 条静态设定。`,
+      data: { ...results[0]!, results },
+    };
+  }
   const entryRepo = createStoryJingweiEntryRepository(storage);
 
   // Parse & validate input

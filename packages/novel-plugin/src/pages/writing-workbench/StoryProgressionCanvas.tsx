@@ -1,60 +1,74 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
-  Crosshair,
+  Clock,
   Dna,
-  GitFork,
-  History,
+  FolderTree,
+  LayoutGrid,
   Loader2,
+  Network,
   ScrollText,
-  X,
   type LucideIcon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
-import type { StoryMapNodeData } from "./StoryMapCanvas";
-import { DevelopmentTimelineView } from "./development-timeline";
+import { StoryProgressBoard } from "./StoryProgressBoard";
 
-/** 故事地图体量大（React Flow），懒加载避免拖慢画布首帧。 */
-const StoryMapCanvas = lazy(() =>
-  import("./StoryMapCanvas").then((m) => ({ default: m.StoryMapCanvas })),
-);
-
-const ChronicleHelixCanvas = lazy(() =>
-  import("./ChronicleHelixCanvas").then((m) => ({ default: m.ChronicleHelixCanvas })),
+const CanonicalTreesPanel = lazy(() =>
+  import("./CanonicalTreesPanel").then((m) => ({ default: m.CanonicalTreesPanel })),
 );
 
 // ─── 视图定义 ─────────────────────────────────────────────────────────────
 
 /**
- * 故事推进大屏画布的三种空间视图（IA 收敛后）：
- * - map       故事地图：章 × 线索情节板
- * - evolution 发展历程：叙事记忆时间线（只读聚合，默认 timeline）
- * - chronicle 编年史对照：表世界（章面）与里世界（角色内在）分轨对照
+ * 故事推进的视图分两层（IA 重构）：
+ *  - board     推进（默认，主视觉）：章 × 剧情线网格 + 下一章焦点 + 伏笔债务
+ *  - chronicle 章节脉络（参考）：表/里世界分枝树
+ *  - network   关系网（参考）：共现关系树
  *
- * 大纲总览已收敛至侧栏「章节与大纲」，不再是画布视图。
- * 世界网点云仍作为独立组件保留，不占用发展历程权威入口。
+ * 为什么主视觉不再是图：调研 Plottr / Arc Studio / Scrivener / Aeon / Twine 等后确认，
+ * 线性叙事的「推进」主视觉几乎都是看板/章节网格（≈45%），力导向图当推进主视觉没有成功案例
+ * ——图只在真·分支叙事和「角色关系」子视图里成立。故图整体降级到参考区。
+ *
+ * 原「发展历程」三层（事件流/关系演化/矛盾冲突）已从推进页移除：
+ * 它们是叙事记忆的浏览视图，归 NarrativeMemoryPanel，不回答「下一章写什么」。
  */
-export type StoryProgressionView = "map" | "evolution" | "chronicle";
+export type StoryProgressionView = "tree" | "board" | "chronicle" | "network" | "timeline";
 
 export interface StoryProgressionViewDef {
   readonly id: StoryProgressionView;
   readonly label: string;
   readonly description: string;
   readonly icon: LucideIcon;
+  /** 参考视图不是主视觉，UI 上分组显示。 */
+  readonly reference?: boolean;
 }
 
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
-  { id: "evolution", label: "发展历程", description: "动态事件与角色演化时间线", icon: History },
-  { id: "chronicle", label: "双螺旋编年史", description: "里世界 / 表世界对照条", icon: Dna },
-  { id: "map", label: "故事地图", description: "章 × 线索情节板", icon: GitFork },
+  { id: "tree", label: "故事树", description: "世界观 / 关系树 / 章节 / 发展历程 / 脉络 / 总图", icon: FolderTree },
+  { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
+  { id: "timeline", label: "发展历程", description: "按章看已经发生的事", icon: Clock, reference: true },
+  { id: "chronicle", label: "章节脉络", description: "表世界摘要与里世界角色变化", icon: Dna, reference: true },
+  { id: "network", label: "关系网", description: "按共现枢纽展开的关系树", icon: Network, reference: true },
 ] as const;
 
+const LEGACY_VIEW_ALIASES: Record<string, StoryProgressionView> = {
+  map: "network",
+  evolution: "timeline",
+  outline: "tree",
+};
+
 export function isStoryProgressionView(value: unknown): value is StoryProgressionView {
-  return value === "map" || value === "evolution" || value === "chronicle";
+  return value === "tree" || value === "board" || value === "chronicle" || value === "network" || value === "timeline";
+}
+
+/** 兼容旧的 initialView 取值（历史侧栏入口可能仍传 map/evolution）。 */
+export function normalizeStoryProgressionView(value: unknown): StoryProgressionView {
+  if (isStoryProgressionView(value)) return value;
+  if (typeof value === "string" && LEGACY_VIEW_ALIASES[value]) return LEGACY_VIEW_ALIASES[value]!;
+  return "tree";
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────
@@ -62,17 +76,15 @@ export function isStoryProgressionView(value: unknown): value is StoryProgressio
 export interface StoryProgressionCanvasProps {
   readonly bookId: string;
   /** 初始视图；外部再次变更时会同步切换内部视图（侧栏跳转入口）。 */
-  readonly initialView?: StoryProgressionView;
-  /** 当前写作章节号（由宿主透传，用于徽标与发展历程定位）。 */
+  /** 初始视图；缺省进故事树。 */
+  readonly initialView?: StoryProgressionView | string;
+  /** 当前写作章节号（由宿主透传）。 */
   readonly currentChapter?: number;
-  readonly runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
-  /** 地图节点点击 → 跳转打开对应章节（与写作主面板协同）。 */
+  /** 节点/格子点击 → 跳转打开对应章节（与写作主面板协同）。 */
   readonly onOpenChapter?: (chapterNumber: number) => void;
-  /** 地图规划节点 → 提升为正式大纲条目/手稿章节。 */
-  readonly onPromoteOutlineNode?: (node: StoryMapNodeData) => void;
-  /** 发展历程节点点击 → 打开实体详情抽屉；带 entryId 时宿主可直接跳角色卡。 */
+  /** 打开实体详情抽屉；带 entryId 时宿主可直接跳经纬条目卡。 */
   readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
-  /** 故事地图空态 → 把主支线梳理意图交给叙述者执行。 */
+  /** 把意图交给叙述者执行（规划下一章 / 补缺失线索）。 */
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
@@ -80,92 +92,38 @@ export interface StoryProgressionCanvasProps {
 
 export function StoryProgressionCanvas({
   bookId,
-  initialView = "evolution",
+  initialView = "tree",
   currentChapter,
-  runtimeFetch,
   onOpenChapter,
-  onPromoteOutlineNode,
   onOpenEntityDetail,
   onSendToNarrator,
 }: StoryProgressionCanvasProps) {
-  // 顶层状态管理当前视图；initialView 变化时同步（侧栏跳转同一 tab 换视图）。
-  const [view, setView] = useState<StoryProgressionView>(
-    isStoryProgressionView(initialView) ? initialView : "evolution",
-  );
+  const [view, setView] = useState<StoryProgressionView>(() => normalizeStoryProgressionView(initialView));
   useEffect(() => {
-    if (isStoryProgressionView(initialView)) setView(initialView);
+    setView(normalizeStoryProgressionView(initialView));
   }, [initialView]);
 
-  // 聚焦实体（标签栏）：作用于发展历程图谱聚焦。
-  const [focusInput, setFocusInput] = useState("");
-  const [appliedFocus, setAppliedFocus] = useState("");
-  const applyFocus = useCallback(() => {
-    setAppliedFocus(focusInput.trim());
-  }, [focusInput]);
-
-  // ── 视图渲染 ────────────────────────────────────────────────────────────
+  const openEntityDetail = useCallback(
+    (entity: string, entryId?: string) => onOpenEntityDetail?.(entity, entryId),
+    [onOpenEntityDetail],
+  );
 
   if (!bookId) {
     return (
-      <div className="flex h-full min-h-[80vh] flex-col items-center justify-center gap-2 text-sm text-muted-foreground" data-testid="story-progression-canvas">
+      <div
+        className="flex h-full min-h-[80vh] flex-col items-center justify-center gap-2 text-sm text-muted-foreground"
+        data-testid="story-progression-canvas"
+      >
         <AlertCircle className="h-8 w-8 text-muted-foreground/60" />
-        <p>尚未绑定书籍，无法打开故事推进画布。</p>
+        <p>尚未绑定书籍，无法打开故事推进。</p>
         <p className="text-xs">请先在左侧选择一本书籍。</p>
       </div>
     );
   }
 
-  const renderMapView = () => (
-    <div className="h-full min-h-[80vh]" data-testid="story-progression-map">
-      <Suspense
-        fallback={
-          <div className="flex h-full min-h-[80vh] items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> 正在加载故事地图…
-          </div>
-        }
-      >
-        {/* 只读画布：节点可拖拽/缩放/点击跳章，但停用连线手柄等写操作 */}
-        <StoryMapCanvas
-          bookId={bookId}
-          runtimeFetch={runtimeFetch}
-          onOpenChapter={onOpenChapter}
-          onPromote={onPromoteOutlineNode}
-          onSendToNarrator={onSendToNarrator}
-        />
-      </Suspense>
-    </div>
-  );
-
-  const renderEvolutionView = () => (
-    <div className="h-full min-h-[80vh]" data-testid="story-progression-evolution">
-      {/* key 绑定聚焦实体：切换聚焦时重建工作区以应用 initialFocusEntity */}
-      <DevelopmentTimelineView
-        key={`evolution:${appliedFocus || "all"}`}
-        bookId={bookId}
-        currentChapter={currentChapter}
-        frameClassName="h-full min-h-[80vh]"
-        initialFocusEntity={appliedFocus || undefined}
-        onOpenEntityDetail={onOpenEntityDetail}
-        onOpenChapter={onOpenChapter}
-      />
-    </div>
-  );
-
-  const renderChronicleView = () => (
-    <div className="h-full min-h-[80vh]" data-testid="story-progression-chronicle">
-      <Suspense
-        fallback={
-          <div className="flex h-full min-h-[80vh] items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> 正在铺开里/表世界对照…
-          </div>
-        }
-      >
-        <ChronicleHelixCanvas
-          bookId={bookId}
-          currentChapter={currentChapter}
-          onOpenEntityDetail={onOpenEntityDetail}
-        />
-      </Suspense>
+  const fallback = (label: string) => (
+    <div className="flex h-full min-h-[80vh] items-center justify-center gap-2 text-sm text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" /> {label}
     </div>
   );
 
@@ -174,71 +132,137 @@ export function StoryProgressionCanvas({
       <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <div className="flex items-center gap-2">
           <ScrollText className="h-4 w-4 text-emerald-600" />
-          <span className="text-sm font-semibold">故事画布</span>
+          <span className="text-sm font-semibold">故事推进</span>
           <Badge variant="outline" data-testid="story-progression-chapter-badge">
             第 {currentChapter ?? "?"} 章
           </Badge>
         </div>
+
         <nav
           className="flex items-center gap-1 rounded-md bg-muted/60 p-1"
           role="tablist"
-          aria-label="故事画布视图切换"
+          aria-label="故事推进视图切换"
         >
-          {STORY_PROGRESSION_VIEWS.map((def) => {
+          {STORY_PROGRESSION_VIEWS.map((def, index) => {
             const Icon = def.icon;
             const active = view === def.id;
+            const firstReference = def.reference && !STORY_PROGRESSION_VIEWS[index - 1]?.reference;
             return (
-              <button
-                key={def.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                title={def.description}
-                onClick={() => setView(def.id)}
-                className={
-                  "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors " +
-                  (active ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground")
-                }
-              >
-                <Icon className="h-3 w-3" /> {def.label}
-              </button>
+              <span key={def.id} className="flex items-center gap-1">
+                {/* 分隔符明确区分主视觉与参考视图 */}
+                {firstReference ? (
+                  <span className="mx-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <span className="h-4 w-px bg-border" aria-hidden />
+                    参考
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  title={def.description}
+                  onClick={() => setView(def.id)}
+                  className={
+                    "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors "
+                    + (active ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")
+                  }
+                >
+                  <Icon className="h-3 w-3" /> {def.label}
+                </button>
+              </span>
             );
           })}
         </nav>
-        <div className="ml-auto flex items-center gap-1">
-          <Input
-            value={focusInput}
-            onChange={(event) => setFocusInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") applyFocus();
-            }}
-            placeholder="聚焦实体（角色 / 卷）"
-            aria-label="聚焦实体"
-            className="h-7 w-44 text-xs"
-          />
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={applyFocus} disabled={!focusInput.trim()}>
-            <Crosshair className="mr-1 h-3 w-3" /> 聚焦
-          </Button>
-          {appliedFocus && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-xs"
-              onClick={() => {
-                setAppliedFocus("");
-                setFocusInput("");
-              }}
-            >
-              <X className="mr-1 h-3 w-3" /> 清除
-            </Button>
-          )}
-        </div>
       </header>
 
-      {/* 流视图高度标准：各视图统一 h-full + 80vh 下限；滚动收敛在视图体内 */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {view === "map" ? renderMapView() : view === "chronicle" ? renderChronicleView() : renderEvolutionView()}
+      <div className="min-h-0 flex-1 overflow-hidden p-2">
+        {view === "tree" ? (
+          <div className="h-full min-h-0" data-testid="story-progression-tree">
+            <Suspense fallback={fallback("正在铺开正图…")}>
+              <CanonicalTreesPanel
+                bookId={bookId}
+                {...(onOpenEntityDetail
+                  ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
+                  : {})}
+                {...(onOpenChapter ? { onOpenChapter } : {})}
+                {...(onSendToNarrator ? { onSendToNarrator } : {})}
+              />
+            </Suspense>
+          </div>
+        ) : view === "board" ? (
+          <div className="h-full min-h-0" data-testid="story-progression-board">
+            <StoryProgressBoard
+              bookId={bookId}
+              {...(currentChapter !== undefined ? { currentChapter } : {})}
+              {...(onOpenChapter ? { onOpenChapter } : {})}
+              {...(onOpenEntityDetail ? { onOpenEntityDetail: openEntityDetail } : {})}
+              {...(onSendToNarrator ? { onSendToNarrator } : {})}
+            />
+          </div>
+        ) : view === "timeline" ? (
+          <div className="h-full min-h-0" data-testid="story-progression-timeline">
+            <Suspense fallback={fallback("正在铺开发展历程树…")}>
+              <CanonicalTreesPanel
+                bookId={bookId}
+                initialKind="timeline"
+                showSwitcher={false}
+                {...(onOpenEntityDetail
+                  ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
+                  : {})}
+                {...(onOpenChapter ? { onOpenChapter } : {})}
+                {...(onSendToNarrator ? { onSendToNarrator } : {})}
+              />
+            </Suspense>
+          </div>
+        ) : view === "chronicle" ? (
+          <div className="h-full min-h-0" data-testid="story-progression-chronicle">
+            <Suspense fallback={fallback("正在铺开章节脉络树…")}>
+              <CanonicalTreesPanel
+                bookId={bookId}
+                initialKind="chronicle"
+                showSwitcher={false}
+                {...(onOpenEntityDetail
+                  ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
+                  : {})}
+                {...(onOpenChapter ? { onOpenChapter } : {})}
+                {...(onSendToNarrator ? { onSendToNarrator } : {})}
+              />
+            </Suspense>
+          </div>
+        ) : (
+          <div className="h-full min-h-0" data-testid="story-progression-network">
+            <Suspense fallback={fallback("正在铺开关系树…")}>
+              <CanonicalTreesPanel
+                bookId={bookId}
+                initialKind="relations"
+                showSwitcher={false}
+                {...(onOpenEntityDetail
+                  ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
+                  : {})}
+                {...(onOpenChapter ? { onOpenChapter } : {})}
+                {...(onSendToNarrator ? { onSendToNarrator } : {})}
+              />
+            </Suspense>
+          </div>
+        )}
       </div>
+
+      {view === "chronicle" || view === "network" || view === "timeline" ? (
+        <footer className="flex shrink-0 items-center gap-2 border-t px-3 py-1.5">
+          <span className="text-[10px] text-muted-foreground">
+            这是参考视图，回答「已经写了什么」。看层级结构用故事树，看「下一章该写什么」用推进。
+          </span>
+          <Button
+            size="xs"
+            variant="ghost"
+            className="ml-auto h-6 px-1.5 text-[10px]"
+            data-testid="story-progression-back-to-board"
+            onClick={() => setView("tree")}
+          >
+            回到故事树
+          </Button>
+        </footer>
+      ) : null}
     </section>
   );
 }

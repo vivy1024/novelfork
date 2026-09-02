@@ -20,6 +20,7 @@ import {
   type WriteFixActionId,
   type WriteViewModel,
 } from "./write-view-state";
+import { useWritingProgressRefresh } from "./use-writing-progress-refresh";
 import {
   buildVolumeCockpitModel,
   type VolumeCockpitModel,
@@ -33,13 +34,8 @@ import {
 } from "./narrative-pending-events";
 import { CreativeCompassPanel } from "./CreativeCompassPanel";
 
-/**
- * 写作进度事件：章节保存/结算完成后由工作台派发，写作视图据此自动刷新
- * 就绪状态、卷驾驶舱与本章提议，免去作者手动点刷新。
- *
- * 用一次性 DOM 事件而非轮询定时器：刷新只在真正发生写作动作时触发。
- */
-export const WRITING_PROGRESS_EVENT = "novelfork:writing-progress";
+/** @deprecated 请从 writing-progress-event 导入；此处保留兼容旧 import。 */
+export { WRITING_PROGRESS_EVENT } from "./writing-progress-event";
 
 export interface WriteViewPanelProps {
   readonly bookId?: string;
@@ -203,13 +199,7 @@ export function WriteViewPanel({
     void loadVolume();
   }, [loadProposals, loadVolume, runPreflight]);
 
-  // 写作进度事件：章节保存/结算完成后刷新。一次性事件，无常驻定时器。
-  useEffect(() => {
-    if (!bookId) return;
-    const handler = () => refreshAll();
-    window.addEventListener(WRITING_PROGRESS_EVENT, handler);
-    return () => window.removeEventListener(WRITING_PROGRESS_EVENT, handler);
-  }, [bookId, refreshAll]);
+  useWritingProgressRefresh(bookId, refreshAll);
 
   // 面板由隐藏转为可见时刷新一次：覆盖「叙述者异步写完、作者切回写作视图」，
   // 免去手动刷新，也避免面板不可见时做无谓请求。

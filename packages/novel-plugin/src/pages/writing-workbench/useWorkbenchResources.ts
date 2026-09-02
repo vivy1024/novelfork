@@ -216,19 +216,27 @@ export function createMemoryCenterNode(bookId: string): WorkbenchResourceNode {
   };
 }
 
-/** 故事推进画布的合法初始视图（大纲总览已收敛至侧栏「章节与大纲」）。 */
-export type StoryProgressionPreferredView = "map" | "evolution" | "chronicle";
+/** 故事推进画布的合法初始视图；旧取值由画布归一化到 tree。 */
+export type StoryProgressionPreferredView =
+  | "tree"
+  | "board"
+  | "chronicle"
+  | "network"
+  | "timeline"
+  | "map"
+  | "evolution"
+  | "outline";
 
 /**
  * 创建「故事推进大屏画布」合成资源节点。
  *
  * 同一本书共用一个 tab（id 固定为 story-progression:{bookId}），
- * 不同视图（map/evolution/chronicle）通过 metadata.preferredView 表达，
+ * 不同视图通过 metadata.preferredView 表达，
  * 由 StoryProgressionCanvas 内部切换，避免侧栏跳转堆出多个垂直 tab。
  */
 export function createStoryProgressionNode(
   bookId: string,
-  preferredView: StoryProgressionPreferredView = "evolution",
+  preferredView: StoryProgressionPreferredView = "tree",
 ): WorkbenchResourceNode {
   return {
     id: `story-progression:${bookId}`,

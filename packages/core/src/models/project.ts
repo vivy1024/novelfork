@@ -16,6 +16,18 @@ export const LLMConfigSchema = z.object({
 
 export type LLMConfig = z.infer<typeof LLMConfigSchema>;
 
+/**
+ * 独立 embedding provider 的配置形状。密钥落在 NovelFork 产品库 kv_store，
+ * 不进 novelfork.json，也不写 .env。
+ */
+export const EmbeddingConfigSchema = z.object({
+  baseUrl: z.string().url(),
+  apiKey: z.string().default(""),
+  model: z.string().min(1).default("BAAI/bge-m3"),
+  dim: z.number().int().min(1).default(1024),
+});
+export type EmbeddingConfig = z.infer<typeof EmbeddingConfigSchema>;
+
 export const NotifyChannelSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("telegram"),

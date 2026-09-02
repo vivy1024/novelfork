@@ -1,4 +1,14 @@
-export type NarrativeMemoryView = "relationship" | "timeline" | "character_arc" | "conflict" | "event_chain" | "wave" | "anchor";
+import { looksLikeEntity } from "../../engine/narrative-taxonomy/entity-name-heuristics.js";
+
+export type NarrativeMemoryView =
+  | "relationship"
+  | "timeline"
+  | "character_arc"
+  | "foreshadowing"
+  | "conflict"
+  | "event_chain"
+  | "wave"
+  | "anchor";
 
 export interface NarrativeFact {
   id: string;
@@ -29,10 +39,52 @@ export interface NarrativeEvent {
   /** 实体身份链：命中经纬实体字典时回填的条目 id（API 已透传）。 */
   subjectEntryId?: string;
   objectEntryId?: string;
+  causedBy?: readonly string[];
 }
 
-export type GraphNodeKind = "entity" | "fact" | "event";
-export type GraphEdgeKind = "fact" | "event" | "sequence";
+/** memory.graph 已算好的共现边（source/target 是 canonical 名）。 */
+export interface GraphCooccurrenceEdge {
+  readonly source: string;
+  readonly target: string;
+  readonly weight?: number;
+  readonly coCount?: number;
+  readonly firstChapter?: number;
+  readonly lastChapter?: number;
+}
+
+/** memory.graph 的显式/回落因果节点。 */
+export interface GraphCausalNode {
+  readonly id: string;
+  readonly chapterNumber: number;
+  readonly summary: string;
+  readonly eventType: string;
+  readonly participants?: readonly string[];
+  readonly riskLevel?: string;
+  readonly causes: readonly string[];
+  readonly causeSource?: "explicit" | "heuristic" | "none";
+}
+
+/** memory.graph 的伏笔三态。 */
+export interface GraphForeshadowNode {
+  readonly id: string;
+  readonly entryId?: string;
+  readonly label: string;
+  readonly phase: string;
+  readonly setupChapter?: number;
+  readonly triggerChapter?: number;
+  readonly triggerCondition?: string;
+  readonly payoffChapter?: number;
+  readonly dangling?: boolean;
+}
+
+export interface GraphQualitySummary {
+  readonly explicitCausalEdges?: number;
+  readonly missingCausality?: boolean;
+  readonly entityLinkRate?: number;
+}
+
+export type GraphNodeKind = "entity" | "fact" | "event" | "foreshadow";
+export type GraphEdgeKind = "fact" | "event" | "sequence" | "cooccurrence" | "causal" | "foreshadow";
 
 export interface GraphPosition {
   x: number;
@@ -82,6 +134,9 @@ export interface GraphStats {
   eventCount: number;
   chapterCount: number;
   entityCount: number;
+  cooccurrenceCount: number;
+  causalCount: number;
+  foreshadowCount: number;
 }
 
 export interface SequenceLaneHeader {
@@ -122,6 +177,11 @@ export interface BuildGraphModelInput {
   chapterStep?: number;
   /** 前端隐藏的角色泳道；布局时不占高度。 */
   hiddenLanes?: ReadonlySet<string>;
+  /** 后端共现边；关系图优先用它，避免把事件短语画成实体。 */
+  cooccurrenceEdges?: readonly GraphCooccurrenceEdge[];
+  causal?: readonly GraphCausalNode[];
+  foreshadows?: readonly GraphForeshadowNode[];
+  quality?: GraphQualitySummary;
 }
 
 const ENTITY_WIDTH = 196;
@@ -188,6 +248,17 @@ function nodePosition(x: number, y: number, width: number, height: number): Grap
 
 function entityName(value: unknown): string {
   return clean(value, PLACEHOLDER_ENTITY);
+}
+
+/**
+ * 未命中经纬 entryId 时，丢掉事件短语/动宾短语脏节点。
+ * 字典命中（有 entryId）或共现算法已归一的名字不走这条启发式。
+ */
+export function shouldKeepEntityName(name: string, entryId?: string): boolean {
+  if (entryId?.trim()) return true;
+  const normalized = entityName(name);
+  if (!normalized || normalized === PLACEHOLDER_ENTITY) return false;
+  return looksLikeEntity(normalized);
 }
 
 function factKey(fact: NarrativeFact): string {
@@ -284,13 +355,14 @@ function createEventNode(event: NarrativeEvent): GraphNodeModel {
   };
 }
 
-function createFactEdges(facts: readonly NarrativeFact[]): GraphEdgeModel[] {
+function createFactEdges(facts: readonly NarrativeFact[], allowedEntities?: ReadonlySet<string>): GraphEdgeModel[] {
   const seen = new Set<string>();
   const edges: GraphEdgeModel[] = [];
   for (const fact of facts) {
     const sourceName = entityName(fact.subject);
     const targetName = entityName(fact.object);
     if (sourceName === targetName) continue;
+    if (allowedEntities && (!allowedEntities.has(sourceName) || !allowedEntities.has(targetName))) continue;
     const source = stableId("entity", sourceName);
     const target = stableId("entity", targetName);
     const key = `${source}|${target}|${fact.predicate}`;
@@ -308,6 +380,59 @@ function createFactEdges(facts: readonly NarrativeFact[]): GraphEdgeModel[] {
     });
   }
   return edges;
+}
+
+function createCooccurrenceEdges(
+  edges: readonly GraphCooccurrenceEdge[],
+  allowedEntities: ReadonlySet<string>,
+): GraphEdgeModel[] {
+  const seen = new Set<string>();
+  const result: GraphEdgeModel[] = [];
+  for (const edge of edges) {
+    const sourceName = entityName(edge.source);
+    const targetName = entityName(edge.target);
+    if (!allowedEntities.has(sourceName) || !allowedEntities.has(targetName) || sourceName === targetName) continue;
+    const key = sourceName < targetName ? `${sourceName}|${targetName}` : `${targetName}|${sourceName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const count = edge.coCount ?? 0;
+    const label = count > 0 ? `同场 ${count} 次` : "共现";
+    result.push({
+      id: stableId("co-edge", key),
+      source: stableId("entity", sourceName),
+      target: stableId("entity", targetName),
+      label,
+      displayLabel: displayPredicate(label),
+      kind: "cooccurrence",
+      category: "relationship",
+    });
+  }
+  return result;
+}
+
+function createForeshadowNode(node: GraphForeshadowNode): GraphNodeModel {
+  const title = clean(node.label, "未命名伏笔");
+  const triggerHint = node.triggerCondition
+    ? `触发条件：${node.triggerCondition}`
+    : node.triggerChapter
+      ? `第${node.triggerChapter}章已触发`
+      : undefined;
+  return {
+    id: node.id.startsWith("foreshadow:") ? node.id : stableId("foreshadow", node.id),
+    kind: "foreshadow",
+    title,
+    displayTitle: displayLabel(title, 24),
+    subtitle: node.phase,
+    description: node.dangling
+      ? "断头债：埋了很久还没回收"
+      : triggerHint ?? node.phase,
+    status: node.phase,
+    chapterNumber: node.triggerChapter ?? node.setupChapter,
+    entryId: node.entryId,
+    position: { x: 0, y: 0 },
+    width: FACT_WIDTH,
+    height: FACT_HEIGHT,
+  };
 }
 
 /**
@@ -339,23 +464,25 @@ function createEntityNodes(
   facts: readonly NarrativeFact[],
   events: readonly NarrativeEvent[] = [],
   entryIds: ReadonlyMap<string, string> = new Map(),
+  extraNames: readonly string[] = [],
 ): GraphNodeModel[] {
   const nodes = new Map<string, GraphNodeModel>();
+  const add = (rawName: string, category?: string, rawEntryId?: string) => {
+    const normalized = entityName(rawName);
+    const entryId = rawEntryId || entryIds.get(normalized);
+    if (!shouldKeepEntityName(normalized, entryId)) return;
+    const id = stableId("entity", normalized);
+    if (!nodes.has(id)) nodes.set(id, { ...createEntityNode(normalized, category), entryId });
+  };
   for (const fact of facts) {
-    for (const name of [fact.subject, fact.object]) {
-      const normalized = entityName(name);
-      const id = stableId("entity", normalized);
-      if (!nodes.has(id)) nodes.set(id, { ...createEntityNode(normalized, fact.category), entryId: entryIds.get(normalized) });
-    }
+    add(fact.subject, fact.category, fact.subjectEntryId);
+    add(fact.object, fact.category, fact.objectEntryId);
   }
   for (const event of events) {
-    const normalized = entityName(event.subject);
-    const id = stableId("entity", normalized);
-    if (!nodes.has(id)) nodes.set(id, { ...createEntityNode(normalized, "character_state"), entryId: entryIds.get(normalized) });
-    const object = entityName(event.object);
-    const objectId = stableId("entity", object);
-    if (!nodes.has(objectId)) nodes.set(objectId, { ...createEntityNode(object, "timeline"), entryId: entryIds.get(object) });
+    add(event.subject, "character_state", event.subjectEntryId);
+    add(event.object, "timeline", event.objectEntryId);
   }
+  for (const name of extraNames) add(name, "relationship", entryIds.get(entityName(name)));
   return [...nodes.values()];
 }
 
@@ -665,19 +792,30 @@ function layoutSequenceNodes(
   };
 }
 
-function buildEntityGraph(facts: readonly NarrativeFact[], events: readonly NarrativeEvent[], view: NarrativeMemoryView, focusEntity?: string): NarrativeGraphModel {
+function buildEntityGraph(
+  facts: readonly NarrativeFact[],
+  events: readonly NarrativeEvent[],
+  view: NarrativeMemoryView,
+  focusEntity?: string,
+  cooccurrenceEdges: readonly GraphCooccurrenceEdge[] = [],
+): NarrativeGraphModel {
   // 身份链索引从全部 facts+events 提取（不随视图裁剪），保证任何视图下实体节点都带得上 entryId。
+  const extraNames = cooccurrenceEdges.flatMap((edge) => [edge.source, edge.target]);
   const entryIds = buildEntityEntryIdIndex(facts, events);
-  const entityNodes = createEntityNodes(facts, view === "wave" ? events : [], entryIds);
-  const edges = createFactEdges(facts);
+  const entityNodes = createEntityNodes(facts, view === "wave" ? events : [], entryIds, extraNames);
+  const allowed = new Set(entityNodes.map((node) => node.entityName ?? node.title));
+  const coEdges = createCooccurrenceEdges(cooccurrenceEdges, allowed);
+  const factEdges = createFactEdges(facts, allowed);
+  const edges = coEdges.length > 0 ? [...coEdges, ...factEdges.filter((edge) => edge.category !== "relationship")] : factEdges;
   const eventNodes = view === "wave" ? uniqueEvents(events).map(createEventNode) : [];
   const allNodes = [...entityNodes, ...eventNodes];
   if (view === "wave") {
     for (const event of eventNodes) {
-      const source = stableId("entity", event.entityName ?? PLACEHOLDER_ENTITY);
+      const sourceName = event.entityName ?? PLACEHOLDER_ENTITY;
+      if (!allowed.has(sourceName)) continue;
       edges.push({
         id: `${event.id}:event`,
-        source,
+        source: stableId("entity", sourceName),
         target: event.id,
         label: event.subtitle ?? "事件",
         displayLabel: displayPredicate(event.subtitle ?? "事件"),
@@ -687,9 +825,50 @@ function buildEntityGraph(facts: readonly NarrativeFact[], events: readonly Narr
     }
   }
   const focusNodeId = layoutEntityNodes(entityNodes, edges.filter((edge) => edge.target.startsWith("entity:") && edge.source.startsWith("entity:")), focusEntity);
-  if (view === "conflict") layoutConflictNodes(entityNodes, facts);
+  if (view === "conflict") layoutConflictNodes(entityNodes, facts.filter((fact) => allowed.has(entityName(fact.subject)) && allowed.has(entityName(fact.object))));
   if (view === "wave") layoutWaveNodes(entityNodes, eventNodes, focusNodeId);
-  return createModel(allNodes, edges, facts, events, focusNodeId, focusEntity);
+  return createModel(allNodes, edges, facts, events, focusNodeId, focusEntity, undefined, cooccurrenceEdges.length, 0, 0);
+}
+
+function eventNodeId(event: NarrativeEvent): string {
+  return stableId("event", event.id || eventKey(event));
+}
+
+function attachCausalEdges(
+  events: readonly NarrativeEvent[],
+  causal: readonly GraphCausalNode[],
+  existing: GraphEdgeModel[],
+): GraphEdgeModel[] {
+  if (causal.length === 0) return existing;
+  const byId = new Map(events.map((event) => [event.id, event]));
+  const extra: GraphEdgeModel[] = [];
+  const causalKeys = new Set<string>();
+  for (const node of causal) {
+    const target = byId.get(node.id);
+    if (!target) continue;
+    const targetId = eventNodeId(target);
+    for (const causeId of node.causes) {
+      const source = byId.get(causeId);
+      if (!source) continue;
+      const sourceId = eventNodeId(source);
+      const key = `${sourceId}->${targetId}`;
+      if (causalKeys.has(key)) continue;
+      causalKeys.add(key);
+      const label = node.causeSource === "explicit" ? "导致" : "可能导致";
+      extra.push({
+        id: stableId("causal", `${causeId}->${node.id}`),
+        source: sourceId,
+        target: targetId,
+        label,
+        displayLabel: label,
+        kind: "causal",
+        animated: node.causeSource === "explicit",
+        riskLevel: node.riskLevel,
+      });
+    }
+  }
+  if (extra.length === 0) return existing;
+  return [...existing.filter((edge) => !causalKeys.has(`${edge.source}->${edge.target}`)), ...extra];
 }
 
 function buildSequenceGraph(
@@ -698,6 +877,7 @@ function buildSequenceGraph(
   view: NarrativeMemoryView,
   chapterStep: number,
   hiddenLanes?: ReadonlySet<string>,
+  causal: readonly GraphCausalNode[] = [],
 ): NarrativeGraphModel {
   // 全量铺开（不再截断最近 8 章）：可读性由 GraphCanvas 的「打开定位当前章 +
   // HEAD 竖线」承担，作者平移/缩放即可回看全书；截断会让历史不可达。
@@ -732,6 +912,9 @@ function buildSequenceGraph(
       edges.push({ id: `${source.id}->${target.id}`, source: source.id, target: target.id, label: "下一事件", displayLabel: "下一事件", kind: "sequence", animated: true });
     }
   }
+  const withCausal = view === "event_chain" || view === "timeline"
+    ? attachCausalEdges(sourceEvents, causal, edges)
+    : edges;
   const sequence = layoutSequenceNodes(eventNodes, view !== "conflict" ? laneByNodeId : undefined, chapterStep, hiddenLanes);
   // 隐藏泳道必须按名字过滤，不能用 sequence.lanes.length 回退：
   // 把最后一条泳道关掉后 lanes 为空，旧逻辑会把全部节点又画回来。
@@ -740,9 +923,69 @@ function buildSequenceGraph(
     : eventNodes;
   const visibleIds = new Set(visibleNodes.map((node) => node.id));
   const visibleEdges = visibleNodes.length === eventNodes.length
-    ? edges
-    : edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
-  return createModel(visibleNodes, visibleEdges, facts, events, undefined, undefined, sequence);
+    ? withCausal
+    : withCausal.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
+  return createModel(visibleNodes, visibleEdges, facts, events, undefined, undefined, sequence, 0, causal.length, 0);
+}
+
+function buildForeshadowGraph(
+  facts: readonly NarrativeFact[],
+  events: readonly NarrativeEvent[],
+  foreshadows: readonly GraphForeshadowNode[],
+  chapterStep: number,
+): NarrativeGraphModel {
+  const nodes = foreshadows.map(createForeshadowNode);
+  const phaseRank: Record<string, number> = {
+    planted: 0,
+    reinforced: 1,
+    triggered: 2,
+    paid_off: 3,
+    abandoned: 4,
+    unknown: 5,
+  };
+  const columns = new Map<string, GraphNodeModel[]>();
+  for (const node of nodes) {
+    const phase = node.status ?? "unknown";
+    const group = columns.get(phase) ?? [];
+    group.push(node);
+    columns.set(phase, group);
+  }
+  const order = ["planted", "reinforced", "triggered", "paid_off", "abandoned", "unknown"];
+  order.forEach((phase, column) => {
+    const group = (columns.get(phase) ?? []).sort((a, b) => (a.chapterNumber ?? 0) - (b.chapterNumber ?? 0) || a.title.localeCompare(b.title));
+    group.forEach((node, row) => {
+      node.position = nodePosition(SEQUENCE_ORIGIN_X + column * Math.max(chapterStep, 240), SEQUENCE_ORIGIN_Y + row * 140, node.width, node.height);
+    });
+  });
+  const leftover = nodes.filter((node) => !order.includes(node.status ?? ""));
+  leftover.forEach((node, index) => {
+    node.position = nodePosition(SEQUENCE_ORIGIN_X + 6 * 240, SEQUENCE_ORIGIN_Y + index * 140, node.width, node.height);
+  });
+  const edges: GraphEdgeModel[] = [];
+  const byLabel = new Map<string, GraphNodeModel[]>();
+  for (const node of nodes) {
+    const key = node.title;
+    const group = byLabel.get(key) ?? [];
+    group.push(node);
+    byLabel.set(key, group);
+  }
+  for (const group of byLabel.values()) {
+    group.sort((a, b) => (phaseRank[a.status ?? "unknown"] ?? 9) - (phaseRank[b.status ?? "unknown"] ?? 9));
+    for (let index = 1; index < group.length; index += 1) {
+      const source = group[index - 1]!;
+      const target = group[index]!;
+      edges.push({
+        id: `${source.id}->${target.id}`,
+        source: source.id,
+        target: target.id,
+        label: "推进",
+        displayLabel: "推进",
+        kind: "foreshadow",
+        animated: true,
+      });
+    }
+  }
+  return createModel(nodes, edges, facts, events, undefined, undefined, undefined, 0, 0, foreshadows.length);
 }
 
 function createModel(
@@ -753,6 +996,9 @@ function createModel(
   focusNodeId?: string,
   focusLabel?: string,
   sequence?: SequenceLayoutMeta,
+  cooccurrenceCount = 0,
+  causalCount = 0,
+  foreshadowCount = 0,
 ): NarrativeGraphModel {
   const entityCount = nodes.filter((node) => node.kind === "entity").length;
   const chapters = new Set([...facts.map((fact) => fact.sourceChapter), ...events.map((event) => event.chapterNumber)].filter((chapter): chapter is number => chapter !== undefined));
@@ -769,6 +1015,9 @@ function createModel(
       eventCount: events.length,
       chapterCount: chapters.size,
       entityCount,
+      cooccurrenceCount,
+      causalCount,
+      foreshadowCount,
     },
   };
 }
@@ -778,14 +1027,31 @@ export function buildNarrativeGraphModel(input: BuildGraphModelInput): Narrative
   const events = uniqueEvents(input.events);
   // anchor 是发展历程的章节锚定时间线：它复用 timeline 的布局和现有数据接口。
   const resolvedView = input.view === "anchor" ? "timeline" : input.view;
-  if (resolvedView === "relationship" || resolvedView === "conflict" || resolvedView === "wave") {
-    return buildEntityGraph(facts, events, resolvedView, input.focusEntity);
+  if (resolvedView === "foreshadowing") {
+    return buildForeshadowGraph(facts, events, input.foreshadows ?? [], clampChapterStep(input.chapterStep));
   }
-  return buildSequenceGraph(facts, events, resolvedView, clampChapterStep(input.chapterStep), input.hiddenLanes);
+  if (resolvedView === "relationship" || resolvedView === "conflict" || resolvedView === "wave") {
+    return buildEntityGraph(facts, events, resolvedView, input.focusEntity, input.cooccurrenceEdges ?? []);
+  }
+  return buildSequenceGraph(
+    facts,
+    events,
+    resolvedView,
+    clampChapterStep(input.chapterStep),
+    input.hiddenLanes,
+    input.causal ?? [],
+  );
 }
 
 export function isNarrativeMemoryView(value: unknown): value is NarrativeMemoryView {
-  return value === "relationship" || value === "timeline" || value === "character_arc" || value === "conflict" || value === "event_chain" || value === "wave" || value === "anchor";
+  return value === "relationship"
+    || value === "timeline"
+    || value === "character_arc"
+    || value === "foreshadowing"
+    || value === "conflict"
+    || value === "event_chain"
+    || value === "wave"
+    || value === "anchor";
 }
 
 export function viewLabel(view: NarrativeMemoryView): string {
@@ -793,6 +1059,7 @@ export function viewLabel(view: NarrativeMemoryView): string {
     case "relationship": return "关系图";
     case "timeline": return "时间线";
     case "character_arc": return "角色弧线";
+    case "foreshadowing": return "伏笔网络";
     case "conflict": return "矛盾地图";
     case "event_chain": return "事件链";
     case "wave": return "浪潮视图";
@@ -806,6 +1073,7 @@ export function viewFromLabel(label: unknown): NarrativeMemoryView | undefined {
     case "时间线": return "timeline";
     case "锚点时间线": return "anchor";
     case "角色弧线": return "character_arc";
+    case "伏笔网络": return "foreshadowing";
     case "矛盾地图": return "conflict";
     case "事件链": return "event_chain";
     case "浪潮视图": return "wave";
