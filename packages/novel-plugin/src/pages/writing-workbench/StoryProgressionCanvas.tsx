@@ -6,6 +6,8 @@ import {
   FolderTree,
   LayoutGrid,
   Loader2,
+  Maximize2,
+  Minimize2,
   Network,
   ScrollText,
   type LucideIcon,
@@ -99,9 +101,20 @@ export function StoryProgressionCanvas({
   onSendToNarrator,
 }: StoryProgressionCanvasProps) {
   const [view, setView] = useState<StoryProgressionView>(() => normalizeStoryProgressionView(initialView));
+  const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
     setView(normalizeStoryProgressionView(initialView));
   }, [initialView]);
+
+  // Esc 退出全景
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fullscreen]);
 
   const openEntityDetail = useCallback(
     (entity: string, entryId?: string) => onOpenEntityDetail?.(entity, entryId),
@@ -128,7 +141,15 @@ export function StoryProgressionCanvas({
   );
 
   return (
-    <section className="flex h-full min-h-0 flex-col" data-testid="story-progression-canvas">
+    <section
+      className={
+        fullscreen
+          ? "fixed inset-0 z-[80] flex flex-col bg-background"
+          : "flex h-full min-h-0 flex-col"
+      }
+      data-testid="story-progression-canvas"
+      data-fullscreen={fullscreen ? "true" : "false"}
+    >
       <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <div className="flex items-center gap-2">
           <ScrollText className="h-4 w-4 text-emerald-600" />
@@ -173,9 +194,21 @@ export function StoryProgressionCanvas({
             );
           })}
         </nav>
+
+        <Button
+          size="xs"
+          variant={fullscreen ? "default" : "outline"}
+          className="ml-auto h-7 gap-1 text-xs"
+          title={fullscreen ? "退出全景（Esc）" : "进入全景模式"}
+          data-testid="story-progression-fullscreen"
+          onClick={() => setFullscreen((v) => !v)}
+        >
+          {fullscreen ? <Minimize2 className="size-3" /> : <Maximize2 className="size-3" />}
+          {fullscreen ? "退出全景" : "全景"}
+        </Button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-2">
+      <div className="min-h-0 flex-1 overflow-hidden p-2" data-testid="story-progression-viewport">
         {view === "tree" ? (
           <div className="h-full min-h-0" data-testid="story-progression-tree">
             <Suspense fallback={fallback("正在铺开正图…")}>
@@ -197,6 +230,7 @@ export function StoryProgressionCanvas({
               {...(onOpenChapter ? { onOpenChapter } : {})}
               {...(onOpenEntityDetail ? { onOpenEntityDetail: openEntityDetail } : {})}
               {...(onSendToNarrator ? { onSendToNarrator } : {})}
+              compactHeader={fullscreen}
             />
           </div>
         ) : view === "timeline" ? (

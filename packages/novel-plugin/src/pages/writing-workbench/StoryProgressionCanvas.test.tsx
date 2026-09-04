@@ -92,6 +92,28 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     expect(onOpenEntityDetail).toHaveBeenCalledWith("薛行之", "entry-9");
   });
 
+  it("全景模式接管整屏并可退出", async () => {
+    render(<StoryProgressionCanvas bookId="book-1" currentChapter={29} />);
+
+    const canvas = screen.getByTestId("story-progression-canvas");
+    expect(canvas.getAttribute("data-fullscreen")).toBe("false");
+
+    fireEvent.click(screen.getByTestId("story-progression-fullscreen"));
+    expect(screen.getByTestId("story-progression-canvas").getAttribute("data-fullscreen")).toBe("true");
+    expect(screen.getByText("退出全景")).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.getByTestId("story-progression-canvas").getAttribute("data-fullscreen")).toBe("false");
+    });
+
+    fireEvent.click(screen.getByTestId("story-progression-fullscreen"));
+    fireEvent.click(screen.getByText("退出全景"));
+    await waitFor(() => {
+      expect(screen.getByTestId("story-progression-canvas").getAttribute("data-fullscreen")).toBe("false");
+    });
+  });
+
   it("可切到参考区：章节脉络与关系网", async () => {
     render(<StoryProgressionCanvas bookId="book-1" currentChapter={3} />);
 
