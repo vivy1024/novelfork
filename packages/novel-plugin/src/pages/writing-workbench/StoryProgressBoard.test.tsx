@@ -45,8 +45,8 @@ function mockRoutes(fixture: RouteFixture) {
 }
 
 const summaries = [
-  { id: "s1", category: "chapter-summaries", title: "第 1 章 归档", fields: { chapterNumber: 1, tension_score: 6 } },
-  { id: "s2", category: "chapter-summaries", title: "第 2 章 追查", fields: { chapterNumber: 2, tension_score: 9 } },
+  { id: "s1", category: "chapter-summaries", title: "第 1 章 归档", contentMd: "薛行之接手异常波形，把卷宗压进抽屉。", fields: { chapterNumber: 1, tension_score: 6 } },
+  { id: "s2", category: "chapter-summaries", title: "第 2 章 追查", contentMd: "方工夜里来访，要求复查西京分院。", fields: { chapterNumber: 2, tension_score: 9 } },
 ];
 
 beforeEach(() => {
@@ -65,6 +65,7 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
     await waitFor(() => expect(screen.getByTestId("story-progress-board")).toBeTruthy());
     expect(screen.getByTestId("story-progress-chapter-1")).toBeTruthy();
     expect(screen.getByTestId("story-progress-lane-lane:main")).toBeTruthy();
+    expect(screen.getByTestId("story-progress-cell-summary-main:s1").textContent).toContain("薛行之接手异常波形");
     // 未来列存在且标为待写
     expect(screen.getByTestId("story-progress-chapter-3").textContent).toContain("待写");
   });
