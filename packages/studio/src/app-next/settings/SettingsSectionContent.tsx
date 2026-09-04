@@ -43,6 +43,7 @@ import { TerminalsPanel } from "./panels/TerminalsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { UsersPanel } from "./panels/UsersPanel";
 import { AboutPanel } from "./panels/AboutPanel";
+import { EmbeddingSettingsPanel } from "./panels/EmbeddingSettingsPanel";
 import { SettingsGroup, SettingsPage, SettingsSaveBar, SettingsSwitchRow } from "./components/SettingsPage";
 import { asRecord } from "./runtime-settings-utils";
 
@@ -87,6 +88,8 @@ export function SettingsSectionContent({ sectionId }: SettingsSectionContentProp
       return <AppearancePanel />;
     case "gateway":
       return <GatewayPanel />;
+    case "embedding":
+      return <EmbeddingSettingsPanel />;
     case "search":
       return <SearchSettingsPanel />;
     case "chapters":

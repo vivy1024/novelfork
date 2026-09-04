@@ -74,7 +74,6 @@ const RuntimeProviderSettingsHost = lazy(() =>
 );
 import { createAccountProfileClient } from "./runtime-admin";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
-import { EmbeddingSettingsPanel } from "./settings/panels/EmbeddingSettingsPanel";
 import {
   isSettingsSectionId,
   resolveSettingsSectionId,
@@ -520,10 +519,7 @@ function SettingsRouteLive({
       onMobileBack={() => onNavigate({ kind: "settings" })}
     >
       {activeSectionId === "providers" ? (
-        <div className="flex min-w-0 flex-col gap-8">
-          <RuntimeProviderSettingsHost />
-          <EmbeddingSettingsPanel />
-        </div>
+        <RuntimeProviderSettingsHost />
       ) : (
         <SettingsSectionContent
           sectionId={activeSectionId}
