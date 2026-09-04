@@ -13,6 +13,7 @@ describe("NovelFork shadcn settings registry", () => {
       "appearance",
       "gateway",
       "providers",
+      "embedding",
       "search",
       "proxy",
       "chapters",
@@ -32,7 +33,8 @@ describe("NovelFork shadcn settings registry", () => {
 
   it("preserves legacy route entry points and fails closed for unknown sections", () => {
     expect(isSettingsSectionId("providers")).toBe(true);
-    expect(resolveSettingsSectionId("embedding")).toBe("providers");
+    expect(isSettingsSectionId("embedding")).toBe(true);
+    expect(resolveSettingsSectionId("embedding")).toBe("embedding");
     expect(resolveSettingsSectionId("agent")).toBe("agents");
     expect(resolveSettingsSectionId("custom-subagents")).toBe("agents");
     expect(resolveSettingsSectionId("mcp")).toBe("agents");

@@ -16,6 +16,7 @@ import {
   Search,
   Server,
   Shield,
+  Sparkles,
   SquareTerminal,
   User,
   Users,
@@ -33,6 +34,7 @@ export const SETTINGS_SECTION_IDS = [
   "appearance",
   "gateway",
   "providers",
+  "embedding",
   "search",
   "proxy",
   "chapters",
@@ -64,6 +66,7 @@ export const SETTINGS_SECTIONS: readonly NovelForkSettingsSection[] = [
   { id: "appearance", label: "外观与界面", group: "个人设置", icon: Palette, adminOnly: false },
   { id: "gateway", label: "消息网关", group: "个人设置", icon: Waypoints, adminOnly: false },
   { id: "providers", label: "AI 供应商", group: "实例管理", icon: Cloud, adminOnly: true },
+  { id: "embedding", label: "Embedding 供应商", group: "实例管理", icon: Sparkles, adminOnly: true },
   { id: "search", label: "搜索", group: "实例管理", icon: Search, adminOnly: true },
   { id: "proxy", label: "代理管理", group: "实例管理", icon: Cable, adminOnly: true },
   { id: "chapters", label: "Chapter 与容器", group: "实例管理", icon: Boxes, adminOnly: true },
@@ -80,7 +83,6 @@ export const SETTINGS_SECTIONS: readonly NovelForkSettingsSection[] = [
 ] as const;
 
 const LEGACY_SETTINGS_SECTION_ALIASES: Readonly<Record<string, SettingsSectionId>> = {
-  embedding: "providers",
   agent: "agents",
   "agent-hardening": "agents",
   "custom-subagents": "agents",

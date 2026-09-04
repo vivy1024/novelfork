@@ -168,7 +168,7 @@ export function EmbeddingSettingsPanel({ client = defaultClient }: EmbeddingSett
   return (
     <SettingsPage
       title="Embedding 提供商"
-      description="独立配置向量模型（默认硅基流动 bge-m3），不占用上面的对话模型供应商。"
+      description="独立配置向量模型（默认硅基流动 bge-m3），不占用 AI 供应商里的对话模型。"
       actions={
         <Button type="button" variant="outline" onClick={() => void handleTest()} disabled={testing || saving}>
           <PlugZap data-icon="inline-start" />
@@ -234,7 +234,7 @@ export function EmbeddingSettingsPanel({ client = defaultClient }: EmbeddingSett
               onChange={(event) => setDraft({ ...draft, apiKey: event.currentTarget.value })}
               placeholder="sk-…"
             />
-            <FieldDescription>写入 NovelFork 本机设置库，不进仓库，也不进上面的对话模型供应商。</FieldDescription>
+            <FieldDescription>写入 NovelFork 本机设置库，不进仓库，也不进 AI 供应商页的对话模型配置。</FieldDescription>
           </Field>
         </FieldGroup>
       </SettingsGroup>

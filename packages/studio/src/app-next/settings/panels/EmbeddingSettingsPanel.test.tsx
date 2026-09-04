@@ -55,7 +55,7 @@ describe("EmbeddingSettingsPanel", () => {
     expect((screen.getByLabelText("接口地址") as HTMLInputElement).value).toBe("https://api.siliconflow.cn/v1");
     expect((screen.getByLabelText("向量模型") as HTMLInputElement).value).toBe("BAAI/bge-m3");
     expect((screen.getByLabelText("向量维度") as HTMLInputElement).value).toBe("1024");
-    expect(screen.getByText(/不占用上面的对话模型供应商/)).toBeTruthy();
+    expect(screen.getByText(/不占用 AI 供应商里的对话模型/)).toBeTruthy();
   });
 
   it("saves key and probes connectivity through the product embedding API", async () => {
