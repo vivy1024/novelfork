@@ -35,6 +35,7 @@ describe("qidian ranking parser", () => {
       author: "烽火戏诸侯",
       category: "玄幻",
       word_count: 1_234_000,
+      intro: "一剑开天门",
       source_status: "ok",
     })]);
   });
@@ -46,7 +47,13 @@ describe("qidian ranking parser", () => {
 
   it("parses mobile vite pageContext JSON", () => {
     const records = parseQidianMobileHtml(MOBILE_HTML, "newbook", "2026-06-22");
-    expect(records[0]).toMatchObject({ book_id: "2002", title: "夜的命名术", author: "会说话的肘子", category: "都市" });
+    expect(records[0]).toMatchObject({
+      book_id: "2002",
+      title: "夜的命名术",
+      author: "会说话的肘子",
+      category: "都市",
+      intro: "简介",
+    });
   });
 
   it("falls back to mobile when desktop is blocked", async () => {

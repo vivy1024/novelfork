@@ -25,6 +25,12 @@ describe("novel domain product routes", () => {
 		expect(paths.some((p) => p.includes("/compliance/"))).toBe(true);
 		expect(paths).toContain("POST /api/filter/scan");
 		expect(paths).toContain("GET /api/market/ranks");
+		expect(paths).toContain("POST /api/market/ranks/custom");
+		expect(paths).toContain("DELETE /api/market/ranks/custom/:key");
+		expect(paths).toContain("GET /api/market/scan-prefs");
+		expect(paths).toContain("PUT /api/market/scan-prefs");
+		expect(paths).toContain("GET /api/market/lexicon");
+		expect(paths).toContain("PUT /api/market/lexicon");
 		expect(paths).toContain("GET /api/market/snapshots");
 		expect(paths).toContain("POST /api/market/scan");
 		expect(paths).toContain("GET /api/embedding");

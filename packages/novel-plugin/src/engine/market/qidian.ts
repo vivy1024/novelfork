@@ -4,6 +4,7 @@ import {
   PARSER_VERSION,
   QIDIAN_BASE,
   QIDIAN_RANKS,
+  type RankSourceConfig,
 } from "./config.js";
 import { fetchText, stripTags, todayUtc } from "./http.js";
 import type { BookSnapshot, MarketFetchOptions, RankRecord } from "./types.js";
@@ -180,8 +181,9 @@ function mobileUrl(base: string, page: number): string {
 export async function scrapeQidianRank(
   rankKey: string,
   options: MarketFetchOptions = {},
+  rankConfig?: RankSourceConfig,
 ): Promise<BookSnapshot> {
-  const config = QIDIAN_RANKS.find((rank) => rank.key === rankKey);
+  const config = rankConfig ?? QIDIAN_RANKS.find((rank) => rank.key === rankKey);
   const observedAt = todayUtc(options.now?.());
   if (!config) return statusSnapshot(rankKey, observedAt, "parse_fail");
 

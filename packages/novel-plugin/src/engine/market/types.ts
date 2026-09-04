@@ -69,9 +69,13 @@ export interface AnalysisReport {
 
 export interface MarketFetchOptions {
   readonly fetchImpl?: typeof fetch;
-  readonly now?: () => Date;
   readonly delay?: (ms: number) => Promise<void>;
+  readonly now?: () => Date;
   readonly random?: () => number;
-  readonly maxPages?: number;
   readonly userAgent?: string;
+  readonly timeoutMs?: number;
+  readonly maxPages?: number;
+  readonly proxy?: string;
+  /** 自定义番茄榜（非内置 4 榜）跳过 rank/category API 兜底，只依赖页面 __INITIAL_STATE__。 */
+  readonly allowApiFallback?: boolean;
 }

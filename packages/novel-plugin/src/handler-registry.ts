@@ -70,6 +70,7 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   // Market research
   { toolName: "market.scan", serviceKey: "direct", method: "handleMarketScan" },
   { toolName: "market.query", serviceKey: "direct", method: "handleMarketQuery" },
+  { toolName: "market.ranks", serviceKey: "direct", method: "handleMarketRanks" },
   { toolName: "market.sample_public_chapters", serviceKey: "direct", method: "handleMarketSamplePublicChapters" },
 ];
 

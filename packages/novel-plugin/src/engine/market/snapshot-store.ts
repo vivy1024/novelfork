@@ -17,6 +17,8 @@ export interface SnapshotStoreOptions {
 }
 
 function defaultRootDir(): string {
+  const fromEnv = process.env.NOVELFORK_MARKET_DIR?.trim();
+  if (fromEnv) return join(fromEnv, "snapshots");
   const home = homedir();
   if (home) return join(home, ".novelfork", "market", "snapshots");
   return join(process.cwd(), ".novelfork", "market", "snapshots");
