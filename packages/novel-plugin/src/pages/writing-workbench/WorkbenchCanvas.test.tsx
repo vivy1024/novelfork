@@ -255,9 +255,9 @@ describe("WorkbenchCanvas", () => {
     fireEvent.click(panel);
     expect(onOpenResourceNode).toHaveBeenCalledTimes(1);
     const opened = onOpenResourceNode.mock.calls[0]![0] as WorkbenchResourceNode;
-    // 跳转目标是发展历程权威入口（故事画布 + evolution 视图）
+    // 跳转目标是发展历程权威入口（故事画布 + timeline 视图）
     expect(opened.id).toBe("story-progression:book-1");
-    expect(opened.metadata?.preferredView).toBe("evolution");
+    expect(opened.metadata?.preferredView).toBe("timeline");
   });
 
   it("章后事实面板把来源章回跳接到 onJumpToChapter", async () => {

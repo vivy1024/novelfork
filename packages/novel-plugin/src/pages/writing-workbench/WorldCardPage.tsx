@@ -14,7 +14,7 @@
  * 三路请求各自容错：任一路失败只让该子区显示不可用，静态编辑区永远可用。
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -43,6 +43,12 @@ import {
 } from "lucide-react";
 
 import type { JingweiEntryData, JingweiEntrySavePayload, RelatedEntryItem } from "./JingweiEntryEditor";
+import {
+  JingweiCanonPanel,
+  canonValuesFromEntry,
+  toCanonSaveSlice,
+  type JingweiCanonValues,
+} from "./JingweiCanonPanel";
 import { loadEvolution, type EvolutionStep } from "./CharacterCardPage";
 import { fetchFactsByEntity, type EntityFact } from "./narrative-fact-edits";
 // ─── 分类语义（世界卡覆盖的 5 个分类） ──────────────────────────────
@@ -370,15 +376,18 @@ export interface WorldCardPageProps {
   bookId?: string;
   saving?: boolean;
   onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void>;
-  /** 关联条目（保留接口，与角色卡一致，本卡暂不展示） */
   relatedEntries?: RelatedEntryItem[];
+  onNavigateToEntry?: (entryId: string) => void;
 }
 
-export function WorldCardPage({ entry, bookId, saving = false, onSave }: WorldCardPageProps) {
-  const presentation = useMemo(() => presentationFor(entry.category), [entry.category]);
+const WORLD_HIDDEN_FIELD_KEYS = ["name"] as const;
+
+export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEntries, onNavigateToEntry }: WorldCardPageProps) {
   const [title, setTitle] = useState(entry.title);
   const [savingLocal, setSavingLocal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canon, setCanon] = useState<JingweiCanonValues>(() => canonValuesFromEntry(entry));
+  const presentation = useMemo(() => presentationFor(canon.category), [canon.category]);
   const Icon = presentation.icon;
 
   const editor = useEditor({
@@ -393,33 +402,29 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave }: WorldCa
     },
   });
 
-  // 切换到另一个条目时重置输入与正文。
+  // 只在条目 id 变化时重置。editor 用 ref，避免 mock 每次 render 新对象把 effect 打成死循环。
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
   useEffect(() => {
     setTitle(entry.title);
     setError(null);
-    if (editor) editor.commands.setContent(entry.contentMd ?? "");
-    // 只在条目 id 变化时重置，避免每次输入都把编辑器内容打回原值。
+    setCanon(canonValuesFromEntry(entry));
+    editorRef.current?.commands.setContent(entry.contentMd ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.id, editor]);
+  }, [entry.id]);
   const handleSave = async () => {
     if (!editor || savingLocal) return;
     setSavingLocal(true);
     setError(null);
     try {
-      // 世界卡只改 title/contentMd；fields、可见性等其余字段原样回传，避免整包覆盖丢数据。
+      const fields = { ...canon.fields };
+      if (!String(fields.name ?? "").trim()) fields.name = title.trim() || entry.title;
+      const slice = toCanonSaveSlice({ ...canon, fields }, entry);
       await onSave(entry.id, {
         title: title.trim() || entry.title,
         contentMd: (editor.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.()
           ?? editor.getText(),
-        priorityTier: entry.priorityTier,
-        layer: entry.layer,
-        status: entry.status,
-        category: entry.category ?? "unclassified",
-        aliases: entry.aliases,
-        relatedEntryIds: entry.relatedEntryIds,
-        visibility: entry.visibility,
-        visibleAfterChapter: entry.visibleAfterChapter ?? null,
-        visibleUntilChapter: entry.visibleUntilChapter ?? null,
+        ...slice,
       });
     } catch (cause) {
       setError(cause instanceof Error && cause.message ? cause.message : "保存失败");
@@ -478,6 +483,21 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave }: WorldCa
               </div>
             </CardContent>
           </Card>
+
+          <JingweiCanonPanel
+            entry={entry}
+            bookId={bookId}
+            values={canon}
+            onChange={setCanon}
+            hiddenFieldKeys={WORLD_HIDDEN_FIELD_KEYS}
+            relatedEntries={relatedEntries}
+            onNavigateToEntry={onNavigateToEntry}
+            onRestored={(restored) => {
+              setTitle(restored.title);
+              setCanon(canonValuesFromEntry(restored));
+              if (editor) editor.commands.setContent(restored.contentMd ?? "");
+            }}
+          />
 
           <WorldDynamicsSection bookId={bookId} entryId={entry.id} selfName={entry.title} presentation={presentation} />
         </div>
