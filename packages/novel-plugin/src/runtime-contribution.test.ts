@@ -251,7 +251,7 @@ describe("novel Runtime contribution", () => {
 
   it("registers market tools without requiring a book binding", () => {
     const names = (NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((entry) => entry.definition.name);
-    expect(names).toEqual(expect.arrayContaining(["market.scan", "market.query", "market.sample_public_chapters"]));
+    expect(names).toEqual(expect.arrayContaining(["market.scan", "market.query", "market.ranks", "market.sample_public_chapters"]));
     const sampleSchema = tool("market.sample_public_chapters").definition.inputSchema as Record<string, unknown>;
     const properties = sampleSchema.properties as Record<string, unknown>;
     expect(properties.fanqieBookId).toBeDefined();

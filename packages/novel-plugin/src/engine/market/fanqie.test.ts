@@ -37,6 +37,7 @@ describe("fanqie pua and ranking parser", () => {
       category: "玄幻",
       rank: 1,
       source_status: "ok",
+      intro: "简介",
       font_decoded: true,
     });
   });

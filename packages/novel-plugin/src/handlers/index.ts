@@ -285,6 +285,7 @@ export type {
 export { handleSceneSpec } from "./scene-spec-handler.js";
 export {
   handleMarketQuery,
+  handleMarketRanks,
   handleMarketSamplePublicChapters,
   handleMarketScan,
 } from "./market-handlers.js";

@@ -82,6 +82,7 @@ const CANONICAL_READY_TOOL_NAMES = [
   "resource.manage",
   "market.scan",
   "market.query",
+  "market.ranks",
   "market.sample_public_chapters",
 ];
 

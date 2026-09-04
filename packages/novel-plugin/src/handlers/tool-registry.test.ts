@@ -87,6 +87,9 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(tool("market.scan")?.risk).toBe("read");
     expect(tool("market.scan")?.scope).toBe("universal");
     expect(tool("market.query")?.description).toContain("历史快照");
+    expect(tool("market.ranks")?.description).toContain("自定义榜");
+    expect(tool("market.ranks")?.risk).toBe("read");
+    expect(tool("market.ranks")?.scope).toBe("universal");
     expect(tool("market.sample_public_chapters")?.description).toContain("fanqieBookId");
     expect(tool("market.sample_public_chapters")?.description).toContain("不入库");
   });

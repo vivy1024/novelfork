@@ -90,6 +90,7 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "scene.spec",
   "market.scan",
   "market.query",
+  "market.ranks",
   "market.sample_public_chapters",
 ] as const;
 
@@ -676,6 +677,15 @@ scope=search：关键词搜索静态设定。
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["market.query"]),
     risk: "read",
     renderer: "market.query",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "universal",
+  }),
+  sessionTool({
+    name: "market.ranks",
+    description: "读取市场研究榜单注册表：内置榜 + 用户自定义榜。只读，不扫网、不改经纬。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["market.ranks"]),
+    risk: "read",
+    renderer: "market.ranks",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "universal",
   }),

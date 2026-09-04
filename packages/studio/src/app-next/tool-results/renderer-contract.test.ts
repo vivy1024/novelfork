@@ -33,8 +33,9 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "jingwei.audit",
   // jingwei.read / lore.read 已改用 LoreTreeCard（故事树），不再走 generic。
   "jingwei.write",
-  // 市场扫榜/查询/抽样目前走市场页，不在对话结果卡里做专属 UI。
+  // 市场扫榜/查询/榜单注册表/抽样目前走市场页，不在对话结果卡里做专属 UI。
   "market.query",
+  "market.ranks",
   "market.sample_public_chapters",
   "market.scan",
   // narrative.mutationPreview（propose_change / approve_change）暂无专属差异预览卡，

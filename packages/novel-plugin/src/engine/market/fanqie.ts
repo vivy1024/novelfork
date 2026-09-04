@@ -5,6 +5,7 @@ import {
   FANQIE_USER_AGENT,
   MAX_PAGES_PER_RANK,
   PARSER_VERSION,
+  type RankSourceConfig,
 } from "./config.js";
 import { generateABogus } from "./fanqie-abogus.js";
 import { containsPua, decodeFanqiePua } from "./fanqie-pua.js";
@@ -238,8 +239,9 @@ async function fetchFanqieApiPage(
 export async function scrapeFanqieRank(
   rankKey: string,
   options: MarketFetchOptions = {},
+  rankConfig?: RankSourceConfig,
 ): Promise<BookSnapshot> {
-  const config = FANQIE_RANKS.find((rank) => rank.key === rankKey);
+  const config = rankConfig ?? FANQIE_RANKS.find((rank) => rank.key === rankKey);
   const observedAt = todayUtc(options.now?.());
   if (!config) return statusSnapshot(rankKey, observedAt, "parse_fail");
 
@@ -257,7 +259,7 @@ export async function scrapeFanqieRank(
     });
     lastHtml = response.text;
     let pageRecords = response.ok ? parseFanqieRankingHtml(response.text, rankKey, observedAt) : [];
-    if (pageRecords.length === 0) {
+    if (pageRecords.length === 0 && options.allowApiFallback !== false) {
       pageRecords = await fetchFanqieApiPage(rankKey, page, observedAt, options);
     }
     const fresh = pageRecords.filter((record) => record.book_id && !seen.has(record.book_id));

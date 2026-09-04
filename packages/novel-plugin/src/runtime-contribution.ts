@@ -47,6 +47,7 @@ import {
   handleWritingSkillsRecommend,
   handleWritingSkillsWrite,
   handleMarketQuery,
+  handleMarketRanks,
   handleMarketSamplePublicChapters,
   handleMarketScan,
   type CockpitState,
@@ -143,6 +144,7 @@ type CustomReadyRuntimeToolName =
   | "memory.settle_chapter"
   | "market.scan"
   | "market.query"
+  | "market.ranks"
   | "market.sample_public_chapters";
 type LegacyReadHandler = (input: Record<string, unknown>) => Promise<unknown> | unknown;
 
@@ -340,6 +342,7 @@ function toRuntimeToolResult(result: unknown): RuntimeToolResult {
 function isMarketTool(name: string): boolean {
   return matchesToolName(name, "market.scan")
     || matchesToolName(name, "market.query")
+    || matchesToolName(name, "market.ranks")
     || matchesToolName(name, "market.sample_public_chapters");
 }
 
@@ -356,6 +359,8 @@ async function executeMarketTool(
         ...(typeof input.platform === "string" ? { platform: input.platform as "qidian" | "fanqie" | "all" } : {}),
         ...(Array.isArray(input.rankTypes) ? { rankTypes: input.rankTypes.filter((item): item is string => typeof item === "string") } : {}),
         ...(typeof input.maxPages === "number" ? { maxPages: input.maxPages } : {}),
+        ...(Array.isArray(input.categories) ? { categories: input.categories.filter((item): item is string => typeof item === "string") } : {}),
+        ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
       }));
     }
     if (matchesToolName(tool.name, "market.query")) {
@@ -365,7 +370,12 @@ async function executeMarketTool(
         ...(typeof input.fromDate === "string" ? { fromDate: input.fromDate } : {}),
         ...(typeof input.toDate === "string" ? { toDate: input.toDate } : {}),
         ...(typeof input.analyze === "boolean" ? { analyze: input.analyze } : {}),
+        ...(Array.isArray(input.categories) ? { categories: input.categories.filter((item): item is string => typeof item === "string") } : {}),
+        ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
       }));
+    }
+    if (matchesToolName(tool.name, "market.ranks")) {
+      return toRuntimeToolResult(await handleMarketRanks());
     }
     if (typeof input.fanqieBookId !== "string" || !input.fanqieBookId.trim()) {
       return fail("invalid-input", "market.sample_public_chapters 需要番茄公开书籍 fanqieBookId。");

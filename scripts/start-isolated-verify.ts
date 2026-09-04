@@ -80,6 +80,7 @@ const environment: NodeJS.ProcessEnv = {
 	NARRAFORK_HOME: runtimeDir,
 	NOVELFORK_SESSION_STORE_DIR: join(runtimeDir, "sessions"),
 	NOVELFORK_STORAGE_DB_PATH: join(options.root, "novelfork.db"),
+	NOVELFORK_MARKET_DIR: join(options.root, "market"),
 };
 
 console.log("→ Isolated NovelFork verification instance");

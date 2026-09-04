@@ -8,6 +8,7 @@ export const REQUEST_TIMEOUT_MS = 20_000;
 export const MAX_PAGES_PER_RANK = 5;
 export const CONSECUTIVE_403_THRESHOLD = 3;
 export const MAX_RANKS_PER_PLATFORM_SCAN = 2;
+export const MAX_BOOKS_PER_RANK_SCAN = 200;
 export const MAX_PUBLIC_CHAPTER_SAMPLES = 3;
 export const SNAPSHOT_RETENTION_DAYS = 30;
 /** 超过这个天数的快照不再当「最新榜」用，只能当历史参考。 */
@@ -22,12 +23,14 @@ export function platformLabel(platform: string): string {
   return PLATFORM_LABEL[platform as "qidian" | "fanqie"] ?? platform;
 }
 
-export function rankLabel(rankType: string): string {
-  return [...QIDIAN_RANKS, ...FANQIE_RANKS].find((rank) => rank.key === rankType)?.name ?? rankType;
+export function rankLabel(rankType: string, lookup?: ReadonlyMap<string, RankSourceConfig>): string {
+  return lookup?.get(rankType)?.name
+    ?? [...QIDIAN_RANKS, ...FANQIE_RANKS].find((rank) => rank.key === rankType)?.name
+    ?? rankType;
 }
 
-export function sourceLabel(platform: string, rankType: string): string {
-  return `${platformLabel(platform)} · ${rankLabel(rankType)}`;
+export function sourceLabel(platform: string, rankType: string, rankNames?: ReadonlyMap<string, string>): string {
+  return `${platformLabel(platform)} · ${rankNames?.get(rankType) ?? rankLabel(rankType)}`;
 }
 
 export const USER_AGENTS = [
