@@ -1,13 +1,39 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const fetchJsonMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/hooks/use-api", () => ({ fetchJson: fetchJsonMock }));
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: fetchJsonMock,
+  ApiRequestError: class ApiRequestError extends Error {
+    status?: number;
+    constructor(message: string, status?: number) {
+      super(message);
+      this.status = status;
+    }
+  },
+}));
 vi.mock("@tiptap/react", () => ({
-  useEditor: () => null,
+  useEditor: () => ({
+    storage: { markdown: { getMarkdown: () => "宗门设定" } },
+    getText: () => "宗门设定",
+    commands: { setContent: vi.fn() },
+  }),
   EditorContent: () => null,
 }));
+
+function isNarrativeMemoryUrl(url: string): boolean {
+  return url.includes("narrative-memory");
+}
+
+function mockJingweiAndMemory(handler: (url: string) => unknown) {
+  fetchJsonMock.mockImplementation(async (url: string) => {
+    if (url.includes("/revisions")) return { revisions: [] };
+    if (url.includes("/jingwei/search")) return { results: [] };
+    if (url.includes("/jingwei/entries")) return { entries: [] };
+    return handler(url);
+  });
+}
 
 import { WorldCardPage, isWorldCardCategory } from "./WorldCardPage";
 
@@ -36,7 +62,7 @@ describe("isWorldCardCategory", () => {
 
 describe("WorldCardPage", () => {
   it("渲染静态设定区 + 实体动态区（当前状态/发展历程/关联角色）", async () => {
-    fetchJsonMock.mockImplementation(async (url: string) => {
+    mockJingweiAndMemory((url) => {
       if (url.includes("facts/by-entity")) {
         return {
           groups: [
@@ -63,7 +89,9 @@ describe("WorldCardPage", () => {
 
     // 静态区标题 + 分类徽标。
     expect(screen.getByDisplayValue("青云宗")).toBeTruthy();
-    expect(screen.getByText("势力")).toBeTruthy();
+    expect(screen.getByTestId("jingwei-canon-panel")).toBeTruthy();
+    expect(screen.getByLabelText("分类")).toBeTruthy();
+    expect(screen.getAllByText("势力").length).toBeGreaterThan(0);
     // 动态区：按 factions 关键词抽中的状态事实。
     await waitFor(() => expect(screen.getByText(/阵营：青云宗内门/)).toBeTruthy());
     // 发展历程最近事件。
@@ -71,13 +99,13 @@ describe("WorldCardPage", () => {
     // 关联角色来自关系图对端实体（去重后）。
     expect(screen.getByText("血魔教")).toBeTruthy();
     expect(screen.getByText("白起")).toBeTruthy();
-    const urls = fetchJsonMock.mock.calls.map((call) => String(call[0]));
-    expect(urls.every((url) => url.includes("entryId=loc-1") || url.includes("focusEntryId=loc-1"))).toBe(true);
-    expect(urls.some((url) => url.includes("focusEntity=") || url.includes("entity=%E9%9D%92"))).toBe(false);
+    const memoryUrls = fetchJsonMock.mock.calls.map((call) => String(call[0])).filter(isNarrativeMemoryUrl);
+    expect(memoryUrls.every((url) => url.includes("entryId=loc-1") || url.includes("focusEntryId=loc-1"))).toBe(true);
+    expect(memoryUrls.some((url) => url.includes("focusEntity=") || url.includes("entity=%E9%9D%92"))).toBe(false);
   });
 
   it("三路动态数据全空时显示诚实空态，不误报故障", async () => {
-    fetchJsonMock.mockImplementation(async (url: string) => {
+    mockJingweiAndMemory((url) => {
       if (url.includes("facts/by-entity")) return { groups: [] };
       if (url.includes("/graph")) return {};
       throw new Error(`unexpected request: ${url}`);
@@ -86,7 +114,42 @@ describe("WorldCardPage", () => {
     render(<WorldCardPage entry={entry} bookId="book-1" saving={false} onSave={vi.fn(async () => undefined)} />);
 
     await waitFor(() => expect(screen.getByText(/该实体暂无章后结算记录/)).toBeTruthy());
-    // 编辑器 mock 为 null 时保存按钮禁用，但不影响只读区块渲染。
-    expect(screen.getByRole("button", { name: /保存/ }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: /保存/ }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("保存时把分类、层级、可见性、结构化字段一并写回", async () => {
+    const onSave = vi.fn(async () => undefined);
+    mockJingweiAndMemory(() => ({ groups: [], events: [], facts: [] }));
+    render(<WorldCardPage
+      entry={{
+        ...entry,
+        layer: "canon",
+        status: "confirmed",
+        visibility: "global",
+        relatedEntryIds: ["c1"],
+        fields: { type: "宗门", description: "西京第一大宗" },
+      }}
+      bookId="book-1"
+      saving={false}
+      onSave={onSave}
+      relatedEntries={[{ id: "c1", title: "薛行之" }]}
+    />);
+
+    expect(await screen.findByTestId("jingwei-canon-panel")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave).toHaveBeenCalledWith("loc-1", expect.objectContaining({
+      title: "青云宗",
+      contentMd: "宗门设定",
+      category: "factions",
+      layer: "canon",
+      visibility: "global",
+      relatedEntryIds: ["c1"],
+      fields: expect.objectContaining({
+        name: "青云宗",
+        type: "宗门",
+        description: "西京第一大宗",
+      }),
+    }));
   });
 });

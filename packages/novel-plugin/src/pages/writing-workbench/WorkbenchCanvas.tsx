@@ -652,8 +652,10 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
                     bookId={bookId}
                     saving={false}
                     onSave={async (entryId, payload) => {
-                      // fields 类型在 JingweiEntrySavePayload 里不在类型上,但后端接受; 通过 unknown 类型转换传递
                       await jingweiActions.onSave(entryId, payload as unknown as Parameters<typeof jingweiActions.onSave>[1]);
+                    }}
+                    onNavigateToEntry={(entryId) => {
+                      if (!onOpenJingweiEntry?.(entryId)) setSaveError(`关联条目不存在或尚未载入：${entryId}`);
                     }}
                   />
                 </Suspense>

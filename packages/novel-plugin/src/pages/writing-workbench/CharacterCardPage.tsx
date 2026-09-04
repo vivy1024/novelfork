@@ -44,6 +44,12 @@ import {
 } from "lucide-react";
 
 import type { JingweiEntryData, JingweiEntrySavePayload, RelatedEntryItem } from "./JingweiEntryEditor";
+import {
+  JingweiCanonPanel,
+  canonValuesFromEntry,
+  toCanonSaveSlice,
+  type JingweiCanonValues,
+} from "./JingweiCanonPanel";
 import { useWritingProgressRefresh } from "./use-writing-progress-refresh";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -297,9 +303,19 @@ export interface CharacterCardPageProps {
   bookId?: string;
   saving: boolean;
   onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void>;
-  /** 关联条目（暂时不展示，保留接口预留） */
   relatedEntries?: RelatedEntryItem[];
+  onNavigateToEntry?: (entryId: string) => void;
 }
+
+const CHARACTER_HIDDEN_FIELD_KEYS = [
+  "name",
+  "aliases",
+  "roleType",
+  "realm",
+  "personality",
+  "goal",
+  "firstChapter",
+] as const;
 
 // ─── Helper: read string field from entry.fields ────────────────────────
 
@@ -538,7 +554,7 @@ function DevelopmentSection({
 // ─── Main Component ─────────────────────────────────────────────────────
 
 export function CharacterCardPage(props: CharacterCardPageProps) {
-  const { entry, saving, onSave } = props;
+  const { entry, saving, onSave, relatedEntries, onNavigateToEntry } = props;
 
   // 标题（角色名）
   const [title, setTitle] = useState(entry.title);
@@ -549,7 +565,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
   const [realm, setRealm] = useState(() => readString(entry.fields, "realm"));
   const [firstChapter, setFirstChapter] = useState(() => readString(entry.fields, "firstChapter"));
   const [aliasesInput, setAliasesInput] = useState(() =>
-    formatAliases(readStringArray(entry.fields, "aliases") ?? entry.aliases ?? [])
+    formatAliases(entry.aliases && entry.aliases.length > 0 ? entry.aliases : readStringArray(entry.fields, "aliases"))
   );
 
   // 角色内核四件套
@@ -572,6 +588,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
   // 性格和目标（用 textarea）
   const [personality, setPersonality] = useState(() => readString(entry.fields, "personality"));
   const [goal, setGoal] = useState(() => readString(entry.fields, "goal"));
+  const [canon, setCanon] = useState<JingweiCanonValues>(() => canonValuesFromEntry(entry));
 
   // tipTap 编辑器（详细背景）
   const editor = useEditor({
@@ -603,7 +620,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
     setRoleType(readString(entry.fields, "roleType"));
     setRealm(readString(entry.fields, "realm"));
     setFirstChapter(readString(entry.fields, "firstChapter"));
-    setAliasesInput(formatAliases(entry.aliases ?? readStringArray(entry.fields, "aliases")));
+    setAliasesInput(formatAliases(entry.aliases && entry.aliases.length > 0 ? entry.aliases : readStringArray(entry.fields, "aliases")));
     setCoreMotive(readString(entry.fields, "core_motive"));
     setCoreFear(readString(entry.fields, "core_fear"));
     setCoreObsession(readString(entry.fields, "core_obsession"));
@@ -612,6 +629,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
     setRelationshipSummary(readString(entry.fields, "relationship_summary"));
     setPersonality(readString(entry.fields, "personality"));
     setGoal(readString(entry.fields, "goal"));
+    setCanon(canonValuesFromEntry(entry));
     if (editor) {
       editor.commands.setContent(entry.contentMd ?? "");
     }
@@ -630,9 +648,9 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
     if (!editor) return;
     const contentMd = (editor.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.() ?? editor.getText();
 
-    // 合并保存：原有 fields + 新增覆盖
     const mergedFields: Record<string, unknown> = {
-      ...(entry.fields ?? {}),
+      ...canon.fields,
+      name: title.trim() || canon.fields.name,
       roleType,
       realm,
       firstChapter,
@@ -646,21 +664,12 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
       personality,
       goal,
     };
+    const slice = toCanonSaveSlice({ ...canon, aliases: aliasesParsed, fields: mergedFields }, entry);
 
     await onSave(entry.id, {
       title,
       contentMd,
-      category: entry.category ?? "characters",
-      aliases: aliasesParsed,
-      priorityTier: entry.priorityTier,
-      layer: entry.layer,
-      status: entry.status,
-      relatedEntryIds: entry.relatedEntryIds,
-      visibility: entry.visibility,
-      visibleAfterChapter: entry.visibleAfterChapter ?? null,
-      visibleUntilChapter: entry.visibleUntilChapter ?? null,
-      // - fields 不在官方类型里,但后端接受
-      fields: mergedFields,
+      ...slice,
     });
   };
 
@@ -927,6 +936,32 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
               </div>
             </CardContent>
           </Card>
+
+          <JingweiCanonPanel
+            entry={entry}
+            bookId={props.bookId}
+            values={{ ...canon, aliases: aliasesParsed, fields: { ...canon.fields, roleType, realm, firstChapter, personality, goal, aliases: aliasesParsed } }}
+            onChange={(next) => {
+              setCanon(next);
+              if (typeof next.fields.roleType === "string") setRoleType(next.fields.roleType);
+              if (typeof next.fields.realm === "string") setRealm(next.fields.realm);
+              if (typeof next.fields.firstChapter === "string" || typeof next.fields.firstChapter === "number") {
+                setFirstChapter(String(next.fields.firstChapter));
+              }
+              if (typeof next.fields.personality === "string") setPersonality(next.fields.personality);
+              if (typeof next.fields.goal === "string") setGoal(next.fields.goal);
+              if (next.aliases.length > 0 || aliasesParsed.length > 0) setAliasesInput(formatAliases([...next.aliases]));
+            }}
+            hiddenFieldKeys={CHARACTER_HIDDEN_FIELD_KEYS}
+            showAliases={false}
+            relatedEntries={relatedEntries}
+            onNavigateToEntry={onNavigateToEntry}
+            onRestored={(restored) => {
+              setTitle(restored.title);
+              setCanon(canonValuesFromEntry(restored));
+              if (editor) editor.commands.setContent(restored.contentMd ?? "");
+            }}
+          />
 
           {/* ─── 6️⃣ 详细背景（tipTap） ─── */}
           <Card>
