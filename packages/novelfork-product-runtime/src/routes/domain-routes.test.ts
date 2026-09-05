@@ -26,6 +26,7 @@ describe("novel domain product routes", () => {
 		expect(paths).toContain("POST /api/filter/scan");
 		expect(paths).toContain("GET /api/market/ranks");
 		expect(paths).toContain("POST /api/market/ranks/custom");
+		expect(paths).toContain("POST /api/market/ranks/probe");
 		expect(paths).toContain("DELETE /api/market/ranks/custom/:key");
 		expect(paths).toContain("GET /api/market/scan-prefs");
 		expect(paths).toContain("PUT /api/market/scan-prefs");
