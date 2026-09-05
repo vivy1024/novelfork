@@ -6,6 +6,9 @@ import {
   queryMarket,
   samplePublicChapters,
   scanMarketWithReport,
+  scrapeFanqieRank,
+  scrapeQidianRank,
+  type RankRecord,
 } from "../engine/market/index.js";
 import {
   deleteCustomRank,
@@ -63,6 +66,52 @@ export function createMarketRouter(): Hono {
     const result = await upsertCustomRank(body);
     if (!result.ok) return c.json({ ok: false, error: result.errors.join("；"), errors: result.errors }, 400);
     return c.json({ ok: true, rank: result.rank });
+  });
+
+  app.post("/api/market/ranks/probe", async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const platform = asString(body?.platform);
+    const url = asString(body?.url);
+    if (platform !== "qidian" && platform !== "fanqie") {
+      return c.json({ ok: false, error: "platform 只能是 qidian 或 fanqie" }, 400);
+    }
+    if (!url) return c.json({ ok: false, error: "url 不能为空" }, 400);
+
+    let host = "";
+    try {
+      host = new URL(url).hostname;
+    } catch {
+      return c.json({ ok: false, error: "url 格式不合法" }, 400);
+    }
+    const suffix = platform === "qidian" ? "qidian.com" : "fanqienovel.com";
+    if (!(host === suffix || host.endsWith(`.${suffix}`))) {
+      return c.json({ ok: false, error: `url 必须指向 ${suffix}（SSRF 保护）` }, 400);
+    }
+
+    try {
+      const probeConfig = {
+        key: "probe_preview",
+        name: "探测预览",
+        url,
+        mobileUrl: asString(body?.mobileUrl) || url,
+      };
+      const snapshot = platform === "qidian"
+        ? await scrapeQidianRank("probe_preview", { maxPages: 1 }, probeConfig)
+        : await scrapeFanqieRank("probe_preview", { maxPages: 1, allowApiFallback: false }, probeConfig);
+
+      const books = (snapshot.records ?? []).filter((r: RankRecord) => r.source_status === "ok" && r.book_id).slice(0, 3);
+      if (books.length === 0) {
+        const first = snapshot.records?.[0];
+        const status = first?.source_status ?? "empty";
+        return c.json({
+          ok: false,
+          error: status === "parse_fail" ? "页面结构未匹配到榜单书籍，可能遇到 WAF 拦截或非标准榜单页面" : "该 URL 未抓取到书籍数据",
+        });
+      }
+      return c.json({ ok: true, sampleBooks: books });
+    } catch (error) {
+      return c.json({ ok: false, error: `探测失败：${error instanceof Error ? error.message : String(error)}` }, 500);
+    }
   });
 
   app.delete("/api/market/ranks/custom/:key", async (c) => {

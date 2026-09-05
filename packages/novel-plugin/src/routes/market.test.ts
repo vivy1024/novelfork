@@ -64,6 +64,13 @@ describe("market router", () => {
     const removed = await app.request("/api/market/ranks/custom/male_collect", { method: "DELETE" });
     expect(removed.status).toBe(200);
     expect((await app.request("/api/market/ranks/custom/missing", { method: "DELETE" })).status).toBe(404);
+
+    const probeBlocked = await app.request("/api/market/ranks/probe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: "qidian", url: "https://evil.com" }),
+    });
+    expect(probeBlocked.status).toBe(400);
   });
 
   it("round-trips scan prefs and merges lexicon aliases", async () => {

@@ -123,11 +123,11 @@ describe("MarketResearchPage", () => {
   it("lets the user scan without an agent", async () => {
     render(<MarketResearchPage />);
     expect(screen.getByTestId("market-research-page")).toBeTruthy();
-    expect(screen.getByText("来源与时效")).toBeTruthy();
+    expect(screen.getByText(/来源与时效/)).toBeTruthy();
     expect(screen.getAllByText(/番茄 · 男频阅读榜/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "扫一次并留存" }));
     await waitFor(() => {
-      expect(screen.getByText("已留存")).toBeTruthy();
+      expect(screen.getByText("扫榜已完成")).toBeTruthy();
     });
   });
 
@@ -174,5 +174,22 @@ describe("MarketResearchPage", () => {
     await waitFor(() => {
       expect(fetchJsonMock.mock.calls.some((call) => String(call[0]).includes("/api/market/lexicon"))).toBe(true);
     });
+  });
+
+  it("renders splitter container, official link, and quantity presets", async () => {
+    render(<MarketResearchPage />);
+    expect(screen.getByTestId("market-splitter-container")).toBeTruthy();
+    expect(screen.getByTestId("market-analysis-panel")).toBeTruthy();
+
+    const bookLink = screen.getByRole("link", { name: /剑来/i });
+    expect(bookLink.getAttribute("href")).toBe("https://www.qidian.com/info/1001");
+    expect(bookLink.getAttribute("target")).toBe("_blank");
+
+    fireEvent.click(screen.getByRole("button", { name: "50 本" }));
+    const input = screen.getByLabelText("每个榜保留多少本") as HTMLInputElement;
+    expect(Number(input.value)).toBe(50);
+
+    fireEvent.click(screen.getByRole("button", { name: "清空" }));
+    expect(screen.getByText(/已选中 0 个/)).toBeTruthy();
   });
 });
