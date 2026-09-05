@@ -473,7 +473,7 @@ export function MarketResearchPage() {
         </Button>
       </div>
 
-      <Card>
+      <Card className="shrink-0">
         <CardHeader>
           <CardTitle>扫哪些榜</CardTitle>
           <CardDescription>每次每平台最多 2 个榜。题材和本数只过滤返回视图，原始快照整批留在本机，换偏好不必重新爬。</CardDescription>
@@ -581,7 +581,7 @@ export function MarketResearchPage() {
         </CardContent>
       </Card>
 
-      <Card data-testid="market-rank-manager">
+      <Card className="shrink-0" data-testid="market-rank-manager">
         <CardHeader>
           <CardTitle>榜单管理</CardTitle>
           <CardDescription>内置榜只读。自定义榜必须指向起点或番茄同域 URL，不能拿来抓外站。</CardDescription>
@@ -681,7 +681,7 @@ export function MarketResearchPage() {
         </CardContent>
       </Card>
 
-      <Card data-testid="market-lexicon-manager">
+      <Card className="shrink-0" data-testid="market-lexicon-manager">
         <CardHeader>
           <CardTitle>题材词库</CardTitle>
           <CardDescription>精确类目和别名优先，对不上才用子串兜底。这里改完，扫榜和当前快照一起用。</CardDescription>
@@ -735,7 +735,7 @@ export function MarketResearchPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+      <div className="grid shrink-0 gap-4 lg:grid-cols-[1fr_280px]">
         <Card>
           <CardHeader>
             <CardTitle>最新快照</CardTitle>
