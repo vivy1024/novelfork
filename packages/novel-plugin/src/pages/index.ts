@@ -5,3 +5,4 @@
  * from the plugin package boundary.
  */
 export * from "./writing-workbench";
+export * from "./writing-config";

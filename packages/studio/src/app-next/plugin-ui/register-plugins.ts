@@ -34,7 +34,9 @@ export function ensurePluginSectionsRegistered(): void {
   registerPluginSection(WRITING_CONFIG_UI_SECTION.componentKey, WritingConfigSection);
 }
 
-const ALL_UI_SECTIONS: PluginUISection[] = [WRITING_CONFIG_UI_SECTION];
+const ALL_UI_SECTIONS: PluginUISection[] = [
+  WRITING_CONFIG_UI_SECTION,
+];
 
 /** 收集所有插件的 uiSections 元数据（按 order 排序）。 */
 export function getPluginUISections(mountPoint: PluginUISection["mountPoint"]): PluginUISection[] {
