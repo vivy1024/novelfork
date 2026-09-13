@@ -36,3 +36,6 @@ export {
   writingProgressBookId,
   type WritingProgressDetail,
 } from "./writing-progress-event";
+export * from "./WorkflowTimelinePanel";
+export * from "./ChapterToolbar";
+

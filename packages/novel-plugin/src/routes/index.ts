@@ -25,6 +25,7 @@ export { createContextManagerRouter } from "./context-manager.js";
 export { createQualityTrendRouter } from "./quality-trend.js";
 export { createWritingSkillsRouter, type CreateWritingSkillsRouterOptions } from "./writing-skills.js";
 export { createWritingLayersRouter, type CreateWritingLayersRouterOptions } from "./writing-layers.js";
+export { createWorkflowsRouter, type CreateWorkflowsRouterOptions } from "./workflows.js";
 export { createChapterLinksRouter } from "./chapter-links.js";
 export { createWritingResourceRouter } from "./writing-resource.js";
 export { createWriteReadinessRouter, type CreateWriteReadinessRouterOptions } from "./write-readiness.js";

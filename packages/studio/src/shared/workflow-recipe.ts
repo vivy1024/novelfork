@@ -13,19 +13,37 @@ export type WorkflowStepKind =
   | "writer-generate"
   | "canvas-open"
   | "audit"
+  | "adversarial-audit"
+  | "post-settlement"
   | "custom-tool";
+
+export interface WorkflowParallelSubagentConfig {
+  readonly name: string;
+  readonly roleLabel?: string;
+  readonly model?: string;
+  readonly tools?: readonly string[];
+  readonly prompt?: string;
+}
 
 export interface WorkflowStepConfig {
   readonly id: string;
   readonly kind: WorkflowStepKind;
   readonly label: string;
   readonly enabled: boolean;
-  /** 该步骤使用的 agent（如 explorer/planner/writer/auditor） */
+  /** 执行模式：单个子代理、主代理自主派发、或纯工具流水线 */
+  readonly executionMode?: "subagent" | "autonomous" | "tool-only";
+  /** 该步骤使用的单个主 agent / 子代理（如 writer 或自定义子代理名称） */
   readonly agentId?: string;
   /** 该步骤使用的模型覆盖（空则继承 session 默认） */
   readonly modelOverride?: string;
-  /** 该步骤依赖的工具 */
+  /** 该步骤依赖的工具白名单 */
   readonly tools?: readonly string[];
+  /** 挂载的写作技巧/规范（如 writing-skills/hooks） */
+  readonly skills?: readonly string[];
+  /** 阶段定制提示词（指导该阶段子代理或主代理怎么跑） */
+  readonly customPrompt?: string;
+  /** 并行子代理群组（用于对抗审查、多角色推演等 Fan-out 阶段） */
+  readonly parallelSubagents?: readonly WorkflowParallelSubagentConfig[];
   /** 是否需要用户确认才能继续 */
   readonly requiresApproval?: boolean;
   /** 步骤失败时的行为 */
@@ -37,6 +55,8 @@ export interface WorkflowRecipeConfig {
   readonly name: string;
   readonly commandId: string;
   readonly description: string;
+  /** 适用题材（如 general, xuanhuan, short-story, suspense 等） */
+  readonly genre?: string;
   readonly steps: readonly WorkflowStepConfig[];
   /** 写作结果策略 */
   readonly resultStrategy: "formal-chapter" | "version-result" | "direct-write";

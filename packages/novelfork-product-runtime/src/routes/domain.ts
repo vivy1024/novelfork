@@ -23,6 +23,7 @@ import {
 	createWritingResourceRouter,
 	createWritingSkillsRouter,
 	createWritingToolsRouter,
+	createWorkflowsRouter,
 	type RouterContext,
 } from "@vivy1024/novelfork-novel-plugin/routes";
 import { getControlledBooksRoot } from "../services/book-binding";
@@ -136,6 +137,15 @@ novelDomainRoutes.route(
 		createWritingLayersRouter(productRouterContext, {
 			resolveBookRoot: resolveDomainBookRoot,
 			home: process.env.NOVELFORK_PROJECT_ROOT,
+		}),
+	),
+);
+// 创作工作流方案持久化路由：按书籍目录落盘 story/workflow_recipes.json。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createWorkflowsRouter(productRouterContext, {
+			resolveBookRoot: resolveDomainBookRoot,
 		}),
 	),
 );

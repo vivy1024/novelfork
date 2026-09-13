@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "repository": "NarraFork/novelfork-runtime-private",
+  "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
+  "commit": "b5913c98249f998e94a0cc77b85c0a0af74cda30",
+  "tree": "4d10f1681cc80b2531dbe21b6718e44fa340efc7",
+  "branch": "novelfork/integration-v0.5.23",
+  "version": "0.6.5",
+  "importedAt": "2026-09-05T20:32:30.662Z",
+  "trackedFileCount": 3492,
+  "importMethod": "git-archive"
+}
