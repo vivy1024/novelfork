@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { synthesizeAdversarialAudits, ADVERSARIAL_VIEW_DIMENSIONS, type AuditView } from "./adversarial-audit.js";
+import { synthesizeAdversarialAudits, auditChapterAdversarial, ADVERSARIAL_VIEW_DIMENSIONS, type AuditView } from "./adversarial-audit.js";
 import type { AuditResult, AuditIssue } from "./continuity.js";
 
 function issue(severity: "critical" | "warning" | "info", category: string, description: string): AuditIssue {
