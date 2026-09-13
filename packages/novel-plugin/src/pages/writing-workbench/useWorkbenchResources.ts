@@ -111,7 +111,7 @@ export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
 // Tool section — 工具分区节点（供资源树使用）
 // ---------------------------------------------------------------------------
 
-export type ToolPanelId = "quality" | "arcs" | "compliance" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension";
+export type ToolPanelId = "quality" | "arcs" | "compliance" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension" | "workflow";
 
 export interface ToolNodeDef {
   id: string;
@@ -126,6 +126,13 @@ interface ToolGroupDef {
 }
 
 const TOOL_GROUPS: ToolGroupDef[] = [
+  {
+    id: "tool-group:workflow",
+    title: "⚡ 生产线",
+    tools: [
+      { id: "tool:workflow", title: "创作工作流", toolPanel: "workflow" },
+    ],
+  },
   {
     id: "tool-group:progress",
     title: "📈 进度类",

@@ -40,6 +40,7 @@ const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => (
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
 const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel").then(m => ({ default: m.CollaborationVersionPanel })));
+const WorkflowTimelinePanel = lazy(() => import("./WorkflowTimelinePanel").then(m => ({ default: m.WorkflowTimelinePanel })));
 const CharacterCardPage = lazy(() => import("./CharacterCardPage").then(m => ({ default: m.CharacterCardPage })));
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
@@ -224,8 +225,18 @@ export function resolveCurrentChapter(nodes: readonly WorkbenchResourceNode[] | 
   return undefined;
 }
 
-function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, currentChapter, onJumpToChapter, onOpenJingweiEntry }: { toolPanel: ToolPanelId; bookId: string; bookPlatform?: string; repositoryPath?: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void; onOpenJingweiEntry?: (entryId: string) => boolean }) {
+function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, currentChapter, onJumpToChapter, onOpenJingweiEntry, onSendToNarrator }: { toolPanel: ToolPanelId; bookId: string; bookPlatform?: string; repositoryPath?: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void; onOpenJingweiEntry?: (entryId: string) => boolean; onSendToNarrator?: (message: string) => Promise<void> | void }) {
   switch (toolPanel) {
+    case "workflow":
+      return (
+        <Suspense fallback={<ToolPanelLoading />}>
+          <WorkflowTimelinePanel
+            bookId={bookId}
+            currentChapter={currentChapter}
+            onSendToNarrator={onSendToNarrator}
+          />
+        </Suspense>
+      );
     case "quality":
       return (
         <Suspense fallback={<ToolPanelLoading />}>
@@ -415,7 +426,16 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             <h2 className="text-sm font-semibold">{node.title}</h2>
           </header>
           <div className="flex-1 min-h-0 overflow-y-auto p-3">
-            <ToolPanelView toolPanel={toolPanel} bookId={bookId} bookPlatform={resolveBookPlatform(nodes)} repositoryPath={repositoryPath} currentChapter={resolveCurrentChapter(nodes)} onJumpToChapter={onJumpToChapter} onOpenJingweiEntry={onOpenJingweiEntry} />
+            <ToolPanelView
+              toolPanel={toolPanel}
+              bookId={bookId}
+              bookPlatform={resolveBookPlatform(nodes)}
+              repositoryPath={repositoryPath}
+              currentChapter={resolveCurrentChapter(nodes)}
+              onJumpToChapter={onJumpToChapter}
+              onOpenJingweiEntry={onOpenJingweiEntry}
+              onSendToNarrator={onSendToNarrator}
+            />
           </div>
         </div>
       );

@@ -61,6 +61,29 @@ export type { FanficDimensionConfig } from "./agents/fanfic-dimensions.js";
 export { buildFanficCanonSection, buildCharacterVoiceProfiles, buildFanficModeInstructions } from "./agents/fanfic-prompt-sections.js";
 export { StateValidatorAgent } from "./agents/state-validator.js";
 
+// Workflows
+export {
+  NOVEL_BUILTIN_WORKFLOWS,
+  FANQIE_XUANHUAN_SERIAL_RECIPE,
+  ZHIHU_SHORT_STORY_RECIPE,
+  TRADITIONAL_XIANXIA_RECIPE,
+  getNovelWorkflow,
+  type NovelParallelSubagentConfig,
+  type NovelWorkflowExecutionMode,
+  type NovelWorkflowRecipe,
+  type NovelWorkflowResultStrategy,
+  type NovelWorkflowStep,
+  type NovelWorkflowStepKind,
+  type NovelWorkflowStepOnFailure,
+} from "./workflows/novel-workflows.js";
+export {
+  WORKFLOW_RECIPES_RELATIVE_PATH,
+  readWorkflowRecipes,
+  saveWorkflowRecipes,
+  validateWorkflowRecipes,
+  WorkflowStoreError,
+} from "./workflows/workflow-store.js";
+
 // Inline writing modes
 export {
   buildContinuationPrompt,

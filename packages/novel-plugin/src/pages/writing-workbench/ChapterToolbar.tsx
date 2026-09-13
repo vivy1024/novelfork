@@ -25,7 +25,7 @@ import {
   type AuditIssueLite,
 } from "./audit-issue-actions";
 
-type ToolbarTab = "humanize" | "narrative" | "issues" | "audit";
+type ToolbarTab = "humanize" | "narrative" | "adversarial" | "issues" | "audit";
 
 interface DeslopManualFlag {
   readonly rule: string;
@@ -177,13 +177,31 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
   const [humanizeOutcome, setHumanizeOutcome] = useState<DeslopOutcome | null>(null);
   const [humanizeError, setHumanizeError] = useState<string | null>(null);
   const [handedOff, setHandedOff] = useState(false);
+  const [narrativeRunning, setNarrativeRunning] = useState(false);
   const [narrativeSent, setNarrativeSent] = useState(false);
   const [narrativeError, setNarrativeError] = useState<string | null>(null);
+  const [adversarialRunning, setAdversarialRunning] = useState(false);
+  const [adversarialSent, setAdversarialSent] = useState(false);
+  const [adversarialError, setAdversarialError] = useState<string | null>(null);
   const [issues, setIssues] = useState<readonly AuditIssueLite[]>([]);
   const [issuesStale, setIssuesStale] = useState(false);
   const [issuesError, setIssuesError] = useState<string | null>(null);
   const [issuesLoading, setIssuesLoading] = useState(false);
   const [issueNote, setIssueNote] = useState<string | null>(null);
+
+  // 跨作品或跨章节切换时，彻底重置临时分析与运行结果，防止章节正文与审计结果串流覆盖
+  useEffect(() => {
+    setAuditResult(null);
+    setAuditError(null);
+    setHumanizeOutcome(null);
+    setHumanizeError(null);
+    setHandedOff(false);
+    setNarrativeSent(false);
+    setNarrativeError(null);
+    setAdversarialSent(false);
+    setAdversarialError(null);
+    setIssueNote(null);
+  }, [bookId, chapterNumber]);
 
   useEffect(() => {
     if (!chapterNumber) {
@@ -226,6 +244,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
       setNarrativeError("当前视图没有可用的叙述者，无法执行叙事审计。");
       return;
     }
+    setNarrativeRunning(true);
     try {
       await onSendToNarrator(buildNarrativeRiskAuditMessage({
         content: source,
@@ -234,6 +253,8 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
       setNarrativeSent(true);
     } catch (err) {
       setNarrativeError(err instanceof Error ? err.message : "转交叙述者失败");
+    } finally {
+      setNarrativeRunning(false);
     }
   };
 
@@ -287,8 +308,37 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
       "",
       "改完把结果给我确认，不要直接覆盖正文。",
     ];
-    await onSendToNarrator(lines.join("\n"));
-    setHandedOff(true);
+    try {
+      await onSendToNarrator(lines.join("\n"));
+      setHandedOff(true);
+    } catch (err) {
+      setHumanizeError(err instanceof Error ? err.message : "转交叙述者失败");
+    }
+  };
+
+  const handleRunAdversarialAudit = async () => {
+    const source = content ?? "";
+    setAdversarialError(null);
+    setAdversarialSent(false);
+    if (!source.trim()) {
+      setAdversarialError("当前章节没有正文，无法执行对抗审查。");
+      return;
+    }
+    if (!onSendToNarrator) {
+      setAdversarialError("当前视图没有可用的叙述者，无法唤起对抗审查。");
+      return;
+    }
+    setAdversarialRunning(true);
+    try {
+      await onSendToNarrator(
+        `请按当前作品创作工作流装配的审查工序，对第 ${chapterNumber ?? "当前"} 章正文进行多视角对抗式审查，严格输出问题清单：\n\n${source}`
+      );
+      setAdversarialSent(true);
+    } catch (err) {
+      setAdversarialError(err instanceof Error ? err.message : "唤起对抗审查失败");
+    } finally {
+      setAdversarialRunning(false);
+    }
   };
 
   const handleRunAudit = async () => {
@@ -346,6 +396,15 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
             >
               <ScanSearch className="size-3" />
               <span className="text-[10px]">叙事审计</span>
+            </Button>
+            <Button
+              variant={activeTab === "adversarial" ? "secondary" : "ghost"}
+              size="xs"
+              className="h-6 gap-1"
+              onClick={() => setActiveTab("adversarial")}
+            >
+              <ShieldCheck className="size-3 text-purple-600 dark:text-purple-400" />
+              <span className="text-[10px] font-medium">对抗审查</span>
             </Button>
             <Button
               variant={activeTab === "issues" ? "secondary" : "ghost"}
@@ -460,11 +519,11 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                   variant="outline"
                   size="xs"
                   className="gap-1"
-                  disabled={!content?.trim()}
+                  disabled={narrativeRunning || !content?.trim()}
                   onClick={() => void handleRunNarrativeAudit()}
                 >
-                  <ScanSearch className="size-3" />
-                  交叙述者审计
+                  {narrativeRunning ? <Loader2 className="size-3 animate-spin" /> : <ScanSearch className="size-3" />}
+                  {narrativeRunning ? "提交中..." : "交叙述者审计"}
                 </Button>
               </div>
               <div className="rounded border border-border/60 bg-muted/30 p-2 text-[10px] leading-5 text-muted-foreground">
@@ -482,6 +541,52 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                   已交给叙述者。它会开一个零继承子代理只读本章正文，结果在对话面板查看。
                 </p>
               )}
+            </div>
+          )}
+          {activeTab === "adversarial" && (
+            <div className="space-y-2 py-1 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="font-medium">多视角对抗式审查</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    由主叙述者根据作品创作工作流装配的角色与规则，对本章进行并发审查。
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className="gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800"
+                  disabled={adversarialRunning || !content?.trim()}
+                  onClick={() => void handleRunAdversarialAudit()}
+                >
+                  {adversarialRunning ? <Loader2 className="size-3 animate-spin" /> : <ShieldCheck className="size-3" />}
+                  {adversarialRunning ? "派发中..." : "唤起工作流审查"}
+                </Button>
+              </div>
+              {adversarialError && (
+                <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-destructive">
+                  {adversarialError}
+                </p>
+              )}
+              {adversarialSent && (
+                <p className="rounded border border-border bg-muted/40 p-2 text-[10px] text-muted-foreground">
+                  已唤起主叙述者执行对抗审查，请在主对话面板查看审查官会审结果。
+                </p>
+              )}
+              <div className="grid grid-cols-3 gap-2 text-[10px]">
+                <div className="rounded border border-purple-500/20 bg-purple-500/5 p-2">
+                  <p className="font-medium text-purple-700 dark:text-purple-300">A. 连续性审查官</p>
+                  <p className="mt-0.5 text-muted-foreground">带工具查证前文，严查战力崩塌、时间线冲突与角色OOC</p>
+                </div>
+                <div className="rounded border border-blue-500/20 bg-blue-500/5 p-2">
+                  <p className="font-medium text-blue-700 dark:text-blue-300">B. 叙事质量审查官</p>
+                  <p className="mt-0.5 text-muted-foreground">黄金三章节奏模型，查流水账、读者期待与配角工具人化</p>
+                </div>
+                <div className="rounded border border-emerald-500/20 bg-emerald-500/5 p-2">
+                  <p className="font-medium text-emerald-700 dark:text-emerald-300">C. 文本风控审查官</p>
+                  <p className="mt-0.5 text-muted-foreground">专项过滤AI套词、句式段落等长、词汇疲劳与敏感词</p>
+                </div>
+              </div>
             </div>
           )}
           {activeTab === "issues" && (
@@ -545,7 +650,11 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                                 issue,
                                 quote: locate.quote,
                               })),
-                            ).then(() => setIssueNote("已把定点修订提案交给叙述者，请在对话里确认。"));
+                            )
+                              .then(() => setIssueNote("已把定点修订提案交给叙述者，请在对话里确认。"))
+                              .catch((err) =>
+                                setIssueNote(err instanceof Error ? err.message : "发送修订提案失败")
+                              );
                           }}
                         >
                           生成修订提案
