@@ -579,4 +579,78 @@ describe("RoutinesNextPage Runtime integration", () => {
 
     await waitFor(() => expect(screen.getByText(/403 禁止访问 — 钩子管理需要 Runtime 管理员权限/)).toBeTruthy());
   });
+
+  it("switches the Hook matcher to the Attention reason enum and clears stale values", async () => {
+    runtimeMocks.hooks.listGlobal.mockResolvedValue([]);
+
+    render(<RoutinesNextPage />);
+    openTab("Hooks");
+
+    fireEvent.click(await screen.findByRole("button", { name: "创建 Hook" }));
+    const dialog = screen.getByRole("dialog");
+
+    // 工具事件下 matcher 是自由文本。
+    fireEvent.change(within(dialog).getByLabelText("匹配器"), { target: { value: "Write" } });
+    // 命令为空时「创建」按钮是 disabled 的，先给一个目标。
+    fireEvent.change(within(dialog).getByLabelText("命令"), {
+      target: { value: "bun scripts/notify.ts" },
+    });
+
+    // 切到 Attention：matcher 语义变为 reason 枚举，旧工具名必须被丢弃。
+    // 该文件把 SimpleSelect mock 成原生 <select>，因此用 change 而非 pointerDown。
+    fireEvent.change(within(dialog).getByLabelText("钩子事件"), {
+      target: { value: "Attention" },
+    });
+
+    await waitFor(() => expect(within(dialog).queryByLabelText("匹配器")).toBeNull());
+    const reasonSelect = within(dialog).getByLabelText("钩子关注原因");
+    fireEvent.change(reasonSelect, { target: { value: "waiting_permission" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+
+    await waitFor(() =>
+      expect(runtimeMocks.hooks.create).toHaveBeenCalledWith(
+        expect.objectContaining({ event: "Attention", matcher: "waiting_permission" }),
+      ),
+    );
+  });
+
+  it("normalizes a bare Host Hook URL before submitting to the Runtime", async () => {
+    runtimeMocks.hooks.listGlobal.mockResolvedValue([]);
+
+    render(<RoutinesNextPage />);
+    openTab("Hooks");
+
+    fireEvent.click(await screen.findByRole("button", { name: "创建 Hook" }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.change(within(dialog).getByLabelText("钩子类型"), {
+      target: { value: "http" },
+    });
+    fireEvent.change(await within(dialog).findByLabelText("URL"), {
+      target: { value: "example.com/hook" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+
+    // Runtime 的 zod 校验是 z.string().url()，未补全协议的裸主机名会被 400。
+    await waitFor(() =>
+      expect(runtimeMocks.hooks.create).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "http", url: "https://example.com/hook" }),
+      ),
+    );
+  });
+
+  it("shows the incoming Hook payload reference for the selected event", async () => {
+    runtimeMocks.hooks.listGlobal.mockResolvedValue([]);
+
+    render(<RoutinesNextPage />);
+    openTab("Hooks");
+
+    fireEvent.click(await screen.findByRole("button", { name: "创建 Hook" }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /查看传入字段与示例/ }));
+    expect(within(dialog).getByText("工具名称")).toBeTruthy();
+    expect(within(dialog).getByText(/通用字段（所有事件）/)).toBeTruthy();
+    expect(within(dialog).getByText(/"tool_name": "Bash"/)).toBeTruthy();
+  });
 });

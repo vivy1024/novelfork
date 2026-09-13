@@ -85,10 +85,12 @@ import {
 } from "../runtime-admin";
 import { getPluginUISections } from "../plugin-ui/register-plugins";
 import { getPluginSection } from "../plugin-ui/section-registry";
+import { normalizeUrlProtocol } from "../lib/url-protocol";
 import { CommandsSection } from "./CommandsSection";
 import { MCPServerPanel } from "./MCPServerPanel";
 import { RulesSection } from "./RulesSection";
 import { ToolPermissionsSection } from "./ToolPermissionsSection";
+import { WorkflowRecipesSection } from "./WorkflowRecipesSection";
 
 const routinesClient = createRoutinesClient();
 const accountClient = createAccountProfileClient();
@@ -97,12 +99,50 @@ const subagentsClient = createCustomSubagentsClient();
 const hooksClient = createHooksClient();
 const productClient = createRuntimeProductClient();
 
+/**
+ * 与 Mantine 原生 routes/routines/index.tsx 的 AVAILABLE_TOOLS 逐字对齐。
+ * 原生即为此常量（无动态 API），白名单点选器沿用同一份清单。
+ */
+const AVAILABLE_TOOLS: readonly string[] = [
+	"Read",
+	"Glob",
+	"Grep",
+	"WebSearch",
+	"Bash",
+	"Write",
+	"Edit",
+	"AskUserQuestion",
+	"Skill",
+	"ShareFile",
+	"Terminal",
+];
+
+/**
+ * NovelFork fork 特有：novel-plugin 贡献的领域只读工具（由 tool-executor 定制注入）。
+ * 原生没有这一组；放在第二组渲染，不混入原生清单。
+ */
+const NOVEL_TOOL_CANDIDATES: readonly string[] = [
+	"chapter.read",
+	"chapter.list",
+	"lore.read",
+	"memory.read",
+	"memory.graph",
+	"memory.search",
+	"memory.list",
+	"cockpit.snapshot",
+	"chapter.audit",
+	"writing-skills.read",
+	"hooks.manage",
+	"character.check_consistency",
+];
+
 export interface RoutinesNextPageProps {
 	readonly bookId?: string;
 	readonly bookTitle?: string;
 }
 
 type SectionId =
+	| "workflowRecipes"
 	| "builtIn"
 	| "commands"
 	| "optionalTools"
@@ -124,6 +164,7 @@ const SECTIONS: ReadonlyArray<{
 	readonly label: string;
 	readonly icon: typeof Workflow;
 }> = [
+	{ id: "workflowRecipes", label: "工作流装配", icon: Workflow },
 	{ id: "builtIn", label: "内置套路", icon: Workflow },
 	{ id: "commands", label: "自定义命令", icon: Command },
 	{ id: "optionalTools", label: "可选工具", icon: Wrench },
@@ -254,6 +295,9 @@ export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 						</Suspense>
 					);
 				})}
+				{activeSection === "workflowRecipes" && (
+					<WorkflowRecipesSection bookId={bookId} bookTitle={bookTitle} />
+				)}
 				{activeSection === "builtIn" && (
 					<RoutineCatalogSection
 						bookId={bookId}
@@ -675,6 +719,22 @@ function subagentToolAccessLabel(access: CustomSubagentToolAccess): string {
 
 function hookTypeLabel(type: HookType): string {
 	return type === "command" ? "命令" : "HTTP";
+}
+
+/**
+ * 卡片副标题：Attention 系事件的 matcher 是 reason 枚举，直接显示英文 key
+ * 会让作者看不懂；其余事件 matcher 是工具名，原样展示。
+ */
+function hookMatcherLabel(hook: {
+	readonly event: HookEvent;
+	readonly matcher: string;
+}): string {
+	if (!hook.matcher) return "匹配所有事件";
+	if (ATTENTION_EVENTS.has(hook.event)) {
+		const label = ATTENTION_REASON_LABELS[hook.matcher] ?? hook.matcher;
+		return `原因：${label}`;
+	}
+	return hook.matcher;
 }
 
 function proxyModeLabel(mode: HookProxyMode): string {
@@ -1491,6 +1551,22 @@ function SubagentEditorDialog({
 	readonly onOpenChange: (open: boolean) => void;
 	readonly onSave: () => void;
 }) {
+	const selectedCustomTools = useMemo(
+		() =>
+			form.customTools
+				.split(",")
+				.map((tool) => tool.trim())
+				.filter(Boolean),
+		[form.customTools],
+	);
+
+	const toggleCustomTool = (tool: string) => {
+		const next = selectedCustomTools.includes(tool)
+			? selectedCustomTools.filter((t) => t !== tool)
+			: [...selectedCustomTools, tool];
+		onFormChange({ ...form, customTools: next.join(", ") });
+	};
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -1499,7 +1575,7 @@ function SubagentEditorDialog({
 						{mode === "create" ? "创建自定义子代理" : "编辑自定义子代理"}
 					</DialogTitle>
 					<DialogDescription>
-						所有字段都直接映射到 Runtime 自定义子代理契约。
+						所有字段都直接映射到 Runtime 自定义子代理契约（SUBAGENT.md front-matter）。
 					</DialogDescription>
 				</DialogHeader>
 				<div className="flex flex-col gap-4">
@@ -1514,17 +1590,17 @@ function SubagentEditorDialog({
 								}
 							/>
 						</div>
-						<div className="flex flex-col gap-2">
-							<Label htmlFor="subagent-model">默认模型</Label>
-							<Input
-								id="subagent-model"
-								value={form.defaultModel}
-								onChange={(event) =>
-									onFormChange({ ...form, defaultModel: event.target.value })
-								}
-								placeholder="留空时使用 Runtime 默认模型"
-							/>
-						</div>
+					<div className="flex flex-col gap-2">
+						<Label htmlFor="subagent-model">默认模型</Label>
+						<Input
+							id="subagent-model"
+							value={form.defaultModel}
+							onChange={(event) =>
+								onFormChange({ ...form, defaultModel: event.target.value })
+							}
+							placeholder="留空时使用 Runtime 默认模型"
+						/>
+					</div>
 					</div>
 					<div className="flex flex-col gap-2">
 						<Label htmlFor="subagent-description">描述</Label>
@@ -1536,38 +1612,83 @@ function SubagentEditorDialog({
 							}
 						/>
 					</div>
-					<div className="grid gap-4 sm:grid-cols-2">
-						<div className="flex flex-col gap-2">
-							<Label>工具访问</Label>
-							<SimpleSelect
-								aria-label="工具访问"
-								value={form.toolAccess}
-								onValueChange={(value) =>
-									onFormChange({
-										...form,
-										toolAccess: value as CustomSubagentToolAccess,
-									})
-								}
-								options={[
-									{ value: "readOnly", label: "只读" },
-									{ value: "general", label: "通用" },
-									{ value: "custom", label: "自定义" },
-								]}
-							/>
-						</div>
-						<div className="flex flex-col gap-2">
-							<Label htmlFor="subagent-custom-tools">自定义工具</Label>
-							<Input
-								id="subagent-custom-tools"
-								value={form.customTools}
-								disabled={form.toolAccess !== "custom"}
-								onChange={(event) =>
-									onFormChange({ ...form, customTools: event.target.value })
-								}
-								placeholder="Read, Grep, WebFetch"
-							/>
-						</div>
+					<div className="flex flex-col gap-2">
+						<Label>工具访问</Label>
+						<SimpleSelect
+							aria-label="工具访问"
+							value={form.toolAccess}
+							onValueChange={(value) =>
+								onFormChange({
+									...form,
+									toolAccess: value as CustomSubagentToolAccess,
+								})
+							}
+							options={[
+								{ value: "readOnly", label: "只读" },
+								{ value: "general", label: "通用" },
+								{ value: "custom", label: "自定义" },
+							]}
+						/>
 					</div>
+				{form.toolAccess === "custom" && (
+					<div className="flex flex-col gap-2">
+						<Label>自定义工具白名单（点选，与手填可混用）</Label>
+						<div className="flex flex-wrap gap-1.5">
+							{AVAILABLE_TOOLS.map((tool) => {
+								const active = selectedCustomTools.includes(tool);
+								return (
+									<button
+										key={tool}
+										type="button"
+										aria-pressed={active}
+										className={`rounded-full border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+											active
+												? "border-primary bg-primary/10 text-primary"
+												: "border-border text-muted-foreground hover:border-primary/50"
+										}`}
+										onClick={() => toggleCustomTool(tool)}
+									>
+										{tool}
+									</button>
+								);
+							})}
+						</div>
+						<div className="flex flex-col gap-1.5">
+							<p className="text-[10px] text-muted-foreground">
+								NovelFork 扩展（novel-plugin 贡献工具）：
+							</p>
+							<div className="flex flex-wrap gap-1.5">
+								{NOVEL_TOOL_CANDIDATES.map((tool) => {
+									const active = selectedCustomTools.includes(tool);
+									return (
+										<button
+											key={tool}
+											type="button"
+											aria-pressed={active}
+											className={`rounded-full border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+												active
+													? "border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400"
+													: "border-border text-muted-foreground hover:border-purple-400/50"
+											}`}
+											onClick={() => toggleCustomTool(tool)}
+										>
+											{tool}
+										</button>
+									);
+								})}
+							</div>
+						</div>
+						<Input
+							id="subagent-custom-tools"
+							value={form.customTools}
+							onChange={(event) =>
+								onFormChange({ ...form, customTools: event.target.value })
+							}
+							placeholder="Read, chapter.read"
+							className="font-mono text-xs"
+						/>
+					</div>
+				)}
 					<div className="flex flex-col gap-2">
 						<Label htmlFor="subagent-prompt">提示词</Label>
 						<Textarea
@@ -1641,6 +1762,108 @@ const HOOK_EVENTS: readonly HookEvent[] = [
 	"Attention",
 	"AttentionResolved",
 ];
+
+/**
+ * Attention 系事件的 matcher 不是工具名，而是固定的 reason 枚举。
+ * 与 Runtime `server/services/hook-service.ts` 的 `AttentionReason` 对齐。
+ */
+const ATTENTION_EVENTS: ReadonlySet<HookEvent> = new Set(["Attention", "AttentionResolved"]);
+const ATTENTION_REASONS_BY_EVENT: Record<string, readonly string[]> = {
+	// Attention 三种原因都可能触发。
+	Attention: ["waiting_permission", "done", "error"],
+	// 当前 scope：AttentionResolved 只在权限请求被解除时触发。
+	AttentionResolved: ["waiting_permission"],
+};
+
+const ATTENTION_REASON_LABELS: Record<string, string> = {
+	waiting_permission: "等待授权",
+	done: "应答完成",
+	error: "出错",
+};
+
+const HOOK_EVENT_LABELS: Record<HookEvent, string> = {
+	PreToolUse: "工具执行前",
+	PostToolUse: "工具执行后",
+	Stop: "应答结束时",
+	Attention: "需要关注时",
+	AttentionResolved: "关注解除时",
+};
+
+/** 所有事件通用的载荷字段。与原生 `HOOK_COMMON_FIELDS` 逐字对齐。 */
+const HOOK_COMMON_FIELDS: ReadonlyArray<readonly [string, string]> = [
+	["hook_event_name", "事件名称（PreToolUse / PostToolUse / Stop / Attention / AttentionResolved）"],
+	["narrator_id", "叙述者 ID"],
+	["narrator_title", "叙述者标题（标题生成前可能为空）"],
+	["chapter_id", "章节 ID（独立叙述者可能为空）"],
+	["project_id", "项目 ID（全局叙述者可能为空）"],
+	["cwd", "工作目录"],
+];
+
+/** 各事件的额外载荷字段。与原生 `HOOK_EVENT_FIELDS` 逐字对齐。 */
+const HOOK_EVENT_FIELDS: Record<string, ReadonlyArray<readonly [string, string]>> = {
+	PreToolUse: [
+		["tool_name", "工具名称"],
+		["tool_input", "工具入参（可能被截断）"],
+		["tool_use_id", "工具调用 ID"],
+	],
+	PostToolUse: [
+		["tool_name", "工具名称"],
+		["tool_input", "工具入参（可能被截断）"],
+		["tool_use_id", "工具调用 ID"],
+		["tool_output", "工具输出（截断至 2000 字符）"],
+		["tool_is_error", "工具是否出错"],
+	],
+	Stop: [
+		["stop_reason", "结束原因（done / error / aborted / max_turns）"],
+		["stop_error", "是否以错误结束"],
+		["last_assistant_text", "最后一条助手消息文本（截断）"],
+		["duration_ms", "本轮总耗时（毫秒）"],
+		["total_tokens", "本轮消耗 token 量（非缓存输入 + 输出）"],
+	],
+	Attention: [
+		["attention_reason", "关注原因（waiting_permission / done / error）"],
+		["attention_detail", "附加上下文"],
+	],
+	AttentionResolved: [
+		["attention_reason", "关注原因（waiting_permission / done / error）"],
+		["attention_detail", '附加上下文（如权限解除时用户的决定 "allow" / "deny"）'],
+	],
+};
+
+/** 与原生 `buildHookExample` 逐字对齐的示例载荷。 */
+function buildHookExample(event: HookEvent): string {
+	const base: Record<string, unknown> = {
+		hook_event_name: event,
+		narrator_id: "n_abc123",
+		narrator_title: "Refactor auth flow",
+		chapter_id: "c_def456",
+		project_id: "p_ghi789",
+		cwd: "/home/user/project/.worktrees/feature",
+	};
+	if (event === "PreToolUse") {
+		base.tool_name = "Bash";
+		base.tool_input = { command: "ls -la", description: "List files" };
+		base.tool_use_id = "toolu_xyz";
+	} else if (event === "PostToolUse") {
+		base.tool_name = "Bash";
+		base.tool_input = { command: "ls -la" };
+		base.tool_use_id = "toolu_xyz";
+		base.tool_output = "total 24\ndrwxr-xr-x ...";
+		base.tool_is_error = false;
+	} else if (event === "Stop") {
+		base.stop_reason = "done";
+		base.stop_error = false;
+		base.last_assistant_text = "Done. I've updated the file.";
+		base.duration_ms = 12345;
+		base.total_tokens = 8192;
+	} else if (event === "Attention") {
+		base.attention_reason = "waiting_permission";
+	} else if (event === "AttentionResolved") {
+		base.attention_reason = "waiting_permission";
+		base.attention_detail = "allow";
+	}
+	return JSON.stringify(base, null, 2);
+}
 
 function parseRecord(
 	value: string,
@@ -1747,6 +1970,9 @@ function HooksSection({
 		setError(null);
 		try {
 			const headers = parseRecord(form.headers);
+			// Runtime 的 zod 校验是 `z.string().url()`，裸主机名（example.com/hook）
+			// 会被直接 400。提交前补全协议，与原生前端行为一致。
+			const normalizedUrl = normalizeUrlProtocol(form.url) ?? form.url.trim();
 			const common = {
 				event: form.event,
 				matcher: form.matcher,
@@ -1766,7 +1992,7 @@ function HooksSection({
 								type: "command" as const,
 								command: form.command.trim(),
 							}
-						: { ...common, type: "http" as const, url: form.url.trim() };
+						: { ...common, type: "http" as const, url: normalizedUrl };
 				if (scope === "global") await hooksClient.create(input);
 				else await productClient.createBookHook(requireBookId(bookId), input);
 			} else {
@@ -1781,7 +2007,7 @@ function HooksSection({
 						: {
 								...common,
 								type: "http" as const,
-								url: form.url.trim(),
+								url: normalizedUrl,
 								command: null,
 							};
 				if (scope === "global") await hooksClient.update(editor.id, input);
@@ -1917,10 +2143,10 @@ function HooksSection({
 					{hooks.map((hook) => (
 						<Card key={hook.id}>
 							<CardHeader>
-								<CardTitle>{hook.event}</CardTitle>
-								<CardDescription>
-									{hook.matcher || "匹配所有事件"}
-								</CardDescription>
+								<CardTitle>
+									{HOOK_EVENT_LABELS[hook.event] ?? hook.event}
+								</CardTitle>
+								<CardDescription>{hookMatcherLabel(hook)}</CardDescription>
 								<CardAction>
 									<Switch
 										aria-label={`切换钩子：${hook.id}`}
@@ -1934,6 +2160,9 @@ function HooksSection({
 							</CardHeader>
 							<CardContent className="flex flex-col gap-3">
 								<div className="flex flex-wrap gap-2">
+									<Badge variant="outline" className="font-mono">
+										{hook.event}
+									</Badge>
 									<Badge variant="secondary">{hookTypeLabel(hook.type)}</Badge>
 									<Badge variant="outline">超时 {hook.timeout}s</Badge>
 									<Badge variant="outline">顺序 {hook.sortOrder}</Badge>
@@ -1995,6 +2224,74 @@ function HooksSection({
 	);
 }
 
+function HookPayloadReference({
+	event,
+	type,
+}: {
+	readonly event: HookEvent;
+	readonly type: HookType;
+}) {
+	const [opened, setOpened] = useState(false);
+	const eventFields = HOOK_EVENT_FIELDS[event] ?? [];
+	return (
+		<div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 text-xs">
+			<p className="text-muted-foreground">
+				{type === "http"
+					? `钩子触发时，会向该 URL 发送 POST 请求，请求体为下方 JSON，Content-Type 为 application/json。返回 2xx 即放行；工具执行前事件可返回 {"decision": "block", "reason": "..."} 阻断工具执行。`
+					: "钩子触发时，会以 JSON 形式通过标准输入 (stdin) 把下方数据传给命令。命令工作目录为叙述者的 cwd。退出码 0 = 放行；工具执行前事件可用退出码 2 阻断工具执行，并把 stderr（或 stdout）作为阻断原因。"}
+			</p>
+			<Button
+				type="button"
+				variant="ghost"
+				size="xs"
+				className="w-fit"
+				onClick={() => setOpened((value) => !value)}
+			>
+				{opened ? (
+					<ChevronUp className="mr-1 size-3" />
+				) : (
+					<ChevronDown className="mr-1 size-3" />
+				)}
+				查看传入字段与示例
+			</Button>
+			{opened && (
+				<div className="flex flex-col gap-3 border-t pt-3">
+					<div className="flex flex-col gap-1">
+						<div className="font-medium text-muted-foreground">
+							通用字段（所有事件）
+						</div>
+						{HOOK_COMMON_FIELDS.map(([field, description]) => (
+							<div key={field} className="flex flex-col gap-0.5">
+								<code className="font-mono text-[11px]">{field}</code>
+								<span className="text-muted-foreground">{description}</span>
+							</div>
+						))}
+					</div>
+					{eventFields.length > 0 && (
+						<div className="flex flex-col gap-1">
+							<div className="font-medium text-muted-foreground">
+								本事件额外字段
+							</div>
+							{eventFields.map(([field, description]) => (
+								<div key={field} className="flex flex-col gap-0.5">
+									<code className="font-mono text-[11px]">{field}</code>
+									<span className="text-muted-foreground">{description}</span>
+								</div>
+							))}
+						</div>
+					)}
+					<div className="flex flex-col gap-1">
+						<div className="font-medium text-muted-foreground">示例载荷</div>
+						<pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[11px]">
+							{buildHookExample(event)}
+						</pre>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
 function HookEditorDialog({
 	open,
 	mode,
@@ -2032,12 +2329,24 @@ function HookEditorDialog({
 							<SimpleSelect
 								aria-label="钩子事件"
 								value={form.event}
-								onValueChange={(value) =>
-									onFormChange({ ...form, event: value as HookEvent })
-								}
+								onValueChange={(value) => {
+									// 切换事件时 matcher 语义会变：Attention 系是 reason 枚举，
+									// Stop 不绑定工具。沿用旧值会让作者以为匹配仍然生效。
+									const nextEvent = value as HookEvent;
+									let matcher = form.matcher;
+									if (nextEvent === "Stop") {
+										matcher = "";
+									} else if (ATTENTION_EVENTS.has(nextEvent)) {
+										const valid = ATTENTION_REASONS_BY_EVENT[nextEvent] ?? [];
+										if (matcher && !valid.includes(matcher)) matcher = "";
+									} else if (ATTENTION_EVENTS.has(form.event)) {
+										matcher = "";
+									}
+									onFormChange({ ...form, event: nextEvent, matcher });
+								}}
 								options={HOOK_EVENTS.map((event) => ({
 									value: event,
-									label: event,
+									label: `${HOOK_EVENT_LABELS[event]} · ${event}`,
 								}))}
 							/>
 						</div>
@@ -2056,17 +2365,45 @@ function HookEditorDialog({
 							/>
 						</div>
 					</div>
-					<div className="flex flex-col gap-2">
-						<Label htmlFor="hook-matcher">匹配器</Label>
-						<Input
-							id="hook-matcher"
-							value={form.matcher}
-							onChange={(event) =>
-								onFormChange({ ...form, matcher: event.target.value })
-							}
-							placeholder="可选的工具或事件匹配器"
-						/>
-					</div>
+					{ATTENTION_EVENTS.has(form.event) ? (
+						<div className="flex flex-col gap-2">
+							<Label>关注原因</Label>
+							<SimpleSelect
+								aria-label="钩子关注原因"
+								value={form.matcher || "__all__"}
+								onValueChange={(value) =>
+									onFormChange({
+										...form,
+										matcher: value === "__all__" ? "" : value,
+									})
+								}
+								options={[
+									{ value: "__all__", label: "全部原因" },
+									...(ATTENTION_REASONS_BY_EVENT[form.event] ?? []).map(
+										(reason) => ({
+											value: reason,
+											label: ATTENTION_REASON_LABELS[reason] ?? reason,
+										}),
+									),
+								]}
+							/>
+						</div>
+					) : (
+						form.event !== "Stop" && (
+							<div className="flex flex-col gap-2">
+								<Label htmlFor="hook-matcher">匹配器</Label>
+								<Input
+									id="hook-matcher"
+									value={form.matcher}
+									onChange={(event) =>
+										onFormChange({ ...form, matcher: event.target.value })
+									}
+									placeholder="例如 Bash（留空 = 匹配全部）"
+								/>
+							</div>
+						)
+					)}
+					<HookPayloadReference event={form.event} type={form.type} />
 					{form.type === "command" ? (
 						<div className="flex flex-col gap-2">
 							<Label htmlFor="hook-command">命令</Label>
