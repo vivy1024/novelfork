@@ -136,7 +136,6 @@ novelDomainRoutes.route(
 	asRuntimeRouter(
 		createWritingLayersRouter(productRouterContext, {
 			resolveBookRoot: resolveDomainBookRoot,
-			home: process.env.NOVELFORK_PROJECT_ROOT,
 		}),
 	),
 );
