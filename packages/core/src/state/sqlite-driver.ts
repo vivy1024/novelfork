@@ -93,6 +93,12 @@ class NodeSqliteStatementAdapter<T = unknown> implements SQLiteStatementLike<T> 
 }
 
 class NodeSqliteDatabaseAdapter implements SQLiteDatabaseLike {
+  /**
+   * 当前已进入的事务层数。嵌套层用 SAVEPOINT 而不是再 BEGIN 一次，
+   * 与 bun:sqlite（实测支持嵌套）保持同一语义。
+   */
+  private transactionDepth = 0;
+
   constructor(private readonly database: NodeSqliteDatabaseSync) {}
 
   exec(sql: string): void {
@@ -113,18 +119,41 @@ class NodeSqliteDatabaseAdapter implements SQLiteDatabaseLike {
 
   transaction<TArgs extends unknown[], TResult>(fn: (...args: TArgs) => TResult) {
     const execute = (mode: "deferred" | "immediate" | "exclusive", args: TArgs): TResult => {
-      this.database.exec(`BEGIN ${mode.toUpperCase()}`);
+      // SQLite 不支持真正的嵌套事务：内层再 BEGIN 会直接报
+      // "cannot start a transaction within a transaction"。better-sqlite3 与
+      // bun:sqlite 都靠 SAVEPOINT 让 transaction() 可重入，本适配器必须一致——
+      // 否则同一份业务代码（结算把 backfill 嵌在 commit 事务里）在 Bun 上跑得通、
+      // 在 Node 上必挂，差异只在测试里暴露。
+      const depth = this.transactionDepth;
+      const savepoint = depth > 0 ? `novelfork_sp_${depth}` : null;
+      if (savepoint) {
+        this.database.exec(`SAVEPOINT ${savepoint}`);
+      } else {
+        this.database.exec(`BEGIN ${mode.toUpperCase()}`);
+      }
+      this.transactionDepth = depth + 1;
       try {
         const result = fn(...args);
-        this.database.exec("COMMIT");
+        // 内层 RELEASE 只是把该 savepoint 合并进外层事务，并不真正提交；
+        // 真正的 COMMIT 只发生在最外层。
+        this.database.exec(savepoint ? `RELEASE ${savepoint}` : "COMMIT");
         return result;
       } catch (error) {
         try {
-          this.database.exec("ROLLBACK");
+          if (savepoint) {
+            // 必须 ROLLBACK TO 之后再 RELEASE：前者撤销内层改动但保留 savepoint，
+            // 只有 RELEASE 才把它弹出栈，否则外层会留下悬挂的 savepoint。
+            this.database.exec(`ROLLBACK TO ${savepoint}`);
+            this.database.exec(`RELEASE ${savepoint}`);
+          } else {
+            this.database.exec("ROLLBACK");
+          }
         } catch {
           // ignore rollback failures while unwinding test transactions
         }
         throw error;
+      } finally {
+        this.transactionDepth = depth;
       }
     };
 
