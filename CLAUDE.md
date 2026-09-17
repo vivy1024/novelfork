@@ -24,17 +24,15 @@ NarraFork 宿主系统与开发者规则
 ```text
 本仓库（NovelFork 产品）
 ├─ 公开跟踪：产品代码、Bridge、构建与发布脚本
-├─ 本地历史归档：packages/narrafork-runtime-overlay/（Git 忽略，不参与生产链）
 └─ 本地存在、Git 忽略：packages/narrafork-runtime-private/（唯一生产 Runtime 来源）
 
 私有 fork 仓库（Runtime 源头权威，不在本仓库内）
-└─ NarraFork/novelfork-runtime-private @ novelfork/integration-v0.5.23
+└─ NarraFork/novelfork-runtime-private @ novelfork/integration-v0.6.6
 
-可选本地辅助（均不提交）
-├─ narrafork-private-main/       上游 NarraFork 完整 checkout（用于对照）
-├─ .tmp-fork-upgrade/            fork 升级工作克隆（临时）
-├─ .runtime-backup-v0.5.24/      上一次物化目录备份（回滚用）
-└─ packages/.narrafork-runtime-*  历史 overlay 时代 staging / 备份缓存
+本地辅助（均不提交）
+├─ packages/.narrafork-runtime-fork-staging/  Runtime 宿主 git 库（接缝分支与上游镜像的本地唯一副本）
+├─ packages/.narrafork-runtime-import/        导入脚本暂存区，含 zstd 工具链（仍被引用，勿删）
+└─ .runtime-backup-v0.6.5-20260917/           上一次物化目录备份（回滚用）
 ```
 
 | 路径 | 角色 | Git |
@@ -45,15 +43,14 @@ NarraFork 宿主系统与开发者规则
 | `packages/novelfork-product-runtime/` | 产品 Runtime 适配、书籍绑定、产品路由 | 跟踪（公开） |
 | `packages/narrafork-runtime-bridge/` | Studio/产品层与 Runtime 的窄契约 | 跟踪（公开） |
 | `packages/fitness-plugin/` | 示例/扩展插件 | 跟踪（公开） |
-| `packages/narrafork-runtime-overlay/` | 本地历史归档（不参与 workspace、导入、编译或测试） | **Git 忽略** |
-| `packages/narrafork-runtime-private/` | 可运行的完整 Runtime 物化树（= 私有 fork 分支内容） | **ignore，仅本地** |
-| `NarraFork/novelfork-runtime-private` | Runtime fork 权威仓库，分支 `novelfork/integration-v0.5.23` | **独立私有仓库（不在本仓库内）** |
-| `narrafork-private-main/` | 上游私有 Runtime 完整 Git checkout | **ignore，仅本地** |
+| `packages/narrafork-runtime-private/` | 可运行的完整 Runtime 物化树（= 私有 fork 分支内容） | **ignore，仅本地**（例外：`UPSTREAM.lock.json` 作为来源元数据被跟踪） |
+| `packages/.narrafork-runtime-fork-staging/` | Runtime 宿主 git 库：接缝分支 + 上游镜像，worktree 从这里开 | **ignore，仅本地** |
+| `NarraFork/novelfork-runtime-private` | Runtime fork 权威仓库，分支 `novelfork/integration-v0.6.6` | **独立私有仓库（不在本仓库内）** |
 
 ### 公开边界（硬约束）
 
 - **不公开**完整 NarraFork Runtime 源码树。
-- **不公开**完整 Runtime 实现（Product Host、嵌入 Narrator 面板、Provider、Runtime 迁移等）；它们只存在于私有 fork 和本地 ignore 物化树。旧 overlay 归档即使本地存在，也不进入公开树。
+- **不公开**完整 Runtime 实现（Product Host、嵌入 Narrator 面板、Provider、Runtime 迁移等）；它们只存在于私有 fork 和本地 ignore 物化树。
 - 公开树可包含产品代码与 Bridge 契约；不得把 `packages/narrafork-runtime-private/` 重新加入跟踪。
 - 仅把当前 tip 改公开**不够**：若 Git 历史仍含 Runtime/overlay 源码，公开 clone 仍会泄露。公开前必须确认历史已清理，或改用无敏感历史的公开镜像。
 - 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 本地编译发布产物 + 用 Windows EXE 做功能核验（详见「多平台发版流程」）。
@@ -66,7 +63,6 @@ packages/novel-plugin/               小说领域：写作、章节、Lore、Nar
 packages/core/                       通用基础设施
 packages/novelfork-product-runtime/  产品 Runtime 适配、书籍绑定与领域路由
 packages/narrafork-runtime-bridge/   Runtime 与产品层之间的受控契约（可公开）
-packages/narrafork-runtime-overlay/  本地历史归档：不属于 workspace、导入源或编译输入
 packages/narrafork-runtime-private/  本地 ignore：唯一生产 Runtime 物化树
 ```
 
@@ -81,9 +77,7 @@ packages/narrafork-runtime-private/  本地 ignore：唯一生产 Runtime 物化
 ### 1. 起手必做
 
 1. 工作目录确认在仓库根：`D:\DESKTOP\novelfork`。
-2. 需要完整本地可运行能力时，确认：
-   - `packages/narrafork-runtime-private/` 已物化存在（唯一生产 Runtime，来源为 `NarraFork/novelfork-runtime-private` fork 分支）；
-   - `packages/narrafork-runtime-overlay/` 即使存在也只是本地历史归档，不初始化、不解析为 workspace。
+2. 需要完整本地可运行能力时，确认 `packages/narrafork-runtime-private/` 已物化存在（唯一生产 Runtime，来源为 `NarraFork/novelfork-runtime-private` fork 分支）。
 3. 先读当前用户目标与相关源码/报错；不要假设旁路仓库或历史计划就是待办。
 
 ### 2. 改哪里
@@ -173,7 +167,7 @@ NovelFork Studio（产品壳）
   ├─ 原生叙述者面板：运行时复用 Runtime 的 EmbeddedNarratorDockHost
   └─ API / WebSocket：连接 NarraFork Runtime
 
-NarraFork Runtime（本地 ignore 的物化树；源头在私有 fork 仓库 novelfork/integration-v0.5.23）
+NarraFork Runtime（本地 ignore 的物化树；源头在私有 fork 仓库 novelfork/integration-v0.6.6）
   ├─ Agent Loop、Provider、权限（统一 ACL 内核）、会话、消息、工具循环、WebSocket 与运行时状态
   ├─ 维护 NarratorPanel 的核心行为、状态与通用前端依赖
   └─ 经由 Product Host SPI 调用 NovelFork 产品能力
@@ -198,24 +192,32 @@ Runtime 采用 **git fork 模式**（2026-08-20 起，取代早期的 archive+ov
 ```text
 NarraFork/narrafork-private          上游 main（domexie 维护）
         │ git merge
-NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-v0.5.23
+NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-v0.6.6
         │                             （fork 层 = product-host SPI + runtime-migrations + 宿主组件）
-本地物化 packages/narrafork-runtime-private/   从 fork 分支复制而来（gitignore，不进公开仓库）
-packages/narrafork-runtime-overlay/  本地历史归档（不参与导入、物化、编译、测试或 workspace）
+本地宿主库 packages/.narrafork-runtime-fork-staging/   接缝分支与上游镜像的本地唯一 git 副本
+        │ git archive
+本地物化 packages/narrafork-runtime-private/   从 fork 分支导出而来（gitignore，不进公开仓库）
 ```
 
-- fork 层内容以 `novelfork/integration-v0.5.23` 分支上的 `feat(runtime): materialize` 提交为准。
-- 本地物化目录是 fork 分支内容的**导出物**：升级 = clone/更新 fork → merge 上游 → 解决冲突 → 验证 → 把工作树复制到物化目录。**不是**公开仓库提交（该目录被主仓库 `.gitignore:93` 忽略）。
+- fork 层内容以 fork 分支上的 `feat(runtime): materialize` 提交为准（原始出处 `42641a32`，2026-08-20）。
+- 本地物化目录是 fork 分支内容的**导出物**：升级 = 在宿主库开 worktree → merge 上游 → 解决冲突 → 验证 → `git archive` 导出到物化目录。**不是**公开仓库提交（该目录被主仓库 `.gitignore` 忽略；例外是 `UPSTREAM.lock.json`，它作为来源元数据被跟踪）。
 - `runtime-migrations/` 在 fork 仓库与物化目录各有一份：`server/db/run-migrations.ts` **优先读 runtime-migrations/**（fork 层资产），新迁移必须两处同步。
+- **两个远端都用 HTTPS**：本机 SSH 被代理阻断（`Connection closed by 198.18.0.18`），`git@github.com:` 形式的 remote 会直接失败。
 
 ### 升级流程（当前有效）
 
-1. clone `NarraFork/novelfork-runtime-private`，切 `novelfork/integration-v0.5.23`，添加 upstream 远端 fetch 上游 main。
-2. `git merge upstream/main`——常规三方合并；fork 层约 119 个文件是冲突面。
+1. 在宿主库 `packages/.narrafork-runtime-fork-staging/` 里 `git fetch upstream`，然后 `git worktree add` 开一个工作区（**不要**重新 clone——接缝分支只存在于这个本地库和 fork 远端）。
+2. `git merge upstream/main`——常规三方合并；fork 层约 169 个文件是冲突面。
 3. 补齐上游缺失项（上游可能不带 drizzle 迁移：用 Terminal 交互跑 `bunx drizzle-kit generate`，产物同步进 `drizzle/` 与 `runtime-migrations/` 两处并提交）。
-4. 验证：`bun run typecheck`（注意 runtime 用 tsgo、bridge 用 tsc，tsc 更严格会暴露 tsgo 漏报的上游缺陷）；权限/agent 工具测试套件；失败项须在旧基线 worktree 复跑对比，确认是否为 Windows EBUSY 环境既有问题。
-5. 推送 fork 分支 → 备份旧物化目录 → 复制新树到 `packages/narrafork-runtime-private/`（排除 .git/node_modules/dist）→ 更新其 `UPSTREAM.lock.json` 元数据（fork 化后此文件仅作参考标注）→ 物化目录内 `bun install` + typecheck + 冒烟测试 → 全工作区 `bun run typecheck`。
-6. 已知基线：上游 v0.6.3（5580e441 / tag `v0.6.3`），fork 分支头 `d6df4b78`（2026-08-29）。
+4. 验证：`bun run typecheck`（注意 runtime 用 tsgo、bridge 用 tsc，tsc 更严格会暴露 tsgo 漏报的上游缺陷）；权限/agent 工具测试套件；失败项须在**纯上游同版本基线** worktree 复跑对比，确认是否为上游自身缺陷或 Windows 环境既有问题。
+5. 推送 fork 分支 → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → `git archive` 导出到 `packages/narrafork-runtime-private/`（只出跟踪文件，天然排除 node_modules/dist）→ 更新其 `UPSTREAM.lock.json`（含 provenance：接缝基线、上游提交、合并基点、冲突处理、物化后偏离）→ 物化目录内 `bun install` + typecheck + 冒烟测试 → 全工作区 `pnpm run typecheck` → 用隔离实例做真实启动验证。
+6. 已知基线：上游 v0.6.6（`751ad11b`，注意 0.6.6 发布过两次，`13e9c88d` 被 `78d739d1` 回滚后由 `751ad11b` 重发），fork 分支头 `f779ff11`（2026-09-17）。接缝基线提交 `5ab50ffe`（上游 v0.6.5 + 产品定制）。
+
+### 已知环境噪声（不要当成缺陷追查）
+
+- **宿主库 `git status` 会报约 2689 个"已修改"文件，是假的。** 内容哈希与索引、HEAD 三方一致，`git diff HEAD` 只有个位数真实改动；`update-index --really-refresh` 与 `git reset` 都清不掉，属文件系统层 stat 问题。以真实 `git diff` 为准。
+- **物化树的 tsgo typecheck 恒红**，源于 `frontend/routeTree.gen.ts`、`server/generated/embedded-licenses.ts` 等构建期 codegen 产物不在跟踪文件里（0.6.5 时代同样如此）。判断合并是否引入问题，要与**纯上游同版本基线**对照，不是看绝对错误数。
+- 上游 0.6.6 的 `bash-analyze.test.ts` 有一条假设 POSIX 路径解析的测试，在 Windows 上必然失败，非本地引入。
 
 ### 早期 overlay 重放流程（已废弃，仅历史排查时参考）
 
@@ -226,7 +228,8 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 ```
 
 - 当时以 `UPSTREAM.lock.json` 的 commit/tree 为哈希绑定基线、以 overlay manifest 的 SHA-256 精确补丁重放；fork 化后这些约束由 git merge 天然满足。
-- `packages/.narrafork-runtime-*` 系列 staging/备份目录是该时代的残留缓存，可清理。
+- 该时代的残留缓存（`packages/.narrafork-runtime-{fork-replay,policy-base,policy-staging,policy-test-home,*-check-*}` 与 `packages/narrafork-runtime-overlay/`）已于 2026-09-17 清理。overlay 私有仓库 `NarraFork/novelfork-runtime-overlay-private` 同日删除。
+- **`packages/.narrafork-runtime-*` 下现存两个目录都不能删**：`fork-staging` 托管接缝分支与上游镜像；`import` 被 `scripts/import-narrafork-runtime.ts:27` 引用且含不易重下的 zstd 工具链。
 
 ## 单一权威源（硬纪律）
 
@@ -280,8 +283,8 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 
 - 不执行 `git reset --hard`、`git checkout --`、`git clean`、强制推送、历史重写或其他破坏性操作，除非用户明确授权。
 - 只有在用户明确要求时才创建 commit、push、tag 或 Release。
-- 主仓库提交不得重新引入 `packages/narrafork-runtime-private/`。
-- Runtime 本体变更：先在私有 fork 仓库（`NarraFork/novelfork-runtime-private`）提交并推送，再同步物化目录；overlay submodule 仅历史资产，不再新增变更。
+- 主仓库提交不得重新引入 `packages/narrafork-runtime-private/` 的源码；该目录仅 `UPSTREAM.lock.json` 被跟踪，提交它需 `git add -f` 并逐次核对暂存集只含这一个文件。
+- Runtime 本体变更：先在宿主库的 fork 分支上提交、推送到 `NarraFork/novelfork-runtime-private`，再同步物化目录。overlay submodule 已于 2026-09-17 随目录与远端仓库一并移除（`.gitmodules` 现为空文件）。
 - 发布前完成与改动相称的本地构建/测试，并用 Windows EXE 做发版前功能核验。
 - 公开仓库可见性变更前，必须确认：当前 tip 无私有 Runtime 源码，且历史策略已明确（清理历史或接受风险——默认不接受历史泄露）。
 
@@ -462,6 +465,7 @@ D:/DESKTOP/novelfork-video/
 | 函数位置、调用链、影响范围 | 代码图谱工具或 `docs/codegraph/CODEMAP.md` |
 | 小说写作流程 | `packages/novel-plugin/` 的当前实现与测试 |
 | Runtime 行为 | 本地 `packages/narrafork-runtime-private/`（勿提交） |
-| Runtime fork 身份与导入 | `scripts/import-narrafork-runtime.ts` + `NarraFork/novelfork-runtime-private` checkout |
-| 旧 overlay 历史 | `packages/narrafork-runtime-overlay/`（仅本地归档，不是生产来源） |
+| Runtime 物化来源与升级历史 | `packages/narrafork-runtime-private/UPSTREAM.lock.json` 的 `provenance` 字段 |
+| Runtime fork 分支与上游历史 | 宿主库 `packages/.narrafork-runtime-fork-staging/`（`origin` = fork，`upstream` = 上游本体） |
+| 上游 Runtime 源码对照 | 从宿主库 `git worktree add` 检出对应 tag，不要另行 clone |
 | 历史背景 | Kiro、Engram 与历史计划，且须与当前指令核对 |
