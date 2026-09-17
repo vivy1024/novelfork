@@ -30,6 +30,15 @@ import {
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { fetchJson } from "@/lib/api-client";
+import {
+  MARKET_LEXICON_API_PATH,
+  MARKET_RANKS_CUSTOM_API_PATH,
+  MARKET_RANKS_PROBE_API_PATH,
+  MARKET_SAMPLE_PUBLIC_CHAPTERS_API_PATH,
+  MARKET_SCAN_API_PATH,
+  MARKET_SCAN_PREFS_API_PATH,
+  buildMarketCustomRankApiPath,
+} from "../backend-contract/api-paths";
 import { notify } from "@/lib/notify";
 import { useApi } from "@/hooks/use-api";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
@@ -420,7 +429,7 @@ export function MarketResearchPage() {
       return;
     }
     const timer = window.setTimeout(() => {
-      void fetchJson("/api/market/scan-prefs", {
+      void fetchJson(MARKET_SCAN_PREFS_API_PATH, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -497,7 +506,7 @@ export function MarketResearchPage() {
     setScanError(null);
     setScanSummary(null);
     try {
-      const result = await fetchJson<{ ok: boolean; summary?: string; error?: string }>("/api/market/scan", {
+      const result = await fetchJson<{ ok: boolean; summary?: string; error?: string }>(MARKET_SCAN_API_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -530,7 +539,7 @@ export function MarketResearchPage() {
     setProbeResult(null);
     setRankError(null);
     try {
-      const res = await fetchJson<{ ok: boolean; sampleBooks?: RankRecord[]; error?: string }>("/api/market/ranks/probe", {
+      const res = await fetchJson<{ ok: boolean; sampleBooks?: RankRecord[]; error?: string }>(MARKET_RANKS_PROBE_API_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -555,7 +564,7 @@ export function MarketResearchPage() {
     setRankBusy(true);
     setRankError(null);
     try {
-      await fetchJson("/api/market/ranks/custom", {
+      await fetchJson(MARKET_RANKS_CUSTOM_API_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -580,7 +589,7 @@ export function MarketResearchPage() {
     setRankBusy(true);
     setRankError(null);
     try {
-      await fetchJson(`/api/market/ranks/custom/${encodeURIComponent(key)}`, { method: "DELETE" });
+      await fetchJson(buildMarketCustomRankApiPath(key), { method: "DELETE" });
       setRankKeys((current) => current.filter((item) => item !== key));
       notify.success("已删除自定义榜");
       await ranksQuery.refetch();
@@ -595,7 +604,7 @@ export function MarketResearchPage() {
     setLexiconBusy(true);
     setLexiconError(null);
     try {
-      await fetchJson("/api/market/lexicon", {
+      await fetchJson(MARKET_LEXICON_API_PATH, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ aliases: next }),
@@ -634,7 +643,7 @@ export function MarketResearchPage() {
     setSampleError(null);
     setSamples([]);
     try {
-      const res = await fetchJson<{ ok: boolean; samples: PublicChapterSample[]; error?: string }>("/api/market/sample-public-chapters", {
+      const res = await fetchJson<{ ok: boolean; samples: PublicChapterSample[]; error?: string }>(MARKET_SAMPLE_PUBLIC_CHAPTERS_API_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fanqieBookId: record.book_id, maxChapters: 3 }),
