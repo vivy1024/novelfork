@@ -326,6 +326,42 @@ export function createScene(storage: StorageDatabase, input: CreateSceneInput): 
   return { ok: true, summary: `第 ${row.chapterNumber} 章新增场景（第 ${row.ordinal} 个）。`, data: row };
 }
 
+/**
+ * 全书场景，按章号与章内次序。两棵树一次取全用这个——
+ * 按章逐次拉会让承载树的渲染变成 N 次往返。
+ */
+export function listScenes(storage: StorageDatabase, bookId: string): NarrativeScene[] {
+  ensureNarrativeMemorySchema(storage);
+  return storage.sqlite
+    .prepare<SceneRow>(
+      "SELECT * FROM narrative_scene WHERE book_id = ? ORDER BY chapter_number, ordinal, id",
+    )
+    .all(bookId)
+    .map(toScene);
+}
+
+/**
+ * 全书挂载关系。按 book 过滤要经由 scene 表——挂载表本身不带 book_id
+ * （它只是两个 id 的连线，book 归属由两端决定，重复存会出现两处说法不一致）。
+ */
+export function listMounts(storage: StorageDatabase, bookId: string): SceneStorylineMount[] {
+  ensureNarrativeMemorySchema(storage);
+  return storage.sqlite
+    .prepare<{ scene_id: string; storyline_id: string; role: string; created_at: number }>(`
+      SELECT m.* FROM narrative_scene_storyline m
+      JOIN narrative_scene s ON s.id = m.scene_id
+      WHERE s.book_id = ?
+      ORDER BY m.storyline_id, m.role, m.scene_id
+    `)
+    .all(bookId)
+    .map((row) => ({
+      sceneId: row.scene_id,
+      storylineId: row.storyline_id,
+      role: row.role as SceneStorylineRole,
+      createdAt: row.created_at,
+    }));
+}
+
 /** 承载树的一层：某章的场景，按章内次序。 */
 export function listScenesByChapter(
   storage: StorageDatabase,

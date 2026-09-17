@@ -26,6 +26,18 @@ import { backfillNarrativeEventEntityIds } from "../engine/narrative-memory/enti
 import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embedding-provider.js";
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
+import {
+  createScene,
+  createStoryline,
+  listMounts,
+  listScenes,
+  listStorylines,
+  mountSceneToStoryline,
+  reorderChapterScenes,
+  unmountSceneFromStoryline,
+  type SceneFunction,
+  type StorylineKind,
+} from "../engine/narrative-memory/scene-store.js";
 import { listStructureScores, scoreAndPersistNarrativeStructure } from "../engine/narrative-memory/structure-score.js";
 import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
@@ -816,6 +828,105 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
   app.get(`${base}/admin/read-entry`, (c) => readEntryHandler(c));
   app.get(`${base}/entries/:kind/:entryId`, (c) => readEntryHandler(c, c.req.param("kind"), c.req.param("entryId")));
   app.get(`${base}/admin/entries/:kind/:entryId`, (c) => readEntryHandler(c, c.req.param("kind"), c.req.param("entryId")));
+
+  // -------------------------------------------------------------------------
+  // 场景与剧情线：两棵正交叙事树的数据面
+  // -------------------------------------------------------------------------
+
+  /**
+   * 一次取全。承载树还需要卷与章（各有自己的权威来源与接口），
+   * 但场景/剧情线/挂载这三样必须同时到手才能建因果树——分三次拉会出现
+   * 「场景已更新、挂载还是旧的」的中间态，树上就会凭空多出或少掉连线。
+   */
+  app.get(`${base}/scene-graph`, (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const db = storage();
+      return c.json({
+        ok: true,
+        bookId,
+        scenes: listScenes(db, bookId),
+        storylines: listStorylines(db, bookId),
+        mounts: listMounts(db, bookId),
+      });
+    } catch (error) {
+      return c.json(
+        { error: "scene-graph-read-failed", detail: error instanceof Error ? error.message : String(error) },
+        500,
+      );
+    }
+  });
+
+  app.post(`${base}/storylines`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const name = typeof body?.name === "string" ? body.name : "";
+    if (!name.trim()) return invalidQuery(c, "name 必填：剧情线需要一个名字，否则树上会出现点不中的无名节点。");
+    const result = createStoryline(storage(), {
+      bookId,
+      name,
+      ...(typeof body?.kind === "string" ? { kind: body.kind as StorylineKind } : {}),
+      ...(typeof body?.goal === "string" ? { goal: body.goal } : {}),
+      ...(typeof body?.entryId === "string" ? { entryId: body.entryId } : {}),
+      // 作者在界面上手建的线不该背 needs-review；只有机器抽取才走待审。
+      layer: "canon",
+      status: "confirmed",
+      source: "manual",
+    });
+    return c.json(result, result.ok ? 200 : 400);
+  });
+
+  app.post(`${base}/scenes`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const chapterNumber = Number(body?.chapterNumber);
+    if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
+      return invalidQuery(c, "chapterNumber 必须是正整数：场景必须落在某一章上。");
+    }
+    const result = createScene(storage(), {
+      bookId,
+      chapterNumber,
+      ...(typeof body?.title === "string" ? { title: body.title } : {}),
+      ...(typeof body?.summary === "string" ? { summary: body.summary } : {}),
+      ...(typeof body?.function === "string" ? { function: body.function as SceneFunction } : {}),
+      ...(Number.isInteger(body?.ordinal) ? { ordinal: body!.ordinal as number } : {}),
+      layer: "canon",
+      status: "confirmed",
+      source: "manual",
+    });
+    return c.json(result, result.ok ? 200 : 400);
+  });
+
+  /** 重排要求给出该章全序——少给会留下空号，树的先后就错了。 */
+  app.put(`${base}/chapters/:chapterNumber/scene-order`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const chapterNumber = Number(c.req.param("chapterNumber"));
+    if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
+      return invalidQuery(c, "chapterNumber 必须是正整数。");
+    }
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const orderedSceneIds = Array.isArray(body?.sceneIds)
+      ? body.sceneIds.filter((item): item is string => typeof item === "string")
+      : null;
+    if (!orderedSceneIds) return invalidQuery(c, "sceneIds 必须是字符串数组，且需给出该章全部场景。");
+
+    const result = reorderChapterScenes(storage(), bookId, chapterNumber, orderedSceneIds);
+    return c.json(result, result.ok ? 200 : 400);
+  });
+
+  app.post(`${base}/scenes/:sceneId/mounts`, async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const storylineIdValue = typeof body?.storylineId === "string" ? body.storylineId : "";
+    if (!storylineIdValue) return invalidQuery(c, "storylineId 必填。");
+    const role = body?.role === "supporting" ? "supporting" : "primary";
+    const result = mountSceneToStoryline(storage(), c.req.param("sceneId"), storylineIdValue, role);
+    return c.json(result, result.ok ? 200 : 400);
+  });
+
+  app.delete(`${base}/scenes/:sceneId/mounts/:storylineId`, (c) => {
+    const result = unmountSceneFromStoryline(storage(), c.req.param("sceneId"), c.req.param("storylineId"));
+    return c.json(result, result.ok ? 200 : 404);
+  });
 
   return app;
 }
