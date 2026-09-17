@@ -39,7 +39,9 @@ export type CanonicalNodeKind =
   | "category"
   | "entry"
   | "event"
-  | "character";
+  | "character"
+  | "storyline"
+  | "scene";
 
 export interface CooccurrenceEdgeInput {
   readonly source?: string;

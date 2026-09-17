@@ -54,6 +54,9 @@ const KIND_FILL: Record<CanonicalTreeNode["kind"], string> = {
   entry: "color-mix(in oklch, var(--muted-foreground) 50%, transparent)",
   event: "color-mix(in oklch, var(--muted-foreground) 60%, transparent)",
   character: "color-mix(in oklch, var(--primary) 65%, transparent)",
+  // 剧情线是因果树的根层，与卷同重；场景是两棵树共用的叶子，与章同色系但更淡。
+  storyline: "color-mix(in oklch, var(--primary) 80%, transparent)",
+  scene: "color-mix(in oklch, var(--muted-foreground) 45%, transparent)",
 };
 
 interface ViewTransform {
