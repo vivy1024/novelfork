@@ -82,6 +82,7 @@ running.pid
 # 外部参考/本地验证产物
 .reference/
 artifacts/
+architecture-artifacts/
 browser-error.png
 session-error-root.png
 
