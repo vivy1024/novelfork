@@ -1237,4 +1237,68 @@ CREATE INDEX IF NOT EXISTS "idx_chapter_mention_entry"
 -- narrative_event 由 ensureNarrativeMemorySchema 维护；本文件只登记版本号。
 SELECT 1;
 ` },
+  { name: "0035_narrative_scene_storyline.sql", sql: `-- 0035 场景与剧情线：让叙事结构长出第二棵树。
+-- 承载树 卷 → 章 → 场景（在哪讲）；因果树 剧情线 → 场景（为什么发生）。
+-- 两树正交的前提是场景本身有身份，故在此建表。
+-- 卷刻意不建表：权威源仍是经纬 outline 条目的 fields_json.volumes，
+-- 章节归属由 chapterRange 推导，按「能派生的状态不存储」不落 volume_id。
+
+CREATE TABLE IF NOT EXISTS "narrative_storyline" (
+  "id"          TEXT PRIMARY KEY NOT NULL,
+  "book_id"     TEXT NOT NULL,
+  "name"        TEXT NOT NULL,
+  "kind"        TEXT NOT NULL DEFAULT 'other',
+  "lifecycle"   TEXT NOT NULL DEFAULT 'active',
+  "goal"        TEXT NOT NULL DEFAULT '',
+  "entry_id"    TEXT,
+  "layer"       TEXT NOT NULL DEFAULT 'dynamic',
+  "status"      TEXT NOT NULL DEFAULT 'needs-review',
+  "source"      TEXT NOT NULL DEFAULT 'inferred',
+  "confidence"  REAL NOT NULL DEFAULT 1.0,
+  "created_at"  INTEGER NOT NULL,
+  "updated_at"  INTEGER NOT NULL,
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "idx_narrative_storyline_book"
+  ON "narrative_storyline" ("book_id", "lifecycle");
+
+CREATE TABLE IF NOT EXISTS "narrative_scene" (
+  "id"                  TEXT PRIMARY KEY NOT NULL,
+  "book_id"             TEXT NOT NULL,
+  "chapter_number"      INTEGER NOT NULL,
+  "ordinal"             INTEGER NOT NULL,
+  "title"               TEXT NOT NULL DEFAULT '',
+  "summary"             TEXT NOT NULL DEFAULT '',
+  "function"            TEXT NOT NULL DEFAULT 'advance',
+  "pov_entity_id"       TEXT,
+  "location_entity_id"  TEXT,
+  "word_count"          INTEGER NOT NULL DEFAULT 0,
+  "layer"               TEXT NOT NULL DEFAULT 'dynamic',
+  "status"              TEXT NOT NULL DEFAULT 'needs-review',
+  "source"              TEXT NOT NULL DEFAULT 'inferred',
+  "confidence"          REAL NOT NULL DEFAULT 1.0,
+  "created_at"          INTEGER NOT NULL,
+  "updated_at"          INTEGER NOT NULL,
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "idx_narrative_scene_chapter"
+  ON "narrative_scene" ("book_id", "chapter_number", "ordinal");
+CREATE INDEX IF NOT EXISTS "idx_narrative_scene_pov"
+  ON "narrative_scene" ("pov_entity_id");
+
+CREATE TABLE IF NOT EXISTS "narrative_scene_storyline" (
+  "scene_id"      TEXT NOT NULL,
+  "storyline_id"  TEXT NOT NULL,
+  "role"          TEXT NOT NULL DEFAULT 'primary',
+  "created_at"    INTEGER NOT NULL,
+  PRIMARY KEY ("scene_id", "storyline_id"),
+  FOREIGN KEY ("scene_id") REFERENCES "narrative_scene"("id") ON DELETE CASCADE,
+  FOREIGN KEY ("storyline_id") REFERENCES "narrative_storyline"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "idx_narrative_scene_storyline_line"
+  ON "narrative_scene_storyline" ("storyline_id", "role");
+` },
 ];

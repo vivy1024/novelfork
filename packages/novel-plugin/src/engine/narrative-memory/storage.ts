@@ -495,6 +495,62 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
       ON narrative_foreshadow(book_id, status, setup_chapter);
   `);
 
+  // 场景与剧情线（同步自迁移 0035）。场景是两棵叙事树共用的叶子：
+  // 承载树 卷 → 章 → 场景（在哪讲），因果树 剧情线 → 场景（为什么发生）。
+  // 卷不在此列——它的权威源是经纬 outline 条目，章节归属由 chapterRange 推导。
+  storage.sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS narrative_storyline (
+      id TEXT PRIMARY KEY NOT NULL,
+      book_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'other',
+      lifecycle TEXT NOT NULL DEFAULT 'active',
+      goal TEXT NOT NULL DEFAULT '',
+      entry_id TEXT,
+      layer TEXT NOT NULL DEFAULT 'dynamic',
+      status TEXT NOT NULL DEFAULT 'needs-review',
+      source TEXT NOT NULL DEFAULT 'inferred',
+      confidence REAL NOT NULL DEFAULT 1.0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_narrative_storyline_book
+      ON narrative_storyline(book_id, lifecycle);
+
+    CREATE TABLE IF NOT EXISTS narrative_scene (
+      id TEXT PRIMARY KEY NOT NULL,
+      book_id TEXT NOT NULL,
+      chapter_number INTEGER NOT NULL,
+      ordinal INTEGER NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      summary TEXT NOT NULL DEFAULT '',
+      function TEXT NOT NULL DEFAULT 'advance',
+      pov_entity_id TEXT,
+      location_entity_id TEXT,
+      word_count INTEGER NOT NULL DEFAULT 0,
+      layer TEXT NOT NULL DEFAULT 'dynamic',
+      status TEXT NOT NULL DEFAULT 'needs-review',
+      source TEXT NOT NULL DEFAULT 'inferred',
+      confidence REAL NOT NULL DEFAULT 1.0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_narrative_scene_chapter
+      ON narrative_scene(book_id, chapter_number, ordinal);
+    CREATE INDEX IF NOT EXISTS idx_narrative_scene_pov
+      ON narrative_scene(pov_entity_id);
+
+    CREATE TABLE IF NOT EXISTS narrative_scene_storyline (
+      scene_id TEXT NOT NULL,
+      storyline_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'primary',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (scene_id, storyline_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_narrative_scene_storyline_line
+      ON narrative_scene_storyline(storyline_id, role);
+  `);
+
   storage.sqlite.exec(`
     CREATE INDEX IF NOT EXISTS idx_narrative_event_subject_entry ON narrative_event(book_id, subject_entry_id);
     CREATE INDEX IF NOT EXISTS idx_narrative_event_object_entry ON narrative_event(book_id, object_entry_id);
