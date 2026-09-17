@@ -72,8 +72,16 @@ function readEntries(data: Record<string, unknown>): TreeEntry[] {
 }
 
 /**
+ * 共现边的 predicate 哨兵。共现是统计派生的图谱层，不是作者断言的关系；
+ * 它要画进树（看得见谁和谁常同场），但不能计入摘要的「N 条关系」——
+ * 摘要里另有独立的「共现 N」，两处都算等于同一条边报了两次。
+ */
+const COOCCURRENCE_PREDICATE = "共现";
+
+/**
  * 关系边：memory.graph 的 facts 里 category=relationship 的三元组，
  * 以及经纬 relationships 条目的 fields.source/target。
+ * 末尾追加共现边（predicate 为 COOCCURRENCE_PREDICATE），供树绘制使用。
  */
 function readRelations(data: Record<string, unknown>): TreeRelation[] {
   const relations: TreeRelation[] = [];
@@ -105,7 +113,7 @@ function readRelations(data: Record<string, unknown>): TreeRelation[] {
     const source = getString(record.source);
     const target = getString(record.target);
     if (!source || !target) continue;
-    relations.push({ sourceName: source, targetName: target, predicate: "共现" });
+    relations.push({ sourceName: source, targetName: target, predicate: COOCCURRENCE_PREDICATE });
   }
   return relations;
 }
@@ -141,6 +149,8 @@ export const LoreTreeCard: ToolResultRenderer = (context: ToolResultRendererCont
 
   const entries = readEntries(data);
   const relations = readRelations(data);
+  // 摘要只报作者断言的关系；共现边虽然也画进树，但在摘要里由「共现 N」单独承担。
+  const assertedRelationCount = relations.filter((relation) => relation.predicate !== COOCCURRENCE_PREDICATE).length;
   const events = readEventSummary(data);
   const layers = readGraphLayerCounts(data);
   const scope = getString(data.scope) || getString(data.view);
@@ -156,7 +166,7 @@ export const LoreTreeCard: ToolResultRenderer = (context: ToolResultRendererCont
       icon={<FolderTree className="size-4 text-primary" />}
       meta={[
         hasTree ? `${entries.length} 条条目` : null,
-        relations.length > 0 ? `${relations.length} 条关系` : null,
+        assertedRelationCount > 0 ? `${assertedRelationCount} 条关系` : null,
         events.count > 0 ? `${events.count} 个事件` : null,
         layers.cooccurrence > 0 ? `共现 ${layers.cooccurrence}` : null,
         layers.causal > 0 ? `因果 ${layers.causal}` : null,
