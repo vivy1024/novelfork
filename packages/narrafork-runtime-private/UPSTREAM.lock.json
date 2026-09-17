@@ -2,11 +2,36 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime-private",
   "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "b5913c98249f998e94a0cc77b85c0a0af74cda30",
-  "tree": "4d10f1681cc80b2531dbe21b6718e44fa340efc7",
-  "branch": "novelfork/integration-v0.5.23",
-  "version": "0.6.5",
-  "importedAt": "2026-09-05T20:32:30.662Z",
-  "trackedFileCount": 3492,
-  "importMethod": "git-archive"
+  "commit": "f779ff110e7b5decaddbddd46a77337d43697439",
+  "tree": "9f172c6654099e5e3ea9031569f6b18271417f70",
+  "branch": "novelfork/integration-v0.6.6",
+  "localBranch": "novelfork-seam-066",
+  "version": "0.6.6",
+  "importedAt": "2026-09-17T04:20:00.000Z",
+  "trackedFileCount": 3507,
+  "importMethod": "git-archive",
+  "provenance": {
+    "note": "已推送到 fork 远端分支 novelfork/integration-v0.6.6（与本地 novelfork-seam-066 同一提交 f779ff11）。远端改用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。宿主库：packages/.narrafork-runtime-fork-staging（合并工作区 D:/DESKTOP/narrafork-066-work 已在验证后删除）。远端旧分支 novelfork/integration-v0.5.23（31ce7ab6，v0.6.0 + 接缝）原样保留作历史存档。",
+    "seamBase": {
+      "commit": "5ab50ffe0643845794f776ce3c5098a510326905",
+      "subject": "chore(runtime): 记录 NovelFork 接缝基线（上游 v0.6.5 + 产品定制）",
+      "note": "与 2026-09-05 物化的 0.6.5 生产树逐文件一致（唯一差异为本 lock 文件本身）"
+    },
+    "upstream": {
+      "commit": "751ad11b99bd77ab906473150dabc2623a04ef3b",
+      "subject": "release: v0.6.6",
+      "ref": "httpsup/main",
+      "note": "0.6.6 曾发布两次：13e9c88d 被 78d739d1 回滚后由 751ad11b 重发，本次取重发版"
+    },
+    "mergeBase": "a657fb7508579e0401bd92ad8e66650e76b0397a",
+    "postMaterializeDeviations": [
+      "bun.lock：@types/bun 与 bun-types 由 1.4.1 下调到 1.3.13（与上游 0.6.6 稳定版的解析一致；package.json 声明的 ^1.3.13 范围两者都满足）。1.4.1 的 Pointer 类型改为不兼容 bigint，会让 narrafork-runtime-bridge 的 tsc 卡在 server/lib/win-handle-guard.ts。此改动仅存在于物化树，未回写提交 f779ff11——若日后从该提交重新物化，需重做此对齐。"
+    ],
+    "conflictsResolved": [
+      "frontend/components/narrator/dock/panels.tsx — 采用上游新增的 hostNarratorId 回填 effect",
+      "server/lib/agent/__tests__/bash-analyze.test.ts — 并集：保留接缝的 analyzeBashCommandImpl 别名与 ExecutionBackend，加入上游 isReviewReadOnlyBashAnalysis",
+      "server/services/worktree-tree-snapshot.ts — 并集：保留 NovelFork 的 core.autocrlf=false，采用上游可配置 timeoutMs",
+      "frontend/components/narrator/workspace/DockviewWorkspace.tsx — 整档采用上游版；接缝此前的 persistSerialized/保存队列属通用修复而非产品接缝，与上游 commitSavedLayout 重复，按单一权威源原则删弱留强"
+    ]
+  }
 }
