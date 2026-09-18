@@ -25,7 +25,9 @@ import {
   type TimelineEventInput,
   type VolumeTreeInput,
 } from "../../engine/narrative-taxonomy/canonical-trees";
+import { buildCarrierTree } from "../../engine/narrative-taxonomy/scene-trees";
 import type { TreeEntryInput } from "../../engine/narrative-taxonomy/story-tree";
+import type { NarrativeStructurePayload } from "../../engine/narrative-taxonomy/narrative-structure";
 import { TidyTreeCanvas } from "./TidyTreeCanvas";
 
 export interface CanonicalTreesPanelProps {
@@ -101,7 +103,7 @@ function matchingIds(node: CanonicalTreeNode, query: string): Set<string> {
 function NodeInspector({ node }: { node: CanonicalTreeNode | null }) {
   if (!node) {
     return (
-      <p className="p-3 text-[11px] text-muted-foreground" data-testid="canonical-tree-inspector-empty">
+      <p className="p-3 text-2xs text-muted-foreground" data-testid="canonical-tree-inspector-empty">
         点树上任一节点查看详情。
       </p>
     );
@@ -110,20 +112,20 @@ function NodeInspector({ node }: { node: CanonicalTreeNode | null }) {
     <div className="space-y-2 p-3" data-testid="canonical-tree-inspector">
       <div>
         <p className="text-xs font-semibold">{node.label}</p>
-        {node.subtitle ? <p className="mt-0.5 text-[10px] text-muted-foreground">{node.subtitle}</p> : null}
+        {node.subtitle ? <p className="mt-0.5 text-2xs text-muted-foreground">{node.subtitle}</p> : null}
       </div>
       <div className="flex flex-wrap gap-1">
-        <Badge variant="outline" className="h-4 px-1 text-[9px]">{node.kind}</Badge>
-        {node.count > 0 ? <Badge variant="outline" className="h-4 px-1 text-[9px]">{node.count}</Badge> : null}
-        {node.status ? <Badge variant="secondary" className="h-4 px-1 text-[9px]">{node.status}</Badge> : null}
-        {node.degree ? <Badge variant="outline" className="h-4 px-1 text-[9px]">{node.degree} 共现</Badge> : null}
+        <Badge variant="outline" className="h-4 px-1 text-2xs">{node.kind}</Badge>
+        {node.count > 0 ? <Badge variant="outline" className="h-4 px-1 text-2xs">{node.count}</Badge> : null}
+        {node.status ? <Badge variant="secondary" className="h-4 px-1 text-2xs">{node.status}</Badge> : null}
+        {node.degree ? <Badge variant="outline" className="h-4 px-1 text-2xs">{node.degree} 共现</Badge> : null}
       </div>
       {node.detail ? (
-        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
+        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">
           {node.detail}
         </p>
       ) : (
-        <p className="text-[11px] text-muted-foreground">这个节点没有正文内容。</p>
+        <p className="text-2xs text-muted-foreground">这个节点没有正文内容。</p>
       )}
     </div>
   );
@@ -163,6 +165,53 @@ export function CanonicalTreesPanel({
     const base = `/api/books/${encodeURIComponent(bookId)}`;
 
     void (async () => {
+      // 任务 4 优先路径：尝试单次快照
+      try {
+        const struct = await fetchJson<NarrativeStructurePayload>(`${base}/narrative-structure`);
+        if (generation !== generationRef.current) return;
+        if (struct && struct.ok) {
+          const volumes = struct.volumes.map((v) => ({
+            id: v.id,
+            title: v.title,
+            chapterRange: v.chapterRange,
+            status: v.status,
+            goal: v.goal,
+          }));
+          const base = buildCanonicalTrees({ volumes });
+
+          // buildCanonicalTrees 的「章节」树只到卷 → 章；场景要落进去得用
+          // buildCarrierTree（卷 → 章 → 场景），它产出同一套 CanonicalForest
+          // 结构，可直接替换那一棵，而不是往 buildCanonicalTrees 里再塞一份
+          // 重复的建树逻辑。没有场景时保持原树，避免老书凭空多出一层空节点。
+          const scenes = struct.scenes.map((s) => ({
+            id: s.id,
+            chapterNumber: s.chapterNumber,
+            ordinal: s.ordinal,
+            title: s.title,
+            summary: s.summary,
+            function: s.function,
+            status: s.status,
+          }));
+          const trees = scenes.length > 0
+            ? {
+                ...base,
+                chapters: buildCarrierTree({
+                  volumes,
+                  chapters: struct.chapters.map((chapter) => ({
+                    number: chapter.number,
+                    title: chapter.title,
+                  })),
+                  scenes,
+                }),
+              }
+            : base;
+          setState({ status: "ready", trees, degraded: false });
+          return;
+        }
+      } catch {
+        // 回退兼容多路请求
+      }
+
       let entries: TreeEntryInput[] = [];
       try {
         const payload = await fetchJson<{ entries?: RawEntry[] } | RawEntry[]>(`${base}/jingwei/entries`);
@@ -291,7 +340,7 @@ export function CanonicalTreesPanel({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="canonical-trees-error">
         <AlertCircle className="size-6 text-destructive" />
-        <p className="max-w-sm text-[11px] text-muted-foreground">{state.message}</p>
+        <p className="max-w-sm text-2xs text-muted-foreground">{state.message}</p>
         <Button size="xs" variant="outline" className="h-7 gap-1 text-xs" onClick={reload}>
           <RefreshCw className="size-3" /> 重试
         </Button>
@@ -308,7 +357,7 @@ export function CanonicalTreesPanel({
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="canonical-trees-panel">
       {state.degraded ? (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-[10px] text-amber-700 dark:text-amber-300" data-testid="canonical-trees-degraded">
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-2xs text-amber-700 dark:text-amber-300" data-testid="canonical-trees-degraded">
           动态记忆没读到，世界观和章节仍可用；关系树、发展历程、章节脉络会缺事件和共现。
         </p>
       ) : null}
@@ -334,7 +383,7 @@ export function CanonicalTreesPanel({
                   setQuery("");
                 }}
                 className={
-                  "rounded px-2 py-1 text-[11px] transition-colors "
+                  "rounded px-2 py-1 text-2xs transition-colors "
                   + (active ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")
                 }
               >
@@ -344,7 +393,7 @@ export function CanonicalTreesPanel({
           })}
         </nav>
         ) : null}
-        <span className="text-[10px] text-muted-foreground">{forest.root.count} 项</span>
+        <span className="text-2xs text-muted-foreground">{forest.root.count} 项</span>
         <div className="ml-auto flex items-center gap-1">
           <div className="relative">
             <Search className="pointer-events-none absolute left-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
@@ -353,11 +402,11 @@ export function CanonicalTreesPanel({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索节点"
               aria-label="搜索正图"
-              className="h-6 w-32 pl-6 text-[11px]"
+              className="h-6 w-32 pl-6 text-2xs"
             />
           </div>
           {query ? (
-            <Button size="xs" variant="ghost" className="h-6 px-1 text-[10px]" onClick={() => setQuery("")}>
+            <Button size="xs" variant="ghost" className="h-6 px-1 text-2xs" onClick={() => setQuery("")}>
               <X className="size-3" />
             </Button>
           ) : null}
@@ -365,7 +414,7 @@ export function CanonicalTreesPanel({
       </div>
 
       {query && matched.size === 0 ? (
-        <p className="px-1 text-[10px] text-muted-foreground">没有匹配「{query}」的节点。</p>
+        <p className="px-1 text-2xs text-muted-foreground">没有匹配「{query}」的节点。</p>
       ) : null}
 
       <div className="flex min-h-0 flex-1 gap-2">
@@ -388,11 +437,11 @@ export function CanonicalTreesPanel({
 
       {emptyPrompt && onSendToNarrator ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-2 py-1.5">
-          <span className="text-[10px] text-muted-foreground">{forest.emptyReason}</span>
+          <span className="text-2xs text-muted-foreground">{forest.emptyReason}</span>
           <Button
             size="xs"
             variant="ghost"
-            className="ml-auto h-6 px-1.5 text-[10px]"
+            className="ml-auto h-6 px-1.5 text-2xs"
             data-testid="canonical-tree-fill-gap"
             onClick={() => void onSendToNarrator(emptyPrompt)}
           >
@@ -400,7 +449,7 @@ export function CanonicalTreesPanel({
           </Button>
         </div>
       ) : forest.emptyReason ? (
-        <p className="px-1 text-[10px] text-muted-foreground">{forest.emptyReason}</p>
+        <p className="px-1 text-2xs text-muted-foreground">{forest.emptyReason}</p>
       ) : null}
     </div>
   );
