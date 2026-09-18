@@ -37,40 +37,45 @@ const CanonicalTreesPanel = lazy(() =>
  * 原「发展历程」三层（事件流/关系演化/矛盾冲突）已从推进页移除：
  * 它们是叙事记忆的浏览视图，归 NarrativeMemoryPanel，不回答「下一章写什么」。
  */
-export type StoryProgressionView = "tree" | "board" | "chronicle" | "network" | "timeline";
+export type StoryProgressionView = "board" | "tree";
 
 export interface StoryProgressionViewDef {
   readonly id: StoryProgressionView;
   readonly label: string;
   readonly description: string;
   readonly icon: LucideIcon;
-  /** 参考视图不是主视觉，UI 上分组显示。 */
-  readonly reference?: boolean;
 }
 
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
-  { id: "tree", label: "故事树", description: "世界观 / 关系树 / 章节 / 发展历程 / 脉络 / 总图", icon: FolderTree },
   { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
-  { id: "timeline", label: "发展历程", description: "按章看已经发生的事", icon: Clock, reference: true },
-  { id: "chronicle", label: "章节脉络", description: "表世界摘要与里世界角色变化", icon: Dna, reference: true },
-  { id: "network", label: "关系网", description: "按共现枢纽展开的关系树", icon: Network, reference: true },
+  { id: "tree", label: "故事树", description: "世界观 / 关系树 / 章节 / 发展历程 / 脉络 / 总图", icon: FolderTree },
 ] as const;
 
-const LEGACY_VIEW_ALIASES: Record<string, StoryProgressionView> = {
-  map: "network",
-  evolution: "timeline",
-  outline: "tree",
+export const LEGACY_VIEW_TARGETS: Record<string, { view: StoryProgressionView; treeKind?: import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind }> = {
+  board: { view: "board" },
+  tree: { view: "tree", treeKind: "worldview" },
+  timeline: { view: "tree", treeKind: "timeline" },
+  evolution: { view: "tree", treeKind: "timeline" },
+  chronicle: { view: "tree", treeKind: "chronicle" },
+  network: { view: "tree", treeKind: "relations" },
+  map: { view: "tree", treeKind: "relations" },
+  outline: { view: "tree", treeKind: "chapters" },
 };
 
 export function isStoryProgressionView(value: unknown): value is StoryProgressionView {
-  return value === "tree" || value === "board" || value === "chronicle" || value === "network" || value === "timeline";
+  return value === "tree" || value === "board";
 }
 
-/** 兼容旧的 initialView 取值（历史侧栏入口可能仍传 map/evolution）。 */
+/** 兼容旧的 initialView 取值，自动归并在两大主视图下，并提供对应子视图。 */
 export function normalizeStoryProgressionView(value: unknown): StoryProgressionView {
   if (isStoryProgressionView(value)) return value;
-  if (typeof value === "string" && LEGACY_VIEW_ALIASES[value]) return LEGACY_VIEW_ALIASES[value]!;
+  if (typeof value === "string" && LEGACY_VIEW_TARGETS[value]) return LEGACY_VIEW_TARGETS[value].view;
   return "tree";
+}
+
+export function resolveInitialTreeKind(value: unknown): import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind | undefined {
+  if (typeof value === "string" && LEGACY_VIEW_TARGETS[value]) return LEGACY_VIEW_TARGETS[value].treeKind;
+  return undefined;
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────
@@ -164,33 +169,24 @@ export function StoryProgressionCanvas({
           role="tablist"
           aria-label="故事推进视图切换"
         >
-          {STORY_PROGRESSION_VIEWS.map((def, index) => {
+          {STORY_PROGRESSION_VIEWS.map((def) => {
             const Icon = def.icon;
             const active = view === def.id;
-            const firstReference = def.reference && !STORY_PROGRESSION_VIEWS[index - 1]?.reference;
             return (
-              <span key={def.id} className="flex items-center gap-1">
-                {/* 分隔符明确区分主视觉与参考视图 */}
-                {firstReference ? (
-                  <span className="mx-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-                    <span className="h-4 w-px bg-border" aria-hidden />
-                    参考
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  title={def.description}
-                  onClick={() => setView(def.id)}
-                  className={
-                    "flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors "
-                    + (active ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")
-                  }
-                >
-                  <Icon className="h-3 w-3" /> {def.label}
-                </button>
-              </span>
+              <button
+                key={def.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                title={def.description}
+                onClick={() => setView(def.id)}
+                className={
+                  "flex items-center gap-1 rounded px-2.5 py-1 text-xs transition-colors "
+                  + (active ? "bg-background font-medium shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")
+                }
+              >
+                <Icon className="h-3.5 w-3.5" /> {def.label}
+              </button>
             );
           })}
         </nav>
@@ -209,20 +205,7 @@ export function StoryProgressionCanvas({
       </header>
 
       <div className="min-h-0 flex-1 overflow-hidden p-2" data-testid="story-progression-viewport">
-        {view === "tree" ? (
-          <div className="h-full min-h-0" data-testid="story-progression-tree">
-            <Suspense fallback={fallback("正在铺开正图…")}>
-              <CanonicalTreesPanel
-                bookId={bookId}
-                {...(onOpenEntityDetail
-                  ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
-                  : {})}
-                {...(onOpenChapter ? { onOpenChapter } : {})}
-                {...(onSendToNarrator ? { onSendToNarrator } : {})}
-              />
-            </Suspense>
-          </div>
-        ) : view === "board" ? (
+        {view === "board" ? (
           <div className="h-full min-h-0" data-testid="story-progression-board">
             <StoryProgressBoard
               bookId={bookId}
@@ -233,43 +216,12 @@ export function StoryProgressionCanvas({
               compactHeader={fullscreen}
             />
           </div>
-        ) : view === "timeline" ? (
-          <div className="h-full min-h-0" data-testid="story-progression-timeline">
-            <Suspense fallback={fallback("正在铺开发展历程树…")}>
-              <CanonicalTreesPanel
-                bookId={bookId}
-                initialKind="timeline"
-                showSwitcher={false}
-                {...(onOpenEntityDetail
-                  ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
-                  : {})}
-                {...(onOpenChapter ? { onOpenChapter } : {})}
-                {...(onSendToNarrator ? { onSendToNarrator } : {})}
-              />
-            </Suspense>
-          </div>
-        ) : view === "chronicle" ? (
-          <div className="h-full min-h-0" data-testid="story-progression-chronicle">
-            <Suspense fallback={fallback("正在铺开章节脉络树…")}>
-              <CanonicalTreesPanel
-                bookId={bookId}
-                initialKind="chronicle"
-                showSwitcher={false}
-                {...(onOpenEntityDetail
-                  ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
-                  : {})}
-                {...(onOpenChapter ? { onOpenChapter } : {})}
-                {...(onSendToNarrator ? { onSendToNarrator } : {})}
-              />
-            </Suspense>
-          </div>
         ) : (
-          <div className="h-full min-h-0" data-testid="story-progression-network">
-            <Suspense fallback={fallback("正在铺开关系树…")}>
+          <div className="h-full min-h-0" data-testid="story-progression-tree">
+            <Suspense fallback={fallback("正在铺开正图…")}>
               <CanonicalTreesPanel
                 bookId={bookId}
-                initialKind="relations"
-                showSwitcher={false}
+                initialKind={resolveInitialTreeKind(initialView)}
                 {...(onOpenEntityDetail
                   ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
                   : {})}
@@ -280,23 +232,6 @@ export function StoryProgressionCanvas({
           </div>
         )}
       </div>
-
-      {view === "chronicle" || view === "network" || view === "timeline" ? (
-        <footer className="flex shrink-0 items-center gap-2 border-t px-3 py-1.5">
-          <span className="text-[10px] text-muted-foreground">
-            这是参考视图，回答「已经写了什么」。看层级结构用故事树，看「下一章该写什么」用推进。
-          </span>
-          <Button
-            size="xs"
-            variant="ghost"
-            className="ml-auto h-6 px-1.5 text-[10px]"
-            data-testid="story-progression-back-to-board"
-            onClick={() => setView("tree")}
-          >
-            回到故事树
-          </Button>
-        </footer>
-      ) : null}
     </section>
   );
 }

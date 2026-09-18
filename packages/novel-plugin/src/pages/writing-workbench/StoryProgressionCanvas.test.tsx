@@ -73,9 +73,10 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
 
     expect(screen.getByRole("tab", { name: /故事树/ })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /推进/ })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /发展历程/ })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /章节脉络/ })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /关系网/ })).toBeTruthy();
+    // 顶层旧重复入口已下线
+    expect(screen.queryByRole("tab", { name: /发展历程/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /章节脉络/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /关系网/ })).toBeNull();
   });
 
   it("可切到推进网格并透传章节号", async () => {
@@ -114,54 +115,18 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     });
   });
 
-  it("可切到参考区：章节脉络与关系网", async () => {
-    render(<StoryProgressionCanvas bookId="book-1" currentChapter={3} />);
-
-    fireEvent.click(screen.getByRole("tab", { name: /章节脉络/ }));
-    await waitFor(() => expect(screen.getByTestId("mock-chronicle")).toBeTruthy());
-    expect(screen.getByTestId("story-progression-chronicle")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("tab", { name: /关系网/ }));
-    await waitFor(() => expect(screen.getByTestId("mock-network")).toBeTruthy());
-    expect(screen.getByTestId("story-progression-network")).toBeTruthy();
-  });
-
-  it("参考视图带说明与「回到故事树」，避免被当成主视觉", async () => {
-    render(<StoryProgressionCanvas bookId="book-1" />);
-
-    // 主视觉（树）下没有该页脚
-    expect(screen.queryByTestId("story-progression-back-to-board")).toBeNull();
-
-    fireEvent.click(screen.getByRole("tab", { name: /关系网/ }));
-    await waitFor(() => expect(screen.getByTestId("story-progression-back-to-board")).toBeTruthy());
-
-    fireEvent.click(screen.getByTestId("story-progression-back-to-board"));
-    await waitFor(() => expect(screen.getByTestId("story-progression-tree")).toBeTruthy());
-  });
-
-  it("推进网格是主视觉之一，不带参考区页脚", async () => {
-    render(<StoryProgressionCanvas bookId="book-1" />);
-    fireEvent.click(screen.getByRole("tab", { name: /推进/ }));
-    await waitFor(() => expect(screen.getByTestId("mock-progress-board")).toBeTruthy());
-    expect(screen.queryByTestId("story-progression-back-to-board")).toBeNull();
-  });
-
-  it("旧 initialView 取值落到对应树，不再打开点云或对照条", async () => {
+  it("旧 initialView 别名正确映射到故事树的对应子树", async () => {
     const { rerender } = render(<StoryProgressionCanvas bookId="book-1" initialView="map" />);
-    await waitFor(() => expect(screen.getByTestId("story-progression-network")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("mock-network")).toBeTruthy());
     expect(screen.getByTestId("mock-network").getAttribute("data-kind")).toBe("relations");
 
     rerender(<StoryProgressionCanvas bookId="book-1" initialView="evolution" />);
-    await waitFor(() => expect(screen.getByTestId("story-progression-timeline")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("mock-timeline")).toBeTruthy());
     expect(screen.getByTestId("mock-timeline").getAttribute("data-kind")).toBe("timeline");
-  });
 
-  it("initialView 指定参考视图；外部再次变更时内部视图同步跟随", async () => {
-    const { rerender } = render(<StoryProgressionCanvas bookId="book-1" initialView="chronicle" />);
-    await waitFor(() => expect(screen.getByTestId("story-progression-chronicle")).toBeTruthy());
-
-    rerender(<StoryProgressionCanvas bookId="book-1" initialView="tree" />);
-    await waitFor(() => expect(screen.getByTestId("story-progression-tree")).toBeTruthy());
+    rerender(<StoryProgressionCanvas bookId="book-1" initialView="chronicle" />);
+    await waitFor(() => expect(screen.getByTestId("mock-chronicle")).toBeTruthy());
+    expect(screen.getByTestId("mock-chronicle").getAttribute("data-kind")).toBe("chronicle");
   });
 
   it("章节跳转回调透传给推进网格", async () => {
@@ -172,11 +137,10 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     expect(onOpenChapter).toHaveBeenCalledWith(30);
   });
 
-  it("实体详情回调透传给关系网", async () => {
+  it("实体详情回调在故事树内可透传", async () => {
     const onOpenEntityDetail = vi.fn();
-    render(<StoryProgressionCanvas bookId="book-1" onOpenEntityDetail={onOpenEntityDetail} />);
+    render(<StoryProgressionCanvas bookId="book-1" initialView="network" onOpenEntityDetail={onOpenEntityDetail} />);
 
-    fireEvent.click(screen.getByRole("tab", { name: /关系网/ }));
     fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "打开实体" })));
     expect(onOpenEntityDetail).toHaveBeenCalledWith("薛行之", "entry-1");
   });
@@ -187,18 +151,18 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
   });
 });
 
-describe("normalizeStoryProgressionView", () => {
-  it("保留合法取值", () => {
+describe("normalizeStoryProgressionView 与 resolveInitialTreeKind", () => {
+  it("保留合法主视图取值", () => {
     expect(normalizeStoryProgressionView("tree")).toBe("tree");
     expect(normalizeStoryProgressionView("board")).toBe("board");
-    expect(normalizeStoryProgressionView("chronicle")).toBe("chronicle");
-    expect(normalizeStoryProgressionView("network")).toBe("network");
-    expect(normalizeStoryProgressionView("timeline")).toBe("timeline");
   });
 
-  it("旧取值落到对应树，非法值回落到故事树", () => {
-    expect(normalizeStoryProgressionView("map")).toBe("network");
-    expect(normalizeStoryProgressionView("evolution")).toBe("timeline");
+  it("旧取值落到故事树主视图并解析出对应子树 kind，非法值回落到故事树", () => {
+    expect(normalizeStoryProgressionView("chronicle")).toBe("tree");
+    expect(normalizeStoryProgressionView("network")).toBe("tree");
+    expect(normalizeStoryProgressionView("timeline")).toBe("tree");
+    expect(normalizeStoryProgressionView("map")).toBe("tree");
+    expect(normalizeStoryProgressionView("evolution")).toBe("tree");
     expect(normalizeStoryProgressionView("outline")).toBe("tree");
     expect(normalizeStoryProgressionView(undefined)).toBe("tree");
     expect(normalizeStoryProgressionView(42)).toBe("tree");
