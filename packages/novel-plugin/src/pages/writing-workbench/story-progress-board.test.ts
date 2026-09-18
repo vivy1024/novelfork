@@ -223,3 +223,171 @@ describe("trimTitle", () => {
     expect(trimTitle("   ")).toBe("未命名");
   });
 });
+
+describe("真剧情线与场景看板装配 (任务 3 验收)", () => {
+  it("有真剧情线时：真剧情线排在最上方，场景正确挂载到对应线与章，断档计算准确", () => {
+    const storylines = [
+      {
+        id: "line-main",
+        bookId: "b1",
+        name: "主线：复仇之路",
+        kind: "main" as const,
+        lifecycle: "active" as const,
+        goal: "重振宗门",
+        layer: "canon" as const,
+        status: "confirmed" as const,
+        source: "manual" as const,
+        confidence: 1,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+      {
+        id: "line-romance",
+        bookId: "b1",
+        name: "感情线：与苏晚",
+        kind: "romance" as const,
+        lifecycle: "active" as const,
+        goal: "化解误会",
+        layer: "canon" as const,
+        status: "confirmed" as const,
+        source: "manual" as const,
+        confidence: 1,
+        createdAt: 1001,
+        updatedAt: 1001,
+      },
+    ];
+
+    const scenes = [
+      {
+        id: "scene-1",
+        bookId: "b1",
+        chapterNumber: 1,
+        ordinal: 1,
+        title: "宗门夜变",
+        summary: "师尊被害",
+        function: "climax" as const,
+        wordCount: 2000,
+        conflict: "",
+        mood: "",
+        outcome: "",
+        characters: [],
+        hooksUsed: [],
+        hooksPlanted: [],
+        layer: "canon" as const,
+        status: "confirmed" as const,
+        source: "manual" as const,
+        confidence: 1,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+      {
+        id: "scene-2",
+        bookId: "b1",
+        chapterNumber: 2,
+        ordinal: 1,
+        title: "药园初遇",
+        summary: "苏晚赠药",
+        function: "relationship" as const,
+        wordCount: 1500,
+        conflict: "",
+        mood: "",
+        outcome: "",
+        characters: [],
+        hooksUsed: [],
+        hooksPlanted: [],
+        layer: "canon" as const,
+        status: "confirmed" as const,
+        source: "manual" as const,
+        confidence: 1,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+      {
+        id: "scene-3",
+        bookId: "b1",
+        chapterNumber: 5,
+        ordinal: 1,
+        title: "青云试炼",
+        summary: "击溃仇敌先锋",
+        function: "advance" as const,
+        wordCount: 3000,
+        conflict: "",
+        mood: "",
+        outcome: "",
+        characters: [],
+        hooksUsed: [],
+        hooksPlanted: [],
+        layer: "canon" as const,
+        status: "confirmed" as const,
+        source: "manual" as const,
+        confidence: 1,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ];
+
+    const mounts = [
+      { sceneId: "scene-1", storylineId: "line-main", role: "primary" as const, createdAt: 1000 },
+      { sceneId: "scene-3", storylineId: "line-main", role: "primary" as const, createdAt: 1000 },
+      { sceneId: "scene-2", storylineId: "line-romance", role: "primary" as const, createdAt: 1000 },
+    ];
+
+    // 当前写到第 6 章
+    const board = buildStoryProgressBoard({
+      storylines,
+      scenes,
+      mounts,
+      currentChapter: 6,
+    });
+
+    expect(board.hasRealStorylines).toBe(true);
+    expect(board.explanation).toBeUndefined();
+
+    // 检查真剧情线是否排在最前
+    const mainLane = board.lanes.find((l) => l.id === "line-main");
+    expect(mainLane).toBeDefined();
+    expect(mainLane!.source).toBe("storyline");
+    expect(mainLane!.title).toContain("主线：复仇之路");
+    // 第 1 章与第 5 章有场景
+    expect(mainLane!.cellsByChapter[1]).toHaveLength(1);
+    expect(mainLane!.cellsByChapter[1][0].title).toBe("宗门夜变");
+    expect(mainLane!.cellsByChapter[5]).toHaveLength(1);
+    expect(mainLane!.cellsByChapter[5][0].title).toBe("青云试炼");
+    // 距今 (6 - 5) = 1 章没推进，未达到断档阈值 3
+    expect(mainLane!.chaptersSinceLastBeat).toBe(1);
+    expect(mainLane!.stalled).toBe(false);
+
+    // 检查感情线
+    const romanceLane = board.lanes.find((l) => l.id === "line-romance");
+    expect(romanceLane).toBeDefined();
+    expect(romanceLane!.source).toBe("storyline");
+    expect(romanceLane!.cellsByChapter[2]).toHaveLength(1);
+    expect(romanceLane!.cellsByChapter[2][0].title).toBe("药园初遇");
+    // 感情线最后停在第 2 章，当前第 6 章：(6 - 2) = 4 >= STALLED_LANE_GAP (3) → 判定断档
+    expect(romanceLane!.chaptersSinceLastBeat).toBe(4);
+    expect(romanceLane!.stalled).toBe(true);
+
+    // 焦点列中能检测到感情线停滞
+    expect(board.focus?.stalledLanes.some((l) => l.id === "line-romance")).toBe(true);
+  });
+
+  it("老书一条真剧情线都没有时：优雅退回 4 类派生行，带三段式规范 explanation 引导", () => {
+    const board = buildStoryProgressBoard({
+      chapterSummaries: [
+        { id: "sum-1", title: "第一章", fields: { chapterNumber: 1 } },
+        { id: "sum-2", title: "第二章", fields: { chapterNumber: 2 } },
+      ],
+      currentChapter: 2,
+    });
+
+    expect(board.hasRealStorylines).toBe(false);
+    expect(board.explanation).toBeDefined();
+    expect(board.explanation!.title).toBe("当前显示自动推导泳道");
+    expect(board.explanation!.what).toContain("本书尚未建立结构化剧情线");
+    expect(board.explanation!.why).toContain("正式剧情线可跨越多章挂载具体场景");
+    expect(board.explanation!.action).toContain("创建第一条正式剧情线");
+
+    // 所有的行均为派生
+    expect(board.lanes.every((l) => l.source === "derived")).toBe(true);
+  });
+});

@@ -34,16 +34,20 @@ import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 import { TensionCurveStrip } from "./TensionCurveStrip";
 import {
+  LANE_KIND_LABEL,
+  STALLED_LANE_GAP,
   buildStoryProgressBoard,
   cellsForChapter,
   hasProgressContent,
-  LANE_KIND_LABEL,
   type ForeshadowDebt,
   type ProgressJingweiEntry,
   type ProgressMemoryEvent,
+  // 组件名 StoryProgressBoard 已被本文件占用，故数据层模型在此以 BoardModel 出现。
   type StoryProgressBoardModel as BoardModel,
+  type StoryProgressCell,
   type StoryProgressLane,
 } from "./story-progress-board";
+import type { NarrativeStructurePayload } from "../../engine/narrative-taxonomy/narrative-structure";
 
 export interface StoryProgressBoardProps {
   readonly bookId: string;
@@ -78,6 +82,7 @@ interface LoadedData {
   readonly structureScores: readonly StructureScoreItem[];
   /** 加载失败的链路名，用于降级提示（缺哪条说哪条）。 */
   readonly degraded: readonly string[];
+  readonly structurePayload?: NarrativeStructurePayload;
 }
 
 type LoadState =
@@ -132,6 +137,29 @@ function useProgressData(bookId: string): { state: LoadState; reload: () => void
     };
 
     void (async () => {
+      // 优先路径（任务 4）：单次聚合快照
+      try {
+        const struct = await fetchJson<NarrativeStructurePayload>(`${base}/narrative-structure`);
+        if (generation !== generationRef.current) return;
+        if (struct && struct.ok) {
+          setState({
+            status: "ready",
+            data: {
+              chapterSummaries: [],
+              foreshadowEntries: [],
+              conflictEntries: [],
+              events: [],
+              structureScores: [],
+              degraded: [],
+              structurePayload: struct,
+            },
+          });
+          return;
+        }
+      } catch {
+        // 回退路径：若单次接口未实现或处于旧版 mock 测试环境，平滑回退到多路并发
+      }
+
       const [summaries, foreshadow, conflicts, graph, structure] = await Promise.all([
         loadEntries("chapter-summaries"),
         loadEntries("foreshadowing"),
@@ -216,7 +244,7 @@ function EmptyState({
       </div>
       <div className="space-y-1">
         <p className="text-xs font-medium text-foreground">{title}</p>
-        <p className="max-w-md text-[11px] leading-relaxed text-muted-foreground">{detail}</p>
+        <p className="max-w-md text-2xs leading-relaxed text-muted-foreground">{detail}</p>
       </div>
       <div className="flex items-center gap-2">
         {onSendToNarrator ? (
@@ -257,13 +285,13 @@ function StructureScoreStrip({
   if (current.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5" data-testid="structure-score-strip">
-      <span className="text-[10px] font-medium text-muted-foreground">结构打分 · 第{currentChapter}章</span>
+      <span className="text-2xs font-medium text-muted-foreground">结构打分 · 第{currentChapter}章</span>
       {current.map((row) => {
         const hot = typeof row.deviation === "number" && row.deviation > 0.2;
         return (
           <span
             key={row.featureId}
-            className={hot ? "text-[10px] text-rose-600 dark:text-rose-300" : "text-[10px] text-muted-foreground"}
+            className={hot ? "text-2xs text-rose-600 dark:text-rose-300" : "text-2xs text-muted-foreground"}
             title={row.featureId}
           >
             {STRUCTURE_LABEL[row.value] ?? row.value} {row.numericValue.toFixed(2)}
@@ -309,9 +337,9 @@ function FocusCard({
         data-testid="story-progress-focus-collapsed"
         onClick={() => setCollapsed(false)}
       >
-        <Badge className="h-4 px-1 text-[9px]">下一章</Badge>
+        <Badge className="h-4 px-1 text-2xs">下一章</Badge>
         <span className="text-xs font-semibold">第 {focus.chapterNumber} 章</span>
-        <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">
           {focus.dueDebts.length > 0 ? `${focus.dueDebts.length} 笔债 · ` : ""}
           {focus.stalledLanes.length > 0 ? `${focus.stalledLanes.length} 条断档` : "各线推进正常"}
         </span>
@@ -326,11 +354,11 @@ function FocusCard({
       data-testid="story-progress-focus"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Badge className="h-5 px-1.5 text-[10px]">下一章</Badge>
+        <Badge className="h-5 px-1.5 text-2xs">下一章</Badge>
         <span className="text-sm font-semibold">第 {focus.chapterNumber} 章</span>
         <button
           type="button"
-          className="ml-1 text-[10px] text-muted-foreground hover:text-foreground"
+          className="ml-1 text-2xs text-muted-foreground hover:text-foreground"
           title="收起"
           aria-label="收起焦点卡"
           data-testid="story-progress-focus-collapse"
@@ -343,7 +371,7 @@ function FocusCard({
             <Button
               size="xs"
               variant="outline"
-              className="h-7 gap-1 text-[11px]"
+              className="h-7 gap-1 text-2xs"
               data-testid="story-progress-focus-open"
               onClick={() => onOpenChapter(focus.chapterNumber)}
             >
@@ -354,7 +382,7 @@ function FocusCard({
           {onSendToNarrator ? (
             <Button
               size="xs"
-              className="h-7 gap-1 text-[11px]"
+              className="h-7 gap-1 text-2xs"
               data-testid="story-progress-focus-plan"
               onClick={() => void onSendToNarrator(prompt)}
             >
@@ -367,11 +395,11 @@ function FocusCard({
 
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
         <div>
-          <p className="text-[10px] font-medium text-muted-foreground">该收的债（{focus.dueDebts.length}）</p>
+          <p className="text-2xs font-medium text-muted-foreground">该收的债（{focus.dueDebts.length}）</p>
           {focus.dueDebts.length > 0 ? (
             <ul className="mt-1 space-y-1">
               {focus.dueDebts.map((debt) => (
-                <li key={debt.id} className="flex items-start gap-1 text-[11px] leading-snug">
+                <li key={debt.id} className="flex items-start gap-1 text-2xs leading-snug">
                   <TriangleAlert className={`mt-0.5 size-3 shrink-0 ${debt.urgency === "overdue" ? "text-rose-500" : "text-amber-500"}`} />
                   <span title={debt.reason}>
                     <span className="font-medium">{debt.title}</span>
@@ -381,15 +409,15 @@ function FocusCard({
               ))}
             </ul>
           ) : (
-            <p className="mt-1 text-[11px] text-muted-foreground">没有到期伏笔。</p>
+            <p className="mt-1 text-2xs text-muted-foreground">没有到期伏笔。</p>
           )}
         </div>
         <div>
-          <p className="text-[10px] font-medium text-muted-foreground">断档的线（{focus.stalledLanes.length}）</p>
+          <p className="text-2xs font-medium text-muted-foreground">断档的线（{focus.stalledLanes.length}）</p>
           {focus.stalledLanes.length > 0 ? (
             <ul className="mt-1 space-y-1">
               {focus.stalledLanes.map((lane) => (
-                <li key={lane.id} className="flex items-center gap-1 text-[11px]">
+                <li key={lane.id} className="flex items-center gap-1 text-2xs">
                   <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: lane.color }} />
                   <span className="font-medium">{lane.title}</span>
                   <span className="text-muted-foreground">{lane.chaptersSinceLastBeat} 章未推进</span>
@@ -397,7 +425,7 @@ function FocusCard({
               ))}
             </ul>
           ) : (
-            <p className="mt-1 text-[11px] text-muted-foreground">所有线都在推进。</p>
+            <p className="mt-1 text-2xs text-muted-foreground">所有线都在推进。</p>
           )}
         </div>
       </div>
@@ -420,7 +448,7 @@ function DebtLedger({
 
   if (debts.length === 0) {
     return (
-      <p className="px-1 py-2 text-[11px] text-muted-foreground" data-testid="story-progress-debts-empty">
+      <p className="px-1 py-2 text-2xs text-muted-foreground" data-testid="story-progress-debts-empty">
         没有伏笔条目。埋点后这里会列出未回收的债。
       </p>
     );
@@ -430,14 +458,14 @@ function DebtLedger({
     <div data-testid="story-progress-debts">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold">伏笔债务</span>
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           未回收 {pending.length} · 已回收 {paidOff}
         </span>
         {pending.length > visible.length || expanded ? (
           <Button
             size="xs"
             variant="ghost"
-            className="ml-auto h-6 px-1.5 text-[10px]"
+            className="ml-auto h-6 px-1.5 text-2xs"
             data-testid="story-progress-debts-toggle"
             onClick={() => setExpanded((value) => !value)}
           >
@@ -452,16 +480,16 @@ function DebtLedger({
             className={`flex items-center gap-2 rounded-md border px-2 py-1.5 ${DEBT_TONE[debt.urgency]}`}
             data-testid={`story-progress-debt-${debt.entryId}`}
           >
-            <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px]">{DEBT_LABEL[debt.urgency]}</Badge>
-            <span className="min-w-0 flex-1 truncate text-[11px] font-medium" title={debt.title}>
+            <Badge variant="outline" className="h-4 shrink-0 px-1 text-2xs">{DEBT_LABEL[debt.urgency]}</Badge>
+            <span className="min-w-0 flex-1 truncate text-2xs font-medium" title={debt.title}>
               {debt.title}
             </span>
-            <span className="shrink-0 text-[10px] opacity-80" title={debt.reason}>{debt.reason}</span>
+            <span className="shrink-0 text-2xs opacity-80" title={debt.reason}>{debt.reason}</span>
             {onOpenEntityDetail ? (
               <Button
                 size="xs"
                 variant="ghost"
-                className="h-5 shrink-0 px-1 text-[10px]"
+                className="h-5 shrink-0 px-1 text-2xs"
                 data-testid={`story-progress-debt-open-${debt.entryId}`}
                 onClick={() => onOpenEntityDetail(debt.title, debt.entryId)}
               >
@@ -508,14 +536,14 @@ function CellActions({
       >
         <span className="flex items-start gap-1">
           <CircleDot className="mt-0.5 size-2.5 shrink-0 opacity-60" />
-          <span className="min-w-0 line-clamp-2 text-[11px] font-medium leading-snug">{cell.title}</span>
+          <span className="min-w-0 line-clamp-2 text-2xs font-medium leading-snug">{cell.title}</span>
         </span>
         {cell.summary ? (
-          <span className="line-clamp-3 text-[10px] leading-relaxed text-muted-foreground" data-testid={`story-progress-cell-summary-${cell.id}`}>
+          <span className="line-clamp-3 text-2xs leading-relaxed text-muted-foreground" data-testid={`story-progress-cell-summary-${cell.id}`}>
             {cell.summary}
           </span>
         ) : (
-          <span className="text-[10px] text-muted-foreground/70">暂无摘要</span>
+          <span className="text-2xs text-muted-foreground/70">暂无摘要</span>
         )}
       </button>
       {isForeshadow ? (
@@ -574,7 +602,7 @@ function LaneRow({
       >
         <div className="min-w-0">
           <p className="truncate text-xs font-medium" title={lane.title}>{lane.title}</p>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {LANE_KIND_LABEL[lane.kind]}
             {lane.stalled ? ` · 停滞 ${lane.chaptersSinceLastBeat} 章` : ""}
           </p>
@@ -661,20 +689,53 @@ export function StoryProgressBoard({
 
   const addBeat = useCallback(async (chapterNumber: number, lane: StoryProgressLane) => {
     try {
-      await fetchJson(`${base}/jingwei/entries`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: `第 ${chapterNumber} 章 · ${lane.title}`,
-          contentMd: "",
-          category: "chapter-summaries",
-          status: "needs-review",
-          fields: { chapterNumber, laneKind: lane.kind },
-          relatedChapterNumbers: [chapterNumber],
-          layer: "dynamic",
-        }),
-      });
-      setOpFeedback(`已把「${lane.title}」第 ${chapterNumber} 章新节拍挂进待写列表`);
+      if (lane.source === "storyline" && lane.storylineId) {
+        // 任务 3：真剧情线新增节拍直接创建场景并正交挂载到该剧情线
+        const createdScene = await fetchJson<{ ok: boolean; data?: { id: string } }>(
+          `${base}/narrative-memory/scenes`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chapterNumber,
+              title: `第 ${chapterNumber} 章 · ${lane.title}`,
+              summary: `挂载于剧情线「${lane.title}」`,
+              function: "advance",
+            }),
+          },
+        );
+
+        if (createdScene.ok && createdScene.data?.id) {
+          await fetchJson(
+            `${base}/narrative-memory/scenes/${encodeURIComponent(createdScene.data.id)}/mounts`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                storylineId: lane.storylineId,
+                role: "primary",
+              }),
+            },
+          );
+        }
+        setOpFeedback(`已在剧情线「${lane.title}」第 ${chapterNumber} 章建立新场景`);
+      } else {
+        // 老书兼容回退：未建真剧情线前建立 chapter-summaries 条目
+        await fetchJson(`${base}/jingwei/entries`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `第 ${chapterNumber} 章 · ${lane.title}`,
+            contentMd: "",
+            category: "chapter-summaries",
+            status: "needs-review",
+            fields: { chapterNumber, laneKind: lane.kind },
+            relatedChapterNumbers: [chapterNumber],
+            layer: "dynamic",
+          }),
+        });
+        setOpFeedback(`已把「${lane.title}」第 ${chapterNumber} 章新节拍挂进待写列表`);
+      }
       reload();
     } catch {
       setOpFeedback(`新建节拍失败`);
@@ -715,6 +776,14 @@ export function StoryProgressBoard({
 
   const board = useMemo(() => {
     if (state.status !== "ready") return null;
+    if (state.data.structurePayload) {
+      return buildStoryProgressBoard({
+        storylines: state.data.structurePayload.storylines,
+        scenes: state.data.structurePayload.scenes,
+        mounts: state.data.structurePayload.mounts,
+        currentChapter: currentChapter ?? state.data.structurePayload.currentChapter,
+      });
+    }
     return buildStoryProgressBoard({
       chapterSummaries: state.data.chapterSummaries,
       foreshadowEntries: state.data.foreshadowEntries,
@@ -736,7 +805,7 @@ export function StoryProgressBoard({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="story-progress-error">
         <AlertCircle className="size-6 text-destructive" />
-        <p className="max-w-sm text-[11px] text-muted-foreground">{state.message}</p>
+        <p className="max-w-sm text-2xs text-muted-foreground">{state.message}</p>
         <Button size="xs" variant="outline" className="h-7 gap-1 text-xs" onClick={reload}>
           <RefreshCw className="size-3" /> 重试
         </Button>
@@ -751,9 +820,22 @@ export function StoryProgressBoard({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2" data-testid="story-progress-board">
       {state.data.degraded.length > 0 ? (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-[10px] text-amber-700 dark:text-amber-300" data-testid="story-progress-degraded">
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-2xs text-amber-700 dark:text-amber-300" data-testid="story-progress-degraded">
           这些数据没读到：{state.data.degraded.join(" / ")}。下面只画读到的部分。
         </p>
+      ) : null}
+
+      {board.explanation ? (
+        <div className="rounded-md border border-blue-500/30 bg-blue-500/[0.05] p-2 text-xs space-y-1" data-testid="story-progress-explanation">
+          <div className="flex items-center justify-between font-medium text-blue-700 dark:text-blue-300">
+            <span>{board.explanation.title}</span>
+            <span className="text-2xs text-muted-foreground font-normal">兼容提示</span>
+          </div>
+          <p className="text-2xs text-muted-foreground">{board.explanation.what}</p>
+          <p className="text-2xs text-muted-foreground">
+            <strong className="font-semibold text-foreground">建议：</strong>{board.explanation.action}
+          </p>
+        </div>
       ) : null}
 
       <TensionCurveStrip chapters={board.chapters} currentChapter={board.currentChapter} />
@@ -779,7 +861,7 @@ export function StoryProgressBoard({
             className="grid gap-2"
             style={{ gridTemplateColumns: `12rem repeat(${Math.max(board.chapters.length, 1)}, minmax(14rem, 1fr))` }}
           >
-            <div className="sticky left-0 top-0 z-[2] rounded-md bg-muted/70 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground">
+            <div className="sticky left-0 top-0 z-[2] rounded-md bg-muted/70 px-2 py-1.5 text-2xs font-semibold text-muted-foreground">
               剧情线
             </div>
             {board.chapters.map((column) => {
@@ -795,10 +877,10 @@ export function StoryProgressBoard({
                   data-testid={`story-progress-chapter-${column.chapterNumber}`}
                   onClick={() => onOpenChapter?.(column.chapterNumber)}
                 >
-                  <div className="text-[10px] font-semibold">
+                  <div className="text-2xs font-semibold">
                     第 {column.chapterNumber} 章{isFocus ? " ·下一章" : ""}
                   </div>
-                  <div className="truncate text-[9px] text-muted-foreground" title={column.title}>
+                  <div className="truncate text-2xs text-muted-foreground" title={column.title}>
                     {column.future ? "待写" : column.title}
                   </div>
                 </button>
@@ -819,7 +901,7 @@ export function StoryProgressBoard({
           </div>
 
           {board.collapsedCharacterLanes > 0 ? (
-            <p className="mt-2 px-1 text-[10px] text-muted-foreground" data-testid="story-progress-collapsed">
+            <p className="mt-2 px-1 text-2xs text-muted-foreground" data-testid="story-progress-collapsed">
               另有 {board.collapsedCharacterLanes} 个出场较少的角色线未展示（避免行数过多）。
             </p>
           ) : null}
@@ -832,10 +914,10 @@ export function StoryProgressBoard({
 
       <div className="flex shrink-0 items-center gap-2 px-1 pb-1">
         <BookOpen className="size-3 text-muted-foreground" />
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           第 {board.currentChapter} 章 · {board.lanes.length} 条线 · 数据来自经纬与叙事记忆
         </span>
-        <Button size="xs" variant="ghost" className="ml-auto h-6 gap-1 px-1.5 text-[10px]" onClick={reload}>
+        <Button size="xs" variant="ghost" className="ml-auto h-6 gap-1 px-1.5 text-2xs" onClick={reload}>
           <RefreshCw className="size-3" /> 刷新
         </Button>
       </div>

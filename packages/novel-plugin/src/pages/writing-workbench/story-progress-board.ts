@@ -15,6 +15,12 @@
 
 // ─── 输入类型（对齐 /jingwei/entries 与 /narrative-memory/graph 的实际返回） ───
 
+import type {
+  NarrativeScene,
+  NarrativeStoryline,
+  SceneStorylineMount,
+} from "../../engine/narrative-memory/scene-store.js";
+
 export interface ProgressJingweiEntry {
   readonly id: string;
   readonly category?: string;
@@ -40,6 +46,7 @@ export interface ProgressMemoryEvent {
 }
 
 export interface BuildStoryProgressBoardInput {
+  // 原有派生数据（向下兼容老书）
   readonly chapterSummaries?: readonly ProgressJingweiEntry[];
   readonly foreshadowEntries?: readonly ProgressJingweiEntry[];
   readonly conflictEntries?: readonly ProgressJingweiEntry[];
@@ -48,11 +55,26 @@ export interface BuildStoryProgressBoardInput {
   readonly currentChapter?: number;
   /** 角色泳道上限，超出折叠。默认 4。 */
   readonly maxCharacterLanes?: number;
+
+  // 任务 3 核心：真剧情线、场景与正交挂载数据
+  readonly storylines?: readonly NarrativeStoryline[];
+  readonly scenes?: readonly NarrativeScene[];
+  readonly mounts?: readonly SceneStorylineMount[];
 }
 
 // ─── 输出类型 ───
 
-export type StoryProgressLaneKind = "main" | "conflict" | "character" | "foreshadow";
+export type StoryProgressLaneKind =
+  | "main"
+  | "sub"
+  | "romance"
+  | "faction"
+  | "mystery"
+  | "character-arc"
+  | "conflict"
+  | "character"
+  | "foreshadow"
+  | "other";
 
 export interface StoryProgressCell {
   readonly id: string;
@@ -73,24 +95,32 @@ export interface StoryProgressLane {
   readonly chaptersSinceLastBeat?: number;
   /** 断档（连续 >= STALLED_LANE_GAP 章没推进）。 */
   readonly stalled: boolean;
+  /** 泳道来源：真实剧情线为 storyline，自动推导派生为 derived。 */
+  readonly source?: "storyline" | "derived";
+  /** 若为真剧情线，对应的 narrative_storyline.id */
+  readonly storylineId?: string;
+  /** 剧情线生命周期（仅 storyline 时有）：planned / active / paused / resolved / abandoned */
+  readonly lifecycle?: string;
 }
 
-export type ForeshadowDebtStatus = "planted" | "triggered" | "paid_off" | "unknown";
-export type ForeshadowDebtUrgency = "ok" | "watch" | "overdue";
+export {
+  type ForeshadowDebtStatus,
+  type ForeshadowDebtUrgency,
+  type ForeshadowDebt,
+  DEBT_WATCH_CHAPTERS,
+  DEBT_OVERDUE_CHAPTERS,
+  trimTitle,
+  resolveDebtStatus,
+  debtUrgency,
+  debtReason,
+  buildForeshadowDebts,
+} from "../../engine/narrative-taxonomy/foreshadow-debts.js";
 
-export interface ForeshadowDebt {
-  readonly id: string;
-  readonly title: string;
-  readonly entryId: string;
-  readonly plantedChapter?: number;
-  readonly payoffChapter?: number;
-  readonly status: ForeshadowDebtStatus;
-  /** 已悬置章数（仅未回收且有埋设章时给出）。 */
-  readonly chaptersPending?: number;
-  readonly urgency: ForeshadowDebtUrgency;
-  /** 给作者看的一句话理由。 */
-  readonly reason: string;
-}
+import {
+  type ForeshadowDebt,
+  buildForeshadowDebts,
+  trimTitle,
+} from "../../engine/narrative-taxonomy/foreshadow-debts.js";
 
 export interface NextChapterFocus {
   readonly chapterNumber: number;
@@ -107,6 +137,13 @@ export interface StoryProgressChapterColumn {
   readonly tensionScore?: number;
 }
 
+export interface StoryProgressBoardExplanation {
+  readonly title: string;
+  readonly what: string;
+  readonly why: string;
+  readonly action: string;
+}
+
 /** 数据层模型；组件名 StoryProgressBoard 已被 tsx 占用，故此处带 Model 后缀。 */
 export interface StoryProgressBoardModel {
   readonly chapters: readonly StoryProgressChapterColumn[];
@@ -116,15 +153,16 @@ export interface StoryProgressBoardModel {
   readonly currentChapter: number;
   /** 被折叠的角色泳道数（超出 maxCharacterLanes 的部分）。 */
   readonly collapsedCharacterLanes: number;
+  /** 是否存在真实剧情线（用于在真线与老书派生行之间提供渐进分流）。 */
+  readonly hasRealStorylines: boolean;
+  /** 当无真实剧情线时，提供任务书规范的三段式可操作提示说明。 */
+  readonly explanation?: StoryProgressBoardExplanation;
 }
 
 // ─── 常量 ───
 
 /** 剧情线断档判定：连续这么多章没有节拍就算停滞。 */
 export const STALLED_LANE_GAP = 3;
-/** 伏笔悬置警戒线（章）。 */
-export const DEBT_WATCH_CHAPTERS = 5;
-export const DEBT_OVERDUE_CHAPTERS = 12;
 /** 未来章预留列数。 */
 export const FUTURE_CHAPTER_COLUMNS = 2;
 
@@ -133,16 +171,28 @@ const DEFAULT_MAX_CHARACTER_LANES = 4;
 /** 低饱和分类色（暗底/亮底都可读，避免饱和亮色刺眼）。 */
 export const LANE_COLORS: Record<StoryProgressLaneKind, string> = {
   main: "#7aa2f7",
+  sub: "#2ac3de",
+  romance: "#f7768e",
+  faction: "#9ece6a",
+  mystery: "#bb9af7",
+  "character-arc": "#e0af68",
   conflict: "#f7768e",
   character: "#bb9af7",
   foreshadow: "#e0af68",
+  other: "#a9b1d6",
 };
 
 export const LANE_KIND_LABEL: Record<StoryProgressLaneKind, string> = {
   main: "主线",
+  sub: "支线",
+  romance: "感情线",
+  faction: "势力线",
+  mystery: "悬疑线",
+  "character-arc": "角色弧",
   conflict: "冲突",
   character: "角色",
   foreshadow: "伏笔",
+  other: "其他",
 };
 
 const ARC_EVENT_TYPES = new Set(["character_state_changed", "relationship_changed"]);
@@ -187,102 +237,9 @@ function resolveEntryChapter(entry: ProgressJingweiEntry, ...keys: readonly stri
   return chapterFromTitle(entry.title);
 }
 
-/** 标题裁剪：实测有把整段正文当标题的条目，网格里必须截断（全文走 hover）。 */
-export function trimTitle(value: string | undefined, maxLength = 28): string {
-  const normalized = text(value);
-  if (!normalized) return "未命名";
-  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 1)}…`;
-}
-
 function entrySummary(entry: ProgressJingweiEntry): string | undefined {
   const candidate = text(entry.summaryMd ?? "") || text(entry.contentMd ?? "");
   return candidate ? candidate.slice(0, 120) : undefined;
-}
-
-/**
- * 伏笔状态：只认白名单枚举值。
- * 实测有一条把整句话写进 `fields.status`，这类脏值必须落到 unknown，
- * 再由 payoffChapter 是否存在做二次推断。
- */
-export function resolveDebtStatus(entry: ProgressJingweiEntry): ForeshadowDebtStatus {
-  const raw = text(fields(entry).status).toLowerCase();
-  if (raw === "paid_off" || raw === "paid-off" || raw === "resolved") return "paid_off";
-  if (raw === "triggered" || raw === "paying_off" || raw === "唤醒中") return "triggered";
-  if (raw === "planted" || raw === "open" || raw === "pending" || raw === "reinforced") return "planted";
-  // 脏值/缺失 → 用 payoffChapter 推断，推不出记 unknown（不猜）
-  const payoff = toChapter(fields(entry).payoffChapter);
-  if (payoff !== undefined) return "paid_off";
-  const planted = toChapter(fields(entry).plantedChapter);
-  if (planted !== undefined) return "planted";
-  return "unknown";
-}
-
-function debtUrgency(status: ForeshadowDebtStatus, chaptersPending: number | undefined): ForeshadowDebtUrgency {
-  if (status === "paid_off") return "ok";
-  if (status === "triggered") return "overdue";
-  if (chaptersPending === undefined) return "watch";
-  if (chaptersPending >= DEBT_OVERDUE_CHAPTERS) return "overdue";
-  if (chaptersPending >= DEBT_WATCH_CHAPTERS) return "watch";
-  return "ok";
-}
-
-function debtReason(
-  status: ForeshadowDebtStatus,
-  plantedChapter: number | undefined,
-  payoffChapter: number | undefined,
-  chaptersPending: number | undefined,
-): string {
-  if (status === "paid_off") {
-    return payoffChapter !== undefined ? `已在第 ${payoffChapter} 章回收` : "已标记回收";
-  }
-  if (status === "triggered") {
-    return "触发条件已满足，尚未兑现——本章应推进或回收";
-  }
-  if (status === "unknown") {
-    return "状态未标注，无法判断是否已回收——建议补一次状态";
-  }
-  if (plantedChapter === undefined) return "已埋设，但没有记录埋在第几章";
-  if (chaptersPending === undefined) return `埋于第 ${plantedChapter} 章`;
-  if (chaptersPending <= 0) return `刚埋于第 ${plantedChapter} 章`;
-  return `埋于第 ${plantedChapter} 章，已悬 ${chaptersPending} 章未回收`;
-}
-
-// ─── 伏笔债务 ───
-
-export function buildForeshadowDebts(
-  entries: readonly ProgressJingweiEntry[],
-  currentChapter: number,
-): ForeshadowDebt[] {
-  const debts: ForeshadowDebt[] = [];
-  for (const entry of entries) {
-    // archived 生命周期视为作者已放弃，不计入债务
-    if (entry.lifecycle === "archived" || entry.lifecycle === "retired") continue;
-    const f = fields(entry);
-    const plantedChapter = toChapter(f.plantedChapter) ?? chapterFromTitle(entry.title);
-    const payoffChapter = toChapter(f.payoffChapter);
-    const status = resolveDebtStatus(entry);
-    const chaptersPending = status !== "paid_off" && plantedChapter !== undefined
-      ? Math.max(0, currentChapter - plantedChapter)
-      : undefined;
-    debts.push({
-      id: `debt:${entry.id}`,
-      title: trimTitle(entry.title, 34),
-      entryId: entry.id,
-      ...(plantedChapter !== undefined ? { plantedChapter } : {}),
-      ...(payoffChapter !== undefined ? { payoffChapter } : {}),
-      status,
-      ...(chaptersPending !== undefined ? { chaptersPending } : {}),
-      urgency: debtUrgency(status, chaptersPending),
-      reason: debtReason(status, plantedChapter, payoffChapter, chaptersPending),
-    });
-  }
-  // 超期最久的排最前；已回收沉底
-  const urgencyRank: Record<ForeshadowDebtUrgency, number> = { overdue: 0, watch: 1, ok: 2 };
-  return debts.sort((left, right) => (
-    urgencyRank[left.urgency] - urgencyRank[right.urgency]
-    || (right.chaptersPending ?? -1) - (left.chaptersPending ?? -1)
-    || left.title.localeCompare(right.title)
-  ));
 }
 
 // ─── 泳道 ───
@@ -293,6 +250,11 @@ function laneFromCells(
   title: string,
   cells: readonly StoryProgressCell[],
   currentChapter: number,
+  options?: {
+    source?: "storyline" | "derived";
+    storylineId?: string;
+    lifecycle?: string;
+  },
 ): StoryProgressLane {
   const cellsByChapter: Record<number, StoryProgressCell[]> = {};
   for (const cell of cells) {
@@ -305,11 +267,14 @@ function laneFromCells(
     id,
     kind,
     title: trimTitle(title, 22),
-    color: LANE_COLORS[kind],
+    color: LANE_COLORS[kind] ?? LANE_COLORS.other,
     cellsByChapter,
     ...(chaptersSinceLastBeat !== undefined ? { chaptersSinceLastBeat } : {}),
     // 完全没有节拍不算「断档」（那是还没开始），只有推进过又停下才算
     stalled: chaptersSinceLastBeat !== undefined && chaptersSinceLastBeat >= STALLED_LANE_GAP,
+    source: options?.source ?? "derived",
+    ...(options?.storylineId ? { storylineId: options.storylineId } : {}),
+    ...(options?.lifecycle ? { lifecycle: options.lifecycle } : {}),
   };
 }
 
@@ -434,7 +399,54 @@ export function buildStoryProgressBoard(input: BuildStoryProgressBoardInput): St
   const events = input.events ?? [];
   const chapters = buildChapterColumns(input.chapterSummaries ?? [], events, currentChapter);
 
-  // 主线：章摘要本身
+  // 1. 真剧情线优先装配（挂载场景）
+  const storylines = input.storylines ?? [];
+  const scenes = input.scenes ?? [];
+  const mounts = input.mounts ?? [];
+  const hasRealStorylines = storylines.length > 0;
+
+  const realStorylineLanes: StoryProgressLane[] = [];
+  if (hasRealStorylines) {
+    const sceneMap = new Map(scenes.map((s) => [s.id, s]));
+    const mountsByLine = new Map<string, string[]>();
+    for (const m of mounts) {
+      const list = mountsByLine.get(m.storylineId) ?? [];
+      list.push(m.sceneId);
+      mountsByLine.set(m.storylineId, list);
+    }
+
+    for (const line of storylines) {
+      const sceneIds = mountsByLine.get(line.id) ?? [];
+      const lineCells: StoryProgressCell[] = [];
+      for (const sid of sceneIds) {
+        const sc = sceneMap.get(sid);
+        if (!sc) continue;
+        lineCells.push({
+          id: `scene:${sc.id}`,
+          title: trimTitle(sc.title || `第 ${sc.ordinal} 场`, 24),
+          summary: sc.summary || sc.conflict || undefined,
+          chapterNumber: sc.chapterNumber,
+          status: sc.status,
+        });
+      }
+      realStorylineLanes.push(
+        laneFromCells(
+          line.id,
+          (line.kind as StoryProgressLaneKind) || "other",
+          line.name,
+          lineCells,
+          currentChapter,
+          {
+            source: "storyline",
+            storylineId: line.id,
+            lifecycle: line.lifecycle,
+          },
+        ),
+      );
+    }
+  }
+
+  // 2. 派生泳道（向下兼容老书与补充）：主线、冲突、角色、未收伏笔
   const mainCells: StoryProgressCell[] = [];
   for (const entry of input.chapterSummaries ?? []) {
     const chapter = resolveEntryChapter(entry, "chapterNumber", "chapter_number");
@@ -462,7 +474,14 @@ export function buildStoryProgressBoard(input: BuildStoryProgressBoardInput): St
         ...(entry.status ? { status: entry.status } : {}),
       }]
       : [];
-    return laneFromCells(`lane:conflict:${entry.id}`, "conflict", entry.title ?? "冲突", cells, currentChapter);
+    return laneFromCells(
+      `lane:conflict:${entry.id}`,
+      "conflict",
+      entry.title ?? "冲突",
+      cells,
+      currentChapter,
+      { source: "derived" },
+    );
   });
 
   const debts = buildForeshadowDebts(input.foreshadowEntries ?? [], currentChapter);
@@ -487,14 +506,36 @@ export function buildStoryProgressBoard(input: BuildStoryProgressBoardInput): St
     input.maxCharacterLanes ?? DEFAULT_MAX_CHARACTER_LANES,
   );
 
-  const lanes: StoryProgressLane[] = [
-    laneFromCells("lane:main", "main", "主线", mainCells, currentChapter),
+  const derivedLanes: StoryProgressLane[] = [
+    // 如果已有真主线，派生主线标注为章节摘要
+    laneFromCells(
+      "lane:main",
+      "main",
+      hasRealStorylines ? "章节摘要 (自动归类)" : "主线",
+      mainCells,
+      currentChapter,
+      { source: "derived" },
+    ),
     ...conflictLanes,
-    ...characterLanes,
+    ...characterLanes.map((l) => ({ ...l, source: "derived" as const })),
     ...(foreshadowCells.length > 0
-      ? [laneFromCells("lane:foreshadow", "foreshadow", "未收伏笔", foreshadowCells, currentChapter)]
+      ? [laneFromCells("lane:foreshadow", "foreshadow", "未收伏笔", foreshadowCells, currentChapter, { source: "derived" })]
       : []),
   ];
+
+  // 排序组合：真剧情线在上，派生行在下
+  const lanes: StoryProgressLane[] = hasRealStorylines
+    ? [...realStorylineLanes, ...derivedLanes]
+    : derivedLanes;
+
+  const explanation = !hasRealStorylines
+    ? {
+        title: "当前显示自动推导泳道",
+        what: "本书尚未建立结构化剧情线，当前视图按章节摘要、冲突和角色出场频次自动归类为派生泳道。",
+        why: "正式剧情线可跨越多章挂载具体场景，并精准计算断档与推进节奏；派生泳道为兼容展示。",
+        action: "建议在故事推进或大纲中创建第一条正式剧情线，让网格呈现清晰的因果脉络。",
+      }
+    : undefined;
 
   return {
     chapters,
@@ -503,6 +544,8 @@ export function buildStoryProgressBoard(input: BuildStoryProgressBoardInput): St
     focus: buildNextChapterFocus(currentChapter, lanes, debts),
     currentChapter,
     collapsedCharacterLanes: collapsed,
+    hasRealStorylines,
+    ...(explanation ? { explanation } : {}),
   };
 }
 

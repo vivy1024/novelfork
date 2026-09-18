@@ -208,4 +208,42 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
     expect(screen.getByTestId("tension-curve-strip-current")).toBeTruthy();
     expect(screen.queryByTestId("tension-curve-strip-empty")).toBeNull();
   });
+
+  it("优先走 /narrative-structure 单次快照：仅发起 1 次请求，渲染真剧情线网格", async () => {
+    fetchJson.mockImplementation(async (url: string) => {
+      if (url.includes("/narrative-structure")) {
+        return {
+          ok: true,
+          bookId: "book-single",
+          currentChapter: 2,
+          volumes: [],
+          chapters: [
+            { number: 1, title: "第 1 章", status: "accepted", wordCount: 2000 },
+            { number: 2, title: "第 2 章", status: "accepted", wordCount: 3000 },
+          ],
+          scenes: [
+            { id: "sc-1", bookId: "book-single", chapterNumber: 1, ordinal: 1, title: "夜宴", summary: "首战", function: "advance", status: "confirmed" },
+          ],
+          storylines: [
+            { id: "line-1", bookId: "book-single", name: "主线：崛起", kind: "main", lifecycle: "active", goal: "", status: "confirmed" },
+          ],
+          mounts: [
+            { sceneId: "sc-1", storylineId: "line-1", role: "primary", createdAt: 1000 },
+          ],
+          foreshadows: [],
+          entities: [],
+        };
+      }
+      throw new Error("unexpected legacy call");
+    });
+
+    render(<StoryProgressBoard bookId="book-single" currentChapter={2} />);
+
+    await waitFor(() => expect(screen.getByTestId("story-progress-board")).toBeTruthy());
+    expect(screen.getByTestId("story-progress-lane-line-1")).toBeTruthy();
+    expect(screen.getByText("主线：崛起")).toBeTruthy();
+    // 验证确实只发起了对 /narrative-structure 的 1 次请求，未发起任何分路请求
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+    expect(fetchJson.mock.calls[0][0]).toContain("/api/books/book-single/narrative-structure");
+  });
 });
