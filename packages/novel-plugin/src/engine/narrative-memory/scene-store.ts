@@ -15,6 +15,8 @@
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
+import type { BeatBudgetItem } from "../../handlers/beat-budget.js";
+import type { SceneSpecScene } from "../../handlers/scene-spec-handler.js";
 import { ensureNarrativeMemorySchema } from "./storage.js";
 
 /** canon 是作者确认过的；机器抽取一律 dynamic。 */
@@ -69,6 +71,13 @@ export type NarrativeScene = Readonly<{
   povEntityId?: string;
   locationEntityId?: string;
   wordCount: number;
+  conflict: string;
+  mood: string;
+  outcome: string;
+  characters: readonly string[];
+  hooksUsed: readonly string[];
+  hooksPlanted: readonly string[];
+  beatBudget?: readonly BeatBudgetItem[];
   layer: NarrativeLayer;
   status: NarrativeReviewStatus;
   source: NarrativeSource;
@@ -118,6 +127,13 @@ type SceneRow = {
   pov_entity_id: string | null;
   location_entity_id: string | null;
   word_count: number;
+  conflict: string;
+  mood: string;
+  outcome: string;
+  characters_json: string;
+  hooks_used_json: string;
+  hooks_planted_json: string;
+  beat_budget_json: string | null;
   layer: string;
   status: string;
   source: string;
@@ -125,6 +141,25 @@ type SceneRow = {
   created_at: number;
   updated_at: number;
 };
+
+function safeParseJsonArray<T>(raw: string | null | undefined): T[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function safeParseJsonNullable<T>(raw: string | null | undefined): T | undefined {
+  if (!raw?.trim()) return undefined;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return undefined;
+  }
+}
 
 function fail<T>(error: string, summary: string): SceneStoreResult<T> {
   return { ok: false, error, summary };
@@ -157,6 +192,7 @@ function toStoryline(row: StorylineRow): NarrativeStoryline {
 }
 
 function toScene(row: SceneRow): NarrativeScene {
+  const beatBudget = safeParseJsonNullable<BeatBudgetItem[]>(row.beat_budget_json);
   return {
     id: row.id,
     bookId: row.book_id,
@@ -168,6 +204,13 @@ function toScene(row: SceneRow): NarrativeScene {
     ...(row.pov_entity_id ? { povEntityId: row.pov_entity_id } : {}),
     ...(row.location_entity_id ? { locationEntityId: row.location_entity_id } : {}),
     wordCount: row.word_count,
+    conflict: row.conflict ?? "",
+    mood: row.mood ?? "",
+    outcome: row.outcome ?? "",
+    characters: safeParseJsonArray<string>(row.characters_json),
+    hooksUsed: safeParseJsonArray<string>(row.hooks_used_json),
+    hooksPlanted: safeParseJsonArray<string>(row.hooks_planted_json),
+    ...(beatBudget ? { beatBudget } : {}),
     layer: row.layer as NarrativeLayer,
     status: row.status as NarrativeReviewStatus,
     source: row.source as NarrativeSource,
@@ -268,6 +311,13 @@ export type CreateSceneInput = Readonly<{
   povEntityId?: string;
   locationEntityId?: string;
   wordCount?: number;
+  conflict?: string;
+  mood?: string;
+  outcome?: string;
+  characters?: readonly string[];
+  hooksUsed?: readonly string[];
+  hooksPlanted?: readonly string[];
+  beatBudget?: readonly BeatBudgetItem[];
   layer?: NarrativeLayer;
   status?: NarrativeReviewStatus;
   source?: NarrativeSource;
@@ -302,6 +352,13 @@ export function createScene(storage: StorageDatabase, input: CreateSceneInput): 
     ...(input.povEntityId ? { povEntityId: input.povEntityId } : {}),
     ...(input.locationEntityId ? { locationEntityId: input.locationEntityId } : {}),
     wordCount: input.wordCount ?? 0,
+    conflict: input.conflict?.trim() ?? "",
+    mood: input.mood?.trim() ?? "",
+    outcome: input.outcome?.trim() ?? "",
+    characters: input.characters ? [...input.characters] : [],
+    hooksUsed: input.hooksUsed ? [...input.hooksUsed] : [],
+    hooksPlanted: input.hooksPlanted ? [...input.hooksPlanted] : [],
+    ...(input.beatBudget ? { beatBudget: [...input.beatBudget] } : {}),
     layer: input.layer ?? "dynamic",
     status: input.status ?? "needs-review",
     source: input.source ?? "inferred",
@@ -314,12 +371,19 @@ export function createScene(storage: StorageDatabase, input: CreateSceneInput): 
     .prepare(`
       INSERT INTO narrative_scene
         (id, book_id, chapter_number, ordinal, title, summary, function, pov_entity_id,
-         location_entity_id, word_count, layer, status, source, confidence, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         location_entity_id, word_count, conflict, mood, outcome, characters_json,
+         hooks_used_json, hooks_planted_json, beat_budget_json,
+         layer, status, source, confidence, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       row.id, row.bookId, row.chapterNumber, row.ordinal, row.title, row.summary, row.function,
       row.povEntityId ?? null, row.locationEntityId ?? null, row.wordCount,
+      row.conflict, row.mood, row.outcome,
+      JSON.stringify(row.characters),
+      JSON.stringify(row.hooksUsed),
+      JSON.stringify(row.hooksPlanted),
+      row.beatBudget ? JSON.stringify(row.beatBudget) : null,
       row.layer, row.status, row.source, row.confidence, row.createdAt, row.updatedAt,
     );
 
@@ -508,4 +572,58 @@ export function listSceneMounts(storage: StorageDatabase, sceneIdValue: string):
       role: row.role as SceneStorylineRole,
       createdAt: row.created_at,
     }));
+}
+
+// ---------------------------------------------------------------------------
+// SceneSpec 对齐与转换
+// ---------------------------------------------------------------------------
+
+export interface SceneFromSpecOptions {
+  readonly beatBudget?: readonly BeatBudgetItem[];
+  readonly layer?: NarrativeLayer;
+  readonly status?: NarrativeReviewStatus;
+  readonly source?: NarrativeSource;
+  readonly confidence?: number;
+  readonly function?: SceneFunction;
+}
+
+/**
+ * 将写前蓝图（SceneSpecScene）无损转换为 CreateSceneInput。
+ *
+ * 铁律：
+ * 1. location 是自由文本，存入 summary（如 "[地点: ...] 描述"），
+ *    严禁存入 locationEntityId —— 后者指向 narrative_entity，未归并时会造假外键；
+ * 2. characters / conflict / mood / outcome / hooks_used / hooks_planted 完整落入对应列；
+ * 3. 机器抽取或工作流产物默认 layer=dynamic, status=needs-review, source=workflow。
+ */
+export function sceneFromSpec(
+  bookId: string,
+  chapterNumber: number,
+  ordinal: number,
+  spec: SceneSpecScene,
+  options?: SceneFromSpecOptions,
+): CreateSceneInput {
+  const locationPrefix = spec.location?.trim() ? `[地点: ${spec.location.trim()}] ` : "";
+  const baseSummary = spec.outcome?.trim() || spec.conflict?.trim() || `第 ${chapterNumber} 章第 ${ordinal} 场`;
+  const summary = `${locationPrefix}${baseSummary}`.trim();
+
+  return {
+    bookId,
+    chapterNumber,
+    ordinal,
+    title: spec.conflict?.trim() ? spec.conflict.trim().slice(0, 40) : `第 ${ordinal} 场`,
+    summary,
+    function: options?.function ?? "advance",
+    conflict: spec.conflict ?? "",
+    mood: spec.mood ?? "",
+    outcome: spec.outcome ?? "",
+    characters: spec.characters ?? [],
+    hooksUsed: spec.hooks_used ?? [],
+    hooksPlanted: spec.hooks_planted ?? [],
+    ...(options?.beatBudget ? { beatBudget: options.beatBudget } : {}),
+    layer: options?.layer ?? "dynamic",
+    status: options?.status ?? "needs-review",
+    source: options?.source ?? "workflow",
+    confidence: options?.confidence ?? 1.0,
+  };
 }

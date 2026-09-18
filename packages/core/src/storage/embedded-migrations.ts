@@ -1301,4 +1301,12 @@ CREATE TABLE IF NOT EXISTS "narrative_scene_storyline" (
 CREATE INDEX IF NOT EXISTS "idx_narrative_scene_storyline_line"
   ON "narrative_scene_storyline" ("storyline_id", "role");
 ` },
+  { name: "0036_narrative_scene_spec_alignment.sql", sql: `ALTER TABLE "narrative_scene" ADD COLUMN "conflict" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "narrative_scene" ADD COLUMN "mood" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "narrative_scene" ADD COLUMN "outcome" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "narrative_scene" ADD COLUMN "characters_json" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "narrative_scene" ADD COLUMN "hooks_used_json" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "narrative_scene" ADD COLUMN "hooks_planted_json" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "narrative_scene" ADD COLUMN "beat_budget_json" TEXT;
+` },
 ];

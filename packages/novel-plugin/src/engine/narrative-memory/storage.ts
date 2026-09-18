@@ -528,6 +528,13 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
       pov_entity_id TEXT,
       location_entity_id TEXT,
       word_count INTEGER NOT NULL DEFAULT 0,
+      conflict TEXT NOT NULL DEFAULT '',
+      mood TEXT NOT NULL DEFAULT '',
+      outcome TEXT NOT NULL DEFAULT '',
+      characters_json TEXT NOT NULL DEFAULT '[]',
+      hooks_used_json TEXT NOT NULL DEFAULT '[]',
+      hooks_planted_json TEXT NOT NULL DEFAULT '[]',
+      beat_budget_json TEXT,
       layer TEXT NOT NULL DEFAULT 'dynamic',
       status TEXT NOT NULL DEFAULT 'needs-review',
       source TEXT NOT NULL DEFAULT 'inferred',
@@ -550,6 +557,24 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_narrative_scene_storyline_line
       ON narrative_scene_storyline(storyline_id, role);
   `);
+
+  // 场景字段与 SceneSpec 对齐（同步自迁移 0036）。
+  // CREATE TABLE IF NOT EXISTS 不会给已存在的旧表加列，因此这里显式 ALTER。
+  const sceneColumns = existingColumns("narrative_scene");
+  const sceneColumnsToAdd: Array<{ name: string; ddl: string }> = [
+    { name: "conflict", ddl: "ADD COLUMN conflict TEXT NOT NULL DEFAULT ''" },
+    { name: "mood", ddl: "ADD COLUMN mood TEXT NOT NULL DEFAULT ''" },
+    { name: "outcome", ddl: "ADD COLUMN outcome TEXT NOT NULL DEFAULT ''" },
+    { name: "characters_json", ddl: "ADD COLUMN characters_json TEXT NOT NULL DEFAULT '[]'" },
+    { name: "hooks_used_json", ddl: "ADD COLUMN hooks_used_json TEXT NOT NULL DEFAULT '[]'" },
+    { name: "hooks_planted_json", ddl: "ADD COLUMN hooks_planted_json TEXT NOT NULL DEFAULT '[]'" },
+    { name: "beat_budget_json", ddl: "ADD COLUMN beat_budget_json TEXT" },
+  ];
+  for (const col of sceneColumnsToAdd) {
+    if (!sceneColumns.has(col.name)) {
+      storage.sqlite.exec(`ALTER TABLE narrative_scene ${col.ddl}`);
+    }
+  }
 
   storage.sqlite.exec(`
     CREATE INDEX IF NOT EXISTS idx_narrative_event_subject_entry ON narrative_event(book_id, subject_entry_id);

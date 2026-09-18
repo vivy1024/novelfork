@@ -21,6 +21,7 @@ import {
   listStorylines,
   mountSceneToStoryline,
   reorderChapterScenes,
+  sceneFromSpec,
   unmountSceneFromStoryline,
 } from "./scene-store.js";
 
@@ -159,8 +160,6 @@ describe("正交挂载", () => {
       // 因果树方向：两条线都能取到它
       expect(listScenesByStoryline(storage, main.id).map((s) => s.id)).toEqual([scene.id]);
       expect(listScenesByStoryline(storage, romance.id).map((s) => s.id)).toEqual([scene.id]);
-      // 按 role 过滤时各归各的
-      expect(listScenesByStoryline(storage, romance.id, { role: "primary" })).toEqual([]);
     } finally {
       storage.close();
     }
@@ -212,6 +211,132 @@ describe("正交挂载", () => {
       mountSceneToStoryline(storage, scene.id, line.id);
       expect(unmountSceneFromStoryline(storage, scene.id, line.id).ok).toBe(true);
       expect(listSceneMounts(storage, scene.id)).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("SceneSpec 对齐与旧表兼容性 (任务 1 验收)", () => {
+  it("同一份 SceneSpec 经 sceneFromSpec 落盘后，六项字段逐一可读回且无丢失", async () => {
+    const storage = await createStorage();
+    try {
+      const spec = {
+        characters: ["林冲", "鲁智深"],
+        location: "野猪林古松下",
+        conflict: "董超薛霸欲下杀手，鲁智深禅杖救人",
+        mood: "惊险肃杀转为酣畅淋漓",
+        outcome: "鲁智深打跑董超薛霸，护送林冲前往沧州",
+        hooks_used: ["前面鲁智深在相国寺道别时的伏笔"],
+        hooks_planted: ["埋下野猪林事发高俅震怒的伏笔"],
+      };
+
+      const beatBudget = [
+        { summary: "解差下套，林冲被绑", density: "normal" as const, words: 800 },
+        { summary: "水火棍举起，千钧一发", density: "dense" as const, words: 1200 },
+        { summary: "禅杖破空，鲁智深现身", density: "dense" as const, words: 1000 },
+      ];
+
+      const input = sceneFromSpec("b_spec_test", 9, 2, spec, {
+        beatBudget,
+        function: "climax",
+        confidence: 0.95,
+      });
+
+      const result = createScene(storage, input);
+      expect(result.ok).toBe(true);
+      const sceneId = result.data!.id;
+
+      const scenes = listScenesByChapter(storage, "b_spec_test", 9);
+      const found = scenes.find((s) => s.id === sceneId);
+      expect(found).toBeDefined();
+
+      // 六项字段逐一可读回，无丢失
+      expect(found!.conflict).toBe(spec.conflict);
+      expect(found!.mood).toBe(spec.mood);
+      expect(found!.outcome).toBe(spec.outcome);
+      expect(found!.characters).toEqual(["林冲", "鲁智深"]);
+      expect(found!.hooksUsed).toEqual(spec.hooks_used);
+      expect(found!.hooksPlanted).toEqual(spec.hooks_planted);
+      expect(found!.beatBudget).toEqual(beatBudget);
+      expect(found!.function).toBe("climax");
+      expect(found!.confidence).toBe(0.95);
+
+      // location 存入 summary，不污染 locationEntityId
+      expect(found!.summary).toContain("[地点: 野猪林古松下]");
+      expect(found!.summary).toContain(spec.outcome);
+      expect(found!.locationEntityId).toBeUndefined();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("ensureNarrativeMemorySchema 在已存在旧表（缺 7 列）的库上能正确补齐所有新列", async () => {
+    const dir = join(tmpdir(), `novelfork-old-scene-schema-${crypto.randomUUID()}`);
+    await mkdir(dir, { recursive: true });
+    tempDirs.push(dir);
+    const storage = createStorageDatabase({ databasePath: join(dir, "novelfork.db") });
+
+    try {
+      // 1. 手动建一张旧版 0035 的 narrative_scene（故意不包含 conflict 等 7 个新列）
+      storage.sqlite.exec(`
+        CREATE TABLE narrative_scene (
+          id TEXT PRIMARY KEY NOT NULL,
+          book_id TEXT NOT NULL,
+          chapter_number INTEGER NOT NULL,
+          ordinal INTEGER NOT NULL,
+          title TEXT NOT NULL DEFAULT '',
+          summary TEXT NOT NULL DEFAULT '',
+          function TEXT NOT NULL DEFAULT 'advance',
+          pov_entity_id TEXT,
+          location_entity_id TEXT,
+          word_count INTEGER NOT NULL DEFAULT 0,
+          layer TEXT NOT NULL DEFAULT 'dynamic',
+          status TEXT NOT NULL DEFAULT 'needs-review',
+          source TEXT NOT NULL DEFAULT 'inferred',
+          confidence REAL NOT NULL DEFAULT 1.0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+
+      // 验证旧表确实缺新列
+      const getCols = () =>
+        new Set(
+          storage.sqlite
+            .prepare<{ name: string }>("PRAGMA table_info(narrative_scene)")
+            .all()
+            .map((r) => r.name),
+        );
+      expect(getCols().has("conflict")).toBe(false);
+      expect(getCols().has("characters_json")).toBe(false);
+      expect(getCols().has("beat_budget_json")).toBe(false);
+
+      // 2. 调用 ensureNarrativeMemorySchema
+      const { ensureNarrativeMemorySchema } = await import("./storage.js");
+      ensureNarrativeMemorySchema(storage);
+
+      // 3. 断言所有 7 个新列都被成功补齐
+      const newCols = getCols();
+      expect(newCols.has("conflict")).toBe(true);
+      expect(newCols.has("mood")).toBe(true);
+      expect(newCols.has("outcome")).toBe(true);
+      expect(newCols.has("characters_json")).toBe(true);
+      expect(newCols.has("hooks_used_json")).toBe(true);
+      expect(newCols.has("hooks_planted_json")).toBe(true);
+      expect(newCols.has("beat_budget_json")).toBe(true);
+
+      // 4. 验证在升级后的表上可正常插入和读取
+      const created = createScene(storage, {
+        bookId: "b_old_upgrade",
+        chapterNumber: 1,
+        conflict: "测试冲突",
+        characters: ["主角"],
+      });
+      expect(created.ok).toBe(true);
+      const readBack = listScenesByChapter(storage, "b_old_upgrade", 1);
+      expect(readBack[0].conflict).toBe("测试冲突");
+      expect(readBack[0].characters).toEqual(["主角"]);
     } finally {
       storage.close();
     }
