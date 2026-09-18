@@ -34,6 +34,7 @@ export { createMarketRouter } from "./market.js";
 export { createEmbeddingSettingsRouter } from "./embedding.js";
 export { createCockpitRouter, type CreateCockpitRouterOptions } from "./cockpit.js";
 export { createNarrativeMemoryRouter } from "./narrative-memory.js";
+export { createNarrativeStructureRouter, type NarrativeStructureRouterOptions } from "./narrative-structure.js";
 export { createNarrativeLineRouter, type CreateNarrativeLineRouterOptions } from "./narrative-line.js";
 export type {
   AiObservationScope,
