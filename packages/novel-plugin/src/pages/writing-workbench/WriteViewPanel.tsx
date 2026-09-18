@@ -330,7 +330,7 @@ export function WriteViewPanel({
           <LightIcon className={`mt-0.5 size-4 shrink-0 ${light.text}`} />
           <div className="min-w-0 flex-1">
             <p className={`text-xs font-medium ${light.text}`} data-testid="write-headline">{model.headline}</p>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-2xs text-muted-foreground">
               {model.volumeLabel && <span>卷纲：{model.volumeLabel}</span>}
               {model.platformLabel && <span>平台：{model.platformLabel}</span>}
               {model.recentChapters.length > 0 && <span>近章记忆：{model.recentChapters.length} 条</span>}
@@ -350,7 +350,7 @@ export function WriteViewPanel({
       </section>
 
       {error && (
-        <p className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] text-red-600 dark:text-red-400">{error}</p>
+        <p className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-2xs text-red-600 dark:text-red-400">{error}</p>
       )}
 
       {/* 卷驾驶舱：当前卷目标与本章在本卷的位置，就绪红绿灯下方集中呈现。 */}
@@ -380,13 +380,13 @@ export function WriteViewPanel({
               <li key={check.code} className="rounded border border-border/60 bg-card/40">
                 <div className="flex items-center gap-2 px-2 py-1.5">
                   <span className={`w-3 text-center text-xs font-bold ${icon.cls}`}>{icon.glyph}</span>
-                  <span className="flex-1 truncate text-[11px] text-foreground">{check.label}</span>
+                  <span className="flex-1 truncate text-2xs text-foreground">{check.label}</span>
                   {check.fixAction && (
                     <button
                       type="button"
                       onClick={() => void handleFix(check.fixAction!)}
                       disabled={fixBusy !== null}
-                      className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/20 disabled:opacity-50"
+                      className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-2xs text-primary hover:bg-primary/20 disabled:opacity-50"
                       data-testid={`write-fix-${check.code}`}
                     >
                       {fixBusy === check.fixAction ? "处理中" : "一键修"}
@@ -404,7 +404,7 @@ export function WriteViewPanel({
                   )}
                 </div>
                 {open && (
-                  <div className="border-t border-border/60 px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                  <div className="border-t border-border/60 px-2 py-1.5 text-2xs leading-relaxed text-muted-foreground">
                     {check.explanation ? (
                       <>
                         <p><span className="text-foreground">发生了什么：</span>{check.explanation.whatHappened}</p>
@@ -422,7 +422,7 @@ export function WriteViewPanel({
         </ul>
       )}
 
-      {fixNote && <p className="text-[10px] text-muted-foreground">{fixNote}</p>}
+      {fixNote && <p className="text-2xs text-muted-foreground">{fixNote}</p>}
 
       {/*
         本章提议：写作 → 叙事记忆 的回路终点。
@@ -433,21 +433,21 @@ export function WriteViewPanel({
       {(proposalGroups.current.length > 0 || proposalGroups.earlier.length > 0 || proposalError) && (
         <section className="rounded-md border border-border bg-card/40 px-2 py-1.5" data-testid="write-proposals">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium text-foreground">
+            <span className="text-2xs font-medium text-foreground">
               本章提议 {proposalGroups.current.length > 0 ? `(${proposalGroups.current.length})` : ""}
             </span>
             {proposalGroups.highRiskCount > 0 && (
-              <span className="text-[10px] text-amber-600 dark:text-amber-400">
+              <span className="text-2xs text-amber-600 dark:text-amber-400">
                 高风险 {proposalGroups.highRiskCount}
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">
+          <p className="mt-0.5 text-2xs text-muted-foreground">
             章后结算从正文提出的事实与事件。确认后写入动态事实；不处理也不阻断写作。
           </p>
 
           {proposalError && (
-            <p className="mt-1 rounded border border-red-500/40 bg-red-500/10 px-1.5 py-1 text-[10px] text-red-600 dark:text-red-400">
+            <p className="mt-1 rounded border border-red-500/40 bg-red-500/10 px-1.5 py-1 text-2xs text-red-600 dark:text-red-400">
               {proposalError}
             </p>
           )}
@@ -470,7 +470,7 @@ export function WriteViewPanel({
               <button
                 type="button"
                 onClick={() => setEarlierOpen((open) => !open)}
-                className="mt-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                className="mt-1.5 text-2xs text-muted-foreground hover:text-foreground"
                 data-testid="write-proposals-earlier-toggle"
               >
                 {earlierOpen ? "收起" : `另有 ${proposalGroups.earlier.length} 条前面章节遗留`}
@@ -511,7 +511,7 @@ export function WriteViewPanel({
           <button
             type="button"
             onClick={() => setBeatOpen((open) => !open)}
-            className="flex w-full items-center justify-between px-2 py-1 text-[11px] font-medium text-foreground"
+            className="flex w-full items-center justify-between px-2 py-1 text-2xs font-medium text-foreground"
             data-testid="write-beat-budget-toggle"
           >
             <span>
@@ -532,11 +532,11 @@ export function WriteViewPanel({
         </section>
 
         <div className="flex items-baseline justify-between gap-2">
-          <label className="text-[11px] font-medium text-foreground" htmlFor="write-directive">
+          <label className="text-2xs font-medium text-foreground" htmlFor="write-directive">
             第 {model.chapterNumber || "?"} 章要发生什么
           </label>
           {effectiveWordTarget > 0 ? (
-            <span className="text-[10px] tabular-nums text-muted-foreground" data-testid="write-word-target">
+            <span className="text-2xs tabular-nums text-muted-foreground" data-testid="write-word-target">
               目标 {effectiveWordTarget.toLocaleString()} 字
             </span>
           ) : null}
@@ -547,11 +547,11 @@ export function WriteViewPanel({
           onChange={(event) => setDirectiveDraft(event.target.value)}
           placeholder={model.resolvedDirective ?? "一句话说明本章目标，例如：让林舟通过守门人试炼，并暴露旧伤。"}
           rows={3}
-          className="resize-none rounded border border-border bg-background px-2 py-1.5 text-[11px] outline-none focus:border-primary"
+          className="resize-none rounded border border-border bg-background px-2 py-1.5 text-2xs outline-none focus:border-primary"
           data-testid="write-directive-input"
         />
         {model.needsUserConfirm && !directiveDraft.trim() && (
-          <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-2xs text-muted-foreground">
             <input
               type="checkbox"
               checked={acceptFocusDefault}
@@ -561,13 +561,13 @@ export function WriteViewPanel({
             采用当前焦点的默认目标
           </label>
         )}
-        {!gate.ok && !model.alreadyWritten && <p className="text-[10px] text-amber-600 dark:text-amber-400">{gate.reason}</p>}
+        {!gate.ok && !model.alreadyWritten && <p className="text-2xs text-amber-600 dark:text-amber-400">{gate.reason}</p>}
         {model.alreadyWritten ? (
           <button
             type="button"
             onClick={() => start("chapter")}
             disabled={!onJumpToChapter || model.chapterNumber <= 0}
-            className="rounded bg-primary px-2 py-1.5 text-[11px] text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            className="rounded bg-primary px-2 py-1.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             data-testid="write-open-chapter"
           >
             打开第 {model.chapterNumber} 章正文
@@ -578,7 +578,7 @@ export function WriteViewPanel({
               type="button"
               onClick={() => start("blueprint")}
               disabled={!gate.ok}
-              className="flex-1 rounded border border-border px-2 py-1.5 text-[11px] hover:bg-accent disabled:opacity-40"
+              className="flex-1 rounded border border-border px-2 py-1.5 text-2xs hover:bg-accent disabled:opacity-40"
               data-testid="write-blueprint"
             >
               生成蓝图
@@ -587,7 +587,7 @@ export function WriteViewPanel({
               type="button"
               onClick={() => start("chapter")}
               disabled={!gate.ok}
-              className="flex-1 rounded bg-primary px-2 py-1.5 text-[11px] text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              className="flex-1 rounded bg-primary px-2 py-1.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
               data-testid="write-chapter"
             >
               写第 {model.chapterNumber || "?"} 章
@@ -621,18 +621,18 @@ function VolumeCockpit({ volume, chapterNumber, error, onCreateVolume, creating 
   if (volume.state === "empty") {
     return (
       <section className="rounded-md border border-dashed border-border bg-card/40 px-2.5 py-2" data-testid="write-volume-cockpit">
-        <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+        <div className="flex items-center gap-1.5 text-2xs font-medium text-foreground">
           <BookOpen className="size-3.5 text-muted-foreground" />
           当前卷
         </div>
-        <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
           {error ?? "还没有卷纲。设定卷目标后，长篇每章都能对齐本卷主线，不易写散。"}
         </p>
         <button
           type="button"
           onClick={onCreateVolume}
           disabled={creating}
-          className="mt-1.5 rounded bg-primary/10 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/20 disabled:opacity-50"
+          className="mt-1.5 rounded bg-primary/10 px-2 py-0.5 text-2xs text-primary hover:bg-primary/20 disabled:opacity-50"
           data-testid="write-volume-create"
         >
           {creating ? "处理中" : "用 outline.volume 建卷"}
@@ -654,13 +654,13 @@ function VolumeCockpit({ volume, chapterNumber, error, onCreateVolume, creating 
     >
       <div className="flex items-center gap-1.5">
         <BookOpen className={`size-3.5 shrink-0 ${derailed ? "text-amber-600 dark:text-amber-400" : "text-primary"}`} />
-        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+        <span className="min-w-0 flex-1 truncate text-2xs font-medium text-foreground">
           {volume.index > 0 ? `第 ${volume.index} 卷 · ` : ""}{current.title}
         </span>
-        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">{volume.statusLabel}</span>
+        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-2xs text-muted-foreground">{volume.statusLabel}</span>
       </div>
 
-      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-2xs text-muted-foreground">
         <span>{rangeText}</span>
         {volume.offset !== null && volume.total > 0 && (
           <span data-testid="write-volume-position">本章第 {volume.offset}/{volume.total} 章</span>
@@ -671,12 +671,12 @@ function VolumeCockpit({ volume, chapterNumber, error, onCreateVolume, creating 
       </div>
 
       {derailed && (
-        <p className="mt-1 text-[10px] leading-relaxed text-amber-600 dark:text-amber-400" data-testid="write-volume-derailed">
+        <p className="mt-1 text-2xs leading-relaxed text-amber-600 dark:text-amber-400" data-testid="write-volume-derailed">
           第 {chapterNumber} 章不在本卷区间（{rangeText}），卷纲与实际进度已脱节。
         </p>
       )}
 
-      <p className="mt-1 text-[10px] leading-relaxed text-foreground/90">
+      <p className="mt-1 text-2xs leading-relaxed text-foreground/90">
         {current.goal
           ? `本卷目标：${current.goal}`
           : "本卷目标：未填写（卷纲缺目标，无法据此约束本章走向）"}
@@ -701,20 +701,20 @@ function ProposalRow({ event, busy, disabled, onApprove, onReject }: {
   return (
     <li className="rounded border border-border/60 bg-background/60 px-1.5 py-1" data-testid="write-proposal-item">
       <div className="flex items-start justify-between gap-1.5">
-        <span className="min-w-0 flex-1 text-[11px] text-foreground">
+        <span className="min-w-0 flex-1 text-2xs text-foreground">
           {event.entity ?? "未命名实体"}
           {event.eventType ? <span className="text-muted-foreground"> · {event.eventType}</span> : null}
         </span>
-        <span className={`shrink-0 text-[10px] ${event.risk === "high" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+        <span className={`shrink-0 text-2xs ${event.risk === "high" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
           {riskLabel(event.risk)}
         </span>
       </div>
-      <div className="mt-0.5 text-[10px] text-muted-foreground">
+      <div className="mt-0.5 text-2xs text-muted-foreground">
         第 {event.chapterNumber ?? "—"} 章
         {typeof event.confidence === "number" ? ` · 置信度 ${event.confidence}` : ""}
       </div>
       {event.evidence && (
-        <p className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">{event.evidence}</p>
+        <p className="mt-0.5 line-clamp-2 text-2xs leading-relaxed text-muted-foreground">{event.evidence}</p>
       )}
       {event.id && (
         <div className="mt-1 flex justify-end gap-1">
@@ -722,7 +722,7 @@ function ProposalRow({ event, busy, disabled, onApprove, onReject }: {
             type="button"
             onClick={onReject}
             disabled={disabled}
-            className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-accent disabled:opacity-40"
+            className="rounded border border-border px-1.5 py-0.5 text-2xs hover:bg-accent disabled:opacity-40"
             data-testid="write-proposal-reject"
           >
             {busy ? "处理中" : "驳回"}
@@ -731,7 +731,7 @@ function ProposalRow({ event, busy, disabled, onApprove, onReject }: {
             type="button"
             onClick={onApprove}
             disabled={disabled}
-            className="rounded bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            className="rounded bg-primary px-1.5 py-0.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             data-testid="write-proposal-approve"
           >
             {busy ? "处理中" : "确认"}

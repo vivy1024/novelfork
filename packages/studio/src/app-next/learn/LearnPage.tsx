@@ -183,11 +183,11 @@ export function LearnPage() {
           <div className="flex items-center gap-2">
             <BookOpen className="size-4 text-primary" aria-hidden="true" />
             <h1 className="text-sm font-semibold">学习中心</h1>
-            <span className="ml-auto text-[10px] text-muted-foreground">
+            <span className="ml-auto text-2xs text-muted-foreground">
               {index?.docs.length ?? 0} 篇文档
             </span>
           </div>
-          <p className="text-[11px] leading-4 text-muted-foreground">
+          <p className="text-2xs leading-4 text-muted-foreground">
             这里汇总 NovelFork 的主要功能文档、使用流程与最佳实践。
           </p>
           <label className="relative block">
@@ -289,9 +289,9 @@ function CategoryTree({
         <FolderOpen className="size-3.5 text-primary/80" aria-hidden="true" />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold text-foreground">{category.label}</span>
-          {category.description ? <span className="block truncate text-[10px] font-normal">{category.description}</span> : null}
+          {category.description ? <span className="block truncate text-2xs font-normal">{category.description}</span> : null}
         </span>
-        <span className="text-[10px] opacity-70">{docs.length}</span>
+        <span className="text-2xs opacity-70">{docs.length}</span>
       </button>
       {opened ? (
         <div className="ml-4 mt-1 space-y-0.5 border-l border-dashed border-border pl-2">
@@ -320,11 +320,11 @@ function DocCard({ doc, active, onClick }: { doc: LearningDocSummary; active: bo
       }`}
     >
       <span className="block truncate text-xs font-semibold text-foreground">{doc.title}</span>
-      {doc.summary ? <span className="mt-0.5 block line-clamp-2 text-[11px] text-muted-foreground">{doc.summary}</span> : null}
+      {doc.summary ? <span className="mt-0.5 block line-clamp-2 text-2xs text-muted-foreground">{doc.summary}</span> : null}
       {doc.tags.length ? (
         <span className="mt-1.5 flex flex-wrap gap-1">
           {doc.tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="rounded-full border border-border px-1.5 py-0.5 text-[9px] text-muted-foreground">{tag}</span>
+            <span key={tag} className="rounded-full border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">{tag}</span>
           ))}
         </span>
       ) : null}
@@ -338,7 +338,7 @@ function DocContentView({ doc }: { doc: LearningDoc }) {
       <header className="space-y-3">
         <div className="flex flex-wrap gap-1.5">
           {doc.tags.map((tag) => (
-            <span key={tag} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">{tag}</span>
+            <span key={tag} className="rounded-full bg-primary/10 px-2 py-0.5 text-2xs text-primary">{tag}</span>
           ))}
         </div>
         <h2 className="text-2xl font-semibold tracking-tight">{doc.title}</h2>

@@ -1410,7 +1410,7 @@ export function IdeWorkbench({
             <div className="flex h-full flex-col border-r border-border bg-card">
               {/* Sidebar 标题 */}
               <div className="flex h-[35px] shrink-0 items-center border-b border-border px-2">
-                <span className="text-[11px] font-semibold text-foreground uppercase tracking-wide pl-3">
+                <span className="text-2xs font-semibold text-foreground uppercase tracking-wide pl-3">
                     {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源管理器"}
                 </span>
               </div>
@@ -1611,7 +1611,7 @@ export function IdeWorkbench({
                 <Allotment.Pane minSize={200}>
                   <div className="flex h-full flex-col overflow-hidden border-l border-border">
                     <div className="flex h-[35px] shrink-0 items-center justify-between border-b border-border bg-secondary/40 px-3">
-                      <span className="text-[12px] text-foreground truncate">{splitNode.title}</span>
+                      <span className="text-xs text-foreground truncate">{splitNode.title}</span>
                       <button type="button" onClick={() => setSplitNodeId(null)} className="flex size-5 items-center justify-center rounded hover:bg-muted" title="关闭分屏">
                         <X className="size-3" />
                       </button>
@@ -1694,7 +1694,7 @@ export function IdeWorkbench({
             aria-hidden={!sidebarVisible}
           >
             <div className="flex h-[35px] shrink-0 items-center justify-between border-b border-border px-2">
-              <span className="text-[11px] font-semibold text-foreground uppercase tracking-wide pl-3">
+              <span className="text-2xs font-semibold text-foreground uppercase tracking-wide pl-3">
                 {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源管理器"}
               </span>
               <button type="button" className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted/50" aria-label="关闭侧栏" onClick={() => setSidebarVisible(false)}>
@@ -1862,7 +1862,7 @@ function ChatHeader({
                 }`}
                 onClick={() => { onSwitchSession?.(s.id); setShowHistory(false); }}>
                 <span className="truncate">{s.title || "Untitled"}</span>
-                <span className="shrink-0 ml-2 text-[10px] text-muted-foreground">
+                <span className="shrink-0 ml-2 text-2xs text-muted-foreground">
                   {s.updatedAt ? formatRelativeTime(s.updatedAt) : ""}
                 </span>
               </button>
@@ -1994,7 +1994,7 @@ function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: 
           <span key={`${seg}-${i}`} className="flex items-center gap-0.5 shrink-0">
             {i > 0 && <ChevronRight className="size-3 text-muted-foreground/50" />}
             <span
-              className={`text-[11px] truncate max-w-[180px] ${isLast ? "text-foreground" : "text-muted-foreground"} ${clickable ? "cursor-pointer hover:text-foreground hover:underline underline-offset-2 transition-colors" : ""}`}
+              className={`text-2xs truncate max-w-[180px] ${isLast ? "text-foreground" : "text-muted-foreground"} ${clickable ? "cursor-pointer hover:text-foreground hover:underline underline-offset-2 transition-colors" : ""}`}
               onClick={clickable ? () => onNavigate(seg, i) : undefined}
             >
               {seg}
@@ -2138,7 +2138,7 @@ function SearchPanel({ nodes, fileNodes, jingweiSections, memorySections, onOpen
             className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
           />
         </div>
-        <p className="mt-1 px-1 text-[10px] leading-relaxed text-muted-foreground">
+        <p className="mt-1 px-1 text-2xs leading-relaxed text-muted-foreground">
           范围：章节正文、工作区资源、作品基础和故事推进
         </p>
       </div>
@@ -2151,7 +2151,7 @@ function SearchPanel({ nodes, fileNodes, jingweiSections, memorySections, onOpen
         )}
         {[...grouped.entries()].map(([group, items]) => (
           <div key={group} className="mb-1">
-            <div className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            <div className="flex items-center gap-1 px-2 py-1 text-2xs font-semibold text-muted-foreground uppercase tracking-wide">
               <span>{group}</span>
               <span className="text-muted-foreground/50">({items.length})</span>
             </div>
@@ -2166,7 +2166,7 @@ function SearchPanel({ nodes, fileNodes, jingweiSections, memorySections, onOpen
                   {item.matchType === "title" ? highlight(item.title, query) : item.title}
                 </span>
                 {item.matchType === "content" && item.matchedLine && (
-                  <span className="text-[11px] text-muted-foreground truncate leading-snug">
+                  <span className="text-2xs text-muted-foreground truncate leading-snug">
                     {highlight(item.matchedLine, query)}
                   </span>
                 )}

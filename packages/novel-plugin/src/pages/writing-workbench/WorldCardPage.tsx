@@ -233,7 +233,7 @@ function FactLine({ fact }: { fact: EntityFact }) {
     <div className="rounded-md border border-border/50 bg-background/70 px-2.5 py-2">
       <p className="text-xs font-medium leading-relaxed">{factText(fact)}</p>
       {typeof fact.sourceChapter === "number" ? (
-        <p className="mt-0.5 text-[10px] text-muted-foreground">第 {fact.sourceChapter} 章结算</p>
+        <p className="mt-0.5 text-2xs text-muted-foreground">第 {fact.sourceChapter} 章结算</p>
       ) : null}
     </div>
   );
@@ -266,7 +266,7 @@ function WorldDynamicsSection({
             <CardTitle className="flex items-center gap-2 text-base">
               <Activity className="size-4 text-sky-600" />
               实体动态
-              <Badge variant="secondary" className="text-[10px] font-normal">动态数据</Badge>
+              <Badge variant="secondary" className="text-2xs font-normal">动态数据</Badge>
             </CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">来自叙事记忆的只读召回；不改经纬静态设定。</p>
           </div>
@@ -303,7 +303,7 @@ function WorldDynamicsSection({
               <div className="flex items-center gap-2">
                 <Clock3 className="size-3.5 text-sky-600" />
                 <h3 id="world-current-state-title" className="text-xs font-semibold tracking-wide">{presentation.stateLabel}</h3>
-                <span className="text-[10px] text-muted-foreground">来自当前 open facts</span>
+                <span className="text-2xs text-muted-foreground">来自当前 open facts</span>
               </div>
               {snapshot && snapshot.stateFacts.length > 0 ? (
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -313,7 +313,7 @@ function WorldDynamicsSection({
               {snapshot && snapshot.otherFacts.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
                   {snapshot.otherFacts.map((fact, index) => (
-                    <Badge key={fact.id ?? `other-${index}`} variant="outline" className="text-[10px] font-normal">{factText(fact)}</Badge>
+                    <Badge key={fact.id ?? `other-${index}`} variant="outline" className="text-2xs font-normal">{factText(fact)}</Badge>
                   ))}
                 </div>
               ) : null}
@@ -324,15 +324,15 @@ function WorldDynamicsSection({
               <div className="flex items-center gap-2">
                 <GitBranch className="size-3.5 text-sky-600" />
                 <h3 id="world-evolution-title" className="text-xs font-semibold tracking-wide">发展历程</h3>
-                <span className="text-[10px] text-muted-foreground">最近 10 条</span>
+                <span className="text-2xs text-muted-foreground">最近 10 条</span>
               </div>
               {snapshot && snapshot.evolution.length > 0 ? (
                 <ol className="space-y-2 border-l border-sky-500/25 pl-3">
                   {snapshot.evolution.map((step, index) => (
                     <li key={`${step.chapter}-${step.eventType}-${index}`} className="rounded-md border border-border/50 bg-background/60 px-3 py-2">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant="outline" className="text-[10px]">第 {step.chapter} 章</Badge>
-                        <Badge variant="secondary" className="text-[10px] font-normal">{step.eventType}</Badge>
+                        <Badge variant="outline" className="text-2xs">第 {step.chapter} 章</Badge>
+                        <Badge variant="secondary" className="text-2xs font-normal">{step.eventType}</Badge>
                       </div>
                       <p className="mt-1 text-xs leading-relaxed text-foreground/90">{step.description}</p>
                     </li>
@@ -347,7 +347,7 @@ function WorldDynamicsSection({
               <div className="flex items-center gap-2">
                 <Users className="size-3.5 text-sky-600" />
                 <h3 id="world-related-characters-title" className="text-xs font-semibold tracking-wide">关联角色</h3>
-                <span className="text-[10px] text-muted-foreground">与该实体有过交互</span>
+                <span className="text-2xs text-muted-foreground">与该实体有过交互</span>
               </div>
               {snapshot && snapshot.relatedCharacters.length > 0 ? (
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -355,9 +355,9 @@ function WorldDynamicsSection({
                     <div key={item.name} className="rounded-md border border-border/50 bg-background/60 px-3 py-2">
                       <div className="flex items-center gap-2 text-xs font-medium">
                         <span className="truncate">{item.name}</span>
-                        {item.chapter !== undefined ? <Badge variant="outline" className="text-[10px]">第 {item.chapter} 章</Badge> : null}
+                        {item.chapter !== undefined ? <Badge variant="outline" className="text-2xs">第 {item.chapter} 章</Badge> : null}
                       </div>
-                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{item.label}</p>
+                      <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{item.label}</p>
                     </div>
                   ))}
                 </div>
@@ -452,8 +452,8 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
                 style={{ boxShadow: "none" }}
               />
               <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-[10px] font-normal">{presentation.label}</Badge>
-                {bookId ? null : <Badge variant="outline" className="text-[10px] font-normal">未绑定书籍，动态区不可用</Badge>}
+                <Badge variant="secondary" className="text-2xs font-normal">{presentation.label}</Badge>
+                {bookId ? null : <Badge variant="outline" className="text-2xs font-normal">未绑定书籍，动态区不可用</Badge>}
               </div>
             </div>
           </div>
@@ -474,7 +474,7 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
               <CardTitle className="flex items-center gap-2 text-base">
                 <ScrollText className="size-4" />
                 静态设定
-                <span className="text-[10px] font-normal text-muted-foreground">作者维护的权威设定</span>
+                <span className="text-2xs font-normal text-muted-foreground">作者维护的权威设定</span>
               </CardTitle>
             </CardHeader>
             <CardContent>

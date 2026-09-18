@@ -89,7 +89,7 @@ export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftP
           <Palette className="size-3.5 text-primary" />
           <span className="text-xs font-medium">文风漂移检测</span>
         </div>
-        <button type="button" onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground">关闭</button>
+        <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">关闭</button>
       </div>
 
       <Button
@@ -143,7 +143,7 @@ export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftP
           </div>
 
           {result.isSignificant && (
-            <p className="text-[10px] text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30 rounded px-2 py-1">
+            <p className="text-2xs text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30 rounded px-2 py-1">
               检测到显著文风偏移，建议检查近期章节是否偏离既定基调。
             </p>
           )}
@@ -165,11 +165,11 @@ function DimensionRow({ name, value, baseline, current }: {
 }) {
   const level = driftLevel(value);
   return (
-    <div className="flex items-center justify-between text-[10px]">
+    <div className="flex items-center justify-between text-2xs">
       <span className="text-muted-foreground">{name}</span>
       <div className="flex items-center gap-2">
         <span className="text-muted-foreground">{baseline} → {current}</span>
-        <Badge variant="outline" className={`text-[8px] h-3.5 ${level.color}`}>
+        <Badge variant="outline" className={`text-2xs h-3.5 ${level.color}`}>
           {level.label} {formatPercent(value)}
         </Badge>
       </div>

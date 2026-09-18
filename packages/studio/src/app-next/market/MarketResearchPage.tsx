@@ -1117,13 +1117,13 @@ export function MarketResearchPage() {
                             <span className="font-medium">{record.title}</span>
                           )}
                           {record.word_count ? (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-2xs text-muted-foreground">
                               {record.word_count > 10000 ? `${(record.word_count / 10000).toFixed(1)}万字` : `${record.word_count}字`}
                             </span>
                           ) : null}
                         </TableCell>
                         <TableCell className="text-xs">{record.author || "—"}</TableCell>
-                        <TableCell><Badge variant="secondary" className="text-[10px]">{record.category || "未分类"}</Badge></TableCell>
+                        <TableCell><Badge variant="secondary" className="text-2xs">{record.category || "未分类"}</Badge></TableCell>
                         <TableCell className="text-xs">
                           {record.intro?.trim() ? (
                             <div
@@ -1137,7 +1137,7 @@ export function MarketResearchPage() {
                               <p className={isExpanded ? "whitespace-pre-wrap leading-relaxed" : "line-clamp-2 text-muted-foreground"}>
                                 {record.intro}
                               </p>
-                              <div className="mt-0.5 flex items-center gap-1 text-[10px] text-primary">
+                              <div className="mt-0.5 flex items-center gap-1 text-2xs text-primary">
                                 {isExpanded ? (
                                   <><span>收起</span><ChevronUp className="size-3" /></>
                                 ) : (
@@ -1150,14 +1150,14 @@ export function MarketResearchPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-[10px]">{record.source}</Badge>
+                          <Badge variant="outline" className="text-2xs">{record.source}</Badge>
                         </TableCell>
                         <TableCell>
                           {record.platform === "fanqie" ? (
                             <Button
                               size="xs"
                               variant="ghost"
-                              className="h-6 gap-1 px-1.5 text-[10px]"
+                              className="h-6 gap-1 px-1.5 text-2xs"
                               title="采样分析公开前 3 章结构指标"
                               onClick={() => void sampleChapters(record)}
                             >
@@ -1165,7 +1165,7 @@ export function MarketResearchPage() {
                               采样
                             </Button>
                           ) : (
-                            <span className="text-[10px] text-muted-foreground">—</span>
+                            <span className="text-2xs text-muted-foreground">—</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -1255,7 +1255,7 @@ export function MarketResearchPage() {
                       <div>问叹句：问号 {s.question_mark_count} / 感叹号 {s.exclamation_mark_count}</div>
                       <div>金手指命中：{s.golden_finger_hits} 次 · 冲突词：{s.conflict_word_hits} 次</div>
                       {s.structural_summary ? (
-                        <p className="mt-2 rounded bg-background p-1.5 text-[11px] leading-relaxed text-foreground">
+                        <p className="mt-2 rounded bg-background p-1.5 text-2xs leading-relaxed text-foreground">
                           {s.structural_summary}
                         </p>
                       ) : null}

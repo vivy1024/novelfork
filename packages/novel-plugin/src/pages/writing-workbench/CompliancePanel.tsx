@@ -176,7 +176,7 @@ export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePan
     <div className="space-y-3 rounded-lg border border-border p-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium">投稿风险自检</span>
-        <button type="button" onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground">收起</button>
+        <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">收起</button>
       </div>
 
       <button type="button" disabled={checking} onClick={() => void handleCheck()} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
@@ -189,10 +189,10 @@ export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePan
       {report && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={report.status === "needs-review" ? "outline" : "secondary"} className="text-[10px]">
+            <Badge variant={report.status === "needs-review" ? "outline" : "secondary"} className="text-2xs">
               {report.status === "needs-review" ? "需人工复核" : report.status === "has-warnings" ? "有提醒" : "未发现明显线索"}
             </Badge>
-            <span className="text-[10px] text-muted-foreground">平台建议：{report.platform}</span>
+            <span className="text-2xs text-muted-foreground">平台建议：{report.platform}</span>
           </div>
 
           <div className="space-y-1">
@@ -201,19 +201,19 @@ export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePan
                 {STATUS_ICON[dimension.status]}
                 <span className="font-medium">{dimension.label}</span>
                 <span className="text-muted-foreground">{STATUS_LABEL[dimension.status]}</span>
-                {dimension.count > 0 && <span className="text-[10px] text-muted-foreground">（{dimension.count} 条）</span>}
+                {dimension.count > 0 && <span className="text-2xs text-muted-foreground">（{dimension.count} 条）</span>}
               </div>
             ))}
           </div>
 
-          <div className="rounded-md bg-muted/50 p-2 text-[10px] text-muted-foreground">
+          <div className="rounded-md bg-muted/50 p-2 text-2xs text-muted-foreground">
             <p><span className="font-medium text-foreground">规则来源：</span>{report.rulePack.id} · {report.rulePack.name} · v{report.rulePack.version} · {report.rulePack.confidence} 可信度</p>
             <p className="mt-1">{report.rulePack.source}</p>
             {report.rulePack.effectiveAt && <p className="mt-1">生效时间：{report.rulePack.effectiveAt}</p>}
             {report.rulePack.note && <p className="mt-1">{report.rulePack.note}</p>}
           </div>
 
-          <div className="rounded-md bg-muted/50 p-2 text-[10px] text-muted-foreground">
+          <div className="rounded-md bg-muted/50 p-2 text-2xs text-muted-foreground">
             <p><span className="font-medium text-foreground">AI 味线索来源：</span>{report.aiTaste.rulePack.id} · {report.aiTaste.rulePack.name}</p>
             <p className="mt-1">{report.aiTaste.methodology}</p>
             {report.aiTaste.rulePack.note && <p className="mt-1">{report.aiTaste.rulePack.note}</p>}
@@ -223,7 +223,7 @@ export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePan
             <div className="space-y-1 border-t border-border pt-2">
               <span className="text-xs font-medium">复核证据</span>
               {report.evidence.slice(0, 6).map((evidence, index) => (
-                <div key={`${evidence.ruleId}-${index}`} className="rounded-md bg-muted/50 p-2 text-[10px] text-muted-foreground">
+                <div key={`${evidence.ruleId}-${index}`} className="rounded-md bg-muted/50 p-2 text-2xs text-muted-foreground">
                   <p className="text-foreground">{evidence.message}</p>
                   <p className="mt-1">规则：{evidence.rulePackId ? `${evidence.rulePackId} · ` : ""}{evidence.ruleId} · 来源：{evidence.source}</p>
                   {evidence.chapterNumber && <p className="mt-1">位置：第 {evidence.chapterNumber} 章{evidence.chapterTitle ? `《${evidence.chapterTitle}》` : ""}{evidence.paragraph ? ` · 第 ${evidence.paragraph} 段` : ""}{typeof evidence.offset === "number" ? ` · 偏移 ${evidence.offset}` : ""}</p>}
@@ -231,7 +231,7 @@ export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePan
                   {evidence.suggestion && <p className="mt-1">人工复核建议：{evidence.suggestion}</p>}
                 </div>
               ))}
-              {report.evidence.length > 6 && <p className="text-[10px] text-muted-foreground">另有 {report.evidence.length - 6} 条证据。</p>}
+              {report.evidence.length > 6 && <p className="text-2xs text-muted-foreground">另有 {report.evidence.length - 6} 条证据。</p>}
             </div>
           )}
         </div>
@@ -245,7 +245,7 @@ export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePan
           </button>
           {disclosure && (
             <div className="relative rounded-md bg-muted/50 p-2">
-              <pre className="max-h-32 whitespace-pre-wrap overflow-y-auto text-[11px] text-muted-foreground">{disclosure.markdownText}</pre>
+              <pre className="max-h-32 whitespace-pre-wrap overflow-y-auto text-2xs text-muted-foreground">{disclosure.markdownText}</pre>
               <button type="button" onClick={() => void handleCopy()} className="absolute right-1 top-1 rounded p-1 hover:bg-muted" title="复制">
                 {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3 text-muted-foreground" />}
               </button>
@@ -268,16 +268,16 @@ export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePan
           <div className="space-y-1.5 rounded-md bg-muted/50 p-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium">本地特征分数：</span>
-              <Badge variant={scanResult.level === "clean" ? "secondary" : scanResult.level === "severe" ? "destructive" : "outline"} className="text-[10px]">
+              <Badge variant={scanResult.level === "clean" ? "secondary" : scanResult.level === "severe" ? "destructive" : "outline"} className="text-2xs">
                 {scanResult.aiTasteScore.toFixed(0)} · {scanResult.level}
               </Badge>
             </div>
-            {scanResult.hits.length > 0 && <span className="text-[10px] text-muted-foreground">命中规则（{scanResult.hits.length}）：请结合正文人工判断。</span>}
+            {scanResult.hits.length > 0 && <span className="text-2xs text-muted-foreground">命中规则（{scanResult.hits.length}）：请结合正文人工判断。</span>}
           </div>
         )}
       </div>
 
-      <p className="text-[10px] text-muted-foreground">本地自检只提供风险线索，不能替代平台审核或作者判断。</p>
+      <p className="text-2xs text-muted-foreground">本地自检只提供风险线索，不能替代平台审核或作者判断。</p>
     </div>
   );
 }

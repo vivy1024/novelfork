@@ -69,7 +69,7 @@ export function JingweiProgressions({ bookId, entryId, category }: JingweiProgre
         <div className="space-y-2 mb-3 p-2 rounded-md border border-border bg-muted/30">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] text-muted-foreground">字段</label>
+              <label className="text-2xs text-muted-foreground">字段</label>
               <select
                 value={fieldKey}
                 onChange={(e) => setFieldKey(e.target.value)}
@@ -82,7 +82,7 @@ export function JingweiProgressions({ bookId, entryId, category }: JingweiProgre
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground">章节号</label>
+              <label className="text-2xs text-muted-foreground">章节号</label>
               <Input
                 type="number"
                 value={chapterNumber}
@@ -95,16 +95,16 @@ export function JingweiProgressions({ bookId, entryId, category }: JingweiProgre
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] text-muted-foreground">旧值</label>
+              <label className="text-2xs text-muted-foreground">旧值</label>
               <Input value={oldValue} onChange={(e) => setOldValue(e.target.value)} className="h-7 text-xs" placeholder="可选" />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground">新值</label>
+              <label className="text-2xs text-muted-foreground">新值</label>
               <Input value={newValue} onChange={(e) => setNewValue(e.target.value)} className="h-7 text-xs" placeholder="必填" />
             </div>
           </div>
           <div>
-            <label className="text-[10px] text-muted-foreground">描述</label>
+            <label className="text-2xs text-muted-foreground">描述</label>
             <Input value={description} onChange={(e) => setDescription(e.target.value)} className="h-7 text-xs" placeholder="变化原因（可选）" />
           </div>
           <div className="flex justify-end gap-1">
@@ -122,13 +122,13 @@ export function JingweiProgressions({ bookId, entryId, category }: JingweiProgre
           <Loader2 className="size-3 animate-spin text-muted-foreground" />
         </div>
       ) : progressions.length === 0 ? (
-        <p className="text-[10px] text-muted-foreground text-center py-2">暂无演变记录</p>
+        <p className="text-2xs text-muted-foreground text-center py-2">暂无演变记录</p>
       ) : (
         <ul className="space-y-1.5 max-h-40 overflow-y-auto">
           {progressions.map((p) => (
-            <li key={p.id} className="flex items-start gap-1.5 text-[10px] p-1.5 rounded bg-muted/30">
+            <li key={p.id} className="flex items-start gap-1.5 text-2xs p-1.5 rounded bg-muted/30">
               {p.chapterNumber != null && (
-                <Badge variant="secondary" className="text-[9px] px-1 shrink-0">
+                <Badge variant="secondary" className="text-2xs px-1 shrink-0">
                   第{p.chapterNumber}章
                 </Badge>
               )}

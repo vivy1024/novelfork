@@ -37,7 +37,7 @@ interface BookHealthSummaryProps {
 function MetricRow({ label, value, suffix, good }: { label: string; value: string; suffix?: string; good?: boolean }) {
   return (
     <div className="flex items-center justify-between py-1">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className="text-2xs text-muted-foreground">{label}</span>
       <span className={`text-xs font-medium ${good === false ? "text-red-500" : good === true ? "text-green-600" : ""}`}>
         {value}{suffix && <span className="text-muted-foreground font-normal ml-0.5">{suffix}</span>}
       </span>
@@ -52,7 +52,7 @@ function DimensionBar({ label, value, max }: { label: string; value: number; max
   const color = percent >= 70 ? "bg-green-500" : percent >= 40 ? "bg-yellow-500" : "bg-red-500";
   return (
     <div className="space-y-0.5">
-      <div className="flex items-center justify-between text-[10px]">
+      <div className="flex items-center justify-between text-2xs">
         <span className="text-muted-foreground">{label}</span>
         <span className="font-medium">{percent}%</span>
       </div>
@@ -147,7 +147,7 @@ export function BookHealthSummary({ bookId }: BookHealthSummaryProps) {
       {h.warnings.length > 0 && (
         <div className="space-y-1 pt-1">
           {h.warnings.map((w, i) => (
-            <div key={i} className="flex items-start gap-1.5 text-[10px] text-yellow-700">
+            <div key={i} className="flex items-start gap-1.5 text-2xs text-yellow-700">
               <AlertTriangle className="size-3 shrink-0 mt-0.5" />
               <span>{w.message}</span>
             </div>

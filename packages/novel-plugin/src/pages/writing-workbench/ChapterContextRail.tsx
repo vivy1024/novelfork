@@ -197,7 +197,7 @@ function retryButton(onRetry: () => void, label: string) {
     <button
       type="button"
       onClick={onRetry}
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-primary hover:bg-primary/10"
     >
       <RefreshCw className="size-3" />
       {label}
@@ -218,10 +218,10 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center gap-1.5 border-b border-border/60 px-3 py-2">
-      <h2 className="min-w-0 flex-1 truncate text-[11px] font-semibold text-foreground">{title}</h2>
+      <h2 className="min-w-0 flex-1 truncate text-2xs font-semibold text-foreground">{title}</h2>
       {loading ? <Loader2 className="size-3 animate-spin text-muted-foreground" /> : null}
       {typeof count === "number" && count > 0 ? (
-        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">{count}</span>
+        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400">{count}</span>
       ) : null}
       {action}
     </div>
@@ -230,7 +230,7 @@ function SectionHeader({
 
 function SectionError({ error, onRetry }: { readonly error: string; readonly onRetry: () => void }) {
   return (
-    <div className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-destructive">
+    <div className="flex items-center gap-1.5 px-3 py-2 text-2xs text-destructive">
       <AlertTriangle className="size-3.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate">加载失败</span>
       {retryButton(onRetry, "重试")}
@@ -302,20 +302,20 @@ export function ChapterContextRail({
       <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-3 py-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[13px] font-semibold text-foreground">
+            <span className="text-sm font-semibold text-foreground">
               {typeof chapterNumber === "number" ? `第 ${chapterNumber} 章` : "未选择章节"}
             </span>
             {typeof wordCount === "number" ? (
-              <span className="text-[11px] tabular-nums text-muted-foreground">{wordCount.toLocaleString()} 字</span>
+              <span className="text-2xs tabular-nums text-muted-foreground">{wordCount.toLocaleString()} 字</span>
             ) : null}
             {typeof chapterNumber === "number" && typeof wordCount === "number" ? (
-              <span className={`rounded px-1.5 py-0.5 text-[10px] ${wordCount > 0 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+              <span className={`rounded px-1.5 py-0.5 text-2xs ${wordCount > 0 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
                 {wordCount > 0 ? "已收稿" : "未收稿"}
               </span>
             ) : null}
           </div>
           {cockpitQuery.error ? (
-            <div className="mt-1 flex items-center gap-1 text-[10px] text-destructive">
+            <div className="mt-1 flex items-center gap-1 text-2xs text-destructive">
               <span>字数加载失败</span>
               {retryButton(() => void cockpitQuery.refetch(), "重试")}
             </div>
@@ -339,14 +339,14 @@ export function ChapterContextRail({
         {foreshadowingQuery.error ? <SectionError error={foreshadowingQuery.error} onRetry={() => void foreshadowingQuery.refetch()} /> : null}
         {!foreshadowingQuery.error && foreshadowingQuery.loading && dueForeshadowings.length === 0 ? <SectionSkeleton kind="rows" /> : null}
         {!foreshadowingQuery.error && !foreshadowingQuery.loading && dueForeshadowings.length === 0 ? (
-          <p className="px-3 py-3 text-[11px] text-muted-foreground">暂无到期伏笔</p>
+          <p className="px-3 py-3 text-2xs text-muted-foreground">暂无到期伏笔</p>
         ) : null}
         {dueForeshadowings.length > 0 ? (
           <ul className="flex flex-col gap-1.5 px-3 py-2.5">
             {dueForeshadowings.map((foreshadowing) => (
               <li key={foreshadowing.id} className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
-                <span className="min-w-0 flex-1 truncate text-[11px] text-foreground" title={foreshadowing.name}>{foreshadowing.name}</span>
-                <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                <span className="min-w-0 flex-1 truncate text-2xs text-foreground" title={foreshadowing.name}>{foreshadowing.name}</span>
+                <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs text-amber-600 dark:text-amber-400">
                   已埋 {foreshadowing.suspenseChapters} 章
                 </span>
               </li>
@@ -364,7 +364,7 @@ export function ChapterContextRail({
             <button
               type="button"
               onClick={() => openEntry(characterModels[0]!.id)}
-              className="shrink-0 text-[10px] text-primary hover:underline"
+              className="shrink-0 text-2xs text-primary hover:underline"
             >
               编辑 →
             </button>
@@ -381,7 +381,7 @@ export function ChapterContextRail({
         ) : null}
         {!characterQuery.error && !chapterEventsQuery.error && charactersLoading && characterModels.length === 0 ? <SectionSkeleton kind="avatars" /> : null}
         {!characterQuery.error && !chapterEventsQuery.error && !charactersLoading && characterModels.length === 0 ? (
-          <p className="px-3 py-3 text-[11px] text-muted-foreground">暂无出场角色</p>
+          <p className="px-3 py-3 text-2xs text-muted-foreground">暂无出场角色</p>
         ) : null}
         {characterModels.length > 0 ? (
           <div className="flex items-center gap-2 px-3 py-3">
@@ -399,7 +399,7 @@ export function ChapterContextRail({
                   onClick={() => openEntry(character.id)}
                   title={tooltip}
                   aria-label={`打开角色 ${character.name}`}
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-2xs font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md"
                   style={{ backgroundColor: avatarColor(character.name) }}
                 >
                   {character.name.slice(0, 2)}
@@ -410,7 +410,7 @@ export function ChapterContextRail({
               <button
                 type="button"
                 onClick={() => openEntry(characterModels[0]!.id)}
-                className="shrink-0 rounded-full bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="shrink-0 rounded-full bg-muted px-2 py-1 text-2xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
                 title="打开角色卡"
               >
                 +{characterModels.length - 5}
@@ -425,12 +425,12 @@ export function ChapterContextRail({
         {foreshadowingQuery.error ? <SectionError error={foreshadowingQuery.error} onRetry={() => void foreshadowingQuery.refetch()} /> : null}
         {!foreshadowingQuery.error && foreshadowingQuery.loading && dueForeshadowings.length === 0 ? <SectionSkeleton kind="rows" /> : null}
         {!foreshadowingQuery.error && !foreshadowingQuery.loading && dueForeshadowings.length === 0 ? (
-          <p className="px-3 py-3 text-[11px] text-muted-foreground">暂无欠账</p>
+          <p className="px-3 py-3 text-2xs text-muted-foreground">暂无欠账</p>
         ) : null}
         {dueForeshadowings.length > 0 ? (
           <ul className="flex flex-col gap-1 px-3 py-2.5">
             {dueForeshadowings.map((foreshadowing) => (
-              <li key={foreshadowing.id} className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+              <li key={foreshadowing.id} className="text-2xs leading-relaxed text-amber-700 dark:text-amber-300">
                 ⚠️ {foreshadowing.name}（第{foreshadowing.plantedChapter}章埋设，已{foreshadowing.suspenseChapters}章未推进）
               </li>
             ))}

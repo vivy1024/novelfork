@@ -290,7 +290,7 @@ function SpaceDivider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 py-1" role="separator" aria-label={label}>
       <Separator className="flex-1" />
-      <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
+      <span className="text-2xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
       <Separator className="flex-1" />
     </div>
   );
@@ -387,7 +387,7 @@ function useCharacterDevelopment(bookId: string | undefined, entryId: string, up
 }
 
 function ChapterBadge({ chapter }: { chapter?: number }) {
-  return chapter === undefined ? null : <Badge variant="outline" className="shrink-0 text-[10px]">第 {chapter} 章</Badge>;
+  return chapter === undefined ? null : <Badge variant="outline" className="shrink-0 text-2xs">第 {chapter} 章</Badge>;
 }
 
 function FactLine({ fact, icon: Icon }: { fact: NarrativeFactRecord; icon: typeof Activity }) {
@@ -396,7 +396,7 @@ function FactLine({ fact, icon: Icon }: { fact: NarrativeFactRecord; icon: typeo
       <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium leading-relaxed">{factText(fact)}</p>
-        {fact.sourceChapter !== undefined ? <p className="mt-0.5 text-[10px] text-muted-foreground">第 {fact.sourceChapter} 章结算</p> : null}
+        {fact.sourceChapter !== undefined ? <p className="mt-0.5 text-2xs text-muted-foreground">第 {fact.sourceChapter} 章结算</p> : null}
       </div>
     </div>
   );
@@ -427,7 +427,7 @@ function DevelopmentSection({
               <CardTitle className="flex items-center gap-2 text-base">
                 <Activity className="size-4 text-emerald-600" />
                 发展历程
-                <Badge variant="secondary" className="text-[10px] font-normal">动态数据</Badge>
+                <Badge variant="secondary" className="text-2xs font-normal">动态数据</Badge>
               </CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">按章节读取最近的状态变化、关键节点和关系演化；只读，不改经纬设定。</p>
             </div>
@@ -463,7 +463,7 @@ function DevelopmentSection({
                     「{characterName.trim() || "该角色"}」可能尚未正式登场，或结算器未从正文识别到 TA 的状态变化。
                     经纬静态设定不受影响，写作召回仍会携带本卡的内核字段。
                   </p>
-                  <p className="text-[10px] text-muted-foreground/80">
+                  <p className="text-2xs text-muted-foreground/80">
                     想验证动态功能？打开一位已出场主角（如「薛行之」）即可看到发展历程与关系演化。
                   </p>
                 </div>
@@ -472,25 +472,25 @@ function DevelopmentSection({
                 <div className="flex items-center gap-2">
                   <Clock3 className="size-3.5 text-emerald-600" />
                   <h3 id="character-current-state-title" className="text-xs font-semibold tracking-wide">当前状态</h3>
-                  <span className="text-[10px] text-muted-foreground">来自当前 open facts</span>
+                  <span className="text-2xs text-muted-foreground">来自当前 open facts</span>
                 </div>
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">
-                    <p className="text-[10px] font-medium text-muted-foreground">修为 / 境界</p>
+                    <p className="text-2xs font-medium text-muted-foreground">修为 / 境界</p>
                     {state?.realm ? <FactLine fact={state.realm} icon={Sparkles} /> : <p className="text-xs text-muted-foreground">暂无动态记录</p>}
                   </div>
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">
-                    <p className="text-[10px] font-medium text-muted-foreground">持有物品 / 资源</p>
+                    <p className="text-2xs font-medium text-muted-foreground">持有物品 / 资源</p>
                     {state && state.resources.length > 0 ? state.resources.slice(0, 3).map((fact, index) => <FactLine key={fact.id ?? `resource-${index}`} fact={fact} icon={PackageOpen} />) : <p className="text-xs text-muted-foreground">暂无动态记录</p>}
                   </div>
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">
-                    <p className="text-[10px] font-medium text-muted-foreground">伤势状态</p>
+                    <p className="text-2xs font-medium text-muted-foreground">伤势状态</p>
                     {state?.injury ? <FactLine fact={state.injury} icon={ShieldAlert} /> : <p className="text-xs text-muted-foreground">暂无动态记录</p>}
                   </div>
                 </div>
                 {state && state.other.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {state.other.map((fact, index) => <Badge key={fact.id ?? `other-${index}`} variant="outline" className="text-[10px] font-normal">{factText(fact)}</Badge>)}
+                    {state.other.map((fact, index) => <Badge key={fact.id ?? `other-${index}`} variant="outline" className="text-2xs font-normal">{factText(fact)}</Badge>)}
                   </div>
                 ) : null}
               </section>
@@ -501,7 +501,7 @@ function DevelopmentSection({
                 <div className="flex items-center gap-2">
                   <GitBranch className="size-3.5 text-emerald-600" />
                   <h3 id="character-evolution-title" className="text-xs font-semibold tracking-wide">关键发展节点</h3>
-                  <span className="text-[10px] text-muted-foreground">最近 10 条</span>
+                  <span className="text-2xs text-muted-foreground">最近 10 条</span>
                 </div>
                 {snapshot?.evolution.length ? (
                   <ol className="space-y-2 border-l border-emerald-500/25 pl-3">
@@ -509,8 +509,8 @@ function DevelopmentSection({
                       <li key={`${step.chapter}-${step.eventType}-${index}`} className="relative rounded-md border border-border/50 bg-background/60 px-3 py-2 before:absolute before:-left-[1.05rem] before:top-3 before:size-2 before:rounded-full before:border-2 before:border-emerald-500 before:bg-background">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <ChapterBadge chapter={step.chapter} />
-                          <Badge variant="secondary" className="text-[10px] font-normal">{step.eventType}</Badge>
-                          {step.timestamp ? <span className="text-[10px] text-muted-foreground">{step.timestamp}</span> : null}
+                          <Badge variant="secondary" className="text-2xs font-normal">{step.eventType}</Badge>
+                          {step.timestamp ? <span className="text-2xs text-muted-foreground">{step.timestamp}</span> : null}
                         </div>
                         <p className="mt-1 text-xs leading-relaxed text-foreground/90">{step.description}</p>
                       </li>
@@ -525,7 +525,7 @@ function DevelopmentSection({
                 <div className="flex items-center gap-2">
                   <Users className="size-3.5 text-emerald-600" />
                   <h3 id="character-relationship-evolution-title" className="text-xs font-semibold tracking-wide">关系演化</h3>
-                  <span className="text-[10px] text-muted-foreground">当前关系 + 最近变化</span>
+                  <span className="text-2xs text-muted-foreground">当前关系 + 最近变化</span>
                 </div>
                 {snapshot?.relationships.length ? (
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -537,7 +537,7 @@ function DevelopmentSection({
                           <span className="truncate">{relationship.object}</span>
                           <ChapterBadge chapter={relationship.chapter} />
                         </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{relationship.label}</p>
+                        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{relationship.label}</p>
                       </div>
                     ))}
                   </div>

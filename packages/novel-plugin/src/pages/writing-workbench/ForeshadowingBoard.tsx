@@ -168,7 +168,7 @@ function TargetChapterEditor({
             setEditing(false);
           }
         }}
-        className="w-14 h-4 text-[11px] rounded border border-border bg-background px-1"
+        className="w-14 h-4 text-2xs rounded border border-border bg-background px-1"
         aria-label={`编辑「${item.name}」目标章号`}
       />
     );
@@ -297,7 +297,7 @@ function SortableForeshadowingCard({
       {item.description && (
         <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
       )}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-2xs text-muted-foreground">
         {item.plantedChapter > 0 && <span>埋设: 第{item.plantedChapter}章</span>}
         <TargetChapterEditor
           item={item}
@@ -314,7 +314,7 @@ function SortableForeshadowingCard({
       {(isOverdue || isDueSoon || debt.level === "unknown") && (
         <p
           data-testid={`foreshadowing-explanation-${item.id}`}
-          className={`text-[10px] leading-relaxed ${isOverdue ? "text-red-500" : isDueSoon ? "text-amber-600" : "text-muted-foreground"}`}
+          className={`text-2xs leading-relaxed ${isOverdue ? "text-red-500" : isDueSoon ? "text-amber-600" : "text-muted-foreground"}`}
         >
           {debt.explanation}
         </p>
@@ -330,12 +330,12 @@ function SortableForeshadowingCard({
 function HookEvidenceList({ evidence }: { evidence: readonly EntityFact[] }) {
   return (
     <div className="rounded border border-border/60 bg-muted/30 p-1.5 space-y-1" data-testid="hook-evidence">
-      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-1 text-2xs text-muted-foreground">
         <Info className="w-3 h-3 shrink-0" />
         <span>记忆证据 {evidence.length} 条（章后结算沉淀，只读）</span>
       </div>
       {evidence.slice(0, 3).map((fact) => (
-        <div key={fact.id} className="text-[10px] text-muted-foreground truncate">
+        <div key={fact.id} className="text-2xs text-muted-foreground truncate">
           第 {fact.sourceChapter ?? fact.validFromChapter ?? "—"} 章 · {fact.subject} {fact.predicate} {fact.object}
         </div>
       ))}
@@ -568,7 +568,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
       {currentChapter === undefined ? (
         <div
           data-testid="foreshadowing-unknown-chapter"
-          className="mx-3 mt-3 flex items-start gap-2 rounded-md border border-amber-400/60 bg-amber-50 p-2 text-[11px] text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
+          className="mx-3 mt-3 flex items-start gap-2 rounded-md border border-amber-400/60 bg-amber-50 p-2 text-2xs text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
         >
           <AlertTriangle className="mt-0.5 w-3.5 h-3.5 shrink-0" />
           <span>
@@ -579,7 +579,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
       ) : null}
       {!suggestionsDismissed && suggestedItems.length > 0 ? (
         <section
-          className="mx-3 mt-3 flex items-start gap-2 rounded-md border border-amber-400/60 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"
+          className="mx-3 mt-3 flex items-start gap-2 rounded-md border border-amber-400/60 bg-amber-50 px-2.5 py-2 text-2xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"
           data-testid="foreshadowing-suggestions"
         >
           <span className="shrink-0 text-sm leading-none" aria-hidden="true">💡</span>
@@ -591,12 +591,12 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
                   key={item.id}
                   type="button"
                   onClick={() => handleSuggestionClick(item.id)}
-                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-amber-400/70 bg-background/70 px-2 py-0.5 text-[10px] text-amber-800 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/30"
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-amber-400/70 bg-background/70 px-2 py-0.5 text-2xs text-amber-800 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/30"
                   title={`定位到「${item.name}」`}
                   data-testid={`foreshadowing-suggestion-${item.id}`}
                 >
                   <span className="max-w-40 truncate">{item.name}</span>
-                  <span className="shrink-0 text-[9px] opacity-80">已{item.suspenseChapters}章</span>
+                  <span className="shrink-0 text-2xs opacity-80">已{item.suspenseChapters}章</span>
                 </button>
               ))}
             </div>
@@ -669,7 +669,7 @@ function DroppableColumn({
       <div className="flex items-center gap-1.5 mb-2 px-1">
         {column.icon}
         <span className="text-xs font-medium">{column.label}</span>
-        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 ml-auto">
+        <Badge variant="secondary" className="text-2xs px-1.5 py-0 h-4 ml-auto">
           {column.items.length}
         </Badge>
       </div>

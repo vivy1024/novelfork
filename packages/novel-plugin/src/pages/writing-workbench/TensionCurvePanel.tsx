@@ -158,7 +158,7 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
           <CardTitle className="text-sm flex items-center gap-1.5">
             <Activity className="size-4 text-orange-500" />
             张力心电图
-            <span className="text-[10px] font-normal text-muted-foreground">· 节奏是否崩了</span>
+            <span className="text-2xs font-normal text-muted-foreground">· 节奏是否崩了</span>
           </CardTitle>
           <button
             type="button"
@@ -170,7 +170,7 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
             <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
           {stats && (
             <>
               <span>均值 <strong className="text-foreground">{stats.avg}</strong></span>
@@ -179,7 +179,7 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
             </>
           )}
           {unevaluatedCount > 0 && (
-            <Badge variant="outline" className="text-[9px] px-1 py-0 border-dashed text-muted-foreground" data-testid="tension-unevaluated-badge">
+            <Badge variant="outline" className="text-2xs px-1 py-0 border-dashed text-muted-foreground" data-testid="tension-unevaluated-badge">
               未评估 {unevaluatedCount} 章
             </Badge>
           )}
@@ -187,14 +187,14 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
       </CardHeader>
       <CardContent className="space-y-2">
         {error && (
-          <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-[11px] text-destructive" role="alert">
+          <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-2xs text-destructive" role="alert">
             {error}
             <button type="button" onClick={() => void load()} className="ml-2 underline">重试</button>
           </div>
         )}
 
         {stats?.streak && (
-          <div className="flex items-start gap-1 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-700 dark:text-amber-400" data-testid="tension-low-streak-alert" role="alert">
+          <div className="flex items-start gap-1 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-2xs text-amber-700 dark:text-amber-400" data-testid="tension-low-streak-alert" role="alert">
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
             <span>连续 {stats.streak.length} 章（第 {stats.streak.start} 章起）张力低于 {TENSION_THRESHOLD}——考虑安排一次冲突升级或信息增量。</span>
           </div>
@@ -238,18 +238,18 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
                         } group-hover:bg-primary`}
                         style={{ height: `${Math.max(heightPct, unevaluated ? 8 : 4)}%` }}
                       />
-                      <span className="text-[8px] text-muted-foreground mt-0.5 truncate w-full text-center">{entry.chapterNumber}</span>
+                      <span className="text-2xs text-muted-foreground mt-0.5 truncate w-full text-center">{entry.chapterNumber}</span>
                     </button>
                   </div>
                 );
               })}
             </div>
-            <div className="mt-1 flex justify-between text-[9px] text-muted-foreground/60 border-t border-dashed border-red-300/40 pt-0.5">
+            <div className="mt-1 flex justify-between text-2xs text-muted-foreground/60 border-t border-dashed border-red-300/40 pt-0.5">
               <span>0</span>
-              <Badge variant="outline" className="text-[8px] px-1 py-0 text-red-400 border-red-300/40">告警线 {TENSION_THRESHOLD}</Badge>
+              <Badge variant="outline" className="text-2xs px-1 py-0 text-red-400 border-red-300/40">告警线 {TENSION_THRESHOLD}</Badge>
               <span>10</span>
             </div>
-            <p className="text-[9px] text-muted-foreground/70">
+            <p className="text-2xs text-muted-foreground/70">
               虚线灰柱 = 该章评分失败（未评估）；实心柱点击可跳转对应章节。
             </p>
           </>

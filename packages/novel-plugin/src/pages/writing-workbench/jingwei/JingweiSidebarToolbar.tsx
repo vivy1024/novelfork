@@ -81,7 +81,7 @@ function ImportPanel({ bookId, onClose, onImported }: { bookId: string; onClose:
         <span className="text-xs font-medium">导入经纬</span>
         <Button size="xs" variant="ghost" onClick={onClose}><X className="size-3" /></Button>
       </div>
-      <p className="text-[10px] text-muted-foreground">粘贴 Markdown，按 ## 标题拆分为多条条目。</p>
+      <p className="text-2xs text-muted-foreground">粘贴 Markdown，按 ## 标题拆分为多条条目。</p>
       <select className="h-7 text-xs border rounded px-2 bg-background" value={category} onChange={(e) => setCategory(e.target.value)}>
         <option value="world-model">世界模型</option>
         <option value="characters">角色</option>
@@ -127,11 +127,11 @@ function InjectionPreview({ bookId, onClose }: { bookId: string; onClose: () => 
   return (
     <div className="border-t border-border p-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium text-muted-foreground">AI 注入预览</span>
+        <span className="text-2xs font-medium text-muted-foreground">AI 注入预览</span>
         <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
       <div className="flex items-center gap-1 mt-1">
-        <span className="text-[10px] text-muted-foreground">第</span>
+        <span className="text-2xs text-muted-foreground">第</span>
         <input
           type="number"
           min={1}
@@ -141,15 +141,15 @@ function InjectionPreview({ bookId, onClose }: { bookId: string; onClose: () => 
             setChapterNumber(num);
             void fetchPreview(num);
           }}
-          className="w-10 rounded border border-input bg-transparent px-1 text-center text-[10px] font-mono outline-none"
+          className="w-10 rounded border border-input bg-transparent px-1 text-center text-2xs font-mono outline-none"
         />
-        <span className="text-[10px] text-muted-foreground">章视角</span>
+        <span className="text-2xs text-muted-foreground">章视角</span>
         {content === null && chapterNumber > 0 && (
-          <Button size="xs" variant="outline" onClick={() => void fetchPreview(chapterNumber)} className="h-5 text-[10px]">加载</Button>
+          <Button size="xs" variant="outline" onClick={() => void fetchPreview(chapterNumber)} className="h-5 text-2xs">加载</Button>
         )}
       </div>
       {content !== null && (
-        <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-[10px] font-mono text-muted-foreground">{content}</pre>
+        <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-2xs font-mono text-muted-foreground">{content}</pre>
       )}
     </div>
   );

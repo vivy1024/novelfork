@@ -64,12 +64,12 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
     <section className="flex flex-col h-full min-h-0" data-resource-kind={node.kind}>
       <header className="resource-viewer__header shrink-0 px-4 py-2 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">{label}</span>
+          <span className="text-2xs text-muted-foreground">{label}</span>
           <h2 className="text-sm font-medium truncate">{node.title}</h2>
           <CapabilityNotice node={node} />
         </div>
         {node.path ? (
-          <div className="mt-1 text-[10px] text-muted-foreground">
+          <div className="mt-1 text-2xs text-muted-foreground">
             <span className="mr-1">来源路径：</span>
             <span>{node.path}</span>
           </div>
@@ -242,7 +242,7 @@ function MarkdownResourceBody({
           <p className="text-xs leading-relaxed text-muted-foreground">
             为避免首次打开卡顿，当前先不建立完整编辑器文档。文件仍可读取；需要格式化预览时再加载。
           </p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             大小约 {Math.ceil(utf8ByteLength(content) / 1024)} KB，渲染阈值为 256 KB。
           </p>
           <Button type="button" size="sm" onClick={() => setPreviewLarge(true)}>
@@ -340,8 +340,8 @@ function renderNarrativeMemoryEntry(node: WorkbenchResourceNode) {
           </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className="text-[10px]">{categoryLabel}</Badge>
-          {metadataText(metadata, "status") ? <Badge variant="secondary" className="text-[10px]">{metadataText(metadata, "status")}</Badge> : null}
+          <Badge variant="outline" className="text-2xs">{categoryLabel}</Badge>
+          {metadataText(metadata, "status") ? <Badge variant="secondary" className="text-2xs">{metadataText(metadata, "status")}</Badge> : null}
         </div>
         {fields.length > 0 ? (
           <div className="divide-y divide-border rounded-lg border border-border bg-card">
@@ -355,13 +355,13 @@ function renderNarrativeMemoryEntry(node: WorkbenchResourceNode) {
         ) : null}
         {summary ? (
           <div className="rounded-lg border border-border bg-card p-3">
-            <div className="mb-1 text-[10px] text-muted-foreground">摘要</div>
+            <div className="mb-1 text-2xs text-muted-foreground">摘要</div>
             <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{summary}</div>
           </div>
         ) : null}
         {evidence ? (
           <div className="rounded-lg border border-border bg-card p-3">
-            <div className="mb-1 text-[10px] text-muted-foreground">正文证据</div>
+            <div className="mb-1 text-2xs text-muted-foreground">正文证据</div>
             <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{evidence}</div>
           </div>
         ) : null}
@@ -541,7 +541,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
             <div key={line.id} className="rounded-lg border border-border bg-card p-3">
               <div className="text-sm font-medium">{line.title}</div>
               {line.summary && <div className="text-xs text-muted-foreground mt-0.5">{line.summary}</div>}
-              {line.nodeIds && <div className="text-[10px] text-muted-foreground mt-1">包含 {line.nodeIds.length} 个节点</div>}
+              {line.nodeIds && <div className="text-2xs text-muted-foreground mt-1">包含 {line.nodeIds.length} 个节点</div>}
             </div>
           ))}
         </div>
@@ -584,8 +584,8 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
             {nodes.slice(0, 50).map((n) => (
               <div key={n.id} className="rounded border border-border p-2 text-xs group">
                 <div className="flex items-center gap-1.5">
-                  <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-mono">{NODE_TYPE_LABELS[n.type] ?? n.type}</span>
-                  {n.layer === "annotation" ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">备注</span> : <span className="rounded bg-sky-100 px-1 py-0.5 text-[10px] text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">派生</span>}
+                  <span className="rounded bg-muted px-1 py-0.5 text-2xs font-mono">{NODE_TYPE_LABELS[n.type] ?? n.type}</span>
+                  {n.layer === "annotation" ? <span className="rounded bg-amber-100 px-1 py-0.5 text-2xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">备注</span> : <span className="rounded bg-sky-100 px-1 py-0.5 text-2xs text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">派生</span>}
                   <span className="font-medium">{n.title}</span>
                   {n.chapterNumber != null && <span className="text-muted-foreground ml-auto mr-1">第{n.chapterNumber}章</span>}
                   {bookId && n.layer !== "derived" && (
@@ -603,7 +603,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
                 {n.summary && <div className="text-muted-foreground mt-0.5 line-clamp-2">{n.summary}</div>}
               </div>
             ))}
-            {nodes.length > 50 && <div className="text-[10px] text-muted-foreground text-center">…还有 {nodes.length - 50} 个节点</div>}
+            {nodes.length > 50 && <div className="text-2xs text-muted-foreground text-center">…还有 {nodes.length - 50} 个节点</div>}
           </div>
         </div>
       )}
@@ -612,7 +612,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
       {edges.length > 0 && (
         <div className="space-y-1">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">关系 ({edges.length})</h4>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {edges.length} 条关系连接（{[...new Set(edges.map(e => e.type))].join("、")}）
           </p>
         </div>
@@ -671,7 +671,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
       )}
 
       {/* Agent hint */}
-      <div className="rounded border border-dashed border-border p-2 text-center text-[10px] text-muted-foreground">
+      <div className="rounded border border-dashed border-border p-2 text-center text-2xs text-muted-foreground">
         叙事线由写作管线自动维护，也可手动添加节点
       </div>
     </div>
@@ -761,17 +761,17 @@ function JingweiCardViewer({ node }: { node: WorkbenchResourceNode }) {
       {/* Header: category badge + title + visibility */}
       <div className="flex items-center gap-2 flex-wrap">
         {schema && (
-          <Badge variant="outline" className={`text-[10px] ${colorClass}`}>
+          <Badge variant="outline" className={`text-2xs ${colorClass}`}>
             {schema.name}
           </Badge>
         )}
         <h3 className="text-sm font-semibold text-foreground flex-1">{node.title}</h3>
         {visibility && (
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-2xs">
             {VISIBILITY_LABELS[visibility] ?? visibility}
           </Badge>
         )}
-        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => setShowRaw(true)}>
+        <Button size="sm" variant="ghost" className="h-6 text-2xs" onClick={() => setShowRaw(true)}>
           查看原始
         </Button>
       </div>
@@ -798,7 +798,7 @@ function JingweiCardViewer({ node }: { node: WorkbenchResourceNode }) {
           <span className="text-xs text-muted-foreground">关联条目</span>
           <div className="flex flex-wrap gap-1">
             {relatedEntries.map((entry) => (
-              <Badge key={entry.id} variant="outline" className="text-[10px]">{entry.title}</Badge>
+              <Badge key={entry.id} variant="outline" className="text-2xs">{entry.title}</Badge>
             ))}
           </div>
         </div>

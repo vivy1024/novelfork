@@ -83,7 +83,7 @@ export function StatusBar({
     cursorLine != null && cursorColumn != null ? `${cursorLine}:${cursorColumn}` : null;
 
   return (
-    <div className="flex h-9 shrink-0 items-center justify-between border-t border-border bg-muted/30 px-3 text-[11px] text-muted-foreground">
+    <div className="flex h-9 shrink-0 items-center justify-between border-t border-border bg-muted/30 px-3 text-2xs text-muted-foreground">
       {/* ── 左侧 ── */}
       <div className="flex items-center gap-3">
         {cursorLabel && <span>行:列 {cursorLabel}</span>}

@@ -331,7 +331,7 @@ export function WorkflowRecipesSection({ bookId, bookTitle }: WorkflowRecipesSec
                 <CardHeader className="p-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-medium">{recipe.name}</CardTitle>
-                    <Badge variant="outline" className="text-[10px] font-mono">
+                    <Badge variant="outline" className="text-2xs font-mono">
                       {recipe.commandId}
                     </Badge>
                   </div>
@@ -393,29 +393,29 @@ export function WorkflowRecipesSection({ bookId, bookTitle }: WorkflowRecipesSec
                         </div>
                         <div className="flex flex-wrap items-center gap-2 min-w-0">
                           <span className="text-xs font-semibold">{step.label}</span>
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-2xs">
                             {STEP_KIND_LABELS[step.kind] ?? step.kind}
                           </Badge>
                           {execMode === "subagent" && (
-                            <Badge variant="secondary" className="text-[10px] gap-1">
+                            <Badge variant="secondary" className="text-2xs gap-1">
                               <Bot className="size-2.5" />
                               {step.agentId || "未指定角色"}
                             </Badge>
                           )}
                           {execMode === "autonomous" && (
-                            <Badge variant="secondary" className="text-[10px] gap-1 text-purple-700 dark:text-purple-300">
+                            <Badge variant="secondary" className="text-2xs gap-1 text-purple-700 dark:text-purple-300">
                               <Sparkles className="size-2.5" />
                               主代理自主派发
                             </Badge>
                           )}
                           {execMode === "tool-only" && (
-                            <Badge variant="outline" className="text-[10px] gap-1 text-muted-foreground">
+                            <Badge variant="outline" className="text-2xs gap-1 text-muted-foreground">
                               <Wrench className="size-2.5" />
                               纯工具流水线
                             </Badge>
                           )}
                           {step.requiresApproval && (
-                            <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">
+                            <Badge variant="outline" className="text-2xs text-amber-600 border-amber-300">
                               人工确认门禁
                             </Badge>
                           )}
@@ -488,7 +488,7 @@ export function WorkflowRecipesSection({ bookId, bookTitle }: WorkflowRecipesSec
                                 <Bot className="size-3.5" />
                                 派发自定义子代理
                               </div>
-                              <span className="text-[10px] text-muted-foreground mt-1">
+                              <span className="text-2xs text-muted-foreground mt-1">
                                 挂载专职子代理（如审稿人、写手）
                               </span>
                             </button>
@@ -504,7 +504,7 @@ export function WorkflowRecipesSection({ bookId, bookTitle }: WorkflowRecipesSec
                                 <Sparkles className="size-3.5" />
                                 主代理自主派发
                               </div>
-                              <span className="text-[10px] text-muted-foreground mt-1">
+                              <span className="text-2xs text-muted-foreground mt-1">
                                 由总指挥根据剧情动态决定调哪些角色
                               </span>
                             </button>
@@ -520,7 +520,7 @@ export function WorkflowRecipesSection({ bookId, bookTitle }: WorkflowRecipesSec
                                 <Wrench className="size-3.5" />
                                 纯工具流水线
                               </div>
-                              <span className="text-[10px] text-muted-foreground mt-1">
+                              <span className="text-2xs text-muted-foreground mt-1">
                                 直接按白名单执行工具，不派发子代理
                               </span>
                             </button>
@@ -589,7 +589,7 @@ export function WorkflowRecipesSection({ bookId, bookTitle }: WorkflowRecipesSec
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <Label>该阶段允许调用的工具白名单 (Tool Whitelist)</Label>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-2xs text-muted-foreground">
                               已选 {step.tools?.length ?? 0} 个工具
                             </span>
                           </div>
@@ -601,7 +601,7 @@ export function WorkflowRecipesSection({ bookId, bookTitle }: WorkflowRecipesSec
                                   key={toolName}
                                   type="button"
                                   onClick={() => handleToggleTool(step, toolName)}
-                                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors border ${
+                                  className={`px-2 py-0.5 rounded text-2xs font-mono transition-colors border ${
                                     isSelected
                                       ? "bg-primary text-primary-foreground border-primary"
                                       : "bg-muted/40 text-muted-foreground border-transparent hover:bg-muted"

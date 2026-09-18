@@ -274,7 +274,7 @@ export function CharactersAndLoreSidebarPanel({
       {creatingChar && (
         <div className="border-b border-primary/30 bg-primary/5 p-2 space-y-2 shrink-0">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-foreground">
+            <span className="text-2xs font-semibold text-foreground">
               {activeTab === "characters" ? "新建角色卡" : "新建世界设定词条"}
             </span>
             <Button size="xs" variant="ghost" onClick={() => setCreatingChar(false)} className="h-4 w-4 p-0">
@@ -341,7 +341,7 @@ export function CharactersAndLoreSidebarPanel({
           <button
             type="button"
             onClick={() => setWorldCategoryFilter("all")}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] transition-colors ${
+            className={`shrink-0 rounded-full px-2 py-0.5 text-2xs transition-colors ${
               worldCategoryFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -354,7 +354,7 @@ export function CharactersAndLoreSidebarPanel({
                 key={meta.id}
                 type="button"
                 onClick={() => setWorldCategoryFilter(meta.id)}
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] transition-colors ${
+                className={`shrink-0 rounded-full px-2 py-0.5 text-2xs transition-colors ${
                   worldCategoryFilter === meta.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -374,7 +374,7 @@ export function CharactersAndLoreSidebarPanel({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={activeTab === "characters" ? "搜索角色名、性格、口癖..." : "搜索世界设定、门派、体系..."}
-            className="w-full bg-transparent text-[11px] outline-none placeholder:text-muted-foreground/60"
+            className="w-full bg-transparent text-2xs outline-none placeholder:text-muted-foreground/60"
           />
           {searchQuery && (
             <button type="button" onClick={() => setSearchQuery("")} className="text-muted-foreground hover:text-foreground">
@@ -392,7 +392,7 @@ export function CharactersAndLoreSidebarPanel({
             <p className="text-xs font-medium">
               {searchQuery ? "没有找到匹配的条目" : activeTab === "characters" ? "暂无角色卡" : "暂无世界设定"}
             </p>
-            <p className="text-[10px] text-muted-foreground/80 max-w-xs">
+            <p className="text-2xs text-muted-foreground/80 max-w-xs">
               {activeTab === "characters" ? "点击右上角「新角色」或「导入」快速建立人物册" : "点击右上角「新设定」添加世界观与规则"}
             </p>
           </div>
@@ -508,7 +508,7 @@ function CharacterOrLoreCard({
             </span>
             <div className="flex items-center gap-1 shrink-0">
               {!isCharacter && categoryMeta && (
-                <Badge variant="secondary" className="text-[9px] px-1 h-3.5">
+                <Badge variant="secondary" className="text-2xs px-1 h-3.5">
                   {categoryMeta.name}
                 </Badge>
               )}
@@ -519,12 +519,12 @@ function CharacterOrLoreCard({
           {aliases.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {aliases.slice(0, 2).map((alias, i) => (
-                <span key={i} className="text-[9px] rounded bg-muted/70 px-1 py-0.2 text-muted-foreground">
+                <span key={i} className="text-2xs rounded bg-muted/70 px-1 py-0.2 text-muted-foreground">
                   {alias}
                 </span>
               ))}
               {aliases.length > 2 && (
-                <span className="text-[9px] text-muted-foreground">+{aliases.length - 2}</span>
+                <span className="text-2xs text-muted-foreground">+{aliases.length - 2}</span>
               )}
             </div>
           )}
@@ -532,23 +532,23 @@ function CharacterOrLoreCard({
           {isCharacter && kernel && (
             <div className="rounded-md bg-primary/[0.04] border border-primary/20 px-1.5 py-1 space-y-0.5" data-testid="character-kernel-summary">
               {(typeof kernel.fields["motivation"] === "string" && kernel.fields["motivation"]) && (
-                <p className="text-[10px] text-foreground/90 leading-snug">
+                <p className="text-2xs text-foreground/90 leading-snug">
                   <span className="text-primary font-medium">动机</span> {kernel.fields["motivation"]}
                 </p>
               )}
               {(typeof kernel.fields["emotionalCenter"] === "string" && kernel.fields["emotionalCenter"]) && (
-                <p className="text-[10px] text-muted-foreground leading-snug">
+                <p className="text-2xs text-muted-foreground leading-snug">
                   <span className="text-primary/70 font-medium">心境</span> {kernel.fields["emotionalCenter"]}
                 </p>
               )}
-              <p className="text-[9px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 内核更新于第 {kernel.updatedChapter} 章
               </p>
             </div>
           )}
 
           {isCharacter && currentChapter !== undefined && (
-            <p className="text-[9px] text-muted-foreground" data-testid="character-last-appearance">
+            <p className="text-2xs text-muted-foreground" data-testid="character-last-appearance">
               {(() => {
                 const lastCh = kernel?.updatedChapter
                   ?? (facts.length > 0 ? Math.max(...facts.map((f) => f.sourceChapter ?? 0)) : undefined);
@@ -558,7 +558,7 @@ function CharacterOrLoreCard({
                   <>
                     最后出场 第{lastCh}章
                     {gap >= 15 && (
-                      <Badge variant="destructive" className="ml-1 text-[8px] px-1 py-0">⚠️ {gap}章未出场</Badge>
+                      <Badge variant="destructive" className="ml-1 text-2xs px-1 py-0">⚠️ {gap}章未出场</Badge>
                     )}
                   </>
                 );
@@ -572,7 +572,7 @@ function CharacterOrLoreCard({
                 <Badge
                   key={`${fact.predicate}-${fact.object}-${index}`}
                   variant="outline"
-                  className="max-w-full truncate border-primary/30 bg-primary/5 px-1 text-[9px] font-normal text-primary"
+                  className="max-w-full truncate border-primary/30 bg-primary/5 px-1 text-2xs font-normal text-primary"
                   data-testid="character-temporal-fact"
                 >
                   {fact.predicate}: {fact.object}
@@ -582,7 +582,7 @@ function CharacterOrLoreCard({
           )}
 
           {/* 经典人设简述 */}
-          <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
+          <p className="text-2xs text-muted-foreground line-clamp-2 leading-relaxed">
             {preview}
           </p>
         </div>
@@ -673,7 +673,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
         <span className="text-xs font-semibold">导入设定 / 酒馆角色卡</span>
         <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
-      <p className="text-[10px] text-muted-foreground leading-relaxed">
+      <p className="text-2xs text-muted-foreground leading-relaxed">
         支持粘贴 Markdown（按 ## 拆分）或酒馆角色卡 JSON（自动转换为多维人物档案）。
       </p>
       <select
@@ -697,7 +697,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
         placeholder={"粘贴 Markdown 文本，或酒馆角色卡 JSON（{\"name\": \"...\", \"personality\": \"...\"}）..."}
       />
       <div className="flex items-center justify-between pt-0.5">
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {text.trim().startsWith("{") ? "检测到 JSON 格式，将智能解析角色卡" : "Markdown 格式"}
         </span>
         <div className="flex items-center gap-1.5">
@@ -707,7 +707,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
           </Button>
         </div>
       </div>
-      {result && <p className="text-[11px] text-emerald-600 font-medium">{result}</p>}
+      {result && <p className="text-2xs text-emerald-600 font-medium">{result}</p>}
     </div>
   );
 }
@@ -735,7 +735,7 @@ function InjectionPreviewSection({ bookId, onClose }: { bookId: string; onClose:
         <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
       <div className="flex items-center gap-1 mt-1.5">
-        <span className="text-[10px] text-muted-foreground">第</span>
+        <span className="text-2xs text-muted-foreground">第</span>
         <input
           type="number"
           min={1}
@@ -747,15 +747,15 @@ function InjectionPreviewSection({ bookId, onClose }: { bookId: string; onClose:
           }}
           className="w-12 rounded border border-border bg-background px-1.5 text-center text-xs font-mono outline-none"
         />
-        <span className="text-[10px] text-muted-foreground">章写作视角</span>
+        <span className="text-2xs text-muted-foreground">章写作视角</span>
         {content === null && (
-          <Button size="xs" variant="outline" onClick={() => void fetchPreview(chapterNumber)} className="h-6 text-[10px] ml-1">
+          <Button size="xs" variant="outline" onClick={() => void fetchPreview(chapterNumber)} className="h-6 text-2xs ml-1">
             加载
           </Button>
         )}
       </div>
       {content !== null && (
-        <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-[10px] font-mono text-muted-foreground bg-muted/50 p-2 rounded">
+        <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-2xs font-mono text-muted-foreground bg-muted/50 p-2 rounded">
           {content}
         </pre>
       )}

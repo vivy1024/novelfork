@@ -586,7 +586,7 @@ function RoutineCatalogSection({
 												<CardTitle className="flex flex-wrap items-center gap-2">
 													{routine.name}
 													{routine.type === "tool" && (
-														<Badge variant="outline" className="font-mono text-[10px]">
+														<Badge variant="outline" className="font-mono text-2xs">
 															/load {routine.id}
 														</Badge>
 													)}
@@ -1112,7 +1112,7 @@ function SkillsSection({
 								</div>
 								{expandedSkillNames.has(skill.name) && (
 									<div className="flex flex-col gap-1 rounded-md border bg-muted/30 p-2 text-xs">
-										<div className="text-[11px] font-medium text-muted-foreground">技能文件树：</div>
+										<div className="text-2xs font-medium text-muted-foreground">技能文件树：</div>
 										{skill.files && skill.files.length > 0 ? (
 											<div className="flex flex-col gap-1">
 												{skill.files.map((file) => (
@@ -1641,7 +1641,7 @@ function SubagentEditorDialog({
 										key={tool}
 										type="button"
 										aria-pressed={active}
-										className={`rounded-full border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+										className={`rounded-full border px-2 py-0.5 font-mono text-2xs transition-colors ${
 											active
 												? "border-primary bg-primary/10 text-primary"
 												: "border-border text-muted-foreground hover:border-primary/50"
@@ -1654,7 +1654,7 @@ function SubagentEditorDialog({
 							})}
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<p className="text-[10px] text-muted-foreground">
+							<p className="text-2xs text-muted-foreground">
 								NovelFork 扩展（novel-plugin 贡献工具）：
 							</p>
 							<div className="flex flex-wrap gap-1.5">
@@ -1665,7 +1665,7 @@ function SubagentEditorDialog({
 											key={tool}
 											type="button"
 											aria-pressed={active}
-											className={`rounded-full border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+											className={`rounded-full border px-2 py-0.5 font-mono text-2xs transition-colors ${
 												active
 													? "border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400"
 													: "border-border text-muted-foreground hover:border-purple-400/50"
@@ -2262,7 +2262,7 @@ function HookPayloadReference({
 						</div>
 						{HOOK_COMMON_FIELDS.map(([field, description]) => (
 							<div key={field} className="flex flex-col gap-0.5">
-								<code className="font-mono text-[11px]">{field}</code>
+								<code className="font-mono text-2xs">{field}</code>
 								<span className="text-muted-foreground">{description}</span>
 							</div>
 						))}
@@ -2274,7 +2274,7 @@ function HookPayloadReference({
 							</div>
 							{eventFields.map(([field, description]) => (
 								<div key={field} className="flex flex-col gap-0.5">
-									<code className="font-mono text-[11px]">{field}</code>
+									<code className="font-mono text-2xs">{field}</code>
 									<span className="text-muted-foreground">{description}</span>
 								</div>
 							))}
@@ -2282,7 +2282,7 @@ function HookPayloadReference({
 					)}
 					<div className="flex flex-col gap-1">
 						<div className="font-medium text-muted-foreground">示例载荷</div>
-						<pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[11px]">
+						<pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-2xs">
 							{buildHookExample(event)}
 						</pre>
 					</div>

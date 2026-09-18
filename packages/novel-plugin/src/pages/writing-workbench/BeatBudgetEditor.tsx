@@ -55,7 +55,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
   return (
     <div className="flex flex-col gap-1.5" data-testid="beat-budget-editor">
       {beats.length === 0 && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           还没有情节点。不拆点时只有「本章总字数」一个约束，容易平均用力。
         </p>
       )}
@@ -63,14 +63,14 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
       {beats.map((beat, index) => (
         <div key={`beat-${index}`} className="rounded border border-border bg-background/60 px-1.5 py-1">
           <div className="flex items-center gap-1">
-            <span className="shrink-0 text-[10px] text-muted-foreground">#{index + 1}</span>
+            <span className="shrink-0 text-2xs text-muted-foreground">#{index + 1}</span>
             <input
               type="text"
               value={beat.summary}
               disabled={disabled}
               onChange={(event) => patch(index, { summary: event.target.value })}
               placeholder="发生什么（如：赵铭当场要求改标注）"
-              className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] outline-none focus:border-primary"
+              className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-2xs outline-none focus:border-primary"
               data-testid={`beat-editor-summary-${index}`}
             />
             <button
@@ -109,7 +109,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
               value={beat.density}
               disabled={disabled}
               onChange={(event) => patch(index, { density: event.target.value as BeatDensity })}
-              className="rounded border border-border bg-background px-1 py-0.5 text-[10px] outline-none"
+              className="rounded border border-border bg-background px-1 py-0.5 text-2xs outline-none"
               aria-label={`第 ${index + 1} 个情节点的密度`}
               data-testid={`beat-editor-density-${index}`}
             >
@@ -123,18 +123,18 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
               value={beat.words}
               disabled={disabled}
               onChange={(event) => patch(index, { words: Math.max(0, Number(event.target.value) || 0) })}
-              className="w-16 rounded border border-border bg-background px-1 py-0.5 text-[10px] outline-none focus:border-primary"
+              className="w-16 rounded border border-border bg-background px-1 py-0.5 text-2xs outline-none focus:border-primary"
               aria-label={`第 ${index + 1} 个情节点的字数`}
               data-testid={`beat-editor-words-${index}`}
             />
-            <span className="text-[10px] text-muted-foreground">字</span>
+            <span className="text-2xs text-muted-foreground">字</span>
             <input
               type="text"
               value={beat.function ?? ""}
               disabled={disabled}
               onChange={(event) => patch(index, { function: event.target.value })}
               placeholder="功能（冲突升级 / 信息揭示…）"
-              className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-[10px] outline-none focus:border-primary"
+              className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-2xs outline-none focus:border-primary"
               data-testid={`beat-editor-function-${index}`}
             />
           </div>
@@ -145,7 +145,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
         type="button"
         disabled={disabled}
         onClick={() => onChange([...beats, newBeat()])}
-        className="flex items-center justify-center gap-1 rounded border border-dashed border-border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-40"
+        className="flex items-center justify-center gap-1 rounded border border-dashed border-border px-2 py-1 text-2xs text-muted-foreground hover:bg-accent disabled:opacity-40"
         data-testid="beat-editor-add"
       >
         <Plus className="size-3" />
@@ -153,12 +153,12 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
       </button>
 
       {report === null ? (
-        <p className="text-[10px] text-muted-foreground" data-testid="beat-editor-budget-line">
+        <p className="text-2xs text-muted-foreground" data-testid="beat-editor-budget-line">
           未知本章目标字数，无法校验预算。
         </p>
       ) : (
         <p
-          className={`text-[10px] ${report.ok ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400"}`}
+          className={`text-2xs ${report.ok ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400"}`}
           data-testid="beat-editor-budget-line"
         >
           {report.budgetLine}
@@ -170,7 +170,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
           {report.findings.map((finding, index) => (
             <li
               key={`${finding.code}-${index}`}
-              className={`text-[10px] ${finding.severity === "block" ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}
+              className={`text-2xs ${finding.severity === "block" ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}
               data-testid="beat-editor-finding"
             >
               {finding.whatHappened}

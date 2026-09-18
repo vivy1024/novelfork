@@ -86,7 +86,7 @@ function SourceBadge({ source }: { source?: string }) {
   const style = SOURCE_BADGE_STYLES[source] ?? SOURCE_BADGE_STYLES.manual;
   const label = SOURCE_LABELS[source] ?? source;
   return (
-    <span className={`inline-flex items-center rounded px-1 py-0.5 text-[8px] font-medium ${style}`}>
+    <span className={`inline-flex items-center rounded px-1 py-0.5 text-2xs font-medium ${style}`}>
       {label}
     </span>
   );
@@ -105,7 +105,7 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
       <div className="rounded-lg border border-border p-3 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium">角色弧线</span>
-          <button type="button" onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground">关闭</button>
+          <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">关闭</button>
         </div>
         <div className="flex items-center justify-center py-6">
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -120,7 +120,7 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
       <div className="rounded-lg border border-border p-3 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium">角色弧线</span>
-          <button type="button" onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground">关闭</button>
+          <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">关闭</button>
         </div>
         <p className="text-xs text-destructive">{error}</p>
       </div>
@@ -135,13 +135,13 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
         <div className="flex items-center gap-1.5">
           <TrendingUp className="size-3.5 text-primary" />
           <span className="text-xs font-medium">角色弧线</span>
-          <Badge variant="secondary" className="text-[9px] h-4">{arcs.length}</Badge>
+          <Badge variant="secondary" className="text-2xs h-4">{arcs.length}</Badge>
         </div>
-        <button type="button" onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground">关闭</button>
+        <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">关闭</button>
       </div>
 
       {arcs.length === 0 && (
-        <p className="text-[10px] text-muted-foreground text-center py-3">暂无角色弧线数据</p>
+        <p className="text-2xs text-muted-foreground text-center py-3">暂无角色弧线数据</p>
       )}
 
       <div className="space-y-1.5">
@@ -157,17 +157,17 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
               >
                 {expanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
                 <span className="text-xs font-medium flex-1 truncate">{arc.characterName ?? arc.characterId}</span>
-                <Badge variant="outline" className="text-[9px] h-4 shrink-0">{arcTypeLabel(arc.arcType)}</Badge>
-                <Badge variant="secondary" className="text-[8px] h-4 shrink-0">{arc.layer === "annotation" ? "备注" : "派生"}</Badge>
+                <Badge variant="outline" className="text-2xs h-4 shrink-0">{arcTypeLabel(arc.arcType)}</Badge>
+                <Badge variant="secondary" className="text-2xs h-4 shrink-0">{arc.layer === "annotation" ? "备注" : "派生"}</Badge>
               </button>
 
               {expanded && (
                 <div className="px-2 pb-2 space-y-1.5 border-t border-border pt-1.5">
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <div className="flex items-center gap-2 text-2xs text-muted-foreground">
                     <span>当前阶段：</span>
                     <span className="text-foreground font-medium">{arc.currentPhase || arc.currentPosition || "未知"}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <div className="flex items-center gap-2 text-2xs text-muted-foreground">
                     <span>{arc.startingState}</span>
                     <span>→</span>
                     <span>{arc.endingState}</span>
@@ -175,10 +175,10 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
 
                   {beats.length > 0 && (
                     <div className="space-y-1 mt-1">
-                      <span className="text-[10px] text-muted-foreground font-medium">弧线节拍</span>
+                      <span className="text-2xs text-muted-foreground font-medium">弧线节拍</span>
                       {beats.map((beat, i) => (
-                        <div key={i} className="flex items-start gap-1.5 text-[10px] pl-2">
-                          <Badge variant="secondary" className="text-[8px] h-3.5 shrink-0">Ch.{beat.chapter}</Badge>
+                        <div key={i} className="flex items-start gap-1.5 text-2xs pl-2">
+                          <Badge variant="secondary" className="text-2xs h-3.5 shrink-0">Ch.{beat.chapter}</Badge>
                           <span className="flex-1 text-muted-foreground">{beat.event}</span>
                           <SourceBadge source={beat.source} />
                           <span className="shrink-0 text-primary">{beat.emotionDirection}</span>

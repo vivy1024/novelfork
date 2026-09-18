@@ -89,7 +89,7 @@ function SessionNodeView({ node, depth = 0 }: { node: SessionTreeNode; depth?: n
       <div className="rounded-md border border-border bg-card px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{node.session.title}</span>
-          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-secondary-foreground">{node.session.status}</span>
+          <span className="rounded bg-secondary px-1.5 py-0.5 text-2xs text-secondary-foreground">{node.session.status}</span>
         </div>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>{node.session.agentId || "未指定 Agent"}</span>

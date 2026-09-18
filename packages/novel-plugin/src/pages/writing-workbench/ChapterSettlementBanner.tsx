@@ -74,7 +74,7 @@ export function ChapterSettlementBanner({ bookId, chapterNumber, content, onAskR
       <Button
         size="xs"
         variant="outline"
-        className="h-6 shrink-0 gap-1 text-[11px]"
+        className="h-6 shrink-0 gap-1 text-2xs"
         onClick={onAskResettle}
       >
         让叙述者重结算

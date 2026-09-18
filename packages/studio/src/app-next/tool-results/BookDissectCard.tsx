@@ -151,7 +151,7 @@ function StagingCandidateList({
             <div className="flex min-w-0 items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-xs text-foreground">{candidate.title}</p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   {candidate.kind}
                   {candidate.duplicateCount > 0 ? ` · ${candidate.duplicateCount} 条疑似重复` : ""}
                 </p>
@@ -182,8 +182,8 @@ function StagingCandidateList({
                 </div>
               )}
             </div>
-            {done && <p className="text-[11px] text-muted-foreground">{state.summary}</p>}
-            {state.status === "error" && <p className="text-[11px] text-destructive">{state.message}</p>}
+            {done && <p className="text-2xs text-muted-foreground">{state.summary}</p>}
+            {state.status === "error" && <p className="text-2xs text-destructive">{state.message}</p>}
           </li>
         );
       })}

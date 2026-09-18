@@ -88,17 +88,17 @@ function FencedCodeBlock({ className, children }: CodeBlockProps) {
       <button
         type="button"
         onClick={handleCopy}
-        className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover/code:opacity-100 transition-opacity flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-gray-200 bg-gray-800/80 hover:bg-gray-700/80 rounded"
+        className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover/code:opacity-100 transition-opacity flex items-center gap-1 px-1.5 py-0.5 text-2xs text-gray-400 hover:text-gray-200 bg-gray-800/80 hover:bg-gray-700/80 rounded"
       >
         {copied ? "已复制" : "复制"}
       </button>
       {highlightedHtml ? (
         <div
-          className="shiki-code-block [&_pre]:!m-0 [&_pre]:!rounded [&_pre]:!text-[11px] [&_pre]:!leading-relaxed [&_pre]:!p-2.5"
+          className="shiki-code-block [&_pre]:!m-0 [&_pre]:!rounded [&_pre]:!text-2xs [&_pre]:!leading-relaxed [&_pre]:!p-2.5"
           dangerouslySetInnerHTML={{ __html: highlightedHtml }}
         />
       ) : (
-        <pre className="m-0 rounded bg-[#1f1f1f] p-2.5 text-[11px] leading-relaxed text-gray-200 overflow-x-auto whitespace-pre-wrap">
+        <pre className="m-0 rounded bg-[#1f1f1f] p-2.5 text-2xs leading-relaxed text-gray-200 overflow-x-auto whitespace-pre-wrap">
           <code>{code}</code>
         </pre>
       )}

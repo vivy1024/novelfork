@@ -228,7 +228,7 @@ export function ModelTestDialog({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-foreground">请求与网络抓包明细 ({diagnostics.requests.length} 次尝试)</span>
                 {diagnostics.error?.category ? (
-                  <Badge variant="outline" className="text-[10px] text-destructive border-destructive/40">
+                  <Badge variant="outline" className="text-2xs text-destructive border-destructive/40">
                     {categoryLabel(diagnostics.error.category)}
                   </Badge>
                 ) : null}
@@ -239,14 +239,14 @@ export function ModelTestDialog({
                   <div key={idx} className="rounded border border-border/80 bg-background/50 p-2.5 space-y-1.5 text-xs">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-1.5">
-                        <Badge variant="secondary" className="font-mono text-[10px]">{req.method}</Badge>
-                        <span className="font-mono text-[11px] font-medium truncate max-w-[320px]" title={req.url}>
+                        <Badge variant="secondary" className="font-mono text-2xs">{req.method}</Badge>
+                        <span className="font-mono text-2xs font-medium truncate max-w-[320px]" title={req.url}>
                           {req.url}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-[10px]">
+                      <div className="flex items-center gap-1.5 text-2xs">
                         {req.status ? (
-                          <Badge variant={req.status >= 400 ? "destructive" : "outline"} className="text-[9px]">
+                          <Badge variant={req.status >= 400 ? "destructive" : "outline"} className="text-2xs">
                             HTTP {req.status}
                           </Badge>
                         ) : null}
@@ -254,14 +254,14 @@ export function ModelTestDialog({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
+                    <div className="flex items-center gap-3 text-2xs text-muted-foreground flex-wrap">
                       {req.route ? <span>路由: {req.route}</span> : null}
                       {req.requestBodyBytes ? <span>包体大小: {formatBytes(req.requestBodyBytes)}</span> : null}
                       {req.proxyUrl ? <span className="truncate max-w-[200px]" title={req.proxyUrl}>代理: {req.proxyUrl}</span> : null}
                     </div>
 
                     {req.error?.message ? (
-                      <p className="text-[10px] font-mono text-destructive bg-destructive/10 p-1.5 rounded">
+                      <p className="text-2xs font-mono text-destructive bg-destructive/10 p-1.5 rounded">
                         {req.error.message}
                       </p>
                     ) : null}
@@ -272,7 +272,7 @@ export function ModelTestDialog({
               <button
                 type="button"
                 onClick={() => setShowRawJson(!showRawJson)}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground pt-1"
+                className="flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground pt-1"
               >
                 {showRawJson ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
                 {showRawJson ? "隐藏 JSON 原始数据" : "查看 JSON 原始数据"}
@@ -282,7 +282,7 @@ export function ModelTestDialog({
                 <Textarea
                   readOnly
                   value={JSON.stringify(diagnostics, null, 2)}
-                  className="min-h-32 font-mono text-[10px] bg-muted/40"
+                  className="min-h-32 font-mono text-2xs bg-muted/40"
                 />
               ) : null}
             </div>

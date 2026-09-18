@@ -277,7 +277,7 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
             ))}
           </ul>
 
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             这些只是建议，还没有启用。你可以在对话里增删，也能随时去「写作设置 → Writing Skills」自己调。
           </p>
 

@@ -211,28 +211,28 @@ function NarrativeGraphNode({ data, selected }: NodeProps<FlowNode>) {
       <Handle type="target" position={Position.Left} className="!h-1.5 !w-1.5 !border-0 !bg-primary/60" />
       <Handle type="source" position={Position.Right} className="!h-1.5 !w-1.5 !border-0 !bg-primary/60" />
       <div className="mb-1 flex items-center justify-between gap-2">
-        <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium">
+        <Badge variant="secondary" className="h-5 px-1.5 text-2xs font-medium">
           {NODE_BADGES[node.kind]}
         </Badge>
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1 text-2xs text-muted-foreground">
           {node.depth !== undefined ? <span>第 {node.depth} 层</span> : null}
           {node.chapterNumber !== undefined ? <span>第 {node.chapterNumber} 章</span> : null}
         </div>
       </div>
-      <div className="line-clamp-2 text-[12px] font-semibold leading-5 text-foreground" title={node.title}>
+      <div className="line-clamp-2 text-xs font-semibold leading-5 text-foreground" title={node.title}>
         {node.displayTitle}
       </div>
-      <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-muted-foreground" title={node.description ?? nodeSummary(node)}>
+      <div className="mt-1 line-clamp-2 text-2xs leading-4 text-muted-foreground" title={node.description ?? nodeSummary(node)}>
         {node.description ?? nodeSummary(node)}
       </div>
-      <div className="mt-1.5 flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-2xs text-muted-foreground">
         <span className="truncate">{node.category ?? node.status ?? "动态数据"}</span>
         {node.confidence !== undefined ? <span className="shrink-0">置信 {node.confidence.toFixed(2)}</span> : null}
       </div>
       {canOpen ? (
         <button
           type="button"
-          className="nodrag nopan mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-primary opacity-0 transition-opacity hover:underline group-hover:opacity-100"
+          className="nodrag nopan mt-2 inline-flex items-center gap-1 text-2xs font-medium text-primary opacity-0 transition-opacity hover:underline group-hover:opacity-100"
           onClick={(event) => {
             event.stopPropagation();
             if (!node.entityName) return;
@@ -287,7 +287,7 @@ function NarrativeGraphEdge({ sourceX, sourceY, sourcePosition, targetX, targetY
         <EdgeLabelRenderer>
           <div
             data-slot="narrative-memory-graph-edge-label"
-            className={`nodrag nopan pointer-events-none rounded-full border bg-background/90 px-1.5 py-0.5 text-[9px] shadow-sm ${highlighted ? "font-medium text-foreground" : "text-muted-foreground"}`}
+            className={`nodrag nopan pointer-events-none rounded-full border bg-background/90 px-1.5 py-0.5 text-2xs shadow-sm ${highlighted ? "font-medium text-foreground" : "text-muted-foreground"}`}
             style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, color }}
           >
             {edge.displayLabel}
@@ -319,8 +319,8 @@ function LaneHeaderNode({ data }: NodeProps<FlowNode>) {
       }}
     >
       <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: lane.color }} aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate text-left text-[11px] font-medium text-foreground" title={lane.name}>{lane.name}</span>
-      <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground">{lane.eventCount}</span>
+      <span className="min-w-0 flex-1 truncate text-left text-2xs font-medium text-foreground" title={lane.name}>{lane.name}</span>
+      <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{lane.eventCount}</span>
     </button>
   );
 }
@@ -347,7 +347,7 @@ function ChapterHeadMarkerNode({ data }: NodeProps<FlowNode>) {
         data.onScrollToChapter?.(marker.chapterNumber);
       }}
     >
-      <span className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground shadow-sm">
+      <span className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-primary px-2 py-0.5 text-2xs font-medium text-primary-foreground shadow-sm">
         ▼ 第 {marker.chapterNumber} 章{extra ? ` · ${extra}` : " · 当前"}
       </span>
     </button>
@@ -536,7 +536,7 @@ function GraphAnchorNavigator({
           type="button"
           variant={dimension === "chapter" ? "secondary" : "ghost"}
           size="sm"
-          className="h-6 flex-1 px-2 text-[10px]"
+          className="h-6 flex-1 px-2 text-2xs"
           aria-pressed={dimension === "chapter"}
           onClick={() => setDimension("chapter")}
         >
@@ -546,7 +546,7 @@ function GraphAnchorNavigator({
           type="button"
           variant={dimension === "entity" ? "secondary" : "ghost"}
           size="sm"
-          className="h-6 flex-1 px-2 text-[10px]"
+          className="h-6 flex-1 px-2 text-2xs"
           aria-pressed={dimension === "entity"}
           onClick={() => setDimension("entity")}
         >
@@ -562,14 +562,14 @@ function GraphAnchorNavigator({
                 type="button"
                 variant={chapter === currentChapter ? "secondary" : "outline"}
                 size="sm"
-                className="h-6 px-1.5 text-[10px]"
+                className="h-6 px-1.5 text-2xs"
                 onClick={() => onSelectChapter(chapter)}
               >
                 第 {chapter} 章{chapter === currentChapter ? " · 当前" : ""}
               </Button>
             ))}
           </div>
-        ) : <p className="py-1 text-[10px] text-muted-foreground">当前图谱没有章节锚点。</p>
+        ) : <p className="py-1 text-2xs text-muted-foreground">当前图谱没有章节锚点。</p>
       ) : entities.length > 0 ? (
         <div className="grid max-h-44 grid-cols-2 gap-1 overflow-y-auto pr-0.5">
           {entities.map((entity) => (
@@ -578,7 +578,7 @@ function GraphAnchorNavigator({
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 justify-start truncate px-2 text-[10px]"
+              className="h-7 justify-start truncate px-2 text-2xs"
               title={`聚焦并查看 ${entity} 的详情`}
               onClick={() => onSelectEntity(entity)}
             >
@@ -586,7 +586,7 @@ function GraphAnchorNavigator({
             </Button>
           ))}
         </div>
-      ) : <p className="py-1 text-[10px] text-muted-foreground">当前图谱没有角色锚点。</p>}
+      ) : <p className="py-1 text-2xs text-muted-foreground">当前图谱没有角色锚点。</p>}
     </div>
   );
 }
@@ -719,7 +719,7 @@ function GraphCanvas({
         className="!bottom-4 !right-4 !rounded-lg !border-border !bg-card/90 !shadow-md"
       />
       <Panel position="top-left" className="!m-4">
-        <div className="rounded-lg border border-border/70 bg-card/85 px-3 py-2 text-[10px] text-muted-foreground shadow-sm backdrop-blur">
+        <div className="rounded-lg border border-border/70 bg-card/85 px-3 py-2 text-2xs text-muted-foreground shadow-sm backdrop-blur">
           <div className="flex items-center gap-2"><Focus className="size-3 text-primary" />{onChapterStepWheel ? "点击节点查看详情 · 滚轮缩放章距 · 拖拽平移" : "点击节点查看详情，支持拖拽节点与画布浏览关系"}</div>
         </div>
       </Panel>
@@ -729,14 +729,14 @@ function GraphCanvas({
             <Button
               variant={anchorOpen ? "secondary" : "outline"}
               size="sm"
-              className="h-8 gap-1.5 bg-card/90 text-[10px] shadow-sm backdrop-blur"
+              className="h-8 gap-1.5 bg-card/90 text-2xs shadow-sm backdrop-blur"
               onClick={() => setAnchorOpen((open) => !open)}
               aria-label="打开锚点导航"
               aria-pressed={anchorOpen}
             >
               <Focus className="size-3.5" />锚点
             </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5 bg-card/90 text-[10px] shadow-sm backdrop-blur" onClick={resetViewport} aria-label="重置视口">
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 bg-card/90 text-2xs shadow-sm backdrop-blur" onClick={resetViewport} aria-label="重置视口">
               <RotateCcw className="size-3.5" />重置视口
             </Button>
           </div>
@@ -770,8 +770,8 @@ function Inspector({ node, onClose, onOpenEntityDetail, onOpenChapter }: { node:
       <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
-            <Badge variant="secondary" className="text-[10px]">{NODE_BADGES[node.kind]}</Badge>
-            {node.category ? <span className="text-[10px] text-muted-foreground">{node.category}</span> : null}
+            <Badge variant="secondary" className="text-2xs">{NODE_BADGES[node.kind]}</Badge>
+            {node.category ? <span className="text-2xs text-muted-foreground">{node.category}</span> : null}
           </div>
           <h3 className="break-words text-sm font-semibold leading-5">{node.title}</h3>
         </div>
@@ -819,7 +819,7 @@ function Inspector({ node, onClose, onOpenEntityDetail, onOpenChapter }: { node:
 function Metric({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
     <div className="rounded-lg border border-border/70 bg-muted/20 px-2.5 py-2">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className={`mt-0.5 truncate text-xs font-medium ${danger ? "text-destructive" : "text-foreground"}`} title={value}>{value}</div>
     </div>
   );
@@ -828,7 +828,7 @@ function Metric({ label, value, danger }: { label: string; value: string; danger
 function DetailBlock({ label, content }: { label: string; content: string }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-muted/15 p-3 text-xs leading-5 text-foreground">{content}</div>
     </div>
   );
@@ -1125,12 +1125,12 @@ export function NarrativeMemoryGraphWorkspace({
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Brain className="size-5" /></div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2"><h1 className="truncate text-base font-semibold">{mode === "development" ? "发展历程" : "叙事记忆图谱"}</h1><Badge variant="secondary" className="text-[10px]">动态数据</Badge></div>
-                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{activeOption.description} · 只读 Narrative Memory，不改经纬 Lore</p>
+                <div className="flex items-center gap-2"><h1 className="truncate text-base font-semibold">{mode === "development" ? "发展历程" : "叙事记忆图谱"}</h1><Badge variant="secondary" className="text-2xs">动态数据</Badge></div>
+                <p className="mt-0.5 truncate text-2xs text-muted-foreground">{activeOption.description} · 只读 Narrative Memory，不改经纬 Lore</p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              {model ? <div className="hidden items-center gap-1.5 text-[10px] text-muted-foreground lg:flex"><StatPill label="节点" value={model.stats.nodeCount} /><StatPill label="边" value={model.stats.edgeCount} /><StatPill label="章节" value={model.stats.chapterCount} />{isSequenceView ? <StatPill label="章距" value={chapterStep} /> : null}</div> : null}
+              {model ? <div className="hidden items-center gap-1.5 text-2xs text-muted-foreground lg:flex"><StatPill label="节点" value={model.stats.nodeCount} /><StatPill label="边" value={model.stats.edgeCount} /><StatPill label="章节" value={model.stats.chapterCount} />{isSequenceView ? <StatPill label="章距" value={chapterStep} /> : null}</div> : null}
               <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="size-8" onClick={() => void load()} aria-label="刷新图谱"><RefreshCw className="size-3.5" /></Button></TooltipTrigger><TooltipContent>刷新图谱</TooltipContent></Tooltip>
               <Tooltip><TooltipTrigger asChild><Button variant={inspectorOpen ? "secondary" : "ghost"} size="icon" className="size-8" onClick={() => setInspectorOpen((open) => !open)} aria-label="切换详情面板"><PanelRight className="size-3.5" /></Button></TooltipTrigger><TooltipContent>切换详情面板</TooltipContent></Tooltip>
             </div>
@@ -1138,7 +1138,7 @@ export function NarrativeMemoryGraphWorkspace({
           <div data-slot="narrative-memory-graph-view-switcher" className="flex items-center gap-1 overflow-x-auto border-t border-border/70 px-4 py-2">
             {availableViewOptions.map((option) => {
               const Icon = option.icon;
-              return <Button key={option.id} variant={view === option.id ? "secondary" : "ghost"} size="sm" className={`shrink-0 gap-1.5 text-[11px] ${view === option.id ? "text-primary" : "text-muted-foreground"}`} onClick={() => changeView(option.id)}><Icon className="size-3.5" />{option.label}</Button>;
+              return <Button key={option.id} variant={view === option.id ? "secondary" : "ghost"} size="sm" className={`shrink-0 gap-1.5 text-2xs ${view === option.id ? "text-primary" : "text-muted-foreground"}`} onClick={() => changeView(option.id)}><Icon className="size-3.5" />{option.label}</Button>;
             })}
           </div>
           <div data-slot="narrative-memory-graph-filters" className="flex flex-wrap items-center gap-2 border-t border-border/70 px-4 py-2">
@@ -1153,7 +1153,7 @@ export function NarrativeMemoryGraphWorkspace({
           </div>
           {isSequenceView && availableLanes.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1 border-t border-border/70 px-4 py-1.5" data-testid="narrative-graph-lane-chips">
-              <span className="mr-1 text-[10px] text-muted-foreground">泳道</span>
+              <span className="mr-1 text-2xs text-muted-foreground">泳道</span>
               {availableLanes.map((lane) => {
                 const hidden = hiddenLanes.has(lane.name);
                 return (
@@ -1162,7 +1162,7 @@ export function NarrativeMemoryGraphWorkspace({
                     type="button"
                     aria-pressed={!hidden}
                     data-testid={`narrative-graph-lane-chip-${lane.name}`}
-                    className={`rounded-full border px-2 py-0.5 text-[10px] ${hidden ? "border-border/50 text-muted-foreground line-through" : "border-border bg-muted/30 text-foreground"}`}
+                    className={`rounded-full border px-2 py-0.5 text-2xs ${hidden ? "border-border/50 text-muted-foreground line-through" : "border-border bg-muted/30 text-foreground"}`}
                     onClick={() => toggleLane(lane.name)}
                   >
                     {lane.name}
@@ -1172,16 +1172,16 @@ export function NarrativeMemoryGraphWorkspace({
             </div>
           ) : null}
           {locateMiss ? (
-            <div className="flex items-center justify-between gap-2 border-t border-amber-400/40 bg-amber-500/10 px-4 py-1.5 text-[11px] text-amber-800 dark:text-amber-300" data-testid="narrative-graph-locate-miss">
+            <div className="flex items-center justify-between gap-2 border-t border-amber-400/40 bg-amber-500/10 px-4 py-1.5 text-2xs text-amber-800 dark:text-amber-300" data-testid="narrative-graph-locate-miss">
               <span>{locateMiss}</span>
-              <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => { setLocateMiss(null); setLocateChapter(undefined); }}>知道了</Button>
+              <Button variant="ghost" size="sm" className="h-6 text-2xs" onClick={() => { setLocateMiss(null); setLocateChapter(undefined); }}>知道了</Button>
             </div>
           ) : null}
           {filtersOpen ? (
             <div className="flex flex-wrap items-end gap-2 border-t border-border/70 bg-muted/15 px-4 py-2">
-              <label className="grid gap-1 text-[10px] text-muted-foreground">起始章节<Input type="number" min={1} value={chapterFromInput} onChange={(event) => setChapterFromInput(event.currentTarget.value)} placeholder="不限" className="h-8 w-28 text-xs" /></label>
+              <label className="grid gap-1 text-2xs text-muted-foreground">起始章节<Input type="number" min={1} value={chapterFromInput} onChange={(event) => setChapterFromInput(event.currentTarget.value)} placeholder="不限" className="h-8 w-28 text-xs" /></label>
               <span className="pb-2 text-muted-foreground">—</span>
-              <label className="grid gap-1 text-[10px] text-muted-foreground">结束章节<Input type="number" min={1} value={chapterToInput} onChange={(event) => setChapterToInput(event.currentTarget.value)} placeholder="不限" className="h-8 w-28 text-xs" /></label>
+              <label className="grid gap-1 text-2xs text-muted-foreground">结束章节<Input type="number" min={1} value={chapterToInput} onChange={(event) => setChapterToInput(event.currentTarget.value)} placeholder="不限" className="h-8 w-28 text-xs" /></label>
               <Button size="sm" className="h-8" onClick={applyChapterRange}>应用范围</Button>
             </div>
           ) : null}
@@ -1223,7 +1223,7 @@ export function NarrativeMemoryGraphWorkspace({
           </main>
           {inspectorOpen && inspectorInSidebar ? <aside data-slot="narrative-memory-graph-inspector-sidebar" data-testid="narrative-graph-inspector-sidebar" className="w-[300px] shrink-0 border-l border-border bg-card"><Inspector node={selectedNode} onClose={() => setSelectedNodeId(null)} onOpenEntityDetail={onOpenEntityDetail} onOpenChapter={onOpenChapter} /></aside> : null}
         </div>
-        <footer data-slot="narrative-memory-graph-footer" className="flex shrink-0 items-center justify-between gap-2 border-t border-border bg-card px-4 py-1.5 text-[10px] text-muted-foreground">
+        <footer data-slot="narrative-memory-graph-footer" className="flex shrink-0 items-center justify-between gap-2 border-t border-border bg-card px-4 py-1.5 text-2xs text-muted-foreground">
           <div className="flex items-center gap-2"><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-primary" />实体</span><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-accent-foreground" />状态</span><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-ring" />事件</span><span className="inline-flex items-center gap-1"><span className="size-2 rounded-full bg-amber-500" />伏笔</span></div>
           <span>{model ? `${viewLabel(view)} · ${model.stats.entityCount} 个实体 · 共现 ${model.stats.cooccurrenceCount} · 因果 ${model.stats.causalCount} · 伏笔 ${model.stats.foreshadowCount}` : "等待图谱数据"}</span>
         </footer>

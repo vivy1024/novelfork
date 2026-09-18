@@ -174,7 +174,7 @@ export function StoryTreePanel({ bookId, onOpenEntry, onSendToNarrator }: StoryT
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="story-tree-panel-error">
         <AlertCircle className="size-6 text-destructive" />
-        <p className="max-w-sm text-[11px] text-muted-foreground">{state.message}</p>
+        <p className="max-w-sm text-2xs text-muted-foreground">{state.message}</p>
         <Button size="xs" variant="outline" className="h-7 gap-1 text-xs" onClick={reload}>
           <RefreshCw className="size-3" /> 重试
         </Button>
@@ -185,7 +185,7 @@ export function StoryTreePanel({ bookId, onOpenEntry, onSendToNarrator }: StoryT
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="story-tree-panel">
       {state.degraded ? (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-[10px] text-amber-700 dark:text-amber-300" data-testid="story-tree-panel-degraded">
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-2xs text-amber-700 dark:text-amber-300" data-testid="story-tree-panel-degraded">
           动态关系没读到，树的层级正常，但条目上不显示关系度数。
         </p>
       ) : null}

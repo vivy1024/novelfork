@@ -249,13 +249,13 @@ export function WritingSkillsPanelShell({
       {/* 来源分区：按仓库陈列，与下方筛选各自独立生效 */}
       {sections.length > 1 && (
         <div className="flex flex-wrap gap-1" data-testid="writing-skills-source-sections">
-          <span className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground">
+          <span className="text-2xs px-2 py-0.5 rounded-full border border-border text-muted-foreground">
             全部 {skills.length}
           </span>
           {sections.map((section) => (
             <span
               key={section.key}
-              className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground"
+              className="text-2xs px-2 py-0.5 rounded-full border border-border text-muted-foreground"
               title={section.repoUrl ?? section.key}
             >
               {section.label} {section.count}
@@ -266,13 +266,13 @@ export function WritingSkillsPanelShell({
 
       {kinds.length > 1 && (
         <div className="flex flex-wrap gap-1">
-          <span className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground">
+          <span className="text-2xs px-2 py-0.5 rounded-full border border-border text-muted-foreground">
             全部
           </span>
           {kinds.map((kind) => (
             <span
               key={kind}
-              className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground"
+              className="text-2xs px-2 py-0.5 rounded-full border border-border text-muted-foreground"
             >
               {kindLabel(kind)}
             </span>
@@ -281,7 +281,7 @@ export function WritingSkillsPanelShell({
       )}
 
       {visible.length === 0 && (
-        <p className="text-[11px] text-muted-foreground py-2" data-testid="writing-skills-no-match">
+        <p className="text-2xs text-muted-foreground py-2" data-testid="writing-skills-no-match">
           没有匹配的写作技能。清掉搜索词或换个分类再看。
         </p>
       )}
@@ -294,25 +294,25 @@ export function WritingSkillsPanelShell({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs font-medium">{skill.name}</span>
-                <Badge variant="secondary" className="text-[9px] h-4">
+                <Badge variant="secondary" className="text-2xs h-4">
                   {kindLabel(skill.kind)}
                 </Badge>
                 {skill.source === "user" && (
-                  <Badge variant="outline" className="text-[9px] h-4">
+                  <Badge variant="outline" className="text-2xs h-4">
                     已自定义
                   </Badge>
                 )}
                 {enabledSlugs.includes(skill.slug) && (
-                  <Badge variant="outline" className="text-[9px] h-4">
+                  <Badge variant="outline" className="text-2xs h-4">
                     已启用
                   </Badge>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">
+              <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-2">
                 {skill.description}
               </p>
               {skill.provenance && (
-                <p className="text-[9px] text-muted-foreground/70 mt-0.5 truncate">
+                <p className="text-2xs text-muted-foreground/70 mt-0.5 truncate">
                   来源 {repoLabel(skill.provenance.repo)} · {skill.provenance.license}
                 </p>
               )}
@@ -570,7 +570,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
         技能 catalog/作者覆盖是全局来源，但启用态直接物化到当前项目目录，
         必须就地说明取消勾选会删除项目副本，避免作者误以为是数据库开关。
       */}
-      <p className="text-[10px] text-muted-foreground" data-testid="writing-skills-scope-hint">
+      <p className="text-2xs text-muted-foreground" data-testid="writing-skills-scope-hint">
         技能库与作者覆盖全局共享；<span className="text-foreground">项目文件只对当前作品生效</span>
         （当前目录已发现 {projectSlugs.length} 个）。勾选会写入 <code>.novelfork/skills/</code>        ，取消会删除对应项目副本；项目额外技能原地编辑，技能库条目则 fork 到 ~/.novelfork/skills/。
 
@@ -582,22 +582,22 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={`搜索 ${skills.length} 个写作技能…`}
-          className="h-7 flex-1 rounded border border-border bg-background px-2 text-[11px] outline-none focus:border-primary"
+          className="h-7 flex-1 rounded border border-border bg-background px-2 text-2xs outline-none focus:border-primary"
           aria-label="搜索写作技能"
           data-testid="writing-skills-search"
         />
-        <span className="text-[10px] text-muted-foreground shrink-0">{visible.length}</span>
+        <span className="text-2xs text-muted-foreground shrink-0">{visible.length}</span>
       </div>
 
       {/* 作用范围：全局 catalog 与当前作品额外文件分开统计 */}
       <div className="flex flex-wrap items-center gap-1" data-testid="writing-skills-scope-filter">
-        <span className="text-[10px] text-muted-foreground mr-1">范围</span>
+        <span className="text-2xs text-muted-foreground mr-1">范围</span>
         {scopeOptions.map((option) => (
           <button
             key={option.key}
             type="button"
             onClick={() => handleScopeChange(option.key)}
-            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+            className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
               filterScope === option.key
                 ? "bg-primary text-primary-foreground border-primary"
                 : "border-border text-muted-foreground hover:bg-muted"
@@ -611,11 +611,11 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       {/* 出处：只按全局 catalog 统计，项目-only 技能通过上面的范围筛选浏览 */}
       {sourceSections.length > 1 && (
         <div className="flex flex-wrap items-center gap-1" data-testid="writing-skills-source-filter">
-          <span className="text-[10px] text-muted-foreground mr-1">出处</span>
+          <span className="text-2xs text-muted-foreground mr-1">出处</span>
           <button
             type="button"
             onClick={() => setFilterSource(null)}
-            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+            className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
               filterSource === null
                 ? "bg-primary text-primary-foreground border-primary"
                 : "border-border text-muted-foreground hover:bg-muted"
@@ -629,7 +629,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
               type="button"
               title={section.repoUrl ?? section.key}
               onClick={() => handleSourceChange(section.key)}
-              className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+              className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
                 filterSource === section.key
                   ? "bg-primary text-primary-foreground border-primary"
                   : "border-border text-muted-foreground hover:bg-muted"
@@ -649,7 +649,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
               key={genre}
               type="button"
               onClick={() => setFilterGenre(genre === filterGenre ? null : genre)}
-              className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+              className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
                 filterGenre === genre
                   ? "bg-primary text-primary-foreground border-primary"
                   : "border-border text-muted-foreground hover:bg-muted"
@@ -666,7 +666,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
           <button
             type="button"
             onClick={() => setFilterKind(null)}
-            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+            className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
               filterKind === null
                 ? "bg-primary text-primary-foreground border-primary"
                 : "border-border text-muted-foreground hover:bg-muted"
@@ -679,7 +679,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
               key={kind}
               type="button"
               onClick={() => setFilterKind(kind === filterKind ? null : kind)}
-              className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+              className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
                 filterKind === kind
                   ? "bg-primary text-primary-foreground border-primary"
                   : "border-border text-muted-foreground hover:bg-muted"
@@ -692,7 +692,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       )}
 
       {visible.length === 0 && (
-        <p className="text-[11px] text-muted-foreground py-2" data-testid="writing-skills-no-match">
+        <p className="text-2xs text-muted-foreground py-2" data-testid="writing-skills-no-match">
           没有匹配的写作技能。换个来源或清掉搜索词再看。
         </p>
       )}
@@ -706,21 +706,21 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs font-medium">{skill.name}</span>
-                <Badge variant="secondary" className="text-[9px] h-4">
+                <Badge variant="secondary" className="text-2xs h-4">
                   {kindLabel(skill.kind)}
                 </Badge>
                 {skill.source === "user" && (
-                  <Badge variant="outline" className="text-[9px] h-4">
+                  <Badge variant="outline" className="text-2xs h-4">
                     已自定义
                   </Badge>
                 )}
                 {skill.source === "project" && (
-                  <Badge variant="outline" className="text-[9px] h-4">
+                  <Badge variant="outline" className="text-2xs h-4">
                     当前作品
                   </Badge>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">
+              <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-2">
                 {skill.description}
               </p>
             </div>
@@ -760,7 +760,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="text-[11px] h-6"
+            className="text-2xs h-6"
             onClick={() => setDisplayCount((count) => count + PAGE_SIZE)}
             data-testid="writing-skills-load-more"
           >
@@ -788,12 +788,12 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
               aria-label="写作技能正文"
             />
           ) : (
-            <pre className="max-h-[380px] overflow-auto rounded-md bg-muted p-3 text-[11px] whitespace-pre-wrap">
+            <pre className="max-h-[380px] overflow-auto rounded-md bg-muted p-3 text-2xs whitespace-pre-wrap">
               {draft}
             </pre>
           )}
 
-          {notice && <p className="text-[11px] text-muted-foreground">{notice}</p>}
+          {notice && <p className="text-2xs text-muted-foreground">{notice}</p>}
 
           <DialogFooter className="gap-2">
             {viewing?.source === "user" && (

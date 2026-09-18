@@ -86,16 +86,16 @@ function StorylineResourceTree({
         ? (draftedChapters?.has(targetChapter) ? "drafted" : "planned")
         : null;
     const stateBadge = outlineState === "drafted"
-      ? <span className="shrink-0 text-[9px] text-emerald-600 dark:text-emerald-400" title={`已对应第 ${targetChapter} 章`}>✓已落稿</span>
+      ? <span className="shrink-0 text-2xs text-emerald-600 dark:text-emerald-400" title={`已对应第 ${targetChapter} 章`}>✓已落稿</span>
       : outlineState === "planned"
-        ? <span className="shrink-0 text-[9px] text-muted-foreground" title={`规划为第 ${targetChapter} 章，尚未落稿`}>🗺规划中</span>
+        ? <span className="shrink-0 text-2xs text-muted-foreground" title={`规划为第 ${targetChapter} 章，尚未落稿`}>🗺规划中</span>
         : null;
     return (
       <div key={node.id}>
         <div className="group/node flex items-center justify-between gap-1 rounded hover:bg-muted pr-1">
           <button
             type="button"
-            className="flex min-w-0 flex-1 items-center gap-1 rounded px-1.5 py-1 text-left text-[11px]"
+            className="flex min-w-0 flex-1 items-center gap-1 rounded px-1.5 py-1 text-left text-2xs"
             style={{ paddingLeft: `${depth * 12 + 4}px` }}
             onClick={() => (hasChildren ? toggle(node.id) : onOpen(node))}
           >
@@ -128,7 +128,7 @@ function StorylineResourceTree({
     );
   };
 
-  return nodes.length > 0 ? <div className="space-y-0.5">{nodes.map((node) => renderNode(node))}</div> : <p className="px-1 py-2 text-[10px] text-muted-foreground">{emptyLabel}</p>;
+  return nodes.length > 0 ? <div className="space-y-0.5">{nodes.map((node) => renderNode(node))}</div> : <p className="px-1 py-2 text-2xs text-muted-foreground">{emptyLabel}</p>;
 }
 
 type StorylineSubTab = "outline" | "memory" | "canvas" | "foreshadowing";
@@ -298,14 +298,14 @@ function StorylineCockpit({
     <div className="shrink-0 border-b border-border bg-muted/20 px-2 py-1.5 space-y-1.5" data-testid="storyline-cockpit">
       {/* 行 A · 位置锚定 */}
       <div className="flex items-center gap-2" data-testid="storyline-position-bar">
-        <span className="text-[11px] font-medium text-foreground">📍 第 {currentChapter} 章</span>
+        <span className="text-2xs font-medium text-foreground">📍 第 {currentChapter} 章</span>
         {targetChapters !== undefined && targetChapters > 0 ? (
           <>
-            <span className="text-[10px] text-muted-foreground">/ 目标 {targetChapters} 章</span>
+            <span className="text-2xs text-muted-foreground">/ 目标 {targetChapters} 章</span>
             <div className="h-1 flex-1 rounded-full bg-muted overflow-hidden min-w-8">
               <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
             </div>
-            <span className="text-[10px] tabular-nums text-muted-foreground">{percent}%</span>
+            <span className="text-2xs tabular-nums text-muted-foreground">{percent}%</span>
           </>
         ) : null}
       </div>
@@ -317,7 +317,7 @@ function StorylineCockpit({
         onClick={() => onActivate(next)}
         disabled={next.key === "all-set"}
         className={cn(
-          "w-full flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors",
+          "w-full flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-2xs transition-colors",
           next.key === "all-set"
             ? "border-border bg-card/60 text-muted-foreground cursor-default"
             : "border-primary/40 bg-primary/5 text-foreground hover:bg-primary/10",
@@ -418,11 +418,11 @@ export function StorylineAndPlanningSidebarPanel({
       {/* 顶部子标签切换导航（带常亮高亮） */}
       <div className="shrink-0 border-b border-border bg-muted/20 p-2 space-y-2">
         <div className="flex items-center justify-between px-0.5">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+          <div className="flex items-center gap-1.5 text-2xs font-semibold text-foreground">
             <Sparkles className="size-3.5 text-primary" />
             <span>故事推进</span>
           </div>
-          <Button size="xs" variant="ghost" className="h-6 text-[10px]" onClick={() => onSwitchView("write")}>
+          <Button size="xs" variant="ghost" className="h-6 text-2xs" onClick={() => onSwitchView("write")}>
             <BookOpen className="size-3" />
             当前语境
           </Button>
@@ -434,7 +434,7 @@ export function StorylineAndPlanningSidebarPanel({
             size="xs"
             variant={activeSubTab === "outline" ? "default" : "outline"}
             className={cn(
-              "h-8 justify-start gap-1.5 text-[11px] font-medium transition-colors",
+              "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
               activeSubTab === "outline" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
             )}
             onClick={() => handleSubTabChange("outline")}
@@ -447,7 +447,7 @@ export function StorylineAndPlanningSidebarPanel({
             size="xs"
             variant={activeSubTab === "memory" ? "default" : "outline"}
             className={cn(
-              "h-8 justify-start gap-1.5 text-[11px] font-medium transition-colors",
+              "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
               activeSubTab === "memory" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
             )}
             onClick={() => handleSubTabChange("memory")}
@@ -460,7 +460,7 @@ export function StorylineAndPlanningSidebarPanel({
             size="xs"
             variant={activeSubTab === "canvas" ? "default" : "outline"}
             className={cn(
-              "h-8 justify-start gap-1.5 text-[11px] font-medium transition-colors",
+              "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
               activeSubTab === "canvas" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
             )}
             onClick={() => handleSubTabChange("canvas")}
@@ -473,7 +473,7 @@ export function StorylineAndPlanningSidebarPanel({
             size="xs"
             variant={activeSubTab === "foreshadowing" ? "default" : "outline"}
             className={cn(
-              "h-8 justify-start gap-1.5 text-[11px] font-medium transition-colors",
+              "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
               activeSubTab === "foreshadowing" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
             )}
             onClick={() => handleSubTabChange("foreshadowing")}
@@ -489,19 +489,19 @@ export function StorylineAndPlanningSidebarPanel({
         {activeSubTab === "outline" && (
           <section id="storyline-chapter-outline" className="rounded-lg border border-border bg-card p-2 space-y-2" data-testid="storyline-chapter-outline">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+              <div className="flex items-center gap-1.5 text-2xs font-semibold">
                 <ListTree className="size-3.5 text-sky-500" />
                 <span>章节与大纲</span>
               </div>
-              <span className="text-[10px] text-muted-foreground">章节 {chapterTreeNodes.length} · 大纲 {outlineTreeNodes.length}</span>
+              <span className="text-2xs text-muted-foreground">章节 {chapterTreeNodes.length} · 大纲 {outlineTreeNodes.length}</span>
             </div>
             <div className="space-y-2">
               <div>
-                <div className="mb-1 text-[10px] font-medium text-muted-foreground">章节树</div>
+                <div className="mb-1 text-2xs font-medium text-muted-foreground">章节树</div>
                 <StorylineResourceTree nodes={chapterTreeNodes} emptyLabel="暂无章节文件" onOpen={onOpen} onAction={onAction} />
               </div>
               <div>
-                <div className="mb-1 text-[10px] font-medium text-muted-foreground">大纲</div>
+                <div className="mb-1 text-2xs font-medium text-muted-foreground">大纲</div>
                 <StorylineResourceTree nodes={outlineTreeNodes} emptyLabel="暂无大纲条目" draftedChapters={draftedChapters} onOpen={onOpen} onAction={onAction} />
               </div>
             </div>
@@ -521,16 +521,16 @@ export function StorylineAndPlanningSidebarPanel({
           <div className="flex flex-col items-center justify-center p-6 text-center space-y-2 text-muted-foreground">
             <MapIcon className="size-8 text-primary/60" />
             <p className="text-xs font-medium text-foreground">故事画布已在中央打开</p>
-            <p className="text-[11px] leading-relaxed">
+            <p className="text-2xs leading-relaxed">
               正图 / 推进 / 发展历程 / 章节脉络 / 关系网共用同一个画布 Tab，全部是树，在画布顶部切换。
             </p>
-            <Button size="xs" variant="outline" className="h-7 justify-start text-[11px]" onClick={() => openProgressionCanvas("tree")}>
+            <Button size="xs" variant="outline" className="h-7 justify-start text-2xs" onClick={() => openProgressionCanvas("tree")}>
               🌳 打开故事树
             </Button>
-            <Button size="xs" variant="outline" className="h-7 justify-start text-[11px]" onClick={() => openProgressionCanvas("board")}>
+            <Button size="xs" variant="outline" className="h-7 justify-start text-2xs" onClick={() => openProgressionCanvas("board")}>
               📊 打开推进（下一章该写什么）
             </Button>
-            <Button size="xs" variant="outline" className="h-7 justify-start text-[11px]" onClick={() => openProgressionCanvas("chronicle")}>
+            <Button size="xs" variant="outline" className="h-7 justify-start text-2xs" onClick={() => openProgressionCanvas("chronicle")}>
               🧬 打开章节脉络
             </Button>
           </div>

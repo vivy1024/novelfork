@@ -66,7 +66,7 @@ export function WorkflowProgressCard({ title, steps, status, completedCount, tot
       {/* Header */}
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold">{title}</h4>
-        <span className={`text-[10px] font-medium ${statusColors[status]}`}>
+        <span className={`text-2xs font-medium ${statusColors[status]}`}>
           {statusLabels[status]} · {completedCount}/{totalCount}
         </span>
       </div>
@@ -87,9 +87,9 @@ export function WorkflowProgressCard({ title, steps, status, completedCount, tot
             <span className={`text-xs flex-1 ${step.status === "pending" || step.status === "skipped" ? "text-muted-foreground" : ""}`}>
               {step.label}
             </span>
-            {step.summary && <span className="text-[10px] text-muted-foreground truncate max-w-32">{step.summary}</span>}
+            {step.summary && <span className="text-2xs text-muted-foreground truncate max-w-32">{step.summary}</span>}
             {step.durationMs != null && step.status !== "pending" && (
-              <span className="text-[10px] text-muted-foreground shrink-0">{formatDuration(step.durationMs)}</span>
+              <span className="text-2xs text-muted-foreground shrink-0">{formatDuration(step.durationMs)}</span>
             )}
           </div>
         ))}

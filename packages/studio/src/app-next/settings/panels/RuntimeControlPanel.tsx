@@ -507,7 +507,7 @@ function ModelMultiSelect({
           {values.map((value, index) => (
             <Badge key={value} variant={labelByValue.has(value) ? "secondary" : "outline"} className="gap-1 pr-1">
               {onReorder ? (
-                <span className="mr-0.5 font-mono text-[10px] text-muted-foreground">{index + 1}</span>
+                <span className="mr-0.5 font-mono text-2xs text-muted-foreground">{index + 1}</span>
               ) : null}
               <span>{labelByValue.get(value) ?? `${value}（历史配置）`}</span>
               {onReorder ? (

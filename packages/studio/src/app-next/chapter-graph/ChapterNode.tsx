@@ -69,7 +69,7 @@ function ChapterNodeComponent({ data }: NodeProps<ChapterNodeType>) {
           <GripVertical className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate text-sm font-semibold">{data.title}</span>
         </div>
-        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${badgeColor}`}>
+        <span className={`shrink-0 rounded px-1.5 py-0.5 text-2xs font-semibold ${badgeColor}`}>
           {STATUS_LABELS[data.status] ?? data.status}
         </span>
       </div>
@@ -77,7 +77,7 @@ function ChapterNodeComponent({ data }: NodeProps<ChapterNodeType>) {
       {/* Content area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Git status bar */}
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1 text-[10px] text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-muted/30 px-3 py-1 text-2xs text-muted-foreground">
           <GitBranch className="size-3 shrink-0" />
           <span className="truncate font-medium">{data.title}</span>
           {data.branch && (
@@ -106,7 +106,7 @@ function ChapterNodeComponent({ data }: NodeProps<ChapterNodeType>) {
                 <p className="text-xs text-muted-foreground">{data.messageCount} 条消息</p>
               )}
               {data.lastActivity && (
-                <p className="text-[10px] text-muted-foreground">最近活动：{data.lastActivity}</p>
+                <p className="text-2xs text-muted-foreground">最近活动：{data.lastActivity}</p>
               )}
               <Button variant="outline" size="sm" className="mt-2">
                 <MessageSquareText className="size-3.5" />

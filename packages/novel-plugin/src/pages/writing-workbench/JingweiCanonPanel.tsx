@@ -204,7 +204,7 @@ export function JingweiSchemaField({
           className="h-8 text-xs"
         />
       )}
-      {field.helpText ? <p className="mt-1 text-[10px] text-muted-foreground">{field.helpText}</p> : null}
+      {field.helpText ? <p className="mt-1 text-2xs text-muted-foreground">{field.helpText}</p> : null}
     </div>
   );
 }
@@ -432,7 +432,7 @@ export function JingweiCanonPanel({
           <label className="text-xs text-muted-foreground mb-1 block">别名</label>
           <div className="flex flex-wrap items-center gap-1 rounded-md border border-input bg-background px-2 py-1.5">
             {values.aliases.map((alias, index) => (
-              <Badge key={`${alias}-${index}`} variant="secondary" className="text-[10px] gap-0.5 pr-1">
+              <Badge key={`${alias}-${index}`} variant="secondary" className="text-2xs gap-0.5 pr-1">
                 {alias}
                 <button type="button" onClick={() => patch({ aliases: values.aliases.filter((_, i) => i !== index) })} className="ml-0.5 hover:text-destructive" aria-label={`移除别名 ${alias}`}>
                   <X className="size-2.5" />
@@ -450,7 +450,7 @@ export function JingweiCanonPanel({
                 }
               }}
               placeholder={values.aliases.length === 0 ? "回车添加别名" : "添加…"}
-              className="h-6 w-28 text-[10px] border-none bg-transparent px-1 focus-visible:ring-0"
+              className="h-6 w-28 text-2xs border-none bg-transparent px-1 focus-visible:ring-0"
               aria-label="添加别名"
             />
           </div>
@@ -526,7 +526,7 @@ export function JingweiCanonPanel({
         <div className="space-y-2">
           <Button size="xs" variant={showHistory ? "default" : "outline"} onClick={() => setShowHistory((v) => !v)}>
             <History className="size-3 mr-1" />历史
-            {revisionRecords.length > 0 ? <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0">{revisionRecords.length}</Badge> : null}
+            {revisionRecords.length > 0 ? <Badge variant="secondary" className="ml-1 text-2xs px-1 py-0">{revisionRecords.length}</Badge> : null}
           </Button>
           {revertError ? (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
@@ -549,14 +549,14 @@ export function JingweiCanonPanel({
                     <div key={revision.id} className="flex items-start justify-between gap-2 rounded-md border px-3 py-2">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             {new Date(revision.created_at).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                           </span>
-                          <Badge variant={sourceBadgeVariant(revision.changed_by)} className="text-[10px] px-1.5 py-0">
+                          <Badge variant={sourceBadgeVariant(revision.changed_by)} className="text-2xs px-1.5 py-0">
                             {SOURCE_LABELS[revision.changed_by] ?? revision.changed_by}
                           </Badge>
                         </div>
-                        {revision.reason ? <p className="text-[11px] text-muted-foreground mt-0.5">{revision.reason}</p> : null}
+                        {revision.reason ? <p className="text-2xs text-muted-foreground mt-0.5">{revision.reason}</p> : null}
                       </div>
                       <Button
                         size="xs"

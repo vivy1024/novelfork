@@ -47,11 +47,11 @@ function CapabilityBadges({ node }: { node: WorkbenchResourceNode }) {
   if (!node.capabilities.open) return null;
   return (
     <span className="ml-auto flex items-center gap-1 opacity-0 group-hover/node:opacity-100 transition-opacity">
-      {node.capabilities.edit ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">可编辑</Badge> : null}
-      {node.capabilities.readonly ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">只读</Badge> : null}
-      {node.capabilities.unsupported ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">不支持</Badge> : null}
-      {node.capabilities.delete ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">可删除</Badge> : null}
-      {node.capabilities.apply ? <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">可应用</Badge> : null}
+      {node.capabilities.edit ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">可编辑</Badge> : null}
+      {node.capabilities.readonly ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">只读</Badge> : null}
+      {node.capabilities.unsupported ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">不支持</Badge> : null}
+      {node.capabilities.delete ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">可删除</Badge> : null}
+      {node.capabilities.apply ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">可应用</Badge> : null}
     </span>
   );
 }
@@ -204,7 +204,7 @@ function FloatingMenu({ state, onAction, onClose }: { state: MenuState; onAction
               className={`flex w-full items-center justify-between gap-3 rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors ${separated ? "mt-1 border-t border-border/60 pt-2" : ""}`}
               onClick={() => { onAction({ type: item.action, node: state.node }); onClose(); }}>
               <span>{item.label}</span>
-              {item.keybinding ? <span className="text-[10px] text-muted-foreground">{item.keybinding}</span> : null}
+              {item.keybinding ? <span className="text-2xs text-muted-foreground">{item.keybinding}</span> : null}
             </button>
           );
         })}
@@ -491,7 +491,7 @@ export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, on
           aria-label="文件树排序"
           value={sortMode}
           onChange={(event) => changeSortMode(event.currentTarget.value as ResourceTreeSortMode)}
-          className="h-7 rounded border border-border bg-background px-1 text-[11px] outline-none"
+          className="h-7 rounded border border-border bg-background px-1 text-2xs outline-none"
         >
           <option value="name">名称</option>
           <option value="type">类型</option>

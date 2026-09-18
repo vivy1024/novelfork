@@ -218,7 +218,7 @@ function SortableTab({
           role="tab"
           aria-selected={isActive}
           tabIndex={0}
-          className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 h-full border-r border-border/60 text-[13px] transition-colors pl-2.5 pr-2 ${isActive ? "bg-background text-foreground" : "bg-transparent text-muted-foreground hover:bg-muted/30 hover:text-foreground"} ${tab.pinned ? "border-l-2 border-l-primary" : ""}`}
+          className={`group relative flex shrink-0 cursor-pointer items-center gap-1.5 h-full border-r border-border/60 text-xs transition-colors pl-2.5 pr-2 ${isActive ? "bg-background text-foreground" : "bg-transparent text-muted-foreground hover:bg-muted/30 hover:text-foreground"} ${tab.pinned ? "border-l-2 border-l-primary" : ""}`}
           onMouseDown={(e) => { if (e.button === 1 && !tab.pinned) { e.preventDefault(); onClose(tab.id); } }}
           onClick={() => onActivate(tab.id)}
         >
@@ -226,7 +226,7 @@ function SortableTab({
           {tab.pinned ? <Pin className="size-3 text-primary" /> : <Icon className={`size-3.5 shrink-0 ${color}`} />}
           <span className="truncate max-w-[120px]">{tab.title}</span>
           <span role="button" tabIndex={-1} className="relative flex size-5 items-center justify-center rounded hover:bg-muted cursor-pointer" onClick={(e) => { e.stopPropagation(); if (!tab.pinned) onClose(tab.id); }}>
-            {tab.dirty ? <><span className="text-amber-500 text-[10px] group-hover:hidden">●</span><X className="size-3 hidden group-hover:block" /></> : <X className={`size-3 transition-opacity ${tab.pinned ? "opacity-30" : "opacity-0 group-hover:opacity-100"}`} />}
+            {tab.dirty ? <><span className="text-amber-500 text-2xs group-hover:hidden">●</span><X className="size-3 hidden group-hover:block" /></> : <X className={`size-3 transition-opacity ${tab.pinned ? "opacity-30" : "opacity-0 group-hover:opacity-100"}`} />}
           </span>
         </div>
       </ContextMenuTrigger>

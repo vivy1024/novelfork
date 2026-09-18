@@ -206,7 +206,7 @@ export function AgentShell({
           </Sheet>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">NovelFork Studio</p>
-            <p className="truncate text-[10px] text-muted-foreground">Agent Shell</p>
+            <p className="truncate text-2xs text-muted-foreground">Agent Shell</p>
           </div>
           <Button
             type="button"

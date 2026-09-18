@@ -249,7 +249,7 @@ function WaveSummary({ wave }: { wave?: Record<string, unknown> | null }) {
   const entries = Object.entries(wave).filter(([, value]) => value !== undefined && value !== null);
   if (entries.length === 0) return null;
   return (
-    <div className="space-y-1 text-[11px]">
+    <div className="space-y-1 text-2xs">
       {entries.slice(0, 8).map(([key, value]) => (
         <div key={key} className="flex justify-between gap-2">
           <span className="text-muted-foreground">{key}</span>
@@ -286,7 +286,7 @@ function MemoryNodeTree({ nodes, selectedNodeId, onOpen, onOpenEntityDetail }: {
       <div key={node.id}>
         <button
           type="button"
-          className={`flex w-full items-center gap-1 rounded px-2 py-1 text-left text-[11px] hover:bg-muted ${selected ? "bg-primary/10 text-primary" : ""}`}
+          className={`flex w-full items-center gap-1 rounded px-2 py-1 text-left text-2xs hover:bg-muted ${selected ? "bg-primary/10 text-primary" : ""}`}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
           onClick={() => {
             if (hasChildren) toggle(node);
@@ -298,7 +298,7 @@ function MemoryNodeTree({ nodes, selectedNodeId, onOpen, onOpenEntityDetail }: {
         >
           {hasChildren ? (isExpanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />) : <span className="w-3" />}
           <span className="truncate">{node.title}</span>
-          {node.capabilities.readonly ? <span className="ml-auto rounded bg-muted px-1 text-[9px] text-muted-foreground">只读</span> : null}
+          {node.capabilities.readonly ? <span className="ml-auto rounded bg-muted px-1 text-2xs text-muted-foreground">只读</span> : null}
         </button>
         {hasChildren && isExpanded ? node.children!.map((child) => renderNode(child, depth + 1)) : null}
       </div>
@@ -351,27 +351,27 @@ function StoryStatusSummary({
     <section className="rounded-lg border border-border bg-card p-3 space-y-3" data-testid="narrative-memory-story-status">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold">当前故事状态</h3>
-        <span className="text-[10px] text-muted-foreground">自动结算 · 作者可纠错</span>
+        <span className="text-2xs text-muted-foreground">自动结算 · 作者可纠错</span>
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded border border-border/60 p-2">
           <div className="text-sm font-semibold tabular-nums">{stateFacts.length}</div>
-          <div className="text-[10px] text-muted-foreground">当前事实</div>
+          <div className="text-2xs text-muted-foreground">当前事实</div>
         </div>
         <div className="rounded border border-border/60 p-2">
           <div className="text-sm font-semibold tabular-nums">{historyEvents.length}</div>
-          <div className="text-[10px] text-muted-foreground">已结算</div>
+          <div className="text-2xs text-muted-foreground">已结算</div>
         </div>
         <div className="rounded border border-border/60 p-2">
           <div className={`text-sm font-semibold tabular-nums ${highRiskCount > 0 ? "text-amber-600" : ""}`}>{highRiskCount}</div>
-          <div className="text-[10px] text-muted-foreground">高风险待审</div>
+          <div className="text-2xs text-muted-foreground">高风险待审</div>
         </div>
       </div>
 
       {factEditError ? <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{factEditError}</div> : null}
 
       {factPreview.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">还没有沉淀动态事实。写完一章后会自动出现角色状态、关系、伏笔等。</p>
+        <p className="text-2xs text-muted-foreground">还没有沉淀动态事实。写完一章后会自动出现角色状态、关系、伏笔等。</p>
       ) : entityGroups.length > 0 ? (
         <EntityStatusBoard
           bookId={bookId}
@@ -387,7 +387,7 @@ function StoryStatusSummary({
         <div className="space-y-2">
           {grouped.map(([category, items]) => (
             <div key={category} className="space-y-1">
-              <div className="text-[10px] font-medium text-muted-foreground">{CATEGORY_LABELS[category] ?? category}</div>
+              <div className="text-2xs font-medium text-muted-foreground">{CATEGORY_LABELS[category] ?? category}</div>
               {items.map((fact) => (
                 <button
                   key={fact.id}
@@ -395,13 +395,13 @@ function StoryStatusSummary({
                   onClick={() => onOpenFact?.(fact)}
                   className="block w-full rounded border border-border/50 px-2 py-1.5 text-left hover:bg-muted"
                 >
-                  <div className="truncate text-[11px] font-medium">{entryTitle(fact)}</div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <div className="truncate text-2xs font-medium">{entryTitle(fact)}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
                     <OpenSourceChapterButton chapterNumber={fact.sourceChapter ?? fact.validFromChapter} onOpenChapter={onOpenChapter} nested />
                     {typeof fact.confidence === "number" ? <span>置信 {fact.confidence.toFixed(2)}</span> : null}
                   </div>
-                  {fact.evidenceText ? <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{fact.evidenceText}</div> : null}
-                  {fact.summary ? <div className="truncate text-[10px] text-muted-foreground">{fact.summary}</div> : null}
+                  {fact.evidenceText ? <div className="mt-0.5 truncate text-2xs text-muted-foreground">{fact.evidenceText}</div> : null}
+                  {fact.summary ? <div className="truncate text-2xs text-muted-foreground">{fact.summary}</div> : null}
                 </button>
               ))}
             </div>
@@ -455,11 +455,11 @@ function EntityStatusBoard({
                   summary: `${group.facts.length} 条当前状态`,
                 } as MemoryEntry);
               }}
-              className="text-[11px] font-semibold hover:underline"
+              className="text-2xs font-semibold hover:underline"
             >
               {group.entity}
             </button>
-            <span className="text-[10px] text-muted-foreground">{group.facts.length} 条</span>
+            <span className="text-2xs text-muted-foreground">{group.facts.length} 条</span>
           </div>
           <div className="space-y-1">
             {group.facts.map((fact) => (
@@ -502,7 +502,7 @@ function OpenSourceChapterButton({
   nested?: boolean;
 }) {
   if (!chapterNumber) return null;
-  if (!onOpenChapter) return <span className="shrink-0 text-[10px] text-muted-foreground">第 {chapterNumber} 章</span>;
+  if (!onOpenChapter) return <span className="shrink-0 text-2xs text-muted-foreground">第 {chapterNumber} 章</span>;
   if (nested) {
     return (
       <span
@@ -518,7 +518,7 @@ function OpenSourceChapterButton({
           event.stopPropagation();
           onOpenChapter(chapterNumber);
         }}
-        className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-muted"
+        className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-2xs text-primary hover:bg-muted"
         title={`打开来源第 ${chapterNumber} 章`}
       >
         第 {chapterNumber} 章
@@ -529,7 +529,7 @@ function OpenSourceChapterButton({
     <button
       type="button"
       onClick={() => onOpenChapter(chapterNumber)}
-      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-muted"
+      className="shrink-0 rounded px-1.5 py-0.5 text-2xs text-primary hover:bg-muted"
       title={`打开来源第 ${chapterNumber} 章`}
     >
       第 {chapterNumber} 章
@@ -563,22 +563,22 @@ function EditableFactRow({
     return (
       <div className="rounded border border-primary/40 bg-primary/5 p-2 space-y-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-medium">{fact.predicate}</span>
-          <span className="text-[10px] text-muted-foreground">{fact.category}</span>
+          <span className="text-2xs font-medium">{fact.predicate}</span>
+          <span className="text-2xs text-muted-foreground">{fact.category}</span>
         </div>
         <input
           value={draft}
           onChange={(event) => setDraft(event.currentTarget.value)}
-          className="h-7 w-full rounded border border-border bg-background px-2 text-[11px] outline-none"
+          className="h-7 w-full rounded border border-border bg-background px-2 text-2xs outline-none"
           placeholder={fact.object}
         />
         <div className="flex justify-end gap-1.5">
-          <button type="button" onClick={() => setOpen(false)} className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted">取消</button>
+          <button type="button" onClick={() => setOpen(false)} className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted">取消</button>
           <button
             type="button"
             disabled={!draft.trim() || draft.trim() === fact.object}
             onClick={() => { onCorrect?.(fact, draft.trim()); setOpen(false); }}
-            className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             保存纠正
           </button>
@@ -592,26 +592,26 @@ function EditableFactRow({
   return (
     <div className="space-y-1" data-testid={`memory-fact-row-${fact.id}`}>
       <div className="flex items-center gap-1.5 rounded border border-border/50 px-2 py-1">
-        <span className="shrink-0 text-[10px] text-muted-foreground">{fact.predicate}</span>
-        <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{fact.object}</span>
-        {conflictLabel ? <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{conflictLabel}</span> : null}
-        {typeof fact.confidence === "number" ? <span className="shrink-0 text-[10px] text-muted-foreground">置信 {fact.confidence.toFixed(2)}</span> : null}
+        <span className="shrink-0 text-2xs text-muted-foreground">{fact.predicate}</span>
+        <span className="min-w-0 flex-1 truncate text-2xs font-medium">{fact.object}</span>
+        {conflictLabel ? <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">{conflictLabel}</span> : null}
+        {typeof fact.confidence === "number" ? <span className="shrink-0 text-2xs text-muted-foreground">置信 {fact.confidence.toFixed(2)}</span> : null}
         <OpenSourceChapterButton chapterNumber={sourceChapter} onOpenChapter={onOpenChapter} />
-        <button type="button" onClick={() => setShowHistory((value) => !value)} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted" title="查看变迁史">
+        <button type="button" onClick={() => setShowHistory((value) => !value)} className="shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted" title="查看变迁史">
           历史
         </button>
         {onCorrect ? (
-          <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted" title="纠正">
+          <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted" title="纠正">
             纠正
           </button>
         ) : null}
         {onRetire ? (
-          <button type="button" onClick={() => onRetire(fact)} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted" title="作废">
+          <button type="button" onClick={() => onRetire(fact)} className="shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted" title="作废">
             作废
           </button>
         ) : null}
       </div>
-      {fact.evidenceText ? <div className="px-2 text-[10px] text-muted-foreground" data-testid={`memory-fact-evidence-${fact.id}`}>{fact.evidenceText}</div> : null}
+      {fact.evidenceText ? <div className="px-2 text-2xs text-muted-foreground" data-testid={`memory-fact-evidence-${fact.id}`}>{fact.evidenceText}</div> : null}
       {showHistory ? <FactHistoryPanel bookId={bookId} fact={fact} onClose={() => setShowHistory(false)} onOpenChapter={onOpenChapter} /> : null}
     </div>
   );
@@ -639,22 +639,22 @@ function SearchResults({
     <section className="rounded-lg border border-border bg-card p-3 space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-muted-foreground">搜索结果</h3>
-        {loading ? <Loader2 className="size-3 animate-spin" /> : <span className="text-[10px] text-muted-foreground">{results.length} 条</span>}
+        {loading ? <Loader2 className="size-3 animate-spin" /> : <span className="text-2xs text-muted-foreground">{results.length} 条</span>}
       </div>
       {results.length === 0 && !loading ? (
-        <p className="text-[11px] text-muted-foreground">没有匹配的叙事记忆。</p>
+        <p className="text-2xs text-muted-foreground">没有匹配的叙事记忆。</p>
       ) : results.map((entry) => (
         <button key={`${entry.kind}:${entry.id}`} type="button" onClick={() => onOpen?.(entry)} className="block w-full rounded border border-border/60 p-2 text-left hover:bg-muted">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium">{entryTitle(entry)}</span>
-            <span className="text-[10px] text-muted-foreground">{entry.kind}</span>
+            <span className="text-2xs text-muted-foreground">{entry.kind}</span>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-[10px] text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-2xs text-muted-foreground">
             <OpenSourceChapterButton chapterNumber={entry.sourceChapter ?? entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
             {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
             {entry.summary || entryPredicateText(entry) ? <span>· {entry.summary ?? entryPredicateText(entry)}</span> : null}
           </div>
-          {entry.evidenceText ? <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{entry.evidenceText}</div> : null}
+          {entry.evidenceText ? <div className="mt-0.5 truncate text-2xs text-muted-foreground">{entry.evidenceText}</div> : null}
         </button>
       ))}
       {hasMore && (
@@ -662,7 +662,7 @@ function SearchResults({
           type="button"
           disabled={loading}
           onClick={onLoadMore}
-          className="w-full rounded border border-dashed border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+          className="w-full rounded border border-dashed border-border px-2 py-1.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
         >
           {loading ? "加载中…" : "加载更多结果"}
         </button>
@@ -677,16 +677,16 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
     <section className="rounded-lg border border-dashed border-border bg-card/50 p-3 space-y-2" data-testid="narrative-memory-diagnostics">
       <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => setOpen((value) => !value)}>
         <span className="text-xs font-semibold text-muted-foreground">高级：召回诊断</span>
-        <span className="text-[10px] text-muted-foreground">{open ? "收起" : "展开"}</span>
+        <span className="text-2xs text-muted-foreground">{open ? "收起" : "展开"}</span>
       </button>
       {!open ? (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           最近召回 {diagnostics.purpose} · 第 {formatNumber(diagnostics.chapterNumber)} 章 · {formatMs(diagnostics.totalMs)} · {formatNumber(diagnostics.totalEstimatedTokens)} tokens
           {(diagnostics.warnings?.length ?? 0) > 0 ? ` · ${diagnostics.warnings!.length} 条警告` : ""}
         </p>
       ) : (
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="grid grid-cols-2 gap-2 text-2xs">
             <span>目的：{diagnostics.purpose}</span>
             <span>章节：{formatNumber(diagnostics.chapterNumber)}</span>
             <span>耗时：{formatMs(diagnostics.totalMs)}</span>
@@ -695,7 +695,7 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
           {(diagnostics.warnings?.length ?? 0) > 0 && (
             <div className="space-y-1 text-yellow-700 dark:text-yellow-500">
               {diagnostics.warnings!.map((warning, index) => (
-                <div key={index} className="flex gap-1 text-[11px]">
+                <div key={index} className="flex gap-1 text-2xs">
                   <AlertTriangle className="size-3 shrink-0" />
                   {warning}
                 </div>
@@ -705,11 +705,11 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
           <div className="space-y-1">
             {(diagnostics.channels ?? []).map((channel) => (
               <div key={channel.channel} className="rounded border border-border/60 p-2">
-                <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center justify-between text-2xs">
                   <span className="font-medium">{channel.channel}</span>
                   <span className="text-muted-foreground">{channel.status}</span>
                 </div>
-                <div className="mt-1 grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
+                <div className="mt-1 grid grid-cols-3 gap-1 text-2xs text-muted-foreground">
                   <span>{formatMs(channel.latencyMs)}</span>
                   <span>检索 {formatNumber(channel.candidateCount)}</span>
                   <span>返回 {formatNumber(channel.returnedCount)}</span>
@@ -717,7 +717,7 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
               </div>
             ))}
           </div>
-          <div className="flex gap-3 text-[11px]">
+          <div className="flex gap-3 text-2xs">
             <span>降级 {formatNumber(diagnostics.degradedCount)}</span>
             <span>丢弃 {formatNumber(diagnostics.droppedCount)}</span>
           </div>
@@ -766,7 +766,7 @@ function PendingEventCard({
       <div className="rounded border border-primary/40 bg-primary/5 p-2 space-y-1.5">
         <div className="flex justify-between gap-2">
           <span className="font-medium">{event.eventType ?? "event"}</span>
-          <button type="button" onClick={() => setEditing(false)} className="text-[10px] text-muted-foreground hover:text-foreground">取消编辑</button>
+          <button type="button" onClick={() => setEditing(false)} className="text-2xs text-muted-foreground hover:text-foreground">取消编辑</button>
         </div>
         <EditField label="主体" value={draft.subject ?? ""} onChange={(value) => setDraft((prev) => ({ ...prev, subject: value }))} />
         <EditField label="谓词" value={draft.predicate ?? ""} onChange={(value) => setDraft((prev) => ({ ...prev, predicate: value }))} />
@@ -776,7 +776,7 @@ function PendingEventCard({
             type="button"
             disabled={loading}
             onClick={() => onReject?.(event)}
-            className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+            className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
           >
             拒绝
           </button>
@@ -784,7 +784,7 @@ function PendingEventCard({
             type="button"
             disabled={loading || !draft.object?.trim()}
             onClick={() => onApprove?.(event, draft)}
-            className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {loading ? "处理中…" : "保存修正并批准"}
           </button>
@@ -808,26 +808,26 @@ function PendingEventCard({
           )}
           <span className="min-w-0 truncate font-medium">{event.eventType ?? "event"}</span>
         </div>
-        <span className={`shrink-0 text-[10px] ${event.risk === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
+        <span className={`shrink-0 text-2xs ${event.risk === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
         <span>{event.entity ?? "未命名实体"} · 置信度 {event.confidence ?? "—"}</span>
         <OpenSourceChapterButton chapterNumber={event.chapterNumber} onOpenChapter={onOpenChapter} />
         {!event.chapterNumber ? <span>第 — 章</span> : null}
       </div>
       {event.predicate || event.object ? (
-        <div className="text-[11px]">
+        <div className="text-2xs">
           {event.predicate ? `${event.predicate} ` : ""}{event.object ?? ""}
         </div>
       ) : null}
-      {event.evidence ? <div className="text-[11px] text-muted-foreground">{event.evidence}</div> : null}
+      {event.evidence ? <div className="text-2xs text-muted-foreground">{event.evidence}</div> : null}
       {event.id ? (
         <div className="flex justify-end gap-1.5 pt-1">
           <button
             type="button"
             disabled={loading}
             onClick={() => onReject?.(event)}
-            className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+            className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
           >
             拒绝
           </button>
@@ -835,7 +835,7 @@ function PendingEventCard({
             type="button"
             disabled={loading}
             onClick={() => setEditing(true)}
-            className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+            className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
           >
             改后批准
           </button>
@@ -843,7 +843,7 @@ function PendingEventCard({
             type="button"
             disabled={loading}
             onClick={() => onApprove?.(event)}
-            className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {loading ? "处理中…" : "批准"}
           </button>
@@ -856,11 +856,11 @@ function PendingEventCard({
 function EditField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label className="flex items-center gap-2">
-      <span className="w-10 shrink-0 text-[10px] text-muted-foreground">{label}</span>
+      <span className="w-10 shrink-0 text-2xs text-muted-foreground">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
-        className="h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-[11px] outline-none"
+        className="h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-2xs outline-none"
       />
     </label>
   );
@@ -881,15 +881,15 @@ function RelationshipMatrix({ facts }: { facts: EntityFact[] }) {
   }, [facts]);
 
   if (rows.rels.length === 0) {
-    return <p className="text-[11px] text-muted-foreground">还没有关系事实。角色间关系变化会在章后结算自动沉淀。</p>;
+    return <p className="text-2xs text-muted-foreground">还没有关系事实。角色间关系变化会在章后结算自动沉淀。</p>;
   }
   if (rows.subjects.length > 30 || rows.objects.length > 30) {
-    return <p className="text-[11px] text-muted-foreground">关系实体超过 30 个，建议切到「发展历程 › 骨架关系层」查看。</p>;
+    return <p className="text-2xs text-muted-foreground">关系实体超过 30 个，建议切到「发展历程 › 骨架关系层」查看。</p>;
   }
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border/60">
-      <table className="w-full border-collapse text-[10px]">
+      <table className="w-full border-collapse text-2xs">
         <thead>
           <tr>
             <th className="sticky left-0 bg-card p-1.5 text-left font-medium text-muted-foreground">主体 \ 客体</th>
@@ -929,7 +929,7 @@ function HookBoard({ facts, currentChapter, onOpenChapter }: { facts: EntityFact
   }, [facts]);
 
   if (hooks.length === 0) {
-    return <p className="text-[11px] text-muted-foreground">还没有伏笔事实。伏笔的埋设与推进会在章后结算自动沉淀。</p>;
+    return <p className="text-2xs text-muted-foreground">还没有伏笔事实。伏笔的埋设与推进会在章后结算自动沉淀。</p>;
   }
 
   return (
@@ -940,17 +940,17 @@ function HookBoard({ facts, currentChapter, onOpenChapter }: { facts: EntityFact
         return (
           <div key={hook.id} className={`flex items-center gap-2 rounded border p-2 ${stale ? "border-amber-400/60 bg-amber-50 dark:bg-amber-950/20" : "border-border/60"}`}>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[11px] font-medium">{hook.object}</div>
-              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+              <div className="truncate text-2xs font-medium">{hook.object}</div>
+              <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
                 <span>{hook.subject} · {hook.predicate} · 埋于</span>
                 <OpenSourceChapterButton chapterNumber={planted} onOpenChapter={onOpenChapter} />
                 {!planted ? <span>第 — 章</span> : null}
                 {typeof hook.confidence === "number" ? <span>· 置信 {hook.confidence.toFixed(2)}</span> : null}
               </div>
-              {hook.evidenceText ? <div className="truncate text-[10px] text-muted-foreground">{hook.evidenceText}</div> : null}
+              {hook.evidenceText ? <div className="truncate text-2xs text-muted-foreground">{hook.evidenceText}</div> : null}
             </div>
             {stale ? (
-              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">
+              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-2xs text-amber-700 dark:text-amber-400">
                 超期未推进
               </span>
             ) : null}
@@ -984,22 +984,22 @@ function FactHistoryPanel({ bookId, fact, onClose, onOpenChapter }: { bookId: st
   return (
     <div className="rounded-lg border border-border/60 p-2.5 space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium">{fact.subject} / {fact.predicate} 变迁史</span>
-        <button type="button" onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground">收起</button>
+        <span className="text-2xs font-medium">{fact.subject} / {fact.predicate} 变迁史</span>
+        <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">收起</button>
       </div>
-      {loading ? <Loader2 className="size-3.5 animate-spin" /> : error ? <p className="text-[11px] text-destructive">{error}</p> : items.length === 0 ? <p className="text-[11px] text-muted-foreground">暂无变迁记录。</p> : (
+      {loading ? <Loader2 className="size-3.5 animate-spin" /> : error ? <p className="text-2xs text-destructive">{error}</p> : items.length === 0 ? <p className="text-2xs text-muted-foreground">暂无变迁记录。</p> : (
         <div className="space-y-1">
           {items.map((item, index) => {
             const chapter = factSourceChapter(item);
             const closed = item.validUntilChapter !== undefined && item.validUntilChapter !== null;
             return (
-              <div key={item.id ?? index} className="flex flex-wrap items-center gap-2 text-[11px]">
+              <div key={item.id ?? index} className="flex flex-wrap items-center gap-2 text-2xs">
                 <OpenSourceChapterButton chapterNumber={chapter} onOpenChapter={onOpenChapter} />
-                {!chapter ? <span className="shrink-0 text-[10px] text-muted-foreground">第 — 章</span> : null}
+                {!chapter ? <span className="shrink-0 text-2xs text-muted-foreground">第 — 章</span> : null}
                 <span>{item.object}</span>
-                {typeof item.confidence === "number" ? <span className="text-[10px] text-muted-foreground">置信 {item.confidence.toFixed(2)}</span> : null}
-                {closed ? <span className="text-[10px] text-muted-foreground">{item.sourceType === "manual" ? "已纠正" : "已关闭"} → 第 {item.validUntilChapter} 章</span> : <span className="text-[10px] text-emerald-600">当前</span>}
-                {item.evidenceText ? <span className="w-full text-[10px] text-muted-foreground">{item.evidenceText}</span> : null}
+                {typeof item.confidence === "number" ? <span className="text-2xs text-muted-foreground">置信 {item.confidence.toFixed(2)}</span> : null}
+                {closed ? <span className="text-2xs text-muted-foreground">{item.sourceType === "manual" ? "已纠正" : "已关闭"} → 第 {item.validUntilChapter} 章</span> : <span className="text-2xs text-emerald-600">当前</span>}
+                {item.evidenceText ? <span className="w-full text-2xs text-muted-foreground">{item.evidenceText}</span> : null}
               </div>
             );
           })}
@@ -1475,7 +1475,7 @@ export function NarrativeMemoryPanelShell({
             <Brain className="size-4 text-primary" />
             章后事实与故事状态
           </div>
-          <p className="text-[10px] text-muted-foreground">查看当前状态与结算历史；不编辑作品基础设定。</p>
+          <p className="text-2xs text-muted-foreground">查看当前状态与结算历史；不编辑作品基础设定。</p>
         </div>
         <button type="button" onClick={onRefresh} className="rounded p-1 hover:bg-muted" title="刷新">
           <RefreshCw className="size-3.5" />
@@ -1490,7 +1490,7 @@ export function NarrativeMemoryPanelShell({
             variant="outline"
             size="sm"
             onClick={onOpenDevelopmentTimeline}
-            className="h-7 gap-1 text-[11px]"
+            className="h-7 gap-1 text-2xs"
           >
             <ExternalLink className="size-3" />
             发展历程
@@ -1521,10 +1521,10 @@ export function NarrativeMemoryPanelShell({
                   value={queryInput}
                   onChange={(event) => setQueryInput(event.currentTarget.value)}
                   placeholder="搜索角色、关系、伏笔、证据..."
-                  className="h-7 min-w-0 flex-1 bg-transparent text-[11px] outline-none"
+                  className="h-7 min-w-0 flex-1 bg-transparent text-2xs outline-none"
                 />
               </div>
-              <button type="submit" className="rounded bg-primary px-3 py-1 text-[11px] text-primary-foreground">搜索</button>
+              <button type="submit" className="rounded bg-primary px-3 py-1 text-2xs text-primary-foreground">搜索</button>
             </form>
           </section>
           <SearchResults
@@ -1562,10 +1562,10 @@ export function NarrativeMemoryPanelShell({
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-history">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold">最近结算</h3>
-              <span className="text-[10px] text-muted-foreground">完整历史见下方</span>
+              <span className="text-2xs text-muted-foreground">完整历史见下方</span>
             </div>
             {historyEvents.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">暂无结算历史。</p>
+              <p className="text-2xs text-muted-foreground">暂无结算历史。</p>
             ) : historyEvents.slice(0, 5).map((entry) => (
               <button
                 key={`${entry.kind}:${entry.id}`}
@@ -1575,14 +1575,14 @@ export function NarrativeMemoryPanelShell({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{entryTitle(entry)}</span>
-                  <span className="text-[10px] text-muted-foreground">{entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已拒绝" : entry.status}</span>
+                  <span className="text-2xs text-muted-foreground">{entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已拒绝" : entry.status}</span>
                 </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-[10px] text-muted-foreground">
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-2xs text-muted-foreground">
                   <OpenSourceChapterButton chapterNumber={entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
                   <span>· {entryCategoryLabel(entry)}</span>
                   {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
                 </div>
-                {entry.evidenceText ? <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{entry.evidenceText}</div> : null}
+                {entry.evidenceText ? <div className="mt-0.5 truncate text-2xs text-muted-foreground">{entry.evidenceText}</div> : null}
               </button>
             ))}
           </section>
@@ -1594,12 +1594,12 @@ export function NarrativeMemoryPanelShell({
                 {highRiskEvents.length > 0 ? ` · 高风险 ${highRiskEvents.length}` : ""}
               </h3>
               {events.length > 3 && (
-                <button type="button" className="text-[10px] text-muted-foreground hover:text-foreground" onClick={() => setPendingOpen((value) => !value)}>
+                <button type="button" className="text-2xs text-muted-foreground hover:text-foreground" onClick={() => setPendingOpen((value) => !value)}>
                   {pendingOpen ? "收起" : "展开全部"}
                 </button>
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground">章后默认自动结算；这里通常只剩高风险/低置信度项，可不处理也不阻断写作。</p>
+            <p className="text-2xs text-muted-foreground">章后默认自动结算；这里通常只剩高风险/低置信度项，可不处理也不阻断写作。</p>
 
             {/* 置信度筛选 + 全选：批量处理低置信抽取时先筛再选。 */}
             <div className="flex flex-wrap items-center gap-1" aria-label="待审置信度筛选">
@@ -1609,7 +1609,7 @@ export function NarrativeMemoryPanelShell({
                   type="button"
                   aria-pressed={confidenceFilter === filter.value}
                   onClick={() => setConfidenceFilter(filter.value)}
-                  className={`rounded-full px-2 py-0.5 text-[10px] transition-colors ${
+                  className={`rounded-full px-2 py-0.5 text-2xs transition-colors ${
                     confidenceFilter === filter.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -1617,7 +1617,7 @@ export function NarrativeMemoryPanelShell({
                 </button>
               ))}
               {selectableIds.size > 0 && (
-                <label className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
+                <label className="ml-auto flex items-center gap-1 text-2xs text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -1632,12 +1632,12 @@ export function NarrativeMemoryPanelShell({
 
             {selectedEventIds.size > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 rounded border border-primary/30 bg-primary/5 p-2">
-                <span className="text-[10px] text-muted-foreground">已选 {selectedEventIds.size} 条</span>
+                <span className="text-2xs text-muted-foreground">已选 {selectedEventIds.size} 条</span>
                 <button
                   type="button"
                   disabled={bulkLoading !== null}
                   onClick={() => void runBulk("approve")}
-                  className="ml-auto rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  className="ml-auto rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
                   {bulkLoading === "approve" ? "批准中…" : "批量批准"}
                 </button>
@@ -1645,7 +1645,7 @@ export function NarrativeMemoryPanelShell({
                   type="button"
                   disabled={bulkLoading !== null}
                   onClick={() => void runBulk("delete")}
-                  className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+                  className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
                   title="物理删除选中的待审事件记录，不留痕；已批准/已拒绝的历史不受影响。"
                 >
                   {bulkLoading === "delete" ? "丢弃中…" : "批量丢弃"}
@@ -1654,7 +1654,7 @@ export function NarrativeMemoryPanelShell({
                   type="button"
                   disabled={bulkLoading !== null}
                   onClick={() => setSelectedEventIds(new Set())}
-                  className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  className="rounded px-2 py-1 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                 >
                   取消选择
                 </button>
@@ -1664,9 +1664,9 @@ export function NarrativeMemoryPanelShell({
 
             {actionError && <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{actionError}</div>}
             {events.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">没有待审事件。</p>
+              <p className="text-2xs text-muted-foreground">没有待审事件。</p>
             ) : pendingToShow.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">当前置信度筛选下没有待审事件。</p>
+              <p className="text-2xs text-muted-foreground">当前置信度筛选下没有待审事件。</p>
             ) : pendingToShow.map((event, index) => (
               <PendingEventCard
                 key={event.id ?? index}
@@ -1681,7 +1681,7 @@ export function NarrativeMemoryPanelShell({
               />
             ))}
             {!pendingOpen && confidenceFilter === "all" && otherPending.length > 0 && highRiskEvents.length > 0 && (
-              <p className="text-[10px] text-muted-foreground">另有 {otherPending.length} 条非高风险待审，已折叠。</p>
+              <p className="text-2xs text-muted-foreground">另有 {otherPending.length} 条非高风险待审，已折叠。</p>
             )}
           </section>
 
@@ -1690,7 +1690,7 @@ export function NarrativeMemoryPanelShell({
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-relationship-matrix">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold">关系矩阵</h3>
-              <span className="text-[10px] text-muted-foreground">当前关系值 · 点击故事状态里的「历史」回溯变迁</span>
+              <span className="text-2xs text-muted-foreground">当前关系值 · 点击故事状态里的「历史」回溯变迁</span>
             </div>
             <RelationshipMatrix facts={allEntityFacts} />
           </section>
@@ -1698,7 +1698,7 @@ export function NarrativeMemoryPanelShell({
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-hook-section">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold">伏笔事实 ({allEntityFacts.filter((f) => f.category === "hook").length})</h3>
-              <span className="text-[10px] text-muted-foreground">章后沉淀的伏笔事实与推进</span>
+              <span className="text-2xs text-muted-foreground">章后沉淀的伏笔事实与推进</span>
             </div>
             <HookBoard facts={allEntityFacts} currentChapter={currentChapter} onOpenChapter={onOpenChapter} />
           </section>
@@ -1708,9 +1708,9 @@ export function NarrativeMemoryPanelShell({
             <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
             <EvidenceChainLookup bookId={bookId} />
           </div>
-          <p className="text-[10px] text-muted-foreground">已自动应用或已拒绝的章后事件，按最近优先展示。</p>
+          <p className="text-2xs text-muted-foreground">已自动应用或已拒绝的章后事件，按最近优先展示。</p>
           {historyEvents.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground">暂无结算历史。写下一章后会自动出现。</p>
+            <p className="text-2xs text-muted-foreground">暂无结算历史。写下一章后会自动出现。</p>
           ) : historyEvents.map((entry) => (
             <button
               key={`${entry.kind}:${entry.id}`}
@@ -1720,17 +1720,17 @@ export function NarrativeMemoryPanelShell({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">{entryTitle(entry)}</span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已拒绝" : entry.status ?? "history"}
                 </span>
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
                 <OpenSourceChapterButton chapterNumber={entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
                 <span>· {entryCategoryLabel(entry)}</span>
                 {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
                 {entry.summary ? <span>· {entry.summary}</span> : null}
               </div>
-              {entry.evidenceText ? <div className="mt-0.5 text-[10px] text-muted-foreground">{entry.evidenceText}</div> : null}
+              {entry.evidenceText ? <div className="mt-0.5 text-2xs text-muted-foreground">{entry.evidenceText}</div> : null}
             </button>
           ))}
           {historyHasMore && (
@@ -1738,7 +1738,7 @@ export function NarrativeMemoryPanelShell({
               type="button"
               disabled={historyLoadingMore}
               onClick={onLoadMoreHistory}
-              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               {historyLoadingMore ? "加载中…" : "加载更多历史"}
             </button>
@@ -1753,9 +1753,9 @@ export function NarrativeMemoryPanelShell({
           */}
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-line-approvals">
           <h3 className="text-xs font-semibold">叙事线审批 ({lineApprovals.length})</h3>
-          <p className="text-[10px] text-muted-foreground">叙事线节点与关系的变更审批记录，批准与驳回都会留痕。</p>
+          <p className="text-2xs text-muted-foreground">叙事线节点与关系的变更审批记录，批准与驳回都会留痕。</p>
           {lineApprovals.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground">暂无叙事线审批记录。在叙事线视图增删节点后会出现。</p>
+            <p className="text-2xs text-muted-foreground">暂无叙事线审批记录。在叙事线视图增删节点后会出现。</p>
           ) : lineApprovals.map((approval) => (
             <div
               key={approval.previewId}
@@ -1763,16 +1763,16 @@ export function NarrativeMemoryPanelShell({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="min-w-0 flex-1 truncate font-medium">{approval.summary}</span>
-                <span className={`shrink-0 text-[10px] ${approval.decision === "rejected" ? "text-muted-foreground" : "text-primary"}`}>
+                <span className={`shrink-0 text-2xs ${approval.decision === "rejected" ? "text-muted-foreground" : "text-primary"}`}>
                   {approval.decision === "rejected" ? "已驳回" : "已批准"}
                 </span>
               </div>
-              <div className="mt-0.5 text-[10px] text-muted-foreground">
+              <div className="mt-0.5 text-2xs text-muted-foreground">
                 {formatApprovalTime(approval.approvedAt)}
                 {approvalScopeText(approval)}
               </div>
               {approval.reason && (
-                <p className="mt-0.5 text-[10px] text-muted-foreground">理由：{approval.reason}</p>
+                <p className="mt-0.5 text-2xs text-muted-foreground">理由：{approval.reason}</p>
               )}
             </div>
           ))}
@@ -1781,7 +1781,7 @@ export function NarrativeMemoryPanelShell({
               type="button"
               disabled={approvalsLoadingMore}
               onClick={onLoadMoreApprovals}
-              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               {approvalsLoadingMore ? "加载中…" : "加载更多审批"}
             </button>
@@ -1878,16 +1878,16 @@ export function EvidenceChainLookup({ bookId }: { bookId: string }) {
           }}
           placeholder="章号"
           aria-label="证据链查询章号"
-          className="h-6 w-16 rounded border border-border bg-background px-1 text-[10px]"
+          className="h-6 w-16 rounded border border-border bg-background px-1 text-2xs"
         />
-        <Button type="button" size="xs" variant="outline" className="h-6 text-[10px]" onClick={() => void lookup()} disabled={loading}>
+        <Button type="button" size="xs" variant="outline" className="h-6 text-2xs" onClick={() => void lookup()} disabled={loading}>
           {loading ? <Loader2 className="size-3 animate-spin" /> : <Search className="size-3" />}
           查证据链
         </Button>
       </div>
-      {error && <p className="text-[10px] text-destructive">{error}</p>}
+      {error && <p className="text-2xs text-destructive">{error}</p>}
       {payload && (
-        <div className="rounded border border-border/60 bg-muted/20 p-2 text-[10px] space-y-1" data-testid="evidence-chain-result">
+        <div className="rounded border border-border/60 bg-muted/20 p-2 text-2xs space-y-1" data-testid="evidence-chain-result">
           <p className="font-medium text-foreground">
             第 {payload.chapterNumber} 章证据链
             <span className="ml-1 font-normal text-muted-foreground">指纹 {payload.fingerprint.slice(0, 8)}…</span>
@@ -1897,7 +1897,7 @@ export function EvidenceChainLookup({ bookId }: { bookId: string }) {
           )}
           {(payload.artifact.drafts ?? []).map((draft, index) => (
             <div key={index} className="flex items-start gap-1.5">
-              <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0 h-4">
+              <Badge variant="outline" className="shrink-0 text-2xs px-1 py-0 h-4">
                 {OUTCOME_LABELS[draft.outcome ?? ""] ?? draft.outcome}
               </Badge>
               <span className="min-w-0 flex-1 truncate">
@@ -1967,7 +1967,7 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
   return (
     <div className="space-y-2" data-testid="narrative-memory-summary">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+        <div className="flex items-center gap-1.5 text-2xs font-semibold">
           <Brain className="size-3.5 text-primary" />
           <span>章后事实与故事状态</span>
         </div>
@@ -1977,15 +1977,15 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-1.5 px-1 py-2 text-[11px] text-muted-foreground">
+        <p className="flex items-center gap-1.5 px-1 py-2 text-2xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" /> 正在加载摘要…
         </p>
       ) : error ? (
-        <p className="flex items-start gap-1 px-1 py-2 text-[11px] text-destructive">
+        <p className="flex items-start gap-1 px-1 py-2 text-2xs text-destructive">
           <AlertTriangle className="mt-0.5 size-3 shrink-0" /> {error}
         </p>
       ) : (
-        <div className="space-y-1 rounded-lg border border-border bg-card p-2 text-[11px]" data-testid="narrative-memory-summary-body">
+        <div className="space-y-1 rounded-lg border border-border bg-card p-2 text-2xs" data-testid="narrative-memory-summary-body">
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">待审事项</span>
             <span>
@@ -1998,17 +1998,17 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
             <span>{stats?.total ?? 0} 条</span>
           </div>
           {pendingCount === 0 && (
-            <p className="pt-0.5 text-[10px] text-muted-foreground">章后默认自动结算，当前没有需要你处理的事项。</p>
+            <p className="pt-0.5 text-2xs text-muted-foreground">章后默认自动结算，当前没有需要你处理的事项。</p>
           )}
         </div>
       )}
 
       {onOpenCenter && (
-        <Button size="xs" variant="outline" className="h-7 w-full justify-center text-[11px]" onClick={onOpenCenter}>
+        <Button size="xs" variant="outline" className="h-7 w-full justify-center text-2xs" onClick={onOpenCenter}>
           在中央打开章后事实
         </Button>
       )}
-      <p className="px-1 text-[10px] leading-relaxed text-muted-foreground">
+      <p className="px-1 text-2xs leading-relaxed text-muted-foreground">
         完整的故事状态、关系矩阵、结算历史与待审队列在中央面板中管理。
       </p>
     </div>

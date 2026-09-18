@@ -188,12 +188,12 @@ export function EntityDetailDrawer({
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold tracking-tight text-foreground truncate">{entity}</h2>
                 {matchedJingwei?.category ? (
-                  <Badge variant="secondary" className="text-[10px] px-1.5 h-4 font-normal">
+                  <Badge variant="secondary" className="text-2xs px-1.5 h-4 font-normal">
                     {matchedJingwei.category}
                   </Badge>
                 ) : null}
                 {matchedJingwei?.layer ? (
-                  <Badge variant="outline" className="text-[9px] px-1.5 h-4 text-muted-foreground">
+                  <Badge variant="outline" className="text-2xs px-1.5 h-4 text-muted-foreground">
                     {matchedJingwei.layer}
                   </Badge>
                 ) : null}
@@ -206,7 +206,7 @@ export function EntityDetailDrawer({
               {matchedJingwei?.aliases && matchedJingwei.aliases.length > 0 ? (
                 <div className="flex flex-wrap gap-1 pt-0.5">
                   {matchedJingwei.aliases.map((alias) => (
-                    <span key={alias} className="text-[9px] rounded bg-muted px-1.5 py-0.2 text-muted-foreground">
+                    <span key={alias} className="text-2xs rounded bg-muted px-1.5 py-0.2 text-muted-foreground">
                       别名: {alias}
                     </span>
                   ))}
@@ -219,7 +219,7 @@ export function EntityDetailDrawer({
           {voiceQuote ? (
             <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-2.5 flex items-start gap-2 text-xs text-foreground/90 shadow-2xs">
               <MessageSquareQuote className="size-4 text-primary shrink-0 mt-0.5" />
-              <p className="italic text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+              <p className="italic text-2xs leading-relaxed text-muted-foreground line-clamp-2">
                 {voiceQuote}
               </p>
             </div>
@@ -281,11 +281,11 @@ function LoadingBlock({ label }: { label: string }) {
 function ErrorBlock({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-2 text-destructive" data-testid="entity-drawer-error">
-      <p className="text-[11px]">{message}</p>
+      <p className="text-2xs">{message}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="rounded border border-destructive/40 px-2 py-1 text-[10px] hover:bg-destructive/10"
+        className="rounded border border-destructive/40 px-2 py-1 text-2xs hover:bg-destructive/10"
       >
         重试
       </button>
@@ -325,14 +325,14 @@ function FactsTab({
         <div className="flex items-center gap-1.5">
           <Sparkles className="size-3 text-primary" />
           <span className="text-xs font-semibold">当前动态时态</span>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             ({liveFacts.length} 条{currentChapter !== undefined ? ` · 截至第 ${currentChapter} 章` : ""})
           </span>
         </div>
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
         >
           <Plus className="size-3" />
           新增状态
@@ -360,7 +360,7 @@ function FactsTab({
       {liveFacts.length === 0 && !adding ? (
         <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10 space-y-1">
           <p className="font-medium">这个实体还没有记忆状态</p>
-          <p className="text-[10px] text-muted-foreground/80">写章结算后会自动沉淀，也可以点「新增状态」手工补一条。</p>
+          <p className="text-2xs text-muted-foreground/80">写章结算后会自动沉淀，也可以点「新增状态」手工补一条。</p>
         </div>
       ) : (
         <div className="space-y-1.5">
@@ -449,8 +449,8 @@ function FactRow({
           </ActionButton>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-        <Badge variant="secondary" className="text-[9px] px-1 h-3.5">{fact.category}</Badge>
+      <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+        <Badge variant="secondary" className="text-2xs px-1 h-3.5">{fact.category}</Badge>
         {fact.sourceType && <span>来源 {fact.sourceType}</span>}
         {fact.confidence !== undefined && <span>置信 {Math.round(fact.confidence * 100)}%</span>}
         {fact.validFromChapter !== undefined && <span>第 {fact.validFromChapter} 章起</span>}
@@ -484,7 +484,7 @@ function FactForm({
 
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2 shadow-xs" data-testid="entity-fact-form">
-      {factId && <p className="text-[10px] text-muted-foreground">纠正会关闭旧值并写入一条 manual 新值，历史保留。</p>}
+      {factId && <p className="text-2xs text-muted-foreground">纠正会关闭旧值并写入一条 manual 新值，历史保留。</p>}
       <Field label="主体" value={subject} onChange={setSubject} placeholder="角色 / 主体" />
       <Field label="谓词" value={predicate} onChange={setPredicate} placeholder="如：境界 / 谓词 / 位置" />
       <Field label="宾语" value={object} onChange={setObject} placeholder="如：元婴 / 宾语 / 金丹" />
@@ -514,7 +514,7 @@ function FactForm({
 function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
   return (
     <label className="flex items-center gap-2 text-xs">
-      <span className="w-10 shrink-0 text-[10px] text-muted-foreground">{label}</span>
+      <span className="w-10 shrink-0 text-2xs text-muted-foreground">{label}</span>
       <input
         type="text"
         value={value}
@@ -532,7 +532,7 @@ function ActionButton({ children, onClick, disabled, primary }: { children: Reac
       type="button"
       disabled={disabled}
       onClick={() => void onClick()}
-      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-2xs font-medium transition-colors disabled:opacity-50 ${
         primary
           ? "bg-primary text-primary-foreground hover:bg-primary/90"
           : "border border-border/80 bg-background hover:bg-muted text-muted-foreground hover:text-foreground"
@@ -573,7 +573,7 @@ function JingweiTab({
   return (
     <div className="space-y-2">
       {openError && (
-        <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-[11px] text-destructive">
+        <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-2xs text-destructive">
           {openError}
         </p>
       )}
@@ -586,8 +586,8 @@ function JingweiTab({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <span className="font-semibold text-xs text-foreground">{entry.title}</span>
-              {entry.category ? <Badge variant="secondary" className="text-[9px] px-1 h-3.5">{entry.category}</Badge> : null}
-              {entry.layer ? <Badge variant="outline" className="text-[9px] px-1 h-3.5">{entry.layer}</Badge> : null}
+              {entry.category ? <Badge variant="secondary" className="text-2xs px-1 h-3.5">{entry.category}</Badge> : null}
+              {entry.layer ? <Badge variant="outline" className="text-2xs px-1 h-3.5">{entry.layer}</Badge> : null}
             </div>
             {onOpenJingweiEntry ? (
               <button
@@ -600,7 +600,7 @@ function JingweiTab({
                     toast("经纬条目不存在或尚未载入", "error");
                   }
                 }}
-                className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline font-medium"
+                className="inline-flex items-center gap-1 text-2xs text-primary hover:underline font-medium"
               >
                 <ExternalLink className="size-2.5" />
                 打开编辑
@@ -609,7 +609,7 @@ function JingweiTab({
           </div>
 
           {entry.summary ? (
-            <p className="text-[11px] text-muted-foreground leading-relaxed">{entry.summary}</p>
+            <p className="text-2xs text-muted-foreground leading-relaxed">{entry.summary}</p>
           ) : entry.contentMd ? (
             <div className="max-h-36 overflow-y-auto rounded bg-muted/30 p-2 text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
               {entry.contentMd.slice(0, 500)}
@@ -647,7 +647,7 @@ function RelationsTab({ state, currentChapter }: { state: LoadState; currentChap
             <HeartHandshake className="size-3.5 text-primary/80" />
             <span>与 <strong className="font-semibold text-foreground">{fact.object}</strong></span>
           </div>
-          <Badge variant="secondary" className="text-[10px]">{fact.predicate}</Badge>
+          <Badge variant="secondary" className="text-2xs">{fact.predicate}</Badge>
         </div>
       ))}
     </div>
@@ -687,19 +687,19 @@ function HistoryTab({ bookId, state, currentChapter }: { bookId: string; state: 
                 : "border-border/70 bg-card"
             }`}
           >
-            <div className="flex items-center justify-between text-muted-foreground text-[10px]">
+            <div className="flex items-center justify-between text-muted-foreground text-2xs">
               <div className="flex items-center gap-1.5">
                 <span>第 {fact.validFromChapter ?? "—"} 章 起</span>
                 {fact.validUntilChapter !== undefined ? <span>(至第 {fact.validUntilChapter} 章止)</span> : null}
-                {isCurrent ? <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-primary/10 text-primary">当前有效</Badge> : null}
+                {isCurrent ? <Badge variant="secondary" className="text-2xs h-3.5 px-1 bg-primary/10 text-primary">当前有效</Badge> : null}
               </div>
-              <Badge variant="outline" className="text-[9px]">{fact.category}</Badge>
+              <Badge variant="outline" className="text-2xs">{fact.category}</Badge>
             </div>
             <div className="font-medium text-foreground">
               {fact.subject} · {fact.predicate} → <span className="text-primary font-semibold">{fact.object}</span>
             </div>
             {fact.evidenceText ? (
-              <p className="text-[10px] text-muted-foreground line-clamp-2 bg-muted/30 p-1.5 rounded">
+              <p className="text-2xs text-muted-foreground line-clamp-2 bg-muted/30 p-1.5 rounded">
                 依据：{fact.evidenceText}
               </p>
             ) : null}

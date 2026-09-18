@@ -129,11 +129,11 @@ export const MemoryReadCard: ToolResultRenderer = (context: ToolResultRendererCo
                 {column.trimmed > 0 && <Badge variant="outline">裁 {column.trimmed}</Badge>}
               </p>
               {column.items.length === 0 ? (
-                <p className="mt-1 text-[11px] text-muted-foreground">暂无</p>
+                <p className="mt-1 text-2xs text-muted-foreground">暂无</p>
               ) : (
                 <ul className="mt-1 flex flex-col gap-0.5">
                   {column.items.slice(0, 6).map((item) => (
-                    <li key={`${column.key}-${item.title}`} className="text-[11px] text-muted-foreground">
+                    <li key={`${column.key}-${item.title}`} className="text-2xs text-muted-foreground">
                       {item.named && <Badge variant="outline" className="mr-1">点名</Badge>}
                       <span className="text-foreground">{item.title}</span>
                       {item.summary && <span> · {item.summary}</span>}
@@ -146,7 +146,7 @@ export const MemoryReadCard: ToolResultRenderer = (context: ToolResultRendererCo
         </div>
       )}
       {Array.isArray(trimReasons) && trimReasons.length > 0 && (
-        <details className="text-[11px] text-muted-foreground">
+        <details className="text-2xs text-muted-foreground">
           <summary className="cursor-pointer">裁剪原因 {trimReasons.length} 条</summary>
           <ul className="mt-1 list-disc pl-5">
             {trimReasons.slice(0, 12).map((item, index) => {

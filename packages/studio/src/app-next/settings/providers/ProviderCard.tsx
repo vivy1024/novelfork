@@ -72,7 +72,7 @@ export function ProviderCard({
         {previewModels.length > 0 ? (
           <div className="flex flex-wrap gap-1 pt-1">
             {previewModels.map((model) => (
-              <Badge key={model.value} variant="secondary" className="max-w-full truncate font-mono text-[10px]">
+              <Badge key={model.value} variant="secondary" className="max-w-full truncate font-mono text-2xs">
                 {model.modelId}
               </Badge>
             ))}

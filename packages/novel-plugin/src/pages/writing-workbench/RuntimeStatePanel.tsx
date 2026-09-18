@@ -113,7 +113,7 @@ function KnowledgeTab({ events }: { events: KnowledgeEvent[] }) {
         <div key={i} className="flex items-start gap-2 text-xs p-1.5 rounded hover:bg-muted/50">
           <span className="shrink-0 font-medium text-primary">{ev.characterId}</span>
           <span className="flex-1 text-muted-foreground">{ev.fact}</span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">第{ev.learnedAtChapter}章</span>
+          <span className="shrink-0 text-2xs text-muted-foreground">第{ev.learnedAtChapter}章</span>
         </div>
       ))}
     </div>
@@ -126,10 +126,10 @@ function TimelineTab({ entries }: { entries: TimelineEntry[] }) {
     <div className="space-y-1 max-h-64 overflow-y-auto">
       {entries.map((entry, i) => (
         <div key={i} className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/50">
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">#{entry.chapter}</span>
+          <span className="shrink-0 font-mono text-2xs text-muted-foreground">#{entry.chapter}</span>
           <span className="flex-1">{entry.label || entry.storyTime || "—"}</span>
           {entry.ordinal != null && (
-            <span className="shrink-0 text-[10px] text-muted-foreground">序:{entry.ordinal}</span>
+            <span className="shrink-0 text-2xs text-muted-foreground">序:{entry.ordinal}</span>
           )}
         </div>
       ))}

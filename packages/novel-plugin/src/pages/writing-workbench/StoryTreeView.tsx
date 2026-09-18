@@ -65,10 +65,10 @@ const KIND_INDENT = 16;
 /** 不同层级用不同视觉权重，靠字号与颜色区分，不靠花哨图形。 */
 const KIND_STYLE: Record<StoryTreeNode["kind"], string> = {
   root: "text-sm font-semibold",
-  dimension: "text-[13px] font-semibold",
+  dimension: "text-sm font-semibold",
   feature: "text-xs font-medium",
   category: "text-xs",
-  entry: "text-[11px]",
+  entry: "text-2xs",
 };
 
 const KIND_ICON: Record<StoryTreeNode["kind"], typeof Layers | null> = {
@@ -144,18 +144,18 @@ function TreeRow({
           {node.label}
         </span>
         {node.kind !== "entry" ? (
-          <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px] font-normal">
+          <Badge variant="outline" className="h-4 shrink-0 px-1 text-2xs font-normal">
             {node.count}
           </Badge>
         ) : null}
         {node.webNovelSpecific ? (
-          <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[9px]">网文</Badge>
+          <Badge variant="secondary" className="h-4 shrink-0 px-1 text-2xs">网文</Badge>
         ) : null}
         {node.degree !== undefined && node.degree > 0 ? (
-          <span className="shrink-0 text-[9px] text-muted-foreground">{node.degree} 关系</span>
+          <span className="shrink-0 text-2xs text-muted-foreground">{node.degree} 关系</span>
         ) : null}
         {node.subtitle ? (
-          <span className="hidden shrink-0 text-[9px] text-muted-foreground sm:inline">{node.subtitle}</span>
+          <span className="hidden shrink-0 text-2xs text-muted-foreground sm:inline">{node.subtitle}</span>
         ) : null}
       </button>
     </div>
@@ -166,7 +166,7 @@ function TreeRow({
 function NodeInspector({ node }: { node: StoryTreeNode | null }) {
   if (!node) {
     return (
-      <p className="p-3 text-[11px] text-muted-foreground" data-testid="story-tree-inspector-empty">
+      <p className="p-3 text-2xs text-muted-foreground" data-testid="story-tree-inspector-empty">
         点左侧任一节点查看详情。
       </p>
     );
@@ -175,21 +175,21 @@ function NodeInspector({ node }: { node: StoryTreeNode | null }) {
     <div className="space-y-2 p-3" data-testid="story-tree-inspector">
       <div>
         <p className="text-xs font-semibold">{node.label}</p>
-        {node.subtitle ? <p className="mt-0.5 text-[10px] text-muted-foreground">{node.subtitle}</p> : null}
+        {node.subtitle ? <p className="mt-0.5 text-2xs text-muted-foreground">{node.subtitle}</p> : null}
       </div>
       <div className="flex flex-wrap gap-1">
-        <Badge variant="outline" className="h-4 px-1 text-[9px]">{node.kind}</Badge>
+        <Badge variant="outline" className="h-4 px-1 text-2xs">{node.kind}</Badge>
         {node.kind !== "entry" ? (
-          <Badge variant="outline" className="h-4 px-1 text-[9px]">{node.count} 条</Badge>
+          <Badge variant="outline" className="h-4 px-1 text-2xs">{node.count} 条</Badge>
         ) : null}
-        {node.status ? <Badge variant="secondary" className="h-4 px-1 text-[9px]">{node.status}</Badge> : null}
+        {node.status ? <Badge variant="secondary" className="h-4 px-1 text-2xs">{node.status}</Badge> : null}
       </div>
       {node.detail ? (
-        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
+        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">
           {node.detail}
         </p>
       ) : (
-        <p className="text-[11px] text-muted-foreground">这个节点没有正文内容。</p>
+        <p className="text-2xs text-muted-foreground">这个节点没有正文内容。</p>
       )}
     </div>
   );
@@ -213,14 +213,14 @@ function GapNotice({
       data-testid="story-tree-gaps"
     >
       <CircleSlash className="size-3 shrink-0 text-muted-foreground" />
-      <span className="text-[10px] text-muted-foreground">
+      <span className="text-2xs text-muted-foreground">
         还没有内容的维度：{labels}
       </span>
       {onSendToNarrator ? (
         <Button
           size="xs"
           variant="ghost"
-          className="ml-auto h-6 gap-1 px-1.5 text-[10px]"
+          className="ml-auto h-6 gap-1 px-1.5 text-2xs"
           data-testid="story-tree-fill-gap"
           onClick={() => void onSendToNarrator(prompt)}
         >
@@ -303,7 +303,7 @@ export function StoryTreeView({
       >
         <FolderTree className="size-6 text-muted-foreground/60" />
         <p className="text-xs font-medium">经纬里还没有条目</p>
-        <p className="max-w-xs text-[11px] leading-relaxed text-muted-foreground">
+        <p className="max-w-xs text-2xs leading-relaxed text-muted-foreground">
           树的层级来自叙事分类，条目来自经纬。先建立角色、地点、设定等条目，或对已有正文跑一次拆书。
         </p>
       </div>
@@ -321,7 +321,7 @@ export function StoryTreeView({
       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
         <FolderTree className="size-3.5 text-primary" />
         <span className="text-xs font-semibold">故事树</span>
-        <span className="text-[10px] text-muted-foreground">{tree.totalEntries} 条</span>
+        <span className="text-2xs text-muted-foreground">{tree.totalEntries} 条</span>
         <div className="ml-auto flex items-center gap-1">
           <div className="relative">
             <Search className="pointer-events-none absolute left-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
@@ -330,14 +330,14 @@ export function StoryTreeView({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索节点"
               aria-label="搜索故事树"
-              className="h-6 w-32 pl-6 text-[11px]"
+              className="h-6 w-32 pl-6 text-2xs"
             />
           </div>
           {query ? (
             <Button
               size="xs"
               variant="ghost"
-              className="h-6 px-1 text-[10px]"
+              className="h-6 px-1 text-2xs"
               data-testid="story-tree-clear-search"
               onClick={() => setQuery("")}
             >
@@ -348,7 +348,7 @@ export function StoryTreeView({
             <Button
               size="xs"
               variant="ghost"
-              className="h-6 px-1.5 text-[10px]"
+              className="h-6 px-1.5 text-2xs"
               data-testid="story-tree-expand-all"
               onClick={expandAll}
             >
@@ -359,7 +359,7 @@ export function StoryTreeView({
       </div>
 
       {query && matched.size === 0 ? (
-        <p className="px-1 text-[10px] text-muted-foreground" data-testid="story-tree-no-match">
+        <p className="px-1 text-2xs text-muted-foreground" data-testid="story-tree-no-match">
           没有匹配「{query}」的节点。
         </p>
       ) : null}

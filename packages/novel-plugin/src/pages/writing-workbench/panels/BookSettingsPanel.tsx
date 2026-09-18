@@ -185,8 +185,8 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0"><ArrowLeft className="size-4" /></Button>
         <h1 className="text-sm font-semibold text-foreground">书籍设置</h1>
-        {saveStatus === "saving" && <span className="ml-auto text-[11px] text-muted-foreground">保存中...</span>}
-        {saveStatus === "saved" && <span className="ml-auto text-[11px] text-green-500">已保存</span>}
+        {saveStatus === "saving" && <span className="ml-auto text-2xs text-muted-foreground">保存中...</span>}
+        {saveStatus === "saved" && <span className="ml-auto text-2xs text-green-500">已保存</span>}
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-6 px-4 py-4">

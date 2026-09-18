@@ -97,8 +97,8 @@ export function TensionCurveStrip({ chapters, currentChapter, onJumpToChapter }:
     <div className="shrink-0 rounded-lg border px-2 py-1.5" data-testid="tension-curve-strip">
       <div className="flex items-center gap-2">
         <Activity className="size-3 text-muted-foreground" />
-        <span className="text-[10px] font-medium text-muted-foreground">张力曲线</span>
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-2xs font-medium text-muted-foreground">张力曲线</span>
+        <span className="text-2xs text-muted-foreground">
           {model.scoredCount > 0
             ? `${model.scoredCount}/${chapters.length} 章已评分`
             : "还没有章节评过张力"}
@@ -107,7 +107,7 @@ export function TensionCurveStrip({ chapters, currentChapter, onJumpToChapter }:
 
       {model.scoredCount === 0 ? (
         // 没有分就明说，不画一条假曲线
-        <p className="px-1 py-2 text-[10px] text-muted-foreground" data-testid="tension-curve-strip-empty">
+        <p className="px-1 py-2 text-2xs text-muted-foreground" data-testid="tension-curve-strip-empty">
           章节摘要里没有张力分（`tension_score`），这条曲线暂时画不出来。跑过章后结算评分后会出现。
         </p>
       ) : (

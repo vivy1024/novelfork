@@ -242,7 +242,7 @@ export function TidyTreeCanvas(props: TidyTreeCanvasProps) {
         data-kind={forest.kind}
       >
         <p className="text-xs font-medium">这张图还是空的</p>
-        <p className="max-w-sm text-[11px] leading-relaxed text-muted-foreground">
+        <p className="max-w-sm text-2xs leading-relaxed text-muted-foreground">
           {forest.emptyReason ?? "没有可显示的节点。"}
         </p>
       </div>
@@ -313,7 +313,7 @@ export function TidyTreeCanvas(props: TidyTreeCanvasProps) {
         >
           <Minus className="size-3" />
         </Button>
-        <span className="min-w-10 text-center text-[10px] tabular-nums text-muted-foreground" data-testid="tidy-tree-zoom-label">
+        <span className="min-w-10 text-center text-2xs tabular-nums text-muted-foreground" data-testid="tidy-tree-zoom-label">
           {Math.round(transform.scale * 100)}%
         </span>
         <Button
@@ -331,7 +331,7 @@ export function TidyTreeCanvas(props: TidyTreeCanvasProps) {
           type="button"
           size="xs"
           variant="ghost"
-          className="h-6 px-1.5 text-[10px]"
+          className="h-6 px-1.5 text-2xs"
           aria-label="复位视图"
           data-testid="tidy-tree-reset"
           onClick={resetView}
@@ -447,9 +447,9 @@ export function TidyTreeCanvas(props: TidyTreeCanvasProps) {
                       nodeAction(node, props);
                     }}
                   >
-                    <span className="min-w-0 truncate text-[11px] font-medium">{node.label}</span>
+                    <span className="min-w-0 truncate text-2xs font-medium">{node.label}</span>
                     {node.kind !== "entry" && node.kind !== "chapter" && node.kind !== "entity" && node.count > 0 ? (
-                      <span className="shrink-0 text-[9px] text-muted-foreground">{` · ${node.count}`}</span>
+                      <span className="shrink-0 text-2xs text-muted-foreground">{` · ${node.count}`}</span>
                     ) : null}
                   </button>
                 </foreignObject>

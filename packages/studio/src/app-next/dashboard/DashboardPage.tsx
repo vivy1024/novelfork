@@ -209,15 +209,15 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
           <div className="grid gap-3 sm:grid-cols-3 pt-2">
             <div className="rounded-lg bg-muted/30 p-3 space-y-1">
               <p className="text-xs font-medium">1. 创建作品</p>
-              <p className="text-[10px] text-muted-foreground">绑定仓库（可选），输入书名或留空让 AI 帮你起名</p>
+              <p className="text-2xs text-muted-foreground">绑定仓库（可选），输入书名或留空让 AI 帮你起名</p>
             </div>
             <div className="rounded-lg bg-muted/30 p-3 space-y-1">
               <p className="text-xs font-medium">2. AI 引导设定</p>
-              <p className="text-[10px] text-muted-foreground">进入工作台后，AI 会询问你想写什么、选什么题材，生成经纬大纲</p>
+              <p className="text-2xs text-muted-foreground">进入工作台后，AI 会询问你想写什么、选什么题材，生成经纬大纲</p>
             </div>
             <div className="rounded-lg bg-muted/30 p-3 space-y-1">
               <p className="text-xs font-medium">3. 开始写作</p>
-              <p className="text-[10px] text-muted-foreground">手动写作或让 AI 生成正式章节结果，你来审阅和决定</p>
+              <p className="text-2xs text-muted-foreground">手动写作或让 AI 生成正式章节结果，你来审阅和决定</p>
             </div>
           </div>
         </div>
@@ -253,12 +253,12 @@ function BookCard({ book, onOpen }: { readonly book: BookItem; readonly onOpen?:
         </Button>
         <span className="flex shrink-0 items-center gap-1">
           <span className={`h-2 w-2 rounded-full ${statusDot}`} />
-          <span className="text-[10px] text-muted-foreground">{STATUS_LABEL[book.status ?? ""] ?? "未知"}</span>
+          <span className="text-2xs text-muted-foreground">{STATUS_LABEL[book.status ?? ""] ?? "未知"}</span>
         </span>
       </div>
 
       {genreLabel && (
-        <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
           {genreLabel}
         </span>
       )}

@@ -113,13 +113,13 @@ function HitItem({ hit }: HitItemProps) {
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Badge className={`text-[10px] ${severityBadgeClass(hit.severity)}`}>
+          <Badge className={`text-2xs ${severityBadgeClass(hit.severity)}`}>
             {severityLabel(hit.severity)}
           </Badge>
           <span className="text-xs font-medium truncate">{hit.name}</span>
-          <span className="text-[10px] text-muted-foreground shrink-0">{hit.ruleId}</span>
+          <span className="text-2xs text-muted-foreground shrink-0">{hit.ruleId}</span>
         </div>
-        <span className="text-[10px] text-muted-foreground shrink-0">{hit.spans.length} 处命中</span>
+        <span className="text-2xs text-muted-foreground shrink-0">{hit.spans.length} 处命中</span>
       </div>
 
       {/* Matched spans preview */}
@@ -131,7 +131,7 @@ function HitItem({ hit }: HitItemProps) {
             </p>
           ))}
           {hit.spans.length > 3 && (
-            <p className="text-[10px] text-muted-foreground">...还有 {hit.spans.length - 3} 处</p>
+            <p className="text-2xs text-muted-foreground">...还有 {hit.spans.length - 3} 处</p>
           )}
         </div>
       )}
@@ -149,14 +149,14 @@ function HitItem({ hit }: HitItemProps) {
         <Button
           size="sm"
           variant="outline"
-          className="h-6 text-[11px] px-2"
+          className="h-6 text-2xs px-2"
           disabled={loading}
           onClick={handleSuggestRewrite}
         >
           {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : <Wrench className="size-3 mr-1" />}
           修复建议
         </Button>
-        {error && <span className="text-[10px] text-destructive">{error}</span>}
+        {error && <span className="text-2xs text-destructive">{error}</span>}
       </div>
 
       {/* Suggestions list */}
@@ -167,15 +167,15 @@ function HitItem({ hit }: HitItemProps) {
               <div className="flex items-center gap-2">
                 <Sparkles className="size-3 text-purple-500 shrink-0" />
                 <span className="text-xs font-medium">{s.name}</span>
-                <Badge variant="outline" className="text-[9px]">{s.type}</Badge>
+                <Badge variant="outline" className="text-2xs">{s.type}</Badge>
               </div>
-              <p className="text-[11px] text-muted-foreground whitespace-pre-wrap">{s.template}</p>
+              <p className="text-2xs text-muted-foreground whitespace-pre-wrap">{s.template}</p>
             </div>
           ))}
         </div>
       )}
       {suggestions && suggestions.length === 0 && (
-        <p className="text-[10px] text-muted-foreground">暂无针对此规则的修复建议</p>
+        <p className="text-2xs text-muted-foreground">暂无针对此规则的修复建议</p>
       )}
     </div>
   );
@@ -187,7 +187,7 @@ function HitItem({ hit }: HitItemProps) {
 
 export function AiTasteScoreBadge({ score, className }: { score: number; className?: string }) {
   return (
-    <Badge className={`text-[10px] ${scoreBadgeClass(score)} ${className ?? ""}`}>
+    <Badge className={`text-2xs ${scoreBadgeClass(score)} ${className ?? ""}`}>
       AI味 {score}
     </Badge>
   );
@@ -220,7 +220,7 @@ export function AiTasteReport({ report }: AiTasteReportProps) {
             )}
             <span className="text-sm font-medium">AI 味等级：{levelLabel(report.level)}</span>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-2xs text-muted-foreground mt-0.5">
             分析 {report.tokensAnalyzed} 字 · 耗时 {Math.round(report.elapsedMs)}ms · {report.engineVersion}
           </p>
         </div>

@@ -175,7 +175,7 @@ function ChapterStatusBar({
 
   return (
     <div data-testid="chapter-status-bar" className="shrink-0 border-b border-border/70 bg-muted/20 px-4 py-1.5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
         {typeof chapterNumber === "number" ? <span>第 {chapterNumber} 章</span> : null}
         <span>蓝图：</span>
         {sceneSpec ? (
@@ -186,7 +186,7 @@ function ChapterStatusBar({
           <span>未生成</span>
         )}
         <span>正文 {wordCount.toLocaleString()} / 目标 {targetLabel}</span>
-        <Badge variant="outline" className="h-4 px-1.5 text-[9px]">{progressLabel}</Badge>
+        <Badge variant="outline" className="h-4 px-1.5 text-2xs">{progressLabel}</Badge>
       </div>
     </div>
   );
@@ -549,21 +549,21 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <h2 className="text-sm font-semibold truncate">{node.title}</h2>
-              <Badge variant="secondary" className="text-[10px] shrink-0">{resourceTypeLabel(node.kind)}</Badge>
-              {readonly && <Badge variant="outline" className="text-[10px] shrink-0">只读</Badge>}
-              {dirty && <Badge className="text-[10px] shrink-0 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
-              {!dirty && !needsHydration && !readonly && <span className="text-[10px] text-muted-foreground">已保存</span>}
+              <Badge variant="secondary" className="text-2xs shrink-0">{resourceTypeLabel(node.kind)}</Badge>
+              {readonly && <Badge variant="outline" className="text-2xs shrink-0">只读</Badge>}
+              {dirty && <Badge className="text-2xs shrink-0 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
+              {!dirty && !needsHydration && !readonly && <span className="text-2xs text-muted-foreground">已保存</span>}
             </div>
             {toolbarButtons}
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
             <span>资源类型：{node.kind === "story" ? "Story" : resourceTypeLabel(node.kind)}</span>
             {node.path ? <span>真实路径：{node.path}</span> : null}
             <span>读写能力：{readonly ? "只读" : "可编辑"}</span>
             <span>保存状态：{needsHydration ? "待加载" : dirty ? "未保存" : "已保存"}</span>
           </div>
           {readonly && (
-            <div className="mt-1 text-[10px] text-muted-foreground">
+            <div className="mt-1 text-2xs text-muted-foreground">
               只读原因：当前资源由合同标记为只读，保存入口已禁用。
             </div>
           )}
@@ -863,11 +863,11 @@ function StatCard({ label, value, sub, className, active, onClick }: {
       onClick={onClick}
     >
       <div className="flex items-center justify-between">
-        <div className="text-[10px] text-muted-foreground">{label}</div>
+        <div className="text-2xs text-muted-foreground">{label}</div>
         {onClick && active ? <ChevronUp className="size-3 text-muted-foreground" /> : null}
       </div>
       <div className="text-lg font-semibold mt-0.5">{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -912,7 +912,7 @@ function DefaultCockpitView({ bookId, currentChapter, onJumpToChapter }: { bookI
             sub="作品累计正文"
           />
           <div className="col-span-3 rounded-lg border border-border bg-card px-3 py-2">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+            <div className="flex items-center justify-between text-2xs text-muted-foreground mb-1">
               <span>卷进度</span>
               <span>{stats.volumeProgress.current} / {stats.volumeProgress.total}</span>
             </div>
@@ -993,13 +993,13 @@ function CockpitOverview({ bookId }: { bookId: string }) {
       <section className="rounded-lg border border-border bg-card p-3">
         <h3 className="mb-2 text-xs font-semibold text-foreground">近期章节结果</h3>
         {chapterResults.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">暂无章节结果。让 AI 写一章后会出现在这里。</p>
+          <p className="text-2xs text-muted-foreground">暂无章节结果。让 AI 写一章后会出现在这里。</p>
         ) : (
           <ul className="space-y-2">
             {chapterResults.map(item => (
               <li key={item.id} className="rounded-md bg-muted/40 p-2 text-xs">
                 <div className="font-medium text-foreground">{item.title || item.id}</div>
-                <div className="mt-1 text-[11px] text-muted-foreground">状态：{item.status || 'unknown'}</div>
+                <div className="mt-1 text-2xs text-muted-foreground">状态：{item.status || 'unknown'}</div>
               </li>
             ))}
           </ul>
@@ -1010,7 +1010,7 @@ function CockpitOverview({ bookId }: { bookId: string }) {
       <section className="rounded-lg border border-border bg-card p-3">
         <h3 className="mb-2 text-xs font-semibold text-foreground">待处理伏笔</h3>
         {hooks.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">暂无待回收伏笔。</p>
+          <p className="text-2xs text-muted-foreground">暂无待回收伏笔。</p>
         ) : (
           <ul className="space-y-1">
             {hooks.map((h) => (

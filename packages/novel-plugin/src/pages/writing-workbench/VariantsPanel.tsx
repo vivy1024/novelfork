@@ -100,7 +100,7 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
 
       {/* Input text */}
       <div>
-        <label className="text-[10px] text-muted-foreground font-medium">原文</label>
+        <label className="text-2xs text-muted-foreground font-medium">原文</label>
         <Textarea
           className="mt-1 text-xs min-h-[80px] resize-y"
           placeholder="粘贴要生成变体的原文…"
@@ -112,14 +112,14 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
       {/* Count selector */}
       <div className="flex items-center gap-3">
         <div>
-          <label className="text-[10px] text-muted-foreground font-medium">变体数量</label>
+          <label className="text-2xs text-muted-foreground font-medium">变体数量</label>
           <div className="flex gap-1 mt-1">
             {[2, 3, 4, 5].map((n) => (
               <button
                 key={n}
                 type="button"
                 onClick={() => setCount(n)}
-                className={`text-[10px] w-6 h-6 rounded-md border transition-colors ${
+                className={`text-2xs w-6 h-6 rounded-md border transition-colors ${
                   count === n
                     ? "bg-primary text-primary-foreground border-primary"
                     : "border-border text-muted-foreground hover:bg-muted"
@@ -134,7 +134,7 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
 
       {/* Direction hint */}
       <div>
-        <label className="text-[10px] text-muted-foreground font-medium">风格指令（可选）</label>
+        <label className="text-2xs text-muted-foreground font-medium">风格指令（可选）</label>
         <input
           type="text"
           className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
@@ -167,7 +167,7 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
       {/* Variants list */}
       {variants.length > 0 && (
         <div className="space-y-2">
-          <span className="text-[10px] text-muted-foreground font-medium">
+          <span className="text-2xs text-muted-foreground font-medium">
             生成结果（{variants.length} 个变体）
           </span>
           {variants.map((variant, idx) => (
@@ -178,13 +178,13 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
               }`}
             >
               <div className="flex items-center justify-between">
-                <Badge variant="secondary" className="text-[10px]">
+                <Badge variant="secondary" className="text-2xs">
                   变体 {idx + 1}
                 </Badge>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-6 text-[10px] px-2"
+                  className="h-6 text-2xs px-2"
                   onClick={() => void handleSelect(idx)}
                   disabled={appliedIndex === idx}
                 >
@@ -198,7 +198,7 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
                   )}
                 </Button>
               </div>
-              <pre className="text-[11px] text-foreground/90 overflow-x-auto max-h-40 whitespace-pre-wrap leading-relaxed">
+              <pre className="text-2xs text-foreground/90 overflow-x-auto max-h-40 whitespace-pre-wrap leading-relaxed">
                 {variant.content}
               </pre>
             </div>

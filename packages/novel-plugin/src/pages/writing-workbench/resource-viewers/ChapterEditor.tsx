@@ -201,33 +201,33 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator }: AIBub
         {pending ? (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 px-1">
-              <span className="text-[11px] font-medium">
+              <span className="text-2xs font-medium">
                 {AI_ACTION_LABELS[pending.action]}：规则已改 {pending.autoEditCount} 处
               </span>
-              <span className="text-[10px] text-muted-foreground">不会自动覆盖正文</span>
+              <span className="text-2xs text-muted-foreground">不会自动覆盖正文</span>
             </div>
             {pending.autoEditCount > 0 ? (
               <div className="max-h-28 overflow-y-auto rounded bg-muted/50 p-2 text-xs whitespace-pre-wrap">{pending.text}</div>
             ) : (
-              <div className="rounded bg-muted/50 px-2 py-1.5 text-[10px] text-muted-foreground">
+              <div className="rounded bg-muted/50 px-2 py-1.5 text-2xs text-muted-foreground">
                 没有可确定性改写的部分，以下问题需要语义判断。
               </div>
             )}
             {pending.manualFlags.length > 0 ? (
               <div className="space-y-1 rounded border border-amber-500/30 bg-amber-500/5 p-1.5">
-                <div className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                <div className="text-2xs font-medium text-amber-700 dark:text-amber-400">
                   {pending.manualFlags.length} 处需语义判断，规则未改
                 </div>
                 <div className="max-h-20 space-y-0.5 overflow-y-auto">
                   {pending.manualFlags.slice(0, 5).map((flag, index) => (
-                    <div key={`${flag.rule}-${index}`} className="text-[10px] text-muted-foreground">
+                    <div key={`${flag.rule}-${index}`} className="text-2xs text-muted-foreground">
                       「{flag.excerpt}」{flag.reason}
                     </div>
                   ))}
                 </div>
               </div>
             ) : null}
-            {pendingError ? <div className="px-1 text-[10px] text-destructive">{pendingError}</div> : null}
+            {pendingError ? <div className="px-1 text-2xs text-destructive">{pendingError}</div> : null}
             <div className="flex justify-end gap-1">
               <BubbleButton onClick={() => { setPending(null); setPendingError(null); }}>放弃</BubbleButton>
               {pending.manualFlags.length > 0 && onSendToNarrator ? (
@@ -240,8 +240,8 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator }: AIBub
           </div>
         ) : handedOff ? (
           <div className="space-y-1 px-1 py-0.5">
-            <div className="text-[11px] font-medium">已把{AI_ACTION_LABELS[handedOff]}任务交给叙述者</div>
-            <div className="text-[10px] text-muted-foreground">在对话面板查看结果，确认后再回写正文。</div>
+            <div className="text-2xs font-medium">已把{AI_ACTION_LABELS[handedOff]}任务交给叙述者</div>
+            <div className="text-2xs text-muted-foreground">在对话面板查看结果，确认后再回写正文。</div>
             <div className="flex justify-end">
               <BubbleButton onClick={() => setHandedOff(null)}>知道了</BubbleButton>
             </div>
@@ -263,7 +263,7 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator }: AIBub
                 </BubbleButton>
               ))}
             </div>
-            {pendingError ? <div className="px-1 pb-0.5 text-[10px] text-destructive">{pendingError}</div> : null}
+            {pendingError ? <div className="px-1 pb-0.5 text-2xs text-destructive">{pendingError}</div> : null}
           </div>
         )}
       </div>
@@ -469,7 +469,7 @@ export function ChapterEditor({
       )}
 
       {/* Footer: word count */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border text-2xs text-muted-foreground">
         <span>{wordCount} {language === "en" ? "words" : "字"}</span>
       </div>
     </div>

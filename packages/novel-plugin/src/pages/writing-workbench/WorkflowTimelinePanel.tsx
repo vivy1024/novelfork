@@ -266,7 +266,7 @@ export function WorkflowTimelinePanel({
           <button
             type="button"
             onClick={handleManualRefresh}
-            className="rounded border border-destructive/30 px-2 py-1 text-[11px] font-medium hover:bg-destructive/10"
+            className="rounded border border-destructive/30 px-2 py-1 text-2xs font-medium hover:bg-destructive/10"
           >
             重试
           </button>
@@ -314,7 +314,7 @@ export function WorkflowTimelinePanel({
                 <div key={step.id} className="relative">
                   {/* 时间线圆点 */}
                   <div
-                    className={`absolute -left-[30px] top-3.5 flex size-5 items-center justify-center rounded-full border-2 bg-background text-[10px] font-bold ${
+                    className={`absolute -left-[30px] top-3.5 flex size-5 items-center justify-center rounded-full border-2 bg-background text-2xs font-bold ${
                       step.enabled
                         ? "border-primary text-primary"
                         : "border-muted text-muted-foreground"
@@ -333,33 +333,33 @@ export function WorkflowTimelinePanel({
                       <div className="space-y-1.5 min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-semibold">{step.label}</span>
-                          <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
+                          <span className="rounded bg-muted px-2 py-0.5 text-2xs font-mono text-muted-foreground">
                             {step.kind}
                           </span>
 
                           {execMode === "subagent" && (
-                            <span className="flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
+                            <span className="flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-2xs font-medium text-secondary-foreground">
                               <Bot className="size-3" />
                               {step.agentId ?? "挂载子代理"}
                             </span>
                           )}
 
                           {execMode === "autonomous" && (
-                            <span className="flex items-center gap-1 rounded bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                            <span className="flex items-center gap-1 rounded bg-purple-100 px-2 py-0.5 text-2xs font-medium text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
                               <Sparkles className="size-3" />
                               主代理自主派发
                             </span>
                           )}
 
                           {execMode === "tool-only" && (
-                            <span className="flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] text-muted-foreground">
+                            <span className="flex items-center gap-1 rounded border px-2 py-0.5 text-2xs text-muted-foreground">
                               <Wrench className="size-3" />
                               纯工具流水线
                             </span>
                           )}
 
                           {step.requiresApproval && (
-                            <span className="flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                            <span className="flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-2xs font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
                               <ShieldCheck className="size-3" />
                               人工审核门禁 (HITL)
                             </span>
@@ -401,14 +401,14 @@ export function WorkflowTimelinePanel({
                         <div className="flex items-center justify-between rounded border bg-card p-3">
                           <div className="space-y-0.5">
                             <span className="font-medium">阶段装配状态</span>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-2xs text-muted-foreground">
                               {step.enabled
                                 ? "此阶段已在流水线中启用，将作为提示要求传达给叙述者"
                                 : "阶段已被作者停用，执行时将跳过"}
                             </p>
                           </div>
                           <span
-                            className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                            className={`px-2 py-0.5 rounded text-2xs font-medium ${
                               step.enabled
                                 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                                 : "bg-muted text-muted-foreground"

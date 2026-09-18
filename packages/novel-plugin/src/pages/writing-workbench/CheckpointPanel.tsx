@@ -98,16 +98,16 @@ export function CheckpointPanel({ checkpoints, loading, onPreviewRewind, onApply
           <div key={cp.id} className="rounded-md border border-border p-2.5 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono text-muted-foreground">{cp.id.slice(0, 16)}...</span>
-              <span className="text-[10px] text-muted-foreground">{formatTime(cp.createdAt)}</span>
+              <span className="text-2xs text-muted-foreground">{formatTime(cp.createdAt)}</span>
             </div>
             {cp.reason && <p className="text-xs">{cp.reason}</p>}
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-[9px]">{cp.resourceCount} 资源</Badge>
+              <Badge variant="secondary" className="text-2xs">{cp.resourceCount} 资源</Badge>
               <span className="flex-1" />
               {confirmId === cp.id ? (
                 <div className="flex items-center gap-1">
                   <AlertTriangle className="size-3 text-yellow-500" />
-                  <span className="text-[10px] text-yellow-600">确认回滚？</span>
+                  <span className="text-2xs text-yellow-600">确认回滚？</span>
                   <Button size="xs" variant="destructive" disabled={applyingId !== null} onClick={() => void handleApply(cp.id)}>
                     {applyingId === cp.id ? <Loader2 className="size-3 animate-spin" /> : "确认"}
                   </Button>
@@ -131,8 +131,8 @@ export function CheckpointPanel({ checkpoints, loading, onPreviewRewind, onApply
 
       {preview != null && (
         <div className="rounded-md border border-border bg-muted/30 p-2">
-          <p className="text-[10px] font-medium text-muted-foreground mb-1">回滚预览</p>
-          <pre className="text-[10px] text-muted-foreground overflow-x-auto max-h-32 whitespace-pre-wrap">
+          <p className="text-2xs font-medium text-muted-foreground mb-1">回滚预览</p>
+          <pre className="text-2xs text-muted-foreground overflow-x-auto max-h-32 whitespace-pre-wrap">
             {JSON.stringify(preview, null, 2)}
           </pre>
         </div>

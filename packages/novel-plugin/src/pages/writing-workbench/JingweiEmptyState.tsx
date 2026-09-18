@@ -55,7 +55,7 @@ export function JingweiEmptyState({ sectionTitle, onCreate }: JingweiEmptyStateP
       </div>
       <div className="flex items-start gap-1.5 rounded-md bg-amber-500/5 border border-amber-500/20 px-3 py-2 text-left">
         <Lightbulb className="size-3.5 shrink-0 mt-0.5 text-amber-500" />
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-2xs text-muted-foreground">
           <span className="font-medium text-foreground">示例条目：</span>
           {info.examples.join("、")}
         </div>

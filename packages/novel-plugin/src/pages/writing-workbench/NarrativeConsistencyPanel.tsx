@@ -135,7 +135,7 @@ export function NarrativeConsistencyPanel({
             <Stethoscope className="size-4 text-primary" />
             叙事体检
           </div>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             对照经纬设定与叙事记忆现状，找出对不上的地方。结果每次现算，不落盘。
           </p>
         </div>
@@ -163,11 +163,11 @@ export function NarrativeConsistencyPanel({
             <AlertTriangle className="size-3.5 shrink-0" />
             体检没跑起来
           </div>
-          <p className="text-[11px]">{state.message}</p>
+          <p className="text-2xs">{state.message}</p>
           <button
             type="button"
             onClick={() => void load()}
-            className="rounded border border-destructive/40 px-2 py-1 text-[10px] hover:bg-destructive/10"
+            className="rounded border border-destructive/40 px-2 py-1 text-2xs hover:bg-destructive/10"
           >
             重试
           </button>
@@ -189,8 +189,8 @@ export function NarrativeConsistencyPanel({
           ) : (
             <>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] text-muted-foreground">{state.report.summary}</p>
-                <Badge variant="secondary" className="shrink-0 text-[10px]">
+                <p className="text-2xs text-muted-foreground">{state.report.summary}</p>
+                <Badge variant="secondary" className="shrink-0 text-2xs">
                   {visible.length} 处待看
                 </Badge>
               </div>
@@ -210,7 +210,7 @@ export function NarrativeConsistencyPanel({
                 <button
                   type="button"
                   onClick={() => setIgnoredKeys([])}
-                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                  className="text-2xs text-muted-foreground hover:text-foreground"
                 >
                   已隐藏 {ignoredCount} 条误报 · 显示出来
                 </button>
@@ -238,12 +238,12 @@ function EmptyState({
       data-testid="narrative-consistency-empty"
     >
       <CheckCircle2 className="size-7 text-emerald-600 dark:text-emerald-500" />
-      <span className="text-[11px] font-medium">未检出纰漏</span>
-      <p className="max-w-[36ch] text-[10px] text-muted-foreground">
+      <span className="text-2xs font-medium">未检出纰漏</span>
+      <p className="max-w-[36ch] text-2xs text-muted-foreground">
         {summary || "经纬设定与叙事记忆现状一致。"}
       </p>
       {ignoredCount > 0 && (
-        <button type="button" onClick={onRestoreIgnored} className="text-[10px] text-muted-foreground hover:text-foreground">
+        <button type="button" onClick={onRestoreIgnored} className="text-2xs text-muted-foreground hover:text-foreground">
           另有 {ignoredCount} 条被你标为误报 · 显示出来
         </button>
       )}
@@ -275,7 +275,7 @@ function FindingGroupSection({
           <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-500" />
           {group.label}
         </h3>
-        <Badge variant="secondary" className="shrink-0 text-[10px]">{group.findings.length}</Badge>
+        <Badge variant="secondary" className="shrink-0 text-2xs">{group.findings.length}</Badge>
       </div>
       {group.findings.map((finding) => (
         <FindingCard
@@ -319,13 +319,13 @@ function FindingCard({
     <article className="rounded border border-border/60 p-2.5 space-y-2" data-testid="consistency-finding">
       <div className="space-y-1">
         <div className="flex items-start justify-between gap-2">
-          <span className="text-[11px] font-medium">{finding.title}</span>
+          <span className="text-2xs font-medium">{finding.title}</span>
           {finding.memoryChapter !== undefined && (
-            <span className="shrink-0 text-[10px] text-muted-foreground">第 {finding.memoryChapter} 章</span>
+            <span className="shrink-0 text-2xs text-muted-foreground">第 {finding.memoryChapter} 章</span>
           )}
         </div>
         {(finding.jingweiValue || finding.memoryValue) && (
-          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+          <div className="flex flex-wrap items-center gap-1.5 text-2xs">
             <span className="text-muted-foreground">{finding.entity}</span>
             {finding.jingweiValue && (
               <span className="rounded bg-muted px-1.5 py-0.5">经纬：{finding.jingweiValue}</span>
@@ -340,13 +340,13 @@ function FindingCard({
       </div>
 
       {/* 三段式一律转述后端 explanation，不按 kind 自造文案。 */}
-      <dl className="space-y-1 rounded bg-muted/40 p-2 text-[10px] leading-relaxed">
+      <dl className="space-y-1 rounded bg-muted/40 p-2 text-2xs leading-relaxed">
         <ExplanationRow label="发生了什么" value={explanation.whatHappened} />
         <ExplanationRow label="为什么要看" value={explanation.whyItMatters} />
         <ExplanationRow label="建议怎么做" value={explanation.suggestedAction} />
       </dl>
 
-      {entryError && <p className="text-[10px] text-destructive">{entryError}</p>}
+      {entryError && <p className="text-2xs text-destructive">{entryError}</p>}
 
       <div className="flex flex-wrap justify-end gap-1.5">
         {finding.memoryChapter !== undefined && onJumpToChapter && (
@@ -415,7 +415,7 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] transition-colors disabled:opacity-50 ${
+      className={`inline-flex items-center gap-1 rounded px-2 py-1 text-2xs transition-colors disabled:opacity-50 ${
         primary
           ? "bg-primary text-primary-foreground hover:bg-primary/90"
           : "border border-border hover:bg-muted"

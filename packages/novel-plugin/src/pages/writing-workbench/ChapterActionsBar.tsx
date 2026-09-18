@@ -34,10 +34,10 @@ export function ChapterActionsBar({ resourceId, chapterNumber, version, wordCoun
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge variant="outline" className={status === "archived" ? "border-gray-500/20 bg-gray-500/10 text-[10px] text-gray-600 dark:text-gray-300" : "border-green-500/20 bg-green-500/10 text-[10px] text-green-700 dark:text-green-300"}>{status === "archived" ? "已归档" : "正式章节"}</Badge>
-      {chapterNumber ? <span className="text-[10px] text-muted-foreground">第 {chapterNumber} 章</span> : null}
-      {version ? <span className="text-[10px] text-muted-foreground">v{version}</span> : null}
-      {typeof wordCount === "number" ? <span className="text-[10px] text-muted-foreground">{wordCount} 字</span> : null}
+      <Badge variant="outline" className={status === "archived" ? "border-gray-500/20 bg-gray-500/10 text-2xs text-gray-600 dark:text-gray-300" : "border-green-500/20 bg-green-500/10 text-2xs text-green-700 dark:text-green-300"}>{status === "archived" ? "已归档" : "正式章节"}</Badge>
+      {chapterNumber ? <span className="text-2xs text-muted-foreground">第 {chapterNumber} 章</span> : null}
+      {version ? <span className="text-2xs text-muted-foreground">v{version}</span> : null}
+      {typeof wordCount === "number" ? <span className="text-2xs text-muted-foreground">{wordCount} 字</span> : null}
       <span className="flex-1" />
       {error ? <span className="max-w-56 truncate text-xs text-destructive">{error}</span> : null}
       <Button size="xs" variant="ghost" disabled={loading !== null} onClick={() => void run("history", () => onToggleHistory(resourceId))} title="查看版本历史">

@@ -60,7 +60,7 @@ export function NarratorList({
           >
             <span className="truncate text-xs font-medium">{session.title}</span>
             {session.projectName && (
-              <span className="truncate text-[10px] opacity-60">{session.projectName}</span>
+              <span className="truncate text-2xs opacity-60">{session.projectName}</span>
             )}
           </Button>
         ))

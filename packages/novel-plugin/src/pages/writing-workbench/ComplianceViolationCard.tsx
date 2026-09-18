@@ -26,13 +26,13 @@ export function ComplianceViolationCard({ violations, onDismiss }: Props) {
           预设合规检查：{violations.length} 项违规
         </span>
         <span className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={onDismiss}>
+        <Button variant="ghost" size="sm" className="h-6 text-2xs" onClick={onDismiss}>
           忽略全部
         </Button>
       </div>
       {violations.slice(0, 5).map((v, i) => (
         <div key={i} className="flex items-start gap-2 text-xs">
-          <Badge variant="outline" className="text-[10px] shrink-0">
+          <Badge variant="outline" className="text-2xs shrink-0">
             {v.presetName}
           </Badge>
           <div className="flex-1">
@@ -42,7 +42,7 @@ export function ComplianceViolationCard({ violations, onDismiss }: Props) {
         </div>
       ))}
       {violations.length > 5 && (
-        <div className="text-[10px] text-muted-foreground">还有 {violations.length - 5} 项...</div>
+        <div className="text-2xs text-muted-foreground">还有 {violations.length - 5} 项...</div>
       )}
     </div>
   );

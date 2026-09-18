@@ -396,9 +396,9 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
   return (
     <div className="flex h-full min-h-[80vh] flex-col" data-testid="chronicle-helix-canvas">
       {/* 图例 */}
-      <div className="flex flex-wrap items-center gap-3 border-b px-3 py-2 text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-3 border-b px-3 py-2 text-2xs text-muted-foreground">
         {state.degradedChains.length > 0 ? (
-          <Badge variant="destructive" className="text-[10px] font-normal" data-testid="chronicle-helix-degraded">
+          <Badge variant="destructive" className="text-2xs font-normal" data-testid="chronicle-helix-degraded">
             {state.degradedChains.join("、")}加载失败，当前为残缺视图
           </Badge>
         ) : null}
@@ -419,7 +419,7 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
                 key={character.name}
                 variant={active ? "secondary" : "outline"}
                 size="xs"
-                className="h-5 gap-1 px-1.5 text-[10px] font-normal"
+                className="h-5 gap-1 px-1.5 text-2xs font-normal"
                 aria-pressed={active}
                 data-testid={`chronicle-focus-${character.name}`}
                 title={active ? "取消聚焦" : "聚焦该角色弧线"}
@@ -431,7 +431,7 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
             );
           })}
           {focusCharacter && (
-            <Badge variant="outline" className="gap-1 text-[10px] font-normal text-primary" data-testid="chronicle-focus-active">
+            <Badge variant="outline" className="gap-1 text-2xs font-normal text-primary" data-testid="chronicle-focus-active">
               聚焦 {focusCharacter}
             </Badge>
           )}
@@ -456,7 +456,7 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
           <canvas ref={canvasRef} className={isEmpty ? "hidden" : "block"} role="img" aria-label="里世界与表世界对照条" />
           {hover ? (
             <div
-              className="pointer-events-none absolute z-10 max-w-64 rounded-md border bg-popover px-2.5 py-1.5 text-[11px] shadow-md"
+              className="pointer-events-none absolute z-10 max-w-64 rounded-md border bg-popover px-2.5 py-1.5 text-2xs shadow-md"
               style={{
                 left: Math.min(hover.x + 12, (wrapRef.current?.clientWidth ?? 400) - 270),
                 top: Math.max(4, hover.y - 52),

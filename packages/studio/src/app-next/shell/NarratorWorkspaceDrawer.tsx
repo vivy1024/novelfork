@@ -73,7 +73,7 @@ function SessionButton({
       {session.projectId ? <BookOpen className="size-4 shrink-0" /> : <MessageSquareText className="size-4 shrink-0" />}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{session.title}</span>
-        <span className="block truncate text-[11px] text-muted-foreground">
+        <span className="block truncate text-2xs text-muted-foreground">
           {session.projectName ? `书籍 · ${session.projectName}` : "独立叙述者"}
         </span>
       </span>
@@ -194,7 +194,7 @@ export function NarratorWorkspaceDrawer({
                     onClick={() => openNarrator(narratorId)}
                   >
                     <span className="block truncate text-sm font-medium">{tab.title}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="block truncate text-2xs text-muted-foreground">
                       {stale
                         ? "会话已失效，可关闭此最近项"
                         : session.projectName

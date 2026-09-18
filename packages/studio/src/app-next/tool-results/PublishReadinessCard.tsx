@@ -12,7 +12,7 @@ const STATUS_META: Record<string, { label: string; tone: string; icon: typeof Ch
 function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className="text-2xs text-muted-foreground">{label}</p>
       <p className={`text-xs ${tone ?? "text-foreground"}`}>{value}</p>
     </div>
   );
@@ -63,14 +63,14 @@ export const PublishReadinessCard: ToolResultRenderer = (context: ToolResultRend
       </div>
 
       {rulePack && (
-        <div className="border-t border-border pt-2 text-[11px] text-muted-foreground">
+        <div className="border-t border-border pt-2 text-2xs text-muted-foreground">
           <span className="font-medium text-foreground">规则来源：</span>{getString(rulePack.id)} · {getString(rulePack.name)} · v{getString(rulePack.version)} · {getString(rulePack.confidence)} 可信度
           {getString(rulePack.source) && <span> · {getString(rulePack.source)}</span>}
         </div>
       )}
 
       {aiTasteRulePack && (
-        <div className="border-t border-border pt-2 text-[11px] text-muted-foreground">
+        <div className="border-t border-border pt-2 text-2xs text-muted-foreground">
           <span className="font-medium text-foreground">AI 味线索来源：</span>{getString(aiTasteRulePack.id)} · {getString(aiTasteRulePack.name)}
           {aiTasteMethodology && <p className="mt-1">{aiTasteMethodology}</p>}
           {getString(aiTasteRulePack.note) && <p className="mt-1">{getString(aiTasteRulePack.note)}</p>}
@@ -78,7 +78,7 @@ export const PublishReadinessCard: ToolResultRenderer = (context: ToolResultRend
       )}
 
       {evidence.length > 0 && (
-        <div className="space-y-1 border-t border-border pt-2 text-[11px]">
+        <div className="space-y-1 border-t border-border pt-2 text-2xs">
           <span className="font-medium">复核证据</span>
           {evidence.slice(0, 3).map((item, index) => {
             const chapterNumber = getNumber(item.chapterNumber);
@@ -99,12 +99,12 @@ export const PublishReadinessCard: ToolResultRenderer = (context: ToolResultRend
       )}
 
       {notes.length > 0 && (
-        <ul className="space-y-0.5 border-t border-border pt-2 text-[11px] text-muted-foreground">
+        <ul className="space-y-0.5 border-t border-border pt-2 text-2xs text-muted-foreground">
           {notes.slice(0, 5).map((note, index) => <li key={index}>{note}</li>)}
         </ul>
       )}
       {summary && <p className="text-xs text-muted-foreground">{summary}</p>}
-      <p className="text-[11px] text-muted-foreground">此结果是本地自检线索，不代表平台审核结论。</p>
+      <p className="text-2xs text-muted-foreground">此结果是本地自检线索，不代表平台审核结论。</p>
     </div>
   );
 };

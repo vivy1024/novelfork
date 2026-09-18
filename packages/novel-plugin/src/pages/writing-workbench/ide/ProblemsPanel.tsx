@@ -164,26 +164,26 @@ export function ProblemsPanel({
       >
         {/* Severity summary icons */}
         {counts.error > 0 && (
-          <span className="flex items-center gap-0.5 text-[11px]">
+          <span className="flex items-center gap-0.5 text-2xs">
             <AlertCircle className="size-3.5 text-red-500" />
             <span className="text-red-500 font-medium">{counts.error}</span>
           </span>
         )}
         {counts.warning > 0 && (
-          <span className="flex items-center gap-0.5 text-[11px]">
+          <span className="flex items-center gap-0.5 text-2xs">
             <AlertTriangle className="size-3.5 text-yellow-500" />
             <span className="text-yellow-500 font-medium">{counts.warning}</span>
           </span>
         )}
         {counts.info > 0 && (
-          <span className="flex items-center gap-0.5 text-[11px]">
+          <span className="flex items-center gap-0.5 text-2xs">
             <Info className="size-3.5 text-blue-400" />
             <span className="text-blue-400 font-medium">{counts.info}</span>
           </span>
         )}
 
         <span className="text-xs font-medium text-foreground">问题</span>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {issues.length > 0 ? `(${issues.length})` : ""}
         </span>
 

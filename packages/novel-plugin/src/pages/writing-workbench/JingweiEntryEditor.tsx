@@ -206,7 +206,7 @@ function JingweiSchemaField({
           className="h-8 text-xs"
         />
       )}
-      {field.helpText ? <p className="mt-1 text-[10px] text-muted-foreground">{field.helpText}</p> : null}
+      {field.helpText ? <p className="mt-1 text-2xs text-muted-foreground">{field.helpText}</p> : null}
     </div>
   );
 }
@@ -525,9 +525,9 @@ function JingweiEntryEditorForm({
     <section className="resource-viewer" data-resource-kind="jingwei-entry" data-testid="jingwei-entry-editor">
       <header className="resource-viewer__header flex items-center gap-2 mb-3">
         <p className="text-xs text-muted-foreground">{sourceLabel}</p>
-        {sectionLabel && <Badge variant="secondary" className="text-[10px]">{sectionLabel}</Badge>}
+        {sectionLabel && <Badge variant="secondary" className="text-2xs">{sectionLabel}</Badge>}
         {entry.updatedAt && (
-          <span className="text-[10px] text-muted-foreground ml-auto">
+          <span className="text-2xs text-muted-foreground ml-auto">
             更新于 {new Date(entry.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
@@ -546,13 +546,13 @@ function JingweiEntryEditorForm({
         <Button variant={activeTab === "relations" ? "default" : "ghost"} size="xs" onClick={() => setActiveTab("relations")}>
           <Link2 className="size-3 mr-1" />关联
           {relationItems.length > 0 && (
-            <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0">{relationItems.length}</Badge>
+            <Badge variant="secondary" className="ml-1 text-2xs px-1 py-0">{relationItems.length}</Badge>
           )}
         </Button>
         <Button variant={activeTab === "history" ? "default" : "ghost"} size="xs" onClick={() => setActiveTab("history")}>
           <History className="size-3 mr-1" />历史
           {historyCount > 0 && (
-            <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0">{historyCount}</Badge>
+            <Badge variant="secondary" className="ml-1 text-2xs px-1 py-0">{historyCount}</Badge>
           )}
         </Button>
       </div>
@@ -565,7 +565,7 @@ function JingweiEntryEditorForm({
               <Button size="xs" variant="outline" onClick={() => setRelationAdding((v) => !v)}>
                 <Link2 className="size-3 mr-1" />{relationAdding ? "取消" : "添加关联"}
               </Button>
-              <span className="text-[10px] text-muted-foreground">关联写回条目字段，AI 注入上下文时会一并带上关联条目</span>
+              <span className="text-2xs text-muted-foreground">关联写回条目字段，AI 注入上下文时会一并带上关联条目</span>
             </div>
           )}
           {isJingweiEntry && relationAdding && (
@@ -656,13 +656,13 @@ function JingweiEntryEditorForm({
                     <div className="absolute -left-4 top-1.5 w-[7px] h-[7px] rounded-full bg-primary ring-2 ring-background" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                        <span className="text-2xs text-muted-foreground whitespace-nowrap">
                           {new Date(revision.created_at).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                         </span>
-                        <Badge variant={sourceBadgeVariant(revision.changed_by)} className="text-[10px] px-1.5 py-0">
+                        <Badge variant={sourceBadgeVariant(revision.changed_by)} className="text-2xs px-1.5 py-0">
                           {SOURCE_LABELS[revision.changed_by] ?? revision.changed_by}
                         </Badge>
-                        {revision.reason && <span className="text-[11px] text-muted-foreground truncate">{revision.reason}</span>}
+                        {revision.reason && <span className="text-2xs text-muted-foreground truncate">{revision.reason}</span>}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">可恢复正文版本{revision.category ? ` · 分类 ${revision.category}` : ""}{revision.layer ? ` · ${revision.layer}` : ""}</p>
                     </div>
@@ -752,7 +752,7 @@ function JingweiEntryEditorForm({
                 <SelectItem value="reference">参考（仅 full 模式）</SelectItem>
               </SelectContent>
             </Select>
-            <p className="mt-1 text-[10px] text-muted-foreground">核心条目始终被 Agent 看到；参考条目仅在 full 模式下注入。</p>
+            <p className="mt-1 text-2xs text-muted-foreground">核心条目始终被 Agent 看到；参考条目仅在 full 模式下注入。</p>
           </div>
 
           {isJingweiEntry && (
@@ -818,7 +818,7 @@ function JingweiEntryEditorForm({
                 <label className="text-xs text-muted-foreground mb-1 block">别名</label>
                 <div className="flex flex-wrap items-center gap-1 rounded-md border border-input bg-background px-2 py-1.5">
                   {aliases.map((alias, index) => (
-                    <Badge key={`${alias}-${index}`} variant="secondary" className="text-[10px] gap-0.5 pr-1">
+                    <Badge key={`${alias}-${index}`} variant="secondary" className="text-2xs gap-0.5 pr-1">
                       {alias}
                       <button type="button" onClick={() => setAliases((prev) => prev.filter((_, i) => i !== index))} className="ml-0.5 hover:text-destructive">
                         <X className="size-2.5" />
@@ -836,10 +836,10 @@ function JingweiEntryEditorForm({
                       }
                     }}
                     placeholder={aliases.length === 0 ? "回车添加别名" : "添加…"}
-                    className="h-6 w-28 text-[10px] border-none bg-transparent px-1 focus-visible:ring-0"
+                    className="h-6 w-28 text-2xs border-none bg-transparent px-1 focus-visible:ring-0"
                   />
                 </div>
-                <p className="mt-1 text-[10px] text-muted-foreground">别名用于经纬检索召回，多个别名回车分隔。</p>
+                <p className="mt-1 text-2xs text-muted-foreground">别名用于经纬检索召回，多个别名回车分隔。</p>
               </div>
             </>
           )}
@@ -851,7 +851,7 @@ function JingweiEntryEditorForm({
               保存
             </Button>
 
-            {dirty && <Badge className="text-[10px] bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
+            {dirty && <Badge className="text-2xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
 
             <span className="flex-1" />
 

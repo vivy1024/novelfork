@@ -62,7 +62,7 @@ function percent(value: number | undefined): string {
 function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded bg-muted/40 p-1.5" title={hint}>
-      <span className="block text-[10px] text-muted-foreground">{label}</span>
+      <span className="block text-2xs text-muted-foreground">{label}</span>
       <span className="text-xs font-semibold">{value}</span>
     </div>
   );
@@ -80,7 +80,7 @@ function SentenceLengthHistogram({ buckets }: { buckets: readonly number[] }) {
 
   return (
     <div className="space-y-1">
-      <p className="text-[10px] text-muted-foreground">句长分布（共 {total} 句）</p>
+      <p className="text-2xs text-muted-foreground">句长分布（共 {total} 句）</p>
       <svg width={svgWidth} height={chartHeight + 14} className="block" role="img" aria-label="句长分布直方图">
         {buckets.map((count, index) => {
           const barHeight = (count / max) * chartHeight;
@@ -203,7 +203,7 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
             size="xs"
             variant="outline"
             onClick={() => setShowTavernImport((v) => !v)}
-            className="h-6 text-[10px] gap-1"
+            className="h-6 text-2xs gap-1"
           >
             <FileCode2 className="size-3 text-primary" />
             导入酒馆预设
@@ -241,10 +241,10 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
                   <RefreshCw className={`size-3 ${profileLoading ? "animate-spin" : ""}`} />
                 </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground">权威源：story/style_profile.json</p>
+              <p className="text-2xs text-muted-foreground">权威源：story/style_profile.json</p>
 
               {profileError && (
-                <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-[10px] text-destructive">
+                <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-2xs text-destructive">
                   {profileError}
                 </p>
               )}
@@ -270,7 +270,7 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
                   <Metric label="弱副词/千字" value={profile.weakAdverbPer1000 !== undefined ? String(profile.weakAdverbPer1000) : "—"} />
                 </div>
               ) : profileLoading ? null : (
-                <p className="text-[11px] text-muted-foreground">尚未建立基线。用下方样文提取后即生效。</p>
+                <p className="text-2xs text-muted-foreground">尚未建立基线。用下方样文提取后即生效。</p>
               )}
 
               {profile?.sentenceLengthBuckets && profile.sentenceLengthBuckets.length > 0 && (
@@ -283,7 +283,7 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
                 <Upload className="size-3 text-primary" />
                 <span>从参考样文提取</span>
               </div>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 贴入你满意的参考正文（建议 500-2000 字）。只提取句长节奏、对话密度、词汇丰富度等可复用统计特征，
                 不会把样文的专名、口癖或情节带进本书。
               </p>
@@ -305,13 +305,13 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
               </Button>
 
               {distillNotice && (
-                <div className="flex items-start gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 p-2 text-[10px] text-emerald-700 dark:text-emerald-400">
+                <div className="flex items-start gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 p-2 text-2xs text-emerald-700 dark:text-emerald-400">
                   <CheckCircle2 className="mt-0.5 size-3 shrink-0" />
                   <span>{distillNotice}</span>
                 </div>
               )}
               {distillError && (
-                <div role="alert" className="flex items-start gap-1 rounded border border-destructive/20 bg-destructive/10 p-2 text-[10px] text-destructive">
+                <div role="alert" className="flex items-start gap-1 rounded border border-destructive/20 bg-destructive/10 p-2 text-2xs text-destructive">
                   <AlertTriangle className="mt-0.5 size-3 shrink-0" />
                   <span>{distillError}</span>
                 </div>
@@ -374,7 +374,7 @@ function TavernPresetImportSection({
         </div>
         <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
-      <p className="text-[10px] text-muted-foreground leading-relaxed">
+      <p className="text-2xs text-muted-foreground leading-relaxed">
         粘贴酒馆 Chat Completion 预设 JSON。系统会自动展开宏变量（如 {"{{user}}"} $\to$ 作者）、识别并小说化提纯破限词，转换为标准 Writing Skill。
       </p>
 
@@ -384,10 +384,10 @@ function TavernPresetImportSection({
             value={jsonText}
             onChange={(e) => setJsonText(e.target.value)}
             placeholder='在此粘贴酒馆预设 JSON 文本（{"prompts": [...], "prompt_order": [...]}）...'
-            className="min-h-[90px] font-mono text-[11px]"
+            className="min-h-[90px] font-mono text-2xs"
           />
           {parseError && (
-            <p role="alert" className="text-[10px] text-destructive bg-destructive/10 p-2 rounded border border-destructive/20">
+            <p role="alert" className="text-2xs text-destructive bg-destructive/10 p-2 rounded border border-destructive/20">
               {parseError}
             </p>
           )}
@@ -401,15 +401,15 @@ function TavernPresetImportSection({
           <div className="rounded border border-border bg-card p-2.5 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold">{parsedResult.skill.name}</span>
-              <Badge variant="secondary" className="text-[9px]">{parsedResult.skill.slug}</Badge>
+              <Badge variant="secondary" className="text-2xs">{parsedResult.skill.slug}</Badge>
             </div>
-            <div className="grid grid-cols-3 gap-1 text-[10px] text-muted-foreground pt-1">
+            <div className="grid grid-cols-3 gap-1 text-2xs text-muted-foreground pt-1">
               <span>有效提示词: {parsedResult.stats.importedPrompts} 条</span>
               <span>跳过标记项: {parsedResult.stats.skippedMarkers} 个</span>
               <span>破限提纯: {parsedResult.stats.jailbreakCount} 处</span>
             </div>
             {parsedResult.warnings.length > 0 && (
-              <div className="space-y-0.5 pt-1 text-[10px] text-amber-600 dark:text-amber-400">
+              <div className="space-y-0.5 pt-1 text-2xs text-amber-600 dark:text-amber-400">
                 {parsedResult.warnings.map((w, i) => (
                   <p key={i}>• {w}</p>
                 ))}

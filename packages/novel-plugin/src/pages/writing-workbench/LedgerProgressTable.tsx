@@ -398,11 +398,11 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
   return (
     <div className="space-y-2" data-testid="ledger-progress-table">
       <div className="flex items-center justify-between gap-1 px-1">
-        <span className="text-[11px] font-semibold text-muted-foreground">进度账本</span>
+        <span className="text-2xs font-semibold text-muted-foreground">进度账本</span>
         <Button
           size="xs"
           variant="ghost"
-          className="h-6 text-[10px]"
+          className="h-6 text-2xs"
           onClick={() => onOpen(createForeshadowingBoardNode())}
         >
           <Columns3 className="size-3" />
@@ -411,10 +411,10 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
       </div>
 
       <div className="flex flex-wrap items-center gap-1 px-1">
-        <Badge variant="outline" className="h-4 px-1 py-0 text-[9px]">待回收 {stats.openForeshadow}</Badge>
-        <Badge variant="outline" className="h-4 px-1 py-0 text-[9px]" data-testid="foreshadow-due-count">本章到期 {stats.dueNow}</Badge>
-        <Badge variant="outline" className="h-4 px-1 py-0 text-[9px]">未收束 {stats.openConflicts}</Badge>
-        <Badge variant="outline" className={cn("h-4 px-1 py-0 text-[9px]", stats.forgotten > 0 ? "border-amber-500/40 text-amber-700 dark:text-amber-400" : "")}>
+        <Badge variant="outline" className="h-4 px-1 py-0 text-2xs">待回收 {stats.openForeshadow}</Badge>
+        <Badge variant="outline" className="h-4 px-1 py-0 text-2xs" data-testid="foreshadow-due-count">本章到期 {stats.dueNow}</Badge>
+        <Badge variant="outline" className="h-4 px-1 py-0 text-2xs">未收束 {stats.openConflicts}</Badge>
+        <Badge variant="outline" className={cn("h-4 px-1 py-0 text-2xs", stats.forgotten > 0 ? "border-amber-500/40 text-amber-700 dark:text-amber-400" : "")}>
           遗忘 {stats.forgotten}
         </Badge>
       </div>
@@ -427,7 +427,7 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
             aria-pressed={filter === item.value}
             onClick={() => setFilter(item.value)}
             className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] transition-colors",
+              "rounded-full px-2 py-0.5 text-2xs transition-colors",
               filter === item.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >
@@ -439,10 +439,10 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
       {rows.length === 0 ? (
         <div className="p-4 text-center text-xs text-muted-foreground space-y-1">
           <p className="font-medium text-foreground">暂无进度账</p>
-          <p className="text-[11px]">伏笔、冲突写进经纬后会出现在这里；钱/证/仇/债由章后结算进入资源账本。</p>
+          <p className="text-2xs">伏笔、冲突写进经纬后会出现在这里；钱/证/仇/债由章后结算进入资源账本。</p>
         </div>
       ) : filtered.length === 0 ? (
-        <p className="px-1 py-3 text-center text-[11px] text-muted-foreground">当前筛选下没有账目。</p>
+        <p className="px-1 py-3 text-center text-2xs text-muted-foreground">当前筛选下没有账目。</p>
       ) : (
         <div className="space-y-1">
           {filtered.map((row) => (
@@ -455,8 +455,8 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
               )}
             >
               <div className="flex items-center gap-1.5">
-                <Badge variant="outline" className="h-4 shrink-0 px-1 py-0 text-[9px]">{KIND_BADGE[row.kind]}</Badge>
-                {row.isPuzzle ? <Badge variant="outline" className="h-4 shrink-0 px-1 py-0 text-[9px]">谜</Badge> : null}
+                <Badge variant="outline" className="h-4 shrink-0 px-1 py-0 text-2xs">{KIND_BADGE[row.kind]}</Badge>
+                {row.isPuzzle ? <Badge variant="outline" className="h-4 shrink-0 px-1 py-0 text-2xs">谜</Badge> : null}
                 {row.statusEditable ? (
                   <button
                     type="button"
@@ -473,7 +473,7 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
                     aria-label={`${row.name} 状态`}
                     value={row.status}
                     onChange={(event) => void patchStatus(row, event.currentTarget.value)}
-                    className="h-5 max-w-20 shrink-0 rounded border border-border bg-background px-1 text-[10px]"
+                    className="h-5 max-w-20 shrink-0 rounded border border-border bg-background px-1 text-2xs"
                   >
                     {row.statusOptions.map((option) => (
                       <option key={option} value={option}>{option}</option>
@@ -481,14 +481,14 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
                   </select>
                 ) : (
                   <span
-                    className="shrink-0 text-[10px] text-muted-foreground"
+                    className="shrink-0 text-2xs text-muted-foreground"
                     title="余额由章后结算维护，不能在表里直接结清"
                   >
                     {row.status}
                   </span>
                 )}
               </div>
-              <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground">
                 {row.jumpChapter && onJumpToChapter ? (
                   <button
                     type="button"
@@ -503,7 +503,7 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
                 {row.debtKind ? <span>{PRESSURE_LEDGER_KIND_LABEL[row.debtKind]}</span> : null}
               </div>
               {row.warning ? (
-                <p className="flex items-start gap-1 text-[10px] leading-relaxed text-amber-700 dark:text-amber-400">
+                <p className="flex items-start gap-1 text-2xs leading-relaxed text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="mt-0.5 size-3 shrink-0" />
                   <span>{row.warning}</span>
                 </p>

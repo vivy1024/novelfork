@@ -90,17 +90,17 @@ function BeatCard({
       data-testid={`story-map-node-${beat.id}`}
     >
       <div className="flex items-center justify-between gap-1">
-        <Badge variant="outline" className="h-4 px-1.5 text-[9px]">{THREAD_LABEL[beat.lane]}</Badge>
-        {beat.status ? <span className="text-[9px] text-muted-foreground">{beat.status}</span> : null}
+        <Badge variant="outline" className="h-4 px-1.5 text-2xs">{THREAD_LABEL[beat.lane]}</Badge>
+        {beat.status ? <span className="text-2xs text-muted-foreground">{beat.status}</span> : null}
       </div>
-      <p className="mt-1 text-[11px] font-medium leading-snug">{beat.title}</p>
-      {beat.summary ? <p className="mt-0.5 line-clamp-2 text-[10px] text-muted-foreground">{beat.summary}</p> : null}
+      <p className="mt-1 text-2xs font-medium leading-snug">{beat.title}</p>
+      {beat.summary ? <p className="mt-0.5 line-clamp-2 text-2xs text-muted-foreground">{beat.summary}</p> : null}
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
         {canJump ? (
           <Button
             size="xs"
             variant="ghost"
-            className="h-5 px-1.5 text-[10px]"
+            className="h-5 px-1.5 text-2xs"
             data-testid={`jump-btn-${beat.id}`}
             onClick={() => onOpenChapter?.(beat.chapterNumber!)}
           >
@@ -111,7 +111,7 @@ function BeatCard({
           <Button
             size="xs"
             variant="ghost"
-            className="h-5 px-1.5 text-[10px]"
+            className="h-5 px-1.5 text-2xs"
             data-testid={`promote-btn-${beat.id}`}
             onClick={() => onPromote(storyMapBeatToNodeData(beat))}
           >
@@ -192,7 +192,7 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote,
         <AlertCircle className="size-6 text-destructive" />
         <div className="space-y-1">
           <p className="text-xs font-semibold text-foreground">情节板加载失败</p>
-          <p className="text-[11px] text-muted-foreground max-w-sm">{error}</p>
+          <p className="text-2xs text-muted-foreground max-w-sm">{error}</p>
         </div>
         <Button size="xs" variant="outline" className="h-7 text-xs gap-1" onClick={() => void loadStoryMap()}>
           <RotateCcw className="size-3" />
@@ -210,7 +210,7 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote,
         </div>
         <div className="space-y-1">
           <p className="text-xs font-medium text-foreground">暂无故事主支线数据</p>
-          <p className="text-[11px] text-muted-foreground max-w-xs leading-relaxed">
+          <p className="text-2xs text-muted-foreground max-w-xs leading-relaxed">
             当前书籍尚未生成章节或叙事线节点。开始写作或在大纲中添加规划后将自动生成情节板。
           </p>
         </div>
@@ -231,7 +231,7 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote,
         </div>
         <div className="space-y-1">
           <p className="text-xs font-medium text-foreground">叙事线暂无规划节点</p>
-          <p className="text-[11px] text-muted-foreground max-w-sm leading-relaxed">
+          <p className="text-2xs text-muted-foreground max-w-sm leading-relaxed">
             当前快照仅包含 {chapterCount} 个章节节点，缺少：{missing.join(" / ")}。
             规划节点来自经纬账本，需要先拆解正文与抽取弧线才会点亮情节板。
           </p>
@@ -263,7 +263,7 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote,
       <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card/90 px-3 py-2 backdrop-blur-md">
         <Sparkles className="size-4 text-primary" />
         <span className="text-xs font-bold text-foreground">故事情节板 · 章 × 线索</span>
-        <Button size="xs" variant="outline" className="ml-auto h-7 text-[11px] gap-1" onClick={() => void loadStoryMap()}>
+        <Button size="xs" variant="outline" className="ml-auto h-7 text-2xs gap-1" onClick={() => void loadStoryMap()}>
           <RotateCcw className="size-3" />
           刷新
         </Button>
@@ -273,7 +273,7 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote,
           className="grid gap-2"
           style={{ gridTemplateColumns: `10rem repeat(${Math.max(board.chapters.length, 1)}, minmax(11rem, 1fr))` }}
         >
-          <div className="sticky left-0 z-[1] rounded-md bg-muted/70 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground">线索</div>
+          <div className="sticky left-0 z-[1] rounded-md bg-muted/70 px-2 py-1.5 text-2xs font-semibold text-muted-foreground">线索</div>
           {board.chapters.map((chapter) => (
             <button
               key={chapter.chapterNumber}
@@ -282,8 +282,8 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote,
               data-testid={`jump-btn-${chapter.nodeId ?? `chapter-${chapter.chapterNumber}`}`}
               onClick={() => onOpenChapter?.(chapter.chapterNumber)}
             >
-              <div className="text-[10px] font-semibold">第 {chapter.chapterNumber} 章</div>
-              <div className="truncate text-[10px] text-muted-foreground">{chapter.title}</div>
+              <div className="text-2xs font-semibold">第 {chapter.chapterNumber} 章</div>
+              <div className="truncate text-2xs text-muted-foreground">{chapter.title}</div>
             </button>
           ))}
           {board.threads.map((thread) => (
@@ -315,9 +315,9 @@ function ThreadRow({
   return (
     <>
       <div className={`sticky left-0 z-[1] rounded-md border px-2 py-2 ${THREAD_TONE[thread.kind]}`}>
-        <Badge variant="outline" className="h-4 px-1.5 text-[9px]">{THREAD_LABEL[thread.kind]}</Badge>
-        <p className="mt-1 text-[11px] font-medium leading-snug">{thread.title}</p>
-        {thread.status ? <p className="mt-0.5 text-[9px] text-muted-foreground">{thread.status}</p> : null}
+        <Badge variant="outline" className="h-4 px-1.5 text-2xs">{THREAD_LABEL[thread.kind]}</Badge>
+        <p className="mt-1 text-2xs font-medium leading-snug">{thread.title}</p>
+        {thread.status ? <p className="mt-0.5 text-2xs text-muted-foreground">{thread.status}</p> : null}
         {thread.unscheduled.length > 0 ? (
           <div className="mt-1 space-y-1">
             {thread.unscheduled.map((beat) => (
@@ -334,7 +334,7 @@ function ThreadRow({
               ? beats.map((beat) => (
                 <BeatCard key={beat.id} beat={beat} onOpenChapter={onOpenChapter} onPromote={onPromote} />
               ))
-              : <p className="px-1 py-3 text-center text-[10px] text-muted-foreground/70">空</p>}
+              : <p className="px-1 py-3 text-center text-2xs text-muted-foreground/70">空</p>}
           </div>
         );
       })}

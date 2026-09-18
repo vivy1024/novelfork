@@ -194,16 +194,16 @@ function MetricCard({
 }) {
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2.5" data-testid={testId}>
-      <p className="text-[10px] font-medium tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-2xs font-medium tracking-wide text-muted-foreground">{label}</p>
       <p className={`mt-1 text-xl font-semibold ${tone ?? ""}`}>{value}</p>
-      {hint ? <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
 
 function BlockError({ message }: { message: string }) {
   return (
-    <p className="rounded-md border border-destructive/30 bg-destructive/[0.04] px-3 py-2 text-[11px] text-destructive">
+    <p className="rounded-md border border-destructive/30 bg-destructive/[0.04] px-3 py-2 text-2xs text-destructive">
       数据暂时不可用：{message}
     </p>
   );
@@ -212,7 +212,7 @@ function BlockError({ message }: { message: string }) {
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
+      <label className="text-2xs font-medium text-muted-foreground">{label}</label>
       <Input value={value} readOnly disabled className="bg-muted/40 text-xs" />
     </div>
   );
@@ -308,7 +308,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
         <h2 className="flex items-center gap-2 text-sm font-semibold">
           <Gauge className="size-4 text-primary" />
           叙事治理驾驶舱
-          <Badge variant="secondary" className="text-[10px] font-normal">全书口径</Badge>
+          <Badge variant="secondary" className="text-2xs font-normal">全书口径</Badge>
         </h2>
         <Button variant="ghost" size="sm" className="gap-1.5" onClick={load} aria-label="刷新治理驾驶舱">
           <RefreshCw className="size-3.5" />刷新
@@ -352,7 +352,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
       {warnings.length > 0 ? (
         <div className="space-y-1" data-testid="governance-warnings">
           {warnings.map((warning, index) => (
-            <div key={`${warning.type ?? "warning"}-${index}`} className="flex items-start gap-1.5 rounded-md border border-yellow-500/30 bg-yellow-500/[0.06] px-2.5 py-1.5 text-[11px] text-yellow-700 dark:text-yellow-400">
+            <div key={`${warning.type ?? "warning"}-${index}`} className="flex items-start gap-1.5 rounded-md border border-yellow-500/30 bg-yellow-500/[0.06] px-2.5 py-1.5 text-2xs text-yellow-700 dark:text-yellow-400">
               <AlertTriangle className="mt-0.5 size-3 shrink-0" />
               <span>{warning.message ?? warning.type ?? "未命名告警"}</span>
             </div>
@@ -366,9 +366,9 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
           <CardTitle className="flex items-center gap-2 text-sm">
             <ScrollText className="size-4" />
             叙事契约
-            <Badge variant="outline" className="text-[10px] font-normal">只读</Badge>
+            <Badge variant="outline" className="text-2xs font-normal">只读</Badge>
           </CardTitle>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
             契约存于 book.json 的 <code>narrativeContract</code>。当前 <code>PUT /api/books/:bookId</code> 的白名单不含该字段，
             没有写入通道，因此这里只做展示；需要修改请手动编辑 book.json。
           </p>
@@ -385,11 +385,11 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
               <ReadOnlyField label="书名承诺" value={contract?.titlePromise ?? "（未填写）"} />
               <ReadOnlyField label="核心问题" value={contract?.coreQuestion ?? "（未填写）"} />
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-muted-foreground">主题锚点</label>
+                <label className="text-2xs font-medium text-muted-foreground">主题锚点</label>
                 {(contract?.themeAnchors ?? []).length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {(contract?.themeAnchors ?? []).map((anchor, index) => (
-                      <Badge key={`${anchor}-${index}`} variant="secondary" className="text-[10px] font-normal">{anchor}</Badge>
+                      <Badge key={`${anchor}-${index}`} variant="secondary" className="text-2xs font-normal">{anchor}</Badge>
                     ))}
                   </div>
                 ) : <p className="text-xs text-muted-foreground">（未填写）</p>}
@@ -411,7 +411,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
             <Settings2 className="size-4" />
             结算与召回设置
           </CardTitle>
-          <p className="mt-1 text-[11px] text-muted-foreground">写回 narrative-memory config，立即影响下一章结算行为。</p>
+          <p className="mt-1 text-2xs text-muted-foreground">写回 narrative-memory config，立即影响下一章结算行为。</p>
         </CardHeader>
         <CardContent className="space-y-2">
           {settlementBlock.status === "loading" ? (
@@ -426,7 +426,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
               <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
                 <div className="min-w-0">
                   <p className="text-xs font-medium">LLM 事件抽取</p>
-                  <p className="text-[10px] text-muted-foreground">关闭后章后结算只走规则抽取，更快但更粗。</p>
+                  <p className="text-2xs text-muted-foreground">关闭后章后结算只走规则抽取，更快但更粗。</p>
                 </div>
                 <Switch
                   checked={settlementBlock.data.useLlmExtraction ?? false}
@@ -438,7 +438,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
               <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
                 <div className="min-w-0">
                   <p className="text-xs font-medium">自动章节摘要</p>
-                  <p className="text-[10px] text-muted-foreground">结算完成后生成本章摘要，供下一章 recent-summary 召回。</p>
+                  <p className="text-2xs text-muted-foreground">结算完成后生成本章摘要，供下一章 recent-summary 召回。</p>
                 </div>
                 <Switch
                   checked={settlementBlock.data.autoChapterSummary ?? false}
@@ -452,7 +452,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
         </CardContent>
       </Card>
 
-      <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+      <p className="flex items-center gap-1.5 text-2xs text-muted-foreground">
         <ShieldCheck className="size-3" />
         全部数据来自既有接口：<code>/api/books/:bookId</code>、<code>/jingwei/entries</code>、<code>/health</code>、<code>/narrative-memory/config</code>。
       </p>

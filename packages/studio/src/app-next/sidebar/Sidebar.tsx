@@ -136,7 +136,7 @@ export function Sidebar({
           <Settings className="h-4 w-4 shrink-0" />
           设置
         </Button>
-        <div className="px-2 pt-1 text-[10px] text-muted-foreground">
+        <div className="px-2 pt-1 text-2xs text-muted-foreground">
           v{STUDIO_VERSION}
         </div>
       </div>

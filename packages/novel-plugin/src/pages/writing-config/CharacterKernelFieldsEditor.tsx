@@ -69,14 +69,14 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
         </Button>
       </div>
       {fields.length === 0 && (
-        <p className="rounded-md border border-dashed border-border px-3 py-2 text-[11px] text-muted-foreground">
+        <p className="rounded-md border border-dashed border-border px-3 py-2 text-2xs text-muted-foreground">
           未定义任何字段：内核将不会生成也不会注入。
         </p>
       )}
       <div className="overflow-hidden rounded-md border border-border">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-border bg-muted/40 text-left text-[11px] text-muted-foreground">
+            <tr className="border-b border-border bg-muted/40 text-left text-2xs text-muted-foreground">
               <th className="px-2 py-1.5 font-medium">键</th>
               <th className="px-2 py-1.5 font-medium">显示名</th>
               <th className="px-2 py-1.5 font-medium">形态</th>
@@ -96,7 +96,7 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
                       aria-label={`字段键 ${index + 1}`}
                       value={field.key}
                       onChange={(event) => updateRow(index, { key: normalizeFieldKey(event.target.value) })}
-                      className={cn("h-7 w-28 font-mono text-[11px]", invalidKey && "border-destructive")}
+                      className={cn("h-7 w-28 font-mono text-2xs", invalidKey && "border-destructive")}
                     />
                   </td>
                   <td className="px-2 py-1.5 align-middle">
@@ -109,7 +109,7 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
                   </td>
                   <td className="px-2 py-1.5 align-middle">
                     <Select value={field.kind} onValueChange={(value) => updateRow(index, { kind: value as KernelFieldSpec["kind"] })}>
-                      <SelectTrigger aria-label={`形态 ${index + 1}`} className="h-7 w-20 text-[11px]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label={`形态 ${index + 1}`} className="h-7 w-20 text-2xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {(Object.keys(KIND_LABELS) as readonly KernelFieldSpec["kind"][]).map((kind) => (
                           <SelectItem key={kind} value={kind}>{KIND_LABELS[kind]}</SelectItem>
@@ -148,9 +148,9 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
         </table>
       </div>
       {duplicated.size > 0 && (
-        <p className="text-[11px] text-destructive">存在重复字段键：{[...duplicated].join("、")}。重复键会导致内核取值互相覆盖。</p>
+        <p className="text-2xs text-destructive">存在重复字段键：{[...duplicated].join("、")}。重复键会导致内核取值互相覆盖。</p>
       )}
-      <p className="text-[11px] text-muted-foreground">优先级越小越先被预算裁剪；关闭「LLM 提取」的字段仅作者可填，不会被结算覆盖。</p>
+      <p className="text-2xs text-muted-foreground">优先级越小越先被预算裁剪；关闭「LLM 提取」的字段仅作者可填，不会被结算覆盖。</p>
     </div>
   );
 }

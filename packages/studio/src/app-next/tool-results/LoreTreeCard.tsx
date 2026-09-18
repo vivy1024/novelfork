@@ -173,13 +173,13 @@ export const LoreTreeCard: ToolResultRenderer = (context: ToolResultRendererCont
         layers.foreshadows > 0 ? `伏笔 ${layers.foreshadows}` : null,
       ].filter(Boolean).join(" · ") || undefined}
     >
-      {scope ? <p className="text-[10px] text-muted-foreground">范围：{scope}</p> : null}
-      {focusEntity ? <p className="text-[10px] text-muted-foreground">聚焦：{focusEntity}</p> : null}
+      {scope ? <p className="text-2xs text-muted-foreground">范围：{scope}</p> : null}
+      {focusEntity ? <p className="text-2xs text-muted-foreground">聚焦：{focusEntity}</p> : null}
 
       {hasTree ? (
         <Suspense
           fallback={
-            <div className="flex items-center gap-1.5 py-3 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-1.5 py-3 text-2xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" /> 正在铺开故事树…
             </div>
           }
@@ -187,7 +187,7 @@ export const LoreTreeCard: ToolResultRenderer = (context: ToolResultRendererCont
           <StoryTreeView mode="compact" entries={entries} relations={relations} maxEntriesPerCategory={20} />
         </Suspense>
       ) : (
-        <p className="text-[11px] text-muted-foreground" data-testid="tool-result-lore-tree-no-entries">
+        <p className="text-2xs text-muted-foreground" data-testid="tool-result-lore-tree-no-entries">
           这次读取没有返回经纬条目
           {events.count > 0
             ? `，但带回了 ${events.count} 个事件（第 ${events.chapters[0] ?? "?"}–${events.chapters[events.chapters.length - 1] ?? "?"} 章）。`
@@ -200,7 +200,7 @@ export const LoreTreeCard: ToolResultRenderer = (context: ToolResultRendererCont
 
       {/* 事件是时序数据，不属于分类树；单独一行交代，避免混进层级 */}
       {hasTree && events.count > 0 ? (
-        <p className="text-[10px] text-muted-foreground" data-testid="tool-result-lore-tree-events">
+        <p className="text-2xs text-muted-foreground" data-testid="tool-result-lore-tree-events">
           另有 {events.count} 个叙事事件（第 {events.chapters[0]}–{events.chapters[events.chapters.length - 1]} 章），
           属于时序数据，在「故事推进 › 时间线」里看。
         </p>

@@ -38,7 +38,7 @@ function NarratorList({
         >
           <MessageCircle className="size-4 shrink-0" />
           <span className="min-w-0 flex-1 truncate">{narrator.title}</span>
-          <span className="text-[11px] text-muted-foreground">{narrator.status ?? "idle"}</span>
+          <span className="text-2xs text-muted-foreground">{narrator.status ?? "idle"}</span>
         </button>
       ))}
     </div>

@@ -49,24 +49,24 @@ export function ApiProviderCard({
         <div className="min-w-0">
           <div className="font-medium leading-tight">{provider.name}</div>
           <div className="mt-1 flex flex-wrap gap-1">
-            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${state === "callable" ? "bg-emerald-500/10 text-emerald-600" : state === "error" ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-600"}`}>
+            <span className={`inline-block rounded px-1.5 py-0.5 text-2xs font-semibold ${state === "callable" ? "bg-emerald-500/10 text-emerald-600" : state === "error" ? "bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-600"}`}>
               {stateLabel}
             </span>
-            <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">{catalogLabel}</span>
-            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${status?.configured ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>{configuredLabel}</span>
-            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${status?.verified ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>{verifiedLabel}</span>
-            <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${status?.callableModelCount ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>{callableLabel}</span>
+            <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground">{catalogLabel}</span>
+            <span className={`inline-block rounded px-1.5 py-0.5 text-2xs font-semibold ${status?.configured ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>{configuredLabel}</span>
+            <span className={`inline-block rounded px-1.5 py-0.5 text-2xs font-semibold ${status?.verified ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>{verifiedLabel}</span>
+            <span className={`inline-block rounded px-1.5 py-0.5 text-2xs font-semibold ${status?.callableModelCount ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>{callableLabel}</span>
             {provider.apiMode && (
-              <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {providerApiModeLabel(provider.apiMode)}
               </span>
             )}
             {provider.compatibility && (
-              <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {providerCompatibilityLabel(provider.compatibility)}
               </span>
             )}
-            {isTestFixture ? <span className="inline-block rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-purple-600">测试夹具</span> : null}
+            {isTestFixture ? <span className="inline-block rounded bg-purple-500/10 px-1.5 py-0.5 text-2xs font-semibold text-purple-600">测试夹具</span> : null}
           </div>
         </div>
         <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
@@ -92,9 +92,9 @@ export function ApiProviderCard({
       {previewModels.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-1">
           {previewModels.map((model) => (
-            <span key={model.id} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{model.name}</span>
+            <span key={model.id} className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">{model.name}</span>
           ))}
-          {moreCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">+{moreCount} 更多模型</span>}
+          {moreCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">+{moreCount} 更多模型</span>}
         </div>
       ) : (
         <div className="mt-3 text-xs text-muted-foreground">暂无模型，进入详情后刷新。</div>

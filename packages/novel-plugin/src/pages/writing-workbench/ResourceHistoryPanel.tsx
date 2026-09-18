@@ -36,7 +36,7 @@ export function ResourceHistoryPanel({ entries, loading = false, error, onClose 
     <aside className="shrink-0 border-b border-border bg-muted/20 px-4 py-3" aria-label="版本历史">
       <div className="mb-2 flex items-center gap-2">
         <h3 className="text-sm font-semibold">版本历史</h3>
-        <Badge variant="outline" className="text-[10px]">parent 链</Badge>
+        <Badge variant="outline" className="text-2xs">parent 链</Badge>
         <span className="flex-1" />
         <Button size="xs" variant="ghost" onClick={onClose} title="关闭历史">
           <X className="size-3" />
@@ -54,11 +54,11 @@ export function ResourceHistoryPanel({ entries, loading = false, error, onClose 
             <li key={entry.id} className="rounded-md border border-border bg-background px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
                 <span className="font-medium">{index + 1}. {entry.title}</span>
-                <Badge variant="secondary" className="text-[10px]">v{entry.version ?? "?"}</Badge>
-                <Badge variant="outline" className="text-[10px]">{statusLabel[entry.status] ?? entry.status}</Badge>
-                <span className="ml-auto text-[10px] text-muted-foreground">{formatDate(entry.updatedAt)}</span>
+                <Badge variant="secondary" className="text-2xs">v{entry.version ?? "?"}</Badge>
+                <Badge variant="outline" className="text-2xs">{statusLabel[entry.status] ?? entry.status}</Badge>
+                <span className="ml-auto text-2xs text-muted-foreground">{formatDate(entry.updatedAt)}</span>
               </div>
-              <p className="mt-1 text-[10px] text-muted-foreground">ID: {entry.id}{entry.parentId ? ` · parent: ${entry.parentId}` : " · 根版本"}</p>
+              <p className="mt-1 text-2xs text-muted-foreground">ID: {entry.id}{entry.parentId ? ` · parent: ${entry.parentId}` : " · 根版本"}</p>
             </li>
           ))}
         </ol>

@@ -99,11 +99,11 @@ export function CoreShiftPanel({ bookId }: CoreShiftPanelProps) {
           <div key={shift.id} className="rounded-md border border-border p-2.5 space-y-1.5">
             {/* Header */}
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant={cfg.variant} className="text-[10px]">{cfg.label}</Badge>
+              <Badge variant={cfg.variant} className="text-2xs">{cfg.label}</Badge>
               <span className="text-xs font-medium">
                 {TARGET_LABELS[shift.targetType] ?? shift.targetType}
               </span>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 第{shift.chapterAt}章 · {TRIGGER_LABELS[shift.triggeredBy] ?? shift.triggeredBy}
               </span>
             </div>
@@ -116,7 +116,7 @@ export function CoreShiftPanel({ bookId }: CoreShiftPanelProps) {
 
             {/* Impact */}
             {impact.summary && (
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-2xs text-muted-foreground">
                 <span className="font-medium">影响: </span>{impact.summary}
               </div>
             )}

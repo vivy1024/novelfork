@@ -156,13 +156,13 @@ export function CommandPalette({ open, onClose, commands, placeholder, mode = "c
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="truncate">{cmd.label}</span>
                   {cmd.category && (
-                    <span className="text-[10px] text-muted-foreground shrink-0">
+                    <span className="text-2xs text-muted-foreground shrink-0">
                       {cmd.category}
                     </span>
                   )}
                 </div>
                 {cmd.shortcut && (
-                  <span className="text-[10px] text-muted-foreground font-mono shrink-0 ml-3">
+                  <span className="text-2xs text-muted-foreground font-mono shrink-0 ml-3">
                     {cmd.shortcut}
                   </span>
                 )}

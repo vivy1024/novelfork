@@ -40,7 +40,7 @@ function statusBadge(status: string) {
     unsupported: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
   };
   return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${colors[status] ?? "bg-gray-100 text-gray-600"}`}>
+    <span className={`inline-block rounded px-1.5 py-0.5 text-2xs font-medium ${colors[status] ?? "bg-gray-100 text-gray-600"}`}>
       {status}
     </span>
   );
@@ -100,7 +100,7 @@ export function RuntimeStatusPanel() {
                 <div key={cap.id} className="flex items-start justify-between gap-3 py-1.5 text-sm border-b border-border last:border-0">
                   <div className="space-y-0.5">
                     <div className="text-foreground">{cap.label}</div>
-                    <div className="text-[11px] text-muted-foreground">{cap.currentBehavior}</div>
+                    <div className="text-2xs text-muted-foreground">{cap.currentBehavior}</div>
                   </div>
                   <div className="shrink-0">{statusBadge(cap.status)}</div>
                 </div>
