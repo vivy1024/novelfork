@@ -14,9 +14,14 @@ const requiredTokenClasses = [
   [".border-border", "border-color: var(--border)"],
   [".bg-card", "background-color: var(--card)"],
   [".bg-destructive", "background-color: var(--destructive)"],
+  [".text-2xs", "font-size: var(--text-2xs)"],
 ] as const;
 
 describe("tailwind theme tokens", () => {
+  it("maps the required 2xs fontSize token into theme.extend.fontSize", () => {
+    const fontSize = baseConfig.theme?.extend?.fontSize as Record<string, unknown> | undefined;
+    expect(fontSize?.["2xs"]).toEqual(["var(--text-2xs)", { lineHeight: "var(--text-2xs--line-height)" }]);
+  });
   it("maps the required Studio color tokens into theme.extend.colors", () => {
     const colors = baseConfig.theme?.extend?.colors as Record<string, unknown> | undefined;
 

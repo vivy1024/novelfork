@@ -31,6 +31,9 @@ export default {
         input: "var(--input)",
         ring: "var(--ring)",
       },
+      fontSize: {
+        "2xs": ["var(--text-2xs)", { lineHeight: "var(--text-2xs--line-height)" }],
+      },
       fontFamily: {
         sans: ["var(--font-sans)"],
         serif: ["var(--font-serif)"],
