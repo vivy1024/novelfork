@@ -62,11 +62,13 @@ describe("ForeshadowingBoard 债务判定", () => {
     expect(debt.explanation).toContain("读不到本书当前章号");
   });
 
-  it("阈值边界：正好等于阈值只提示临近，多一章才超期", () => {
+  it("阈值边界：悬置章数达到阈值即超期，差一章只提示临近（与统一口径 foreshadow-debts 一致）", () => {
+    // 伏笔债务只有一个权威判定（foreshadow-debts.debtUrgency，达到阈值即 overdue）。
+    // 此前本面板用「严格大于才超期」，与推进看板差一章，同一笔伏笔两处结论不同。
+    const below = debtOf(entry({ plantedChapter: 1 }), FORESHADOWING_DEBT_THRESHOLD);
+    expect(below.level).toBe("due-soon");
     const at = debtOf(entry({ plantedChapter: 1 }), 1 + FORESHADOWING_DEBT_THRESHOLD);
-    expect(at.level).toBe("due-soon");
-    const over = debtOf(entry({ plantedChapter: 1 }), 2 + FORESHADOWING_DEBT_THRESHOLD);
-    expect(over.level).toBe("overdue");
+    expect(at.level).toBe("overdue");
   });
 
   it("已回收/已废弃列的伏笔不计债", () => {

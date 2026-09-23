@@ -1,5 +1,6 @@
 import type { BookConfig, StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
 import { computeForeshadowingDebt } from "../foreshadowing-debt.js";
+import { debtUrgency } from "../../narrative-taxonomy/foreshadow-debts.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../category-compat.js";
 
 /**
@@ -131,7 +132,9 @@ export function computeNarrativeContractHitRate(storage: StorageDatabase, bookId
       }
       if (!isOpenContractState(chain.status)) continue;
       const lastActive = chain.last_progress_chapter ?? chain.trigger_chapter;
-      const overdueByChapter = currentChapter !== undefined && currentChapter - lastActive >= 100;
+      const overdueByChapter =
+        currentChapter !== undefined &&
+        debtUrgency("planted", Math.max(0, currentChapter - lastActive)) === "overdue";
       if (chain.urgency === "overdue" || overdueByChapter) openOverdueCount += 1;
     }
   } catch {

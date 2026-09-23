@@ -9,11 +9,11 @@ import {
 
 describe("computeForeshadowingDebt", () => {
   it("用真实当前章号算出正的悬置章数", () => {
-    const debt = computeForeshadowingDebt({ plantedChapter: 12, currentChapter: 30 });
-    expect(debt.suspenseChapters).toBe(18);
+    const debt = computeForeshadowingDebt({ plantedChapter: 12, currentChapter: 20 });
+    expect(debt.suspenseChapters).toBe(8);
     expect(debt.level).toBe("due-soon");
     expect(debt.explanation).toContain("第 12 章");
-    expect(debt.explanation).toContain("已悬置 18 章");
+    expect(debt.explanation).toContain("已悬置 8 章");
   });
 
   it("超期文案同时点出埋设章与当前章，方便作者定位", () => {
@@ -29,21 +29,21 @@ describe("computeForeshadowingDebt", () => {
     expect(debt.level).toBe("fresh");
   });
 
-  it("阈值边界：等于阈值不算超期，超过一章才超期", () => {
+  it("阈值边界：达到阈值即超期，低一章为临近到期", () => {
     const atThreshold = computeForeshadowingDebt({
       plantedChapter: 1,
       currentChapter: 1 + FORESHADOWING_DEBT_THRESHOLD,
     });
     expect(atThreshold.suspenseChapters).toBe(FORESHADOWING_DEBT_THRESHOLD);
-    expect(atThreshold.level).toBe("due-soon");
+    expect(atThreshold.level).toBe("overdue");
+    expect(atThreshold.label).toContain("超期");
 
-    const overThreshold = computeForeshadowingDebt({
+    const beforeThreshold = computeForeshadowingDebt({
       plantedChapter: 1,
-      currentChapter: 2 + FORESHADOWING_DEBT_THRESHOLD,
+      currentChapter: 1 + FORESHADOWING_DEBT_THRESHOLD - 1,
     });
-    expect(overThreshold.suspenseChapters).toBe(FORESHADOWING_DEBT_THRESHOLD + 1);
-    expect(overThreshold.level).toBe("overdue");
-    expect(overThreshold.label).toContain("超期");
+    expect(beforeThreshold.suspenseChapters).toBe(FORESHADOWING_DEBT_THRESHOLD - 1);
+    expect(beforeThreshold.level).toBe("due-soon");
   });
 
   it("临近到期边界：低一章仍是 fresh，达到即 due-soon", () => {

@@ -14,11 +14,18 @@
  * 让超期预警静默失效。
  */
 
-/** 悬置超过这个章数即判定为超期未回收。 */
-export const FORESHADOWING_DEBT_THRESHOLD = 20;
+import {
+  DEBT_OVERDUE_CHAPTERS,
+  DEBT_WATCH_CHAPTERS,
+  debtUrgency,
+  type ForeshadowDebtUrgency,
+} from "../narrative-taxonomy/foreshadow-debts.js";
 
-/** 悬置达到这个章数即进入「临近到期」提醒区间。 */
-export const FORESHADOWING_DUE_SOON_THRESHOLD = 14;
+/** 悬置达到这个章数即判定为超期未回收（与全书叙事结构聚合读模型一致）。 */
+export const FORESHADOWING_DEBT_THRESHOLD = DEBT_OVERDUE_CHAPTERS;
+
+/** 悬置达到这个章数即进入「临近到期」提醒区间（与全书叙事结构聚合读模型一致）。 */
+export const FORESHADOWING_DUE_SOON_THRESHOLD = DEBT_WATCH_CHAPTERS;
 
 export type ForeshadowingDebtLevel = "unknown" | "fresh" | "due-soon" | "overdue" | "settled";
 
@@ -81,18 +88,19 @@ export function computeForeshadowingDebt(input: ForeshadowingDebtInput): Foresha
   }
 
   const suspense = gap ?? 0;
+  const urgency = debtUrgency("planted", suspense);
 
-  if (suspense > FORESHADOWING_DEBT_THRESHOLD) {
+  if (urgency === "overdue") {
     return {
       level: "overdue",
       suspenseChapters: suspense,
       label: `超期 ${suspense} 章`,
       explanation:
-        `这条伏笔埋于第 ${planted} 章，到第 ${current} 章已悬置 ${suspense} 章，超过 ${FORESHADOWING_DEBT_THRESHOLD} 章阈值。读者对它的记忆基本已经消散，继续拖会变成弃坑点。建议在接下来几章内推进或明确回收，实在不要了就把状态改为「已废弃」以结清债务。`,
+        `这条伏笔埋于第 ${planted} 章，到第 ${current} 章已悬置 ${suspense} 章，达到或超过 ${FORESHADOWING_DEBT_THRESHOLD} 章阈值。读者对它的记忆基本已经消散，继续拖会变成弃坑点。建议在接下来几章内推进或明确回收，实在不要了就把状态改为「已废弃」以结清债务。`,
     };
   }
 
-  if (suspense >= FORESHADOWING_DUE_SOON_THRESHOLD) {
+  if (urgency === "watch") {
     return {
       level: "due-soon",
       suspenseChapters: suspense,
