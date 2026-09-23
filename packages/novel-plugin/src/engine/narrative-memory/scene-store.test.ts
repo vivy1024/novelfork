@@ -21,6 +21,7 @@ import {
   listStorylines,
   mountSceneToStoryline,
   reorderChapterScenes,
+  replaceChapterScenes,
   sceneFromSpec,
   unmountSceneFromStoryline,
 } from "./scene-store.js";
@@ -337,6 +338,110 @@ describe("SceneSpec 对齐与旧表兼容性 (任务 1 验收)", () => {
       const readBack = listScenesByChapter(storage, "b_old_upgrade", 1);
       expect(readBack[0].conflict).toBe("测试冲突");
       expect(readBack[0].characters).toEqual(["主角"]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("replaceChapterScenes 幂等：同章重写时机器场景被替换而不是累积", async () => {
+    const storage = await createStorage();
+    try {
+      const bookId = "b_replace_test";
+      const chapterNumber = 12;
+
+      // 1. 首次写入 3 场
+      const firstInputs = [
+        { bookId, chapterNumber, ordinal: 1, title: "开端", conflict: "遭遇埋伏" },
+        { bookId, chapterNumber, ordinal: 2, title: "激战", conflict: "以一敌三" },
+        { bookId, chapterNumber, ordinal: 3, title: "撤退", conflict: "突围成功" },
+      ];
+      const res1 = replaceChapterScenes(storage, bookId, chapterNumber, firstInputs);
+      expect(res1.ok).toBe(true);
+      expect(res1.data).toHaveLength(3);
+
+      const check1 = listScenesByChapter(storage, bookId, chapterNumber);
+      expect(check1).toHaveLength(3);
+      expect(check1.map((s) => s.title)).toEqual(["开端", "激战", "撤退"]);
+
+      // 2. 第二次重写同一章：替换为 2 场全新的场景
+      const secondInputs = [
+        { bookId, chapterNumber, ordinal: 1, title: "全新开局", conflict: "潜伏潜入" },
+        { bookId, chapterNumber, ordinal: 2, title: "全新高潮", conflict: "窃取密信" },
+      ];
+      const res2 = replaceChapterScenes(storage, bookId, chapterNumber, secondInputs);
+      expect(res2.ok).toBe(true);
+      expect(res2.data).toHaveLength(2);
+
+      // 验证场景数没有累积成 5 场，而是精确更新为 2 场
+      const check2 = listScenesByChapter(storage, bookId, chapterNumber);
+      expect(check2).toHaveLength(2);
+      expect(check2.map((s) => s.title)).toEqual(["全新开局", "全新高潮"]);
+      expect(check2.map((s) => s.status)).toEqual(["needs-review", "needs-review"]);
+      expect(check2.map((s) => s.source)).toEqual(["workflow", "workflow"]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("重写同一章不会抹掉作者的劳动：手建场景、已确认场景、已挂线场景及其挂载全部保留", async () => {
+    const storage = await createStorage();
+    try {
+      const bookId = "b_preserve";
+      const chapterNumber = 7;
+      const line = createStoryline(storage, { bookId, name: "感情线", kind: "romance" }).data!;
+
+      // 作者在看板上点「+」建的场景
+      const manual = createScene(storage, {
+        bookId, chapterNumber, title: "作者手建", layer: "canon", status: "confirmed", source: "manual",
+      }).data!;
+      // 机器产出、但作者已点头确认
+      const confirmed = createScene(storage, {
+        bookId, chapterNumber, title: "机器产出已确认", status: "confirmed", source: "workflow",
+      }).data!;
+      // 机器产出、作者没确认，但已经把它挂到了剧情线上
+      const mounted = createScene(storage, {
+        bookId, chapterNumber, title: "机器产出已挂线", source: "workflow",
+      }).data!;
+      mountSceneToStoryline(storage, mounted.id, line.id, "primary");
+      // 机器产出且作者完全没动过——只有它应当被替换
+      createScene(storage, { bookId, chapterNumber, title: "机器产出未动", source: "workflow" });
+
+      const result = replaceChapterScenes(storage, bookId, chapterNumber, [
+        { bookId, chapterNumber, title: "新蓝图场景" },
+      ]);
+      expect(result.ok).toBe(true);
+
+      const titles = listScenesByChapter(storage, bookId, chapterNumber).map((s) => s.title);
+      expect(titles).toContain("作者手建");
+      expect(titles).toContain("机器产出已确认");
+      expect(titles).toContain("机器产出已挂线");
+      expect(titles).toContain("新蓝图场景");
+      expect(titles).not.toContain("机器产出未动");
+
+      // 挂载关系原样保留
+      expect(listSceneMounts(storage, mounted.id).map((m) => m.storylineId)).toEqual([line.id]);
+      // 保留的场景 id 不变（没有被删了重建）
+      const ids = listScenesByChapter(storage, bookId, chapterNumber).map((s) => s.id);
+      expect(ids).toEqual(expect.arrayContaining([manual.id, confirmed.id, mounted.id]));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("新场景追加在保留场景之后，不与保留场景撞号", async () => {
+    const storage = await createStorage();
+    try {
+      const bookId = "b_ordinal";
+      createScene(storage, { bookId, chapterNumber: 3, title: "作者手建", status: "confirmed", source: "manual" });
+
+      replaceChapterScenes(storage, bookId, 3, [
+        { bookId, chapterNumber: 3, ordinal: 1, title: "蓝图一" },
+        { bookId, chapterNumber: 3, ordinal: 2, title: "蓝图二" },
+      ]);
+
+      const scenes = listScenesByChapter(storage, bookId, 3);
+      expect(scenes.map((s) => s.title)).toEqual(["作者手建", "蓝图一", "蓝图二"]);
+      expect(scenes.map((s) => s.ordinal)).toEqual([1, 2, 3]);
     } finally {
       storage.close();
     }

@@ -32,6 +32,7 @@ import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtim
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import { persistChapterAuditLog } from "../engine/tools/health/audit-log-persist.js";
+import { replaceChapterScenes, sceneFromSpec } from "../engine/narrative-memory/scene-store.js";
 import { selectDueHooks, type DueHookInput } from "../engine/narrative-memory/foreshadow-phase.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import { isPlaceholderFocusDoc, readCurrentFocusDocFromStorage } from "../engine/jingwei/current-focus.js";
@@ -1195,6 +1196,27 @@ async function executePipelineWriteUnlocked(
           source: "pipeline.write",
           metadata,
         });
+      }
+
+      // 场景落盘：写前蓝图 SceneSpec 转成持久化 narrative_scene，正文写完后场景进入承载树。
+      // 重写同一章只刷新机器产出且作者没动过的场景，作者建的、确认过的、挂了线的都保留。
+      // 场景是结构化附产物，失败不回滚已落盘的正文，但必须留下告警，不能静默丢掉。
+      if (sceneSpec?.scenes && sceneSpec.scenes.length > 0) {
+        try {
+          const sceneInputs = sceneSpec.scenes.map((spec, index) =>
+            sceneFromSpec(bookId, chapterNumber, index + 1, spec, {
+              source: "workflow",
+              layer: "dynamic",
+              status: "needs-review",
+            }),
+          );
+          const sceneResult = replaceChapterScenes(storage, bookId, chapterNumber, sceneInputs);
+          if (!sceneResult.ok) {
+            logger?.warn?.(`[pipeline.write] 第 ${chapterNumber} 章场景落盘失败: ${sceneResult.summary}`);
+          }
+        } catch (sceneErr) {
+          logger?.warn?.(`[pipeline.write] 第 ${chapterNumber} 章场景落盘失败: ${sceneErr instanceof Error ? sceneErr.message : String(sceneErr)}`);
+        }
       }
 
       // 章后结算不再是本函数内的隐式副作用：正文落盘成功后，由管线显式发起一次

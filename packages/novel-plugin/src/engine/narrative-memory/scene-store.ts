@@ -627,3 +627,81 @@ export function sceneFromSpec(
     confidence: options?.confidence ?? 1.0,
   };
 }
+
+/**
+ * 用写作管线的新蓝图刷新一章里「机器产出、尚未被作者动过」的场景。
+ *
+ * 只替换同时满足三个条件的场景：source = workflow、status = needs-review、没有挂到任何剧情线。
+ * 其余一律保留——作者手建的场景（看板「+」建的就是 manual/confirmed）、作者已确认的场景、
+ * 作者已挂到剧情线上的场景，都是作者投入过的劳动。若按「整章删光再建」处理，作者
+ * 一重写本章，这些场景与挂载就会被静默抹掉，而界面上看不出发生过什么。
+ *
+ * 新场景追加在保留场景之后（ordinal 取当前最大值 + 1），不复用蓝图里的序号，
+ * 避免与保留场景撞号。整个过程在一个事务里：任何一条写入失败则整体回滚，
+ * 不会留下「旧的删了、新的只写了一半」的状态。
+ */
+export function replaceChapterScenes(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number,
+  inputs: readonly CreateSceneInput[],
+): SceneStoreResult<NarrativeScene[]> {
+  ensureNarrativeMemorySchema(storage);
+  if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
+    return fail("invalid-input", "场景必须落在某一章上，章号需为正整数。");
+  }
+
+  const createdScenes: NarrativeScene[] = [];
+  let replacedCount = 0;
+  let preservedCount = 0;
+
+  try {
+    storage.sqlite.transaction(() => {
+      const removed = storage.sqlite
+        .prepare(`
+          DELETE FROM narrative_scene
+          WHERE book_id = ? AND chapter_number = ?
+            AND source = 'workflow' AND status = 'needs-review'
+            AND id NOT IN (SELECT scene_id FROM narrative_scene_storyline)
+        `)
+        .run(bookId, chapterNumber);
+      replacedCount = Number(removed.changes);
+
+      const remaining = storage.sqlite
+        .prepare<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM narrative_scene WHERE book_id = ? AND chapter_number = ?",
+        )
+        .get(bookId, chapterNumber);
+      preservedCount = remaining?.count ?? 0;
+
+      for (const input of inputs) {
+        // 丢弃蓝图自带的序号，由 createScene 追加到当前末尾。
+        const { ordinal: _ignoredOrdinal, ...rest } = input;
+        const created = createScene(storage, {
+          ...rest,
+          bookId,
+          chapterNumber,
+          layer: input.layer ?? "dynamic",
+          status: input.status ?? "needs-review",
+          source: input.source ?? "workflow",
+        });
+        if (!created.ok || !created.data) {
+          throw new Error(created.summary);
+        }
+        createdScenes.push(created.data);
+      }
+    })();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return fail("transaction-failed", `第 ${chapterNumber} 章场景刷新失败，已整体回滚：${message}`);
+  }
+
+  const preservedNote = preservedCount > 0
+    ? `保留了 ${preservedCount} 个作者建过、确认过或已挂线的场景，`
+    : "";
+  return {
+    ok: true,
+    summary: `第 ${chapterNumber} 章场景已刷新：替换 ${replacedCount} 个机器场景，${preservedNote}新写入 ${createdScenes.length} 个。`,
+    data: createdScenes,
+  };
+}
