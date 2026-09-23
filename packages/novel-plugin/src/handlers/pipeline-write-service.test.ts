@@ -215,7 +215,8 @@ describe("pipeline.write execution transparency", () => {
   });
 
   it("管线阶段全部由已算出的真实状态推导，没有硬编码的理想流程", async () => {
-    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    // 源文件按 CRLF 提交，按 "\n" 定位前先统一换行，断言才不随工作区换行格式漂移。
+    const source = (await readFile(SERVICE_SOURCE_PATH, "utf-8")).replace(/\r\n/g, "\n");
     const stagesBlock = source.slice(source.indexOf("const pipelineStages"), source.indexOf("return {\n      ok: true"));
 
     // 每个阶段的判定依据都必须是函数内已存在的真实变量。
@@ -234,7 +235,7 @@ describe("pipeline.write execution transparency", () => {
   });
 
   it("成功返回同时带上 contextSources 与 pipelineStages", async () => {
-    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    const source = (await readFile(SERVICE_SOURCE_PATH, "utf-8")).replace(/\r\n/g, "\n");
     const successBlock = source.slice(source.indexOf("return {\n      ok: true"));
 
     expect(successBlock).toContain("contextSources,");
