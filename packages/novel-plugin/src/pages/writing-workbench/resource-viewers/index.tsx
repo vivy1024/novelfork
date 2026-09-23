@@ -32,6 +32,8 @@ export interface ResourceViewerRenderOptions {
   onTabComplete?: (currentContent: string, cursorPosition: number) => Promise<string | null>;
   bookId?: string;
   language?: "zh" | "en";
+  /** 全书文风基准摘要，透传给章节编辑器划词 AI。 */
+  styleProfileSummary?: string;
   /** 语义类选段动作的执行通道；缺省时选中浮出按钮会显式提示不可用。 */
   onSendToNarrator?: (message: string) => Promise<void> | void;
 }
@@ -98,6 +100,7 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
         chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
         onSendToNarrator={options.onSendToNarrator}
         language={options.language}
+        styleProfileSummary={options.styleProfileSummary}
       />
     </ViewerShell>
   );
@@ -927,6 +930,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"] }) {
-  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator })}</>;
+export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string }) {
+  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary })}</>;
 }

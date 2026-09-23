@@ -14,6 +14,7 @@ import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronLeft, ChevronR
 import { fetchJson } from "@/hooks/use-api";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
+import { summarizeStyleProfile } from "./resource-viewers/style-profile-summary";
 import { isChapterWorkflowNode } from "./chapter-workflow-node";
 import { ChapterActionsBar } from "./ChapterActionsBar";
 import { ResourceHistoryPanel, type ResourceHistoryEntry } from "./ResourceHistoryPanel";
@@ -324,6 +325,28 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   // TipTap 可能规范化 markdown，但 dirty 基准必须始终从当前资源正文开始，
   // 不能把第一次真实编辑误当成规范化基准值。
   const normalizedBaseRef = useRef(node?.content ?? "");
+
+  // 文风指纹 → 划词 AI 的约束摘要。只在打开章节时取；没有指纹或读取失败都视为「无约束」，
+  // 划词指令与未接入文风前逐字一致，不因为指纹缺失而阻断改写。
+  const [styleProfileSummary, setStyleProfileSummary] = useState<string | undefined>(undefined);
+  const isChapterNode = Boolean(node && isChapterWorkflowNode(node));
+  useEffect(() => {
+    if (!bookId || !isChapterNode) {
+      setStyleProfileSummary(undefined);
+      return;
+    }
+    let cancelled = false;
+    void fetchJson<{ profile?: unknown }>(`/api/books/${encodeURIComponent(bookId)}/style/profile`)
+      .then((data) => {
+        if (!cancelled) setStyleProfileSummary(summarizeStyleProfile(data?.profile));
+      })
+      .catch(() => {
+        if (!cancelled) setStyleProfileSummary(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, isChapterNode]);
 
   useEffect(() => {
     setContent(node?.content ?? "");
@@ -710,7 +733,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
               />
             );
           })() : (
-            <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} onContentChange={(nextContent) => {
+            <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} styleProfileSummary={styleProfileSummary} onContentChange={(nextContent) => {
               setContent(nextContent);
               setDirty(nextContent !== normalizedBaseRef.current);
               setSaveError(null);

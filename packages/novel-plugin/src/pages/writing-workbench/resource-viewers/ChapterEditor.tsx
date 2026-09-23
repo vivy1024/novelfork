@@ -85,11 +85,12 @@ async function callDeslop(selectedText: string): Promise<DeslopResponse["result"
 }
 
 /** 把选段任务组装成叙述者指令，由 Runtime 的 Agent Loop 与权限确认执行。 */
-function buildSelectionInstruction(
+export function buildSelectionInstruction(
   action: Exclude<AiAction, "naturalize">,
   selectedText: string,
   chapterNumber: number | undefined,
   manualFlags: readonly DeslopManualFlag[] = [],
+  styleProfileSummary?: string,
 ): string {
   const lines = [
     `请${NARRATOR_TASK_LABELS[action]}。`,
@@ -98,6 +99,9 @@ function buildSelectionInstruction(
     "选中原文：",
     selectedText,
   ];
+  if (styleProfileSummary?.trim()) {
+    lines.push("", "全书文风基准：", styleProfileSummary.trim());
+  }
   if (manualFlags.length > 0) {
     lines.push("", "本地规则已标出以下需要语义判断的问题，请一并处理：");
     for (const flag of manualFlags) {
@@ -125,9 +129,10 @@ interface AIBubbleMenuProps {
   bookId: string;
   chapterNumber?: number;
   onSendToNarrator?: (message: string) => Promise<void> | void;
+  styleProfileSummary?: string;
 }
 
-function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator }: AIBubbleMenuProps) {
+function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator, styleProfileSummary }: AIBubbleMenuProps) {
   const [loading, setLoading] = useState<AiAction | null>(null);
   const [pending, setPending] = useState<PendingInlineEdit | null>(null);
   const [pendingError, setPendingError] = useState<string | null>(null);
@@ -162,14 +167,14 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator }: AIBub
         setPendingError("当前视图没有可用的叙述者，无法执行该操作。");
         return;
       }
-      await onSendToNarrator(buildSelectionInstruction(action as Exclude<AiAction, "naturalize">, selectedText, chapterNumber));
+      await onSendToNarrator(buildSelectionInstruction(action as Exclude<AiAction, "naturalize">, selectedText, chapterNumber, [], styleProfileSummary));
       setHandedOff(action);
     } catch (cause) {
       setPendingError(cause instanceof Error ? cause.message : "操作失败");
     } finally {
       setLoading(null);
     }
-  }, [editor, chapterNumber, onSendToNarrator]);
+  }, [editor, chapterNumber, onSendToNarrator, styleProfileSummary]);
 
   const applyPending = useCallback(() => {
     if (!pending) return;
@@ -190,10 +195,10 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator }: AIBub
   /** 把规则没动的语义项连同原文一起交给叙述者。 */
   const handOffManualFlags = useCallback(async () => {
     if (!pending || !onSendToNarrator) return;
-    await onSendToNarrator(buildSelectionInstruction("polish", pending.sourceText, chapterNumber, pending.manualFlags));
+    await onSendToNarrator(buildSelectionInstruction("polish", pending.sourceText, chapterNumber, pending.manualFlags, styleProfileSummary));
     setHandedOff("naturalize");
     setPending(null);
-  }, [pending, onSendToNarrator, chapterNumber]);
+  }, [pending, onSendToNarrator, chapterNumber, styleProfileSummary]);
 
   return (
     <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
@@ -307,6 +312,8 @@ interface ChapterEditorProps {
   onSendToNarrator?: (message: string) => Promise<void> | void;
   /** 正文语言，决定长度按中文字符或英文单词统计。 */
   language?: LengthLanguage;
+  /** 全书文风基准摘要（由宿主从 style/profile 读取透传），注入划词 AI prompt。 */
+  styleProfileSummary?: string;
 }
 
 export function ChapterEditor({
@@ -320,6 +327,7 @@ export function ChapterEditor({
   chapterNumber,
   onSendToNarrator,
   language = "zh",
+  styleProfileSummary,
 }: ChapterEditorProps) {
   const [wordCount, setWordCount] = useState(0);
   const [searchMode, setSearchMode] = useState<"search" | "replace" | null>(null);
@@ -448,6 +456,7 @@ export function ChapterEditor({
           bookId={bookId}
           chapterNumber={chapterNumber}
           onSendToNarrator={onSendToNarrator}
+          styleProfileSummary={styleProfileSummary}
         />
       )}
 
