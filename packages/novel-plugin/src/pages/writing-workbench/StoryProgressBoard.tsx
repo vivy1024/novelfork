@@ -684,8 +684,40 @@ export function StoryProgressBoard({
 }: StoryProgressBoardProps) {
   const { state, reload } = useProgressData(bookId);
   const [opFeedback, setOpFeedback] = useState<string | null>(null);
+  const [showCreateStoryline, setShowCreateStoryline] = useState(false);
+  const [newStorylineName, setNewStorylineName] = useState("");
+  const [newStorylineKind, setNewStorylineKind] = useState("main");
+  const [creatingStoryline, setCreatingStoryline] = useState(false);
 
   const base = `/api/books/${encodeURIComponent(bookId)}`;
+
+  const handleCreateStoryline = useCallback(async () => {
+    if (!newStorylineName.trim()) return;
+    setCreatingStoryline(true);
+    try {
+      const res = await fetchJson<{ ok: boolean; data?: { id: string } }>(
+        `${base}/narrative-memory/storylines`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: newStorylineName.trim(),
+            kind: newStorylineKind,
+          }),
+        },
+      );
+      if (res.ok) {
+        setOpFeedback(`已成功创建剧情线「${newStorylineName.trim()}」`);
+        setShowCreateStoryline(false);
+        setNewStorylineName("");
+        reload();
+      }
+    } catch (err) {
+      setOpFeedback(`创建剧情线失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setCreatingStoryline(false);
+    }
+  }, [base, newStorylineName, newStorylineKind, reload]);
 
   const addBeat = useCallback(async (chapterNumber: number, lane: StoryProgressLane) => {
     try {
@@ -847,6 +879,48 @@ export function StoryProgressBoard({
         </p>
       ) : null}
 
+      {showCreateStoryline ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-card p-2 text-xs" data-testid="story-progress-create-storyline-form">
+          <span className="font-semibold text-foreground">新建剧情线：</span>
+          <input
+            placeholder="剧情线名称（如：感情线/宗门暗斗）"
+            className="h-6 w-48 rounded border bg-background px-2 text-2xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+            value={newStorylineName}
+            onChange={(e) => setNewStorylineName(e.target.value)}
+            data-testid="story-progress-storyline-name-input"
+          />
+          <select
+            className="h-6 rounded border bg-background px-1 text-2xs text-foreground"
+            value={newStorylineKind}
+            onChange={(e) => setNewStorylineKind(e.target.value)}
+            data-testid="story-progress-storyline-kind-select"
+          >
+            <option value="main">主线</option>
+            <option value="sub">支线</option>
+            <option value="romance">感情线</option>
+            <option value="character-arc">人物成长</option>
+            <option value="mystery">悬疑伏笔</option>
+          </select>
+          <Button
+            size="xs"
+            className="h-6 px-2 text-2xs"
+            disabled={!newStorylineName.trim() || creatingStoryline}
+            onClick={handleCreateStoryline}
+            data-testid="story-progress-storyline-submit-btn"
+          >
+            {creatingStoryline ? "创建中…" : "确认创建"}
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            className="h-6 px-2 text-2xs"
+            onClick={() => setShowCreateStoryline(false)}
+          >
+            取消
+          </Button>
+        </div>
+      ) : null}
+
       <FocusCard
         board={board}
         defaultCollapsed={!!compactHeader}
@@ -861,8 +935,19 @@ export function StoryProgressBoard({
             className="grid gap-2"
             style={{ gridTemplateColumns: `12rem repeat(${Math.max(board.chapters.length, 1)}, minmax(14rem, 1fr))` }}
           >
-            <div className="sticky left-0 top-0 z-[2] rounded-md bg-muted/70 px-2 py-1.5 text-2xs font-semibold text-muted-foreground">
-              剧情线
+            <div className="sticky left-0 top-0 z-[2] flex items-center justify-between rounded-md bg-muted/70 px-2 py-1.5 text-2xs font-semibold text-muted-foreground">
+              <span>剧情线</span>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
+                title="新建剧情线"
+                aria-label="新建剧情线"
+                data-testid="story-progress-add-storyline-btn"
+                onClick={() => setShowCreateStoryline(true)}
+              >
+                <Plus className="size-3" />
+              </Button>
             </div>
             {board.chapters.map((column) => {
               const isFocus = board.focus?.chapterNumber === column.chapterNumber;

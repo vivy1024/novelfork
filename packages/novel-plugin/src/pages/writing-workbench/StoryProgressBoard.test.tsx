@@ -246,4 +246,37 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
     expect(fetchJson).toHaveBeenCalledTimes(1);
     expect(fetchJson.mock.calls[0][0]).toContain("/api/books/book-single/narrative-structure");
   });
+
+  it("行头点击新建剧情线，提交后发起 POST 并触发刷新 (Task A7)", async () => {
+    mockRoutes({ summaries });
+    render(<StoryProgressBoard bookId="book-1" currentChapter={2} />);
+
+    await waitFor(() => expect(screen.getByTestId("story-progress-board")).toBeTruthy());
+    const addBtn = screen.getByTestId("story-progress-add-storyline-btn");
+    expect(addBtn).toBeTruthy();
+
+    // 点击打开表单
+    fireEvent.click(addBtn);
+    expect(screen.getByTestId("story-progress-create-storyline-form")).toBeTruthy();
+
+    const input = screen.getByTestId("story-progress-storyline-name-input");
+    fireEvent.change(input, { target: { value: "宗门暗斗线" } });
+
+    fetchJson.mockImplementation(async (url: string, opts?: any) => {
+      if (url.includes("/narrative-memory/storylines") && opts?.method === "POST") {
+        return { ok: true, data: { id: "line-new" } };
+      }
+      return { entries: [] };
+    });
+
+    const submitBtn = screen.getByTestId("story-progress-storyline-submit-btn");
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      const calls = fetchJson.mock.calls;
+      const postCall = calls.find((c: any) => c[0].includes("/narrative-memory/storylines"));
+      expect(postCall).toBeTruthy();
+      expect(JSON.parse(postCall[1].body)).toMatchObject({ name: "宗门暗斗线", kind: "main" });
+    });
+  });
 });

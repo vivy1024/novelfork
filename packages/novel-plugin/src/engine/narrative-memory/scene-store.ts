@@ -25,20 +25,36 @@ export type NarrativeLayer = "canon" | "dynamic";
 export type NarrativeReviewStatus = "needs-review" | "confirmed" | "rejected";
 export type NarrativeSource = "dissect" | "settlement" | "workflow" | "manual" | "inferred";
 
-export type StorylineKind = "main" | "sub" | "romance" | "faction" | "mystery" | "character-arc" | "other";
+/**
+ * 合法取值以运行时数组为唯一来源，类型由它派生。接口边界据此校验——
+ * 单靠 `as StorylineKind` 强转，任何字符串都会原样落库，之后渲染时查不到标签，
+ * 排序与过滤也按错误的值走。
+ */
+export const STORYLINE_KINDS = ["main", "sub", "romance", "faction", "mystery", "character-arc", "other"] as const;
+export type StorylineKind = (typeof STORYLINE_KINDS)[number];
 export type StorylineLifecycle = "planned" | "active" | "paused" | "resolved" | "abandoned";
 
 /** 场景在故事推进中承担的功能，对应写作方法论里的 Beat 类型。 */
-export type SceneFunction =
-  | "advance"
-  | "reveal"
-  | "plant"
-  | "payoff"
-  | "relationship"
-  | "transition"
-  | "setup"
-  | "climax"
-  | "other";
+export const SCENE_FUNCTIONS = [
+  "advance",
+  "reveal",
+  "plant",
+  "payoff",
+  "relationship",
+  "transition",
+  "setup",
+  "climax",
+  "other",
+] as const;
+export type SceneFunction = (typeof SCENE_FUNCTIONS)[number];
+
+export function isStorylineKind(value: unknown): value is StorylineKind {
+  return typeof value === "string" && (STORYLINE_KINDS as readonly string[]).includes(value);
+}
+
+export function isSceneFunction(value: unknown): value is SceneFunction {
+  return typeof value === "string" && (SCENE_FUNCTIONS as readonly string[]).includes(value);
+}
 
 /** primary 决定场景在因果树里默认挂在哪条线下；supporting 是次要服务。 */
 export type SceneStorylineRole = "primary" | "supporting";

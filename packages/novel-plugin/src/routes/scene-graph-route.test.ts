@@ -113,6 +113,29 @@ describe("建场景与剧情线", () => {
     }
   });
 
+  it("剧情线类别与场景功能只接受枚举内的值，无效值被拒而不是原样落库", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      // 曾经前端把「支线」「人物成长」写成 subplot / character，接口照单全收
+      const badKind = await postJson(app, `${BASE}/storylines`, { name: "支线A", kind: "subplot" });
+      const badFunction = await postJson(app, `${BASE}/scenes`, { chapterNumber: 1, function: "fight" });
+      expect(badKind.status).toBe(400);
+      expect(String(badKind.body.summary)).toContain("subplot");
+      expect(badFunction.status).toBe(400);
+
+      const okSub = await postJson(app, `${BASE}/storylines`, { name: "支线B", kind: "sub" });
+      const okArc = await postJson(app, `${BASE}/storylines`, { name: "成长线", kind: "character-arc" });
+      expect(okSub.status).toBe(200);
+      expect(okArc.status).toBe(200);
+
+      const graph = await (await app.request(`${BASE}/scene-graph`)).json() as { storylines: Array<{ kind: string }> };
+      expect(graph.storylines.map((line) => line.kind).sort()).toEqual(["character-arc", "sub"]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("不给次序时按章追加", async () => {
     const storage = await createStorage();
     try {

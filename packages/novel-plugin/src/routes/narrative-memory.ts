@@ -35,8 +35,10 @@ import {
   mountSceneToStoryline,
   reorderChapterScenes,
   unmountSceneFromStoryline,
-  type SceneFunction,
-  type StorylineKind,
+  isSceneFunction,
+  isStorylineKind,
+  SCENE_FUNCTIONS,
+  STORYLINE_KINDS,
 } from "../engine/narrative-memory/scene-store.js";
 import { listStructureScores, scoreAndPersistNarrativeStructure } from "../engine/narrative-memory/structure-score.js";
 import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
@@ -862,10 +864,13 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
     const name = typeof body?.name === "string" ? body.name : "";
     if (!name.trim()) return invalidQuery(c, "name 必填：剧情线需要一个名字，否则树上会出现点不中的无名节点。");
+    if (body?.kind !== undefined && !isStorylineKind(body.kind)) {
+      return invalidQuery(c, `kind 取值无效（收到「${String(body.kind)}」）：只接受 ${STORYLINE_KINDS.join(" / ")}。无效值会让剧情线查不到类别标签、排序也会错位。`);
+    }
     const result = createStoryline(storage(), {
       bookId,
       name,
-      ...(typeof body?.kind === "string" ? { kind: body.kind as StorylineKind } : {}),
+      ...(isStorylineKind(body?.kind) ? { kind: body.kind } : {}),
       ...(typeof body?.goal === "string" ? { goal: body.goal } : {}),
       ...(typeof body?.entryId === "string" ? { entryId: body.entryId } : {}),
       // 作者在界面上手建的线不该背 needs-review；只有机器抽取才走待审。
@@ -883,12 +888,15 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
       return invalidQuery(c, "chapterNumber 必须是正整数：场景必须落在某一章上。");
     }
+    if (body?.function !== undefined && !isSceneFunction(body.function)) {
+      return invalidQuery(c, `function 取值无效（收到「${String(body.function)}」）：只接受 ${SCENE_FUNCTIONS.join(" / ")}。`);
+    }
     const result = createScene(storage(), {
       bookId,
       chapterNumber,
       ...(typeof body?.title === "string" ? { title: body.title } : {}),
       ...(typeof body?.summary === "string" ? { summary: body.summary } : {}),
-      ...(typeof body?.function === "string" ? { function: body.function as SceneFunction } : {}),
+      ...(isSceneFunction(body?.function) ? { function: body.function } : {}),
       ...(Number.isInteger(body?.ordinal) ? { ordinal: body!.ordinal as number } : {}),
       layer: "canon",
       status: "confirmed",
