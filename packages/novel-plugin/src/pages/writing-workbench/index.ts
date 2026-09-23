@@ -24,7 +24,6 @@ export * from "./RuntimeStatePanel";
 export * from "./CoreShiftPanel";
 export * from "./CreativeCompassPanel";
 export * from "./StoryTreeView";
-export * from "./StoryTreePanel";
 export * from "./CanonicalTreesPanel";
 export * from "./TidyTreeCanvas";
 export * from "./TensionCurveStrip";

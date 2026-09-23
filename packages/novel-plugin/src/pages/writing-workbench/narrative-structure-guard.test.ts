@@ -35,7 +35,6 @@ function scanTsxFiles(dir: string): string[] {
 /** 历史遗留直接拉取原始路由的已知债务白名单（只减不增）。 */
 const KNOWN_LEGACY_FETCH_WHITELIST = new Set([
   "ChapterContextRail.tsx",
-  "ChronicleHelixCanvas.tsx",
   "CreativeCompassPanel.tsx",
   "ForeshadowingBoard.tsx",
   "GovernanceCockpitPanel.tsx",
@@ -43,10 +42,7 @@ const KNOWN_LEGACY_FETCH_WHITELIST = new Set([
   "JingweiCanonPanel.tsx",
   "JingweiEntryEditor.tsx",
   "LedgerProgressTable.tsx",
-  "NarrativeMemoryGraphWorkspace.tsx",
-  "StoryNeuralCloudCanvas.tsx",
   "StoryProgressBoard.tsx",
-  "StoryTreePanel.tsx",
   "TensionCurvePanel.tsx",
   "WorldCardPage.tsx",
   "CharactersAndLoreSidebarPanel.tsx",

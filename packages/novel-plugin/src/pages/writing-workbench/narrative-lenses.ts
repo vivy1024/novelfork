@@ -183,12 +183,6 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     explanation: { what: "世界观树/关系树/章节树/发展历程/脉络/总图", why: "全视角理清全书概念与结构脉络", action: "在切换器内自由变换观察视角" },
   },
   {
-    panel: "NarrativeMemoryGraphWorkspace",
-    lens: "lore",
-    role: "叙事记忆图谱工作台",
-    explanation: { what: "展示跨章提取的人物、事件图谱网络", why: "查看实体间共现与衍生关系网", action: "过滤实体或关联路径以理清因果" },
-  },
-  {
     panel: "NarrativeMemoryPanel",
     lens: "lore",
     role: "叙事记忆条目审阅面板",
@@ -439,6 +433,16 @@ export const RETIRED_DUPLICATE_ENTRIES = [
     name: "ChronicleHelixCanvas",
     replacement: "CanonicalTreesPanel (kind='chronicle')",
     reason: "双螺旋视觉实验，已正式并入 CanonicalTreesPanel(chronicle)",
+  },
+  {
+    name: "NarrativeMemoryGraphWorkspace",
+    replacement: "CanonicalTreesPanel (kind='relations') / NarrativeMemoryPanel",
+    reason: "早期的重型独立图谱工作台，已下线并收拢为权威正图的关系树与叙事记忆条目审阅",
+  },
+  {
+    name: "StoryTreePanel",
+    replacement: "StoryTreeView / CanonicalTreesPanel",
+    reason: "故事树旧包装容器，已下线；底层 StoryTreeView 组件保留供对话工具卡渲染",
   },
 ] as const;
 

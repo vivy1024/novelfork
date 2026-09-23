@@ -28,8 +28,8 @@ describe("narrative-lenses 4 大叙事镜头与面板归属", () => {
   });
 
   it("50 个面板全部明确归入镜头，且无未归类面板", () => {
-    // 50 个面板清单
-    expect(PANEL_CLASSIFICATIONS.length).toBeGreaterThanOrEqual(48);
+    // 50 个面板清单（下线废弃画布后保持核心精炼）
+    expect(PANEL_CLASSIFICATIONS.length).toBeGreaterThanOrEqual(47);
 
     const names = new Set<string>();
     for (const item of PANEL_CLASSIFICATIONS) {
@@ -70,13 +70,15 @@ describe("narrative-lenses 4 大叙事镜头与面板归属", () => {
   });
 
   it("已下线重复入口清单明确，杜绝旧入口混淆", () => {
-    expect(RETIRED_DUPLICATE_ENTRIES.length).toBeGreaterThanOrEqual(3);
+    expect(RETIRED_DUPLICATE_ENTRIES.length).toBeGreaterThanOrEqual(5);
 
     const retiredNames = RETIRED_DUPLICATE_ENTRIES.map((r) => r.name);
     // 顶层重复 Tab 已记录下线
     expect(retiredNames).toContain("StoryProgressionCanvas.timeline");
     expect(retiredNames).toContain("StoryProgressionCanvas.chronicle");
     expect(retiredNames).toContain("StoryProgressionCanvas.network");
+    expect(retiredNames).toContain("NarrativeMemoryGraphWorkspace");
+    expect(retiredNames).toContain("StoryTreePanel");
 
     for (const entry of RETIRED_DUPLICATE_ENTRIES) {
       expect(entry.replacement.trim().length).toBeGreaterThan(0);
