@@ -283,8 +283,8 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
   {
     panel: "WorkflowTimelinePanel",
     lens: "progression",
-    role: "阶段性推进时间线",
-    explanation: { what: "推演多线并发事件在故事时间上的交错关系", why: "理清同一时间不同地点角色的行动因果", action: "排布各剧情线在绝对时间轴上的节拍" },
+    role: "创作工作流执行（故事推进 › 执行）",
+    explanation: { what: "按作者装配的工作流方案，把本章拆成若干道工序依次推进", why: "每道工序有自己的目标、可用工具与人工门禁，避免一口气写完却跳过校审", action: "选方案与章号启动，逐道工序查看产物并批准或打回" },
   },
 
   // ── 镜头 4：审（这章行不行） ──

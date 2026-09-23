@@ -78,9 +78,19 @@ describe("buildWorkbenchResourceTree", () => {
     expect(result.current.openableNodes.map((node) => node.id)).toContain("chapter:book-1:1");
   });
 
-  it("在工具分区注册协作与版本面板", () => {
+  it("在工具分区按时机重组工具并下线生产线组", () => {
     const flat = flattenWorkbenchResourceTree([createToolSectionNodes()]);
 
+    // ⚡ 生产线 组已从工具树移除（移入故事推进）
+    expect(flat.get("tool:workflow")).toBeUndefined();
+    expect(flat.get("tool-group:workflow")).toBeUndefined();
+
+    // 确认按时机划分的各工具节点存在
+    expect(flat.get("tool:arcs")).toMatchObject({ title: "角色弧线", metadata: { toolPanel: "arcs" } });
+    expect(flat.get("tool:tension")).toMatchObject({ title: "张力曲线", metadata: { toolPanel: "tension" } });
+    expect(flat.get("tool:quality")).toMatchObject({ title: "质量中心", metadata: { toolPanel: "quality" } });
+    expect(flat.get("tool:compliance")).toMatchObject({ title: "投稿风险自检", metadata: { toolPanel: "compliance" } });
+    expect(flat.get("tool:governance")).toMatchObject({ title: "叙事治理驾驶舱", metadata: { toolPanel: "governance" } });
     expect(flat.get("tool:collaboration-version")).toMatchObject({
       title: "协作与版本",
       metadata: { toolPanel: "collaboration-version" },

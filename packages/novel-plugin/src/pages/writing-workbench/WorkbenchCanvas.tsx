@@ -44,7 +44,6 @@ const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => (
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
 const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel").then(m => ({ default: m.CollaborationVersionPanel })));
-const WorkflowTimelinePanel = lazy(() => import("./WorkflowTimelinePanel").then(m => ({ default: m.WorkflowTimelinePanel })));
 const CharacterCardPage = lazy(() => import("./CharacterCardPage").then(m => ({ default: m.CharacterCardPage })));
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
@@ -231,16 +230,7 @@ export function resolveCurrentChapter(nodes: readonly WorkbenchResourceNode[] | 
 
 function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, currentChapter, onJumpToChapter, onOpenJingweiEntry, onSendToNarrator }: { toolPanel: ToolPanelId; bookId: string; bookPlatform?: string; repositoryPath?: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void; onOpenJingweiEntry?: (entryId: string) => boolean; onSendToNarrator?: (message: string) => Promise<void> | void }) {
   switch (toolPanel) {
-    case "workflow":
-      return (
-        <Suspense fallback={<ToolPanelLoading />}>
-          <WorkflowTimelinePanel
-            bookId={bookId}
-            currentChapter={currentChapter}
-            onSendToNarrator={onSendToNarrator}
-          />
-        </Suspense>
-      );
+    // 工作流不再是工具面板：它的唯一入口是「故事推进 › 执行」。
     case "quality":
       return (
         <Suspense fallback={<ToolPanelLoading />}>

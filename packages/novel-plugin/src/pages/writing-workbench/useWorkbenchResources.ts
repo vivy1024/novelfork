@@ -111,7 +111,7 @@ export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
 // Tool section — 工具分区节点（供资源树使用）
 // ---------------------------------------------------------------------------
 
-export type ToolPanelId = "quality" | "arcs" | "compliance" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension" | "workflow";
+export type ToolPanelId = "quality" | "arcs" | "compliance" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension";
 
 export interface ToolNodeDef {
   id: string;
@@ -127,43 +127,33 @@ interface ToolGroupDef {
 
 const TOOL_GROUPS: ToolGroupDef[] = [
   {
-    id: "tool-group:workflow",
-    title: "⚡ 生产线",
+    id: "tool-group:pre-writing",
+    title: "🎯 写前筹备",
     tools: [
-      { id: "tool:workflow", title: "创作工作流", toolPanel: "workflow" },
-    ],
-  },
-  {
-    id: "tool-group:progress",
-    title: "📈 进度类",
-    tools: [
-      // F1 张力曲线复活：孤儿组件挂回工具树，答「节奏是否崩了」。
+      { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
       { id: "tool:tension", title: "张力曲线", toolPanel: "tension" },
     ],
   },
   {
-    id: "tool-group:quality",
-    title: "🔍 质量类",
+    id: "tool-group:in-writing",
+    title: "🔍 写中质检",
     tools: [
-      // F2 收敛：趋势/指标/文风检测/一致性体检统一进「质量中心」单面板。
       { id: "tool:quality", title: "质量中心", toolPanel: "quality" },
+    ],
+  },
+  {
+    id: "tool-group:pre-publish",
+    title: "🛡️ 发布前风控",
+    tools: [
       { id: "tool:compliance", title: "投稿风险自检", toolPanel: "compliance" },
+      { id: "tool:governance", title: "叙事治理驾驶舱", toolPanel: "governance" },
     ],
   },
   {
-    id: "tool-group:structure",
-    title: "📐 结构类",
+    id: "tool-group:runtime",
+    title: "⚙️ 运行与协同",
     tools: [
-      { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
-      // 伏笔不在工具区：唯一入口在「故事推进」侧栏就地渲染的伏笔账本，不做跨面板跳转。
-      { id: "tool:runtime", title: "状态总览", toolPanel: "runtime" },
-      { id: "tool:governance", title: "叙事治理", toolPanel: "governance" },
-    ],
-  },
-  {
-    id: "tool-group:collaboration",
-    title: "协作类",
-    tools: [
+      { id: "tool:runtime", title: "底层状态总览", toolPanel: "runtime" },
       { id: "tool:collaboration-version", title: "协作与版本", toolPanel: "collaboration-version" },
     ],
   },

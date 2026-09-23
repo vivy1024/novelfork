@@ -10,6 +10,7 @@ import {
   Minimize2,
   Network,
   ScrollText,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -20,6 +21,9 @@ import { StoryProgressBoard } from "./StoryProgressBoard";
 
 const CanonicalTreesPanel = lazy(() =>
   import("./CanonicalTreesPanel").then((m) => ({ default: m.CanonicalTreesPanel })),
+);
+const WorkflowTimelinePanel = lazy(() =>
+  import("./WorkflowTimelinePanel").then((m) => ({ default: m.WorkflowTimelinePanel })),
 );
 
 // ─── 视图定义 ─────────────────────────────────────────────────────────────
@@ -37,7 +41,7 @@ const CanonicalTreesPanel = lazy(() =>
  * 原「发展历程」三层（事件流/关系演化/矛盾冲突）已从推进页移除：
  * 它们是叙事记忆的浏览视图，归 NarrativeMemoryPanel，不回答「下一章写什么」。
  */
-export type StoryProgressionView = "board" | "tree";
+export type StoryProgressionView = "board" | "tree" | "workflow";
 
 export interface StoryProgressionViewDef {
   readonly id: StoryProgressionView;
@@ -49,6 +53,8 @@ export interface StoryProgressionViewDef {
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
   { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
   { id: "tree", label: "故事树", description: "章节 / 因果 / 脉络 / 发展历程（世界观与关系树在「作品基础」）", icon: FolderTree },
+  // 工作流的归宿：它回答的是「这一章按什么工序推进」，属于推进镜头，不是一个可选分析工具。
+  { id: "workflow", label: "执行", description: "按创作工作流方案逐道工序推进本章", icon: Workflow },
 ] as const;
 
 const PROGRESSION_TREE_KINDS: readonly import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind[] = [
@@ -70,7 +76,7 @@ export const LEGACY_VIEW_TARGETS: Record<string, { view: StoryProgressionView; t
 };
 
 export function isStoryProgressionView(value: unknown): value is StoryProgressionView {
-  return value === "tree" || value === "board";
+  return value === "tree" || value === "board" || value === "workflow";
 }
 
 /** 兼容旧的 initialView 取值，自动归并在两大主视图下，并提供对应子视图。 */
@@ -222,6 +228,16 @@ export function StoryProgressionCanvas({
               {...(onSendToNarrator ? { onSendToNarrator } : {})}
               compactHeader={fullscreen}
             />
+          </div>
+        ) : view === "workflow" ? (
+          <div className="h-full min-h-0 overflow-y-auto" data-testid="story-progression-workflow">
+            <Suspense fallback={fallback("正在载入工作流…")}>
+              <WorkflowTimelinePanel
+                bookId={bookId}
+                {...(currentChapter !== undefined ? { currentChapter } : {})}
+                {...(onSendToNarrator ? { onSendToNarrator } : {})}
+              />
+            </Suspense>
           </div>
         ) : (
           <div className="h-full min-h-0" data-testid="story-progression-tree">

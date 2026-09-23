@@ -49,6 +49,12 @@ vi.mock("./CanonicalTreesPanel", () => ({
   ),
 }));
 
+vi.mock("./WorkflowTimelinePanel", () => ({
+  WorkflowTimelinePanel: ({ bookId, currentChapter }: { bookId: string; currentChapter?: number }) => (
+    <div data-testid="mock-workflow" data-book={bookId} data-chapter={String(currentChapter ?? "")} />
+  ),
+}));
+
 import { StoryProgressionCanvas, normalizeStoryProgressionView } from "./StoryProgressionCanvas";
 
 beforeEach(() => {
@@ -87,6 +93,16 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     fireEvent.click(screen.getByRole("tab", { name: /推进/ }));
     await waitFor(() => expect(screen.getByTestId("mock-progress-board")).toBeTruthy());
     expect(screen.getByTestId("mock-progress-board").getAttribute("data-chapter")).toBe("29");
+  });
+
+  it("工作流的唯一入口在「执行」视图，可达且透传书与章号", async () => {
+    // 工作流从工具树移出后曾一度没有任何入口；这条用例守住它的归宿。
+    render(<StoryProgressionCanvas bookId="book-1" currentChapter={12} />);
+    fireEvent.click(screen.getByRole("tab", { name: /执行/ }));
+    await waitFor(() => expect(screen.getByTestId("mock-workflow")).toBeTruthy());
+    expect(screen.getByTestId("mock-workflow").getAttribute("data-book")).toBe("book-1");
+    expect(screen.getByTestId("mock-workflow").getAttribute("data-chapter")).toBe("12");
+    expect(normalizeStoryProgressionView("workflow")).toBe("workflow");
   });
 
   it("推进页的正图只含结构类的树，世界观与关系树不在这里", async () => {
