@@ -264,3 +264,30 @@ export function createStoryProgressionNode(
     },
   };
 }
+
+/**
+ * 创建「设定图谱」合成资源节点（作品基础的中央视图）。
+ *
+ * 世界观树与关系树回答「设定是什么」，属于作品基础；故事推进的正图只保留
+ * 章节 / 因果 / 脉络 / 发展历程。两处共用 CanonicalTreesPanel，靠 kinds 分家，
+ * 互相看不到对方的树，不构成重复入口。
+ */
+export function createLoreTreesNode(bookId: string): WorkbenchResourceNode {
+  return {
+    id: `lore-trees:${bookId}`,
+    kind: "group",
+    title: "设定图谱",
+    capabilities: {
+      open: true,
+      readonly: true,
+      unsupported: false,
+      edit: false,
+      delete: false,
+      apply: false,
+    },
+    metadata: {
+      isLoreTrees: true,
+      bookId,
+    },
+  };
+}

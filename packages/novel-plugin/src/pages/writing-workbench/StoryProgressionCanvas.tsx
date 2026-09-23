@@ -48,17 +48,24 @@ export interface StoryProgressionViewDef {
 
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
   { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
-  { id: "tree", label: "故事树", description: "世界观 / 关系树 / 章节 / 发展历程 / 脉络 / 总图", icon: FolderTree },
+  { id: "tree", label: "故事树", description: "章节 / 因果 / 脉络 / 发展历程（世界观与关系树在「作品基础」）", icon: FolderTree },
+] as const;
+
+const PROGRESSION_TREE_KINDS: readonly import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind[] = [
+  "chapters",
+  "causal",
+  "chronicle",
+  "timeline",
 ] as const;
 
 export const LEGACY_VIEW_TARGETS: Record<string, { view: StoryProgressionView; treeKind?: import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind }> = {
   board: { view: "board" },
-  tree: { view: "tree", treeKind: "worldview" },
+  tree: { view: "tree", treeKind: "chapters" },
   timeline: { view: "tree", treeKind: "timeline" },
   evolution: { view: "tree", treeKind: "timeline" },
   chronicle: { view: "tree", treeKind: "chronicle" },
-  network: { view: "tree", treeKind: "relations" },
-  map: { view: "tree", treeKind: "relations" },
+  network: { view: "tree", treeKind: "causal" },
+  map: { view: "tree", treeKind: "causal" },
   outline: { view: "tree", treeKind: "chapters" },
 };
 
@@ -221,6 +228,7 @@ export function StoryProgressionCanvas({
             <Suspense fallback={fallback("正在铺开正图…")}>
               <CanonicalTreesPanel
                 bookId={bookId}
+                kinds={PROGRESSION_TREE_KINDS}
                 initialKind={resolveInitialTreeKind(initialView)}
                 {...(onOpenEntityDetail
                   ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }

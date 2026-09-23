@@ -25,7 +25,7 @@ import {
   type TimelineEventInput,
   type VolumeTreeInput,
 } from "../../engine/narrative-taxonomy/canonical-trees";
-import { buildCarrierTree } from "../../engine/narrative-taxonomy/scene-trees";
+import { buildCarrierTree, buildCausalTree } from "../../engine/narrative-taxonomy/scene-trees";
 import type { TreeEntryInput } from "../../engine/narrative-taxonomy/story-tree";
 import type { NarrativeStructurePayload } from "../../engine/narrative-taxonomy/narrative-structure";
 import { TidyTreeCanvas } from "./TidyTreeCanvas";
@@ -36,6 +36,8 @@ export interface CanonicalTreesPanelProps {
   readonly onOpenChapter?: (chapterNumber: number) => void;
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
   readonly initialKind?: CanonicalTreeKind;
+  /** 只展示指定的子视图集合（如理镜头传 worldview+relations，推镜头传 chapters+causal+chronicle+timeline）。 */
+  readonly kinds?: readonly CanonicalTreeKind[];
   /** false 时只画这一张树，给发展历程 / 章节脉络 / 关系网当独立入口。 */
   readonly showSwitcher?: boolean;
 }
@@ -137,10 +139,23 @@ export function CanonicalTreesPanel({
   onOpenChapter,
   onSendToNarrator,
   initialKind = "worldview",
+  kinds,
   showSwitcher = true,
 }: CanonicalTreesPanelProps) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
-  const [kind, setKind] = useState<CanonicalTreeKind>(initialKind);
+
+  const availableViews = useMemo(() => {
+    if (!kinds || kinds.length === 0) return CANONICAL_TREE_VIEWS;
+    const allowed = new Set(kinds);
+    return CANONICAL_TREE_VIEWS.filter((view) => allowed.has(view.id));
+  }, [kinds]);
+
+  const defaultKind = useMemo(() => {
+    if (initialKind && availableViews.some((v) => v.id === initialKind)) return initialKind;
+    return availableViews[0]?.id ?? "worldview";
+  }, [initialKind, availableViews]);
+
+  const [kind, setKind] = useState<CanonicalTreeKind>(defaultKind);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedByKind, setExpandedByKind] = useState<Partial<Record<CanonicalTreeKind, Set<string>>>>({});
@@ -148,8 +163,8 @@ export function CanonicalTreesPanel({
   const generationRef = useRef(0);
 
   useEffect(() => {
-    setKind(initialKind);
-  }, [initialKind]);
+    setKind(defaultKind);
+  }, [defaultKind]);
 
   useEffect(() => {
     if (!bookId.trim()) {
@@ -192,19 +207,36 @@ export function CanonicalTreesPanel({
             function: s.function,
             status: s.status,
           }));
-          const trees = scenes.length > 0
-            ? {
-                ...base,
-                chapters: buildCarrierTree({
-                  volumes,
-                  chapters: struct.chapters.map((chapter) => ({
-                    number: chapter.number,
-                    title: chapter.title,
-                  })),
-                  scenes,
-                }),
-              }
-            : base;
+          const causal = buildCausalTree({
+            storylines: struct.storylines.map((l) => ({
+              id: l.id,
+              title: l.name,
+              kind: l.kind,
+              status: l.status,
+            })),
+            scenes,
+            mounts: struct.mounts.map((m) => ({
+              sceneId: m.sceneId,
+              storylineId: m.storylineId,
+              role: m.role,
+            })),
+          });
+          const trees = {
+            ...base,
+            ...(scenes.length > 0
+              ? {
+                  chapters: buildCarrierTree({
+                    volumes,
+                    chapters: struct.chapters.map((chapter) => ({
+                      number: chapter.number,
+                      title: chapter.title,
+                    })),
+                    scenes,
+                  }),
+                }
+              : {}),
+            causal,
+          };
           setState({ status: "ready", trees, degraded: false });
           return;
         }
@@ -364,10 +396,10 @@ export function CanonicalTreesPanel({
 
       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
         <FolderTree className="size-3.5 text-primary" />
-        <span className="text-xs font-semibold">{showSwitcher ? "正图" : (CANONICAL_TREE_VIEWS.find((view) => view.id === kind)?.label ?? "正图")}</span>
-        {showSwitcher ? (
+        <span className="text-xs font-semibold">{showSwitcher && availableViews.length > 1 ? "正图" : (availableViews.find((view) => view.id === kind)?.label ?? "正图")}</span>
+        {showSwitcher && availableViews.length > 1 ? (
         <nav className="flex items-center gap-0.5 rounded-md bg-muted/60 p-0.5" role="tablist" aria-label="正图切换">
-          {CANONICAL_TREE_VIEWS.map((view) => {
+          {availableViews.map((view) => {
             const active = kind === view.id;
             return (
               <button

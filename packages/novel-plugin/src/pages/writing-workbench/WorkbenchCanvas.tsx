@@ -29,8 +29,12 @@ import { QualityPanel } from "./panels/QualityPanel";
 import type { ToolPanelId } from "./useWorkbenchResources";
 import { GovernanceCockpitPanel } from "./GovernanceCockpitPanel";
 
+// 作品基础只看设定类的树；结构类的树归故事推进（见 StoryProgressionCanvas 的 PROGRESSION_TREE_KINDS）。
+const LORE_TREE_KINDS = ["worldview", "relations"] as const;
+
 // Lazy-loaded tool panels
 const StoryProgressionCanvas = lazy(() => import("./StoryProgressionCanvas").then(m => ({ default: m.StoryProgressionCanvas })));
+const CanonicalTreesPanel = lazy(() => import("./CanonicalTreesPanel").then(m => ({ default: m.CanonicalTreesPanel })));
 const NarrativeMemoryPanel = lazy(() => import("./NarrativeMemoryPanel").then(m => ({ default: m.NarrativeMemoryPanel })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
 const TensionCurvePanel = lazy(() => import("./TensionCurvePanel").then(m => ({ default: m.TensionCurvePanel })));
@@ -440,6 +444,28 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         </div>
       );
     }
+  }
+
+  // 设定图谱 — 作品基础的中央视图，只放回答「设定是什么」的两棵树。
+  if (node.metadata?.isLoreTrees && bookId) {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden" data-testid="lore-trees-view">
+        <Suspense fallback={<ToolPanelLoading />}>
+          <CanonicalTreesPanel
+            bookId={bookId}
+            kinds={LORE_TREE_KINDS}
+            initialKind="worldview"
+            onOpenEntry={(entryId: string, label: string) => {
+              // 条目已载入就直接跳经纬卡；否则退回实体详情抽屉，至少让名字有去处。
+              if (onOpenJingweiEntry?.(entryId)) return;
+              onOpenEntityDetail?.(label);
+            }}
+            {...(onJumpToChapter ? { onOpenChapter: onJumpToChapter } : {})}
+            {...(onSendToNarrator ? { onSendToNarrator } : {})}
+          />
+        </Suspense>
+      </div>
+    );
   }
 
   // 故事推进大屏画布 — 地图/发展历程/双螺旋三视图统一工作台（独立「故事画布」视图入口）

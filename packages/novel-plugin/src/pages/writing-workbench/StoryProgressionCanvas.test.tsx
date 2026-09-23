@@ -21,23 +21,26 @@ vi.mock("./CanonicalTreesPanel", () => ({
   CanonicalTreesPanel: ({
     bookId,
     initialKind,
+    kinds,
     showSwitcher,
     onOpenEntry,
   }: {
     bookId: string;
     initialKind?: string;
+    kinds?: readonly string[];
     showSwitcher?: boolean;
     onOpenEntry?: (entryId: string, label: string) => void;
   }) => (
     <div
       data-testid={
         initialKind === "chronicle" ? "mock-chronicle"
-          : initialKind === "relations" ? "mock-network"
+          : initialKind === "causal" || initialKind === "relations" ? "mock-network"
             : initialKind === "timeline" ? "mock-timeline"
               : "mock-story-tree"
       }
       data-book={bookId}
       data-kind={initialKind ?? "worldview"}
+      data-kinds={kinds?.join(",") ?? ""}
       data-switcher={showSwitcher === false ? "off" : "on"}
     >
       <button type="button" onClick={() => onOpenEntry?.("entry-9", "薛行之")}>打开条目</button>
@@ -86,6 +89,13 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     expect(screen.getByTestId("mock-progress-board").getAttribute("data-chapter")).toBe("29");
   });
 
+  it("推进页的正图只含结构类的树，世界观与关系树不在这里", async () => {
+    render(<StoryProgressionCanvas bookId="book-1" initialView="tree" />);
+    await waitFor(() => expect(screen.getByTestId("mock-story-tree")).toBeTruthy());
+    const kinds = screen.getByTestId("mock-story-tree").getAttribute("data-kinds") ?? "";
+    expect(kinds.split(",")).toEqual(["chapters", "causal", "chronicle", "timeline"]);
+  });
+
   it("故事树里打开条目转成实体详情回调", async () => {
     const onOpenEntityDetail = vi.fn();
     render(<StoryProgressionCanvas bookId="book-1" onOpenEntityDetail={onOpenEntityDetail} />);
@@ -118,7 +128,7 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
   it("旧 initialView 别名正确映射到故事树的对应子树", async () => {
     const { rerender } = render(<StoryProgressionCanvas bookId="book-1" initialView="map" />);
     await waitFor(() => expect(screen.getByTestId("mock-network")).toBeTruthy());
-    expect(screen.getByTestId("mock-network").getAttribute("data-kind")).toBe("relations");
+    expect(screen.getByTestId("mock-network").getAttribute("data-kind")).toBe("causal");
 
     rerender(<StoryProgressionCanvas bookId="book-1" initialView="evolution" />);
     await waitFor(() => expect(screen.getByTestId("mock-timeline")).toBeTruthy());

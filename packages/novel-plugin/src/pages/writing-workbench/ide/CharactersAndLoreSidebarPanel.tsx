@@ -13,6 +13,7 @@ import {
   Eye,
   HeartHandshake,
   MapPin,
+  Network,
   Plus,
   Search,
   Shield,
@@ -35,7 +36,7 @@ import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { CATEGORY_META, normalizeCategory, type JingweiCategory } from "../../../engine/jingwei/unified-categories";
 import { workspaceForCategory } from "../lore-workspace-split";
 import { type ResourceTreeAction } from "../WorkbenchResourceTree";
-import type { WorkbenchResourceNode } from "../useWorkbenchResources";
+import { createLoreTreesNode, type WorkbenchResourceNode } from "../useWorkbenchResources";
 
 export interface EntityFactLite {
   id?: string;
@@ -239,6 +240,17 @@ export function CharactersAndLoreSidebarPanel({
           >
             <Eye className="size-3" />
             AI注入预览
+          </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => onOpen(createLoreTreesNode(bookId))}
+            className="h-6 text-xs gap-1"
+            title="在中央打开世界观树与关系树"
+            data-testid="characters-lore-open-trees"
+          >
+            <Network className="size-3" />
+            设定图谱
           </Button>
         </div>
 

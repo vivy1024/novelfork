@@ -162,6 +162,18 @@ describe("CanonicalTreesPanel 四张正图", () => {
     });
     render(<CanonicalTreesPanel bookId="book-1" />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-degraded")).toBeTruthy());
-    expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("worldview");
+  });
+
+  it("kinds 属性支持按镜头精确筛选展示的子树集合", async () => {
+    // 模拟理镜头：只看世界观与关系树
+    render(<CanonicalTreesPanel bookId="book-1" kinds={["worldview", "relations"]} />);
+    await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
+
+    expect(screen.getByTestId("canonical-tree-tab-worldview")).toBeTruthy();
+    expect(screen.getByTestId("canonical-tree-tab-relations")).toBeTruthy();
+    expect(screen.queryByTestId("canonical-tree-tab-chapters")).toBeNull();
+    expect(screen.queryByTestId("canonical-tree-tab-causal")).toBeNull();
+    expect(screen.queryByTestId("canonical-tree-tab-timeline")).toBeNull();
+    expect(screen.queryByTestId("canonical-tree-tab-overview")).toBeNull();
   });
 });

@@ -25,7 +25,8 @@ export type CanonicalTreeKind =
   | "chapters"
   | "overview"
   | "timeline"
-  | "chronicle";
+  | "chronicle"
+  | "causal";
 
 export type CanonicalNodeKind =
   | "root"
@@ -119,6 +120,7 @@ export interface CanonicalTrees {
   readonly overview: CanonicalForest;
   readonly timeline: CanonicalForest;
   readonly chronicle: CanonicalForest;
+  readonly causal: CanonicalForest;
 }
 
 const SETTING_CATEGORIES = new Set(["characters", "factions", "locations", "props"]);
@@ -1027,7 +1029,13 @@ export function buildCanonicalTrees(input: BuildCanonicalTreesInput): CanonicalT
     ...(input.events ? { events: input.events } : {}),
     ...(input.maxEventsPerChapter ? { maxEventsPerChapter: input.maxEventsPerChapter } : {}),
   });
-  return { relations, worldview, chapters, overview, timeline, chronicle };
+  const causal: CanonicalForest = {
+    kind: "causal",
+    root: { id: "causal", kind: "root", label: "因果树", count: 0, children: [], defaultExpanded: true },
+    truncated: false,
+    emptyReason: "还没有剧情线，也没有场景；这棵树描述「为什么发生」，需要先有剧情线。",
+  };
+  return { relations, worldview, chapters, overview, timeline, chronicle, causal };
 }
 
 export function forestHasContent(forest: CanonicalForest): boolean {
@@ -1042,6 +1050,7 @@ export const CANONICAL_TREE_VIEWS: readonly {
   { id: "worldview", label: "世界观", description: "按叙事分类看设定层级" },
   { id: "relations", label: "关系树", description: "按共现枢纽看谁和谁同场" },
   { id: "chapters", label: "章节", description: "卷纲到章的分叉骨架" },
+  { id: "causal", label: "因果树", description: "按剧情线看场景与因果推进" },
   { id: "timeline", label: "发展历程", description: "按章看已经发生的事" },
   { id: "chronicle", label: "章节脉络", description: "表世界摘要与里世界角色变化" },
   { id: "overview", label: "总图", description: "结构树的浅层总览" },
