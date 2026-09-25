@@ -15,15 +15,15 @@
 
 ## 从源码运行
 
-```bash
-git clone https://github.com/vivy1024/novelfork.git novelfork
-cd novelfork
-pnpm install
-pnpm build
-pnpm test
-```
+完整步骤见 [README「源码开发」](README.md#option-2-源码开发维护者)，要点：
 
-> 根工作区依赖仅使用 PNPM 10.24.0 安装；Bun 保留为 Runtime 执行器和产品单文件编译器，不要在根目录执行 `bun install`。
+1. 需要私有仓库 `NarraFork/novelfork-runtime-private` 的读权限（找维护者开通）。
+2. Runtime 不随本仓库提供：按 `packages/narrafork-runtime-private/UPSTREAM.lock.json` 的 `branch` / `commit`，从 fork 分支 `git archive` 导出到 `packages/narrafork-runtime-private/`，再在该目录执行 `bun install --frozen-lockfile`。
+3. 根目录 `pnpm install`，然后 `pnpm typecheck` 确认五个包（core / bridge / novel-plugin / studio / product-runtime）全部 Done。
+
+> 根工作区依赖仅使用 PNPM 10.24.0 安装；Bun 保留为 Runtime 执行器和产品单文件编译器，不要在根目录执行 `bun install`（Runtime 目录内的 `bun install` 除外，它不在 pnpm 工作区里）。
+
+Runtime 目录与 fork 相关的硬约束（不得提交 Runtime 源码、Runtime 改动先进 fork 分支等）见 [CLAUDE.md](CLAUDE.md)。
 
 ---
 
@@ -31,10 +31,13 @@ pnpm test
 
 ```text
 packages/
-  core/     # 写作引擎、状态、审计、LLM 适配
-  cli/      # 过渡期命令入口
-  studio/   # React + Hono 工作台
-  desktop/  # 历史 Tauri 壳（非当前主路线）
+  core/                       # 通用基础设施：模型、存储、迁移、插件契约
+  studio/                     # 产品前端与工作台外壳
+  novel-plugin/               # 小说领域：写作、章节、经纬、叙事记忆、工作台 UI
+  novelfork-product-runtime/  # 产品 Runtime 适配、书籍绑定、产品路由
+  narrafork-runtime-bridge/   # 与 Runtime 之间的窄契约（仅类型与受控入口）
+  fitness-plugin/             # 示例 / 扩展插件
+  narrafork-runtime-private/  # Runtime 物化树（Git 忽略，本地导出；仅 UPSTREAM.lock.json 被跟踪）
 ```
 
 ---

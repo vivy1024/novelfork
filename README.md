@@ -79,7 +79,7 @@
 | **OS** | Windows x64 / Linux x64 / Linux arm64 / macOS x64 / macOS arm64 | v3.6.0 提供七平台产物；Windows x64 为本机主要核验平台 |
 | **浏览器** | Chrome / Edge | 本地 Web 工作台 |
 
-> 从公开源码完整跑通本地产品，需要维护者私有的 Runtime 物化树与 overlay 子仓库权限。普通用户请使用 **Releases 中的 Windows EXE**。
+> 从公开源码完整跑通本地产品，需要私有 Runtime fork 仓库 `NarraFork/novelfork-runtime-private` 的读权限。普通用户请使用 **Releases 中的 Windows EXE**。
 
 ---
 
@@ -106,19 +106,27 @@ Windows 用户优先选择 `windows-x64.exe`；不支持 AVX2 的旧 CPU 或部�
 
 ### Option 2: 源码开发（维护者）
 
+需要私有仓库 `NarraFork/novelfork-runtime-private` 的读权限（找维护者开通）。Runtime 不随本仓库 clone 提供，要从 fork 分支导出到 `packages/narrafork-runtime-private/`（Git 忽略）；该用哪个分支、哪个提交，以 `packages/narrafork-runtime-private/UPSTREAM.lock.json` 的 `branch` / `commit` 为准。以下命令在 Git Bash 中执行：
+
 ```bash
 git clone https://github.com/vivy1024/novelfork.git
 cd novelfork
-
-# Runtime 来源：先在私有 fork 合并上游，再物化到本地（需要仓库权限）
-# NarraFork/novelfork-runtime-private
-# 分支：novelfork/integration-v0.5.23
-# packages/narrafork-runtime-private/  （Git 忽略，不随 clone 提供）
-# packages/narrafork-runtime-overlay/ 仅作本地历史归档，不初始化、不参与生产链
-
 pnpm install
+
+# 导出 Runtime（只取跟踪文件，不含 node_modules / dist）
+BRANCH=$(node -p "require('./packages/narrafork-runtime-private/UPSTREAM.lock.json').branch")
+git clone --depth 1 --branch "$BRANCH" https://github.com/NarraFork/novelfork-runtime-private.git ../novelfork-runtime-private
+git -C ../novelfork-runtime-private rev-parse HEAD   # 应与 UPSTREAM.lock.json 的 commit 一致
+git -C ../novelfork-runtime-private archive -o "$PWD/runtime.tar" HEAD
+tar -xf runtime.tar -C packages/narrafork-runtime-private && rm runtime.tar
+(cd packages/narrafork-runtime-private && bun install --frozen-lockfile)
+
+pnpm typecheck        # core / bridge / novel-plugin / studio / product-runtime 应全部 Done
 pnpm dev              # 开发模式
 ```
+
+- `pnpm typecheck` 最后还会检查 Runtime 物化树，那部分恒有报错（缺构建期生成文件），属已知噪声，只看上面五个包。
+- 需要写数据的本地验证请用隔离实例 `bun scripts/start-isolated-verify.ts --port=4613`，不要连自己的真实数据目录（详见 [CLAUDE.md](CLAUDE.md)）。
 
 编译 Windows 产物：
 
@@ -265,7 +273,7 @@ pnpm compile:all      # 七平台交叉编译 + 聚合 SHA256
 
 ## Contributing
 
-欢迎 Issue 与 PR（产品层）。涉及完整 Runtime 行为的改动需要私有 Runtime / overlay 权限，请先阅读根目录 [CLAUDE.md](CLAUDE.md)。
+欢迎 Issue 与 PR（产品层）。本地完整运行需要私有 Runtime fork 的读权限（见上文「源码开发」），开发约定请先阅读根目录 [CLAUDE.md](CLAUDE.md) 与 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ```bash
 git checkout -b feat/your-feature
