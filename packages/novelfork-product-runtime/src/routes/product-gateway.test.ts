@@ -231,6 +231,44 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		await access(join(externalBookRoot, ".novelfork", "skills", skillSlug, "SKILL.md"));
 	});
 
+	test("foreshadow thresholds are validated, saved to book.json and can be reset", async () => {
+		if (!bookId) throw new Error("gateway fixture missing");
+		const app = productApp(owner);
+		const put = (body: unknown) => app.request(`/api/books/${bookId}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		const readBook = async () => JSON.parse(await readFile(join(externalBookRoot, "book.json"), "utf8")) as Record<string, unknown>;
+
+		// 临近提醒不小于超期、非整数都被拒绝，book.json 不变。
+		for (const invalid of [
+			{ watchChapters: 12, overdueChapters: 12 },
+			{ watchChapters: 2.5, overdueChapters: 12 },
+			{ watchChapters: 0, overdueChapters: 12 },
+		]) {
+			expect((await put({ foreshadowDebtThresholds: invalid })).status).toBe(400);
+		}
+		expect(await readBook()).not.toHaveProperty("foreshadowDebtThresholds");
+
+		const saved = await put({ foreshadowDebtThresholds: { watchChapters: 8, overdueChapters: 30 } });
+		expect(saved.status).toBe(200);
+		expect(await readBook()).toMatchObject({ foreshadowDebtThresholds: { watchChapters: 8, overdueChapters: 30 } });
+
+		// 外部工作区的书：叙事结构快照必须经可信绑定读到同一个 book.json，而不是回落默认值。
+		const snapshot = await app.request(`/api/books/${bookId}/narrative-structure`);
+		expect(snapshot.status).toBe(200);
+		expect(await snapshot.json()).toMatchObject({ foreshadowThresholds: { watchChapters: 8, overdueChapters: 30 } });
+
+		// null = 恢复默认：字段从 book.json 删除，其余设置保留。
+		expect((await put({ foreshadowDebtThresholds: null })).status).toBe(200);
+		const reset = await readBook();
+		expect(reset).not.toHaveProperty("foreshadowDebtThresholds");
+		expect(reset).toMatchObject({ chapterWordCount: 3200 });
+		const resetSnapshot = await app.request(`/api/books/${bookId}/narrative-structure`);
+		expect(await resetSnapshot.json()).toMatchObject({ foreshadowThresholds: { watchChapters: 5, overdueChapters: 12 } });
+	});
+
 	test("rebinds an existing book to a marked external workspace", async () => {
 		if (!bookId) throw new Error("gateway fixture missing");
 		await writeFile(

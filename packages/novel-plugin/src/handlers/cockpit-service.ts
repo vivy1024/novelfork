@@ -3,6 +3,7 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import { readCurrentFocusDocFromStorage } from "../engine/jingwei/current-focus.js";
 import { computeForeshadowingDebt, toCockpitHookRisk } from "../engine/jingwei/foreshadowing-debt.js";
+import { resolveForeshadowDebtThresholds, type ForeshadowDebtThresholds } from "../engine/narrative-taxonomy/foreshadow-debts.js";
 
 export type CockpitDataStatus = "available" | "empty" | "missing" | "unsupported";
 
@@ -277,6 +278,7 @@ export class CockpitService {
     try {
       const storage = this.getStorage();
       const currentChapter = Math.max(0, ...(await this.state.loadChapterIndex(input.bookId)).map((ch) => ch.number));
+      const thresholds = resolveForeshadowDebtThresholds((await this.loadBook(input.bookId))?.foreshadowDebtThresholds);
 
       // 查找 category='foreshadowing' 且 lifecycle='active' 的条目
       const rows = storage.sqlite.prepare(`
@@ -301,7 +303,7 @@ export class CockpitService {
           id: row.id,
           text: row.title + (row.content_md ? `：${row.content_md.slice(0, 100)}` : ""),
           sourceChapter,
-          status: computeHookRisk(sourceChapter, currentChapter),
+          status: computeHookRisk(sourceChapter, currentChapter, thresholds),
           sourceFile: "jingwei:foreshadowing",
           sourceKind: "jingwei" as const,
         };
@@ -365,9 +367,13 @@ function normalizeLimit(value: unknown): number {
 }
 
 /** 驾驶舱只做统计，阈值必须与伏笔看板同源（foreshadowing-debt）。 */
-function computeHookRisk(sourceChapter: number, currentChapter: number): CockpitHookItem["status"] {
+function computeHookRisk(
+  sourceChapter: number,
+  currentChapter: number,
+  thresholds: ForeshadowDebtThresholds,
+): CockpitHookItem["status"] {
   if (sourceChapter <= 0) return "open";
-  return toCockpitHookRisk(computeForeshadowingDebt({ plantedChapter: sourceChapter, currentChapter }));
+  return toCockpitHookRisk(computeForeshadowingDebt({ plantedChapter: sourceChapter, currentChapter, thresholds }));
 }
 
 function buildRecentChapterResults(bookId: string, chapters: readonly ChapterMeta[], limit?: number): CockpitListResult<CockpitChapterResultItem> {

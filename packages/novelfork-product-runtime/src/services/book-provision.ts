@@ -94,6 +94,8 @@ export type ProductBookBasicSettingsPatch = {
 	targetChapters?: number | null;
 	arcTrackingMode?: "off" | "rule" | "llm";
 	customSensitiveWords?: string;
+	/** null 表示删除该字段、回到默认阈值。 */
+	foreshadowDebtThresholds?: { watchChapters: number; overdueChapters: number } | null;
 };
 
 export type ProductActor = { userId: string; role: "admin" | "user" };
@@ -1549,6 +1551,7 @@ export class NovelForkProductBookService {
 			updatedAt: now(),
 		};
 		if (patch.targetChapters === null) delete nextConfig.targetChapters;
+		if (patch.foreshadowDebtThresholds === null) delete nextConfig.foreshadowDebtThresholds;
 		const title = typeof nextConfig.title === "string" ? nextConfig.title.trim() : "";
 		if (!title) throw new ValidationError("Book title must not be empty");
 		nextConfig.title = title;

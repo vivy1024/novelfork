@@ -53,6 +53,8 @@ export interface BuildStoryProgressBoardInput {
   readonly events?: readonly ProgressMemoryEvent[];
   /** 作者当前所在章；缺省时取数据中的最大章号。 */
   readonly currentChapter?: number;
+  /** 本书的伏笔阈值；缺省用默认值。 */
+  readonly foreshadowThresholds?: ForeshadowDebtThresholds;
   /** 角色泳道上限，超出折叠。默认 4。 */
   readonly maxCharacterLanes?: number;
 
@@ -118,6 +120,7 @@ export {
 
 import {
   type ForeshadowDebt,
+  type ForeshadowDebtThresholds,
   buildForeshadowDebts,
   trimTitle,
 } from "../../engine/narrative-taxonomy/foreshadow-debts.js";
@@ -484,7 +487,7 @@ export function buildStoryProgressBoard(input: BuildStoryProgressBoardInput): St
     );
   });
 
-  const debts = buildForeshadowDebts(input.foreshadowEntries ?? [], currentChapter);
+  const debts = buildForeshadowDebts(input.foreshadowEntries ?? [], currentChapter, input.foreshadowThresholds);
 
   // 伏笔泳道：只画未回收的（已回收的进债务行的历史区，不占网格）
   const foreshadowCells: StoryProgressCell[] = [];

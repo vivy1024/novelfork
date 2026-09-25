@@ -6,6 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { NarrativeMemorySettingsSection } from "../../writing-config/WritingConfigSection";
+import type { ForeshadowDebtThresholds } from "../../../engine/narrative-taxonomy/foreshadow-debts";
+import { dispatchWritingProgress } from "../writing-progress-event";
+import { ForeshadowThresholdField } from "./ForeshadowThresholdField";
 
 interface BookConfig {
   title: string;
@@ -67,6 +70,8 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  // book.json 里伏笔阈值的原始值，交给阈值字段自行校验与回退。
+  const [foreshadowThresholdsRaw, setForeshadowThresholdsRaw] = useState<unknown>(undefined);
   const [layers, setLayers] = useState<BookWritingLayers>({
     authorIntent: "",
     currentFocus: "",
@@ -92,6 +97,7 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
         if (cancelled) return;
         const book = data && typeof data === "object" && "book" in data && data.book && typeof data.book === "object"
           ? data.book as Record<string, unknown> : data as Record<string, unknown>;
+        setForeshadowThresholdsRaw(book.foreshadowDebtThresholds);
         setConfig({
           title: typeof book.title === "string" ? book.title : "",
           genre: typeof book.genre === "string" ? book.genre : "",
@@ -146,6 +152,24 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
     }
   }, [bookId]);
   const debouncedSave = useDebounce(saveConfig, 1000);
+  const saveForeshadowThresholds = useCallback(async (value: ForeshadowDebtThresholds | null) => {
+    setSaveStatus("saving");
+    try {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ foreshadowDebtThresholds: value }),
+      });
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 1500);
+      // 已打开的伏笔看板、推进看板、侧栏据此重读阈值，不必刷新页面。
+      dispatchWritingProgress({ reason: "foreshadow-thresholds", bookId });
+      return true;
+    } catch {
+      setSaveStatus("idle");
+      return false;
+    }
+  }, [bookId]);
   const updateConfig = useCallback((key: keyof BookConfig, value: string | number | boolean | null) => {
     setConfig((current) => current ? { ...current, [key]: value } : current);
     void debouncedSave({ [key]: value });
@@ -213,6 +237,7 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
             <label className="block space-y-1 text-xs text-muted-foreground">每章字数<Input type="number" min={500} value={config.chapterWordCount} onChange={(event) => updateConfig("chapterWordCount", Number(event.target.value))} /></label>
             <label className="block space-y-1 text-xs text-muted-foreground">角色弧线追踪<Select value={config.arcTrackingMode} onValueChange={(value) => updateConfig("arcTrackingMode", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ARC_TRACKING_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></label>
             <label className="block space-y-1 text-xs text-muted-foreground">敏感词（每行一个）<Textarea value={config.customSensitiveWords} onChange={(event) => updateConfig("customSensitiveWords", event.target.value)} className="min-h-20" /></label>
+            <ForeshadowThresholdField key={bookId} initial={foreshadowThresholdsRaw} onSave={saveForeshadowThresholds} />
           </div>}
         </section>
 

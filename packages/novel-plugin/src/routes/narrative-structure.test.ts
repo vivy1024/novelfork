@@ -221,3 +221,64 @@ describe("GET /api/books/:bookId/narrative-structure", () => {
     }
   });
 });
+
+describe("GET /api/books/:bookId/narrative-structure 伏笔阈值按书设置", () => {
+  async function seedBook(storage: StorageDatabase, bookId: string): Promise<void> {
+    const now = Date.now();
+    storage.sqlite.exec(`
+      INSERT INTO book (id, name, created_at, updated_at) VALUES ('${bookId}', '阈值测试', ${now}, ${now});
+      INSERT INTO writing_resource (id, book_id, type, status, chapter_number, title, content, created_at, updated_at)
+      VALUES
+        ('${bookId}-ch-1', '${bookId}', 'chapter', 'accepted', 1, '第一章', '正文', ${now}, ${now}),
+        ('${bookId}-ch-2', '${bookId}', 'chapter', 'accepted', 2, '第二章', '正文', ${now}, ${now}),
+        ('${bookId}-ch-3', '${bookId}', 'chapter', 'accepted', 3, '第三章', '正文', ${now}, ${now});
+      INSERT INTO story_jingwei_section (id, book_id, key, name, "order", created_at, updated_at)
+      VALUES ('${bookId}-sec', '${bookId}', 'foreshadowing', '伏笔库', 1, ${now}, ${now});
+      INSERT INTO story_jingwei_entry (id, section_id, book_id, category, title, fields_json, created_at, updated_at)
+      VALUES ('${bookId}-fs', '${bookId}-sec', '${bookId}', 'foreshadowing', '断剑之谜', '{"plantedChapter":1,"status":"planted"}', ${now}, ${now});
+    `);
+  }
+
+  it("作者在 book.json 设置的阈值决定伏笔判定，并随快照返回", async () => {
+    const storage = await createStorage();
+    try {
+      await seedBook(storage, "fast-book");
+      const app = createNarrativeStructureRouter({
+        storage,
+        loadBookConfig: async () => ({ foreshadowDebtThresholds: { watchChapters: 1, overdueChapters: 2 } }),
+      });
+      const body = await (await app.request("/api/books/fast-book/narrative-structure")).json() as any;
+      // 悬置 2 章：默认阈值下还是 ok，这本书把超期线设为 2 章，所以已超期。
+      expect(body.foreshadowThresholds).toEqual({ watchChapters: 1, overdueChapters: 2 });
+      expect(body.foreshadows[0].chaptersPending).toBe(2);
+      expect(body.foreshadows[0].urgency).toBe("overdue");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("没设置、设置不合法或读不到 book.json 时用默认阈值，快照照常返回", async () => {
+    const storage = await createStorage();
+    try {
+      await seedBook(storage, "default-book");
+      const loaders = [
+        undefined,
+        async () => ({}),
+        async () => ({ foreshadowDebtThresholds: { watchChapters: 8, overdueChapters: 3 } }),
+        async () => {
+          throw new Error("book.json 损坏");
+        },
+      ];
+      for (const loadBookConfig of loaders) {
+        const app = createNarrativeStructureRouter({ storage, ...(loadBookConfig ? { loadBookConfig } : {}) });
+        const res = await app.request("/api/books/default-book/narrative-structure");
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.foreshadowThresholds).toEqual({ watchChapters: 5, overdueChapters: 12 });
+        expect(body.foreshadows[0].urgency).toBe("ok");
+      }
+    } finally {
+      storage.close();
+    }
+  });
+});

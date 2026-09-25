@@ -31,9 +31,60 @@
       readonly relatedChapterNumbers?: readonly unknown[];
     }
 
-    /** 伏笔悬置警戒线（章）。 */
+    /** 伏笔悬置警戒线（章）。作者未在书籍设置里改过时使用。 */
     export const DEBT_WATCH_CHAPTERS = 5;
     export const DEBT_OVERDUE_CHAPTERS = 12;
+
+    /**
+     * 伏笔债务阈值：悬置达到 watchChapters 进入「临近」，达到 overdueChapters 判「超期」。
+     * 节奏快慢因书而异，由作者在书籍设置里决定，存于 book.json 的 foreshadowDebtThresholds。
+     */
+    export interface ForeshadowDebtThresholds {
+      readonly watchChapters: number;
+      readonly overdueChapters: number;
+    }
+
+    export const DEFAULT_FORESHADOW_DEBT_THRESHOLDS: ForeshadowDebtThresholds = {
+      watchChapters: DEBT_WATCH_CHAPTERS,
+      overdueChapters: DEBT_OVERDUE_CHAPTERS,
+    };
+
+    /** 阈值允许的章数上限；再大就等于关掉提醒，不如直接不看。 */
+    export const FORESHADOW_THRESHOLD_MAX_CHAPTERS = 1000;
+
+    export type ForeshadowThresholdCheck =
+      | { readonly ok: true; readonly value: ForeshadowDebtThresholds }
+      | { readonly ok: false; readonly explanation: string };
+
+    function isChapterCount(value: unknown): value is number {
+      return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= FORESHADOW_THRESHOLD_MAX_CHAPTERS;
+    }
+
+    /** 校验作者填写的阈值；书籍设置界面与保存接口共用这一条规则。 */
+    export function checkForeshadowDebtThresholds(raw: unknown): ForeshadowThresholdCheck {
+      const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+      const watch = value.watchChapters;
+      const overdue = value.overdueChapters;
+      if (!isChapterCount(watch) || !isChapterCount(overdue)) {
+        return {
+          ok: false,
+          explanation: `两个阈值都要填 1～${FORESHADOW_THRESHOLD_MAX_CHAPTERS} 之间的整数章数。它们决定伏笔悬置多少章后开始提醒、多少章后判为超期。`,
+        };
+      }
+      if (watch >= overdue) {
+        return {
+          ok: false,
+          explanation: `「临近提醒」（${watch} 章）必须小于「超期」（${overdue} 章），否则伏笔会直接跳过临近提醒被判超期。请把临近提醒调小，或把超期调大。`,
+        };
+      }
+      return { ok: true, value: { watchChapters: watch, overdueChapters: overdue } };
+    }
+
+    /** 把 book.json 里的原始值解析成可用阈值；缺省或不合法时回到默认值，不让坏配置关掉提醒。 */
+    export function resolveForeshadowDebtThresholds(raw: unknown): ForeshadowDebtThresholds {
+      const checked = checkForeshadowDebtThresholds(raw);
+      return checked.ok ? checked.value : DEFAULT_FORESHADOW_DEBT_THRESHOLDS;
+    }
 
     function text(value: unknown): string {
       return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -77,12 +128,16 @@
       return "unknown";
     }
 
-    export function debtUrgency(status: ForeshadowDebtStatus, chaptersPending: number | undefined): ForeshadowDebtUrgency {
+    export function debtUrgency(
+      status: ForeshadowDebtStatus,
+      chaptersPending: number | undefined,
+      thresholds: ForeshadowDebtThresholds = DEFAULT_FORESHADOW_DEBT_THRESHOLDS,
+    ): ForeshadowDebtUrgency {
       if (status === "paid_off") return "ok";
       if (status === "triggered") return "overdue";
       if (chaptersPending === undefined) return "watch";
-      if (chaptersPending >= DEBT_OVERDUE_CHAPTERS) return "overdue";
-      if (chaptersPending >= DEBT_WATCH_CHAPTERS) return "watch";
+      if (chaptersPending >= thresholds.overdueChapters) return "overdue";
+      if (chaptersPending >= thresholds.watchChapters) return "watch";
       return "ok";
     }
 
@@ -110,6 +165,7 @@
     export function buildForeshadowDebts(
       entries: readonly ForeshadowJingweiEntryLike[],
       currentChapter: number,
+      thresholds: ForeshadowDebtThresholds = DEFAULT_FORESHADOW_DEBT_THRESHOLDS,
     ): ForeshadowDebt[] {
       const debts: ForeshadowDebt[] = [];
       for (const entry of entries) {
@@ -130,7 +186,7 @@
           ...(payoffChapter !== undefined ? { payoffChapter } : {}),
           status,
           ...(chaptersPending !== undefined ? { chaptersPending } : {}),
-          urgency: debtUrgency(status, chaptersPending),
+          urgency: debtUrgency(status, chaptersPending, thresholds),
           reason: debtReason(status, plantedChapter, payoffChapter, chaptersPending),
         });
       }

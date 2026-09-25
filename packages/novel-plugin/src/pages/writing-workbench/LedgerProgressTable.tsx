@@ -20,6 +20,8 @@ import {
   computeForeshadowingDebt,
   type ForeshadowingDebt,
 } from "../../engine/jingwei/foreshadowing-debt";
+import type { ForeshadowDebtThresholds } from "../../engine/narrative-taxonomy/foreshadow-debts";
+import { useForeshadowThresholds } from "./use-foreshadow-thresholds";
 import {
   PRESSURE_LEDGER_KIND_LABEL,
   PRESSURE_LEDGER_STALE_AFTER_CHAPTERS,
@@ -146,6 +148,7 @@ function conflictOverdueWarning(name: string, chapterEnd: number, currentChapter
 export function buildForeshadowRow(
   entry: JingweiEntryPayload,
   currentChapter: number | undefined,
+  thresholds?: ForeshadowDebtThresholds,
 ): LedgerProgressRow {
   const fields = parseFields(entry);
   const name = textField(fields, "name") || entry.title || "未命名伏笔";
@@ -157,6 +160,7 @@ export function buildForeshadowRow(
     plantedChapter,
     currentChapter: currentChapter ?? null,
     settled,
+    ...(thresholds ? { thresholds } : {}),
   });
   const chapterParts: string[] = [];
   if (plantedChapter > 0) chapterParts.push(`埋 ${plantedChapter}`);
@@ -291,12 +295,13 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
   const stateQuery = useApi<BookStatePayload>(`/api/books/${encodeURIComponent(bookId)}/state`);
 
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
+  const foreshadowThresholds = useForeshadowThresholds(bookId);
   const [filter, setFilter] = useState<LedgerFilter>("all");
 
   const rows = useMemo(() => {
     const next: LedgerProgressRow[] = [];
     for (const entry of foreshadowQuery.data?.entries ?? []) {
-      const row = buildForeshadowRow(entry, currentChapter);
+      const row = buildForeshadowRow(entry, currentChapter, foreshadowThresholds);
       next.push(statusOverrides[row.id] ? { ...row, status: statusOverrides[row.id]! } : row);
     }
     for (const entry of conflictQuery.data?.entries ?? []) {
@@ -308,7 +313,7 @@ export function LedgerProgressTable({ bookId, currentChapter, onOpen, onJumpToCh
       if (row) next.push(row);
     }
     return next;
-  }, [conflictQuery.data, currentChapter, foreshadowQuery.data, stateQuery.data, statusOverrides]);
+  }, [conflictQuery.data, currentChapter, foreshadowQuery.data, foreshadowThresholds, stateQuery.data, statusOverrides]);
 
   const stats = useMemo(() => {
     const foreshadows = rows.filter((row) => row.kind === "foreshadow");

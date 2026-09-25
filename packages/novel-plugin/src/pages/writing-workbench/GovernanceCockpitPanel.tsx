@@ -36,6 +36,10 @@ import {
 } from "lucide-react";
 
 import { computeForeshadowingDebt } from "../../engine/jingwei/foreshadowing-debt";
+import {
+  resolveForeshadowDebtThresholds,
+  type ForeshadowDebtThresholds,
+} from "../../engine/narrative-taxonomy/foreshadow-debts";
 import { classifyContractState } from "../../engine/jingwei/context/chapter-briefing";
 
 // ─── 数据契约（对齐既有响应体，字段全部可选防御） ─────────────────────
@@ -51,6 +55,7 @@ interface BookResourcesResponse {
   book?: {
     title?: string;
     narrativeContract?: NarrativeContractView;
+    foreshadowDebtThresholds?: unknown;
   };
   chapters?: Array<{ number?: number }>;
   nextChapter?: number;
@@ -116,12 +121,13 @@ export interface PromiseHitRateResult {
  * 口径与 chapter-briefing 的 computeNarrativeContractHitRate 同源：
  *  - 状态分类用 engine 的 classifyContractState（唯一权威，含中英文状态集）；
  *    无法识别/缺失的状态返回 other，不计入分母——不伪造数据。
- *  - 「超期」复用 engine/jingwei/foreshadowing-debt 的唯一阈值口径（20 章），
- *    不在前端另写一套字面量；拿不到当前章号时 debt 返回 unknown，不计入超期。
+ *  - 「超期」复用 engine/jingwei/foreshadowing-debt 的唯一判定，阈值取本书设置
+ *    （不传用默认值）；拿不到当前章号时 debt 返回 unknown，不计入超期。
  */
 export function computePromiseHitRate(
   entries: readonly JingweiEntryRecord[],
   currentChapter: number | undefined,
+  thresholds?: ForeshadowDebtThresholds,
 ): PromiseHitRateResult {
   let resolved = 0;
   let overdue = 0;
@@ -138,6 +144,7 @@ export function computePromiseHitRate(
     const debt = computeForeshadowingDebt({
       plantedChapter: plantedChapter > 0 ? plantedChapter : null,
       currentChapter: currentChapter ?? null,
+      ...(thresholds ? { thresholds } : {}),
     });
     if (debt.level === "overdue") overdue += 1;
   }
@@ -252,7 +259,14 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
     ]).then(
       ([payload, book]) => {
         const entries = Array.isArray(payload.entries) ? payload.entries : [];
-        setHitRateBlock({ status: "ready", data: computePromiseHitRate(entries, currentChapterFromBookResources(book)) });
+        setHitRateBlock({
+          status: "ready",
+          data: computePromiseHitRate(
+            entries,
+            currentChapterFromBookResources(book),
+            resolveForeshadowDebtThresholds(book?.book?.foreshadowDebtThresholds),
+          ),
+        });
       },
       (cause) => setHitRateBlock({ status: "error", message: errorMessage(cause, "伏笔条目读取失败") }),
     );

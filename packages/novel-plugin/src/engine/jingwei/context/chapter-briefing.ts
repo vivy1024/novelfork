@@ -1,6 +1,10 @@
 import type { BookConfig, StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
 import { computeForeshadowingDebt } from "../foreshadowing-debt.js";
-import { debtUrgency } from "../../narrative-taxonomy/foreshadow-debts.js";
+import {
+  debtUrgency,
+  resolveForeshadowDebtThresholds,
+  type ForeshadowDebtThresholds,
+} from "../../narrative-taxonomy/foreshadow-debts.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../category-compat.js";
 
 /**
@@ -70,7 +74,7 @@ export type ChapterBriefingOptions = Readonly<{
   /** 通过 StateManager.loadBookConfig 读取书籍配置。 */
   state?: Pick<StateManager, "loadBookConfig">;
   /** 已加载的配置，优先于 state，便于调用方复用已有读取结果。 */
-  bookConfig?: Partial<Pick<BookConfig, "narrativeContract">>;
+  bookConfig?: Partial<Pick<BookConfig, "narrativeContract" | "foreshadowDebtThresholds">>;
 }>;
 
 const RESOLVED_CONTRACT_STATES = new Set(["resolved", "closed", "completed", "done", "settled", "已解决", "已回收"]);
@@ -110,7 +114,12 @@ export function computePromiseHitRate(resolvedCount: number, openOverdueCount: n
 /**
  * 从叙事记忆存储统计粗略叙事契约命中率。
  */
-export function computeNarrativeContractHitRate(storage: StorageDatabase, bookId: string, currentChapter?: number): number | null {
+export function computeNarrativeContractHitRate(
+  storage: StorageDatabase,
+  bookId: string,
+  currentChapter?: number,
+  thresholds?: ForeshadowDebtThresholds,
+): number | null {
   let resolvedCount = 0;
   let openOverdueCount = 0;
 
@@ -134,7 +143,7 @@ export function computeNarrativeContractHitRate(storage: StorageDatabase, bookId
       const lastActive = chain.last_progress_chapter ?? chain.trigger_chapter;
       const overdueByChapter =
         currentChapter !== undefined &&
-        debtUrgency("planted", Math.max(0, currentChapter - lastActive)) === "overdue";
+        debtUrgency("planted", Math.max(0, currentChapter - lastActive), thresholds) === "overdue";
       if (chain.urgency === "overdue" || overdueByChapter) openOverdueCount += 1;
     }
   } catch {
@@ -163,6 +172,7 @@ export function computeNarrativeContractHitRate(storage: StorageDatabase, bookId
       const debt = computeForeshadowingDebt({
         plantedChapter: Number.isFinite(planted) && planted > 0 ? planted : null,
         currentChapter,
+        ...(thresholds ? { thresholds } : {}),
       });
       if (String(fields.urgency ?? "").toLowerCase() === "overdue" || status === "overdue" || debt.level === "overdue") openOverdueCount += 1;
     }
@@ -300,7 +310,12 @@ export async function buildChapterBriefing(
     sections.push(`【活跃伏笔】\n${fLines.join("\n")}`);
   }
 
-  const hitRate = computeNarrativeContractHitRate(storage, bookId, chapterNumber);
+  const hitRate = computeNarrativeContractHitRate(
+    storage,
+    bookId,
+    chapterNumber,
+    resolveForeshadowDebtThresholds(bookConfig?.foreshadowDebtThresholds),
+  );
   if (hitRate !== null) sections.push(`【叙事契约命中率】粗略命中率 ${Math.round(hitRate * 100)}%（已解决 / 已解决+超期未回收）`);
 
   const revealBudget = bookConfig?.narrativeContract?.revealBudget;

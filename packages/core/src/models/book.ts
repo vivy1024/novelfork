@@ -55,6 +55,14 @@ export const BookConfigSchema = z.object({
   visibleCategories: z.array(z.string()).optional(),
   /** 叙事契约：全书承诺、核心问题、主题锚点与揭示预算。 */
   narrativeContract: NarrativeContractSchema.optional(),
+  /**
+   * 伏笔债务阈值（章）：悬置达到 watchChapters 提醒临近，达到 overdueChapters 判超期。
+   * 缺省或不合法时由 novel-plugin 的 resolveForeshadowDebtThresholds 回退到 5 / 12。
+   */
+  foreshadowDebtThresholds: z.object({
+    watchChapters: z.number().int().min(1),
+    overdueChapters: z.number().int().min(1),
+  }).optional(),
 });
 
 export type BookConfig = z.infer<typeof BookConfigSchema>;

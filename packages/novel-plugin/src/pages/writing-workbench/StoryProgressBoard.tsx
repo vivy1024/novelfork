@@ -48,6 +48,12 @@ import {
   type StoryProgressLane,
 } from "./story-progress-board";
 import type { NarrativeStructurePayload } from "../../engine/narrative-taxonomy/narrative-structure";
+import {
+  DEFAULT_FORESHADOW_DEBT_THRESHOLDS,
+  resolveForeshadowDebtThresholds,
+  type ForeshadowDebtThresholds,
+} from "../../engine/narrative-taxonomy/foreshadow-debts";
+import { useWritingProgressRefresh } from "./use-writing-progress-refresh";
 
 export interface StoryProgressBoardProps {
   readonly bookId: string;
@@ -82,6 +88,8 @@ interface LoadedData {
   readonly structureScores: readonly StructureScoreItem[];
   /** 加载失败的链路名，用于降级提示（缺哪条说哪条）。 */
   readonly degraded: readonly string[];
+  /** 回退路径下本书的伏笔阈值（快照路径的伏笔已在服务端按本书阈值判定）。 */
+  readonly foreshadowThresholds?: ForeshadowDebtThresholds;
   readonly structurePayload?: NarrativeStructurePayload;
 }
 
@@ -160,7 +168,7 @@ function useProgressData(bookId: string): { state: LoadState; reload: () => void
         // 回退路径：若单次接口未实现或处于旧版 mock 测试环境，平滑回退到多路并发
       }
 
-      const [summaries, foreshadow, conflicts, graph, structure] = await Promise.all([
+      const [summaries, foreshadow, conflicts, graph, structure, foreshadowThresholds] = await Promise.all([
         loadEntries("chapter-summaries"),
         loadEntries("foreshadowing"),
         loadEntries("conflicts"),
@@ -170,6 +178,13 @@ function useProgressData(bookId: string): { state: LoadState; reload: () => void
         fetchJson<{ scores?: StructureScoreItem[] }>(`${base}/narrative-memory/structure-score`)
           .then((payload) => ({ scores: payload.scores ?? [], failed: false }))
           .catch(() => ({ scores: [] as StructureScoreItem[], failed: true })),
+        // 伏笔阈值由作者按书设置（book.json）；读不到时用默认值，不计入降级。
+        fetchJson<Record<string, unknown>>(base)
+          .then((payload) => {
+            const book = payload && typeof payload.book === "object" && payload.book ? payload.book as Record<string, unknown> : payload;
+            return resolveForeshadowDebtThresholds(book?.foreshadowDebtThresholds);
+          })
+          .catch(() => DEFAULT_FORESHADOW_DEBT_THRESHOLDS),
       ]);
       if (generation !== generationRef.current) return;
 
@@ -201,6 +216,7 @@ function useProgressData(bookId: string): { state: LoadState; reload: () => void
           events: graph.events,
           structureScores: structure.scores,
           degraded,
+          foreshadowThresholds,
         },
       });
     })();
@@ -683,6 +699,8 @@ export function StoryProgressBoard({
   compactHeader,
 }: StoryProgressBoardProps) {
   const { state, reload } = useProgressData(bookId);
+  // 写章、结算、改伏笔阈值后都会派发写作进度事件；据此重读，不必刷新页面。
+  useWritingProgressRefresh(bookId, reload);
   const [opFeedback, setOpFeedback] = useState<string | null>(null);
   const [showCreateStoryline, setShowCreateStoryline] = useState(false);
   const [newStorylineName, setNewStorylineName] = useState("");
@@ -821,6 +839,7 @@ export function StoryProgressBoard({
       foreshadowEntries: state.data.foreshadowEntries,
       conflictEntries: state.data.conflictEntries,
       events: state.data.events,
+      ...(state.data.foreshadowThresholds ? { foreshadowThresholds: state.data.foreshadowThresholds } : {}),
       ...(currentChapter !== undefined ? { currentChapter } : {}),
     });
   }, [state, currentChapter]);

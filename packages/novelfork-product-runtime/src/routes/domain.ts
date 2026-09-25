@@ -150,7 +150,15 @@ novelDomainRoutes.route(
 	),
 );
 // 全书叙事结构聚合读模型：一次请求返回卷、章、场景、剧情线、挂载、伏笔与实体快照。
-novelDomainRoutes.route("", asRuntimeRouter(createNarrativeStructureRouter()));
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createNarrativeStructureRouter({
+			// 伏笔阈值由作者按书设置，存于 book.json。
+			loadBookConfig: (bookId) => productRouterContext.state.loadBookConfig(bookId),
+		}),
+	),
+);
 // 质量趋势（章级 AI 味/漂移分/质量分时间序列）和写作模式（文风漂移检测基线）。
 novelDomainRoutes.route("", asRuntimeRouter(createQualityTrendRouter(productRouterContext)));
 novelDomainRoutes.route("", asRuntimeRouter(createWritingModesRouter(productRouterContext)));

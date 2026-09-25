@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { invalidateApiPaths, useApi } from "@/hooks/use-api";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { computeForeshadowingDebt, type ForeshadowingDebt } from "../../../engine/jingwei/foreshadowing-debt";
+import { useForeshadowThresholds } from "../use-foreshadow-thresholds";
 import { NarrativeMemorySummary } from "../NarrativeMemoryPanel";
 import { LedgerProgressTable } from "../LedgerProgressTable";
 import { createMemoryCenterNode, createStoryProgressionNode } from "../useWorkbenchResources";
@@ -162,6 +163,7 @@ function useStorylineForeshadowing(bookId: string, currentChapter: number | unde
   const { data, loading, error, refetch } = useApi<{ entries?: StorylineForeshadowingEntry[] }>(
     `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=foreshadowing`,
   );
+  const thresholds = useForeshadowThresholds(bookId);
 
   const items = useMemo<StorylineForeshadowItem[]>(() => {
     return (data?.entries ?? []).map((entry) => {
@@ -184,6 +186,7 @@ function useStorylineForeshadowing(bookId: string, currentChapter: number | unde
         plantedChapter,
         currentChapter: currentChapter ?? null,
         settled,
+        thresholds,
       });
       return {
         id: entry.id,
@@ -196,7 +199,7 @@ function useStorylineForeshadowing(bookId: string, currentChapter: number | unde
         debt,
       };
     });
-  }, [data, currentChapter]);
+  }, [data, currentChapter, thresholds]);
 
   /** 承诺口径统计：未回收总数 + 本章到期数（目标章 ≤ 当前章+1 的未回收伏笔）。 */
   const stats = useMemo(() => {

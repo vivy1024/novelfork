@@ -5,6 +5,7 @@ import {
 	handleWritingSkillsRead,
 	handleWritingSkillsWrite,
 } from "../../../novel-plugin/src/handlers/writing-skill-handlers";
+import { checkForeshadowDebtThresholds } from "../../../novel-plugin/src/engine/narrative-taxonomy/foreshadow-debts";
 import { Hono } from "hono";
 import { z } from "zod/v4";
 import {
@@ -59,6 +60,16 @@ const bookBasicSettingsPatchSchema = z
 		targetChapters: z.number().int().min(1).max(100_000).nullable().optional(),
 		arcTrackingMode: z.enum(["off", "rule", "llm"]).optional(),
 		customSensitiveWords: z.string().max(50_000).optional(),
+		// 伏笔阈值：null 表示恢复默认。与书籍设置界面共用 checkForeshadowDebtThresholds 这一条规则。
+		foreshadowDebtThresholds: z
+			.object({ watchChapters: z.number(), overdueChapters: z.number() })
+			.strict()
+			.superRefine((value, ctx) => {
+				const checked = checkForeshadowDebtThresholds(value);
+				if (!checked.ok) ctx.addIssue({ code: "custom", message: checked.explanation });
+			})
+			.nullable()
+			.optional(),
 	})
 	.strict()
 	.refine((value) => Object.keys(value).length > 0, "至少提供一项可保存的书籍设置");

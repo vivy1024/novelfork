@@ -4,11 +4,10 @@
  * 伏笔的权威源是经纬 `foreshadowing` 条目；「悬置了多少章」「是否超期」都是
  * 由「埋设章号 + 当前章号」派生出来的状态，不存库、不在各处各写一遍字面量。
  * 历史上前端伏笔看板写 30 章、叙事记忆伏笔板写 20 章、驾驶舱 open-hooks 写
- * 15 章，三套阈值互相打架；这里收敛成一处。
+ * 15 章，三套阈值互相打架；现在判定统一委托 narrative-taxonomy/foreshadow-debts。
  *
- * 阈值取 20 章：网文一章约 3000 字，20 章≈6 万字，读者对未推进的钩子基本已
- * 经淡忘，此时告警仍有补救余地；30 章（≈9 万字）往往已经晚了，15 章又过于
- * 频繁。DUE_SOON 取 14 章（阈值的 70%），保留「临近到期」的提前提醒。
+ * 阈值由作者按书设置（book.json 的 foreshadowDebtThresholds），调用方经
+ * resolveForeshadowDebtThresholds 解析后传入；不传时用默认 5 / 12 章。
  *
  * 拿不到当前章号时必须返回 `unknown`，而不是用默认章号算出负数悬念 —— 那会
  * 让超期预警静默失效。
@@ -17,14 +16,15 @@
 import {
   DEBT_OVERDUE_CHAPTERS,
   DEBT_WATCH_CHAPTERS,
+  DEFAULT_FORESHADOW_DEBT_THRESHOLDS,
   debtUrgency,
-  type ForeshadowDebtUrgency,
+  type ForeshadowDebtThresholds,
 } from "../narrative-taxonomy/foreshadow-debts.js";
 
-/** 悬置达到这个章数即判定为超期未回收（与全书叙事结构聚合读模型一致）。 */
+/** 默认超期阈值（作者未设置时）。 */
 export const FORESHADOWING_DEBT_THRESHOLD = DEBT_OVERDUE_CHAPTERS;
 
-/** 悬置达到这个章数即进入「临近到期」提醒区间（与全书叙事结构聚合读模型一致）。 */
+/** 默认临近到期阈值（作者未设置时）。 */
 export const FORESHADOWING_DUE_SOON_THRESHOLD = DEBT_WATCH_CHAPTERS;
 
 export type ForeshadowingDebtLevel = "unknown" | "fresh" | "due-soon" | "overdue" | "settled";
@@ -46,6 +46,8 @@ export interface ForeshadowingDebtInput {
   readonly currentChapter?: number | null;
   /** 已回收 / 已废弃的伏笔不再计债。 */
   readonly settled?: boolean;
+  /** 本书的伏笔阈值；不传用默认值。 */
+  readonly thresholds?: ForeshadowDebtThresholds;
 }
 
 function normalizeChapter(value: number | null | undefined): number | null {
@@ -88,7 +90,9 @@ export function computeForeshadowingDebt(input: ForeshadowingDebtInput): Foresha
   }
 
   const suspense = gap ?? 0;
-  const urgency = debtUrgency("planted", suspense);
+  const thresholds = input.thresholds ?? DEFAULT_FORESHADOW_DEBT_THRESHOLDS;
+  const overdueLine = thresholds.overdueChapters;
+  const urgency = debtUrgency("planted", suspense, thresholds);
 
   if (urgency === "overdue") {
     return {
@@ -96,7 +100,7 @@ export function computeForeshadowingDebt(input: ForeshadowingDebtInput): Foresha
       suspenseChapters: suspense,
       label: `超期 ${suspense} 章`,
       explanation:
-        `这条伏笔埋于第 ${planted} 章，到第 ${current} 章已悬置 ${suspense} 章，达到或超过 ${FORESHADOWING_DEBT_THRESHOLD} 章阈值。读者对它的记忆基本已经消散，继续拖会变成弃坑点。建议在接下来几章内推进或明确回收，实在不要了就把状态改为「已废弃」以结清债务。`,
+        `这条伏笔埋于第 ${planted} 章，到第 ${current} 章已悬置 ${suspense} 章，达到或超过 ${overdueLine} 章阈值。读者对它的记忆基本已经消散，继续拖会变成弃坑点。建议在接下来几章内推进或明确回收，实在不要了就把状态改为「已废弃」以结清债务。`,
     };
   }
 
@@ -106,7 +110,7 @@ export function computeForeshadowingDebt(input: ForeshadowingDebtInput): Foresha
       suspenseChapters: suspense,
       label: `临近到期 ${suspense} 章`,
       explanation:
-        `这条伏笔埋于第 ${planted} 章，已悬置 ${suspense} 章，距离 ${FORESHADOWING_DEBT_THRESHOLD} 章超期线不远。建议在规划下一卷/下几章时安排一次推进或部分揭示，别等到超期再补。`,
+        `这条伏笔埋于第 ${planted} 章，已悬置 ${suspense} 章，距离 ${overdueLine} 章超期线不远。建议在规划下一卷/下几章时安排一次推进或部分揭示，别等到超期再补。`,
     };
   }
 
@@ -115,7 +119,7 @@ export function computeForeshadowingDebt(input: ForeshadowingDebtInput): Foresha
     suspenseChapters: suspense,
     label: `悬念 ${suspense} 章`,
     explanation:
-      `这条伏笔埋于第 ${planted} 章，已悬置 ${suspense} 章，仍在 ${FORESHADOWING_DEBT_THRESHOLD} 章健康区间内，暂时不需要处理。`,
+      `这条伏笔埋于第 ${planted} 章，已悬置 ${suspense} 章，仍在 ${overdueLine} 章健康区间内，暂时不需要处理。`,
   };
 }
 

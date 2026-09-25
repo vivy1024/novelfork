@@ -18,7 +18,9 @@ import {
 } from "../narrative-memory/scene-store.js";
 import {
   type ForeshadowDebt,
+  type ForeshadowDebtThresholds,
   type ForeshadowJingweiEntryLike,
+  DEFAULT_FORESHADOW_DEBT_THRESHOLDS,
   buildForeshadowDebts,
 } from "./foreshadow-debts.js";
 
@@ -57,7 +59,14 @@ export interface NarrativeStructurePayload {
   readonly storylines: readonly NarrativeStoryline[];
   readonly mounts: readonly SceneStorylineMount[];
   readonly foreshadows: readonly ForeshadowDebt[];
+  /** 本次判定伏笔债务所用的阈值（作者按书设置，未设置为默认值），供前端展示「超期线」。 */
+  readonly foreshadowThresholds: ForeshadowDebtThresholds;
   readonly entities: readonly NarrativeEntityInfo[];
+}
+
+export interface BuildNarrativeStructureOptions {
+  /** 已解析的伏笔阈值；不传用默认值。 */
+  readonly foreshadowThresholds?: ForeshadowDebtThresholds;
 }
 
 function safeJsonParse<T>(raw: string | null | undefined): T | null {
@@ -178,7 +187,12 @@ function extractChapters(storage: StorageDatabase, bookId: string): NarrativeCha
 /**
  * 提取伏笔债务。
  */
-function extractForeshadows(storage: StorageDatabase, bookId: string, currentChapter: number): ForeshadowDebt[] {
+function extractForeshadows(
+  storage: StorageDatabase,
+  bookId: string,
+  currentChapter: number,
+  thresholds: ForeshadowDebtThresholds,
+): ForeshadowDebt[] {
   try {
     const rows = storage.sqlite
       .prepare<{
@@ -200,7 +214,7 @@ function extractForeshadows(storage: StorageDatabase, bookId: string, currentCha
       fields: safeJsonParse<Record<string, unknown>>(r.fields_json),
     }));
 
-    return buildForeshadowDebts(entries, currentChapter);
+    return buildForeshadowDebts(entries, currentChapter, thresholds);
   } catch {
     return [];
   }
@@ -244,7 +258,9 @@ function extractEntities(storage: StorageDatabase, bookId: string): NarrativeEnt
 export function buildNarrativeStructure(
   storage: StorageDatabase,
   bookId: string,
+  options: BuildNarrativeStructureOptions = {},
 ): NarrativeStructurePayload {
+  const foreshadowThresholds = options.foreshadowThresholds ?? DEFAULT_FORESHADOW_DEBT_THRESHOLDS;
   const chapters = extractChapters(storage, bookId);
   const currentChapter = chapters.length > 0
     ? Math.max(...chapters.map((c) => c.number))
@@ -254,7 +270,7 @@ export function buildNarrativeStructure(
   const scenes = listScenes(storage, bookId);
   const storylines = listStorylines(storage, bookId);
   const mounts = listMounts(storage, bookId);
-  const foreshadows = extractForeshadows(storage, bookId, currentChapter);
+  const foreshadows = extractForeshadows(storage, bookId, currentChapter, foreshadowThresholds);
   const entities = extractEntities(storage, bookId);
 
   return {
@@ -267,6 +283,7 @@ export function buildNarrativeStructure(
     storylines,
     mounts,
     foreshadows,
+    foreshadowThresholds,
     entities,
   };
 }

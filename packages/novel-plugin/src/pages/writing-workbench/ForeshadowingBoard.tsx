@@ -24,9 +24,10 @@ import { AlertTriangle, Loader2, Eye, EyeOff, Trash2, BookOpen, GripVertical, In
 import { useApi, fetchJson } from "@/hooks/use-api";
 import {
   computeForeshadowingDebt,
-  FORESHADOWING_DEBT_THRESHOLD,
   type ForeshadowingDebt,
 } from "../../engine/jingwei/foreshadowing-debt";
+import type { ForeshadowDebtThresholds } from "../../engine/narrative-taxonomy/foreshadow-debts";
+import { useForeshadowThresholds } from "./use-foreshadow-thresholds";
 import { fetchFactsByEntity, type EntityFact } from "./narrative-fact-edits";
 
 // ---------------------------------------------------------------------------
@@ -202,12 +203,17 @@ function TargetChapterEditor({
   );
 }
 
-/** 看板内唯一的债务判定入口，阈值与文案都来自 foreshadowing-debt。 */
-export function debtOf(item: ParsedForeshadowing, currentChapter: number | undefined): ForeshadowingDebt {
+/** 看板内唯一的债务判定入口，阈值与文案都来自 foreshadowing-debt；thresholds 为本书设置，不传用默认值。 */
+export function debtOf(
+  item: ParsedForeshadowing,
+  currentChapter: number | undefined,
+  thresholds?: ForeshadowDebtThresholds,
+): ForeshadowingDebt {
   return computeForeshadowingDebt({
     plantedChapter: item.plantedChapter,
     currentChapter: currentChapter ?? null,
     settled: SETTLED_STATUSES.includes(item.status),
+    ...(thresholds ? { thresholds } : {}),
   });
 }
 
@@ -235,6 +241,7 @@ export function matchHookEvidence(
 function SortableForeshadowingCard({
   item,
   currentChapter,
+  thresholds,
   evidence,
   onJumpToChapter,
   highlighted,
@@ -243,6 +250,7 @@ function SortableForeshadowingCard({
 }: {
   item: ParsedForeshadowing;
   currentChapter: number | undefined;
+  thresholds: ForeshadowDebtThresholds;
   evidence: readonly EntityFact[];
   onJumpToChapter?: (chapterNumber: number) => void;
   highlighted?: boolean;
@@ -265,7 +273,7 @@ function SortableForeshadowingCard({
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const debt = debtOf(item, currentChapter);
+  const debt = debtOf(item, currentChapter, thresholds);
   const isOverdue = debt.level === "overdue";
   const isDueSoon = debt.level === "due-soon";
 
@@ -347,8 +355,16 @@ function HookEvidenceList({ evidence }: { evidence: readonly EntityFact[] }) {
 // DragOverlay card (non-interactive snapshot shown during drag)
 // ---------------------------------------------------------------------------
 
-function DragOverlayCard({ item, currentChapter }: { item: ParsedForeshadowing; currentChapter: number | undefined }) {
-  const isOverdue = debtOf(item, currentChapter).level === "overdue";
+function DragOverlayCard({
+  item,
+  currentChapter,
+  thresholds,
+}: {
+  item: ParsedForeshadowing;
+  currentChapter: number | undefined;
+  thresholds: ForeshadowDebtThresholds;
+}) {
+  const isOverdue = debtOf(item, currentChapter, thresholds).level === "overdue";
 
   return (
     <div
@@ -373,6 +389,7 @@ function DragOverlayCard({ item, currentChapter }: { item: ParsedForeshadowing; 
 // ---------------------------------------------------------------------------
 
 export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: ForeshadowingBoardProps) {
+  const thresholds = useForeshadowThresholds(bookId);
   const { data, loading, error } = useApi<EntriesResponse>(
     `/api/books/${bookId}/jingwei/entries?category=foreshadowing`,
   );
@@ -573,7 +590,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
           <AlertTriangle className="mt-0.5 w-3.5 h-3.5 shrink-0" />
           <span>
             读不到本书当前章号，超期预警已暂停。为避免给出错误结论，这里不按默认章号推算悬念；先在资源树里刷新章节列表（或写入第一章）后再看
-            {FORESHADOWING_DEBT_THRESHOLD} 章超期提醒。
+            {thresholds.overdueChapters} 章超期提醒。
           </span>
         </div>
       ) : null}
@@ -619,6 +636,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
             key={col.status}
             column={col}
             currentChapter={currentChapter}
+            thresholds={thresholds}
             hookFacts={hookFacts}
             onJumpToChapter={onJumpToChapter}
             highlightedId={highlightedId}
@@ -629,7 +647,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
       </div>
       <DragOverlay dropAnimation={null}>
         {activeItem ? (
-          <DragOverlayCard item={activeItem} currentChapter={currentChapter} />
+          <DragOverlayCard item={activeItem} currentChapter={currentChapter} thresholds={thresholds} />
         ) : null}
       </DragOverlay>
     </DndContext>
@@ -643,6 +661,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
 function DroppableColumn({
   column,
   currentChapter,
+  thresholds,
   hookFacts,
   onJumpToChapter,
   highlightedId,
@@ -651,6 +670,7 @@ function DroppableColumn({
 }: {
   column: { status: ForeshadowingStatus; label: string; icon: React.ReactNode; items: readonly ParsedForeshadowing[] };
   currentChapter: number | undefined;
+  thresholds: ForeshadowDebtThresholds;
   hookFacts: readonly EntityFact[];
   onJumpToChapter?: (chapterNumber: number) => void;
   highlightedId?: string | null;
@@ -687,6 +707,7 @@ function DroppableColumn({
               key={item.id}
               item={item}
               currentChapter={currentChapter}
+              thresholds={thresholds}
               evidence={matchHookEvidence(item, hookFacts)}
               onJumpToChapter={onJumpToChapter}
               highlighted={highlightedId === item.id}
