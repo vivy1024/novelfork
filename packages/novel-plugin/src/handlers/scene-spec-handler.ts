@@ -125,7 +125,8 @@ function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: n
   }
 }
 
-function parseSceneSpecValue(value: unknown, chapterNumber: number, wordTarget: number): SceneSpec | null {
+/** 校验模型显式提交的蓝图结构；scene.spec 与工作流蓝图候选共用这一条判据。 */
+export function parseSceneSpecValue(value: unknown, chapterNumber: number, wordTarget: number): SceneSpec | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return parseSceneSpecFromLLM(JSON.stringify(value), chapterNumber, wordTarget);
 }

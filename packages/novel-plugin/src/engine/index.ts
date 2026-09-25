@@ -83,6 +83,10 @@ export {
   validateWorkflowRecipes,
   WorkflowStoreError,
 } from "./workflows/workflow-store.js";
+export * from "./workflows/run-state-machine.js";
+export * from "./workflows/run-store.js";
+export * from "./workflows/run-brief.js";
+export * from "./workflows/run-service.js";
 
 // Inline writing modes
 export {
