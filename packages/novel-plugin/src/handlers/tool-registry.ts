@@ -92,6 +92,9 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "market.query",
   "market.ranks",
   "market.sample_public_chapters",
+  "workflow.get_current_step",
+  "workflow.submit_step_output",
+  "workflow.report_blocker",
 ] as const;
 
 const READY_RUNTIME_TOOL_NAMES = new Set<string>(NOVEL_READY_RUNTIME_TOOL_NAMES);
@@ -697,6 +700,36 @@ scope=search：关键词搜索静态设定。
     renderer: "market.sample_public_chapters",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "universal",
+  }),
+  sessionTool({
+    name: "workflow.get_current_step",
+    description:
+      "读取作者启动的创作工作流当前工序：目标、允许的写入工具、必交产物结构、运行版本号，以及上一次的打回意见或阻塞说明。\n\n使用时机：\n- 系统提示里出现「创作工作流」简报，需要确认最新进度时\n- 提交被拒说版本不一致、或上下文被压缩后忘了进度时\n- 落盘工序需要取回作者批准的正文原文（approvedProse）时\n\n没有进行中的运行时返回 runStatus=none，按作者的普通指令继续即可。只读，可随时调用。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["workflow.get_current_step"]),
+    risk: "read",
+    renderer: "workflow",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "workflow.submit_step_output",
+    description:
+      "提交当前工序的产物。产物先进候选区，按类别做确定性校验；需要作者确认的工序会停在等待确认，否则自动进入下一道工序并在返回结果里给出下一道的简报。\n\n规则：\n- kind 必须与当前工序要求一致；runRevision 必须是最新值\n- 蓝图（scene-spec）通过后落成本章场景（待作者审核）；正文（prose）作为已批准版本钉住，落盘工序写入时必须原样使用\n- 返回「等待作者确认」后立即停止产出，不要调用写入工具\n- 校验不通过时按返回的说明修改后重交，不要编造通过",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["workflow.submit_step_output"]),
+    risk: "draft-write",
+    renderer: "workflow",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "workflow.report_blocker",
+    description:
+      "报告当前工序做不下去（缺关键输入、子代理不存在、工具持续失败等）。必须写清 what / why / action 三段。方案按本工序的失败策略自动重试、跳过或停下等作者处理。不要用它逃避可以完成的工作，也不要在做不到时编造产物。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["workflow.report_blocker"]),
+    risk: "read",
+    renderer: "workflow",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
 ] as const;
 

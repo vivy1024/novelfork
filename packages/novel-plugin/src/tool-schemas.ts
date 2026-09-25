@@ -850,6 +850,33 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["fanqieBookId"],
     additionalProperties: false,
   },
+  "workflow.get_current_step": {
+    type: "object",
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  },
+  "workflow.submit_step_output": {
+    type: "object",
+    properties: {
+      runRevision: numberSchema("运行版本号，取自工序简报或 workflow.get_current_step；与服务端不一致时提交被拒。"),
+      kind: enumSchema(["scene-spec", "prose", "audit", "other"], "产物类别，必须与当前工序要求的一致。"),
+      payload: { type: "object", description: "产物内容，结构见工序简报（scene-spec 为 { sceneSpec }，prose 为 { title, content }，audit 为 { passed, summary, issues }，other 为 { summary }）。" },
+    },
+    required: ["runRevision", "kind", "payload"],
+    additionalProperties: false,
+  },
+  "workflow.report_blocker": {
+    type: "object",
+    properties: {
+      runRevision: numberSchema("运行版本号，取自工序简报或 workflow.get_current_step。"),
+      what: stringSchema("发生了什么（哪一步做不下去）。"),
+      why: stringSchema("为什么做不下去（缺什么输入、哪个工具失败）。"),
+      action: stringSchema("建议作者怎么处理。"),
+    },
+    required: ["runRevision", "what", "why", "action"],
+    additionalProperties: false,
+  },
 };
 
 NOVEL_TOOL_SCHEMAS["lore.read"] = NOVEL_TOOL_SCHEMAS["jingwei.read"]!;

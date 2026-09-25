@@ -84,6 +84,9 @@ const CANONICAL_READY_TOOL_NAMES = [
   "market.query",
   "market.ranks",
   "market.sample_public_chapters",
+  "workflow.get_current_step",
+  "workflow.submit_step_output",
+  "workflow.report_blocker",
 ];
 
 const READY_TOOL_NAMES = CANONICAL_READY_TOOL_NAMES.map(toRuntimeToolName);

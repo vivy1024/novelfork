@@ -27,6 +27,12 @@ import {
 	getNovelToolPermissionPolicy,
 } from "@vivy1024/novelfork-novel-plugin";
 import { z } from "zod/v4";
+import {
+	explainWorkflowDenial,
+	findActiveWorkflowRun,
+	isToolVisibleDuringRun,
+	workflowPromptExtension,
+} from "./workflow-run-gate";
 
 const FORBIDDEN_MODEL_FIELDS = new Set([
   "bookId",
@@ -259,6 +265,12 @@ function createRuntimeToolNameAliases(): Readonly<{
 	};
 }
 
+/** 可信绑定里的书籍 id；只认宿主解析出的 novel.book 绑定。 */
+function boundBookId(context: RuntimeResolveContext | null): string | undefined {
+	const binding = context?.resourceBindings["novel.book"] as { bookId?: unknown } | undefined;
+	return typeof binding?.bookId === "string" && binding.bookId.trim() ? binding.bookId : undefined;
+}
+
 function toRuntimeRisk(risk: string | undefined): RuntimeToolRisk {
 	if (risk === "read" || risk === "draft-write" || risk === "confirmed-write" || risk === "destructive") return risk;
 	// An incomplete or future contribution must not silently become a read tool.
@@ -322,19 +334,34 @@ export class NovelRuntimeHostAdapter {
 			content: this.toModelFacingText(extension.content),
 		}));
 
+		// 创作工作流：有进行中的运行时注入工序简报，并把可见的小说工具收窄到本工序。
+		// 每趟对话开始时 Runtime 都会重新调用这里，工序推进后下一趟即按新工序生效。
+		const run = findActiveWorkflowRun(narratorId, boundBookId(context));
+		const workflowExtension = run ? workflowPromptExtension(run) : null;
+		const visibleTools = run
+			? resolved.tools.filter((tool) => isToolVisibleDuringRun(
+				run,
+				tool.definition.name,
+				toRuntimeRisk(tool.definition.risk),
+				getNovelToolPermissionPolicy(tool.definition.name)?.visibility,
+			))
+			: resolved.tools;
+
 		// Runtime later validates the final provider-facing name with
 		// /^[A-Za-z0-9_-]{1,64}$/, so the product boundary must expose wire names
 		// here rather than letting dotted catalog names disappear at the last step.
 		return {
 			...resolved,
-			tools: resolved.tools.map((tool) => ({
+			tools: visibleTools.map((tool) => ({
 				...tool,
 				definition: {
 					...tool.definition,
 					name: this.toWireToolName(tool.definition.name),
 				},
 			})),
-			promptExtensions: basePromptExtensions,
+			promptExtensions: workflowExtension
+				? [...basePromptExtensions, { ...workflowExtension, content: this.toModelFacingText(workflowExtension.content) }]
+				: basePromptExtensions,
 		};
 	}
 
@@ -492,6 +519,27 @@ export class NovelRuntimeHostAdapter {
 			runtimeRisk,
 			...(tool.definition.renderer ? { runtimeRenderer: tool.definition.renderer } : {}),
 		};
+
+		// 创作工作流的权威约束：每次调用都查，本工序不允许的写入直接拒绝并说明原因。
+		const run = findActiveWorkflowRun(narratorId, boundBookId(context));
+		if (run) {
+			let effectiveRisk: RuntimeToolRisk = runtimeRisk;
+			try {
+				effectiveRisk = toRuntimeRisk(getNovelToolPermissionPolicy(canonicalToolName)?.resolveRisk?.(parsed.data) ?? runtimeRisk);
+			} catch {
+				// 动态风险解析失败时绝不降级。
+				effectiveRisk = "confirmed-write";
+			}
+			const denial = explainWorkflowDenial(run, canonicalToolName, effectiveRisk, parsed.data);
+			if (denial) {
+				return errorResult(
+					"workflow-step-disallowed",
+					this.toModelFacingText(`${denial.what}。${denial.why}。${denial.action}。`),
+					toolName,
+					{ ...runtimeMetadata, workflowRunId: run.id, explanation: denial },
+				);
+			}
+		}
 		try {
 			const hostExecution = typeof execution === "string" ? undefined : execution;
 			const bookRoot = context.resourceBindings["novel.book"]?.root ?? context.projectRoot;
