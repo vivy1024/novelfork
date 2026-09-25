@@ -24,10 +24,12 @@ import {
 	createWritingSkillsRouter,
 	createWritingToolsRouter,
 	createWorkflowsRouter,
+	createWorkflowRunsRouter,
 	createNarrativeStructureRouter,
 	type RouterContext,
 } from "@vivy1024/novelfork-novel-plugin/routes";
 import { getControlledBooksRoot } from "../services/book-binding";
+import { assertBookNarratorAccess } from "../services/narrator-access";
 
 /**
  * Novel-domain HTTP surface hosted by the NarraFork Runtime process.
@@ -146,6 +148,25 @@ novelDomainRoutes.route(
 	asRuntimeRouter(
 		createWorkflowsRouter(productRouterContext, {
 			resolveBookRoot: resolveDomainBookRoot,
+		}),
+	),
+);
+// 创作工作流运行：产品持有的工序状态机。叙述者归属经可信绑定校验，不接受任意 narratorId。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createWorkflowRunsRouter({
+			resolveBookRoot: resolveDomainBookRoot,
+			authorizeNarrator: async (c, bookId, narratorId) => {
+				const user = c.get("user") as { sub: string; role: "admin" | "user" } | undefined;
+				if (!user) return false;
+				try {
+					await assertBookNarratorAccess({ userId: user.sub, role: user.role }, bookId, narratorId);
+					return true;
+				} catch {
+					return false;
+				}
+			},
 		}),
 	),
 );

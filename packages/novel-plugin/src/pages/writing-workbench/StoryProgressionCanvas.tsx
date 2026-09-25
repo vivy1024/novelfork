@@ -106,6 +106,8 @@ export interface StoryProgressionCanvasProps {
   readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   /** 把意图交给叙述者执行（规划下一章 / 补缺失线索）。 */
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
+  /** 当前打开的本书叙述者会话；「执行」视图的工作流作用在它身上。 */
+  readonly narratorId?: string;
 }
 
 // ─── 主组件 ───────────────────────────────────────────────────────────────
@@ -117,6 +119,7 @@ export function StoryProgressionCanvas({
   onOpenChapter,
   onOpenEntityDetail,
   onSendToNarrator,
+  narratorId,
 }: StoryProgressionCanvasProps) {
   const [view, setView] = useState<StoryProgressionView>(() => normalizeStoryProgressionView(initialView));
   const [fullscreen, setFullscreen] = useState(false);
@@ -236,6 +239,7 @@ export function StoryProgressionCanvas({
                 bookId={bookId}
                 {...(currentChapter !== undefined ? { currentChapter } : {})}
                 {...(onSendToNarrator ? { onSendToNarrator } : {})}
+                {...(narratorId ? { narratorId } : {})}
               />
             </Suspense>
           </div>

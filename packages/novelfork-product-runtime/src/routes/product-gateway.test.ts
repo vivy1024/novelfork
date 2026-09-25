@@ -13,6 +13,7 @@ let externalBookRoot = "";
 let newExternalBookRoot = "";
 let reboundBookRoot = "";
 let bookId: string | null = null;
+let bookNarratorId: string | null = null;
 let newBookId: string | null = null;
 
 function productApp(user: typeof owner) {
@@ -79,6 +80,7 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		expect({ status: create.status, operation }).toMatchObject({ status: 201, operation: { state: "ready", errorMessage: null } });
 		if (!operation.bookId || !operation.narratorId) throw new Error("product gateway did not create a trusted binding");
 		bookId = operation.bookId;
+		bookNarratorId = operation.narratorId;
 
 		const config = JSON.parse(await readFile(join(externalBookRoot, "book.json"), "utf8")) as { id?: string; novelforkExternalWorkspace?: boolean };
 		expect(config).toMatchObject({ id: bookId, novelforkExternalWorkspace: true });
@@ -267,6 +269,47 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		expect(reset).toMatchObject({ chapterWordCount: 3200 });
 		const resetSnapshot = await app.request(`/api/books/${bookId}/narrative-structure`);
 		expect(await resetSnapshot.json()).toMatchObject({ foreshadowThresholds: { watchChapters: 5, overdueChapters: 12 } });
+	});
+
+	test("workflow runs: narrator ownership is verified, revisions are enforced, outsiders see nothing", async () => {
+		if (!bookId || !bookNarratorId) throw new Error("gateway fixture missing");
+		const app = productApp(owner);
+		const post = (path: string, body: unknown) => app.request(`/api/books/${bookId}/workflow-runs${path}`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+
+		// 不属于这本书的叙述者不能启动运行。
+		const forged = await post("", { recipeId: "fanqie-xuanhuan-serial", chapterNumber: 1, narratorId: "forged-narrator" });
+		expect(forged.status).toBe(404);
+
+		const started = await post("", { recipeId: "fanqie-xuanhuan-serial", chapterNumber: 1, narratorId: bookNarratorId });
+		expect(started.status).toBe(201);
+		const detail = await started.json() as { run: { id: string; status: string; revision: number; currentStepId: string }; brief: string };
+		expect(detail.run).toMatchObject({ status: "running", revision: 0, currentStepId: "step-context" });
+		expect(detail.brief).toContain("当前工序 1/5");
+		const runPath = `/${encodeURIComponent(detail.run.id)}`;
+
+		const listed = await app.request(`/api/books/${bookId}/workflow-runs?narratorId=${encodeURIComponent(bookNarratorId)}`);
+		expect(await listed.json()).toMatchObject({ active: { run: { id: detail.run.id } } });
+
+		// 同一叙述者不能同时开第二个。
+		expect((await post("", { recipeId: "fanqie-xuanhuan-serial", chapterNumber: 2, narratorId: bookNarratorId })).status).toBe(409);
+		// 没带版本号 → 400；版本号过期 → 409；当前工序不在等待确认 → 409。
+		expect((await post(`${runPath}/cancel`, {})).status).toBe(400);
+		expect((await post(`${runPath}/cancel`, { expectedRevision: 7 })).status).toBe(409);
+		expect((await post(`${runPath}/steps/step-context/approve`, { expectedRevision: 0 })).status).toBe(409);
+
+		// 其他用户看不到这本书的运行。
+		expect((await productApp(outsider).request(`/api/books/${bookId}/workflow-runs`)).status).toBe(404);
+		expect((await productApp(outsider).request(`/api/books/${bookId}/workflow-runs${runPath}`)).status).toBe(404);
+
+		const cancelled = await post(`${runPath}/cancel`, { expectedRevision: 0 });
+		expect(cancelled.status).toBe(200);
+		expect(await cancelled.json()).toMatchObject({ run: { status: "cancelled", revision: 1 } });
+		const after = await app.request(`/api/books/${bookId}/workflow-runs?narratorId=${encodeURIComponent(bookNarratorId)}`);
+		expect(await after.json()).toMatchObject({ active: null, recent: [expect.objectContaining({ id: detail.run.id, status: "cancelled" })] });
 	});
 
 	test("rebinds an existing book to a marked external workspace", async () => {

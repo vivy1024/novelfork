@@ -1562,6 +1562,7 @@ export function IdeWorkbench({
                               onOpenJingweiEntry={handleOpenJingweiEntry}
                               onOpenEntityDetail={handleOpenEntityFromGraph}
                               onSendToNarrator={onSendToNarrator}
+                              {...(activeSessionId ? { narratorId: activeSessionId } : {})}
                               onOpenResourceNode={handleOpen}
                               onPromoteOutline={(outlineNode) => {
                                 void handleResourceAction({ type: "promote-outline", node: outlineNode });
@@ -1587,6 +1588,7 @@ export function IdeWorkbench({
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={handleOpenEntityFromGraph}
                         onSendToNarrator={onSendToNarrator}
+                        {...(activeSessionId ? { narratorId: activeSessionId } : {})}
                         onPromoteOutline={(outlineNode) => {
                           void handleResourceAction({ type: "promote-outline", node: outlineNode });
                         }}
@@ -1631,6 +1633,7 @@ export function IdeWorkbench({
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={handleOpenEntityFromGraph}
                         onSendToNarrator={onSendToNarrator}
+                        {...(activeSessionId ? { narratorId: activeSessionId } : {})}
                         onOpenResourceNode={handleOpen}
                         onPromoteOutline={(outlineNode) => {
                           void handleResourceAction({ type: "promote-outline", node: outlineNode });

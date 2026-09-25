@@ -307,9 +307,11 @@ export interface WorkbenchCanvasProps {
    * 产品 HTTP 适配层没有 Provider，这类动作必须由 Runtime 的叙述者执行。
    */
   onSendToNarrator?: (message: string) => Promise<void> | void;
+  /** 当前打开的本书叙述者会话 id（供「故事推进 › 执行」启动工作流）。 */
+  narratorId?: string;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onPromoteOutline, onSendToNarrator, onOpenResourceNode }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -497,6 +499,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             onOpenChapter={onJumpToChapter}
             onOpenEntityDetail={onOpenEntityDetail}
             onSendToNarrator={onSendToNarrator}
+            {...(narratorId ? { narratorId } : {})}
           />
         </Suspense>
       </div>
