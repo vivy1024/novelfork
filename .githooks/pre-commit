@@ -1,0 +1,4 @@
+#!/bin/sh
+# 提交前检查暂存区：Runtime 源码、本地私有目录、密钥类文件不得进入公开仓库。
+# 启用（每个克隆执行一次）：git config core.hooksPath .githooks
+exec node scripts/check-public-boundary.mjs --staged

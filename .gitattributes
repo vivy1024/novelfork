@@ -1,0 +1,2 @@
+# Git 钩子是 sh 脚本：任何平台检出都保持 LF，否则 CRLF 会让 sh 执行出错。
+.githooks/* text eol=lf

@@ -1,16 +1,65 @@
-# 公开仓库不跑自动 CI。
-# 完整验证在维护者本机完成：测试 + 编译 Windows EXE + EXE 功能核验。
-# 需要时仅可手动触发本 workflow。
+# 公开 CI 只跑不依赖私有 Runtime 的部分：
+#   1. 公开边界检查：Runtime 源码、本地私有目录、密钥类文件不得进入本仓库（含 PR 里的每个提交）。
+#   2. core / novel-plugin 的类型检查与测试：这两个包不引用 Runtime，公开环境能完整跑。
+# studio / bridge / product-runtime 需要私有 Runtime，完整验证与发版门禁仍在维护者本机完成
+# （测试 + 编译 Windows EXE + EXE 功能核验）。
 name: CI
 
 on:
+  push:
+    branches: [master]
+  pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  noop:
+  public-boundary:
+    name: 公开边界检查
     runs-on: ubuntu-latest
     steps:
-      - name: Public CI disabled
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 检查当前跟踪的文件
+        run: node scripts/check-public-boundary.mjs
+      - name: 检查本次带入的每个提交
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
         run: |
-          echo "Public CI is intentionally disabled."
-          echo "Release gate: local tests + Windows EXE + EXE verification."
+          if [ "$EVENT" = "pull_request" ]; then
+            RANGE="$PR_BASE..$PR_HEAD"
+          elif [ "$EVENT" = "push" ] && [ -n "$PUSH_BEFORE" ] && ! [[ "$PUSH_BEFORE" =~ ^0+$ ]] && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+            RANGE="$PUSH_BEFORE..$PUSH_AFTER"
+          else
+            echo "没有可比较的提交范围（手动触发或新分支），只检查当前文件。"
+            exit 0
+          fi
+          node scripts/check-public-boundary.mjs --range "$RANGE"
+
+  domain-packages:
+    name: core / novel-plugin 类型检查与测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # 装整个工作区：novel-plugin 的界面测试会引用 studio 的 UI 组件，react 等依赖由 studio 声明。
+      # Runtime 不在 pnpm 工作区内，全量安装也不需要它。
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 类型检查
+        run: pnpm --filter @vivy1024/novelfork-core --filter @vivy1024/novelfork-novel-plugin run typecheck
+      - name: 测试
+        run: pnpm --filter @vivy1024/novelfork-core --filter @vivy1024/novelfork-novel-plugin run test

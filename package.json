@@ -51,6 +51,7 @@
     "codegraph": "bun run scripts/build-codegraph.ts",
     "docs:drift": "bun run scripts/codegraph/doc-drift.ts",
     "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core",
+    "check:boundary": "node scripts/check-public-boundary.mjs",
     "release": "pnpm build && pnpm test",
     "version": "pnpm -r exec npm version"
   },
