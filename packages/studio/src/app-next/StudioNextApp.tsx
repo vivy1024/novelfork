@@ -205,29 +205,23 @@ function providerSummaryRecord(
   return record;
 }
 
-function providerRuntimeStatus(
-  providerStatus: ShellDataProviderStatus | null,
-): {
+type ProviderRuntimeStatusView = {
   readonly hasUsableModel?: boolean;
+  /** 模型状态说明；未就绪时是服务端给出的具体原因。 */
+  readonly label?: string;
   readonly defaultProvider?: string;
   readonly defaultModel?: string;
   readonly lastConnectionError?: string;
-} | null {
+};
+
+function providerRuntimeStatus(
+  providerStatus: ShellDataProviderStatus | null,
+): ProviderRuntimeStatusView | null {
   if (!providerStatus || typeof providerStatus !== "object") return null;
   const record = providerStatus as Record<string, unknown>;
   if (record.status && typeof record.status === "object")
-    return record.status as {
-      readonly hasUsableModel?: boolean;
-      readonly defaultProvider?: string;
-      readonly defaultModel?: string;
-      readonly lastConnectionError?: string;
-    };
-  return record as {
-    readonly hasUsableModel?: boolean;
-    readonly defaultProvider?: string;
-    readonly defaultModel?: string;
-    readonly lastConnectionError?: string;
-  };
+    return record.status as ProviderRuntimeStatusView;
+  return record as ProviderRuntimeStatusView;
 }
 
 function HomeStatCard({
@@ -362,11 +356,16 @@ function HomeRouteLive({
           <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
           <div className="flex-1">
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-              尚未配置 AI 供应商
+              AI 模型尚未就绪
             </p>
+            {runtimeStatus?.label ? (
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {runtimeStatus.label}
+              </p>
+            ) : null}
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              配置后可使用 AI 写作、续写、审校、去 AI
-              味等全部功能。未配置时仅支持本地编辑。
+              就绪后可使用 AI 写作、续写、审校、去 AI
+              味等功能；在此之前仍可本地编辑。
             </p>
           </div>
           <Button

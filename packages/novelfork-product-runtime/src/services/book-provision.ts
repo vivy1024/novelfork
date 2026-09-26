@@ -15,6 +15,7 @@ import {
 	chapters,
 	db as runtimeDb,
 	deleteProjectById,
+	FOLLOW_DEFAULT_MODEL,
 	generateId,
 	isKiroAvailable,
 	narrators,
@@ -349,43 +350,46 @@ function configuredValue(value: string | undefined): boolean {
 	return Boolean(value?.trim());
 }
 
-function isConfiguredApiProvider(provider: {
-	disabled?: boolean;
-	name?: string;
-	prefix?: string;
-	apiKey?: string;
-	baseUrl?: string;
-	defaultModel?: string;
-}): boolean {
-	return (
-		!provider.disabled &&
-		configuredValue(provider.prefix) &&
-		configuredValue(provider.apiKey) &&
-		configuredValue(provider.baseUrl) &&
-		configuredValue(provider.defaultModel)
-	);
-}
-
-type ConfiguredProductProvider = { prefix: string; label: string; model: string };
+/** 有凭据的供应商；model 为 null 表示它自己和全局默认模型都没有指定可用模型。 */
+type CredentialedProductProvider = { prefix: string; label: string; model: string | null };
+type ConfiguredProductProvider = CredentialedProductProvider & { model: string };
 
 /**
- * This intentionally reports local configuration only. It is not a network
- * probe: a configured key/endpoint can still fail at request time.
+ * 供应商实际使用的模型：供应商自己的默认模型优先；为空或是"跟随默认"哨兵时，沿用全局默认模型，
+ * 前提是全局默认模型属于这个供应商。NUG 等从网关目录选模型的协议通常不填供应商默认模型，
+ * 只在全局默认模型里写完整 ID（如 like:antigravity:gemini-3.8-flash-high）。
+ * 前缀拼接规则与 Runtime 的 prefixProviderModel 保持一致。
  */
-function getConfiguredProductProviders(): ConfiguredProductProvider[] {
-	const configured = [
+function resolveProviderModel(prefix: string, defaultModel: string | undefined): string | null {
+	const own = defaultModel?.trim();
+	if (own && own !== FOLLOW_DEFAULT_MODEL && !own.endsWith(`:${FOLLOW_DEFAULT_MODEL}`)) {
+		return own.includes(":") ? own : `${prefix}:${own}`;
+	}
+	const globalDefault = settings.agent.defaultModel?.trim() ?? "";
+	return globalDefault.startsWith(`${prefix}:`) ? globalDefault : null;
+}
+
+/**
+ * 只看本地配置，不做网络探测：配置了密钥和地址，请求时仍可能失败。
+ */
+function getCredentialedProductProviders(): CredentialedProductProvider[] {
+	const apiProviders = [
 		...(settings.customApiProviders ?? []),
 		...(settings.openaiProviders ?? []),
 		...(settings.anthropicProviders ?? []),
 		...(settings.nugProviders ?? []),
 	]
-		.filter(isConfiguredApiProvider)
+		.filter(
+			(provider) =>
+				!provider.disabled &&
+				configuredValue(provider.prefix) &&
+				configuredValue(provider.apiKey) &&
+				configuredValue(provider.baseUrl),
+		)
 		.map((provider) => ({
 			prefix: provider.prefix,
 			label: provider.name || provider.prefix,
-			model: provider.defaultModel.includes(":")
-				? provider.defaultModel
-				: `${provider.prefix}:${provider.defaultModel}`,
+			model: resolveProviderModel(provider.prefix, provider.defaultModel),
 		}));
 	const cline = (settings.clineProviders ?? [])
 		.filter(
@@ -393,39 +397,57 @@ function getConfiguredProductProviders(): ConfiguredProductProvider[] {
 				!provider.disabled &&
 				configuredValue(provider.prefix) &&
 				configuredValue(provider.accessToken) &&
-				configuredValue(provider.baseUrl) &&
-				configuredValue(provider.defaultModel),
+				configuredValue(provider.baseUrl),
 		)
 		.map((provider) => ({
 			prefix: provider.prefix,
 			label: provider.name || provider.prefix,
-			model: provider.defaultModel.includes(":")
-				? provider.defaultModel
-				: `${provider.prefix}:${provider.defaultModel}`,
+			model: resolveProviderModel(provider.prefix, provider.defaultModel),
 		}));
-	configured.push(...cline);
+	const providers: CredentialedProductProvider[] = [...apiProviders, ...cline];
 	const kiroDisabled =
 		process.env.NARRAFORK_DISABLE_KIRO_PROVIDER === "1" ||
 		settings.agent.disabledProviders?.includes("kiro");
 	if (!kiroDisabled && isKiroAvailable()) {
-		configured.push({ prefix: "kiro", label: "Kiro", model: "kiro:claude-sonnet-4.5" });
+		providers.push({ prefix: "kiro", label: "Kiro", model: "kiro:claude-sonnet-4.5" });
 	}
-	return configured;
+	return providers;
+}
+
+/** 有凭据且能确定模型的供应商：决定模型就绪状态和新叙述者的默认模型。 */
+function getConfiguredProductProviders(): ConfiguredProductProvider[] {
+	return getCredentialedProductProviders().filter(
+		(provider): provider is ConfiguredProductProvider => provider.model !== null,
+	);
 }
 
 export function getProductModelStatus(): ProductModelStatus {
-	const configured = getConfiguredProductProviders()[0];
-	return configured
-		? { setupRequired: false, label: `已配置：${configured.label}` }
-		: { setupRequired: true };
+	const credentialed = getCredentialedProductProviders();
+	const configured = credentialed.find((provider) => provider.model !== null);
+	if (configured) return { setupRequired: false, label: `已配置：${configured.label}` };
+	if (credentialed.length > 0) {
+		const names = credentialed.map((provider) => provider.label).join("、");
+		return {
+			setupRequired: true,
+			label: `供应商 ${names} 还没有可用的模型：请为它设置默认模型，或把全局默认模型设为它的模型。`,
+		};
+	}
+	return {
+		setupRequired: true,
+		label: "尚未配置 AI 供应商：请在设置中添加供应商，并填写 API Key 与服务地址。",
+	};
 }
 
-function canSendToConfiguredModel(model: string | null): boolean {
+/**
+ * 叙述者选定的模型已是完整 ID（叙述者自己的或全局默认），Runtime 只按前缀找供应商，
+ * 所以只要前缀对应一个有凭据的供应商就能发送，不要求供应商另外设置默认模型。
+ */
+export function canSendToConfiguredModel(model: string | null): boolean {
 	const selected = (model || settings.agent.defaultModel).trim();
 	const prefix = selected.includes(":") ? selected.slice(0, selected.indexOf(":")) : "";
 	return (
 		Boolean(prefix) &&
-		getConfiguredProductProviders().some((provider) => provider.prefix === prefix)
+		getCredentialedProductProviders().some((provider) => provider.prefix === prefix)
 	);
 }
 

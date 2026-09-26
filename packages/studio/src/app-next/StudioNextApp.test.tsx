@@ -61,5 +61,19 @@ describe("StudioNextApp product entry", () => {
     expect(screen.getByRole("heading", { name: "作者首页" })).toBeTruthy();
     expect(screen.getByText("测试作品")).toBeTruthy();
     expect(screen.queryByTestId("runtime-p0-shell")).toBeNull();
+    expect(screen.queryByText("AI 模型尚未就绪")).toBeNull();
+  });
+
+  it("explains why the model is not ready using the server-provided reason", async () => {
+    const reason = "供应商 like 还没有可用的模型：请为它设置默认模型，或把全局默认模型设为它的模型。";
+    useRuntimeShellDataMock.mockReturnValue({
+      ...useRuntimeShellDataMock(),
+      providerStatus: { hasUsableModel: false, label: reason },
+    });
+    render(<RouterTestHarness component={() => <StudioNextApp />} initialPath="/next" />);
+
+    expect(await screen.findByText("AI 模型尚未就绪")).toBeTruthy();
+    expect(screen.getByText(reason)).toBeTruthy();
+    expect(screen.queryByText("尚未配置 AI 供应商")).toBeNull();
   });
 });
