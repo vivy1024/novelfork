@@ -184,9 +184,9 @@ novelDomainRoutes.get("/api/books/:bookId/collaboration-context", async (c) => {
 	const bookRoot = resolveDomainBookRoot(bookId);
 	return c.json({
 		repositoryPath: bookRoot,
-		// Runtime chapter worktrees live under .narrafork-worktrees on the book root
-		// when present; surface the directory path for the panel without requiring
-		// the retired Studio git API.
-		worktreeRoot: join(bookRoot, ".narrafork-worktrees"),
+		// Runtime 把章节 worktree 建在 <gitPath>/.worktrees 下（chapter-fork / chapter-cleanup），
+		// 书籍绑定时 gitPath 与 book_root 是同一个目录；这里只把目录路径交给面板展示，
+		// 不依赖已下线的 Studio git API。
+		worktreeRoot: join(bookRoot, ".worktrees"),
 	});
 });
