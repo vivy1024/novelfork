@@ -311,8 +311,8 @@ export function RulesSection({ bookId, bookTitle }: { readonly bookId?: string; 
 									<FieldDescription>
 										仅使用当前 Git 仓库根目录的 AGENT.md；AGENT.md
 										不存在时回退至同级
-										CLAUDE.md。不会读取或写入用户目录、NARRAFORK_HOME
-										或任意子目录。
+										CLAUDE.md。不会读取或写入用户目录、NovelFork
+										数据目录（NOVELFORK_HOME）或任意子目录。
 									</FieldDescription>
 								</Field>
 								<div className="flex flex-wrap gap-2">

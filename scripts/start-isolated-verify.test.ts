@@ -13,10 +13,10 @@ describe("隔离验证实例契约", () => {
     // verification accounts into the user's real Runtime database, which has
     // already happened more than once. Every variable must stay covered.
     const required = [
+      "NOVELFORK_HOME",
       "NOVELFORK_PROJECT_ROOT",
       "NOVELFORK_BOOKS_ROOT",
       "NOVELFORK_RUNTIME_DIR",
-      "NARRAFORK_HOME",
       "NOVELFORK_SESSION_STORE_DIR",
       "NOVELFORK_STORAGE_DB_PATH",
     ];
@@ -29,7 +29,10 @@ describe("隔离验证实例契约", () => {
   test("隔离数据路径全部落在同一个可丢弃目录内，不指向用户家目录", () => {
     expect(script).toContain("mkdtempSync(join(tmpdir(), \"novelfork-verify-\"))");
     expect(script).toContain("const runtimeDir = join(options.root, \"runtime\")");
-    expect(script).toContain("NARRAFORK_HOME: runtimeDir");
+    expect(script).toContain("NOVELFORK_HOME: options.root");
+    expect(script).toContain("NOVELFORK_RUNTIME_DIR: runtimeDir");
+    // Runtime 的 NARRAFORK_HOME 由 main.ts 推导；继承来的属于独立 NarraFork 宿主，隔离不能依赖它
+    expect(script).not.toContain("NARRAFORK_HOME:");
     expect(script).toContain("NOVELFORK_STORAGE_DB_PATH: join(options.root, \"novelfork.db\")");
     expect(script).not.toContain("homedir()");
     expect(script).not.toContain(".novelfork\"");

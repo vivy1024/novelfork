@@ -10,6 +10,8 @@ mkdirSync(booksRoot, { recursive: true });
 // Bridge imports can initialize Runtime modules while test files are evaluated.
 // Set every product-owned path before those imports so tests never lock or mutate
 // a developer's ~/.narrafork or ~/.novelfork data.
+// 产品代码先看 NOVELFORK_HOME 再看 homedir()，开发者自己的值可能指向真实数据，这里同样要覆盖。
+process.env.NOVELFORK_HOME = join(testRoot, "home");
 process.env.NARRAFORK_HOME = join(testRoot, "runtime");
 process.env.NARRAFORK_MIGRATIONS_DIR = resolve(
 	import.meta.dir,

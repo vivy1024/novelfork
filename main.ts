@@ -5,10 +5,16 @@ import { resolve } from "node:path";
 // paths before the complete NarraFork Runtime backend evaluates. The product
 // keeps its NovelFork domain database, Runtime database, lock, and settings
 // separate from the standalone NarraFork host by default.
-const novelForkHome = resolve(homedir(), ".novelfork");
+// NOVELFORK_HOME 是产品数据目录：两个数据库、Runtime 目录、桌面窗口配置目录，以及各解析器的
+// 默认路径（全局配置、作者技能、市场数据）都以它为根，可整体迁出用户目录。
+const novelForkHome = resolve(process.env.NOVELFORK_HOME?.trim() || resolve(homedir(), ".novelfork"));
 const defaultRuntimeDir = resolve(novelForkHome, ".runtime");
 const projectRoot = process.env.NOVELFORK_PROJECT_ROOT ?? novelForkHome;
-const runtimeDir = process.env.NOVELFORK_RUNTIME_DIR ?? process.env.NARRAFORK_HOME ?? defaultRuntimeDir;
+// 产品 Runtime 目录只认 NOVELFORK_RUNTIME_DIR（空值视为未设置）。继承来的 NARRAFORK_HOME
+// 属于同机独立运行的 NarraFork 宿主，沿用它会打开并迁移那个宿主的数据库；空值同理，
+// Runtime 会把空的 NARRAFORK_HOME 回落到 ~/.narrafork。
+const configuredRuntimeDir = process.env.NOVELFORK_RUNTIME_DIR?.trim();
+const runtimeDir = configuredRuntimeDir ? resolve(configuredRuntimeDir) : defaultRuntimeDir;
 const runtimeMigrationsDir = resolve(
   import.meta.dir,
   "packages",
@@ -16,12 +22,16 @@ const runtimeMigrationsDir = resolve(
   "runtime-migrations",
 );
 
+process.env.NOVELFORK_HOME = novelForkHome;
 process.env.NOVELFORK_PROJECT_ROOT ??= projectRoot;
 process.env.NOVELFORK_BOOKS_ROOT ??= resolve(projectRoot, "books");
-process.env.NOVELFORK_RUNTIME_DIR ??= runtimeDir;
-process.env.NARRAFORK_HOME ??= runtimeDir;
+process.env.NOVELFORK_RUNTIME_DIR = runtimeDir;
+process.env.NARRAFORK_HOME = runtimeDir;
 process.env.NOVELFORK_SESSION_STORE_DIR ??= resolve(runtimeDir, "sessions");
 process.env.NOVELFORK_STORAGE_DB_PATH ??= resolve(novelForkHome, "novelfork.db");
+// 桌面窗口只认这个变量，否则落到写死的 ~/.novelfork/desktop-browser；空值同样视为未设置。
+process.env.NOVELFORK_DESKTOP_USER_DATA_DIR =
+  process.env.NOVELFORK_DESKTOP_USER_DATA_DIR?.trim() || resolve(novelForkHome, "desktop-browser");
 process.env.NARRAFORK_MIGRATIONS_DIR ??= runtimeMigrationsDir;
 
 // Preserve NovelFork's historical public listener port. Explicit PORT and

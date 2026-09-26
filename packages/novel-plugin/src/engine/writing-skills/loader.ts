@@ -1,9 +1,9 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, win32 } from "node:path";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { load as parseYaml } from "js-yaml";
+import { resolveGlobalConfigDir } from "@vivy1024/novelfork-core";
 import {
   BUNDLED_WRITING_SKILLS,
   type BundledWritingSkill,
@@ -32,9 +32,14 @@ function resolveBuiltinWritingSkillsDir(): string {
 /** 内置 SKILL.md 的唯一磁盘根目录。 */
 export const BUILTIN_WRITING_SKILLS_DIR = resolveBuiltinWritingSkillsDir();
 
-/** 作者级 SKILL.md 目录；内置文件永远不会在这里被批量复制。 */
-export function authorWritingSkillsDir(home = homedir()): string {
-  return join(home, ".novelfork", "skills");
+/**
+ * 作者级 SKILL.md 目录；内置文件永远不会在这里被批量复制。
+ * 默认位于 NovelFork 数据目录（NOVELFORK_HOME）下；显式传入 home 时按 <home>/.novelfork/skills。
+ */
+export function authorWritingSkillsDir(home?: string): string {
+  return home === undefined
+    ? join(resolveGlobalConfigDir(), "skills")
+    : join(home, ".novelfork", "skills");
 }
 
 function isSafeWritingSkillSlug(value: string): boolean {

@@ -114,6 +114,13 @@ describe("根 Host 编译契约", () => {
     expect(rootMain).toContain('resolve(homedir(), ".novelfork")');
     expect(rootMain).toContain("NOVELFORK_RUNTIME_DIR");
     expect(rootMain).toContain("NARRAFORK_HOME");
+    // 用户环境里的 NARRAFORK_HOME 属于独立 NarraFork 宿主，产品不得继承它，否则会打开并迁移宿主数据库。
+    expect(rootMain).not.toContain("?? process.env.NARRAFORK_HOME");
+    expect(rootMain).toContain("process.env.NARRAFORK_HOME = runtimeDir;");
+    // 空的 NOVELFORK_RUNTIME_DIR 必须按未设置处理：否则 NARRAFORK_HOME 为空，Runtime 会回落到 ~/.narrafork。
+    expect(rootMain).toContain("process.env.NOVELFORK_RUNTIME_DIR?.trim()");
+    // 桌面窗口配置目录跟随 NOVELFORK_HOME，否则会落回写死的用户目录 ~/.novelfork/desktop-browser。
+    expect(rootMain).toContain('resolve(novelForkHome, "desktop-browser")');
     expect(rootMain).toContain("NOVELFORK_SESSION_STORE_DIR");
     expect(rootMain).toContain("NOVELFORK_STORAGE_DB_PATH");
     expect(rootMain).toContain('resolve(novelForkHome, "novelfork.db")');

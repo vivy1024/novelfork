@@ -28,9 +28,12 @@ export default defineConfig({
         PORT: String(apiPort),
         HOME: e2eProjectRoot,
         USERPROFILE: e2eProjectRoot,
+        // NOVELFORK_HOME 优先于上面的 HOME 重定向；不覆盖的话，开发者自己的值会把全局配置、
+        // 技能、市场数据导向真实数据。市场目录另有专用变量，也显式覆盖，防止继承。
+        NOVELFORK_HOME: e2eProjectRoot,
+        NOVELFORK_MARKET_DIR: `${e2eProjectRoot}/market`,
         NOVELFORK_PROJECT_ROOT: e2eProjectRoot,
         NOVELFORK_BOOKS_ROOT: `${e2eProjectRoot}/books`,
-        NARRAFORK_HOME: e2eRuntimeDir,
         NOVELFORK_RUNTIME_DIR: e2eRuntimeDir,
         NOVELFORK_SESSION_STORE_DIR: e2eSessionStoreDir,
         NOVELFORK_STORAGE_DB_PATH: `${e2eProjectRoot}/novelfork.db`,

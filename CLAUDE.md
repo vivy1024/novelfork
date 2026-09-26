@@ -116,7 +116,9 @@ bun scripts/start-isolated-verify.ts --port=4613
 # 前端连它：NOVELFORK_RUNTIME_PORT=4613 pnpm run --cwd packages/studio dev
 ```
 
-只设 `NOVELFORK_PROJECT_ROOT` **不构成隔离**。`main.ts` 把 `NOVELFORK_RUNTIME_DIR` 与 `NOVELFORK_STORAGE_DB_PATH` 默认到 `~/.novelfork`，因此账号、用户偏好仍会写进用户真实的 `~/.novelfork/.runtime/narrafork.db`。历史上已有多个测试账号因此残留在用户库里。必须同时设置的变量：`NOVELFORK_PROJECT_ROOT`、`NOVELFORK_BOOKS_ROOT`、`NOVELFORK_RUNTIME_DIR`、`NARRAFORK_HOME`、`NOVELFORK_SESSION_STORE_DIR`、`NOVELFORK_STORAGE_DB_PATH`（上面的脚本已固化）。
+只设 `NOVELFORK_PROJECT_ROOT` **不构成隔离**。`main.ts` 把 `NOVELFORK_RUNTIME_DIR` 与 `NOVELFORK_STORAGE_DB_PATH` 默认到 `NOVELFORK_HOME`（未设置时为 `~/.novelfork`；用户可能已把它指向其他盘的真实数据），因此账号、用户偏好仍会写进用户真实的 `<NOVELFORK_HOME>/.runtime/narrafork.db`。历史上已有多个测试账号因此残留在用户库里。必须同时设置的变量：`NOVELFORK_HOME`、`NOVELFORK_PROJECT_ROOT`、`NOVELFORK_BOOKS_ROOT`、`NOVELFORK_RUNTIME_DIR`、`NOVELFORK_SESSION_STORE_DIR`、`NOVELFORK_STORAGE_DB_PATH`（上面的脚本已固化）。
+
+Runtime 的 `NARRAFORK_HOME` 由 `main.ts` 从 `NOVELFORK_RUNTIME_DIR` 推导并强制覆盖；用户环境里继承的 `NARRAFORK_HOME` 属于同机独立运行的 NarraFork 宿主，产品不得读取。直接在 `packages/narrafork-runtime-private/` 里跑 `bun test` 时，先清掉继承的 `NARRAFORK_HOME` 与 `NOVELFORK_HOME`（`env -u NARRAFORK_HOME -u NOVELFORK_HOME bun test ...`）：测试 preload 遇到继承的 `NARRAFORK_HOME` 会报错，但 `bun test` 不会因此中止，后续测试文件会打开那个宿主的真实数据库。`pnpm test` 已处理这一点。
 
 其他约束：
 
@@ -327,10 +329,10 @@ pnpm run compile:all     # 全部 7 个平台，发版用
 
 交叉编译前置条件：Bun 会为每个非本机目标下载独立运行时并缓存在 `~/.bun/install/cache/bun-<target>-v<bun版本>`。首次或网络中断时会出现 `Failed to extract executable for 'bun-darwin-aarch64-...'`。`compile-product-runtime.ts` 因此在准备任何产物之前先用一次性最小编译探测全部目标（失败重试 3 次），所以这类问题会在几秒内失败，而不是在几十分钟的矩阵构建中途炸掉。真的探测失败时，先确认能访问 npm registry，再重跑同一命令即可。
 
-EXE 核验注意：产物启动时会自动打开产品窗口。无头核验必须带 `NOVELFORK_NO_BROWSER=1`，不要在用户使用屏幕时弹窗：
+EXE 核验注意：产物启动时会自动打开产品窗口。无头核验必须带 `NOVELFORK_NO_BROWSER=1`，不要在用户使用屏幕时弹窗；同时用 `NOVELFORK_HOME` 指向临时目录，产品各数据路径（两个数据库、Runtime 目录、全局配置、技能、市场数据、窗口配置）随之隔离，不碰用户真实数据。前提是环境里没有单独设置 `NOVELFORK_RUNTIME_DIR`、`NOVELFORK_STORAGE_DB_PATH`、`NOVELFORK_MARKET_DIR` 这类更具体的路径变量，它们优先于 `NOVELFORK_HOME`：
 
 ```bash
-NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-v<版本>-windows-x64.exe
+NOVELFORK_HOME="$(mktemp -d)" NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-v<版本>-windows-x64.exe
 ```
 
 已知限制：非 Windows 产物在本机只能验证交叉编译成功与目标格式（Mach-O / ELF），真实运行行为需要在对应系统上核验。上游 Runtime 的 `latest*.yml` 自动更新清单与二进制签名不属于 NovelFork 发版流程——产品层未接自动更新服务，不要顺手引入。
