@@ -11,16 +11,18 @@
   "trackedFileCount": 3508,
   "importMethod": "git-archive",
   "provenance": {
-    "note": "已推送到 fork 远端分支 novelfork/integration-v0.6.6（与本地 novelfork-seam-066 同一提交 f779ff11）。远端改用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。宿主库：packages/.narrafork-runtime-fork-staging（合并工作区 D:/DESKTOP/narrafork-066-work 已在验证后删除）。远端旧分支 novelfork/integration-v0.5.23（31ce7ab6，v0.6.0 + 接缝）原样保留作历史存档。",
-    "pendingCommits": [
+    "note": "fork 远端分支 novelfork/integration-v0.6.6 当前头为 dda73094（2026-09-26 由 f779ff11 快进，合入 Runtime PR #1），维护者宿主库的本地分支 novelfork-seam-066 已同步到同一提交。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。宿主库：packages/.narrafork-runtime-fork-staging（0.6.6 合并工作区 D:/DESKTOP/narrafork-066-work 已在验证后删除）。远端旧分支 novelfork/integration-v0.5.23（31ce7ab6，v0.6.0 + 接缝）原样保留作历史存档。",
+    "forkCommits": [
       {
         "commit": "dda73094c527ba3975c1ef28051fa47f41708d98",
         "parent": "f779ff110e7b5decaddbddd46a77337d43697439",
         "subject": "fix(skills): 产品内全局技能跟随 NOVELFORK_HOME，不再读取独立 NarraFork 的技能",
-        "status": "open",
+        "status": "merged",
+        "mergedAt": "2026-09-26T18:02:26Z",
+        "mergeMethod": "fast-forward",
         "pullRequest": "https://github.com/NarraFork/novelfork-runtime-private/pull/1",
         "head": "MimosaLW/novelfork-runtime-private:fix/novelfork-home-skills",
-        "note": "2026-09-26 在本机宿主库 packages/.narrafork-runtime-fork-staging（从 fork 远端 clone，分支 novelfork/integration-v0.6.6）提交，经 MimosaLW 的 fork 提交 PR，尚未合入 novelfork/integration-v0.6.6。引用本 lock 的主仓库提交须在该 PR 合并后再合并；PR 须用 merge commit 合并以保持 dda73094 哈希，squash / rebase 会使本 lock 的 commit 失效。"
+        "note": "MimosaLW 经其 fork 提交的 PR。维护者在宿主库把 novelfork/integration-v0.6.6 由 f779ff11 直接快进到本提交并推送（未用 GitHub 的 merge commit），提交号不变，fork 分支头即 lock 的 commit；GitHub 据此把 PR 标为已合并。"
       }
     ],
     "seamBase": {
