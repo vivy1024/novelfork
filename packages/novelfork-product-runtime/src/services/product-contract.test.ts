@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { settings } from "@vivy1024/narrafork-runtime-bridge";
-import { getProductModelStatus } from "./book-provision";
+import { FOLLOW_DEFAULT_MODEL, settings } from "@vivy1024/narrafork-runtime-bridge";
+import { canSendToConfiguredModel, getProductModelStatus } from "./book-provision";
 import {
 	getProductBootstrapCapabilities,
 	getProductBootstrapContract,
@@ -17,8 +17,10 @@ const originalProviders = {
 	clineProviders: settings.clineProviders,
 };
 const originalDisableKiro = process.env.NARRAFORK_DISABLE_KIRO_PROVIDER;
+const originalDefaultModel = settings.agent.defaultModel;
 
 beforeEach(() => {
+	settings.agent.defaultModel = "";
 	settings.customApiProviders = [];
 	settings.openaiProviders = [];
 	settings.anthropicProviders = [];
@@ -29,6 +31,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	Object.assign(settings, originalProviders);
+	settings.agent.defaultModel = originalDefaultModel;
 	if (originalDisableKiro === undefined) delete process.env.NARRAFORK_DISABLE_KIRO_PROVIDER;
 	else process.env.NARRAFORK_DISABLE_KIRO_PROVIDER = originalDisableKiro;
 });
@@ -115,12 +118,59 @@ describe("product model status", () => {
 				defaultModel: "model",
 			},
 		];
-		expect(getProductModelStatus()).toEqual({ setupRequired: true });
+		expect(getProductModelStatus()).toEqual({ setupRequired: true, label: NO_PROVIDER_LABEL });
 		settings.clineProviders[0] = {
 			...settings.clineProviders[0],
 			accessToken: "token",
 			disabled: true,
 		};
-		expect(getProductModelStatus()).toEqual({ setupRequired: true });
+		expect(getProductModelStatus()).toEqual({ setupRequired: true, label: NO_PROVIDER_LABEL });
+	});
+
+	test("counts a NUG provider without its own default model when the global default model belongs to it", () => {
+		// NUG 从网关目录选模型，常见配置是供应商默认模型留空、全局默认模型写完整 ID
+		settings.agent.defaultModel = "like:antigravity:gemini-3.8-flash-high";
+		settings.nugProviders = [nugProvider()];
+		expect(getProductModelStatus()).toEqual({ setupRequired: false, label: "已配置：like" });
+		expect(canSendToConfiguredModel(null)).toBe(true);
+		expect(canSendToConfiguredModel("like:kiro:claude-sonnet-4.5")).toBe(true);
+	});
+
+	test("treats the follow-default sentinel as no provider default model", () => {
+		settings.agent.defaultModel = "like:antigravity:gemini-3.8-flash-high";
+		settings.nugProviders = [nugProvider({ defaultModel: FOLLOW_DEFAULT_MODEL })];
+		expect(getProductModelStatus()).toEqual({ setupRequired: false, label: "已配置：like" });
+	});
+
+	test("names the provider that lacks a model instead of claiming none is configured", () => {
+		settings.agent.defaultModel = "other:model";
+		settings.nugProviders = [nugProvider()];
+		const status = getProductModelStatus();
+		expect(status.setupRequired).toBe(true);
+		expect(status.label).toContain("供应商 like 还没有可用的模型");
+		// 叙述者自己选了 like 的完整模型 ID 时仍可发送；全局默认模型的供应商不存在则不行
+		expect(canSendToConfiguredModel("like:antigravity:gemini-3.8-flash-high")).toBe(true);
+		expect(canSendToConfiguredModel(null)).toBe(false);
+	});
+
+	test("does not let a provider without credentials send", () => {
+		settings.agent.defaultModel = "like:antigravity:gemini-3.8-flash-high";
+		settings.nugProviders = [nugProvider({ apiKey: "" })];
+		expect(getProductModelStatus()).toEqual({ setupRequired: true, label: NO_PROVIDER_LABEL });
+		expect(canSendToConfiguredModel(null)).toBe(false);
 	});
 });
+
+const NO_PROVIDER_LABEL = "尚未配置 AI 供应商：请在设置中添加供应商，并填写 API Key 与服务地址。";
+
+function nugProvider(overrides: Partial<NonNullable<typeof settings.nugProviders>[number]> = {}) {
+	return {
+		id: "nug-1",
+		name: "like",
+		prefix: "like",
+		apiKey: "key",
+		baseUrl: "https://nug.test/",
+		defaultModel: "",
+		...overrides,
+	};
+}
