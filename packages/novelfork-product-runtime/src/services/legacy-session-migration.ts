@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
+import { resolveGlobalConfigDir } from "@vivy1024/novelfork-core";
 import { eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { getNovelForkProductDatabase } from "../db/database";
 import { novelforkLegacySessionImports } from "../db/schema";
@@ -191,7 +191,7 @@ function resolveLegacySourceDbPath(sourceDir?: string): string {
 	return resolve(
 		process.env.NOVELFORK_LEGACY_SESSION_DB_PATH
 			?? process.env.NOVELFORK_STORAGE_DB_PATH
-			?? join(homedir(), ".novelfork", "novelfork.db"),
+			?? join(resolveGlobalConfigDir(), "novelfork.db"),
 	);
 }
 

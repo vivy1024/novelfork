@@ -1,6 +1,7 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+
+import { resolveGlobalConfigDir } from "@vivy1024/novelfork-core";
 
 import { PARSER_VERSION, SNAPSHOT_RETENTION_DAYS } from "./config.js";
 import type { BookSnapshot, RankRecord } from "./types.js";
@@ -19,9 +20,7 @@ export interface SnapshotStoreOptions {
 function defaultRootDir(): string {
   const fromEnv = process.env.NOVELFORK_MARKET_DIR?.trim();
   if (fromEnv) return join(fromEnv, "snapshots");
-  const home = homedir();
-  if (home) return join(home, ".novelfork", "market", "snapshots");
-  return join(process.cwd(), ".novelfork", "market", "snapshots");
+  return join(resolveGlobalConfigDir(), "market", "snapshots");
 }
 
 function snapshotFileName(snapshot: BookSnapshot): string {

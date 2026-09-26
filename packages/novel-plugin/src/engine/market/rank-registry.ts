@@ -7,8 +7,9 @@
  * 无需新增解析逻辑。
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+
+import { resolveGlobalConfigDir } from "@vivy1024/novelfork-core";
 
 import { FANQIE_RANKS, QIDIAN_RANKS, type RankSourceConfig } from "./config.js";
 
@@ -42,9 +43,7 @@ export function marketConfigDir(rootDir?: string): string {
   if (rootDir) return rootDir;
   const fromEnv = process.env.NOVELFORK_MARKET_DIR?.trim();
   if (fromEnv) return fromEnv;
-  const home = homedir();
-  if (home) return join(home, ".novelfork", "market");
-  return join(process.cwd(), ".novelfork", "market");
+  return join(resolveGlobalConfigDir(), "market");
 }
 
 function ranksFilePath(rootDir?: string): string {

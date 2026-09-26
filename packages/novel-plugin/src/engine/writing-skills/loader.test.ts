@@ -69,4 +69,18 @@ describe("writing skill loader", () => {
     const skills = loadWritingSkillsSync();
     expect(skills.some((skill) => skill.slug === "nf-worldwonderer--story-review" && skill.provenance?.repo)).toBe(true);
   });
+
+  it("作者目录默认跟随 NOVELFORK_HOME，显式 home 仍按 <home>/.novelfork/skills 解析", () => {
+    const original = process.env.NOVELFORK_HOME;
+    const relocated = join(tmpdir(), "relocated-novelfork-home");
+    const explicitHome = join(tmpdir(), "explicit-home");
+    try {
+      process.env.NOVELFORK_HOME = relocated;
+      expect(authorWritingSkillsDir()).toBe(join(relocated, "skills"));
+      expect(authorWritingSkillsDir(explicitHome)).toBe(join(explicitHome, ".novelfork", "skills"));
+    } finally {
+      if (original === undefined) delete process.env.NOVELFORK_HOME;
+      else process.env.NOVELFORK_HOME = original;
+    }
+  });
 });

@@ -168,7 +168,7 @@ const bookRoutines = globalRoutines.map((routine) => ({
 })) as const;
 
 const globalSkills = [
-  { name: "reviewer", description: "Review prose", location: "C:/Users/Test/.narrafork/skills/reviewer/SKILL.md", files: ["SKILL.md"], disabled: false },
+  { name: "reviewer", description: "Review prose", location: "C:/Users/Test/.novelfork/skills/reviewer/SKILL.md", files: ["SKILL.md"], disabled: false },
 ] as const;
 
 const bookSkills = [
@@ -448,6 +448,21 @@ describe("RoutinesNextPage Runtime integration", () => {
         planReflectionAutoApprove: true,
       },
     }));
+  });
+
+  it("labels global skills by source directory and keeps relocated product paths in full", async () => {
+    const relocatedLocation = "F:\\NovelForkData\\skills\\relocated\\SKILL.md";
+    runtimeMocks.skills.listGlobal.mockResolvedValue([
+      { name: "claude-skill", description: "Claude skill", location: "C:\\Users\\Test\\.claude\\skills\\claude-skill\\SKILL.md", files: ["SKILL.md"], disabled: false },
+      { name: "relocated", description: "NOVELFORK_HOME skill", location: relocatedLocation, files: ["SKILL.md"], disabled: false },
+    ]);
+    render(<RoutinesNextPage />);
+    openTab("全局技能");
+
+    await waitFor(() => expect(screen.getByText("relocated")).toBeTruthy());
+    // Windows 反斜杠路径也能识别出 .claude 来源
+    expect(screen.getByText(".claude")).toBeTruthy();
+    expect(screen.getByText(relocatedLocation)).toBeTruthy();
   });
 
   it("uses book-scoped skill CRUD without exposing a Runtime project id", async () => {

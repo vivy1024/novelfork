@@ -68,7 +68,7 @@ describe("CollaborationVersionPanel", () => {
       if (url === "/api/books/book-1/collaboration-context") {
         return new Response(JSON.stringify({
           repositoryPath: "D:/bound-repo",
-          worktreeRoot: "D:/bound-repo/.narrafork-worktrees",
+          worktreeRoot: "D:/bound-repo/.worktrees",
         }));
       }
       throw new Error(`unexpected request: ${url}`);
@@ -77,7 +77,7 @@ describe("CollaborationVersionPanel", () => {
     render(<CollaborationVersionPanel bookId="book-1" />);
 
     expect(await screen.findByText("会话协作关系加载失败")).toBeTruthy();
-    expect(screen.getByText("D:/bound-repo/.narrafork-worktrees")).toBeTruthy();
+    expect(screen.getByText("D:/bound-repo/.worktrees")).toBeTruthy();
     // 断言绑定提示里带的正是仓库根路径。用整句匹配而不是裸 /D:\/bound-repo/：
     // 后者也会命中上面那条 worktree 路径，命中两处反而让断言失去意义。
     expect(screen.getByText(/仓库路径已绑定（D:\/bound-repo）/)).toBeTruthy();

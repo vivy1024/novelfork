@@ -49,6 +49,9 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 		NARRAFORK_MIGRATIONS_DIR: migrationsRoot,
 		NARRAFORK_TEST_REAL_HOME: homedir(),
 		NARRAFORK_DEFER_WINDOWS_TEMP_CLEANUP: "1",
+		// 产品代码的默认路径（全局配置、作者技能、市场数据）先看 NOVELFORK_HOME 再看 homedir()；
+		// 开发者自己的值指向真实数据，测试必须覆盖。
+		NOVELFORK_HOME: join(testRoot, "novelfork-home"),
 		NOVELFORK_PROJECT_ROOT: projectRoot,
 		NOVELFORK_BOOKS_ROOT: booksRoot,
 		NOVELFORK_STORAGE_DB_PATH: join(projectRoot, "novelfork.db"),

@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { ApiError, getStorageDatabase, isSafeBookId, type StorageDatabase } from "@vivy1024/novelfork-core";
+import { ApiError, getStorageDatabase, isSafeBookId, resolveGlobalConfigDir, type StorageDatabase } from "@vivy1024/novelfork-core";
 import { handleJingweiWrite } from "../handlers/jingwei-write-handler.js";
 import type {
   JingweiEntryLifecycle,
@@ -693,12 +693,8 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const { join, dirname } = await import("node:path");
     const { existsSync } = await import("node:fs");
 
-    // 确定 projectRoot：优先环境变量，其次 ~/.novelfork/
-    let projectRoot = process.env.NOVELFORK_PROJECT_ROOT || "";
-    if (!projectRoot) {
-      const { homedir } = await import("node:os");
-      projectRoot = join(homedir(), ".novelfork");
-    }
+    // 确定 projectRoot：优先环境变量，其次 NovelFork 数据目录（NOVELFORK_HOME，默认 ~/.novelfork）
+    const projectRoot = process.env.NOVELFORK_PROJECT_ROOT || resolveGlobalConfigDir();
     const storyDir = join(projectRoot, "books", bookId, "story");
 
     if (!existsSync(storyDir)) {

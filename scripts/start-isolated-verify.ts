@@ -4,12 +4,12 @@
  * directory.
  *
  * Why this exists: `main.ts` defaults `NOVELFORK_RUNTIME_DIR` and
- * `NOVELFORK_STORAGE_DB_PATH` to `~/.novelfork`, so setting only
- * `NOVELFORK_PROJECT_ROOT` still writes accounts and preferences into the
- * user's real database. Verification runs that register a test account have
- * repeatedly polluted the production Runtime database that way. Every variable
- * this script sets must stay set together; overriding a subset reintroduces the
- * exact leak it prevents.
+ * `NOVELFORK_STORAGE_DB_PATH` to `NOVELFORK_HOME` (`~/.novelfork` unless the
+ * user relocated it), so setting only `NOVELFORK_PROJECT_ROOT` still writes
+ * accounts and preferences into the user's real database. Verification runs
+ * that register a test account have repeatedly polluted the production
+ * Runtime database that way. Every variable this script sets must stay set
+ * together; overriding a subset reintroduces the exact leak it prevents.
  *
  * Usage:
  *   bun scripts/start-isolated-verify.ts                 # random port, temp dir
@@ -74,10 +74,13 @@ const environment: NodeJS.ProcessEnv = {
 	// Never open a window: verification must not take over the user's screen.
 	NOVELFORK_NO_BROWSER: "1",
 	PORT: String(options.port),
+	// 下面没有单独列出的产品路径（全局配置/.env、作者技能、窗口配置）都跟随 NOVELFORK_HOME；
+	// 同时覆盖开发者自己的 NOVELFORK_HOME，它可能指向真实数据。
+	NOVELFORK_HOME: options.root,
 	NOVELFORK_PROJECT_ROOT: options.root,
 	NOVELFORK_BOOKS_ROOT: join(options.root, "books"),
+	// main.ts 由它推导 Runtime 的 NARRAFORK_HOME，并忽略继承来的 NARRAFORK_HOME
 	NOVELFORK_RUNTIME_DIR: runtimeDir,
-	NARRAFORK_HOME: runtimeDir,
 	NOVELFORK_SESSION_STORE_DIR: join(runtimeDir, "sessions"),
 	NOVELFORK_STORAGE_DB_PATH: join(options.root, "novelfork.db"),
 	NOVELFORK_MARKET_DIR: join(options.root, "market"),
