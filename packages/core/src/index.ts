@@ -125,7 +125,7 @@ export {
 export { countChapterLength, resolveLengthCountingMode, formatLengthCount, buildLengthSpec, isOutsideSoftRange, isOutsideHardRange, chooseNormalizeMode, type LengthLanguage } from "./utils/length-metrics.js";
 export { analyzeWordFrequency, renderWordFrequencyHint, type WordFrequencyResult } from "./utils/word-frequency.js";
 export { createLogger, createStderrSink, createJsonLineSink, nullSink, type Logger, type LogSink, type LogLevel, type LogEntry } from "./utils/logger.js";
-export { loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, isApiKeyOptionalForEndpoint } from "./utils/config-loader.js";
+export { loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, resolveGlobalConfigDir, isApiKeyOptionalForEndpoint } from "./utils/config-loader.js";
 export { computeAnalytics, type AnalyticsData, type TokenStats } from "./utils/analytics.js";
 export {
   requireModelForAiAction,
