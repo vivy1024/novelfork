@@ -53,6 +53,8 @@ NarraFork 宿主系统与开发者规则
 - **不公开**完整 Runtime 实现（Product Host、嵌入 Narrator 面板、Provider、Runtime 迁移等）；它们只存在于私有 fork 和本地 ignore 物化树。
 - 公开树可包含产品代码与 Bridge 契约；不得把 `packages/narrafork-runtime-private/` 重新加入跟踪。
 - 仅把当前 tip 改公开**不够**：若 Git 历史仍含 Runtime/overlay 源码，公开 clone 仍会泄露。公开前必须确认历史已清理，或改用无敏感历史的公开镜像。
+- `NarraFork/novelfork-runtime-private` 必须保持**私有**（它含完整上游源码）。协作者在该仓库内部建分支提 PR（给写入权限），**不要** fork 到个人账号：原仓库切换可见性时，已有个人 fork 会脱离并保持原可见性。2026-09-26 曾误设为公开并被 fork 成公开仓库，已于 09-27 改回私有。
+- 边界检查：`pnpm check:boundary`（当前文件）、`.githooks/`（提交 / 推送前，`git config core.hooksPath .githooks` 启用）、公开 CI（PR 的每个提交）共用 `scripts/check-public-boundary.mjs`。
 - 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 本地编译发布产物 + 用 Windows EXE 做功能核验（详见「多平台发版流程」）。
 
 ## 架构边界
@@ -212,7 +214,7 @@ NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-
 2. `git merge upstream/main`——常规三方合并；fork 层约 169 个文件是冲突面。
 3. 补齐上游缺失项（上游可能不带 drizzle 迁移：用 Terminal 交互跑 `bunx drizzle-kit generate`，产物同步进 `drizzle/` 与 `runtime-migrations/` 两处并提交）。
 4. 验证：`bun run typecheck`（注意 runtime 用 tsgo、bridge 用 tsc，tsc 更严格会暴露 tsgo 漏报的上游缺陷）；权限/agent 工具测试套件；失败项须在**纯上游同版本基线** worktree 复跑对比，确认是否为上游自身缺陷或 Windows 环境既有问题。
-5. 推送 fork 分支 → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → `git archive` 导出到 `packages/narrafork-runtime-private/`（只出跟踪文件，天然排除 node_modules/dist）→ 更新其 `UPSTREAM.lock.json`（含 provenance：接缝基线、上游提交、合并基点、冲突处理、物化后偏离）→ 物化目录内 `bun install` + typecheck + 冒烟测试 → 全工作区 `pnpm run typecheck` → 用隔离实例做真实启动验证。
+5. 推送 fork 分支 → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（`commit`/`tree`/`branch` 与 provenance：接缝基线、上游提交、合并基点、冲突处理、物化后偏离）→ `pnpm runtime:sync` 导出到 `packages/narrafork-runtime-private/` 并 `bun install`（只改两版之间变化的文件；不要再手工 `git archive` 覆盖，否则同步脚本记录的状态会与目录不一致）→ typecheck + 冒烟测试 → 全工作区 `pnpm run typecheck` → 用隔离实例做真实启动验证。
 6. 已知基线：上游 v0.6.6（`751ad11b`，注意 0.6.6 发布过两次，`13e9c88d` 被 `78d739d1` 回滚后由 `751ad11b` 重发），fork 分支头 `f779ff11`（2026-09-17）。接缝基线提交 `5ab50ffe`（上游 v0.6.5 + 产品定制）。
 
 ### 已知环境噪声（不要当成缺陷追查）
@@ -286,7 +288,8 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 - 不执行 `git reset --hard`、`git checkout --`、`git clean`、强制推送、历史重写或其他破坏性操作，除非用户明确授权。
 - 只有在用户明确要求时才创建 commit、push、tag 或 Release。
 - 主仓库提交不得重新引入 `packages/narrafork-runtime-private/` 的源码；该目录仅 `UPSTREAM.lock.json` 被跟踪，提交它需 `git add -f` 并逐次核对暂存集只含这一个文件。
-- Runtime 本体变更：先在宿主库的 fork 分支上提交、推送到 `NarraFork/novelfork-runtime-private`，再同步物化目录。overlay submodule 已于 2026-09-17 随目录与远端仓库一并移除（`.gitmodules` 现为空文件）。
+- Runtime 本体变更：先在宿主库的 fork 分支上提交、推送到 `NarraFork/novelfork-runtime-private`，再更新 `UPSTREAM.lock.json` 并 `pnpm runtime:sync` 同步物化目录。overlay submodule 已于 2026-09-17 随目录与远端仓库一并移除（`.gitmodules` 现为空文件）。
+- 推送主仓库前跑 `pnpm check:boundary`（启用 `.githooks` 后自动检查即将推送的每个提交）。
 - 发布前完成与改动相称的本地构建/测试，并用 Windows EXE 做发版前功能核验。
 - 公开仓库可见性变更前，必须确认：当前 tip 无私有 Runtime 源码，且历史策略已明确（清理历史或接受风险——默认不接受历史泄露）。
 

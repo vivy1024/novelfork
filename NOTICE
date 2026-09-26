@@ -1,0 +1,25 @@
+NovelFork 许可证说明
+
+1. 本仓库的代码以 MIT 许可证发布，全文见 LICENSE。
+
+2. 本仓库不包含 NarraFork Runtime。
+   packages/narrafork-runtime-private/ 被 Git 忽略，仅 UPSTREAM.lock.json 作为来源元数据被跟踪。
+   Runtime 源码位于私有仓库 NarraFork/novelfork-runtime-private，不属于本仓库，不适用本仓库的 MIT 许可证。
+
+3. Releases 中发布的可执行文件内含 NarraFork Runtime。
+   其中 Runtime 部分的使用与再分发受 NarraFork 的授权条款约束；本仓库的 MIT 许可证不授予对 Runtime 的任何权利。
+
+---
+
+NovelFork License Notice
+
+1. The code in this repository is released under the MIT License (see LICENSE).
+
+2. This repository does not contain the NarraFork Runtime.
+   packages/narrafork-runtime-private/ is ignored by Git; only UPSTREAM.lock.json is tracked as provenance metadata.
+   The Runtime source lives in the private repository NarraFork/novelfork-runtime-private, is not part of this
+   repository, and is not covered by this repository's MIT License.
+
+3. The executables published in Releases bundle the NarraFork Runtime.
+   Use and redistribution of the Runtime portion are governed by NarraFork's own terms; this repository's MIT License
+   grants no rights to the Runtime.

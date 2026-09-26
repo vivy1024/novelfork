@@ -2,6 +2,7 @@
   "name": "@vivy1024/novelfork-product-runtime",
   "version": "0.0.4",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
   "exports": {

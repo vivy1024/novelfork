@@ -17,13 +17,33 @@
 
 完整步骤见 [README「源码开发」](README.md#option-2-源码开发维护者)，要点：
 
-1. 需要私有仓库 `NarraFork/novelfork-runtime-private` 的读权限（找维护者开通）。
-2. Runtime 不随本仓库提供：按 `packages/narrafork-runtime-private/UPSTREAM.lock.json` 的 `branch` / `commit`，从 fork 分支 `git archive` 导出到 `packages/narrafork-runtime-private/`，再在该目录执行 `bun install --frozen-lockfile`。
-3. 根目录 `pnpm install`，然后 `pnpm typecheck` 确认五个包（core / bridge / novel-plugin / studio / product-runtime）全部 Done。
+1. 需要私有仓库 `NarraFork/novelfork-runtime-private` 的访问权限（找维护者开通）。
+2. `git config core.hooksPath .githooks`：启用提交 / 推送前的公开边界检查。
+3. 根目录 `pnpm install`，再 `pnpm runtime:sync` 按 `packages/narrafork-runtime-private/UPSTREAM.lock.json` 从 fork 导出 Runtime 并在该目录 `bun install`。
+4. `pnpm typecheck` 确认五个包（core / bridge / novel-plugin / studio / product-runtime）全部 Done。
 
-> 根工作区依赖仅使用 PNPM 10.24.0 安装；Bun 保留为 Runtime 执行器和产品单文件编译器，不要在根目录执行 `bun install`（Runtime 目录内的 `bun install` 除外，它不在 pnpm 工作区里）。
+> 根工作区依赖仅使用 PNPM 10.24.0 安装；Bun 保留为 Runtime 执行器和产品单文件编译器，不要在根目录执行 `bun install`（Runtime 目录由 `pnpm runtime:sync` 负责安装，它不在 pnpm 工作区里）。
 
 Runtime 目录与 fork 相关的硬约束（不得提交 Runtime 源码、Runtime 改动先进 fork 分支等）见 [CLAUDE.md](CLAUDE.md)。
+
+---
+
+## 公开边界
+
+本仓库是公开仓库，Runtime 私有 fork 不是。以下内容不得进入本仓库的任何提交（包括之后又删掉的中间提交——公开历史收不回来）：
+
+- `packages/narrafork-runtime-private/` 下除 `UPSTREAM.lock.json` 以外的任何文件，以及其他 Runtime 私有目录；
+- `.env`、数据库文件、证书与私钥。
+
+`pnpm check:boundary` 检查当前文件；启用 `.githooks` 后提交与推送前自动检查；公开 CI 会对 PR 里的每个提交再查一遍。
+
+## 修改 Runtime
+
+Runtime 改动提交到私有 fork `NarraFork/novelfork-runtime-private`，不进本仓库：
+
+1. 协作者在 fork 仓库**内部**建分支、提 PR（维护者会开通写入权限）。**不要把它 fork 到个人账号**：个人 fork 在原仓库切换公开 / 私有时会脱离并保持原状，可能让 Runtime 源码意外公开。
+2. PR 合入 fork 分支后，维护者更新本仓库的 `UPSTREAM.lock.json`（`commit` 指向新提交）。
+3. 其他人 `git pull` 后执行 `pnpm runtime:sync` 即可对齐。
 
 ---
 
@@ -58,6 +78,8 @@ pnpm verify:changed --build  # 另加产品前端构建
 pnpm test                    # 公开包 + 私有 Runtime 全量测试
 pnpm typecheck               # 公开包 + 私有 Runtime 全量类型检查
 ```
+
+公开 CI（`.github/workflows/ci.yml`）只跑不依赖 Runtime 的部分：公开边界检查，以及 core / novel-plugin 的类型检查与测试。studio、bridge、product-runtime 的验证仍需在本地完成。
 
 `verify:changed` 会在根配置、依赖锁、TypeScript 配置、Runtime/overlay、测试/编译基础设施或启动入口变更时自动回退全量；可用 `pnpm verify:changed --dry-run` 只查看将执行的范围。
 
