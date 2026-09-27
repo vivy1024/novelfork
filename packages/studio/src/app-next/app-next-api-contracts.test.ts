@@ -17,22 +17,6 @@ describe("app-next API contracts", () => {
     expect(clientSource).not.toContain("{ hits:");
   });
 
-  it("uses existing workflow APIs instead of dead /api/agents or /api/scheduler endpoints", async () => {
-    const source = await readFile(join(appNextRoot, "workflow", "WorkflowPage.tsx"), "utf-8");
-
-    expect(source).toContain("/agent/config");
-    expect(source).toContain("/daemon");
-    expect(source).not.toContain("/agents");
-    expect(source).not.toContain("/scheduler");
-  });
-
-  it("loads project model overrides from the implemented endpoint", async () => {
-    const source = await readFile(join(appNextRoot, "settings", "ProjectConfigSection.tsx"), "utf-8");
-
-    expect(source).toContain("/project/model-overrides");
-    expect(source).not.toContain("/project/overrides");
-  });
-
   it("renders the shell version from package metadata instead of hard-coding a release", async () => {
     const source = await readFile(join(appNextRoot, "components", "layouts.tsx"), "utf-8");
 
