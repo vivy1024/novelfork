@@ -1,0 +1,130 @@
+/*
+  NovelFork 宿主主题：让嵌入的 Runtime 界面（叙述者面板、Runtime 原生设置页等，均基于 Mantine）
+  使用 NovelFork 的风格，而不是 NarraFork 的默认外观。
+
+  唯一权威源是 index.css 里的 Studio 设计令牌；这里只把 Mantine 的样式变量接过去，不另存颜色值。
+  Studio 切换明暗时令牌随 .dark 类变化，Mantine 界面自动跟着变；嵌入宿主同时按 Studio 的明暗
+  强制 Mantine 的配色方案（forceColorScheme），两边的 light / dark 判断始终一致。
+
+  为什么选择器写得这么重：Mantine 在运行时注入的变量表用的是 `:root` 与
+  `:root[data-mantine-color-scheme='dark' | 'light']`（优先级 0,2,0），而且注入得比本文件晚。
+  这里的选择器优先级都是 0,3,0，才能稳定盖过它，不依赖加载顺序。
+
+  上游更新组件时无需改这里：组件读的都是这些 Mantine 变量。上游若新增变量或改名，
+  在这里补映射即可。
+*/
+
+/* ── 与明暗无关的部分：字体、圆角、阴影 ── */
+:root:root:root {
+  --mantine-font-family: var(--font-sans);
+  --mantine-font-family-headings: var(--font-sans);
+  --mantine-font-family-monospace: var(--font-mono);
+  --mantine-radius-default: var(--radius);
+  --mantine-radius-sm: var(--radius-sm);
+  --mantine-radius-md: var(--radius-md);
+  --mantine-radius-lg: var(--radius-lg);
+  --mantine-shadow-xs: var(--shadow-sm);
+  --mantine-shadow-sm: var(--shadow-sm);
+  --mantine-shadow-md: var(--shadow-md);
+  --mantine-shadow-lg: var(--shadow-lg);
+
+  /* 主色色阶：以 Studio 主色为中心向白 / 黑两端调和（色阶本身与明暗无关，Mantine 同样如此）。 */
+  --novelfork-primary-0: color-mix(in oklch, var(--primary) 8%, white);
+  --novelfork-primary-1: color-mix(in oklch, var(--primary) 16%, white);
+  --novelfork-primary-2: color-mix(in oklch, var(--primary) 30%, white);
+  --novelfork-primary-3: color-mix(in oklch, var(--primary) 45%, white);
+  --novelfork-primary-4: color-mix(in oklch, var(--primary) 65%, white);
+  --novelfork-primary-5: color-mix(in oklch, var(--primary) 85%, white);
+  --novelfork-primary-6: var(--primary);
+  --novelfork-primary-7: color-mix(in oklch, var(--primary) 85%, black);
+  --novelfork-primary-8: color-mix(in oklch, var(--primary) 70%, black);
+  --novelfork-primary-9: color-mix(in oklch, var(--primary) 55%, black);
+
+  /* Runtime 的主色是 indigo：主色与 indigo 色阶都接到 Studio 主色上。 */
+  --mantine-primary-color-0: var(--novelfork-primary-0);
+  --mantine-primary-color-1: var(--novelfork-primary-1);
+  --mantine-primary-color-2: var(--novelfork-primary-2);
+  --mantine-primary-color-3: var(--novelfork-primary-3);
+  --mantine-primary-color-4: var(--novelfork-primary-4);
+  --mantine-primary-color-5: var(--novelfork-primary-5);
+  --mantine-primary-color-6: var(--novelfork-primary-6);
+  --mantine-primary-color-7: var(--novelfork-primary-7);
+  --mantine-primary-color-8: var(--novelfork-primary-8);
+  --mantine-primary-color-9: var(--novelfork-primary-9);
+  --mantine-color-indigo-0: var(--novelfork-primary-0);
+  --mantine-color-indigo-1: var(--novelfork-primary-1);
+  --mantine-color-indigo-2: var(--novelfork-primary-2);
+  --mantine-color-indigo-3: var(--novelfork-primary-3);
+  --mantine-color-indigo-4: var(--novelfork-primary-4);
+  --mantine-color-indigo-5: var(--novelfork-primary-5);
+  --mantine-color-indigo-6: var(--novelfork-primary-6);
+  --mantine-color-indigo-7: var(--novelfork-primary-7);
+  --mantine-color-indigo-8: var(--novelfork-primary-8);
+  --mantine-color-indigo-9: var(--novelfork-primary-9);
+}
+
+/* ── 语义变量：两种配色方案都用 Studio 令牌，令牌本身随 .dark 切换 ── */
+:root:root[data-mantine-color-scheme] {
+  --mantine-color-body: var(--background);
+  --mantine-color-text: var(--foreground);
+  --mantine-color-bright: var(--foreground);
+  --mantine-color-dimmed: var(--muted-foreground);
+  --mantine-color-placeholder: var(--muted-foreground);
+  --mantine-color-anchor: var(--primary);
+  --mantine-color-error: var(--destructive);
+  --mantine-color-default: var(--card);
+  --mantine-color-default-hover: var(--muted);
+  --mantine-color-default-color: var(--foreground);
+  --mantine-color-default-border: var(--border);
+  --mantine-color-disabled: var(--muted);
+  --mantine-color-disabled-color: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
+  --mantine-color-disabled-border: var(--border);
+
+  --mantine-primary-color-filled: var(--primary);
+  --mantine-primary-color-filled-hover: color-mix(in oklch, var(--primary) 88%, var(--foreground));
+  --mantine-primary-color-light: color-mix(in oklch, var(--primary) 12%, transparent);
+  --mantine-primary-color-light-hover: color-mix(in oklch, var(--primary) 20%, transparent);
+  --mantine-primary-color-light-color: var(--primary);
+  --mantine-primary-color-contrast: var(--primary-foreground);
+
+  --mantine-color-indigo-text: var(--primary);
+  --mantine-color-indigo-filled: var(--primary);
+  --mantine-color-indigo-filled-hover: color-mix(in oklch, var(--primary) 88%, var(--foreground));
+  --mantine-color-indigo-light: color-mix(in oklch, var(--primary) 12%, transparent);
+  --mantine-color-indigo-light-hover: color-mix(in oklch, var(--primary) 20%, transparent);
+  --mantine-color-indigo-light-color: var(--primary);
+  --mantine-color-indigo-outline: var(--primary);
+  --mantine-color-indigo-outline-hover: color-mix(in oklch, var(--primary) 10%, transparent);
+}
+
+/*
+  ── 中性色阶 ──
+  Mantine 的组件样式在亮色下直接用 gray-0…9、在暗色下直接用 dark-0…9 画表面、边框与次要文字，
+  只改语义变量不够。两套色阶分别在对应的方案下接到 Studio 令牌；另一方案下保留 Mantine 默认，
+  以免显式指定 color="gray" / "dark" 的组件在反色背景上失真。
+*/
+:root:root:not(.dark) {
+  --mantine-color-gray-0: color-mix(in oklch, var(--muted) 50%, var(--card));
+  --mantine-color-gray-1: var(--muted);
+  --mantine-color-gray-2: color-mix(in oklch, var(--muted) 50%, var(--border));
+  --mantine-color-gray-3: var(--border);
+  --mantine-color-gray-4: color-mix(in oklch, var(--border) 80%, var(--muted-foreground));
+  --mantine-color-gray-5: color-mix(in oklch, var(--muted-foreground) 55%, var(--border));
+  --mantine-color-gray-6: var(--muted-foreground);
+  --mantine-color-gray-7: color-mix(in oklch, var(--foreground) 65%, var(--muted-foreground));
+  --mantine-color-gray-8: color-mix(in oklch, var(--foreground) 85%, var(--muted-foreground));
+  --mantine-color-gray-9: var(--foreground);
+}
+
+:root.dark:root {
+  --mantine-color-dark-0: var(--foreground);
+  --mantine-color-dark-1: var(--muted-foreground);
+  --mantine-color-dark-2: color-mix(in oklch, var(--muted-foreground) 75%, var(--border));
+  --mantine-color-dark-3: color-mix(in oklch, var(--border) 55%, var(--muted-foreground));
+  --mantine-color-dark-4: var(--border);
+  --mantine-color-dark-5: var(--muted);
+  --mantine-color-dark-6: var(--card);
+  --mantine-color-dark-7: var(--background);
+  --mantine-color-dark-8: color-mix(in oklch, var(--background) 80%, black);
+  --mantine-color-dark-9: color-mix(in oklch, var(--background) 60%, black);
+}

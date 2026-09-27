@@ -10,6 +10,8 @@ const EmbeddedNarratorDockHost = lazy(() =>
 
 import type { RuntimeToolResultAction } from "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel";
 
+import { useColorScheme } from "@/hooks/use-color-scheme";
+
 import { executeToolResultAction } from "../tool-results/actions";
 import { renderToolResult } from "../tool-results/registry";
 import type { ToolResultAction, ToolResultArtifact } from "../tool-results/types";
@@ -53,6 +55,8 @@ export function RuntimeNativeNarratorPanelMount({
 	const [highlightMessageId, setHighlightMessageId] = useState(
 		readHighlightMessageId,
 	);
+	// 嵌入的叙述者面板跟随 Studio 的明暗开关，而不是系统设置。
+	const colorScheme = useColorScheme();
 	const onAction = useCallback(
 		(action: ToolResultAction) => {
 			if (!bookId) {
@@ -109,6 +113,7 @@ export function RuntimeNativeNarratorPanelMount({
 					highlightMessageId={highlightMessageId}
 					compact={compact}
 					toolResultRenderer={renderToolResultWithAction}
+					colorScheme={colorScheme}
 				/>
 			</Suspense>
 		</section>

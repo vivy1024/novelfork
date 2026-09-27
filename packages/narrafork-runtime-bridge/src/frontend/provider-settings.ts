@@ -1,6 +1,8 @@
 /** Stable Studio-facing contract for the Runtime-owned Provider settings surface. */
 export interface EmbeddedProviderSettingsHostProps {
 	readonly loadingFallback?: unknown;
+	/** Host-resolved color scheme: the embedded page follows the host's light/dark switch. */
+	readonly colorScheme?: "light" | "dark";
 }
 
 /**

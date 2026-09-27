@@ -39,7 +39,7 @@ import {
 } from "../../engine/narrative-taxonomy/canonical-trees";
 import { layoutTidyTree } from "../../engine/narrative-taxonomy/tidy-tree-layout";
 import { readSavedViewport, saveViewport, type SavedViewport } from "./canvas-viewport";
-import { useCanvasColorMode } from "./use-canvas-color-mode";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export interface TidyTreeCanvasProps {
   readonly forest: CanonicalForest;
@@ -249,7 +249,7 @@ function ViewportProbe({ target }: { target: RefObject<HTMLDivElement | null> })
 
 function TidyTreeFlow(props: TidyTreeCanvasProps) {
   const { forest, expanded, selectedId, matchedIds, viewportKey, className } = props;
-  const colorMode = useCanvasColorMode();
+  const colorMode = useColorScheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const flow = useReactFlow<TreeFlowNode, Edge>();
   // 刚被展开的节点：排版更新后把它的子节点平移进视口。

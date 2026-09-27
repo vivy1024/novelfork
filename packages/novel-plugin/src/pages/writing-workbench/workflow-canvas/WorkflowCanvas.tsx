@@ -36,7 +36,7 @@ import {
   type WorkflowCanvasEdge,
   type WorkflowCanvasNode,
 } from "./workflow-canvas-model";
-import { useCanvasColorMode } from "../use-canvas-color-mode";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { workflowEdgeTypes, workflowNodeTypes } from "./WorkflowCanvasNodes";
 
 export interface WorkflowCanvasProps {
@@ -81,7 +81,7 @@ export function WorkflowCanvas({
   fitViewKey,
   className,
 }: WorkflowCanvasProps) {
-  const colorMode = useCanvasColorMode();
+  const colorMode = useColorScheme();
   const selectedId = selection?.id ?? null;
   const derivedNodes = useMemo(
     () => toCanvasNodes(recipe, issues, { editable, runSteps, selectedId }),

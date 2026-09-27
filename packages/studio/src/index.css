@@ -121,7 +121,12 @@
   --muted: oklch(0.12 0.01 250);
 }
 
-body {
+/*
+  用 html body 而不是 body：嵌入的 Runtime 界面会加载 Mantine 的全局样式，其中的 body 规则
+  （系统字体、16px、白底黑字）晚于本文件加载，同优先级时会盖掉 Studio 的正文样式——
+  叙述者面板一挂上，整个 Studio 就变了样。提高一级优先级让 Studio 的正文始终生效。
+*/
+html body {
   font-family: var(--font-sans);
   font-size: 15px;
   font-weight: 450;

@@ -37,7 +37,7 @@ import {
 import type { NarrativeStructurePayload } from "../../../engine/narrative-taxonomy/narrative-structure";
 import { readSavedViewport, saveViewport } from "../canvas-viewport";
 import { STALLED_LANE_GAP } from "../story-progress-board";
-import { useCanvasColorMode } from "../use-canvas-color-mode";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import {
   LANE_HEIGHT,
@@ -170,7 +170,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
   const [addLineId, setAddLineId] = useState("");
   const [instance, setInstance] = useState<ReactFlowInstance<CausalCanvasNode, CausalCanvasEdge> | null>(null);
   const paneRef = useRef<HTMLDivElement>(null);
-  const colorMode = useCanvasColorMode();
+  const colorMode = useColorScheme();
   const viewportKey = `${bookId}:causal`;
 
   useEffect(() => setData(structure), [structure]);

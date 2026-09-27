@@ -120,6 +120,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { DirectoryPickerDialog } from "./components/DirectoryPickerDialog";
 import { WorkspaceCreateWizard, type WorkspaceCreateInput } from "./components/WorkspaceCreateWizard";
 import type { WorkbenchCanvasContext } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
@@ -465,6 +466,8 @@ function SettingsRouteLive({
   readonly section?: string;
   readonly onNavigate: (route: ShellRoute) => void;
 }) {
+  // 嵌入的 Runtime 设置页跟随 Studio 的明暗开关。
+  const colorScheme = useColorScheme();
   const requestedSection = resolveSettingsSectionId(section);
   const [role, setRole] = useState<"admin" | "user" | null>(null);
 
@@ -518,7 +521,7 @@ function SettingsRouteLive({
       onMobileBack={() => onNavigate({ kind: "settings" })}
     >
       {activeSectionId === "providers" ? (
-        <RuntimeProviderSettingsHost />
+        <RuntimeProviderSettingsHost colorScheme={colorScheme} />
       ) : (
         <SettingsSectionContent
           sectionId={activeSectionId}

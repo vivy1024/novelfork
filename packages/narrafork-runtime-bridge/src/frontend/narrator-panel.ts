@@ -27,6 +27,8 @@ export interface EmbeddedNarratorDockHostProps {
 	readonly onForkFromMessage?: (messageUuid: string) => void;
 	readonly compact?: boolean;
 	readonly toolResultRenderer?: RuntimeToolResultRenderer;
+	/** Host-resolved color scheme: the embedded panel follows the host's light/dark switch. */
+	readonly colorScheme?: "light" | "dark";
 }
 
 /**

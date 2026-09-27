@@ -1,4 +1,6 @@
 import "./index.css";
+// 嵌入的 Runtime（Mantine）界面改用 NovelFork 的设计令牌，见文件头说明。
+import "./styles/runtime-host-theme.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
