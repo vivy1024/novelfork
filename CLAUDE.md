@@ -215,7 +215,7 @@ NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-
 3. 补齐上游缺失项（上游可能不带 drizzle 迁移：用 Terminal 交互跑 `bunx drizzle-kit generate`，产物同步进 `drizzle/` 与 `runtime-migrations/` 两处并提交）。
 4. 验证：`bun run typecheck`（注意 runtime 用 tsgo、bridge 用 tsc，tsc 更严格会暴露 tsgo 漏报的上游缺陷）；权限/agent 工具测试套件；失败项须在**纯上游同版本基线** worktree 复跑对比，确认是否为上游自身缺陷或 Windows 环境既有问题。
 5. 推送 fork 分支 → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（`commit`/`tree`/`branch` 与 provenance：接缝基线、上游提交、合并基点、冲突处理、物化后偏离）→ `pnpm runtime:sync` 导出到 `packages/narrafork-runtime-private/` 并 `bun install`（只改两版之间变化的文件；不要再手工 `git archive` 覆盖，否则同步脚本记录的状态会与目录不一致）→ typecheck + 冒烟测试 → 全工作区 `pnpm run typecheck` → 用隔离实例做真实启动验证。
-6. 已知基线：上游 v0.6.6（`751ad11b`，注意 0.6.6 发布过两次，`13e9c88d` 被 `78d739d1` 回滚后由 `751ad11b` 重发），fork 分支头 `f779ff11`（2026-09-17）。接缝基线提交 `5ab50ffe`（上游 v0.6.5 + 产品定制）。
+6. 已知基线：上游 v0.6.6（`751ad11b`，注意 0.6.6 发布过两次，`13e9c88d` 被 `78d739d1` 回滚后由 `751ad11b` 重发），fork 分支头 `dda73094`（2026-09-26，由 `f779ff11` 快进合入 Runtime PR #1）。接缝基线提交 `5ab50ffe`（上游 v0.6.5 + 产品定制）。
 
 ### 已知环境噪声（不要当成缺陷追查）
 
@@ -290,6 +290,7 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 - 主仓库提交不得重新引入 `packages/narrafork-runtime-private/` 的源码；该目录仅 `UPSTREAM.lock.json` 被跟踪，提交它需 `git add -f` 并逐次核对暂存集只含这一个文件。
 - Runtime 本体变更：先在宿主库的 fork 分支上提交、推送到 `NarraFork/novelfork-runtime-private`，再更新 `UPSTREAM.lock.json` 并 `pnpm runtime:sync` 同步物化目录。overlay submodule 已于 2026-09-17 随目录与远端仓库一并移除（`.gitmodules` 现为空文件）。
 - 推送主仓库前跑 `pnpm check:boundary`（启用 `.githooks` 后自动检查即将推送的每个提交）。
+- **改动 `.github/workflows/` 的推送需要 `workflow` 权限。** 本机 `git` 默认用 Git Credential Manager 的令牌，没有这个权限，GitHub 会拒收并报 `refusing to allow an OAuth App to create or update workflow ... without workflow scope`（新增、修改、删除工作流文件都算）。做法：先一次性执行 `gh auth refresh -h github.com -s workflow`（按提示在浏览器确认），之后这类推送改用 gh 的凭据：`git -c credential.helper= -c "credential.helper=!gh auth git-credential" push origin master`。不涉及工作流文件的推送不受影响。一次推送多个分支或标签时，只有含工作流改动的那个会被拒、其余照常推上去，必须逐行核对推送输出。
 - 发布前完成与改动相称的本地构建/测试，并用 Windows EXE 做发版前功能核验。
 - 公开仓库可见性变更前，必须确认：当前 tip 无私有 Runtime 源码，且历史策略已明确（清理历史或接受风险——默认不接受历史泄露）。
 
@@ -339,6 +340,29 @@ NOVELFORK_HOME="$(mktemp -d)" NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-
 ```
 
 已知限制：非 Windows 产物在本机只能验证交叉编译成功与目标格式（Mach-O / ELF），真实运行行为需要在对应系统上核验。上游 Runtime 的 `latest*.yml` 自动更新清单与二进制签名不属于 NovelFork 发版流程——产品层未接自动更新服务，不要顺手引入。
+
+## 当前方向与近期改动（快照：2026-09-27）
+
+本节是状态快照，便于协作者对齐。「后续方向」须经当前用户确认后才执行，不自动构成待办；与当前指令冲突时以当前指令为准。内容过时后直接改写本节，不追加历史。
+
+### 近期改动（v0.0.4 之后）
+
+| 主题 | 内容 |
+|---|---|
+| 叙事结构 | 场景与剧情线的表、存取、接口与读模型；承载树 / 因果树；叙事结构聚合快照；推进看板以真剧情线为行，可就地新建剧情线；写作管线把场景蓝图落盘为 `narrative_scene`（同章重写幂等，保留作者手建、已确认、已挂线的场景） |
+| 工作台 | 面板归入四大镜头，下线重复入口与四个废弃画布；工具树按写作时机重组；划词 AI 指令注入全书文风基准；字号统一收进 `text-2xs` 令牌 |
+| 伏笔 | 债务判定收敛到 `foreshadow-debts`；临近 / 超期阈值按书由作者设置（`book.json` 的 `foreshadowDebtThresholds`，默认 5 / 12 章） |
+| 工作流 P0 | 运行状态机与存储（迁移 0037）；叙述者经 `workflow.get_current_step` / `submit_step_output` / `report_blocker` 按工序推进，越出当前工序的写类小说工具被拦下；「故事推进 › 执行」可启动、审批、打回、处理受阻。限制：只约束小说工具，Runtime 自带工具不受约束；前端轮询 |
+| 协作者贡献 | 产品数据目录由 `NOVELFORK_HOME` 决定；NUG 等未填默认模型的配置不再判为未配置；Runtime 全局技能跟随 `NOVELFORK_HOME`（fork `dda73094`） |
+| 工程 | react / react-dom 统一 19.2.5（修复全新安装下的双 React）；公开边界检查（脚本 + `.githooks` + 公开 CI）；`pnpm runtime:sync`；公开 CI 跑 core / novel-plugin（装 bun 仅供测试）；`NOTICE` 写明许可证边界 |
+| 仓库历史 | 2026-09-27 改写了本仓库全部分支与标签的历史，清除不应公开的本地资料。**此前的提交号全部失效**：旧 clone 不要再推送，请重新 clone；查历史以新提交号为准 |
+
+### 后续方向
+
+1. **工作流画布（在 NovelFork 内实现，不改 Runtime）**：方案从工序列表升级为可任意配置的节点图（复用已有依赖 `@xyflow/react`），支持并行、条件、打回上游、子流程，编辑与执行监视用同一张图。叙述者可以列出、启动、创建工作流；新建或修改的工作流先存为草稿，作者在画板上确认后才能运行。沿用 P0 的状态机、候选区、审批与版本冲突检测；画布上线后删除「套路 › 工作流装配」列表编辑器。
+2. **前端复用 Runtime 页面，NovelFork 只做主题**：Runtime 前端用的是 Mantine（不是 shadcn）。设置、套路、定时任务、知识库、搜索等通用页改为嵌入 Runtime 原页（沿用 `EmbeddedProviderSettingsHost` 的做法），不再维护 shadcn 复制品；NovelFork 提供一层 `--mantine-*` 主题变量，并让明暗与界面语言跟随 Studio。小说专属部分保留：向量模型设置、按书覆盖（命令 / 技能 / Hook / MCP / 规则）、「写作配置」、市场研究。步骤：F0 删死代码 → F1 主题层与样式隔离 → F2 设置页 → F3 套路页 → F4 其余页；F2 起需在 fork 层新增宿主文件（页面登记表 + 通用页面宿主）。
+3. **Runtime 升级**：上游已发布到 v0.7.8，改动面大；升级前先评估 product-host 接缝的搬迁，按「升级流程」在宿主库 worktree 中进行。
+4. **小项**：`bun.lock` 的物化后偏离（`@types/bun` 降到 1.3.13）提交回 fork 分支，让 `pnpm runtime:sync` 拿到的 Runtime 与维护者本机一致。
 
 ## 持久记忆
 
