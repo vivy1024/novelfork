@@ -29,6 +29,7 @@ import { createWritingResourceService } from "../engine/writing-resource/service
 import { executePipelineWrite, type PipelineWriteInput, type PipelineWriteOptions } from "./pipeline-write-service.js";
 import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
+import { executeWorkflowRecipeTool } from "./workflow-recipe-tools.js";
 import { executeWorkflowRunTool } from "./workflow-run-tools.js";
 import {
   DEFAULT_VOLUME_DIRECTORY,
@@ -934,6 +935,11 @@ export async function executeRuntimeDomainTool(
     case "workflow_submit_step_output":
     case "workflow_report_blocker":
       return executeWorkflowRunTool(toolName, input, binding, context);
+    case "workflow_list_recipes":
+    case "workflow_get_recipe":
+    case "workflow_edit_recipe":
+    case "workflow_start_run":
+      return executeWorkflowRecipeTool(toolName, input, binding, context);
     default:
       return null;
   }

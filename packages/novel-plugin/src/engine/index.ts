@@ -80,8 +80,12 @@ export {
   WORKFLOW_RECIPES_RELATIVE_PATH,
   readWorkflowRecipes,
   saveWorkflowRecipes,
+  saveWorkflowRecipe,
+  deleteWorkflowRecipe,
+  assertPublishable,
   validateWorkflowRecipes,
   WorkflowStoreError,
+  type SaveWorkflowRecipeOptions,
 } from "./workflows/workflow-store.js";
 export * from "./workflows/run-state-machine.js";
 export * from "./workflows/run-store.js";

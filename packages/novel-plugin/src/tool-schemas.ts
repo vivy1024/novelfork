@@ -868,6 +868,41 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["runRevision", "kind", "payload"],
     additionalProperties: false,
   },
+  "workflow.list_recipes": {
+    type: "object",
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  },
+  "workflow.get_recipe": {
+    type: "object",
+    properties: {
+      recipeId: stringSchema("方案 id（取自 workflow.list_recipes）。"),
+    },
+    required: ["recipeId"],
+    additionalProperties: false,
+  },
+  "workflow.edit_recipe": {
+    type: "object",
+    properties: {
+      recipeId: stringSchema("要修改的草稿 id；新建时可省略或给一个新 id。已发布的方案不能直接改。"),
+      expectedRevision: numberSchema("修改已有草稿时传它当前的版本号（取自 workflow.get_recipe），防止覆盖作者刚做的改动。"),
+      copyFrom: stringSchema("新建草稿时基于哪个已有方案复制；要改已发布的方案只能这样。"),
+      name: stringSchema("新建草稿的名称（用 copyFrom 时可省略）。"),
+      ops: { type: "array", description: "编辑指令数组，按顺序执行；任一条不合法则整批不生效，并指出第几条。\n{op:\"add_node\", node:{type:\"step\", id?, label, kind, tools?, skills?, customPrompt?, agentId?, executionMode?, requiresApproval?, onFailure?, outcomes?}}；汇合 / 终点：{op:\"add_node\", node:{type:\"join\"|\"end\", label}}\n{op:\"update_node\", id, patch:{字段: 新值}}（值为 null 表示删除该字段；id 与 type 不能改）\n{op:\"remove_node\", id}（连线一并删除）\n{op:\"connect\", source, target, kind?:\"next\"|\"reject\", outcome?}（outcome 只用于分支工序的出线；reject 为作者打回时回到的上游工序）\n{op:\"disconnect\", id} 或 {op:\"disconnect\", source, target}\n{op:\"set_meta\", patch:{name?, description?, maxRetries?, resultStrategy?}}\n工序 kind：context-load / guided-plan / approval-gate / writer-generate / adversarial-audit / audit / post-settlement / canvas-open / custom-tool。起点 id 为 start，默认终点 id 为 end。", items: { type: "object" } },
+    },
+    required: ["ops"],
+    additionalProperties: false,
+  },
+  "workflow.start_run": {
+    type: "object",
+    properties: {
+      recipeId: stringSchema("要运行的方案 id（必须已发布）。"),
+      chapterNumber: numberSchema("在第几章上运行。"),
+    },
+    required: ["recipeId", "chapterNumber"],
+    additionalProperties: false,
+  },
   "workflow.report_blocker": {
     type: "object",
     properties: {

@@ -95,6 +95,10 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "workflow.get_current_step",
   "workflow.submit_step_output",
   "workflow.report_blocker",
+  "workflow.list_recipes",
+  "workflow.get_recipe",
+  "workflow.edit_recipe",
+  "workflow.start_run",
 ] as const;
 
 const READY_RUNTIME_TOOL_NAMES = new Set<string>(NOVEL_READY_RUNTIME_TOOL_NAMES);
@@ -729,6 +733,46 @@ scope=search：关键词搜索静态设定。
     risk: "read",
     renderer: "workflow",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "workflow.list_recipes",
+    description:
+      "列出本书的创作工作流方案：id、名称、已发布还是草稿、版本号、工序数与结构问题数。只读。\n\n使用时机：作者让你「用某个工作流写这章」或「帮我设计一个工作流」时，先看有哪些方案可用。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["workflow.list_recipes"]),
+    risk: "read",
+    renderer: "generic",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "workflow.get_recipe",
+    description:
+      "读取一个工作流方案的完整结构：节点（起点 / 工序 / 汇合 / 终点）、连线（下一步 / 打回，分支工序的结果条件）与结构问题清单。只读；修改前先用它拿到版本号。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["workflow.get_recipe"]),
+    risk: "read",
+    renderer: "generic",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "workflow.edit_recipe",
+    description:
+      "新建或修改工作流草稿：用一批编辑指令（加节点、改节点、删节点、连线、断线、改名称）改图，不要整张重写。\n\n规则：\n- 你建的和改的一律是草稿，作者在「故事推进 › 执行」的画布上确认发布后才能运行\n- 已发布的方案不能直接改，用 copyFrom 另建草稿\n- 一批指令里任一条不合法则整批不生效，按返回说明修正后重交\n- 草稿可以暂时有结构问题（返回 issues），但要在交给作者前修好\n- 并行：一道工序连出多条无条件连线；分支：工序声明 outcomes，出线带 outcome；多条分支会合前加汇合节点",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["workflow.edit_recipe"]),
+    risk: "draft-write",
+    renderer: "generic",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "workflow.start_run",
+    description:
+      "在某一章上启动一个已发布的工作流方案。启动后按返回的工序简报推进（workflow_submit_step_output / workflow_report_blocker）。你已有进行中的运行时不能再启动；草稿不能运行。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["workflow.start_run"]),
+    risk: "draft-write",
+    renderer: "workflow",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
 ] as const;

@@ -148,7 +148,11 @@ type CustomReadyRuntimeToolName =
   | "market.sample_public_chapters"
   | "workflow.get_current_step"
   | "workflow.submit_step_output"
-  | "workflow.report_blocker";
+  | "workflow.report_blocker"
+  | "workflow.list_recipes"
+  | "workflow.get_recipe"
+  | "workflow.edit_recipe"
+  | "workflow.start_run";
 type LegacyReadHandler = (input: Record<string, unknown>) => Promise<unknown> | unknown;
 
 /** The Runtime schema validates model input; this adapter adds only trusted binding fields for legacy handlers. */

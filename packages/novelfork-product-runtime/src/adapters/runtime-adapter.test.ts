@@ -87,6 +87,10 @@ const CANONICAL_READY_TOOL_NAMES = [
   "workflow.get_current_step",
   "workflow.submit_step_output",
   "workflow.report_blocker",
+  "workflow.list_recipes",
+  "workflow.get_recipe",
+  "workflow.edit_recipe",
+  "workflow.start_run",
 ];
 
 const READY_TOOL_NAMES = CANONICAL_READY_TOOL_NAMES.map(toRuntimeToolName);

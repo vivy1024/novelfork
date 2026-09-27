@@ -312,6 +312,55 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		expect(await after.json()).toMatchObject({ active: null, recent: [expect.objectContaining({ id: detail.run.id, status: "cancelled" })] });
 	});
 
+	test("workflow recipes: per-recipe save enforces revisions and publish checks, outsiders are denied", async () => {
+		if (!bookId) throw new Error("gateway fixture missing");
+		const app = productApp(owner);
+		const put = (user: typeof owner, recipe: Record<string, unknown>, expectedRevision: number) => productApp(user).request(`/api/books/${bookId}/workflow-recipes/${String(recipe.id)}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ recipe, expectedRevision }),
+		});
+		const draft = {
+			schemaVersion: 2,
+			id: "gateway-flow",
+			name: "网关流程",
+			commandId: "/novel:gateway",
+			description: "",
+			status: "draft",
+			revision: 0,
+			nodes: [
+				{ id: "start", type: "start", label: "开始" },
+				{ id: "a", type: "step", label: "写", kind: "writer-generate", enabled: true },
+				{ id: "end", type: "end", label: "完成" },
+			],
+			edges: [{ id: "e1", source: "start", target: "a", kind: "next" }],
+			resultStrategy: "formal-chapter",
+			maxRetries: 1,
+		};
+
+		// 外人不能写这本书的方案。
+		expect((await put(outsider, draft, 0)).status).toBe(404);
+
+		// 缺一条连线的草稿可以存，列表里带出结构问题；带问题发布被拒并给出说明。
+		const saved = await put(owner, draft, 0);
+		expect(saved.status).toBe(200);
+		expect(await saved.json()).toMatchObject({ recipe: { id: "gateway-flow", revision: 1, status: "draft" } });
+		const listed = (await (await app.request(`/api/books/${bookId}/workflow-recipes`)).json()) as { issues: Record<string, Array<{ code: string }>> };
+		expect(listed.issues["gateway-flow"]!.map((issue) => issue.code)).toContain("step-dangling");
+		const publishBroken = await put(owner, { ...draft, status: "published" }, 1);
+		expect(publishBroken.status).toBe(400);
+		expect(await publishBroken.json()).toMatchObject({ code: "graph-invalid", explanation: { action: expect.stringContaining("草稿") } });
+
+		// 补上连线后发布成功；按旧版本再存返回 409。
+		const fixed = { ...draft, status: "published", edges: [...draft.edges, { id: "e2", source: "a", target: "end", kind: "next" }] };
+		expect((await put(owner, fixed, 1)).status).toBe(200);
+		expect((await put(owner, fixed, 1)).status).toBe(409);
+
+		// 删除同样核对版本，外人删不了。
+		expect((await productApp(outsider).request(`/api/books/${bookId}/workflow-recipes/gateway-flow?expectedRevision=2`, { method: "DELETE" })).status).toBe(404);
+		expect((await app.request(`/api/books/${bookId}/workflow-recipes/gateway-flow?expectedRevision=2`, { method: "DELETE" })).status).toBe(200);
+	});
+
 	test("rebinds an existing book to a marked external workspace", async () => {
 		if (!bookId) throw new Error("gateway fixture missing");
 		await writeFile(
