@@ -79,7 +79,8 @@ describe("工作流工具（叙述者侧）", () => {
       currentStepId: "step-context",
       totalStepCount: 5,
     });
-    expect(String(current.data!.brief)).toContain("当前工序 1/5");
+    expect(String(current.data!.brief)).toContain("当前工序（共 5 道）");
+    expect(String(current.data!.brief)).toContain("▶ 工序 1：装配上下文与前置预检");
 
     const submitted = await call("workflow_submit_step_output", { runRevision: 0, kind: "other", payload: { summary: "上下文就绪" } });
     expect(submitted.ok).toBe(true);

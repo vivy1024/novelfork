@@ -860,6 +860,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       runRevision: numberSchema("运行版本号，取自工序简报或 workflow.get_current_step；与服务端不一致时提交被拒。"),
+      stepId: stringSchema("要提交的工序 id（取自简报）。有多道工序同时进行时必填；只有一道时可省略。"),
+      outcome: stringSchema("分支工序必填：取简报中列出的结果之一，决定后续走哪条分支。"),
       kind: enumSchema(["scene-spec", "prose", "audit", "other"], "产物类别，必须与当前工序要求的一致。"),
       payload: { type: "object", description: "产物内容，结构见工序简报（scene-spec 为 { sceneSpec }，prose 为 { title, content }，audit 为 { passed, summary, issues }，other 为 { summary }）。" },
     },
@@ -870,6 +872,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       runRevision: numberSchema("运行版本号，取自工序简报或 workflow.get_current_step。"),
+      stepId: stringSchema("受阻的工序 id（取自简报）。有多道工序同时进行时必填。"),
       what: stringSchema("发生了什么（哪一步做不下去）。"),
       why: stringSchema("为什么做不下去（缺什么输入、哪个工具失败）。"),
       action: stringSchema("建议作者怎么处理。"),

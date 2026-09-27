@@ -1401,4 +1401,12 @@ CREATE TABLE IF NOT EXISTS "workflow_run_events" (
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_workflow_run_events_seq"
   ON "workflow_run_events" ("run_id", "seq");
 ` },
+  { name: "0038_workflow_run_step_outcome.sql", sql: `-- 0038 工作流按图推进：记录每道工序提交时给出的结果。
+--
+-- 工序可声明提交结果（如审查的「通过 / 不通过」），出线按结果分支；
+-- 分支、汇合与运行级状态都由各工序的状态与结果派生，因此结果必须随工序落库。
+-- 工序状态新增 bypassed：所在分支没被选中、不会执行（与执行路径上被跳过的 skipped 区分）。
+
+ALTER TABLE "workflow_run_steps" ADD COLUMN "outcome" TEXT;
+` },
 ];

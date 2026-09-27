@@ -2,7 +2,10 @@
  * Novel Workflow Recipes — 小说专属工作流预设（权威源在 novel-plugin 内部）
  *
  * 遵循插件化边界铁律：所有网文流派的创作工作流属于 novel-plugin 领域资产。
+ * 工作流是一张图（见 workflow-graph.ts）；内置方案仍按线性工序书写，加载时转成等价的链。
  */
+
+import { linearRecipeToGraph, type LegacyWorkflowRecipe, type WorkflowGraphRecipe } from "./workflow-graph.js";
 
 export type NovelWorkflowStepKind =
   | "context-load"
@@ -45,22 +48,13 @@ export interface NovelWorkflowStep {
   readonly onFailure?: NovelWorkflowStepOnFailure;
 }
 
-export interface NovelWorkflowRecipe {
-  readonly id: string;
-  readonly name: string;
-  readonly commandId: string;
-  readonly description: string;
-  readonly genre?: string;
-  readonly steps: readonly NovelWorkflowStep[];
-  readonly resultStrategy: NovelWorkflowResultStrategy;
-  readonly requireFinalApproval: boolean;
-  readonly maxRetries: number;
-}
+/** 工作流方案：图结构（节点 + 连线 + 草稿 / 发布状态）。 */
+export type NovelWorkflowRecipe = WorkflowGraphRecipe;
 
 /**
  * 番茄/起点爆款单章连载流
  */
-export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = {
+export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph({
   id: "fanqie-xuanhuan-serial",
   name: "番茄/起点爆款单章连载流",
   commandId: "/novel:write-xuanhuan",
@@ -116,12 +110,12 @@ export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = {
   resultStrategy: "formal-chapter",
   requireFinalApproval: true,
   maxRetries: 1,
-};
+} satisfies LegacyWorkflowRecipe);
 
 /**
  * 知乎盐选 8000 字短篇虐渣反转流
  */
-export const ZHIHU_SHORT_STORY_RECIPE: NovelWorkflowRecipe = {
+export const ZHIHU_SHORT_STORY_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph({
   id: "zhihu-short-story",
   name: "知乎盐选 8000 字短篇虐渣流",
   commandId: "/novel:write-short",
@@ -175,12 +169,12 @@ export const ZHIHU_SHORT_STORY_RECIPE: NovelWorkflowRecipe = {
   resultStrategy: "formal-chapter",
   requireFinalApproval: true,
   maxRetries: 1,
-};
+} satisfies LegacyWorkflowRecipe);
 
 /**
  * 传统仙侠大长篇严谨推演流
  */
-export const TRADITIONAL_XIANXIA_RECIPE: NovelWorkflowRecipe = {
+export const TRADITIONAL_XIANXIA_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph({
   id: "traditional-xianxia",
   name: "传统仙侠大长篇严谨推演流",
   commandId: "/novel:write-xianxia",
@@ -233,7 +227,7 @@ export const TRADITIONAL_XIANXIA_RECIPE: NovelWorkflowRecipe = {
   resultStrategy: "formal-chapter",
   requireFinalApproval: true,
   maxRetries: 1,
-};
+} satisfies LegacyWorkflowRecipe);
 
 export const NOVEL_BUILTIN_WORKFLOWS: readonly NovelWorkflowRecipe[] = [
   FANQIE_XUANHUAN_SERIAL_RECIPE,

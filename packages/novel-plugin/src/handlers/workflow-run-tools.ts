@@ -20,7 +20,7 @@ import {
   submitWorkflowStepOutput,
 } from "../engine/workflows/run-service.js";
 import { getActiveWorkflowRunForNarrator, type WorkflowRunRecord, type WorkflowStoreResult } from "../engine/workflows/run-store.js";
-import type { WorkflowRunStatus, WorkflowStepStatus } from "../engine/workflows/run-state-machine.js";
+import { runningSteps, type WorkflowRunStatus, type WorkflowStepStatus } from "../engine/workflows/run-state-machine.js";
 import type { TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 
 export const WORKFLOW_RUN_TOOL_NAMES = [
@@ -44,6 +44,8 @@ const CARD_STEP_STATUS: Record<WorkflowStepStatus, string> = {
   awaiting_approval: "approval-pending",
   done: "success",
   skipped: "skipped",
+  // 没被选中的分支：进度卡里按「跳过」显示，摘要注明原因。
+  bypassed: "skipped",
   failed: "failed",
 };
 
@@ -55,10 +57,8 @@ function fail(error: string, summary: string, data?: unknown): RuntimeToolResult
 
 /** 工具结果数据：既是进度卡的输入，也带着模型需要的简报与版本号。 */
 export function toWorkflowToolView(storage: StorageDatabase, run: WorkflowRunRecord): Record<string, unknown> {
-  const current = run.state.steps.find((step) => step.stepId === run.state.currentStepId);
-  const approvedProse = current && current.tools.some((tool) => PROSE_WRITE_TOOLS.has(tool))
-    ? getApprovedProse(storage, run)
-    : null;
+  const needsProse = runningSteps(run.state).some((step) => step.tools.some((tool) => PROSE_WRITE_TOOLS.has(tool)));
+  const approvedProse = needsProse ? getApprovedProse(storage, run) : null;
   return {
     title: `${run.recipe.name} · 第 ${run.chapterNumber} 章`,
     runId: run.id,
@@ -70,7 +70,8 @@ export function toWorkflowToolView(storage: StorageDatabase, run: WorkflowRunRec
       stepId: step.stepId,
       label: step.label,
       status: CARD_STEP_STATUS[step.status],
-      ...(step.note ? { summary: step.note.what } : {}),
+      ...(step.status === "bypassed" ? { summary: "所在分支没被选中" } : step.note ? { summary: step.note.what } : {}),
+      ...(step.outcome ? { outcome: step.outcome } : {}),
     })),
     completedStepCount: run.state.steps.filter((step) => step.status === "done").length,
     totalStepCount: run.state.steps.length,
@@ -120,8 +121,9 @@ function fromStore(
 function nextStepSummary(run: WorkflowRunRecord): string {
   if (run.state.status === "done") return "工作流已完成。";
   if (run.state.status === "awaiting_approval") return "已提交，等待作者在「故事推进 › 执行」确认；现在停止产出。";
-  const current = run.state.steps.find((step) => step.stepId === run.state.currentStepId);
-  return current ? `已进入下一道工序「${current.label}」，按返回的 brief 继续。` : "已提交。";
+  const running = runningSteps(run.state);
+  if (running.length === 0) return "已提交。";
+  return `进行中的工序：${running.map((step) => `「${step.label}」`).join("、")}，按返回的 brief 继续。`;
 }
 
 export async function executeWorkflowRunTool(
@@ -165,6 +167,8 @@ export async function executeWorkflowRunTool(
       runRevision,
       kind: typeof input.kind === "string" ? input.kind : "",
       payload: input.payload,
+      ...(typeof input.stepId === "string" && input.stepId.trim() ? { stepId: input.stepId.trim() } : {}),
+      ...(typeof input.outcome === "string" && input.outcome.trim() ? { outcome: input.outcome.trim() } : {}),
       ...(wordTarget ? { wordTarget } : {}),
     });
     return fromStore(storage, result, nextStepSummary, run);
@@ -174,6 +178,7 @@ export async function executeWorkflowRunTool(
     storage,
     narratorId,
     runRevision,
+    ...(typeof input.stepId === "string" && input.stepId.trim() ? { stepId: input.stepId.trim() } : {}),
     explanation: {
       what: typeof input.what === "string" ? input.what : "",
       why: typeof input.why === "string" ? input.why : "",
@@ -182,7 +187,7 @@ export async function executeWorkflowRunTool(
   });
   return fromStore(storage, result, (next) => next.state.status === "blocked"
     ? "已报告阻塞，等待作者选择重试、跳过或取消；期间不要调用写入工具。"
-    : next.state.status === "running" && next.state.currentStepId === run.state.currentStepId
+    : next.state.status === "running" && next.state.revision === run.state.revision + 1 && runningSteps(next.state).length === runningSteps(run.state).length
       ? "已报告阻塞，按方案自动重试本工序，请按 brief 里的说明调整后再做一次。"
       : nextStepSummary(next), run);
 }

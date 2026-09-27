@@ -87,6 +87,7 @@ export * from "./workflows/run-state-machine.js";
 export * from "./workflows/run-store.js";
 export * from "./workflows/run-brief.js";
 export * from "./workflows/run-service.js";
+export * from "./workflows/workflow-graph.js";
 
 // Inline writing modes
 export {

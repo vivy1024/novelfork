@@ -7,7 +7,8 @@
  * Runtime 自带的 Write / Edit / Bash / task 不经过产品适配器，这里拦不住（见任务书 5.3 与 P1）。
  *
  * 写类 / 读类按工具权限策略的 risk 判定：read 为读类，恒放行；其余为写类。
- * workflow.* 三个工具恒放行——它们是叙述者与状态机对话的唯一通道。
+ * workflow.* 工具恒放行——它们是叙述者与状态机对话的唯一通道。
+ * 工作流按图推进，可能有多道工序同时进行：放行范围是所有进行中工序允许的写入工具的并集。
  */
 
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
@@ -15,6 +16,7 @@ import {
 	buildWorkflowRunBrief,
 	findApprovedProseMismatch,
 	getActiveWorkflowRunForNarrator,
+	runningSteps,
 	type WorkflowExplanation,
 	type WorkflowRunRecord,
 } from "@vivy1024/novelfork-novel-plugin/engine";
@@ -41,8 +43,9 @@ export function findActiveWorkflowRun(narratorId: string, bookId: string | undef
 	}
 }
 
-function currentStep(run: WorkflowRunRecord) {
-	return run.state.steps.find((step) => step.stepId === run.state.currentStepId);
+/** 由叙述者本人执行的进行中工序（委派子代理的工序不允许叙述者直接写入）。 */
+function directSteps(run: WorkflowRunRecord) {
+	return runningSteps(run.state).filter((step) => step.executorKind !== "subagent");
 }
 
 /**
@@ -59,10 +62,8 @@ export function isToolVisibleDuringRun(
 	visibility: "author" | "advanced" = "author",
 ): boolean {
 	if (isWorkflowTool(canonicalName) || risk === "read" || visibility === "advanced") return true;
-	if (run.state.status !== "running") return false;
-	const step = currentStep(run);
-	if (!step || step.executorKind === "subagent") return false;
-	return step.tools.includes(canonicalName);
+	if (run.state.status === "blocked") return false;
+	return directSteps(run).some((step) => step.tools.includes(canonicalName));
 }
 
 /** 拦截（每次调用生效）：返回 null 放行，否则返回给模型看的三段式说明。 */
@@ -73,38 +74,39 @@ export function explainWorkflowDenial(
 	input: Readonly<Record<string, unknown>>,
 ): WorkflowExplanation | null {
 	if (isWorkflowTool(canonicalName) || risk === "read") return null;
-	const step = currentStep(run);
-	const stepLabel = step ? `「${step.label}」` : "当前工序";
-	if (run.state.status === "awaiting_approval") {
-		return {
-			what: `${canonicalName} 被拦下：${stepLabel}正在等作者确认`,
-			why: "确认之前写入，会让作者审的内容与写进书里的对不上",
-			action: "停止产出，等作者在「故事推进 › 执行」确认或打回",
-		};
-	}
 	if (run.state.status === "blocked") {
+		const failed = run.state.steps.find((step) => step.status === "failed");
 		return {
-			what: `${canonicalName} 被拦下：${stepLabel}受阻，等待作者处理`,
+			what: `${canonicalName} 被拦下：${failed ? `「${failed.label}」` : "工序"}受阻，等待作者处理`,
 			why: "受阻期间继续写入会绕过作者对阻塞的决定",
 			action: "等作者选择重试、跳过或取消",
 		};
 	}
-	if (!step) {
-		return { what: `${canonicalName} 被拦下：运行没有当前工序`, why: "状态异常", action: "调用 workflow_report_blocker 说明情况" };
-	}
-	if (step.executorKind === "subagent") {
+	const running = runningSteps(run.state);
+	if (running.length === 0) {
+		const awaiting = run.state.steps.filter((step) => step.status === "awaiting_approval").map((step) => `「${step.label}」`);
 		return {
-			what: `${canonicalName} 被拦下：${stepLabel}要求委派子代理完成`,
+			what: `${canonicalName} 被拦下：${awaiting.join("、") || "工序"}正在等作者确认`,
+			why: "确认之前写入，会让作者审的内容与写进书里的对不上",
+			action: "停止产出，等作者在「故事推进 › 执行」确认或打回",
+		};
+	}
+	const direct = directSteps(run);
+	if (direct.length === 0) {
+		const step = running[0]!;
+		return {
+			what: `${canonicalName} 被拦下：「${step.label}」要求委派子代理完成`,
 			why: "方案把这道工序交给了指定子代理，由你直接写入等于跳过了它",
 			action: `用 task 委派 ${step.agentId ?? "指定子代理"}，拿到结果后用 workflow_submit_step_output 提交`,
 		};
 	}
-	if (!step.tools.includes(canonicalName)) {
-		const allowed = step.tools.length > 0 ? step.tools.join("、") : "无";
+	if (!direct.some((step) => step.tools.includes(canonicalName))) {
+		const allowed = [...new Set(direct.flatMap((step) => step.tools))];
+		const labels = direct.map((step) => `「${step.label}」`).join("、");
 		return {
-			what: `${canonicalName} 被拦下：${stepLabel}不允许这个写入工具`,
-			why: `方案规定本工序只能用 ${allowed}；本工序的产物应通过 workflow_submit_step_output 提交`,
-			action: "改用本工序允许的工具，或把产物提交给工作流",
+			what: `${canonicalName} 被拦下：${labels}不允许这个写入工具`,
+			why: `进行中的工序只能用 ${allowed.length > 0 ? allowed.join("、") : "（无写入工具）"}；工序产物应通过 workflow_submit_step_output 提交`,
+			action: "改用允许的工具，或把产物提交给工作流",
 		};
 	}
 	try {

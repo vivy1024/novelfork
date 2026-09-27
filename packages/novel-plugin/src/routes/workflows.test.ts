@@ -106,11 +106,15 @@ describe("createWorkflowsRouter & workflow-store", () => {
     // 再次 GET 确认读出的是新落盘的内容
     const getRes = await router.request("/api/books/book-1/workflow-recipes");
     expect(getRes.status).toBe(200);
-    const body = (await getRes.json()) as { recipes: typeof customRecipes };
+    // 旧的线性写法写进来会被转成等价的图：起点 → 工序… → 终点，自定义字段原样保留在工序节点上。
+    const body = (await getRes.json()) as { recipes: Array<{ name: string; schemaVersion: number; nodes: Array<Record<string, unknown>> }> };
     expect(body.recipes).toHaveLength(1);
-    expect(body.recipes[0].name).toBe("反转悬疑流");
-    expect(body.recipes[0].steps[0].agentId).toBe("my-custom-planner");
-    expect(body.recipes[0].steps[0].parallelSubagents?.[0].name).toBe("detective-subagent");
+    expect(body.recipes[0]!.name).toBe("反转悬疑流");
+    expect(body.recipes[0]!.schemaVersion).toBe(2);
+    const firstStep = body.recipes[0]!.nodes.find((node) => node.type === "step") as { agentId?: string; parallelSubagents?: Array<{ name: string }> };
+    expect(firstStep.agentId).toBe("my-custom-planner");
+    expect(firstStep.parallelSubagents?.[0]?.name).toBe("detective-subagent");
+    expect(rawFile).toContain('"schemaVersion": 2');
   });
 
   it("PUT 传入非法数据时返回 400 详细校验错误", async () => {

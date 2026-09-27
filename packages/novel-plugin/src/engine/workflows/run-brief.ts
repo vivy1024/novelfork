@@ -1,5 +1,6 @@
 /**
- * 工序简报：告诉叙述者「现在这道工序要做什么、能用什么、必须交什么」。
+ * 工序简报：告诉叙述者「现在哪些工序要做、各自能用什么、必须交什么」。
+ * 工作流是图，可能有多道工序同时进行（并行分支）；每道都单独列出，提交时用 stepId 区分。
  *
  * 同一份文本有两个出口：每趟对话开始时作为 system 级 promptExtension 注入，
  * 以及 workflow.get_current_step / submit_step_output 的返回结果（同一趟内切换工序靠它）。
@@ -7,7 +8,8 @@
  */
 
 import type { WorkflowRunRecord } from "./run-store.js";
-import type { WorkflowCandidateKind, WorkflowStepState } from "./run-state-machine.js";
+import { runningSteps, type WorkflowCandidateKind, type WorkflowStepState } from "./run-state-machine.js";
+import type { WorkflowStepNode } from "./workflow-graph.js";
 
 export function toWireToolName(name: string): string {
   return name.replace(/\./g, "_");
@@ -39,8 +41,8 @@ const DEFAULT_GOAL: Partial<Record<WorkflowStepState["kind"], string>> = {
   "custom-tool": "按本工序配置的工具完成指定操作。",
 };
 
-function currentStep(run: WorkflowRunRecord): WorkflowStepState | undefined {
-  return run.state.steps.find((step) => step.stepId === run.state.currentStepId);
+function recipeStepOf(run: WorkflowRunRecord, stepId: string): WorkflowStepNode | undefined {
+  return run.recipe.nodes.find((node): node is WorkflowStepNode => node.type === "step" && node.id === stepId);
 }
 
 function header(run: WorkflowRunRecord): string[] {
@@ -62,57 +64,75 @@ function executionLine(step: WorkflowStepState, recipeStep: { modelOverride?: st
   return `执行方式：由你本人完成${step.agentId ? `（建议角色：${step.agentId}）` : ""}。`;
 }
 
-/** 生成当前工序简报。运行已结束时返回 null（不再注入任何约束）。 */
-export function buildWorkflowRunBrief(run: WorkflowRunRecord): string | null {
-  const { status } = run.state;
-  if (status === "done" || status === "cancelled") return null;
-  const step = currentStep(run);
-  const total = run.state.steps.length;
-  const lines = header(run);
-  if (!step) {
-    lines.push("运行没有当前工序，状态异常。请调用 workflow_report_blocker 说明情况，等待作者处理。");
-    return lines.join("\n");
-  }
-  lines.push(`当前工序 ${step.ordinal}/${total}：${step.label}`);
-
-  if (status === "awaiting_approval") {
-    lines.push(
-      step.executorKind === "manual-gate"
-        ? "状态：人工门禁，等待作者在「故事推进 › 执行」放行。"
-        : `状态：本工序的${step.expectedOutput ? KIND_LABEL[step.expectedOutput] : "产物"}已提交，等待作者在「故事推进 › 执行」确认。`,
-      "现在停止产出，不要调用任何写入工具；作者确认或打回后会在下一轮告诉你结果。",
-    );
-    return lines.join("\n");
-  }
-
-  if (status === "blocked") {
-    lines.push(`状态：受阻——${step.note?.what ?? "工序失败"}。`);
-    if (step.note) lines.push(`原因：${step.note.why}`);
-    lines.push("等待作者在「执行」页选择重试、跳过或取消；期间不要调用写入工具。");
-    return lines.join("\n");
-  }
-
-  const recipeStep = run.recipe.steps.find((candidate) => candidate.id === step.stepId);
+/** 一道进行中工序的完整说明。 */
+function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multiple: boolean): string[] {
+  const recipeStep = recipeStepOf(run, step.stepId);
+  const lines = [`▶ 工序 ${step.ordinal}：${step.label}（stepId="${step.stepId}"）`];
   lines.push(`目标：${recipeStep?.customPrompt?.trim() || DEFAULT_GOAL[step.kind] || "完成本工序。"}`);
   lines.push(executionLine(step, recipeStep));
   const writeTools = step.executorKind === "subagent" ? [] : step.tools.map(toWireToolName);
   lines.push(
     writeTools.length > 0
-      ? `本工序允许的写入工具：${writeTools.join("、")}（读类工具不受限）。其他写入工具在本工序会被拒绝。`
-      : "本工序不允许调用任何写入工具（读类工具不受限）。",
+      ? `允许的写入工具：${writeTools.join("、")}（读类工具不受限）。`
+      : "不允许调用任何写入工具（读类工具不受限）。",
   );
   if (recipeStep?.skills?.length) {
     lines.push(`需要遵循的写作技能：${recipeStep.skills.join("、")}（用 Skill 工具读取）。`);
   }
   if (step.expectedOutput) {
+    const stepArg = multiple ? `stepId="${step.stepId}"，` : "";
+    const outcomeArg = step.outcomes.length > 0 ? `，outcome 取 ${step.outcomes.map((item) => `"${item}"`).join(" / ")} 之一（决定后续走哪条分支）` : "";
     lines.push(
-      `必交产物：调用 workflow_submit_step_output，runRevision=${run.state.revision}，kind="${step.expectedOutput}"，payload=${PAYLOAD_SHAPE[step.expectedOutput]}`,
-      step.requiresApproval ? "提交后需要作者确认才进入下一道工序。" : "提交通过校验后自动进入下一道工序，返回结果里会给出下一道工序的简报。",
+      `必交产物：调用 workflow_submit_step_output，${stepArg}runRevision=${run.state.revision}，kind="${step.expectedOutput}"${outcomeArg}，payload=${PAYLOAD_SHAPE[step.expectedOutput]}`,
+      step.requiresApproval ? "提交后需要作者确认才继续。" : "提交通过校验后自动继续，返回结果里会给出新的简报。",
     );
   }
   if (step.note) {
     lines.push(`上一次的意见：${step.note.what}；${step.note.why}；建议：${step.note.action}`);
   }
-  lines.push("做不到时调用 workflow_report_blocker 并写清 what / why / action，不要编造产物。");
+  return lines;
+}
+
+/** 生成工序简报。运行已结束时返回 null（不再注入任何约束）。 */
+export function buildWorkflowRunBrief(run: WorkflowRunRecord): string | null {
+  const { status } = run.state;
+  if (status === "done" || status === "cancelled") return null;
+  const lines = header(run);
+
+  if (status === "blocked") {
+    const failed = run.state.steps.find((step) => step.status === "failed");
+    lines.push(`状态：受阻——${failed ? `工序「${failed.label}」` : ""}${failed?.note?.what ?? "工序失败"}。`);
+    if (failed?.note) lines.push(`原因：${failed.note.why}`);
+    lines.push("等待作者在「执行」页选择重试、跳过或取消；期间不要调用写入工具，也不要提交其他工序。");
+    return lines.join("\n");
+  }
+
+  const running = runningSteps(run.state);
+  const awaiting = run.state.steps.filter((step) => step.status === "awaiting_approval");
+  if (running.length === 0) {
+    if (awaiting.length === 0) {
+      lines.push("运行没有进行中的工序，状态异常。请调用 workflow_report_blocker 说明情况，等待作者处理。");
+      return lines.join("\n");
+    }
+    for (const step of awaiting) {
+      lines.push(
+        step.executorKind === "manual-gate"
+          ? `「${step.label}」：人工门禁，等待作者在「故事推进 › 执行」放行。`
+          : `「${step.label}」：${step.expectedOutput ? KIND_LABEL[step.expectedOutput] : "产物"}已提交，等待作者在「故事推进 › 执行」确认。`,
+      );
+    }
+    lines.push("现在停止产出，不要调用任何写入工具；作者确认或打回后会在下一轮告诉你结果。");
+    return lines.join("\n");
+  }
+
+  const multiple = running.length > 1;
+  lines.push(multiple
+    ? `现在有 ${running.length} 道工序同时进行（并行分支），可以依次完成，提交时用 stepId 指明是哪一道：`
+    : `当前工序（共 ${run.state.steps.length} 道）：`);
+  for (const step of running) lines.push(...runningStepLines(run, step, multiple));
+  if (awaiting.length > 0) {
+    lines.push(`另有等待作者确认的工序：${awaiting.map((step) => step.label).join("、")}（不要再提交它们）。`);
+  }
+  lines.push("其他写入工具在工作流运行期间会被拒绝。做不到时调用 workflow_report_blocker（带上 stepId）并写清 what / why / action，不要编造产物。");
   return lines.join("\n");
 }

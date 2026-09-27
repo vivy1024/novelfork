@@ -113,7 +113,8 @@ describe("创作工作流对叙述者的约束", () => {
 		]));
 		const prompts = await adapter.promptExtensions("narrator-a");
 		const brief = prompts.find((prompt) => prompt.includes("创作工作流 · 由产品状态机驱动"));
-		expect(brief).toContain("当前工序 1/2：写正文");
+		expect(brief).toContain("当前工序（共 2 道）");
+		expect(brief).toContain("▶ 工序 1：写正文");
 		expect(brief).toContain('kind="prose"');
 	});
 

@@ -12,6 +12,7 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import type { NovelWorkflowRecipe } from "./novel-workflows.js";
+import { linearRecipeToGraph, WORKFLOW_GRAPH_SCHEMA_VERSION, type LegacyWorkflowRecipe } from "./workflow-graph.js";
 import {
   ACTIVE_WORKFLOW_RUN_STATUSES,
   buildStepTemplates,
@@ -114,6 +115,7 @@ export function ensureWorkflowRunSchema(storage: StorageDatabase): void {
       "finished_at" INTEGER,
       "failure_reason" TEXT,
       "explanation_json" TEXT,
+      "outcome" TEXT,
       FOREIGN KEY ("run_id") REFERENCES "workflow_runs"("id") ON DELETE CASCADE
     );
     CREATE UNIQUE INDEX IF NOT EXISTS "idx_workflow_run_steps_run_step"
@@ -147,6 +149,11 @@ export function ensureWorkflowRunSchema(storage: StorageDatabase): void {
     CREATE UNIQUE INDEX IF NOT EXISTS "idx_workflow_run_events_seq"
       ON "workflow_run_events" ("run_id", "seq");
   `);
+  // 正式环境由迁移 0038 加列；这里只为未跑迁移的库兜底。
+  const columns = storage.sqlite.prepare<{ name: string }>(`PRAGMA table_info("workflow_run_steps")`).all();
+  if (!columns.some((column) => column.name === "outcome")) {
+    storage.sqlite.exec(`ALTER TABLE "workflow_run_steps" ADD COLUMN "outcome" TEXT`);
+  }
 }
 
 // ─── 行映射 ──────────────────────────────────────────────────────────────────
@@ -171,6 +178,7 @@ interface StepRow {
   status: string;
   attempt: number;
   explanation_json: string | null;
+  outcome: string | null;
 }
 
 interface CandidateRow {
@@ -203,20 +211,35 @@ function isExplanation(value: unknown): value is WorkflowExplanation {
   return typeof record.what === "string" && typeof record.why === "string" && typeof record.action === "string";
 }
 
-function toRecord(storage: StorageDatabase, row: RunRow): WorkflowRunRecord {
-  const recipe = parseJson<NovelWorkflowRecipe>(row.recipe_snapshot_json, {
+/** 冻结的配方快照：图结构原样使用；线性快照（图结构上线前启动的运行）转成等价的链。 */
+function snapshotRecipe(row: RunRow): NovelWorkflowRecipe {
+  const parsed = parseJson<Record<string, unknown> | null>(row.recipe_snapshot_json, null);
+  if (parsed && Array.isArray(parsed.steps) && parsed.nodes === undefined) {
+    return linearRecipeToGraph(parsed as unknown as LegacyWorkflowRecipe);
+  }
+  if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+    return parsed as unknown as NovelWorkflowRecipe;
+  }
+  return {
+    schemaVersion: WORKFLOW_GRAPH_SCHEMA_VERSION,
     id: row.recipe_id,
     name: row.recipe_id,
     commandId: row.recipe_id,
     description: "",
-    steps: [],
+    status: "published",
+    revision: 0,
+    nodes: [],
+    edges: [],
     resultStrategy: "formal-chapter",
-    requireFinalApproval: false,
     maxRetries: 0,
-  });
+  };
+}
+
+function toRecord(storage: StorageDatabase, row: RunRow): WorkflowRunRecord {
+  const recipe = snapshotRecipe(row);
   const persisted = new Map(
     storage.sqlite
-      .prepare<StepRow>(`SELECT step_id, status, attempt, explanation_json FROM workflow_run_steps WHERE run_id = ?`)
+      .prepare<StepRow>(`SELECT step_id, status, attempt, explanation_json, outcome FROM workflow_run_steps WHERE run_id = ?`)
       .all(row.id)
       .map((step) => [step.step_id, step]),
   );
@@ -229,6 +252,7 @@ function toRecord(storage: StorageDatabase, row: RunRow): WorkflowRunRecord {
       status: saved.status as WorkflowStepStatus,
       attempt: saved.attempt,
       ...(isExplanation(note) ? { note } : {}),
+      ...(saved.outcome !== null ? { outcome: saved.outcome } : {}),
     };
   });
   return {
@@ -368,24 +392,26 @@ function writeSteps(
 ): void {
   const upsert = storage.sqlite.prepare(`
     INSERT INTO workflow_run_steps
-      (id, run_id, step_id, ordinal, status, attempt, max_attempts, executor_kind, agent_id, started_at, finished_at, failure_reason, explanation_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, run_id, step_id, ordinal, status, attempt, max_attempts, executor_kind, agent_id, started_at, finished_at, failure_reason, explanation_json, outcome)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (run_id, step_id) DO UPDATE SET
       status = excluded.status,
       attempt = excluded.attempt,
       started_at = COALESCE(workflow_run_steps.started_at, excluded.started_at),
       finished_at = excluded.finished_at,
       failure_reason = excluded.failure_reason,
-      explanation_json = excluded.explanation_json
+      explanation_json = excluded.explanation_json,
+      outcome = excluded.outcome
   `);
   next.forEach((step, index) => {
     const before = previous?.[index];
     const changed = !before
       || before.status !== step.status
       || before.attempt !== step.attempt
-      || before.note !== step.note;
+      || before.note !== step.note
+      || before.outcome !== step.outcome;
     if (!changed) return;
-    const finished = step.status === "done" || step.status === "skipped" || step.status === "failed";
+    const finished = step.status === "done" || step.status === "skipped" || step.status === "bypassed" || step.status === "failed";
     upsert.run(
       `${runId}:step:${step.stepId}`,
       runId,
@@ -400,6 +426,7 @@ function writeSteps(
       finished ? at : null,
       step.status === "failed" ? step.note?.what ?? null : null,
       step.note ? JSON.stringify(step.note) : null,
+      step.outcome ?? null,
     );
   });
 }
@@ -503,7 +530,7 @@ export function applyWorkflowAction(
         });
         return;
       }
-      const result = transition(run.state, action);
+      const result = transition(run.recipe, run.state, action);
       if (!result.ok) {
         early.value = failure(result.code, 409, result.explanation);
         return;

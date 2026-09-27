@@ -288,7 +288,7 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		expect(started.status).toBe(201);
 		const detail = await started.json() as { run: { id: string; status: string; revision: number; currentStepId: string }; brief: string };
 		expect(detail.run).toMatchObject({ status: "running", revision: 0, currentStepId: "step-context" });
-		expect(detail.brief).toContain("当前工序 1/5");
+		expect(detail.brief).toContain("当前工序（共 5 道）");
 		const runPath = `/${encodeURIComponent(detail.run.id)}`;
 
 		const listed = await app.request(`/api/books/${bookId}/workflow-runs?narratorId=${encodeURIComponent(bookNarratorId)}`);

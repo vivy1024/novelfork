@@ -8,13 +8,15 @@ import {
   type WorkflowRunState,
   type WorkflowRunStatus,
 } from "./run-state-machine";
+import { linearRecipeToGraph, type LegacyWorkflowRecipe } from "./workflow-graph";
 
 function step(id: string, patch: Partial<NovelWorkflowStep> = {}): NovelWorkflowStep {
   return { id, kind: "custom-tool", label: `工序 ${id}`, enabled: true, ...patch };
 }
 
-function recipe(steps: NovelWorkflowStep[], patch: Partial<NovelWorkflowRecipe> = {}): NovelWorkflowRecipe {
-  return {
+/** 线性方案（旧写法）转成等价的图：这组用例钉住线性流程在图引擎上的行为不变。 */
+function recipe(steps: NovelWorkflowStep[], patch: Partial<LegacyWorkflowRecipe> = {}): NovelWorkflowRecipe {
+  return linearRecipeToGraph({
     id: "r",
     name: "测试方案",
     commandId: "/novel:test",
@@ -24,17 +26,21 @@ function recipe(steps: NovelWorkflowStep[], patch: Partial<NovelWorkflowRecipe> 
     requireFinalApproval: false,
     maxRetries: 1,
     ...patch,
-  };
+  });
 }
 
+/** 最近一次 start 的方案；transition 需要图来推进。 */
+let currentRecipe: NovelWorkflowRecipe;
+
 function start(r: NovelWorkflowRecipe): WorkflowRunState {
+  currentRecipe = r;
   const created = createRunState(r);
   if (!created.ok) throw new Error(created.explanation.what);
   return created.state;
 }
 
 function apply(state: WorkflowRunState, action: WorkflowRunAction): WorkflowRunState {
-  const result = transition(state, action);
+  const result = transition(currentRecipe, state, action);
   if (!result.ok) throw new Error(`${result.code}: ${result.explanation.what}`);
   expect(result.state.revision).toBe(state.revision + 1);
   return result.state;
@@ -43,13 +49,17 @@ function apply(state: WorkflowRunState, action: WorkflowRunAction): WorkflowRunS
 const note = { what: "意见", why: "原因", action: "建议" };
 
 describe("createRunState", () => {
-  it("只取启用的工序，第一道立即进入执行", () => {
-    const state = start(recipe([step("a"), step("b", { enabled: false }), step("c")]));
-    expect(state.steps.map((s) => s.stepId)).toEqual(["a", "c"]);
+  it("第一道立即进入执行；停用的工序留在流程里，走到时直接跳过", () => {
+    let state = start(recipe([step("a"), step("b", { enabled: false }), step("c")]));
+    // 停用的工序不能从流程里剔除，否则它的下游会被当成「未走到」。
+    expect(state.steps.map((s) => s.stepId)).toEqual(["a", "b", "c"]);
     expect(state.status).toBe("running");
     expect(state.currentStepId).toBe("a");
     expect(state.steps[0]).toMatchObject({ status: "running", attempt: 1 });
     expect(state.revision).toBe(0);
+    state = apply(state, { type: "submit", stepId: "a" });
+    expect(state.steps.map((s) => s.status)).toEqual(["done", "skipped", "running"]);
+    expect(state.steps[1]!.attempt).toBe(0);
   });
 
   it("requireFinalApproval 等价于最后一道工序必须作者确认", () => {
@@ -143,7 +153,7 @@ describe("transition 阻塞与失败策略", () => {
     let state = start(recipe([step("a")]));
     state = apply(state, { type: "cancel" });
     expect(state.status).toBe("cancelled");
-    const after = transition(state, { type: "submit", stepId: "a" });
+    const after = transition(currentRecipe, state, { type: "submit", stepId: "a" });
     expect(after.ok).toBe(false);
     if (!after.ok) expect(after.code).toBe("run-finished");
   });
@@ -190,7 +200,7 @@ describe("transition 非法迁移一律被拒且带说明", () => {
       const legal = allowed[status].includes(action.type);
       it(`${status} × ${action.type} → ${legal ? "允许" : "拒绝"}`, () => {
         const before = stateWith(status);
-        const result = transition(before, action);
+        const result = transition(currentRecipe, before, action);
         expect(result.ok).toBe(legal);
         if (result.ok) {
           expect(result.state.revision).toBe(before.revision + 1);
@@ -206,14 +216,14 @@ describe("transition 非法迁移一律被拒且带说明", () => {
 
   it("针对非当前工序的操作被拒（多半来自过期页面）", () => {
     const state = start(recipe([step("a"), step("b")]));
-    const result = transition(state, { type: "submit", stepId: "b" });
+    const result = transition(currentRecipe, state, { type: "submit", stepId: "b" });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("stale-step");
   });
 
   it("人工门禁不能打回", () => {
     const state = start(recipe([step("gate", { kind: "approval-gate" })]));
-    const result = transition(state, { type: "reject", stepId: "gate", note });
+    const result = transition(currentRecipe, state, { type: "reject", stepId: "gate", note });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("gate-cannot-reject");
   });

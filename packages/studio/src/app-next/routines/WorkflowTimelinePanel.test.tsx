@@ -5,16 +5,25 @@ import { WorkflowTimelinePanel } from "@vivy1024/novelfork-novel-plugin/pages/wr
 
 const recipes = [
   {
+    schemaVersion: 2,
     id: "backend-suspense-flow",
     name: "后端反转悬疑流",
     commandId: "/novel:suspense",
     description: "从后端 story/workflow_recipes.json 加载的真实数据",
-    steps: [
-      { id: "step-1", kind: "context-load", label: "拉取悬疑大纲", enabled: true, tools: [] },
-      { id: "step-2", kind: "writer-generate", label: "起草高压反转", enabled: true, requiresApproval: true },
+    status: "published",
+    revision: 1,
+    nodes: [
+      { id: "start", type: "start", label: "开始" },
+      { id: "step-1", type: "step", kind: "context-load", label: "拉取悬疑大纲", enabled: true, tools: [] },
+      { id: "step-2", type: "step", kind: "writer-generate", label: "起草高压反转", enabled: true, requiresApproval: true },
+      { id: "end", type: "end", label: "完成" },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "step-1", kind: "next" },
+      { id: "e2", source: "step-1", target: "step-2", kind: "next" },
+      { id: "e3", source: "step-2", target: "end", kind: "next" },
     ],
     resultStrategy: "formal-chapter",
-    requireFinalApproval: true,
     maxRetries: 1,
   },
 ];

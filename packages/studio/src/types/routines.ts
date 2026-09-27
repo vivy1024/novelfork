@@ -2,7 +2,6 @@
  * 套路系统类型定义
  */
 
-import type { WorkflowRecipeConfig } from "../shared/workflow-recipe.js";
 
 export interface CommandArg {
   name: string;
@@ -97,8 +96,6 @@ export interface Routines {
   hooks: RoutineHook[];
   /** 被禁用的 runtime command IDs（如 "/compact"、"/novel:write-next"） */
   disabledCommands: string[];
-  /** 可配置的 workflow recipes（如 /novel:write-next 执行链） */
-  workflowRecipes: WorkflowRecipeConfig[];
 }
 
 export const DEFAULT_ROUTINES: Routines = {
@@ -113,5 +110,4 @@ export const DEFAULT_ROUTINES: Routines = {
   mcpTools: [],
   hooks: [],
   disabledCommands: [],
-  workflowRecipes: [],
 };

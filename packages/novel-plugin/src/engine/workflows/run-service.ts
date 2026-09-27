@@ -16,6 +16,7 @@ import { parseSceneSpecValue } from "../../handlers/scene-spec-handler.js";
 import { replaceChapterScenes, sceneFromSpec } from "../narrative-memory/scene-store.js";
 import { buildWorkflowRunBrief } from "./run-brief.js";
 import {
+  runningSteps,
   WORKFLOW_CANDIDATE_KINDS,
   type WorkflowCandidateKind,
   type WorkflowExplanation,
@@ -48,8 +49,31 @@ function invalid<T>(code: string, explanation: WorkflowExplanation): WorkflowSer
   return { ok: false, code, status: 400, explanation };
 }
 
-function currentStepOf(run: WorkflowRunRecord): WorkflowStepState | undefined {
-  return run.state.steps.find((step) => step.stepId === run.state.currentStepId);
+/**
+ * 模型要操作的工序：给了 stepId 就用它；没给时只有一道进行中的工序才能推断，
+ * 有多道并行时必须指明，否则提交可能落到错误的分支上。
+ */
+function targetStepOf<T>(run: WorkflowRunRecord, stepId: string | undefined): { step: WorkflowStepState } | { error: WorkflowServiceResult<T> } {
+  if (stepId) {
+    const step = run.state.steps.find((candidate) => candidate.stepId === stepId);
+    if (step) return { step };
+    return { error: invalid("unknown-step", {
+      what: `工作流里没有工序「${stepId}」`,
+      why: "stepId 必须取自工序简报",
+      action: "调用 workflow_get_current_step 重新读取进行中的工序",
+    }) };
+  }
+  const running = runningSteps(run.state);
+  if (running.length === 1) return { step: running[0]! };
+  if (running.length === 0) {
+    const waiting = run.state.steps.find((step) => step.status === "awaiting_approval" || step.status === "failed");
+    return waiting ? { step: waiting } : { error: noActiveRun() };
+  }
+  return { error: invalid("step-id-required", {
+    what: `现在有 ${running.length} 道工序同时进行：${running.map((step) => `${step.label}（${step.stepId}）`).join("、")}`,
+    why: "并行分支各自提交，不指明就不知道这份产物属于哪一道",
+    action: "带上 stepId 重新调用",
+  }) };
 }
 
 // ─── 启动 ────────────────────────────────────────────────────────────────────
@@ -72,6 +96,15 @@ export async function startWorkflowRun(input: StartWorkflowRunInput): Promise<Wo
       what: `找不到工作流方案「${input.recipeId}」`,
       why: "方案可能已被删除或改名",
       action: "刷新「执行」页，从下拉框重新选择方案",
+    } };
+  }
+  if (recipe.status !== "published") {
+    return { ok: false, code: "recipe-not-published", status: 409, explanation: {
+      what: `「${recipe.name}」还是草稿，不能运行`,
+      why: recipe.createdBy === "narrator"
+        ? "叙述者建的工作流要作者在画布上确认后才能运行"
+        : "草稿可能还有没修好的结构问题",
+      action: "在「故事推进 › 执行」的画布上检查并发布它",
     } };
   }
   return createWorkflowRun(input.storage, {
@@ -203,6 +236,10 @@ export interface SubmitStepOutputInput {
   readonly runRevision: number;
   readonly kind: string;
   readonly payload: unknown;
+  /** 并行时必填；只有一道进行中的工序时可省略。 */
+  readonly stepId?: string;
+  /** 分支工序必填：取工序声明的结果之一。 */
+  readonly outcome?: string;
   readonly wordTarget?: number;
 }
 
@@ -217,8 +254,9 @@ function noActiveRun<T>(): WorkflowServiceResult<T> {
 export function submitWorkflowStepOutput(input: SubmitStepOutputInput): WorkflowServiceResult<WorkflowRunRecord> {
   const run = getActiveWorkflowRunForNarrator(input.storage, input.narratorId);
   if (!run) return noActiveRun();
-  const step = currentStepOf(run);
-  if (!step) return noActiveRun();
+  const target = targetStepOf<WorkflowRunRecord>(run, input.stepId);
+  if ("error" in target) return target.error;
+  const { step } = target;
   if (!(WORKFLOW_CANDIDATE_KINDS as readonly string[]).includes(input.kind)) {
     return invalid("invalid-kind", { what: `产物类别「${input.kind}」无效`, why: `只接受 ${WORKFLOW_CANDIDATE_KINDS.join(" / ")}`, action: "按工序简报的 kind 重交" });
   }
@@ -243,7 +281,11 @@ export function submitWorkflowStepOutput(input: SubmitStepOutputInput): Workflow
   });
   if (!checked.ok) return invalid("candidate-invalid", checked.explanation);
 
-  return applyWorkflowAction(input.storage, run.id, input.runRevision, { type: "submit", stepId: step.stepId }, {
+  return applyWorkflowAction(input.storage, run.id, input.runRevision, {
+    type: "submit",
+    stepId: step.stepId,
+    ...(input.outcome !== undefined ? { outcome: input.outcome } : {}),
+  }, {
     beforeCommit: ({ next }) => {
       const candidateId = insertWorkflowCandidate(input.storage, {
         runId: run.id,
@@ -267,13 +309,16 @@ export interface ReportBlockerInput {
   readonly narratorId: string;
   readonly runRevision: number;
   readonly explanation: WorkflowExplanation;
+  /** 并行时必填；只有一道进行中的工序时可省略。 */
+  readonly stepId?: string;
 }
 
 export function reportWorkflowBlocker(input: ReportBlockerInput): WorkflowServiceResult<WorkflowRunRecord> {
   const run = getActiveWorkflowRunForNarrator(input.storage, input.narratorId);
   if (!run) return noActiveRun();
-  const step = currentStepOf(run);
-  if (!step) return noActiveRun();
+  const target = targetStepOf<WorkflowRunRecord>(run, input.stepId);
+  if ("error" in target) return target.error;
+  const { step } = target;
   const { what, why, action } = input.explanation;
   if (![what, why, action].every((text) => typeof text === "string" && text.trim())) {
     return invalid("explanation-required", {
@@ -302,7 +347,7 @@ export function approveWorkflowStep(input: AuthorActionInput & { readonly stepId
   const candidate = run ? getLatestCandidate(input.storage, run.id, input.stepId) : null;
   return applyWorkflowAction(input.storage, input.runId, input.expectedRevision, { type: "approve", stepId: input.stepId }, {
     beforeCommit: ({ run: current }) => {
-      const step = currentStepOf(current);
+      const step = current.state.steps.find((candidate) => candidate.stepId === input.stepId);
       if (!candidate || step?.executorKind === "manual-gate" || candidate.decision !== "pending") return;
       const committedRef = commitCandidate(input.storage, current, candidate);
       decideWorkflowCandidate(input.storage, {
@@ -348,12 +393,12 @@ export function rejectWorkflowStep(
   });
 }
 
-export function retryWorkflowStep(input: AuthorActionInput): WorkflowServiceResult<WorkflowRunRecord> {
-  return applyWorkflowAction(input.storage, input.runId, input.expectedRevision, { type: "retry" });
+export function retryWorkflowStep(input: AuthorActionInput & { readonly stepId?: string }): WorkflowServiceResult<WorkflowRunRecord> {
+  return applyWorkflowAction(input.storage, input.runId, input.expectedRevision, { type: "retry", ...(input.stepId ? { stepId: input.stepId } : {}) });
 }
 
-export function skipWorkflowStep(input: AuthorActionInput): WorkflowServiceResult<WorkflowRunRecord> {
-  return applyWorkflowAction(input.storage, input.runId, input.expectedRevision, { type: "skip" });
+export function skipWorkflowStep(input: AuthorActionInput & { readonly stepId?: string }): WorkflowServiceResult<WorkflowRunRecord> {
+  return applyWorkflowAction(input.storage, input.runId, input.expectedRevision, { type: "skip", ...(input.stepId ? { stepId: input.stepId } : {}) });
 }
 
 export function cancelWorkflowRun(input: AuthorActionInput): WorkflowServiceResult<WorkflowRunRecord> {

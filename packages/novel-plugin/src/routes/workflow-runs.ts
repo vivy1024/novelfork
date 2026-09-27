@@ -65,7 +65,7 @@ export function serializeWorkflowRunDetail(detail: WorkflowRunDetail) {
     run: {
       ...runSummary(run),
       steps: run.state.steps.map((step) => {
-        const recipeStep = run.recipe.steps.find((candidate) => candidate.id === step.stepId);
+        const recipeStep = run.recipe.nodes.find((node) => node.type === "step" && node.id === step.stepId) as { customPrompt?: string } | undefined;
         return {
           ...step,
           ...(recipeStep?.customPrompt ? { customPrompt: recipeStep.customPrompt } : {}),

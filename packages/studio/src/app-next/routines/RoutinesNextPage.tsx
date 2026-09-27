@@ -90,7 +90,6 @@ import { CommandsSection } from "./CommandsSection";
 import { MCPServerPanel } from "./MCPServerPanel";
 import { RulesSection } from "./RulesSection";
 import { ToolPermissionsSection } from "./ToolPermissionsSection";
-import { WorkflowRecipesSection } from "./WorkflowRecipesSection";
 
 const routinesClient = createRoutinesClient();
 const accountClient = createAccountProfileClient();
@@ -142,7 +141,6 @@ export interface RoutinesNextPageProps {
 }
 
 type SectionId =
-	| "workflowRecipes"
 	| "builtIn"
 	| "commands"
 	| "optionalTools"
@@ -164,7 +162,6 @@ const SECTIONS: ReadonlyArray<{
 	readonly label: string;
 	readonly icon: typeof Workflow;
 }> = [
-	{ id: "workflowRecipes", label: "工作流装配", icon: Workflow },
 	{ id: "builtIn", label: "内置套路", icon: Workflow },
 	{ id: "commands", label: "自定义命令", icon: Command },
 	{ id: "optionalTools", label: "可选工具", icon: Wrench },
@@ -295,9 +292,6 @@ export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 						</Suspense>
 					);
 				})}
-				{activeSection === "workflowRecipes" && (
-					<WorkflowRecipesSection bookId={bookId} bookTitle={bookTitle} />
-				)}
 				{activeSection === "builtIn" && (
 					<RoutineCatalogSection
 						bookId={bookId}

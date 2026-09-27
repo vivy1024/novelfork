@@ -18,6 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { NovelWorkflowRecipe } from "../../engine/workflows/novel-workflows.js";
+import { stepNodes, topologicalOrder } from "../../engine/workflows/workflow-graph.js";
 
 export interface WorkflowTimelinePanelProps {
   bookId: string;
@@ -91,6 +92,13 @@ const RUN_STATUS_LABEL: Record<RunStatus, string> = {
 };
 
 /** 开工提示：只是一句触发，不复述工序——工序简报由产品在系统层注入，并随工序推进更新。 */
+/** 方案里的工序，按正向流程的先后排列。 */
+function orderedSteps(recipe: NovelWorkflowRecipe) {
+  const order = topologicalOrder(recipe) ?? recipe.nodes.map((node) => node.id);
+  const steps = stepNodes(recipe);
+  return order.map((id) => steps.find((step) => step.id === id)).filter((step): step is (typeof steps)[number] => step !== undefined);
+}
+
 export function buildWorkflowKickoffMessage(recipeName: string, chapterNumber: number): string {
   return `开始执行第 ${chapterNumber} 章的创作工作流「${recipeName}」。当前工序与要求在系统简报里；请先调用 workflow_get_current_step 确认，再按简报逐道推进，每道工序的产物用 workflow_submit_step_output 提交。`;
 }
@@ -359,7 +367,7 @@ export function WorkflowTimelinePanel({
             ) : (
               recipes.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name} ({r.steps.filter((s) => s.enabled).length} 道工序)
+                  {r.name} ({stepNodes(r).filter((s) => s.enabled).length} 道工序){r.status === "draft" ? " · 草稿" : ""}
                 </option>
               ))
             )}
@@ -555,14 +563,14 @@ export function WorkflowTimelinePanel({
           </button>
           {showRecipe ? (
             <ol className="space-y-1 border-t p-3 text-xs" data-testid="workflow-recipe-steps">
-              {selectedRecipe.steps.map((step, index) => (
+              {orderedSteps(selectedRecipe).map((step, index) => (
                 <li key={step.id} className={step.enabled ? "" : "text-muted-foreground line-through"}>
                   {index + 1}. {step.label}
                   {step.requiresApproval ? " · 需要确认" : ""}
+                  {step.outcomes?.length ? ` · 按结果分支：${step.outcomes.join(" / ")}` : ""}
                   {step.tools?.length ? ` · 可用写入工具：${step.tools.join("、")}` : ""}
                 </li>
               ))}
-              {selectedRecipe.requireFinalApproval ? <li className="text-muted-foreground">最后一道工序需要你终审。</li> : null}
             </ol>
           ) : null}
         </section>
