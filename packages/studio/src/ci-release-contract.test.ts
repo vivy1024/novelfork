@@ -23,8 +23,9 @@ describe("CI and release workflow contracts", () => {
     }
 
     // 不在公开 CI 里构建或发布产品；发版门禁留在维护者本机。
-    expect(ci).not.toContain("oven-sh/setup-bun");
+    // （可以装 bun：novel-plugin 的测试要用 bun 子进程复现编译态，但不得调用构建 / 编译。）
     expect(ci).not.toMatch(/pnpm (run )?(build|compile)/);
+    expect(ci).not.toMatch(/bun build|--compile/);
     expect(ci).toContain("发版门禁仍在维护者本机完成");
   });
 

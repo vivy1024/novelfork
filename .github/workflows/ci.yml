@@ -55,6 +55,10 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      # novel-plugin 有测试要用 bun 子进程复现产品编译态（bun 是本仓库的运行时依赖）；这里只用于测试，不构建产品。
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
       # 装整个工作区：novel-plugin 的界面测试会引用 studio 的 UI 组件，react 等依赖由 studio 声明。
       # Runtime 不在 pnpm 工作区内，全量安装也不需要它。
       - name: 安装依赖
