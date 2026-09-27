@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Ban,
@@ -18,7 +18,10 @@ import {
   XCircle,
 } from "lucide-react";
 import type { NovelWorkflowRecipe } from "../../engine/workflows/novel-workflows.js";
-import { stepNodes, topologicalOrder } from "../../engine/workflows/workflow-graph.js";
+import { stepNodes, type WorkflowGraphEdge, type WorkflowGraphNode, type WorkflowNodePosition } from "../../engine/workflows/workflow-graph.js";
+import { blankRecipe, copyRecipe, uniqueRecipeId, type CanvasRunStep } from "./workflow-canvas/workflow-canvas-model";
+import { WorkflowCanvas } from "./workflow-canvas/WorkflowCanvas";
+import { WorkflowRecipeEditor } from "./workflow-canvas/WorkflowRecipeEditor";
 
 export interface WorkflowTimelinePanelProps {
   bookId: string;
@@ -32,7 +35,7 @@ export interface WorkflowTimelinePanelProps {
 // ─── 接口数据形状（与 routes/workflow-runs.ts 的序列化一致） ─────────────────
 
 type RunStatus = "running" | "awaiting_approval" | "blocked" | "done" | "cancelled";
-type StepStatus = "pending" | "running" | "awaiting_approval" | "done" | "skipped" | "failed";
+type StepStatus = "pending" | "running" | "awaiting_approval" | "done" | "skipped" | "bypassed" | "failed";
 
 interface Explanation {
   readonly what: string;
@@ -50,6 +53,8 @@ interface RunStepView {
   readonly agentId?: string;
   readonly requiresApproval: boolean;
   readonly expectedOutput: "scene-spec" | "prose" | "audit" | "other" | null;
+  /** 分支工序本轮提交给出的结果。 */
+  readonly outcome?: string;
   readonly note?: Explanation;
 }
 
@@ -76,6 +81,12 @@ interface CandidateView {
 
 interface RunDetailView {
   readonly run: RunSummaryView & { readonly steps: readonly RunStepView[] };
+  /** 本次运行所用方案的快照结构，画布据此叠加状态。 */
+  readonly graph?: {
+    readonly nodes: readonly WorkflowGraphNode[];
+    readonly edges: readonly WorkflowGraphEdge[];
+    readonly layout?: { readonly positions: Readonly<Record<string, WorkflowNodePosition>> };
+  };
   readonly brief: string | null;
   readonly candidates: readonly CandidateView[];
 }
@@ -92,13 +103,6 @@ const RUN_STATUS_LABEL: Record<RunStatus, string> = {
 };
 
 /** 开工提示：只是一句触发，不复述工序——工序简报由产品在系统层注入，并随工序推进更新。 */
-/** 方案里的工序，按正向流程的先后排列。 */
-function orderedSteps(recipe: NovelWorkflowRecipe) {
-  const order = topologicalOrder(recipe) ?? recipe.nodes.map((node) => node.id);
-  const steps = stepNodes(recipe);
-  return order.map((id) => steps.find((step) => step.id === id)).filter((step): step is (typeof steps)[number] => step !== undefined);
-}
-
 export function buildWorkflowKickoffMessage(recipeName: string, chapterNumber: number): string {
   return `开始执行第 ${chapterNumber} 章的创作工作流「${recipeName}」。当前工序与要求在系统简报里；请先调用 workflow_get_current_step 确认，再按简报逐道推进，每道工序的产物用 workflow_submit_step_output 提交。`;
 }
@@ -139,6 +143,7 @@ function StepIcon({ status }: { status: StepStatus }) {
     case "failed":
       return <XCircle className="size-4 text-destructive" />;
     case "skipped":
+    case "bypassed":
       return <Circle className="size-4 text-muted-foreground/50" />;
     default:
       return <Clock className="size-4 text-muted-foreground/50" />;
@@ -211,6 +216,70 @@ function CandidatePreview({ candidate }: { candidate: CandidateView }) {
   return <div className="whitespace-pre-wrap text-xs">{typeof payload.summary === "string" ? payload.summary : ""}</div>;
 }
 
+/** 待确认工序的卡片：产物预览、批准 / 放行、打回（打回目标由流程图上的打回线决定）。 */
+function ApprovalCard({
+  step,
+  candidate,
+  rejectTarget,
+  rejectNote,
+  onRejectNote,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  step: RunStepView;
+  candidate?: CandidateView;
+  /** 流程图上从这道工序连出的打回线指向的工序；没有时打回本工序重做。 */
+  rejectTarget?: string;
+  rejectNote: string;
+  onRejectNote: (note: string) => void;
+  busy: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const isGate = step.executorKind === "manual-gate";
+  const canReject = !isGate || rejectTarget !== undefined;
+  return (
+    <>
+      <div className="text-xs font-medium">
+        {isGate ? `人工门禁「${step.label}」：确认后放行下一道工序` : `「${step.label}」的产物等你确认`}
+      </div>
+      {candidate ? <CandidatePreview candidate={candidate} /> : null}
+      {canReject ? (
+        <textarea
+          aria-label="打回意见"
+          placeholder={rejectTarget ? `打回后从「${rejectTarget}」重做；写明哪里不行、希望怎么改，意见会原样交给叙述者` : "打回时写明哪里不行、希望怎么改；意见会原样交给叙述者"}
+          value={rejectNote}
+          onChange={(e) => onRejectNote(e.target.value)}
+          className="min-h-16 w-full rounded border bg-background p-2 text-xs"
+        />
+      ) : null}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onApprove}
+          className="flex items-center gap-1 rounded bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          <CheckCircle2 className="size-3.5" />
+          {isGate ? "放行" : "批准"}
+        </button>
+        {canReject ? (
+          <button
+            type="button"
+            disabled={busy || !rejectNote.trim()}
+            onClick={onReject}
+            className="flex items-center gap-1 rounded border px-3 py-1 text-xs hover:bg-muted disabled:opacity-50"
+          >
+            <RotateCcw className="size-3.5" />
+            {rejectTarget ? `打回到「${rejectTarget}」` : "打回重做"}
+          </button>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 // ─── 主组件 ──────────────────────────────────────────────────────────────────
 
 export function WorkflowTimelinePanel({
@@ -228,8 +297,12 @@ export function WorkflowTimelinePanel({
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<RunDetailView | null>(null);
   const [recent, setRecent] = useState<readonly RunSummaryView[]>([]);
-  const [rejectNote, setRejectNote] = useState("");
-  const [showRecipe, setShowRecipe] = useState(false);
+  // 打回意见按工序分开记：并行时可能同时有几道工序等你确认。
+  const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [showRunGraph, setShowRunGraph] = useState(false);
+  const [showEditor, setShowEditor] = useState(true);
+  // 画布上有未保存的修改时锁住方案切换与刷新，免得修改被丢掉。
+  const [editorDirty, setEditorDirty] = useState(false);
   const bookRef = useRef(bookId);
   bookRef.current = bookId;
   const base = `/api/books/${encodeURIComponent(bookId)}`;
@@ -300,6 +373,31 @@ export function WorkflowTimelinePanel({
   const runIsActive = Boolean(activeRunId);
   const chapterNumber = Number(chapterInput);
   const chapterValid = Number.isInteger(chapterNumber) && chapterNumber >= 1;
+  // 只有已发布的方案能运行（发布时已保证结构完整）；第 0 版是还没保存的新方案。
+  const canRunSelected = selectedRecipe?.status === "published" && selectedRecipe.revision > 0;
+
+  // 运行叠加：本次运行所用方案的快照结构 + 各工序状态。
+  const runGraph = detail?.graph;
+  const runSteps: readonly CanvasRunStep[] = useMemo(
+    () => detail?.run.steps.map((step) => ({
+      stepId: step.stepId,
+      status: step.status,
+      attempt: step.attempt,
+      ...(step.outcome ? { outcome: step.outcome } : {}),
+    })) ?? [],
+    [detail],
+  );
+  const runningSteps = detail?.run.steps.filter((step) => step.status === "running") ?? [];
+  /** 需要作者处理的工序：受阻的全部、等待确认的全部——并行时会多于一道。 */
+  const attentionSteps = detail
+    ? detail.run.steps.filter((step) => step.status === (detail.run.status === "blocked" ? "failed" : "awaiting_approval"))
+    : [];
+  const candidateOf = (stepId: string) =>
+    detail ? [...detail.candidates].reverse().find((candidate) => candidate.stepId === stepId && candidate.decision === "pending") : undefined;
+  const rejectTargetOf = (stepId: string) => {
+    const edge = runGraph?.edges.find((candidate) => candidate.kind === "reject" && candidate.source === stepId);
+    return edge ? runGraph?.nodes.find((node) => node.id === edge.target)?.label ?? edge.target : undefined;
+  };
 
   const act = async (fn: () => Promise<RunDetailView>) => {
     setBusy(true);
@@ -307,7 +405,7 @@ export function WorkflowTimelinePanel({
     try {
       const next = await fn();
       setDetail(next);
-      setRejectNote("");
+      setRejectNotes({});
       return next;
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "操作失败");
@@ -335,12 +433,29 @@ export function WorkflowTimelinePanel({
     }
   };
 
+  // ─── 画布：新建的方案先只在本地（第 0 版），保存后才写进作品目录 ─────────────
+
+  const handleSaved = (saved: NovelWorkflowRecipe) => {
+    setRecipes((current) => current.map((recipe) => (recipe.id === saved.id ? saved : recipe)));
+  };
+
+  const handleDeleted = (recipeId: string) => {
+    setRecipes((current) => current.filter((recipe) => recipe.id !== recipeId));
+    setActiveRecipeId("");
+    setEditorDirty(false);
+  };
+
+  const handleCreate = (mode: "blank" | "copy") => {
+    const taken = new Set(recipes.map((recipe) => recipe.id));
+    const created = mode === "copy" && selectedRecipe
+      ? copyRecipe(selectedRecipe, uniqueRecipeId(`${selectedRecipe.id}-draft`, taken), `${selectedRecipe.name}（副本）`)
+      : blankRecipe(uniqueRecipeId("workflow", taken), "新工作流");
+    setRecipes((current) => [...current, created]);
+    setActiveRecipeId(created.id);
+  };
+
   const runPath = detail ? `${base}/workflow-runs/${encodeURIComponent(detail.run.id)}` : "";
   const revision = detail?.run.revision ?? 0;
-  const currentStep = detail?.run.steps.find((step) => step.stepId === detail.run.currentStepId);
-  const pendingCandidate = detail && currentStep
-    ? [...detail.candidates].reverse().find((c) => c.stepId === currentStep.stepId && c.decision === "pending")
-    : undefined;
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto bg-background p-6 text-foreground" data-testid="workflow-run-monitor">
@@ -351,15 +466,16 @@ export function WorkflowTimelinePanel({
             <h2 className="text-base font-semibold">创作工作流 · 执行</h2>
           </div>
           <p className="text-xs text-muted-foreground">
-            按方案逐道工序推进本章。每道工序能用什么工具、必须交什么由产品决定，需要确认的工序会停下来等你。
+            按方案推进本章：工序可以并行、按结果分支、打回上游。每道工序能用什么工具、必须交什么由产品决定，需要确认的工序会停下来等你。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <select
             aria-label="生产方案"
-            value={activeRecipeId}
+            value={selectedRecipe?.id ?? ""}
             onChange={(e) => setActiveRecipeId(e.target.value)}
-            disabled={isLoading || recipes.length === 0 || runIsActive}
+            disabled={isLoading || recipes.length === 0 || runIsActive || editorDirty}
+            title={editorDirty ? "画布上有未保存的修改，先保存或放弃" : undefined}
             className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium outline-none focus:border-primary disabled:opacity-50"
           >
             {recipes.length === 0 ? (
@@ -367,7 +483,7 @@ export function WorkflowTimelinePanel({
             ) : (
               recipes.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name} ({stepNodes(r).filter((s) => s.enabled).length} 道工序){r.status === "draft" ? " · 草稿" : ""}
+                  {r.name} ({stepNodes(r).filter((s) => s.enabled).length} 道工序){r.status === "draft" ? " · 草稿" : ""}{r.revision === 0 ? " · 未保存" : ""}
                 </option>
               ))
             )}
@@ -388,7 +504,7 @@ export function WorkflowTimelinePanel({
           <button
             type="button"
             onClick={() => void load()}
-            disabled={isLoading || !bookId}
+            disabled={isLoading || !bookId || editorDirty}
             title="刷新"
             className="rounded-lg border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
@@ -397,7 +513,8 @@ export function WorkflowTimelinePanel({
           <button
             type="button"
             onClick={() => void handleStart()}
-            disabled={busy || isLoading || !selectedRecipe || !narratorId || !chapterValid || runIsActive}
+            disabled={busy || isLoading || !canRunSelected || !narratorId || !chapterValid || runIsActive}
+            title={selectedRecipe && !canRunSelected ? "草稿不能运行：在下方画布上确认结构并发布后再启动" : undefined}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             <Play className="size-3.5 fill-current" />
@@ -441,35 +558,60 @@ export function WorkflowTimelinePanel({
                 {RUN_STATUS_LABEL[detail.run.status]}
               </span>
             </div>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/cancel`, { expectedRevision: revision }))}
-              className="flex items-center gap-1 rounded border px-2 py-1 text-2xs text-muted-foreground hover:bg-muted disabled:opacity-50"
-            >
-              <Ban className="size-3" />
-              取消运行
-            </button>
+            <div className="flex items-center gap-2">
+              {runGraph ? (
+                <button
+                  type="button"
+                  onClick={() => setShowRunGraph((value) => !value)}
+                  className="flex items-center gap-1 rounded border px-2 py-1 text-2xs text-muted-foreground hover:bg-muted"
+                >
+                  {showRunGraph ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                  流程图
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/cancel`, { expectedRevision: revision }))}
+                className="flex items-center gap-1 rounded border px-2 py-1 text-2xs text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                <Ban className="size-3" />
+                取消运行
+              </button>
+            </div>
           </div>
 
           <ol className="space-y-1.5" data-testid="workflow-run-steps">
             {detail.run.steps.map((step) => (
               <li
                 key={step.stepId}
-                className={`flex items-center gap-2 rounded-md px-2 py-1 text-xs ${step.stepId === detail.run.currentStepId ? "bg-primary/5 font-medium" : ""}`}
+                className={`flex items-center gap-2 rounded-md px-2 py-1 text-xs ${step.status === "running" || step.status === "awaiting_approval" || step.status === "failed" ? "bg-primary/5 font-medium" : ""}`}
               >
                 <StepIcon status={step.status} />
-                <span className="flex-1">{step.ordinal}. {step.label}</span>
+                <span className={`flex-1 ${step.status === "bypassed" ? "text-muted-foreground" : ""}`}>{step.ordinal}. {step.label}</span>
+                {step.outcome ? <span className="rounded bg-primary/10 px-1 text-2xs text-primary">结果：{step.outcome}</span> : null}
+                {step.status === "bypassed" ? <span className="text-2xs text-muted-foreground">分支未走到</span> : null}
+                {step.status === "skipped" ? <span className="text-2xs text-muted-foreground">已跳过</span> : null}
                 {step.requiresApproval ? <ShieldCheck className="size-3.5 text-amber-500" aria-label="需要确认" /> : null}
                 {step.attempt > 1 ? <span className="text-2xs text-muted-foreground">第 {step.attempt} 次</span> : null}
               </li>
             ))}
           </ol>
 
-          {detail.run.status === "running" && currentStep ? (
+          {showRunGraph && runGraph ? (
+            <div className="overflow-hidden rounded-lg border" data-testid="workflow-run-graph">
+              <WorkflowCanvas recipe={runGraph} issues={[]} editable={false} runSteps={runSteps} className="h-[520px] w-full" />
+            </div>
+          ) : null}
+
+          {detail.run.status === "running" && runningSteps.length > 0 ? (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs" data-testid="workflow-running-card">
-              <div>叙述者正在执行「{currentStep.label}」{currentStep.executorKind === "subagent" && currentStep.agentId ? `（委派子代理 ${currentStep.agentId}）` : ""}。</div>
-              {currentStep.note ? <ExplanationBlock note={currentStep.note} tone="warn" /> : null}
+              <div>
+                叙述者正在执行
+                {runningSteps.map((step) => `「${step.label}」${step.executorKind === "subagent" && step.agentId ? `（委派子代理 ${step.agentId}）` : ""}`).join("、")}
+                {runningSteps.length > 1 ? `，${runningSteps.length} 道并行` : ""}。
+              </div>
+              {runningSteps.map((step) => (step.note ? <ExplanationBlock key={step.stepId} note={step.note} tone="warn" /> : null))}
               {onSendToNarrator ? (
                 <button
                   type="button"
@@ -482,96 +624,76 @@ export function WorkflowTimelinePanel({
             </div>
           ) : null}
 
-          {detail.run.status === "awaiting_approval" && currentStep ? (
-            <div className="space-y-2 rounded-md border border-amber-400/60 p-3" data-testid="workflow-approval-card">
-              <div className="text-xs font-medium">
-                {currentStep.executorKind === "manual-gate" ? `人工门禁「${currentStep.label}」：确认后放行下一道工序` : `「${currentStep.label}」的产物等你确认`}
-              </div>
-              {pendingCandidate ? <CandidatePreview candidate={pendingCandidate} /> : null}
-              {currentStep.executorKind !== "manual-gate" ? (
-                <textarea
-                  aria-label="打回意见"
-                  placeholder="打回时写明哪里不行、希望怎么改；意见会原样交给叙述者"
-                  value={rejectNote}
-                  onChange={(e) => setRejectNote(e.target.value)}
-                  className="min-h-16 w-full rounded border bg-background p-2 text-xs"
+          {attentionSteps.map((step) => (
+            <div
+              key={step.stepId}
+              className={`space-y-2 rounded-md border p-3 ${step.status === "failed" ? "border-destructive/40" : "border-amber-400/60"}`}
+              data-testid={step.status === "failed" ? "workflow-blocked-card" : "workflow-approval-card"}
+            >
+              {step.status === "failed" ? (
+                <>
+                  <div className="text-xs font-medium">「{step.label}」受阻</div>
+                  {step.note ? <ExplanationBlock note={step.note} tone="error" /> : null}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/retry`, { expectedRevision: revision, stepId: step.stepId }))}
+                      className="flex items-center gap-1 rounded bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-50"
+                    >
+                      <RotateCcw className="size-3.5" />
+                      重试本工序
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/skip`, { expectedRevision: revision, stepId: step.stepId }))}
+                      className="flex items-center gap-1 rounded border px-3 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                    >
+                      <SkipForward className="size-3.5" />
+                      跳过
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <ApprovalCard
+                  step={step}
+                  candidate={candidateOf(step.stepId)}
+                  rejectTarget={rejectTargetOf(step.stepId)}
+                  rejectNote={rejectNotes[step.stepId] ?? ""}
+                  onRejectNote={(note) => setRejectNotes((current) => ({ ...current, [step.stepId]: note }))}
+                  busy={busy}
+                  onApprove={() => void act(() => postJson<RunDetailView>(`${runPath}/steps/${encodeURIComponent(step.stepId)}/approve`, { expectedRevision: revision }))}
+                  onReject={() => void act(() => postJson<RunDetailView>(`${runPath}/steps/${encodeURIComponent(step.stepId)}/reject`, { expectedRevision: revision, note: rejectNotes[step.stepId] ?? "" }))}
                 />
-              ) : null}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/steps/${encodeURIComponent(currentStep.stepId)}/approve`, { expectedRevision: revision }))}
-                  className="flex items-center gap-1 rounded bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                >
-                  <CheckCircle2 className="size-3.5" />
-                  {currentStep.executorKind === "manual-gate" ? "放行" : "批准"}
-                </button>
-                {currentStep.executorKind !== "manual-gate" ? (
-                  <button
-                    type="button"
-                    disabled={busy || !rejectNote.trim()}
-                    onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/steps/${encodeURIComponent(currentStep.stepId)}/reject`, { expectedRevision: revision, note: rejectNote }))}
-                    className="flex items-center gap-1 rounded border px-3 py-1 text-xs hover:bg-muted disabled:opacity-50"
-                  >
-                    <RotateCcw className="size-3.5" />
-                    打回
-                  </button>
-                ) : null}
-              </div>
+              )}
             </div>
-          ) : null}
-
-          {detail.run.status === "blocked" && currentStep ? (
-            <div className="space-y-2 rounded-md border border-destructive/40 p-3" data-testid="workflow-blocked-card">
-              <div className="text-xs font-medium">「{currentStep.label}」受阻</div>
-              {currentStep.note ? <ExplanationBlock note={currentStep.note} tone="error" /> : null}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/retry`, { expectedRevision: revision }))}
-                  className="flex items-center gap-1 rounded bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-50"
-                >
-                  <RotateCcw className="size-3.5" />
-                  重试本工序
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/skip`, { expectedRevision: revision }))}
-                  className="flex items-center gap-1 rounded border px-3 py-1 text-xs hover:bg-muted disabled:opacity-50"
-                >
-                  <SkipForward className="size-3.5" />
-                  跳过
-                </button>
-              </div>
-            </div>
-          ) : null}
+          ))}
         </section>
       ) : null}
 
       {selectedRecipe && !runIsActive ? (
-        <section className="rounded-xl border bg-card">
+        <section className="space-y-2">
           <button
             type="button"
-            onClick={() => setShowRecipe((value) => !value)}
-            className="flex w-full items-center justify-between p-3 text-xs font-semibold text-muted-foreground"
+            onClick={() => setShowEditor((value) => !value)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground"
           >
-            方案工序一览（{selectedRecipe.name}）
-            {showRecipe ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+            {showEditor ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+            工作流画布
+            <span className="font-normal">· 编辑方案结构；叙述者起草的方案也在这里等你确认发布</span>
           </button>
-          {showRecipe ? (
-            <ol className="space-y-1 border-t p-3 text-xs" data-testid="workflow-recipe-steps">
-              {orderedSteps(selectedRecipe).map((step, index) => (
-                <li key={step.id} className={step.enabled ? "" : "text-muted-foreground line-through"}>
-                  {index + 1}. {step.label}
-                  {step.requiresApproval ? " · 需要确认" : ""}
-                  {step.outcomes?.length ? ` · 按结果分支：${step.outcomes.join(" / ")}` : ""}
-                  {step.tools?.length ? ` · 可用写入工具：${step.tools.join("、")}` : ""}
-                </li>
-              ))}
-            </ol>
+          {showEditor ? (
+            <WorkflowRecipeEditor
+              key={selectedRecipe.id}
+              recipe={selectedRecipe}
+              apiBase={base}
+              onSaved={handleSaved}
+              onDeleted={handleDeleted}
+              onCreate={handleCreate}
+              onReload={() => void load()}
+              onDirtyChange={setEditorDirty}
+            />
           ) : null}
         </section>
       ) : null}

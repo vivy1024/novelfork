@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { WorkflowTimelinePanel } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 const recipes = [
@@ -36,9 +36,10 @@ function step(stepId: string, ordinal: number, label: string, status: string, pa
   };
 }
 
-function detail(status: string, currentStepId: string, steps: unknown[], candidates: unknown[] = [], revision = 3) {
+function detail(status: string, currentStepId: string, steps: unknown[], candidates: unknown[] = [], revision = 3, graph?: unknown) {
   return {
     run: { id: "wfrun:1", chapterNumber: 3, recipeName: "后端反转悬疑流", status, currentStepId, revision, updatedAt: 0, steps },
+    ...(graph ? { graph } : {}),
     brief: "简报",
     candidates,
     events: [],
@@ -64,6 +65,18 @@ function mockFetch(routes: Record<string, Handler>) {
   vi.stubGlobal("fetch", fn);
   return calls;
 }
+
+beforeEach(() => {
+  // 画布用的 React Flow 依赖这两个浏览器 API，jsdom 没有实现。
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+  vi.stubGlobal("DOMMatrixReadOnly", class {
+    m22 = 1;
+  });
+});
 
 afterEach(() => {
   cleanup();
@@ -162,7 +175,7 @@ describe("WorkflowTimelinePanel 执行监视器（Studio DOM 集成）", () => {
     expect(screen.getByTestId("workflow-blocked-card").textContent).toContain("当前聚焦为空");
     fireEvent.click(screen.getByRole("button", { name: /重试本工序/ }));
     await waitFor(() => expect(screen.getByTestId("workflow-running-card")).toBeTruthy());
-    expect(calls.find((call) => call.url.includes("/retry"))?.body).toEqual({ expectedRevision: 3 });
+    expect(calls.find((call) => call.url.includes("/retry"))?.body).toEqual({ expectedRevision: 3, stepId: "step-1" });
   });
 
   it("操作失败（如版本冲突）时显示服务端说明", async () => {
@@ -182,6 +195,84 @@ describe("WorkflowTimelinePanel 执行监视器（Studio DOM 集成）", () => {
     render(<WorkflowTimelinePanel bookId="book-fail" narratorId="narrator-1" />);
     await waitFor(() => expect(screen.getByText(/加载工作流配置失败: HTTP 500/)).toBeTruthy());
     expect(screen.queryByText("拉取悬疑大纲")).toBeNull();
+    expect((screen.getByRole("button", { name: /启动工作流/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("并行：两道工序同时等你确认时各有一张卡，各自批准", async () => {
+    const awaiting = detail("awaiting_approval", "plan", [
+      step("plan", 1, "拟蓝图", "awaiting_approval", { requiresApproval: true }),
+      step("research", 2, "查资料", "awaiting_approval", { requiresApproval: true }),
+    ]);
+    const calls = mockFetch({
+      "/workflow-recipes": () => ({ recipes }),
+      "/steps/research/approve": () => detail("awaiting_approval", "plan", [
+        step("plan", 1, "拟蓝图", "awaiting_approval", { requiresApproval: true }),
+        step("research", 2, "查资料", "done", { requiresApproval: true }),
+      ], [], 4),
+      "/workflow-runs?": () => ({ active: awaiting, recent: [] }),
+    });
+    render(<WorkflowTimelinePanel bookId="book-test" narratorId="narrator-1" />);
+    await waitFor(() => expect(screen.getAllByTestId("workflow-approval-card")).toHaveLength(2));
+    const researchCard = screen.getAllByTestId("workflow-approval-card").find((card) => card.textContent?.includes("查资料"))!;
+    fireEvent.click(researchCard.querySelector("button") as HTMLButtonElement);
+    await waitFor(() => expect(screen.getAllByTestId("workflow-approval-card")).toHaveLength(1));
+    expect(calls.some((call) => call.url.includes("/steps/research/approve"))).toBe(true);
+    expect(screen.getByTestId("workflow-approval-card").textContent).toContain("拟蓝图");
+  });
+
+  it("流程图上有打回线时，打回按钮写明回到哪道工序；分支结果与未走到的工序如实显示", async () => {
+    const graph = {
+      nodes: [
+        { id: "start", type: "start", label: "开始" },
+        { id: "draft", type: "step", kind: "writer-generate", label: "起草", enabled: true },
+        { id: "audit", type: "step", kind: "audit", label: "审查", enabled: true, requiresApproval: true, outcomes: ["通过", "不通过"] },
+        { id: "fix", type: "step", kind: "writer-generate", label: "返修", enabled: true },
+        { id: "end", type: "end", label: "完成" },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "draft", kind: "next" },
+        { id: "e2", source: "draft", target: "audit", kind: "next" },
+        { id: "e3", source: "audit", target: "end", kind: "next", outcome: "通过" },
+        { id: "e4", source: "audit", target: "fix", kind: "next", outcome: "不通过" },
+        { id: "e5", source: "fix", target: "end", kind: "next" },
+        { id: "r1", source: "audit", target: "draft", kind: "reject" },
+      ],
+    };
+    const awaiting = detail("awaiting_approval", "audit", [
+      step("draft", 1, "起草", "done"),
+      step("audit", 2, "审查", "awaiting_approval", { requiresApproval: true, outcome: "通过" }),
+      step("fix", 3, "返修", "bypassed"),
+    ], [], 5, graph);
+    mockFetch({ "/workflow-recipes": () => ({ recipes }), "/workflow-runs?": () => ({ active: awaiting, recent: [] }) });
+    render(<WorkflowTimelinePanel bookId="book-test" narratorId="narrator-1" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "打回到「起草」" })).toBeTruthy());
+    const steps = screen.getByTestId("workflow-run-steps").textContent ?? "";
+    expect(steps).toContain("结果：通过");
+    expect(steps).toContain("分支未走到");
+
+    fireEvent.click(screen.getByRole("button", { name: /流程图/ }));
+    expect(screen.getByTestId("workflow-run-graph")).toBeTruthy();
+    expect(screen.getByTestId("workflow-node-run-audit").textContent).toContain("结果：通过");
+    expect(screen.getByTestId("workflow-node-run-fix").textContent).toContain("未走到");
+  });
+
+  it("草稿不能启动；画布上可以看到它并发布", async () => {
+    const draft = { ...recipes[0]!, id: "narrator-draft", name: "叙述者草稿", status: "draft", createdBy: "narrator" };
+    mockFetch({ "/workflow-recipes": () => ({ recipes: [draft] }), "/workflow-runs?": () => ({ active: null, recent: [] }) });
+    render(<WorkflowTimelinePanel bookId="book-test" narratorId="narrator-1" />);
+    await waitFor(() => expect(screen.getByTestId("workflow-recipe-editor")).toBeTruthy());
+    expect((screen.getByRole("button", { name: /启动工作流/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("叙述者起草")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "发布" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("新建空白方案：先出现在方案列表里标为未保存，有未保存修改时锁住方案切换", async () => {
+    mockFetch({ "/workflow-recipes": () => ({ recipes }), "/workflow-runs?": () => ({ active: null, recent: [] }) });
+    render(<WorkflowTimelinePanel bookId="book-test" narratorId="narrator-1" />);
+    await waitFor(() => expect(screen.getByTestId("workflow-recipe-editor")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /新建空白/ }));
+    await waitFor(() => expect(screen.getByRole("option", { name: "新工作流 (0 道工序) · 草稿 · 未保存" })).toBeTruthy());
+    expect((screen.getByLabelText("生产方案") as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: /启动工作流/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 

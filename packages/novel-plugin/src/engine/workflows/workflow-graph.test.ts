@@ -7,7 +7,9 @@ import {
   forwardDescendants,
   layoutWorkflowGraph,
   linearRecipeToGraph,
-  LAYOUT_COLUMN_GAP,
+  LAYOUT_LANE_GAP,
+  LAYOUT_RANK_GAP,
+  WORKFLOW_NODE_WIDTH,
   topologicalOrder,
   type LegacyWorkflowRecipe,
   type WorkflowGraphEdge,
@@ -224,7 +226,7 @@ describe("applyWorkflowOps", () => {
 });
 
 describe("layoutWorkflowGraph 与图查询", () => {
-  it("按最长路径分列；已有位置的节点不动", () => {
+  it("自上而下按最长路径分层，并行节点同层左右排开、中心对齐；已有位置的节点不动", () => {
     const r: WorkflowGraphRecipe = {
       ...recipe([start, step("a"), step("b"), step("c"), { id: "join", type: "join", label: "汇合" }, end], [
         { source: "start", target: "a" },
@@ -237,11 +239,32 @@ describe("layoutWorkflowGraph 与图查询", () => {
       layout: { positions: { c: { x: 999, y: 999 } } },
     };
     const positions = layoutWorkflowGraph(r);
-    expect(positions.start!.x).toBe(0);
-    expect(positions.a!.x).toBe(LAYOUT_COLUMN_GAP);
-    expect(positions.b!.x).toBe(2 * LAYOUT_COLUMN_GAP);
+    const center = (id: string, type: keyof typeof WORKFLOW_NODE_WIDTH) => positions[id]!.x + WORKFLOW_NODE_WIDTH[type] / 2;
+    expect(positions.start!.y).toBe(0);
+    expect(positions.a!.y).toBe(LAYOUT_RANK_GAP);
+    expect(positions.b!.y).toBe(2 * LAYOUT_RANK_GAP);
     expect(positions.c).toEqual({ x: 999, y: 999 });
-    expect(positions.end!.x).toBe(4 * LAYOUT_COLUMN_GAP);
+    expect(positions.end!.y).toBe(4 * LAYOUT_RANK_GAP);
+    // 单独一层的节点落在两条并行分支的正中；起点（窄）与工序（宽）中心对齐。
+    expect(center("start", "start")).toBe(center("a", "step"));
+    expect(center("join", "join")).toBe(LAYOUT_LANE_GAP / 2);
     expect([...forwardDescendants(r, "a")].sort()).toEqual(["b", "c", "end", "join"]);
+  });
+
+  it("跨层的长连线在中间层占一条空道：被越过的工序让到旁边，不压在连线上", () => {
+    // 审查「通过」直达汇合，「不通过」经返修再到汇合：返修那一层要给「通过」线留道。
+    const r = recipe([start, step("audit"), step("fix"), { id: "join", type: "join", label: "汇合" }, end], [
+      { source: "start", target: "audit" },
+      { source: "audit", target: "join" },
+      { source: "audit", target: "fix" },
+      { source: "fix", target: "join" },
+      { source: "join", target: "end" },
+    ]);
+    const positions = layoutWorkflowGraph(r);
+    const center = (id: string, type: keyof typeof WORKFLOW_NODE_WIDTH) => positions[id]!.x + WORKFLOW_NODE_WIDTH[type] / 2;
+    const line = center("audit", "step");
+    expect(center("join", "join")).toBe(line);
+    // 返修卡片（宽 208）整个落在连线一侧
+    expect(Math.abs(center("fix", "step") - line)).toBeGreaterThanOrEqual(WORKFLOW_NODE_WIDTH.step / 2);
   });
 });

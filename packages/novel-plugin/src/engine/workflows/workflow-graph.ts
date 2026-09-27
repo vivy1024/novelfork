@@ -616,31 +616,51 @@ function pickStepFields(raw: Record<string, unknown>): PickResult {
 
 // ─── 自动排版 ────────────────────────────────────────────────────────────────
 
-export const LAYOUT_COLUMN_GAP = 280;
-export const LAYOUT_ROW_GAP = 150;
+/** 相邻两层（先后工序）之间的纵向距离。 */
+export const LAYOUT_RANK_GAP = 110;
+/** 同一层并行节点之间的横向距离（中心到中心）。 */
+export const LAYOUT_LANE_GAP = 260;
+/** 画布上各类节点的标称宽度：排版按它把节点中心对齐到同一条竖线上。 */
+export const WORKFLOW_NODE_WIDTH: Readonly<Record<WorkflowNodeType, number>> = { step: 208, start: 112, end: 112, join: 112 };
 
 /**
- * 分层排版：按「下一步」连线的最长路径分列，列内按拓扑序排行并垂直居中。
+ * 自上而下分层排版：按「下一步」连线的最长路径分层，层内从左到右排开并水平居中。
+ * 纵向适合工作台中间栏这种窄而高的区域，并行分支在同一层左右并排。
+ * 跨越多层的连线（如分支的默认线越过返修工序直达汇合）在中间各层占一条空道，
+ * 被越过的节点让到旁边，连线不会从卡片背后穿过。
  * 已有位置的节点保持不动，只给缺位置的节点补位——作者手动摆放优先于自动排版。
- * 有环时退化为按数组顺序排成一行。
+ * 有环时退化为按数组顺序排成一列。
  */
 export function layoutWorkflowGraph(recipe: Pick<WorkflowGraphRecipe, "nodes" | "edges" | "layout">): Record<string, WorkflowNodePosition> {
   const existing = recipe.layout?.positions ?? {};
   const order = topologicalOrder(recipe) ?? recipe.nodes.map((node) => node.id);
-  const column = new Map<string, number>();
+  const rank = new Map<string, number>();
   const edges = nextEdges(recipe);
   for (const id of order) {
-    const preds = edges.filter((edge) => edge.target === id).map((edge) => column.get(edge.source) ?? 0);
-    column.set(id, preds.length > 0 ? Math.max(...preds) + 1 : 0);
+    const preds = edges.filter((edge) => edge.target === id).map((edge) => rank.get(edge.source) ?? 0);
+    rank.set(id, preds.length > 0 ? Math.max(...preds) + 1 : 0);
   }
-  const byColumn = new Map<number, string[]>();
-  for (const id of order) byColumn.set(column.get(id)!, [...(byColumn.get(column.get(id)!) ?? []), id]);
-  const tallest = Math.max(1, ...[...byColumn.values()].map((ids) => ids.length));
+  // 每层的占位：真实节点按拓扑序，长连线的空道排在其起点之后。
+  const orderIndex = new Map(order.map((id, index) => [id, index]));
+  const slots = new Map<number, Array<{ readonly id: string | null; readonly key: number }>>();
+  const place = (level: number, id: string | null, key: number) => slots.set(level, [...(slots.get(level) ?? []), { id, key }]);
+  for (const id of order) place(rank.get(id)!, id, orderIndex.get(id)!);
+  for (const edge of edges) {
+    const from = rank.get(edge.source);
+    const to = rank.get(edge.target);
+    if (from === undefined || to === undefined) continue;
+    for (let level = from + 1; level < to; level++) place(level, null, orderIndex.get(edge.source)! + 0.5);
+  }
+  const widest = Math.max(1, ...[...slots.values()].map((items) => items.length));
+  const typeOf = new Map(recipe.nodes.map((node) => [node.id, node.type]));
   const positions: Record<string, WorkflowNodePosition> = {};
-  for (const [col, ids] of byColumn) {
-    const offset = ((tallest - ids.length) * LAYOUT_ROW_GAP) / 2;
-    ids.forEach((id, row) => {
-      positions[id] = existing[id] ?? { x: col * LAYOUT_COLUMN_GAP, y: offset + row * LAYOUT_ROW_GAP };
+  for (const [level, items] of slots) {
+    const sorted = [...items].sort((a, b) => a.key - b.key);
+    const offset = ((widest - sorted.length) * LAYOUT_LANE_GAP) / 2;
+    sorted.forEach((item, lane) => {
+      if (item.id === null) return;
+      const width = WORKFLOW_NODE_WIDTH[typeOf.get(item.id) ?? "step"];
+      positions[item.id] = existing[item.id] ?? { x: offset + lane * LAYOUT_LANE_GAP - width / 2, y: level * LAYOUT_RANK_GAP };
     });
   }
   return positions;

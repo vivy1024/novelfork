@@ -167,7 +167,7 @@ export async function executeWorkflowRecipeTool(
     if (input.copyFrom !== undefined && !source) {
       return fail("recipe-not-found", `找不到要复制的方案「${String(input.copyFrom)}」。先调用 workflow_list_recipes 查看可用方案。`);
     }
-    const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : source ? `${source.name}（草稿）` : "";
+    const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : source ? `${source.name}（副本）` : "";
     if (!name) return fail("name-required", "新建方案需要 name（或用 copyFrom 基于已有方案复制）。");
     const taken = new Set(recipes.map((recipe) => recipe.id));
     const requestedId = typeof input.recipeId === "string" && input.recipeId.trim() ? input.recipeId.trim() : "";

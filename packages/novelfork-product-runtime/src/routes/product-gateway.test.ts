@@ -286,8 +286,15 @@ describe("NovelFork trusted narrator binding gateway", () => {
 
 		const started = await post("", { recipeId: "fanqie-xuanhuan-serial", chapterNumber: 1, narratorId: bookNarratorId });
 		expect(started.status).toBe(201);
-		const detail = await started.json() as { run: { id: string; status: string; revision: number; currentStepId: string }; brief: string };
+		const detail = await started.json() as {
+			run: { id: string; status: string; revision: number; currentStepId: string };
+			brief: string;
+			graph: { nodes: Array<{ id: string }>; edges: unknown[] };
+		};
 		expect(detail.run).toMatchObject({ status: "running", revision: 0, currentStepId: "step-context" });
+		// 运行详情带上所用方案的快照结构，画布据此叠加各工序状态。
+		expect(detail.graph.nodes.map((node) => node.id)).toEqual(expect.arrayContaining(["start", "step-context", "end"]));
+		expect(detail.graph.edges.length).toBeGreaterThan(0);
 		expect(detail.brief).toContain("当前工序（共 5 道）");
 		const runPath = `/${encodeURIComponent(detail.run.id)}`;
 

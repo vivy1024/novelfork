@@ -72,6 +72,12 @@ export function serializeWorkflowRunDetail(detail: WorkflowRunDetail) {
         };
       }),
     },
+    // 运行所用方案的快照结构：画布据此叠加各工序状态（方案之后再改也不影响这次运行）。
+    graph: {
+      nodes: run.recipe.nodes,
+      edges: run.recipe.edges,
+      ...(run.recipe.layout ? { layout: run.recipe.layout } : {}),
+    },
     brief: detail.brief,
     candidates: detail.candidates,
     events: detail.events,
@@ -212,9 +218,12 @@ export function createWorkflowRunsRouter(options: CreateWorkflowRunsRouterOption
     app.post(`/api/books/:bookId/workflow-runs/:runId/${action}`, async (c) => {
       const run = runOfBook(c);
       if (!run) return notFound(c);
-      const expectedRevision = expectedRevisionOf(await readJson(c));
+      const body = await readJson(c);
+      const expectedRevision = expectedRevisionOf(body);
       if (expectedRevision === null) return missingRevision(c);
-      return respond(c, handler({ storage: storage(), runId: run.id, expectedRevision }));
+      // 并行时有多道工序可能同时受阻：重试 / 跳过要指明是哪一道。
+      const stepId = typeof body.stepId === "string" && body.stepId.trim() ? body.stepId.trim() : undefined;
+      return respond(c, handler({ storage: storage(), runId: run.id, expectedRevision, ...(stepId ? { stepId } : {}) }));
     });
   }
 

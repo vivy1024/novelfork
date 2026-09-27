@@ -38,3 +38,14 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     disconnect(): void {}
   } as unknown as typeof globalThis.ResizeObserver;
 }
+
+// React Flow 读取视口变换时用 DOMMatrixReadOnly 解析 CSS transform，jsdom 未实现。
+if (typeof globalThis.DOMMatrixReadOnly === "undefined") {
+  globalThis.DOMMatrixReadOnly = class DOMMatrixReadOnly {
+    readonly m22: number;
+    constructor(transform?: string) {
+      const scale = typeof transform === "string" ? /scale\(([\d.]+)\)/.exec(transform)?.[1] : undefined;
+      this.m22 = scale !== undefined ? Number(scale) : 1;
+    }
+  } as unknown as typeof globalThis.DOMMatrixReadOnly;
+}
