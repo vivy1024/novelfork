@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildCarrierTree, buildCausalTree } from "../engine/narrative-taxonomy/scene-trees.js";
+import { buildCausalGraph } from "../engine/narrative-taxonomy/causal-graph.js";
+import { buildCarrierTree } from "../engine/narrative-taxonomy/scene-trees.js";
 import { createScene, createStoryline, mountSceneToStoryline } from "../engine/narrative-memory/scene-store.js";
 import { createNarrativeStructureRouter } from "./narrative-structure.js";
 
@@ -189,7 +190,7 @@ describe("GET /api/books/:bookId/narrative-structure", () => {
       expect(body.entities.length).toBe(1);
       expect(body.entities[0].canonicalName).toBe("萧炎");
 
-      // 验证单次请求返回的数据可直接驱动承载树与因果树装配
+      // 验证单次请求返回的数据可直接驱动承载树与因果图装配（场景只出现一次，住在主线泳道）
       const carrier = buildCarrierTree({
         volumes: body.volumes,
         chapters: body.chapters,
@@ -198,13 +199,15 @@ describe("GET /api/books/:bookId/narrative-structure", () => {
       expect(carrier.root.children.length).toBeGreaterThan(0);
       expect(carrier.root.children[0].label).toContain("第一卷：青云之变");
 
-      const causal = buildCausalTree({
+      const causal = buildCausalGraph({
         storylines: body.storylines,
         scenes: body.scenes,
         mounts: body.mounts,
+        foreshadows: body.foreshadows,
+        currentChapter: body.currentChapter,
       });
-      expect(causal.root.children.length).toBeGreaterThan(0);
-      expect(causal.root.children.some((t) => t.label.includes("主线：复仇"))).toBe(true);
+      expect(causal.lanes.some((lane) => lane.label.includes("主线：复仇"))).toBe(true);
+      expect(causal.scenes.every((node) => node.laneId !== "unmounted")).toBe(true);
     } finally {
       storage.close();
     }

@@ -1,15 +1,16 @@
 /**
- * 两棵正交叙事树的行为契约。
+ * 承载树与因果图的行为契约。
  *
  * 除了「树长对了」，这里更在意两件产品层面的事：
- *   · 正交性：同一个场景同时出现在两棵树上，且在因果树里可以出现在多条线下；
+ *   · 正交性：同一个场景同时出现在承载树与因果图上，是同一个身份（因果图本身的行为见 causal-graph.test.ts）；
  *   · 不静默丢数据：归不进卷的章、挂不上线的场景都要看得见，并写明原因。
  * 第二条尤其重要——作者看不见的缺口最伤信任，而「树上没有」和
  * 「本来就没有」在界面上长得一模一样。
  */
 import { describe, expect, it } from "vitest";
 
-import { buildCarrierTree, buildCausalTree, type SceneTreeInput } from "./scene-trees";
+import { buildCausalGraph } from "./causal-graph";
+import { buildCarrierTree, type SceneTreeInput } from "./scene-trees";
 
 function scene(id: string, chapterNumber: number, ordinal: number, extra: Partial<SceneTreeInput> = {}): SceneTreeInput {
   return { id, chapterNumber, ordinal, ...extra };
@@ -93,116 +94,33 @@ describe("承载树 卷 → 章 → 场景", () => {
   });
 });
 
-describe("因果树 剧情线 → 场景", () => {
-  const scenes = [
-    scene("s-early", 8, 1, { title: "初遇" }),
-    scene("s-late", 30, 1, { title: "决裂" }),
-  ];
-
-  it("场景按章号排，副标题直接回答「这条线上次推进是哪章」", () => {
-    const forest = buildCausalTree({
-      storylines: [{ id: "main", name: "夺回师门", kind: "main" }],
-      scenes,
-      mounts: [
-        { sceneId: "s-late", storylineId: "main" },
-        { sceneId: "s-early", storylineId: "main" },
-      ],
-    });
-
-    const line = forest.root.children[0]!;
-    expect(childLabels(line)).toEqual(["初遇", "决裂"]);
-    expect(line.subtitle).toBe("主线 · 2 场 · 最近推进第 30 章");
-    expect(line.defaultExpanded).toBe(true);
-  });
-
-  it("同一场景可挂在多条线下 —— 这是正交性，不是重复", () => {
-    const forest = buildCausalTree({
-      storylines: [
-        { id: "main", name: "主线", kind: "main" },
-        { id: "romance", name: "感情线", kind: "romance" },
-      ],
-      scenes: [scenes[0]!],
-      mounts: [
-        { sceneId: "s-early", storylineId: "main", role: "primary" },
-        { sceneId: "s-early", storylineId: "romance", role: "supporting" },
-      ],
-    });
-
-    expect(childLabels(forest.root.children[0]!)).toEqual(["初遇"]);
-    expect(childLabels(forest.root.children[1]!)).toEqual(["初遇"]);
-  });
-
-  it("primaryOnly 时只看主挂载", () => {
-    const forest = buildCausalTree({
-      storylines: [{ id: "romance", name: "感情线", kind: "romance" }],
-      scenes: [scenes[0]!],
-      mounts: [{ sceneId: "s-early", storylineId: "romance", role: "supporting" }],
-      primaryOnly: true,
-    });
-    expect(forest.root.children[0]!.children).toEqual([]);
-    expect(forest.root.children[0]!.subtitle).toContain("还没有场景挂上来");
-  });
-
-  it("没挂任何线的场景进「未挂线」组，不被丢掉", () => {
-    const forest = buildCausalTree({
-      storylines: [{ id: "main", name: "主线", kind: "main" }],
-      scenes,
-      mounts: [{ sceneId: "s-early", storylineId: "main" }],
-    });
-
-    const unmounted = forest.root.children.find((child) => child.id === "storyline:unmounted");
-    expect(unmounted?.count).toBe(1);
-    expect(childLabels(unmounted!)).toEqual(["决裂"]);
-    expect(unmounted?.subtitle).toContain("还没有归到任何剧情线");
-  });
-
-  it("有场景却没有剧情线时，空原因说清下一步该做什么", () => {
-    const forest = buildCausalTree({ scenes });
-    expect(forest.emptyReason).toContain("还没有剧情线");
-    expect(forest.emptyReason).toContain("哪条线在推进");
-  });
-
-  it("挂载指向不存在的场景时安静跳过，不产出悬空节点", () => {
-    const forest = buildCausalTree({
-      storylines: [{ id: "main", name: "主线", kind: "main" }],
-      scenes: [scenes[0]!],
-      mounts: [
-        { sceneId: "s-early", storylineId: "main" },
-        { sceneId: "s-已删除", storylineId: "main" },
-      ],
-    });
-    expect(forest.root.children[0]!.count).toBe(1);
-  });
-});
-
 describe("两棵树的正交性", () => {
-  it("同一个场景同时出现在承载树与因果树上", () => {
+  it("同一个场景同时出现在承载树与因果图上", () => {
     const shared = scene("s1", 12, 1, { title: "药园夜谈" });
 
     const carrier = buildCarrierTree({ chapters: [{ number: 12 }], scenes: [shared] });
-    const causal = buildCausalTree({
+    const causal = buildCausalGraph({
       storylines: [{ id: "main", name: "主线", kind: "main" }],
       scenes: [shared],
       mounts: [{ sceneId: "s1", storylineId: "main" }],
     });
 
     const inCarrier = carrier.root.children[0]!.children[0]!.children[0]!;
-    const inCausal = causal.root.children[0]!.children[0]!;
-    // 同一个身份，挂在两棵不同的树下
-    expect(inCarrier.id).toBe(inCausal.id);
+    // 同一个身份：承载树上是第 12 章下的节点，因果图上住在主线泳道
     expect(inCarrier.id).toBe("scene:s1");
+    expect(causal.scenes.map((node) => [node.scene.id, node.laneId])).toEqual([["s1", "main"]]);
   });
 
-  it("待审状态在两棵树上都带出来，作者能分清哪些是机器猜的", () => {
+  it("待审状态在承载树与因果图上都带出来，作者能分清哪些是机器猜的", () => {
     const pending = scene("s1", 1, 1, { title: "机器拆的", status: "needs-review" });
     const carrier = buildCarrierTree({ chapters: [{ number: 1 }], scenes: [pending] });
-    const causal = buildCausalTree({
+    const causal = buildCausalGraph({
       storylines: [{ id: "main", name: "主线" }],
       scenes: [pending],
       mounts: [{ sceneId: "s1", storylineId: "main" }],
     });
 
     expect(carrier.root.children[0]!.children[0]!.children[0]!.status).toBe("needs-review");
-    expect(causal.root.children[0]!.children[0]!.status).toBe("needs-review");
+    expect(causal.scenes[0]!.scene.status).toBe("needs-review");
   });
 });

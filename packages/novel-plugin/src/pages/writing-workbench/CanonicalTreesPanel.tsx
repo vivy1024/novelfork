@@ -25,9 +25,10 @@ import {
   type TimelineEventInput,
   type VolumeTreeInput,
 } from "../../engine/narrative-taxonomy/canonical-trees";
-import { buildCarrierTree, buildCausalTree } from "../../engine/narrative-taxonomy/scene-trees";
+import { buildCarrierTree } from "../../engine/narrative-taxonomy/scene-trees";
 import type { TreeEntryInput } from "../../engine/narrative-taxonomy/story-tree";
 import type { NarrativeStructurePayload } from "../../engine/narrative-taxonomy/narrative-structure";
+import { CausalCanvas } from "./causal-canvas/CausalCanvas";
 import { TidyTreeCanvas } from "./TidyTreeCanvas";
 
 export interface CanonicalTreesPanelProps {
@@ -70,7 +71,13 @@ interface GraphPayload {
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; trees: CanonicalTrees; degraded: boolean };
+  | {
+      status: "ready";
+      trees: CanonicalTrees;
+      degraded: boolean;
+      /** 叙事结构快照：因果树页签用它画因果画布（剧情线 × 场景是图，不是树）。 */
+      structure?: NarrativeStructurePayload;
+    };
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -207,20 +214,6 @@ export function CanonicalTreesPanel({
             function: s.function,
             status: s.status,
           }));
-          const causal = buildCausalTree({
-            storylines: struct.storylines.map((l) => ({
-              id: l.id,
-              title: l.name,
-              kind: l.kind,
-              status: l.status,
-            })),
-            scenes,
-            mounts: struct.mounts.map((m) => ({
-              sceneId: m.sceneId,
-              storylineId: m.storylineId,
-              role: m.role,
-            })),
-          });
           const trees = {
             ...base,
             ...(scenes.length > 0
@@ -235,9 +228,8 @@ export function CanonicalTreesPanel({
                   }),
                 }
               : {}),
-            causal,
           };
-          setState({ status: "ready", trees, degraded: false });
+          setState({ status: "ready", trees, degraded: false, structure: struct });
           return;
         }
       } catch {
@@ -303,14 +295,19 @@ export function CanonicalTreesPanel({
       }
 
       if (generation !== generationRef.current) return;
+      const fallbackTrees = buildCanonicalTrees({
+        entries,
+        cooccurrence,
+        events,
+        volumes: readVolumes(entries),
+      });
       setState({
         status: "ready",
-        trees: buildCanonicalTrees({
-          entries,
-          cooccurrence,
-          events,
-          volumes: readVolumes(entries),
-        }),
+        trees: {
+          ...fallbackTrees,
+          // 没有快照就没有场景与剧情线，别把「读取失败」说成「还没有剧情线」。
+          causal: { ...fallbackTrees.causal, emptyReason: "叙事结构快照没读到，因果画布暂时画不出来；点刷新重试。" },
+        },
         degraded: graphFailed,
       });
     })();
@@ -382,7 +379,8 @@ export function CanonicalTreesPanel({
 
   if (!forest) return null;
 
-  const emptyPrompt = forest.emptyReason
+  const causalStructure = kind === "causal" && state.structure ? state.structure : null;
+  const emptyPrompt = !causalStructure && forest.emptyReason
     ? `正图「${forest.root.label}」还是空的。${forest.emptyReason}请基于已有正文补齐对应经纬条目，并保持 needs-review 待我确认。`
     : undefined;
 
@@ -425,7 +423,7 @@ export function CanonicalTreesPanel({
           })}
         </nav>
         ) : null}
-        <span className="text-2xs text-muted-foreground">{forest.root.count} 项</span>
+        {causalStructure ? null : <span className="text-2xs text-muted-foreground">{forest.root.count} 项</span>}
         <div className="ml-auto flex items-center gap-1">
           <div className="relative">
             <Search className="pointer-events-none absolute left-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
@@ -445,10 +443,19 @@ export function CanonicalTreesPanel({
         </div>
       </div>
 
-      {query && matched.size === 0 ? (
+      {query && !causalStructure && matched.size === 0 ? (
         <p className="px-1 text-2xs text-muted-foreground">没有匹配「{query}」的节点。</p>
       ) : null}
 
+      {causalStructure ? (
+        <CausalCanvas
+          bookId={bookId}
+          structure={causalStructure}
+          query={query}
+          {...(onOpenChapter ? { onOpenChapter } : {})}
+          className="flex min-h-0 flex-1 gap-2"
+        />
+      ) : (
       <div className="flex min-h-0 flex-1 gap-2">
         <div className="min-w-0 flex-1 overflow-hidden rounded-md border">
           <TidyTreeCanvas
@@ -466,6 +473,7 @@ export function CanonicalTreesPanel({
           <NodeInspector node={selected} />
         </div>
       </div>
+      )}
 
       {emptyPrompt && onSendToNarrator ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-2 py-1.5">
@@ -480,7 +488,7 @@ export function CanonicalTreesPanel({
             让叙述者补
           </Button>
         </div>
-      ) : forest.emptyReason ? (
+      ) : forest.emptyReason && !causalStructure ? (
         <p className="px-1 text-2xs text-muted-foreground">{forest.emptyReason}</p>
       ) : null}
     </div>

@@ -218,3 +218,91 @@ describe("重排与挂载", () => {
     }
   });
 });
+
+describe("挂载只能在同一本书内进行", () => {
+  async function seedTwoBooks(app: ReturnType<typeof routerFor>) {
+    const other = "/api/books/book-2/narrative-memory";
+    const line = ((await postJson(app, `${BASE}/storylines`, { name: "主线", kind: "main" })).body.data as { id: string }).id;
+    const scene = ((await postJson(app, `${BASE}/scenes`, { chapterNumber: 1 })).body.data as { id: string }).id;
+    const foreignLine = ((await postJson(app, `${other}/storylines`, { name: "别的书的线" })).body.data as { id: string }).id;
+    const foreignScene = ((await postJson(app, `${other}/scenes`, { chapterNumber: 1 })).body.data as { id: string }).id;
+    return { line, scene, foreignLine, foreignScene };
+  }
+
+  it("拿别的书的场景或剧情线 id 挂载、摘除、改主线，一律 404，数据不动", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      const { line, scene, foreignLine, foreignScene } = await seedTwoBooks(app);
+      await postJson(app, `/api/books/book-2/narrative-memory/scenes/${foreignScene}/mounts`, { storylineId: foreignLine });
+
+      // 用 book-1 的路径去碰 book-2 的场景
+      expect((await postJson(app, `${BASE}/scenes/${foreignScene}/mounts`, { storylineId: line })).status).toBe(404);
+      // 把 book-1 的场景挂到 book-2 的线上
+      expect((await postJson(app, `${BASE}/scenes/${scene}/mounts`, { storylineId: foreignLine })).status).toBe(404);
+      expect((await app.request(`${BASE}/scenes/${foreignScene}/mounts/${foreignLine}`, { method: "DELETE" })).status).toBe(404);
+      const moved = await app.request(`${BASE}/scenes/${foreignScene}/primary-storyline`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ storylineId: null }),
+      });
+      expect(moved.status).toBe(404);
+
+      const book2 = await (await app.request("/api/books/book-2/narrative-memory/scene-graph")).json() as { mounts: unknown[] };
+      expect(book2.mounts).toHaveLength(1);
+      const book1 = await (await app.request(`${BASE}/scene-graph`)).json() as { mounts: unknown[] };
+      expect(book1.mounts).toHaveLength(0);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("改主剧情线（因果画布拖动场景换泳道）", () => {
+  async function put(app: ReturnType<typeof routerFor>, sceneId: string, body: unknown) {
+    const res = await app.request(`${BASE}/scenes/${sceneId}/primary-storyline`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: await res.json() as { data?: Array<{ storylineId: string; role: string }> } };
+  }
+
+  it("换到另一条线：原主挂载摘掉，辅助挂载保留；目标原是辅助挂载的升为主挂载", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      const main = ((await postJson(app, `${BASE}/storylines`, { name: "主线", kind: "main" })).body.data as { id: string }).id;
+      const romance = ((await postJson(app, `${BASE}/storylines`, { name: "感情线", kind: "romance" })).body.data as { id: string }).id;
+      const mystery = ((await postJson(app, `${BASE}/storylines`, { name: "悬疑线", kind: "mystery" })).body.data as { id: string }).id;
+      const scene = ((await postJson(app, `${BASE}/scenes`, { chapterNumber: 2 })).body.data as { id: string }).id;
+      await postJson(app, `${BASE}/scenes/${scene}/mounts`, { storylineId: main });
+      await postJson(app, `${BASE}/scenes/${scene}/mounts`, { storylineId: romance, role: "supporting" });
+      await postJson(app, `${BASE}/scenes/${scene}/mounts`, { storylineId: mystery, role: "supporting" });
+
+      const moved = await put(app, scene, { storylineId: romance });
+      expect(moved.status).toBe(200);
+      const roles = Object.fromEntries(moved.body.data!.map((mount) => [mount.storylineId, mount.role]));
+      expect(roles).toEqual({ [romance]: "primary", [mystery]: "supporting" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("拖进「未挂线」（storylineId 为 null）摘下全部挂载；缺 storylineId 被拒", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      const main = ((await postJson(app, `${BASE}/storylines`, { name: "主线", kind: "main" })).body.data as { id: string }).id;
+      const scene = ((await postJson(app, `${BASE}/scenes`, { chapterNumber: 2 })).body.data as { id: string }).id;
+      await postJson(app, `${BASE}/scenes/${scene}/mounts`, { storylineId: main, role: "supporting" });
+
+      expect((await put(app, scene, {})).status).toBe(400);
+      const cleared = await put(app, scene, { storylineId: null });
+      expect(cleared.status).toBe(200);
+      expect(cleared.body.data).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+});

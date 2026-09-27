@@ -27,6 +27,7 @@ import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embeddin
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
 import {
+  checkMountBelongsToBook,
   createScene,
   createStoryline,
   listMounts,
@@ -34,6 +35,7 @@ import {
   listStorylines,
   mountSceneToStoryline,
   reorderChapterScenes,
+  setScenePrimaryStoryline,
   unmountSceneFromStoryline,
   isSceneFunction,
   isStorylineKind,
@@ -926,14 +928,33 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
     const storylineIdValue = typeof body?.storylineId === "string" ? body.storylineId : "";
     if (!storylineIdValue) return invalidQuery(c, "storylineId 必填。");
+    const owned = checkMountBelongsToBook(storage(), c.req.param("bookId"), c.req.param("sceneId"), storylineIdValue);
+    if (!owned.ok) return c.json(owned, 404);
     const role = body?.role === "supporting" ? "supporting" : "primary";
     const result = mountSceneToStoryline(storage(), c.req.param("sceneId"), storylineIdValue, role);
     return c.json(result, result.ok ? 200 : 400);
   });
 
   app.delete(`${base}/scenes/:sceneId/mounts/:storylineId`, (c) => {
+    const owned = checkMountBelongsToBook(storage(), c.req.param("bookId"), c.req.param("sceneId"), c.req.param("storylineId"));
+    if (!owned.ok) return c.json(owned, 404);
     const result = unmountSceneFromStoryline(storage(), c.req.param("sceneId"), c.req.param("storylineId"));
     return c.json(result, result.ok ? 200 : 404);
+  });
+
+  /**
+   * 改主剧情线：因果画布上把场景拖到另一条泳道。storylineId 为 null 表示拖进「未挂线」，摘下全部挂载。
+   * 摘旧主挂载与挂新主挂载在同一个事务里，不会出现场景一时两条主线、一时没有主线的中间态。
+   */
+  app.put(`${base}/scenes/:sceneId/primary-storyline`, async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body || !("storylineId" in body) || (body.storylineId !== null && typeof body.storylineId !== "string")) {
+      return invalidQuery(c, "storylineId 必填：给剧情线 id，或给 null 表示从所有剧情线上摘下。");
+    }
+    const storylineIdValue = body.storylineId as string | null;
+    const owned = checkMountBelongsToBook(storage(), c.req.param("bookId"), c.req.param("sceneId"), storylineIdValue);
+    if (!owned.ok) return c.json(owned, 404);
+    return c.json(setScenePrimaryStoryline(storage(), c.req.param("sceneId"), storylineIdValue));
   });
 
   return app;

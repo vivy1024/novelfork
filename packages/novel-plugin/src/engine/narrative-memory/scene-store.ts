@@ -574,6 +574,67 @@ export function unmountSceneFromStoryline(
     : { ok: false, error: "not-mounted", summary: "这个场景本来就不在该剧情线上。" };
 }
 
+/**
+ * 挂载两端是否都属于这本书。挂载表不带 book_id，接口层必须先核对：
+ * 否则能访问 A 书的人拿着 B 书的场景 id 就能改 B 书的挂载，或把两本书的数据连在一起。
+ */
+export function checkMountBelongsToBook(
+  storage: StorageDatabase,
+  bookId: string,
+  sceneIdValue: string,
+  storylineIdValue: string | null,
+): SceneStoreResult<null> {
+  ensureNarrativeMemorySchema(storage);
+  const scene = storage.sqlite
+    .prepare<{ id: string }>("SELECT id FROM narrative_scene WHERE id = ? AND book_id = ?")
+    .get(sceneIdValue, bookId);
+  if (!scene) return { ok: false, error: "scene-not-found", summary: "这本书里没有这个场景，可能已被删除。" };
+  if (storylineIdValue === null) return { ok: true, summary: "" };
+  const line = storage.sqlite
+    .prepare<{ id: string }>("SELECT id FROM narrative_storyline WHERE id = ? AND book_id = ?")
+    .get(storylineIdValue, bookId);
+  if (!line) return { ok: false, error: "storyline-not-found", summary: "这本书里没有这条剧情线，可能已被删除。" };
+  return { ok: true, summary: "" };
+}
+
+/**
+ * 改场景的主剧情线（因果画布上把场景拖到另一条泳道）。
+ *
+ * 一个事务里完成：摘掉原来的主挂载，把目标线设为主挂载（原本是辅助挂载的就升为主）；
+ * 其余辅助挂载保持不动。storylineId 为 null 表示拖进「未挂线」：摘下全部挂载，
+ * 否则场景会因为还剩辅助挂载而留在别的泳道里，与作者的操作对不上。
+ * 调用方须先用 checkMountBelongsToBook 核对归属。
+ */
+export function setScenePrimaryStoryline(
+  storage: StorageDatabase,
+  sceneIdValue: string,
+  storylineIdValue: string | null,
+): SceneStoreResult<SceneStorylineMount[]> {
+  ensureNarrativeMemorySchema(storage);
+  const now = Date.now();
+  storage.sqlite.transaction(() => {
+    if (storylineIdValue === null) {
+      storage.sqlite.prepare("DELETE FROM narrative_scene_storyline WHERE scene_id = ?").run(sceneIdValue);
+      return;
+    }
+    storage.sqlite
+      .prepare("DELETE FROM narrative_scene_storyline WHERE scene_id = ? AND role = 'primary' AND storyline_id <> ?")
+      .run(sceneIdValue, storylineIdValue);
+    storage.sqlite
+      .prepare(`
+        INSERT INTO narrative_scene_storyline (scene_id, storyline_id, role, created_at)
+        VALUES (?, ?, 'primary', ?)
+        ON CONFLICT(scene_id, storyline_id) DO UPDATE SET role = 'primary'
+      `)
+      .run(sceneIdValue, storylineIdValue, now);
+  })();
+  return {
+    ok: true,
+    summary: storylineIdValue === null ? "场景已从所有剧情线上摘下。" : "场景的主剧情线已更新。",
+    data: listSceneMounts(storage, sceneIdValue),
+  };
+}
+
 /** 某个场景挂在哪几条线上——正交性的另一半，给承载树侧展示用。 */
 export function listSceneMounts(storage: StorageDatabase, sceneIdValue: string): SceneStorylineMount[] {
   ensureNarrativeMemorySchema(storage);
