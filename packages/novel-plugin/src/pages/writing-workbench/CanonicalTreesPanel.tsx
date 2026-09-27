@@ -460,6 +460,7 @@ export function CanonicalTreesPanel({
         <div className="min-w-0 flex-1 overflow-hidden rounded-md border">
           <TidyTreeCanvas
             forest={forest}
+            viewportKey={`${bookId}:${kind}`}
             expanded={effectiveExpanded}
             selectedId={selectedId}
             matchedIds={query ? matched : undefined}

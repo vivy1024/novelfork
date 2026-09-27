@@ -1,14 +1,15 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeNarratorSummary } from "./product-contract";
 
 const mocks = vi.hoisted(() => ({
-  mountProps: [] as Array<{ bookId: string; narrator: RuntimeNarratorSummary; compact?: boolean }>,
+  mountProps: [] as Array<{ bookId: string; narrator: RuntimeNarratorSummary; compact?: boolean; onOpenArtifact?: (artifact: { kind: string; id: string; [key: string]: unknown }) => void }>,
   workbenchProps: [] as Array<{
     bookId?: string;
     nodes: unknown[];
+    selectedNode?: { id: string } | null;
     chatSlot?: ReactNode;
     bookSessions?: readonly { id: string; title: string; updatedAt?: string }[];
     activeSessionId?: string | null;
@@ -19,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./RuntimeNarratorPanelMount", () => ({
-  RuntimeNarratorPanelMount: (props: { bookId: string; narrator: RuntimeNarratorSummary; compact?: boolean }) => {
+  RuntimeNarratorPanelMount: (props: (typeof mocks.mountProps)[number]) => {
     mocks.mountProps.push(props);
     return <div data-testid="runtime-narrator-panel-mount-mock" />;
   },
@@ -38,7 +39,7 @@ vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide", () => ({
   },
 }));
 
-import { mapRuntimeWorkspaceToWorkbenchNodes, RuntimeWritingWorkbenchRoute } from "./RuntimeWritingWorkbenchRoute";
+import { artifactResourceId, mapRuntimeWorkspaceToWorkbenchNodes, RuntimeWritingWorkbenchRoute } from "./RuntimeWritingWorkbenchRoute";
 
 const narrator: RuntimeNarratorSummary = {
   id: "narrator-1",
@@ -135,6 +136,7 @@ describe("RuntimeWritingWorkbenchRoute", () => {
       bookId: "book-1",
       narrator,
       compact: true,
+      onOpenArtifact: expect.any(Function),
     });
     expect(mocks.workbenchProps.at(-1)?.bookId).toBe("book-1");
     expect(mocks.workbenchProps.at(-1)?.nodes).toEqual([
@@ -388,5 +390,85 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     await waitFor(() => expect(client.getWorkspace).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId("ide-workbench-mock")).toBeTruthy();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  describe("叙述者结果卡「在画布打开」", () => {
+    function chapterResource(number: number) {
+      return {
+        id: `chapter:${number}`,
+        kind: "chapter",
+        title: `第${number}章`,
+        path: `chapters/000${number}_c.md`,
+        capabilities: { read: true, update: true },
+        metadata: { updatedAt: "t1" },
+      };
+    }
+
+    function workspaceWith(chapters: number[]) {
+      return {
+        book: { id: "book-1", title: "测试作品", capabilities: { read: true } },
+        resources: chapters.map(chapterResource),
+        capabilities: { read: true, create: true, update: true },
+      };
+    }
+
+    function renderRoute(client: unknown) {
+      render(
+        <RuntimeWritingWorkbenchRoute
+          bookId="book-1"
+          onCanvasContextChange={vi.fn()}
+          onNavigateToConversation={vi.fn()}
+          client={client as never}
+        />,
+      );
+    }
+
+    it("产物按章号解析成工作台资源；别的书、非章节的产物不认", () => {
+      expect(artifactResourceId({ kind: "chapter", id: "x", resourceRef: { kind: "chapter", chapterNumber: 3, bookId: "book-1" } }, "book-1")).toBe("chapter:3");
+      expect(artifactResourceId({ kind: "chapter", id: "chapter:7" }, "book-1")).toBe("chapter:7");
+      expect(artifactResourceId({ kind: "chapter", id: "chapter:3", resourceRef: { kind: "chapter", chapterNumber: 3, bookId: "book-2" } }, "book-1")).toBeNull();
+      expect(artifactResourceId({ kind: "chapter", id: "chapter:3", metadata: { bookId: "book-2" } }, "book-1")).toBeNull();
+      expect(artifactResourceId({ kind: "report", id: "r-1" }, "book-1")).toBeNull();
+    });
+
+    it("点「在画布打开」打开对应章节", async () => {
+      const client = { getWorkspace: vi.fn(async () => workspaceWith([1, 2])), listNarrators: vi.fn(async () => [narrator]) };
+      renderRoute(client);
+      await screen.findByTestId("runtime-narrator-panel-mount-mock");
+      await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({ kind: "chapter", id: "chapter:2", title: "第二章" }));
+      await waitFor(() => expect(mocks.workbenchProps.at(-1)?.selectedNode?.id).toBe("chapter:2"));
+      expect(client.getWorkspace).toHaveBeenCalledTimes(1);
+    });
+
+    it("刚写完的章还不在资源树里：先静默重载再打开", async () => {
+      const client = {
+        getWorkspace: vi.fn()
+          .mockResolvedValueOnce(workspaceWith([1]))
+          .mockResolvedValue(workspaceWith([1, 2])),
+        listNarrators: vi.fn(async () => [narrator]),
+      };
+      renderRoute(client);
+      await screen.findByTestId("runtime-narrator-panel-mount-mock");
+      await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({
+        kind: "chapter",
+        id: "chapter:2",
+        resourceRef: { kind: "chapter", id: "chapter:2", bookId: "book-1", chapterNumber: 2 },
+      }));
+      await waitFor(() => expect(mocks.workbenchProps.at(-1)?.selectedNode?.id).toBe("chapter:2"));
+      expect(client.getWorkspace).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("ide-workbench-mock")).toBeTruthy();
+    });
+
+    it("打不开时给一句说明，不挡住工作台", async () => {
+      const client = { getWorkspace: vi.fn(async () => workspaceWith([1])), listNarrators: vi.fn(async () => [narrator]) };
+      renderRoute(client);
+      await screen.findByTestId("runtime-narrator-panel-mount-mock");
+      await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({ kind: "report", id: "r-1", title: "体检报告" }));
+      expect(screen.getByTestId("workbench-open-notice").textContent).toContain("体检报告");
+      await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({ kind: "chapter", id: "chapter:9", title: "第九章" }));
+      await waitFor(() => expect(screen.getByTestId("workbench-open-notice").textContent).toContain("没在资源树里找到「第九章」"));
+      expect(screen.getByTestId("ide-workbench-mock")).toBeTruthy();
+      expect(mocks.workbenchProps.at(-1)?.selectedNode ?? null).toBeNull();
+    });
   });
 });

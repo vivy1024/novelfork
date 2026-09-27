@@ -14,6 +14,7 @@ import {
   type RuntimeProductClient,
   type RuntimeWorkspaceResource,
 } from "./product-contract";
+import type { ToolResultArtifact } from "../tool-results/types";
 import { RuntimeNarratorPanelMount } from "./RuntimeNarratorPanelMount";
 
 export interface RuntimeWritingWorkbenchRouteProps {
@@ -159,6 +160,31 @@ export function mapRuntimeWorkspaceToWorkbenchNodes(
   }];
 }
 
+/**
+ * 结果卡产物 → 工作台资源 id。目前能在画布（工作台中间栏）打开的只有章节：
+ * 产物带 resourceRef（章号）或本身就是 `chapter:N`。别的书的产物一律不认——叙述者面板
+ * 已按书绑定，这里再核一次，防止串书打开。
+ */
+export function artifactResourceId(artifact: ToolResultArtifact, bookId: string): string | null {
+  const ref = artifact.resourceRef && typeof artifact.resourceRef === "object" ? artifact.resourceRef as Record<string, unknown> : null;
+  const refBook = typeof ref?.bookId === "string" ? ref.bookId : undefined;
+  const metaBook = artifact.metadata && typeof artifact.metadata === "object" ? (artifact.metadata as Record<string, unknown>).bookId : undefined;
+  if ((refBook && refBook !== bookId) || (typeof metaBook === "string" && metaBook && metaBook !== bookId)) return null;
+  const chapterNumber = typeof ref?.chapterNumber === "number" ? ref.chapterNumber : undefined;
+  if (Number.isInteger(chapterNumber) && chapterNumber! > 0) return `chapter:${chapterNumber}`;
+  if (artifact.kind === "chapter" && /^chapter:\d+$/u.test(artifact.id)) return artifact.id;
+  return null;
+}
+
+export function findWorkbenchNode(nodes: readonly WorkbenchResourceNode[], id: string): WorkbenchResourceNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const nested = node.children ? findWorkbenchNode(node.children, id) : null;
+    if (nested) return nested;
+  }
+  return null;
+}
+
 function replaceNode(nodes: readonly WorkbenchResourceNode[], replacement: WorkbenchResourceNode): WorkbenchResourceNode[] {
   return nodes.map((node) => {
     if (node.id === replacement.id) return replacement;
@@ -187,6 +213,10 @@ export function RuntimeWritingWorkbenchRoute({
   const [loading, setLoading] = useState(true);
   const [creatingSession, setCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 「在画布打开」没能打开时的一句说明（不像加载失败那样挡住整个工作台）。
+  const [openNotice, setOpenNotice] = useState<string | null>(null);
+  const nodesRef = useRef<WorkbenchResourceNode[]>([]);
+  nodesRef.current = nodes;
   const reloadGenerationRef = useRef(0);
   const reloadAbortRef = useRef<AbortController | null>(null);
   const probeGenerationRef = useRef(0);
@@ -206,9 +236,10 @@ export function RuntimeWritingWorkbenchRoute({
   useEffect(() => abortActions, [abortActions, bookId]);
   useEffect(() => {
     setCreatingSession(false);
+    setOpenNotice(null);
   }, [bookId]);
 
-  const reload = useCallback(async (options?: { readonly silent?: boolean }) => {
+  const reload = useCallback(async (options?: { readonly silent?: boolean }): Promise<WorkbenchResourceNode[] | null> => {
     const generation = ++reloadGenerationRef.current;
     reloadAbortRef.current?.abort();
     const controller = new AbortController();
@@ -223,7 +254,7 @@ export function RuntimeWritingWorkbenchRoute({
         client.getWorkspace(bookId, { signal: controller.signal }),
         client.listNarrators(bookId, { signal: controller.signal }),
       ]);
-      if (controller.signal.aborted || generation !== reloadGenerationRef.current) return;
+      if (controller.signal.aborted || generation !== reloadGenerationRef.current) return null;
       const nextNodes = mapRuntimeWorkspaceToWorkbenchNodes(bookId, workspace.resources, workspace.book);
       const readableNarrators = narrators.filter((candidate) => candidate.capabilities.read === true);
       const defaultNarrator = readableNarrators.find((candidate) => candidate.status !== "archived") ?? readableNarrators[0];
@@ -250,14 +281,16 @@ export function RuntimeWritingWorkbenchRoute({
         workspace.resources.length,
         ...workspace.resources.slice(-3).map((r) => `${r.id}:${typeof r.metadata?.updatedAt === "string" ? r.metadata.updatedAt : ""}`),
       ].join("|");
+      return nextNodes;
     } catch (cause) {
-      if (controller.signal.aborted || generation !== reloadGenerationRef.current) return;
-      if (silent) return;
+      if (controller.signal.aborted || generation !== reloadGenerationRef.current) return null;
+      if (silent) return null;
       setNodes([]);
       setNarrators([]);
       setActiveNarratorId(null);
       setSelectedNode(null);
       setError(cause instanceof Error ? cause.message : String(cause));
+      return null;
     } finally {
       if (generation === reloadGenerationRef.current && reloadAbortRef.current === controller) {
         reloadAbortRef.current = null;
@@ -317,6 +350,24 @@ export function RuntimeWritingWorkbenchRoute({
       probeAbortRef.current?.abort();
     };
   }, [probeWorkspaceChange]);
+
+  // 叙述者结果卡「在画布打开」：打开对应章节。刚写完的章可能还没进资源树，先静默重载再找。
+  const handleOpenArtifact = useCallback(async (artifact: ToolResultArtifact) => {
+    const bookAtStart = currentBookIdRef.current;
+    const id = artifactResourceId(artifact, bookAtStart);
+    if (!id) {
+      setOpenNotice(`「${artifact.title ?? artifact.id}」不是本书的章节，工作台暂时打不开这类结果。`);
+      return;
+    }
+    setOpenNotice(null);
+    const node = findWorkbenchNode(nodesRef.current, id) ?? findWorkbenchNode((await reload({ silent: true })) ?? [], id);
+    if (currentBookIdRef.current !== bookAtStart) return;
+    if (!node) {
+      setOpenNotice(`没在资源树里找到「${artifact.title ?? id}」：章节文件可能已被移动或删除，刷新后再试。`);
+      return;
+    }
+    setSelectedNode(node);
+  }, [reload]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -420,8 +471,14 @@ export function RuntimeWritingWorkbenchRoute({
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col" data-testid="runtime-writing-workbench">
-      <div className="flex items-center border-b border-border px-4 py-2">
+      <div className="flex items-center gap-3 border-b border-border px-4 py-2">
         <p className="text-sm text-muted-foreground">章节、作品基础、写作资源与故事推进</p>
+        {openNotice ? (
+          <p className="ml-auto flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300" role="status" data-testid="workbench-open-notice">
+            {openNotice}
+            <button type="button" className="underline-offset-2 hover:underline" onClick={() => setOpenNotice(null)}>知道了</button>
+          </p>
+        ) : null}
       </div>
       {loading ? <p className="p-4 text-sm text-muted-foreground" role="status">正在加载工作台…</p> : null}
       {error ? <p className="p-4 text-sm text-destructive" role="alert">工作台加载失败：{error}</p> : null}
@@ -442,6 +499,7 @@ export function RuntimeWritingWorkbenchRoute({
               bookId={bookId}
               narrator={activeNarrator}
               compact
+              onOpenArtifact={(artifact) => void handleOpenArtifact(artifact)}
             />
           ) : undefined}
           onSwitchToAgent={activeNarrator ? () => onNavigateToConversation(activeNarrator.id) : undefined}

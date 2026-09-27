@@ -1,12 +1,32 @@
 /**
- * 四张正图共用的 tidy-tree 画布。
+ * 故事树各张正图共用的 tidy-tree 画布（React Flow 引擎）。
  *
- * 坐标来自 layoutTidyTree（横向：根在左）。折叠后只布局可见子树。
- * 完整画布：滚轮缩放、拖空白平移、拖节点改布局（偏移叠在 tidy 坐标上）。
+ * 坐标来自 layoutTidyTree（横向：根在左），折叠后只布局可见子树——排版仍由数据决定。
+ * 画布交互与工作流画布、因果画布一致：滚轮缩放、拖空白平移、小地图、适应视图、
+ * 只渲染视口内的节点；可以临时拖动节点看清局部，不保存（「复位布局」回到自动排版）。
+ * 视口按「作品 + 视图」记住，下次打开回到原处；节点坐标不存。
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, LocateFixed, Minus, Plus } from "lucide-react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  applyNodeChanges,
+  Background,
+  BackgroundVariant,
+  Handle,
+  MiniMap,
+  Panel,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+  useViewport,
+  type Edge,
+  type Node,
+  type NodeChange,
+  type NodeProps,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { ChevronDown, ChevronRight, LayoutGrid, LocateFixed, Minus, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -18,6 +38,8 @@ import {
   type CanonicalTreeNode,
 } from "../../engine/narrative-taxonomy/canonical-trees";
 import { layoutTidyTree } from "../../engine/narrative-taxonomy/tidy-tree-layout";
+import { readSavedViewport, saveViewport, type SavedViewport } from "./canvas-viewport";
+import { useCanvasColorMode } from "./use-canvas-color-mode";
 
 export interface TidyTreeCanvasProps {
   readonly forest: CanonicalForest;
@@ -28,18 +50,22 @@ export interface TidyTreeCanvasProps {
   readonly onSelect: (node: CanonicalTreeNode) => void;
   readonly onOpenEntry?: (entryId: string, label: string) => void;
   readonly onOpenChapter?: (chapterNumber: number) => void;
+  /** 视口记忆的键（如 `书id:视图`）；不给则每次打开都用默认视图。 */
+  readonly viewportKey?: string;
   readonly className?: string;
 }
 
-const NODE_WIDTH = 168;
-const NODE_HEIGHT = 32;
+export const TIDY_NODE_WIDTH = 168;
+export const TIDY_NODE_HEIGHT = 32;
 const PAD_X = 28;
 const PAD_Y = 24;
 const DEPTH_SPACING = 220;
 const BREADTH_SPACING = 40;
-const MIN_SCALE = 0.35;
-const MAX_SCALE = 2.8;
-const DRAG_THRESHOLD = 4;
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 2.8;
+/** 初始视图不缩到这以下：宁可平移也要字看得清。 */
+const MIN_INITIAL_ZOOM = 0.6;
+const ZOOM_STEP = 1.2;
 
 const KIND_FILL: Record<CanonicalTreeNode["kind"], string> = {
   root: "var(--primary)",
@@ -54,41 +80,32 @@ const KIND_FILL: Record<CanonicalTreeNode["kind"], string> = {
   entry: "color-mix(in oklch, var(--muted-foreground) 50%, transparent)",
   event: "color-mix(in oklch, var(--muted-foreground) 60%, transparent)",
   character: "color-mix(in oklch, var(--primary) 65%, transparent)",
-  // 剧情线是因果树的根层，与卷同重；场景是两棵树共用的叶子，与章同色系但更淡。
+  // 剧情线与卷同重；场景与章同色系但更淡。
   storyline: "color-mix(in oklch, var(--primary) 80%, transparent)",
   scene: "color-mix(in oklch, var(--muted-foreground) 45%, transparent)",
 };
 
-interface ViewTransform {
-  x: number;
-  y: number;
-  scale: number;
+/** 小地图画的是 SVG 属性，CSS 变量在那里不生效，用固定色。 */
+const MINIMAP_STRONG = new Set<CanonicalTreeNode["kind"]>(["root", "group", "dimension", "volume", "storyline"]);
+
+interface TreeNodeData {
+  [key: string]: unknown;
+  readonly node: CanonicalTreeNode;
+  readonly expanded: boolean;
+  readonly selected: boolean;
+  readonly matched: boolean;
 }
 
-interface Offset {
-  x: number;
-  y: number;
-}
+type TreeFlowNode = Node<TreeNodeData, "tree">;
 
-type DragState =
-  | { kind: "pan"; startX: number; startY: number; origX: number; origY: number; moved: boolean }
-  | { kind: "node"; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean };
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function isPrimaryPointer(event: { button?: number }): boolean {
-  return event.button == null || event.button === 0;
+interface TreeHandlers {
+  toggle: (id: string) => void;
+  activate: (node: CanonicalTreeNode) => void;
 }
 
 function nodeAction(node: CanonicalTreeNode, props: TidyTreeCanvasProps): void {
   props.onSelect(node);
-  if (node.kind === "entry" && node.entryId && props.onOpenEntry) {
-    props.onOpenEntry(node.entryId, node.label);
-    return;
-  }
-  if ((node.kind === "entity" || node.kind === "character") && node.entryId && props.onOpenEntry) {
+  if ((node.kind === "entry" || node.kind === "entity" || node.kind === "character") && node.entryId && props.onOpenEntry) {
     props.onOpenEntry(node.entryId, node.label);
     return;
   }
@@ -97,368 +114,305 @@ function nodeAction(node: CanonicalTreeNode, props: TidyTreeCanvasProps): void {
   }
 }
 
-function zoomToward(current: ViewTransform, localX: number, localY: number, nextScale: number): ViewTransform {
-  const scale = clamp(nextScale, MIN_SCALE, MAX_SCALE);
-  const worldX = (localX - current.x) / current.scale;
-  const worldY = (localY - current.y) / current.scale;
-  return { scale, x: localX - worldX * scale, y: localY - worldY * scale };
+/**
+ * 展开节点后，它的子节点是否需要平移进视口；需要时返回新的视口中心（画布坐标），缩放不变。
+ * 只在子节点有一部分落在视口外时才动，避免作者每点一次展开画布就跳一下。
+ */
+export function revealTarget(
+  boxes: ReadonlyArray<{ readonly x: number; readonly y: number }>,
+  viewport: SavedViewport,
+  pane: { readonly width: number; readonly height: number },
+): { readonly x: number; readonly y: number } | null {
+  if (boxes.length === 0) return null;
+  const left = Math.min(...boxes.map((box) => box.x));
+  const right = Math.max(...boxes.map((box) => box.x)) + TIDY_NODE_WIDTH;
+  const top = Math.min(...boxes.map((box) => box.y));
+  const bottom = Math.max(...boxes.map((box) => box.y)) + TIDY_NODE_HEIGHT;
+  const toScreenX = (x: number) => x * viewport.zoom + viewport.x;
+  const toScreenY = (y: number) => y * viewport.zoom + viewport.y;
+  const visible = toScreenX(left) >= 0 && toScreenX(right) <= pane.width && toScreenY(top) >= 0 && toScreenY(bottom) <= pane.height;
+  if (visible) return null;
+  return { x: (left + right) / 2, y: (top + bottom) / 2 };
 }
 
-export function TidyTreeCanvas(props: TidyTreeCanvasProps) {
-  const { forest, expanded, selectedId, matchedIds, onToggle, className } = props;
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<DragState | null>(null);
-  const suppressClickRef = useRef(false);
-  const transformRef = useRef<ViewTransform>({ x: 0, y: 0, scale: 1 });
-  const [transform, setTransform] = useState<ViewTransform>({ x: 0, y: 0, scale: 1 });
-  const [offsets, setOffsets] = useState<Record<string, Offset>>({});
-  const [cursor, setCursor] = useState<"grab" | "grabbing" | "move">("grab");
+/**
+ * 初始视口：缩放取「整棵树放得下」与 0.6–1 之间；放得下就居中，
+ * 放不下则让根节点贴左、在竖直方向居中——先看到树从哪里长出来。
+ */
+export function initialTreeViewport(
+  content: { readonly width: number; readonly height: number; readonly rootCenterY: number },
+  pane: { readonly width: number; readonly height: number },
+): SavedViewport {
+  const fit = Math.min(pane.width / content.width, pane.height / content.height);
+  const zoom = Math.min(1, Math.max(MIN_INITIAL_ZOOM, fit));
+  const x = content.width * zoom <= pane.width ? (pane.width - content.width * zoom) / 2 : 0;
+  const y = content.height * zoom <= pane.height
+    ? (pane.height - content.height * zoom) / 2
+    : pane.height / 2 - content.rootCenterY * zoom;
+  return { x, y, zoom };
+}
+
+/** 节点组件拿不到画布的 props：展开 / 点选的处理函数经 context 下发，节点数据里不放函数。 */
+const TreeHandlersContext = createContext<TreeHandlers | null>(null);
+
+function TreeNodeView({ id, data, positionAbsoluteX, positionAbsoluteY }: NodeProps<TreeFlowNode>) {
+  const { node, expanded, selected, matched } = data;
+  const handlers = useContext(TreeHandlersContext);
+  const hasChildren = node.children.length > 0;
+  return (
+    <div
+      className={`relative flex items-center overflow-hidden rounded-md border bg-card shadow-sm ${selected ? "border-primary ring-1 ring-primary" : matched ? "border-amber-500/70 ring-1 ring-amber-400/60" : "border-border"}`}
+      style={{ width: TIDY_NODE_WIDTH, height: TIDY_NODE_HEIGHT }}
+      data-testid={`tidy-tree-row-${id}`}
+      data-x={positionAbsoluteX.toFixed(1)}
+      data-y={positionAbsoluteY.toFixed(1)}
+    >
+      <Handle type="target" position={Position.Left} isConnectable={false} className="!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent" />
+      <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: KIND_FILL[node.kind] }} />
+      {hasChildren ? (
+        <button
+          type="button"
+          className="nodrag flex h-full w-6 shrink-0 items-center justify-center pl-1 text-muted-foreground hover:text-foreground"
+          aria-label={expanded ? `折叠 ${node.label}` : `展开 ${node.label}`}
+          aria-expanded={expanded}
+          data-testid={`tidy-tree-toggle-${id}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            handlers?.toggle(id);
+          }}
+        >
+          {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className={`flex h-full min-w-0 flex-1 items-center gap-1 overflow-hidden pr-2 text-left ${hasChildren ? "" : "pl-2.5"}`}
+        data-testid={`tidy-tree-node-${id}`}
+        title={node.detail ?? node.label}
+        onClick={(event) => {
+          event.stopPropagation();
+          handlers?.activate(node);
+        }}
+      >
+        <span className="min-w-0 truncate text-2xs font-medium">{node.label}</span>
+        {node.kind !== "entry" && node.kind !== "chapter" && node.kind !== "entity" && node.count > 0 ? (
+          <span className="shrink-0 text-2xs text-muted-foreground">{` · ${node.count}`}</span>
+        ) : null}
+      </button>
+      <Handle type="source" position={Position.Right} isConnectable={false} className="!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent" />
+    </div>
+  );
+}
+
+const nodeTypes = { tree: memo(TreeNodeView) };
+
+function Toolbar({ hasOffsets, onResetLayout }: { hasOffsets: boolean; onResetLayout: () => void }) {
+  const { zoomTo, fitView } = useReactFlow();
+  const { zoom } = useViewport();
+  return (
+    <Panel position="top-right" className="!m-2">
+      <div className="flex items-center gap-1 rounded-md border bg-background/90 p-0.5 shadow-sm">
+        <Button type="button" size="xs" variant="ghost" className="h-6 w-6 p-0" aria-label="缩小" data-testid="tidy-tree-zoom-out" onClick={() => void zoomTo(Math.max(MIN_ZOOM, zoom / ZOOM_STEP))}>
+          <Minus className="size-3" />
+        </Button>
+        <span className="min-w-10 text-center text-2xs tabular-nums text-muted-foreground" data-testid="tidy-tree-zoom-label">
+          {Math.round(zoom * 100)}%
+        </span>
+        <Button type="button" size="xs" variant="ghost" className="h-6 w-6 p-0" aria-label="放大" data-testid="tidy-tree-zoom-in" onClick={() => void zoomTo(Math.min(MAX_ZOOM, zoom * ZOOM_STEP))}>
+          <Plus className="size-3" />
+        </Button>
+        <Button type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-2xs" aria-label="适应视图" title="整棵树放进视口" data-testid="tidy-tree-reset" onClick={() => void fitView({ padding: 0.1, maxZoom: 1, duration: 200 })}>
+          <LocateFixed className="size-3" />
+        </Button>
+        {hasOffsets ? (
+          <Button type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-2xs" aria-label="复位布局" title="拖动过的节点回到自动排版的位置" data-testid="tidy-tree-reset-layout" onClick={onResetLayout}>
+            <LayoutGrid className="size-3" />
+          </Button>
+        ) : null}
+      </div>
+    </Panel>
+  );
+}
+
+/** 视口状态写到容器的 data-* 上：测试与排查时能直接读到当前缩放与平移。 */
+function ViewportProbe({ target }: { target: RefObject<HTMLDivElement | null> }) {
+  const { x, y, zoom } = useViewport();
+  useEffect(() => {
+    const el = target.current;
+    if (!el) return;
+    el.dataset.zoom = zoom.toFixed(2);
+    el.dataset.panX = String(Math.round(x));
+    el.dataset.panY = String(Math.round(y));
+  }, [target, x, y, zoom]);
+  return null;
+}
+
+function TidyTreeFlow(props: TidyTreeCanvasProps) {
+  const { forest, expanded, selectedId, matchedIds, viewportKey, className } = props;
+  const colorMode = useCanvasColorMode();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const flow = useReactFlow<TreeFlowNode, Edge>();
+  // 刚被展开的节点：排版更新后把它的子节点平移进视口。
+  const revealRef = useRef<string | null>(null);
+  const [saved] = useState(() => readSavedViewport(viewportKey));
+  const [offsets, setOffsets] = useState<Record<string, { x: number; y: number }>>({});
   const index = useMemo(() => indexCanonicalTree(forest.root), [forest]);
 
-  transformRef.current = transform;
-
-  useEffect(() => {
-    const next = { x: 0, y: 0, scale: 1 };
-    transformRef.current = next;
-    setTransform(next);
-    setOffsets({});
-    dragRef.current = null;
-  }, [forest.kind, forest.root.id]);
-
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-      const current = transformRef.current;
-      const rect = el.getBoundingClientRect();
-      const next = zoomToward(
-        current,
-        event.clientX - rect.left,
-        event.clientY - rect.top,
-        current.scale * factor,
-      );
-      transformRef.current = next;
-      setTransform(next);
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [forest.root.children.length]);
+  const propsRef = useRef(props);
+  propsRef.current = props;
+  const handlers = useMemo<TreeHandlers>(() => ({
+    toggle: (id) => {
+      if (!propsRef.current.expanded.has(id)) revealRef.current = id;
+      propsRef.current.onToggle(id);
+    },
+    activate: (node) => nodeAction(node, propsRef.current),
+  }), []);
 
   const layout = useMemo(() => {
     const effective = expanded.size > 0 ? expanded : collectDefaultExpanded(forest.root);
-    return layoutTidyTree(toLayoutInput(forest.root, effective), {
-      depthSpacing: DEPTH_SPACING,
-      breadthSpacing: BREADTH_SPACING,
-    });
+    return layoutTidyTree(toLayoutInput(forest.root, effective), { depthSpacing: DEPTH_SPACING, breadthSpacing: BREADTH_SPACING });
   }, [forest, expanded]);
-
   const [minBreadth, maxBreadth] = layout.breadthExtent;
-  const width = Math.max(320, layout.maxDepth * DEPTH_SPACING + NODE_WIDTH + PAD_X * 2);
-  const height = Math.max(160, (maxBreadth - minBreadth) + NODE_HEIGHT + PAD_Y * 2);
 
-  const placed = useMemo(() => {
-    return [...layout.points.values()].flatMap((point) => {
-      const node = index.get(point.id);
-      if (!node) return [];
-      const offset = offsets[point.id];
-      return [{
+  const basePositions = useMemo(() => {
+    const positions = new Map<string, { x: number; y: number }>();
+    for (const point of layout.points.values()) {
+      positions.set(point.id, { x: point.depthCoord + PAD_X, y: point.breadthCoord - minBreadth + PAD_Y });
+    }
+    return positions;
+  }, [layout, minBreadth]);
+
+  const derivedNodes = useMemo<TreeFlowNode[]>(() => [...basePositions.entries()].flatMap(([id, base]) => {
+    const node = index.get(id);
+    if (!node) return [];
+    const offset = offsets[id];
+    return [{
+      id,
+      type: "tree" as const,
+      position: offset ? { x: base.x + offset.x, y: base.y + offset.y } : base,
+      connectable: false,
+      selectable: false,
+      data: {
         node,
-        x: point.depthCoord + PAD_X + (offset?.x ?? 0),
-        y: point.breadthCoord - minBreadth + PAD_Y + (offset?.y ?? 0),
-      }];
-    });
-  }, [index, layout, minBreadth, offsets]);
+        expanded: expanded.has(id),
+        selected: selectedId === id,
+        matched: Boolean(matchedIds?.has(id)),
+      },
+    }];
+  }), [basePositions, index, offsets, expanded, selectedId, matchedIds]);
 
-  const byId = useMemo(() => new Map(placed.map((item) => [item.node.id, item])), [placed]);
+  const edges = useMemo<Edge[]>(() => layout.edges.map((edge) => ({
+    id: `${edge.from}->${edge.to}`,
+    source: edge.from,
+    target: edge.to,
+    selectable: false,
+    focusable: false,
+    style: { stroke: "var(--muted-foreground)", strokeOpacity: 0.4, strokeWidth: 1.2 },
+  })), [layout]);
+
+  const [nodes, setNodes] = useState(derivedNodes);
+  useEffect(() => setNodes(derivedNodes), [derivedNodes]);
 
   useEffect(() => {
-    const onMove = (event: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      const dx = event.clientX - drag.startX;
-      const dy = event.clientY - drag.startY;
-      if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-      drag.moved = true;
-      if (drag.kind === "pan") {
-        const next = { ...transformRef.current, x: drag.origX + dx, y: drag.origY + dy };
-        transformRef.current = next;
-        setTransform(next);
-        setCursor("grabbing");
-        return;
-      }
-      const scale = transformRef.current.scale || 1;
-      setOffsets((current) => ({
-        ...current,
-        [drag.id]: { x: drag.origX + dx / scale, y: drag.origY + dy / scale },
-      }));
-      setCursor("move");
-    };
-    const onUp = () => {
-      const drag = dragRef.current;
-      dragRef.current = null;
-      setCursor("grab");
-      if (drag?.kind === "node" && drag.moved) suppressClickRef.current = true;
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
+    const id = revealRef.current;
+    if (!id) return;
+    revealRef.current = null;
+    const children = index.get(id)?.children ?? [];
+    const boxes = children.flatMap((child) => {
+      const base = basePositions.get(child.id);
+      if (!base) return [];
+      const offset = offsets[child.id];
+      return [offset ? { x: base.x + offset.x, y: base.y + offset.y } : base];
+    });
+    const pane = containerRef.current?.getBoundingClientRect();
+    if (!pane || pane.width === 0) return;
+    const viewport = flow.getViewport();
+    const target = revealTarget(boxes, viewport, { width: pane.width, height: pane.height });
+    if (target) void flow.setCenter(target.x, target.y, { zoom: viewport.zoom, duration: 250 });
+  }, [basePositions, index, offsets, flow]);
+  const onNodesChange = useCallback((changes: NodeChange<TreeFlowNode>[]) => {
+    setNodes((current) => applyNodeChanges(changes.filter((change) => change.type !== "remove"), current));
   }, []);
 
-  function localPoint(clientX: number, clientY: number): { x: number; y: number } {
-    const rect = viewportRef.current?.getBoundingClientRect();
-    if (!rect) return { x: clientX, y: clientY };
-    return { x: clientX - rect.left, y: clientY - rect.top };
-  }
+  const rootBase = basePositions.get(forest.root.id);
+  const contentWidth = Math.max(320, layout.maxDepth * DEPTH_SPACING + TIDY_NODE_WIDTH + PAD_X * 2);
+  const contentHeight = Math.max(160, maxBreadth - minBreadth + TIDY_NODE_HEIGHT + PAD_Y * 2);
 
-  function applyZoom(nextScale: number, clientX?: number, clientY?: number) {
-    const rect = viewportRef.current?.getBoundingClientRect();
-    const local = clientX !== undefined && clientY !== undefined
-      ? localPoint(clientX, clientY)
-      : { x: (rect?.width ?? 320) / 2, y: (rect?.height ?? 160) / 2 };
-    setTransform((current) => {
-      const next = zoomToward(current, local.x, local.y, nextScale);
-      transformRef.current = next;
-      return next;
-    });
-  }
+  return (
+    <div
+      ref={containerRef}
+      // React Flow 的内容是绝对定位的，撑不开高度：画布必须自己填满父容器。
+      className={`relative h-full min-h-[16rem] w-full overflow-hidden ${className ?? ""}`}
+      data-testid="tidy-tree-canvas"
+      data-kind={forest.kind}
+      aria-label={forest.root.label}
+    >
+      <TreeHandlersContext.Provider value={handlers}>
+      <ReactFlow<TreeFlowNode, Edge>
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onNodeDragStop={(_, node) => {
+          const base = basePositions.get(node.id);
+          if (!base) return;
+          setOffsets((current) => ({ ...current, [node.id]: { x: node.position.x - base.x, y: node.position.y - base.y } }));
+        }}
+        onInit={(instance) => {
+          if (saved) return;
+          const pane = containerRef.current?.getBoundingClientRect();
+          if (!pane || pane.width === 0 || pane.height === 0) return;
+          void instance.setViewport(initialTreeViewport(
+            { width: contentWidth, height: contentHeight, rootCenterY: (rootBase?.y ?? 0) + TIDY_NODE_HEIGHT / 2 },
+            { width: pane.width, height: pane.height },
+          ));
+        }}
+        onMoveEnd={(_, viewport) => saveViewport(viewportKey, viewport)}
+        {...(saved ? { defaultViewport: saved } : {})}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        deleteKeyCode={null}
+        onlyRenderVisibleElements
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
+        colorMode={colorMode}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+        <MiniMap
+          pannable
+          zoomable
+          position="bottom-right"
+          style={{ width: 140, height: 90 }}
+          nodeColor={(node) => (MINIMAP_STRONG.has((node.data as TreeNodeData).node.kind) ? "#6366f1" : "#94a3b8")}
+        />
+        <Toolbar hasOffsets={Object.keys(offsets).length > 0} onResetLayout={() => setOffsets({})} />
+        <ViewportProbe target={containerRef} />
+      </ReactFlow>
+      </TreeHandlersContext.Provider>
+    </div>
+  );
+}
 
-  function resetView() {
-    const next = { x: 0, y: 0, scale: 1 };
-    transformRef.current = next;
-    setTransform(next);
-    setOffsets({});
-  }
-
-  if (forest.root.children.length === 0) {
+export function TidyTreeCanvas(props: TidyTreeCanvasProps) {
+  if (props.forest.root.children.length === 0) {
     return (
       <div
-        className={`flex h-full min-h-[12rem] flex-col items-center justify-center gap-1 p-6 text-center ${className ?? ""}`}
+        className={`flex h-full min-h-[12rem] flex-col items-center justify-center gap-1 p-6 text-center ${props.className ?? ""}`}
         data-testid="tidy-tree-empty"
-        data-kind={forest.kind}
+        data-kind={props.forest.kind}
       >
         <p className="text-xs font-medium">这张图还是空的</p>
         <p className="max-w-sm text-2xs leading-relaxed text-muted-foreground">
-          {forest.emptyReason ?? "没有可显示的节点。"}
+          {props.forest.emptyReason ?? "没有可显示的节点。"}
         </p>
       </div>
     );
   }
-
+  // 换一张树（或换一本书）就换一个画布实例：视口、临时拖动都从头开始。
   return (
-    <div
-      ref={viewportRef}
-      className={`relative min-h-0 flex-1 overflow-hidden ${className ?? ""}`}
-      data-testid="tidy-tree-canvas"
-      data-kind={forest.kind}
-      data-zoom={transform.scale.toFixed(2)}
-      data-pan-x={String(transform.x)}
-      data-pan-y={String(transform.y)}
-      style={{ cursor, touchAction: "none" }}
-      onPointerDown={(event) => {
-        if (!isPrimaryPointer(event)) return;
-        const target = event.target as HTMLElement | null;
-        if (target?.closest("button,[data-slot='button']")) return;
-        dragRef.current = {
-          kind: "pan",
-          startX: event.clientX,
-          startY: event.clientY,
-          origX: transform.x,
-          origY: transform.y,
-          moved: false,
-        };
-        setCursor("grabbing");
-      }}
-      onPointerMove={(event) => {
-        const drag = dragRef.current;
-        if (!drag) return;
-        const dx = event.clientX - drag.startX;
-        const dy = event.clientY - drag.startY;
-        if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-        drag.moved = true;
-        if (drag.kind === "pan") {
-          const next = { ...transformRef.current, x: drag.origX + dx, y: drag.origY + dy };
-          transformRef.current = next;
-          setTransform(next);
-          setCursor("grabbing");
-          return;
-        }
-        const scale = transformRef.current.scale || 1;
-        setOffsets((current) => ({
-          ...current,
-          [drag.id]: { x: drag.origX + dx / scale, y: drag.origY + dy / scale },
-        }));
-        setCursor("move");
-      }}
-      onPointerUp={() => {
-        const drag = dragRef.current;
-        dragRef.current = null;
-        setCursor("grab");
-        if (drag?.kind === "node" && drag.moved) suppressClickRef.current = true;
-      }}
-    >
-      <div className="absolute right-2 top-2 z-[1] flex items-center gap-1 rounded-md border bg-background/90 p-0.5 shadow-sm">
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          className="h-6 w-6 p-0"
-          aria-label="缩小"
-          data-testid="tidy-tree-zoom-out"
-          onClick={() => applyZoom(transform.scale / 1.2)}
-        >
-          <Minus className="size-3" />
-        </Button>
-        <span className="min-w-10 text-center text-2xs tabular-nums text-muted-foreground" data-testid="tidy-tree-zoom-label">
-          {Math.round(transform.scale * 100)}%
-        </span>
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          className="h-6 w-6 p-0"
-          aria-label="放大"
-          data-testid="tidy-tree-zoom-in"
-          onClick={() => applyZoom(transform.scale * 1.2)}
-        >
-          <Plus className="size-3" />
-        </Button>
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          className="h-6 px-1.5 text-2xs"
-          aria-label="复位视图"
-          data-testid="tidy-tree-reset"
-          onClick={resetView}
-        >
-          <LocateFixed className="size-3" />
-        </Button>
-      </div>
-
-      <div
-        data-testid="tidy-tree-stage"
-        style={{
-          width,
-          height,
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-          transformOrigin: "0 0",
-        }}
-      >
-        <svg
-          role="tree"
-          aria-label={forest.root.label}
-          width={width}
-          height={height}
-          className="block"
-        >
-          {layout.edges.map((edge) => {
-            const from = byId.get(edge.from);
-            const to = byId.get(edge.to);
-            if (!from || !to) return null;
-            const x1 = from.x + NODE_WIDTH;
-            const y1 = from.y + NODE_HEIGHT / 2;
-            const x2 = to.x;
-            const y2 = to.y + NODE_HEIGHT / 2;
-            const mid = (x1 + x2) / 2;
-            return (
-              <path
-                key={`${edge.from}->${edge.to}`}
-                d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`}
-                fill="none"
-                stroke="currentColor"
-                strokeOpacity={0.28}
-                strokeWidth={1.2}
-              />
-            );
-          })}
-          {placed.map(({ node, x, y }) => {
-            const hasChildren = node.children.length > 0;
-            const isExpanded = expanded.has(node.id);
-            const selected = selectedId === node.id;
-            const matched = Boolean(matchedIds?.has(node.id));
-            return (
-              <g
-                key={node.id}
-                transform={`translate(${x} ${y})`}
-                data-testid={`tidy-tree-row-${node.id}`}
-                data-x={x.toFixed(1)}
-                data-y={y.toFixed(1)}
-                onPointerDown={(event) => {
-                  if (!isPrimaryPointer(event)) return;
-                  event.stopPropagation();
-                  const target = event.target as HTMLElement | null;
-                  if (target?.closest("[data-testid^='tidy-tree-toggle-']")) return;
-                  dragRef.current = {
-                    kind: "node",
-                    id: node.id,
-                    startX: event.clientX,
-                    startY: event.clientY,
-                    origX: offsets[node.id]?.x ?? 0,
-                    origY: offsets[node.id]?.y ?? 0,
-                    moved: false,
-                  };
-                }}
-              >
-                <rect
-                  width={NODE_WIDTH}
-                  height={NODE_HEIGHT}
-                  rx={6}
-                  className={selected ? "stroke-primary" : matched ? "stroke-amber-500/70" : "stroke-border"}
-                  fill="var(--card)"
-                  strokeWidth={selected || matched ? 1.6 : 1}
-                />
-                <rect width={3} height={NODE_HEIGHT} rx={1.5} fill={KIND_FILL[node.kind]} />
-                {hasChildren ? (
-                  <foreignObject x={4} y={4} width={20} height={24}>
-                    <button
-                      type="button"
-                      className="flex size-5 items-center justify-center text-muted-foreground hover:text-foreground"
-                      style={{ width: "100%", height: "100%" }}
-                      aria-label={isExpanded ? `折叠 ${node.label}` : `展开 ${node.label}`}
-                      aria-expanded={isExpanded}
-                      data-testid={`tidy-tree-toggle-${node.id}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onToggle(node.id);
-                      }}
-                    >
-                      {isExpanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                    </button>
-                  </foreignObject>
-                ) : null}
-                <foreignObject x={hasChildren ? 24 : 10} y={1} width={NODE_WIDTH - (hasChildren ? 28 : 14)} height={NODE_HEIGHT - 2}>
-                  <button
-                    type="button"
-                    className="flex h-full w-full cursor-grab items-center gap-1 overflow-hidden text-left"
-                    style={{ width: "100%", height: "100%" }}
-                    data-testid={`tidy-tree-node-${node.id}`}
-                    title={node.detail ?? node.label}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (suppressClickRef.current) {
-                        suppressClickRef.current = false;
-                        return;
-                      }
-                      nodeAction(node, props);
-                    }}
-                  >
-                    <span className="min-w-0 truncate text-2xs font-medium">{node.label}</span>
-                    {node.kind !== "entry" && node.kind !== "chapter" && node.kind !== "entity" && node.count > 0 ? (
-                      <span className="shrink-0 text-2xs text-muted-foreground">{` · ${node.count}`}</span>
-                    ) : null}
-                  </button>
-                </foreignObject>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-    </div>
+    <ReactFlowProvider key={props.viewportKey ?? `${props.forest.kind}:${props.forest.root.id}`}>
+      <TidyTreeFlow {...props} />
+    </ReactFlowProvider>
   );
 }
 

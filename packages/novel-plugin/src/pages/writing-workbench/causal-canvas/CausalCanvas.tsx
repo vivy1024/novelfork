@@ -35,7 +35,9 @@ import {
   type CausalLane,
 } from "../../../engine/narrative-taxonomy/causal-graph";
 import type { NarrativeStructurePayload } from "../../../engine/narrative-taxonomy/narrative-structure";
+import { readSavedViewport, saveViewport } from "../canvas-viewport";
 import { STALLED_LANE_GAP } from "../story-progress-board";
+import { useCanvasColorMode } from "../use-canvas-color-mode";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import {
   LANE_HEIGHT,
@@ -168,6 +170,8 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
   const [addLineId, setAddLineId] = useState("");
   const [instance, setInstance] = useState<ReactFlowInstance<CausalCanvasNode, CausalCanvasEdge> | null>(null);
   const paneRef = useRef<HTMLDivElement>(null);
+  const colorMode = useCanvasColorMode();
+  const viewportKey = `${bookId}:causal`;
 
   useEffect(() => setData(structure), [structure]);
 
@@ -312,9 +316,13 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
             }}
             onInit={(ready) => {
               setInstance(ready);
+              // 回到上次看的位置；第一次打开按泳道高度与最近几章定视口。
+              const saved = readSavedViewport(viewportKey);
               const pane = paneRef.current?.getBoundingClientRect();
-              void ready.setViewport(initialViewport(layout, { width: pane?.width || 800, height: pane?.height || 600 }));
+              void ready.setViewport(saved ?? initialViewport(layout, { width: pane?.width || 800, height: pane?.height || 600 }));
             }}
+            onMoveEnd={(_, viewport) => saveViewport(viewportKey, viewport)}
+            colorMode={colorMode}
             nodesConnectable={false}
             deleteKeyCode={null}
             onlyRenderVisibleElements

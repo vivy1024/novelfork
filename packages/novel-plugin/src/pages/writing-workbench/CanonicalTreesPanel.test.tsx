@@ -124,35 +124,29 @@ describe("CanonicalTreesPanel 四张正图", () => {
     expect(onOpenEntry).toHaveBeenCalledWith("c1", "薛行之");
   });
 
-  it("支持缩放、平移和拖节点改布局", async () => {
-    function dispatchWindow(type: "pointermove" | "pointerup", clientX = 0, clientY = 0) {
-      const EventCtor = window.PointerEvent ?? MouseEvent;
-      window.dispatchEvent(new EventCtor(type, { bubbles: true, clientX, clientY, button: 0 }));
-    }
+  it("缩放按钮生效；视口按作品与视图记住，重新打开回到原处", async () => {
+    // Node 25 自带的全局 localStorage 在没有 --localstorage-file 时不可用，会盖住 jsdom 的实现。
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+    });
+    const first = render(<CanonicalTreesPanel bookId="book-1" />);
+    const canvas = await waitFor(() => screen.getByTestId("tidy-tree-canvas"));
+    await waitFor(() => expect(canvas.getAttribute("data-zoom")).toBe("1.00"));
+    fireEvent.click(screen.getByTestId("tidy-tree-zoom-in"));
+    await waitFor(() => expect(canvas.getAttribute("data-zoom")).toBe("1.20"));
+    expect(screen.getByTestId("tidy-tree-zoom-label").textContent).toBe("120%");
+    await waitFor(() => expect(localStorage.getItem("novelfork:canvas-viewport:book-1:worldview")).toContain("\"zoom\":1.2"));
+    first.unmount();
 
     render(<CanonicalTreesPanel bookId="book-1" />);
-    const canvas = await waitFor(() => screen.getByTestId("tidy-tree-canvas"));
-    expect(canvas.getAttribute("data-zoom")).toBe("1.00");
-    fireEvent.click(screen.getByTestId("tidy-tree-zoom-in"));
-    expect(Number(canvas.getAttribute("data-zoom"))).toBeGreaterThan(1);
-    fireEvent.click(screen.getByTestId("tidy-tree-reset"));
-    expect(canvas.getAttribute("data-zoom")).toBe("1.00");
-
-    fireEvent.pointerDown(canvas, { clientX: 40, clientY: 40, button: 0, buttons: 1 });
-    fireEvent.pointerMove(canvas, { clientX: 90, clientY: 70, button: 0, buttons: 1 });
-    dispatchWindow("pointermove", 90, 70);
-    fireEvent.pointerUp(canvas, { clientX: 90, clientY: 70, button: 0 });
-    expect(Number(canvas.getAttribute("data-pan-x"))).toBe(50);
-    expect(Number(canvas.getAttribute("data-pan-y"))).toBe(30);
-
-    const node = screen.getByTestId("tidy-tree-row-dimension:story");
-    const beforeX = Number(node.getAttribute("data-x"));
-    fireEvent.pointerDown(node, { clientX: 20, clientY: 20, button: 0, buttons: 1 });
-    fireEvent.pointerMove(canvas, { clientX: 80, clientY: 20, button: 0, buttons: 1 });
-    dispatchWindow("pointermove", 80, 20);
-    fireEvent.pointerUp(canvas, { clientX: 80, clientY: 20, button: 0 });
-    const afterX = Number(screen.getByTestId("tidy-tree-row-dimension:story").getAttribute("data-x"));
-    expect(afterX).toBeGreaterThan(beforeX);
+    const reopened = await waitFor(() => screen.getByTestId("tidy-tree-canvas"));
+    await waitFor(() => expect(reopened.getAttribute("data-zoom")).toBe("1.20"));
+    // 别的书、别的视图各记各的
+    expect(localStorage.getItem("novelfork:canvas-viewport:book-2:worldview")).toBeNull();
+    vi.unstubAllGlobals();
   });
 
   it("共现接口失败时降级提示，不挡世界观", async () => {

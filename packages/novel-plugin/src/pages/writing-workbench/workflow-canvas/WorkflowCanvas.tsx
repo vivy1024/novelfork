@@ -5,7 +5,7 @@
  * 拖动只改排版位置（onMoveNode）。只读模式用于运行中的叠加监视。
  */
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -36,6 +36,7 @@ import {
   type WorkflowCanvasEdge,
   type WorkflowCanvasNode,
 } from "./workflow-canvas-model";
+import { useCanvasColorMode } from "../use-canvas-color-mode";
 import { workflowEdgeTypes, workflowNodeTypes } from "./WorkflowCanvasNodes";
 
 export interface WorkflowCanvasProps {
@@ -66,17 +67,6 @@ function FitViewOnChange({ signal }: { signal: number | undefined }) {
   return null;
 }
 
-function subscribeDarkMode(onChange: () => void): () => void {
-  if (typeof MutationObserver === "undefined" || typeof document === "undefined") return () => undefined;
-  const observer = new MutationObserver(onChange);
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-  return () => observer.disconnect();
-}
-
-function isDarkMode(): boolean {
-  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-}
-
 const defaultEdgeOptions = { markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 } };
 
 export function WorkflowCanvas({
@@ -91,7 +81,7 @@ export function WorkflowCanvas({
   fitViewKey,
   className,
 }: WorkflowCanvasProps) {
-  const dark = useSyncExternalStore(subscribeDarkMode, isDarkMode, () => false);
+  const colorMode = useCanvasColorMode();
   const selectedId = selection?.id ?? null;
   const derivedNodes = useMemo(
     () => toCanvasNodes(recipe, issues, { editable, runSteps, selectedId }),
@@ -155,7 +145,7 @@ export function WorkflowCanvas({
         nodesConnectable={editable}
         elementsSelectable
         deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
-        colorMode={dark ? "dark" : "light"}
+        colorMode={colorMode}
         fitView
         fitViewOptions={FIT_VIEW_OPTIONS}
         minZoom={0.25}

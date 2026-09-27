@@ -12,7 +12,7 @@ import type { RuntimeToolResultAction } from "@vivy1024/narrafork-runtime-bridge
 
 import { executeToolResultAction } from "../tool-results/actions";
 import { renderToolResult } from "../tool-results/registry";
-import type { ToolResultAction } from "../tool-results/types";
+import type { ToolResultAction, ToolResultArtifact } from "../tool-results/types";
 import type { RuntimeNarratorSummary } from "./product-contract";
 import type { RuntimeNarratorRecord } from "./runtime-narrator-client";
 
@@ -20,12 +20,15 @@ export interface RuntimeNativeNarratorPanelMountProps {
 	readonly narratorId: string;
 	readonly compact?: boolean;
 	readonly bookId?: string;
+	/** 结果卡上的「在画布打开」：由宿主（写作工作台）决定打开哪个资源；不给则不显示该按钮。 */
+	readonly onOpenArtifact?: (artifact: ToolResultArtifact) => void;
 }
 
 export interface RuntimeNarratorPanelMountProps {
 	readonly bookId: string;
 	readonly narrator: RuntimeNarratorSummary;
 	readonly compact?: boolean;
+	readonly onOpenArtifact?: (artifact: ToolResultArtifact) => void;
 }
 
 export interface RuntimeStandaloneNarratorPanelMountProps {
@@ -45,6 +48,7 @@ export function RuntimeNativeNarratorPanelMount({
 	narratorId,
 	compact,
 	bookId,
+	onOpenArtifact,
 }: RuntimeNativeNarratorPanelMountProps) {
 	const [highlightMessageId, setHighlightMessageId] = useState(
 		readHighlightMessageId,
@@ -68,8 +72,9 @@ export function RuntimeNativeNarratorPanelMount({
 			toolName: input.toolName,
 			result: input.result,
 			onAction: input.onAction ?? onAction,
+			...(onOpenArtifact ? { onOpenArtifact } : {}),
 		}),
-		[onAction],
+		[onAction, onOpenArtifact],
 	);
 
 	useEffect(() => {
@@ -115,6 +120,7 @@ export function RuntimeNarratorPanelMount({
 	bookId,
 	narrator,
 	compact,
+	onOpenArtifact,
 }: RuntimeNarratorPanelMountProps) {
 	if (narrator.bookId !== bookId || narrator.capabilities.read !== true) {
 		return (
@@ -128,6 +134,7 @@ export function RuntimeNarratorPanelMount({
 			narratorId={narrator.id}
 			compact={compact}
 			bookId={bookId}
+			{...(onOpenArtifact ? { onOpenArtifact } : {})}
 		/>
 	);
 }
