@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, sep } from "node:path";
+
+import { RUNTIME_WORKER_ENTRIES, writeRuntimeWorkerEntryShims } from "./lib/isolated-runtime-build.ts";
 
 function findRepositoryRoot(start: string): string {
   let directory = start;
@@ -212,6 +215,34 @@ describe("根 Host 编译契约", () => {
     expect(isolatedRuntimeBuildScript).not.toContain("mklink");
     expect(studioViteConfig).toContain("NOVELFORK_PRODUCT_RUNTIME_ROOT");
     expect(studioViteConfig).toContain("frontendOutDir");
+  });
+
+  test("Runtime 用 new Worker() 启动的模块全部作为额外编译入口，且与 Runtime 编译脚本一致", () => {
+    // Worker 的路径打包器不跟随：漏掉一个，EXE 里对应功能就只剩 ModuleNotFound（0.7 的编辑器文档即如此）。
+    const runtimeCompileArgs = buildScript.slice(buildScript.indexOf('"./server/index.ts"'), buildScript.indexOf('"--compile"'));
+    const runtimeWorkerEntries = [...runtimeCompileArgs.matchAll(/"\.\/(server\/[^"]+\.ts)"/gu)]
+      .map((match) => match[1])
+      .filter((entry) => entry !== "server/index.ts");
+    expect(runtimeWorkerEntries.length).toBeGreaterThan(0);
+    expect([...RUNTIME_WORKER_ENTRIES].sort()).toEqual([...runtimeWorkerEntries].sort());
+    expect(productCompileScript).toContain("entrypoints: [entry, ...workerEntries]");
+  });
+
+  test("Runtime Worker 垫片落在 Runtime 会探测的 server/ 路径并导入真实模块", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "novelfork-worker-shims-"));
+    try {
+      const runtimeRoot = join(workspace, "packages", "narrafork-runtime-private");
+      for (const entry of RUNTIME_WORKER_ENTRIES) {
+        mkdirSync(dirname(join(runtimeRoot, entry)), { recursive: true });
+        writeFileSync(join(runtimeRoot, entry), "export {};\n");
+      }
+      const shims = writeRuntimeWorkerEntryShims(workspace, runtimeRoot);
+      expect(shims.map((shim) => relative(workspace, shim).split(sep).join("/"))).toEqual([...RUNTIME_WORKER_ENTRIES]);
+      expect(readFileSync(shims[0], "utf8")).toBe('import "../../../packages/narrafork-runtime-private/server/lib/db-worker/worker-entry.ts";\n');
+      expect(() => writeRuntimeWorkerEntryShims(workspace, runtimeRoot)).toThrow("Refusing to overwrite");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
   });
 
   test("产品编排覆盖 NarraFork 的全部发布平台并可按平台族调用", () => {

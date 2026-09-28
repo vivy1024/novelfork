@@ -15,7 +15,7 @@ import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-export const REQUIRED_RUNTIME_BUN_VERSION = "1.3.13";
+export const REQUIRED_RUNTIME_BUN_VERSION = "1.4.2";
 export const MINIMUM_ISOLATED_RUNTIME_FREE_BYTES = 10 * 1024 ** 3;
 
 function formatGiB(bytes: number): string {
@@ -390,6 +390,37 @@ export function resolveRuntimeBridgeImport(
 
 function toBunFilePath(path: string): string {
 	return path.replaceAll("\\", "/");
+}
+
+/**
+ * Runtime modules started with `new Worker()`. The bundler does not follow Worker
+ * specifiers, so each must be an extra compile entry; keep this list equal to the extra
+ * entries in the Runtime's scripts/build-cross-platform.ts (a contract test checks it).
+ */
+export const RUNTIME_WORKER_ENTRIES = [
+	"server/lib/db-worker/worker-entry.ts",
+	"server/services/editor-document-worker.ts",
+	"server/services/revert-transaction-manifest-worker.ts",
+] as const;
+
+/**
+ * The bundler embeds an extra entry at its path relative to the main entry's directory.
+ * The product entry is the workspace-root main.ts, so a Runtime worker would land under
+ * `packages/narrafork-runtime-private/server/...`, a path the Runtime never probes; it only
+ * tries `server/...` and a few shorter shapes. A one-line shim at `<workspace>/server/...`
+ * embeds at `server/....js`, which the Runtime does probe, and imports the real module.
+ */
+export function writeRuntimeWorkerEntryShims(workspaceRoot: string, runtimeRoot: string): string[] {
+	return RUNTIME_WORKER_ENTRIES.map((entry) => {
+		const target = join(runtimeRoot, entry);
+		if (!existsSync(target)) throw new Error(`Runtime worker entry is missing: ${target}`);
+		const shim = join(workspaceRoot, entry);
+		if (existsSync(shim)) throw new Error(`Refusing to overwrite an existing workspace file: ${shim}`);
+		mkdirSync(dirname(shim), { recursive: true });
+		const specifier = relative(dirname(shim), target).split(sep).join("/");
+		writeFileSync(shim, `import ${JSON.stringify(specifier.startsWith(".") ? specifier : `./${specifier}`)};\n`);
+		return shim;
+	});
 }
 
 export const PREBUNDLED_ZOD_FILENAME = "prebundled-zod-v4.js";

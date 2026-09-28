@@ -14,6 +14,7 @@ import { basename, join, resolve } from "node:path";
 import {
 	createIsolatedRuntimeBuild,
 	withIsolatedRuntimeEnvironment,
+	writeRuntimeWorkerEntryShims,
 } from "./lib/isolated-runtime-build.ts";
 import { prepareEmbeddedProductMigrationData } from "./lib/prepare-product-release-artifacts.ts";
 import {
@@ -229,6 +230,7 @@ async function compileProduct(): Promise<void> {
 		mkdirSync(distRoot, { recursive: true });
 		const buildCommit = readCommit(isolatedRuntime.environment);
 		const entry = join(isolatedRuntime.workspaceRoot, "main.ts");
+		const workerEntries = writeRuntimeWorkerEntryShims(isolatedRuntime.workspaceRoot, isolatedRuntime.root);
 
 		// Frontend assets, migrations and changelogs are platform independent, so
 		// they are materialized once even for a full cross-platform matrix; only
@@ -266,7 +268,7 @@ async function compileProduct(): Promise<void> {
 				isolatedRuntime.environment,
 				() =>
 					Bun.build({
-						entrypoints: [entry],
+						entrypoints: [entry, ...workerEntries],
 						compile: {
 							target: platform.target as Bun.Build.CompileTarget,
 							outfile: artifact,

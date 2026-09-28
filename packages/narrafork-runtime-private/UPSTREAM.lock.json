@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime-private",
   "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "127e5c31386e582dadff43c6feb5357104f95507",
-  "tree": "0d7c3f431c839f5fc015d98c0b4730f0909312f0",
+  "commit": "3d788013a7af3215d4336665025cda34dc3d0523",
+  "tree": "b94a4915828ef3560e0869757cf720643d9d281e",
   "branch": "novelfork/integration-v0.7.10",
   "localBranch": "novelfork/upgrade-0.7.10",
   "version": "0.7.10",
-  "importedAt": "2026-09-28T12:55:22.000Z",
+  "importedAt": "2026-09-28T13:48:37.000Z",
   "trackedFileCount": 4542,
   "importMethod": "git-archive",
   "provenance": {
@@ -47,6 +47,13 @@
         "subject": "feat(host): 嵌入宿主可接管叙述者面板里的文件打开",
         "status": "local",
         "note": "新增 RuntimeFileOpenInterceptorContext 与 EmbeddedNarratorDockHost.onOpenFile；NovelFork 用它把章节交给写作台打开。与合并提交一起待推送"
+      },
+      {
+        "commit": "3d788013a7af3215d4336665025cda34dc3d0523",
+        "parent": "127e5c31386e582dadff43c6feb5357104f95507",
+        "subject": "feat(host): Monaco 配色跟随嵌入宿主的配色切换",
+        "status": "local",
+        "note": "Monaco 监听根元素属性变化并重新解析配色，嵌入宿主换书房主题（不翻转明暗）时编辑器跟着换色。与合并提交一起待推送"
       }
     ]
   }

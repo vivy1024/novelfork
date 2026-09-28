@@ -333,6 +333,10 @@ pnpm run compile:all     # 全部 7 个平台，发版用
 
 产物校验：每个产物旁生成 `<产物名>.sha256`；多平台构建额外生成 `dist/novelfork-v<版本>-SHA256SUMS` 汇总全部产物，Release 资产以它为准。
 
+Bun 版本：编译用的 Bun 必须与 Runtime `package.json` 的 `packageManager` 完全一致（Runtime 0.7.10 起为 1.4.2，脚本常量 `REQUIRED_RUNTIME_BUN_VERSION`），不一致时编译在开头就报错。产物内嵌的就是这个 Bun，与上游发布和测试用的版本对齐。
+
+Runtime 的 Worker：`new Worker()` 的路径打包器不跟随，Runtime 自己的编译脚本把这些模块列为额外入口。产品编译在临时工作区的 `server/…` 下生成一行导入的垫片作为额外入口（`RUNTIME_WORKER_ENTRIES`），使它们嵌在 Runtime 会探测的路径上；契约测试核对这份清单与 Runtime 编译脚本一致。上游新增 Worker 时测试会失败，照着补上即可。
+
 交叉编译前置条件：Bun 会为每个非本机目标下载独立运行时并缓存在 `~/.bun/install/cache/bun-<target>-v<bun版本>`。首次或网络中断时会出现 `Failed to extract executable for 'bun-darwin-aarch64-...'`。`compile-product-runtime.ts` 因此在准备任何产物之前先用一次性最小编译探测全部目标（失败重试 3 次），所以这类问题会在几秒内失败，而不是在几十分钟的矩阵构建中途炸掉。真的探测失败时，先确认能访问 npm registry，再重跑同一命令即可。
 
 EXE 核验注意：产物启动时会自动打开产品窗口。无头核验必须带 `NOVELFORK_NO_BROWSER=1`，不要在用户使用屏幕时弹窗；同时用 `NOVELFORK_HOME` 指向临时目录，产品各数据路径（两个数据库、Runtime 目录、全局配置、技能、市场数据、窗口配置）随之隔离，不碰用户真实数据。前提是环境里没有单独设置 `NOVELFORK_RUNTIME_DIR`、`NOVELFORK_STORAGE_DB_PATH`、`NOVELFORK_MARKET_DIR` 这类更具体的路径变量，它们优先于 `NOVELFORK_HOME`：
