@@ -32,7 +32,7 @@ NarraFork 宿主系统与开发者规则
 本地辅助（均不提交）
 ├─ packages/.narrafork-runtime-fork-staging/  Runtime 宿主 git 库（接缝分支与上游镜像的本地唯一副本）
 ├─ packages/.narrafork-runtime-import/        导入脚本暂存区，含 zstd 工具链（仍被引用，勿删）
-└─ .runtime-backup-v0.6.5-20260917/           上一次物化目录备份（回滚用）
+└─ .runtime-backup-v0.6.6-20260928/           上一次物化目录备份（回滚用；更早的 v0.6.5 等备份也在根目录）
 ```
 
 | 路径 | 角色 | Git |
@@ -216,6 +216,8 @@ NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-
 4. 验证：`bun run typecheck`（注意 runtime 用 tsgo、bridge 用 tsc，tsc 更严格会暴露 tsgo 漏报的上游缺陷）；权限/agent 工具测试套件；失败项须在**纯上游同版本基线** worktree 复跑对比，确认是否为上游自身缺陷或 Windows 环境既有问题。
 5. 推送 fork 分支 → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（`commit`/`tree`/`branch` 与 provenance：接缝基线、上游提交、合并基点、冲突处理、物化后偏离）→ `pnpm runtime:sync` 导出到 `packages/narrafork-runtime-private/` 并 `bun install`（只改两版之间变化的文件；不要再手工 `git archive` 覆盖，否则同步脚本记录的状态会与目录不一致）→ typecheck + 冒烟测试 → 全工作区 `pnpm run typecheck` → 用隔离实例做真实启动验证。
 6. 已知基线：上游 v0.6.6（`751ad11b`，注意 0.6.6 发布过两次，`13e9c88d` 被 `78d739d1` 回滚后由 `751ad11b` 重发），fork 分支头 `dda73094`（2026-09-26，由 `f779ff11` 快进合入 Runtime PR #1）。接缝基线提交 `5ab50ffe`（上游 v0.6.5 + 产品定制）。
+   - 2026-09-28 本地已合并上游 v0.7.10（`24f2436a`，无 tag）：宿主库分支 `novelfork/upgrade-0.7.10` 的 `bc6347b9`，物化目录已同步到它。**尚未推送**，计划推到 fork 远端新分支 `novelfork/integration-v0.7.10`；推送前 `pnpm runtime:sync` 只能从本机宿主库取到该提交（做法见 `UPSTREAM.lock.json` 的 `provenance.note`）。推送后把本文件里的分支名统一改为 v0.7.10。
+   - 0.7.x 起 Agent 循环主体在 `server/services/agent-runtime/orchestrator.ts`，fork 的产品叙述者判断收在 `server/services/product-narrator-tools.ts`；上游不跟踪 SQLite `drizzle/`，纯上游基线跑数据库测试前要把同一套迁移复制进基线 worktree。
 
 ### 已知环境噪声（不要当成缺陷追查）
 
@@ -247,7 +249,7 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 | 角色/关系/世界「当前设定」 | 经纬对应分类（`layer=dynamic` 可变） | 拆书 JSON 仅调试快照 |
 | 章后事实与事件流 | Narrative Memory（`narrative_fact` / `narrative_event`） | 无文件权威源 |
 | 角色弧 beats | `jingwei_character_arc` | 无 |
-| 文风 | presets（`enabledPresetIds`） | `style_profile.json` 仅统计快照 |
+| 文风 | 待重定（原 presets / `enabledPresetIds` 已下线；现行只有 `story/style_profile.json` 统计指纹，见 `docs/路线与任务.md` T2.1） | — |
 | 诊断结果（preflight / publish / audit） | 不落盘，一次性返回 | 无 |
 
 配套规则：
@@ -362,10 +364,11 @@ NOVELFORK_HOME="$(mktemp -d)" NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-
 
 ### 后续方向
 
-1. **画布后续（均在 NovelFork 内，不改 Runtime）**：工作流子流程节点；跨章事件因果（事件尚未关联场景，因果画布暂无可连依据）；人物关系网是否做成画布需先与作者对齐需求（之前的图谱工作台下线过一次）。
-2. **前端复用 Runtime 页面，NovelFork 只做主题**：Runtime 前端用的是 Mantine（不是 shadcn）。设置、套路、定时任务、知识库、搜索等通用页改为嵌入 Runtime 原页（沿用 `EmbeddedProviderSettingsHost` 的做法），不再维护 shadcn 复制品；NovelFork 提供一层 `--mantine-*` 主题变量，并让明暗与界面语言跟随 Studio（F1 主题层已完成，见上表「主题」）。小说专属部分保留：向量模型设置、按书覆盖（命令 / 技能 / Hook / MCP / 规则）、「写作配置」、市场研究。步骤：F0 删死代码 → F1 主题层与样式隔离 → F2 设置页 → F3 套路页 → F4 其余页；F2 起需在 fork 层新增宿主文件（页面登记表 + 通用页面宿主）。
-3. **Runtime 升级**：上游已发布到 v0.7.8，改动面大；升级前先评估 product-host 接缝的搬迁，按「升级流程」在宿主库 worktree 中进行。
-4. **小项**：`bun.lock` 的物化后偏离（`@types/bun` 降到 1.3.13）提交回 fork 分支，让 `pnpm runtime:sync` 拿到的 Runtime 与维护者本机一致。
+完整任务与完成标准见 [`docs/路线与任务.md`](docs/路线与任务.md)，依据见 [`docs/90-参考资料/参考项目学习-2026-09.md`](docs/90-参考资料/参考项目学习-2026-09.md)。要点：
+
+- 2026-09-28 与作者确认：面向公开用户发布；上游不做小说方向（团队协作用官方插件 `NarraFork/narrator-team`，需宿主 0.7.7+）。通用能力归 Runtime，NovelFork 只做小说领域；OpenWrite 已按同样边界改为宿主插件。
+- 阶段：0 准备（本地并入 fork 提交 `006bf829`）→ 1 边界与升级到 v0.7.10（先评估 fork 层能否改用官方插件接口；上游 v0.7.9 / v0.7.10 无 tag，按 `upstream/main` 的 `24f2436a` 合并）→ 2 人味链（重定文风预设、自动蒸馏、角色声线、人文化环节、文风金库、朱雀检测验收）→ 3 自有技能（创作预设只留约 8 个作者入口，内置 378 个技能目录收到约 15–20 个）→ 4 记忆链（实体身份、正文接纳、状态与知识边界、关系图谱、重做故事推进）→ 5 工作流交给 narrator-team 执行 → 6 公开发布必需项（项目档案、保存可靠性）→ 7 基线与试用（推送、七平台编译、EXE 核验、作者真书试用）。作者决定先做完阶段 1–6 再统一出基线，中途不单独发版。
+- 学参考项目的机制不抄原文：PlotPilot（Commons Clause）、笔枢 / Scriverse / InkOS（AGPL）、MuMuAINovel（GPL）的代码与提示词不进仓库。
 
 ## 持久记忆
 
