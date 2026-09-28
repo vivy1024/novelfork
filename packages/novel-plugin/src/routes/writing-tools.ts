@@ -21,7 +21,7 @@ import {
   type DialogueChapterType,
 } from "../engine/index.js";
 import type { RouterContext } from "./context.js";
-import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
+import { chapterWordCount, listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
 
 type JsonContext = { readonly req: { json: <T>() => Promise<T> } };
 
@@ -197,7 +197,7 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     return c.json({
       health: {
         totalChapters: measuredMetric(chapters.length, "chapter-files"),
-        totalWords: measuredMetric(chapters.reduce((total, chapter) => total + countContentWords(chapter.content), 0), "chapter-files"),
+        totalWords: measuredMetric(chapters.reduce((total, chapter) => total + chapterWordCount(chapter.content, language === "en" ? "en_words" : "zh_chars"), 0), "chapter-files"),
         chapterWordTarget: measuredMetric(book.chapterWordCount, "book-config"),
         sensitiveWordCount: measuredMetric(sensitiveWordCount, "sensitive-word-scan"),
         consistencyScore,
@@ -270,10 +270,6 @@ function measuredMetric(value: number, source: string): MeasuredMetric {
 
 function unknownMetric(reason: string): UnknownMetric {
   return { status: "unknown", reason };
-}
-
-function countContentWords(content: string): number {
-  return content.replace(/\s+/g, "").length;
 }
 
 function countSensitiveHits(content: string, language: "zh" | "en"): number {

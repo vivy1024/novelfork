@@ -1,6 +1,10 @@
 import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { countChapterLength, type LengthCountingMode } from "@vivy1024/novelfork-core";
+
+import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
+
 export const CHAPTERS_DIRECTORY = "chapters";
 export const CHAPTER_INDEX_FILE = "index.json";
 export const DEFAULT_VOLUME_DIRECTORY = "卷01";
@@ -13,6 +17,10 @@ export type ChapterIndexRecord = Record<string, unknown> & {
   fileName: string;
   wordCount: number;
   updatedAt: string;
+  /** 正文指纹（与结算台账同一算法）；旧索引没有，对账时补上。 */
+  contentHash?: string;
+  /** 上次观察到的文件修改时间（毫秒，取整）。对账只拿它判断文件是否被动过，不影响 updatedAt 的含义。 */
+  fileModifiedAt?: number;
 };
 
 export interface ParsedChapterFile {
@@ -85,8 +93,9 @@ export function chapterTitleFromContent(file: ParsedChapterFile, content: string
   return /^#\s+(.+)$/mu.exec(content)?.[1]?.trim() || file.title || `第 ${file.number} 章`;
 }
 
-export function chapterWordCount(content: string): number {
-  return content.replace(/\s+/gu, "").trim().length;
+/** 章节字数：按书籍计数方式只数正文（去掉 frontmatter、标题行、代码块），所有写入入口共用。 */
+export function chapterWordCount(content: string, countingMode: LengthCountingMode = "zh_chars"): number {
+  return countChapterLength(content, countingMode);
 }
 
 export async function listChapterFiles(bookRoot: string): Promise<ChapterFileEntry[]> {
@@ -157,6 +166,7 @@ export async function synchronizeChapterLayout(
   bookId: string,
   bookRoot: string,
   resolveVolumeDirectory: ChapterVolumeDirectoryResolver,
+  options: { readonly countingMode?: LengthCountingMode } = {},
 ): Promise<ChapterLayoutMigrationResult> {
   const chaptersRoot = join(bookRoot, CHAPTERS_DIRECTORY);
   await mkdir(chaptersRoot, { recursive: true });
@@ -193,7 +203,7 @@ export async function synchronizeChapterLayout(
         number: parsed.number,
         title: previous?.title || chapterTitleFromContent(parsed, content),
         fileName: targetRelativePath,
-        wordCount: previous?.wordCount || chapterWordCount(content),
+        wordCount: previous?.wordCount || chapterWordCount(content, options.countingMode),
         updatedAt: previous?.updatedAt || new Date().toISOString(),
       });
       changed = true;
@@ -216,8 +226,10 @@ export async function synchronizeChapterLayout(
       number: file.number,
       title: chapterTitleFromContent(file, content),
       fileName: file.chapterRelativePath,
-      wordCount: chapterWordCount(content),
+      wordCount: chapterWordCount(content, options.countingMode),
       updatedAt: info?.mtime.toISOString() ?? new Date().toISOString(),
+      contentHash: chapterContentFingerprint(content),
+      ...(info ? { fileModifiedAt: Math.floor(info.mtimeMs) } : {}),
     });
     changed = true;
   }

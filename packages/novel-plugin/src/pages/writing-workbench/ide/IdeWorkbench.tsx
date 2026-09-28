@@ -34,6 +34,7 @@ import { JingweiSidebarToolbar } from "../jingwei/JingweiSidebarToolbar";
 import { WriteViewPanel } from "../WriteViewPanel";
 import { dispatchWritingProgress } from "../writing-progress-event";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
+import { useChapterReconcile } from "../use-chapter-reconcile";
 import type { GuidedSetupOutcome } from "../NewBookGuide";
 import { buildWriteRequestMessage } from "../write-request";
 import type { BeatBudgetItem } from "../../../handlers/beat-budget";
@@ -615,6 +616,52 @@ export function IdeWorkbench({
       })
       .filter((x): x is { tabId: string; node: WorkbenchResourceNode } => x !== null);
   }, [bookId, ideTabs.tabs, resourceMap, loadedFiles]);
+
+  // 章节文件对账：叙述者的通用写工具、Runtime 编辑器、外部编辑器改过的章节，服务端补做附带动作后
+  // 这里刷新面板；已打开且没有未保存修改的章节读到新正文后原地替换，有未保存修改的只提示，不覆盖作者的输入。
+  const loadedFilesRef = useRef(loadedFiles);
+  loadedFilesRef.current = loadedFiles;
+  useChapterReconcile(bookId, (changes, { reset }) => {
+    dispatchWritingProgress({ reason: "chapter-reconcile", ...(bookId ? { bookId } : {}) });
+    // 变更不全（服务重启或落后太多）时只刷新面板，不动已打开的标签，避免误丢作者的输入。
+    if (reset || !bookId) return;
+    const changedPaths = new Set(changes.map((change) => change.path));
+    const dirtyTitles: string[] = [];
+    for (const tab of ideTabsRef.current.tabs) {
+      const key = loadedFileKey(bookId, tab.id);
+      const node = loadedFilesRef.current.get(key);
+      const filePath = node?.metadata?.filePath;
+      // 还没读入过内容的标签，激活时自然会读到新正文。
+      if (!node || typeof filePath !== "string" || !changedPaths.has(filePath)) continue;
+      if (tab.dirty) {
+        dirtyTitles.push(tab.title);
+        continue;
+      }
+      // 先读到新正文再替换，中途不留"空内容"的状态：那会被编辑器当成作者清空了正文。
+      void fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`)
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`请求失败：${response.status}`);
+          return response.json() as Promise<{ content?: string }>;
+        })
+        .then((data) => {
+          if (typeof data.content !== "string" || currentBookIdRef.current !== bookId) return;
+          if (ideTabsRef.current.tabs.find((current) => current.id === tab.id)?.dirty) return;
+          clearEditorState(tab.id);
+          setLoadedFiles((previous) => {
+            const current = previous.get(key);
+            if (!current) return previous;
+            return new Map(previous).set(key, { ...current, content: data.content });
+          });
+        })
+        .catch(() => { /* 下一次对账或重新打开时再读 */ });
+    }
+    if (dirtyTitles.length > 0) {
+      toast(
+        `「${dirtyTitles.join("」「")}」已在别处被修改（叙述者或外部编辑器），这里还有未保存的内容；现在保存会覆盖那边的修改。`,
+        "info",
+      );
+    }
+  });
 
   // 恢复的文件 Tab 懒加载内容：active 节点是文件但尚未加载过内容时拉取一次
   useEffect(() => {

@@ -12,6 +12,7 @@ import {
 } from "@vivy1024/novelfork-core";
 import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
 import { createWritingResourceFileStore } from "../engine/writing-resource/file-store.js";
+import { applyChapterContentChange } from "../engine/writing-resource/chapter-change-effects.js";
 import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 
 export interface ChapterWriteInput {
@@ -232,6 +233,7 @@ export async function handleChapterWrite(
     const validation = await validateCompleteChapterWrite(input, options, length, lengthSpec);
     if (!Array.isArray(validation)) return validation;
 
+    const previous = await fileStore.findAcceptedChapter(input.bookId, input.chapterNumber);
     const updatedAt = new Date().toISOString();
     const updated = await fileStore.update(input.bookId, `chapter:${input.chapterNumber}`, {
       content: input.content,
@@ -240,6 +242,16 @@ export async function handleChapterWrite(
     });
     if (!updated) {
       return { ok: false, error: "chapter-not-found", summary: `章节 ${input.chapterNumber} 不存在，拒绝写入。` };
+    }
+    if (options.storage) {
+      // 与写作台保存同一套附带动作：字数增量记入写作日志、审计记录按新正文标记过期。
+      await applyChapterContentChange(options.storage, input.bookId, {
+        chapterNumber: input.chapterNumber,
+        previousWordCount: previous?.wordCount ?? 0,
+        wordCount,
+        content: input.content,
+        changedAt: new Date(updated.updatedAt).toISOString(),
+      });
     }
 
     const hash = createHash("sha256").update(input.content, "utf8").digest("hex");

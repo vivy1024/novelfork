@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import type { StorageDatabase } from "@vivy1024/novelfork-core";
+import type { LengthCountingMode, StorageDatabase } from "@vivy1024/novelfork-core";
 import { createWritingResourceFileStore, type WritingResourceFileStore } from "./file-store.js";
-import type { ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
+import { applyChapterContentChange } from "./chapter-change-effects.js";
+import { volumeDirectoryName, type ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
+import { reconcileChapterFiles, type ReconciledChapterFile } from "./chapter-reconcile.js";
 import { createWritingResourceRepository, type WritingResourceRepository } from "./repository.js";
 import type {
   CreateWritingResourceInput,
@@ -14,7 +16,6 @@ import type {
 import { persistNarrativeEvents } from "../narrative-memory/events.js";
 import { applyNarrativeEvents, type ApplyNarrativeEventsResult } from "../narrative-memory/reducer.js";
 import { NarrativeEventSchema } from "../narrative-memory/types.js";
-import { recordChapterCompletion } from "../tools/writing-log.js";
 
 export type WritingResourceService = {
   readonly list: (bookId: string, filter?: ListWritingResourcesFilter) => Promise<WritingResource[]>;
@@ -24,6 +25,8 @@ export type WritingResourceService = {
   readonly softDelete: (bookId: string, id: string) => Promise<WritingResource>;
   readonly getHistory: (bookId: string, id: string) => Promise<WritingResource[]>;
   readonly findAcceptedChapter: (bookId: string, chapterNumber: number) => Promise<WritingResource | null>;
+  /** 章节文件对账：补做绕过产品层的写入（通用写工具、Runtime 编辑器、外部编辑器）漏掉的附带动作。 */
+  readonly reconcileChapters: (bookId: string) => Promise<ReconciledChapterFile[]>;
 };
 
 export type CreateServiceInput = Omit<CreateWritingResourceInput, "id" | "bookId" | "createdAt" | "updatedAt"> & {
@@ -46,12 +49,15 @@ export function createWritingResourceService(input: {
   readonly resolveBookDir?: (bookId: string) => string;
   readonly resolveChapterVolumeDirectory?: ChapterVolumeDirectoryResolver;
   readonly repository?: WritingResourceRepository;
+  /** 书籍计数方式；缺省按中文字符计。 */
+  readonly countingMode?: LengthCountingMode;
 }): WritingResourceService {
   const now = input.now ?? (() => Date.now());
   const repository = input.repository ?? createWritingResourceRepository(input.storage);
   const fileStore = input.resolveBookDir
     ? createWritingResourceFileStore(input.resolveBookDir, {
         resolveChapterVolumeDirectory: input.resolveChapterVolumeDirectory,
+        countingMode: input.countingMode,
       })
     : undefined;
 
@@ -61,18 +67,25 @@ export function createWritingResourceService(input: {
     current: WritingResource,
   ): Promise<void> {
     if (current.type !== "chapter" || current.status !== "accepted" || !current.chapterNumber) return;
-    const hasBook = input.storage.sqlite.prepare("SELECT 1 AS present FROM book WHERE id = ?").get(bookId);
-    if (!hasBook) return;
-    const wordCount = Math.max(0, current.wordCount - (previous?.wordCount ?? 0));
-    if (wordCount <= 0) return;
-    const completedAt = new Date(current.updatedAt).toISOString();
-    await recordChapterCompletion(input.storage, {
-      bookId,
+    await applyChapterContentChange(input.storage, bookId, {
       chapterNumber: current.chapterNumber,
-      wordCount,
-      completedAt,
-      date: completedAt.slice(0, 10),
+      previousWordCount: previous?.wordCount ?? 0,
+      wordCount: current.wordCount,
+      content: current.content,
+      changedAt: new Date(current.updatedAt).toISOString(),
     });
+  }
+
+  async function reconcileChapters(bookId: string): Promise<ReconciledChapterFile[]> {
+    if (!input.resolveBookDir) return [];
+    const changes = await reconcileChapterFiles({
+      bookId,
+      bookRoot: input.resolveBookDir(bookId),
+      countingMode: input.countingMode ?? "zh_chars",
+      resolveVolumeDirectory: input.resolveChapterVolumeDirectory ?? (() => volumeDirectoryName(1)),
+    });
+    for (const change of changes) await applyChapterContentChange(input.storage, bookId, change);
+    return changes;
   }
 
   async function list(bookId: string, filter: ListWritingResourcesFilter = {}): Promise<WritingResource[]> {
@@ -123,6 +136,7 @@ export function createWritingResourceService(input: {
     list,
     getById,
     findAcceptedChapter,
+    reconcileChapters,
 
     async create(bookId, resource) {
       const chapterNumber = resource.chapterNumber ?? await nextChapterNumber(list, bookId);

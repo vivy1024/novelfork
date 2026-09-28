@@ -23,7 +23,13 @@ import {
 	settings,
 	ValidationError,
 } from "@vivy1024/narrafork-runtime-bridge";
-import { getStorageDatabase, resolveBookStorageDir } from "@vivy1024/novelfork-core";
+import {
+	getStorageDatabase,
+	type LengthCountingMode,
+	resolveBookStorageDir,
+	resolveLengthCountingMode,
+	StateManager,
+} from "@vivy1024/novelfork-core";
 import { and, desc, eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 // The private Runtime tsconfig maps only the plugin root. Keep direct source
 // imports limited to novel-plugin domain services rather than copying their
@@ -264,6 +270,8 @@ const MAX_WORKSPACE_TREE_DEPTH = 16;
 const MAX_WORKSPACE_FILE_BYTES = 2_000_000;
 const WORKSPACE_FILE_TREE_CACHE_TTL_MS = 30_000;
 const MAX_WORKSPACE_FILE_TREE_CACHE_ENTRIES = 8;
+/** 每本书保留的最近章节变更条数；轮询方落后更多时按"截断"处理，整体刷新。 */
+const MAX_CHAPTER_CHANGE_FEED_ENTRIES = 200;
 const PROTECTED_WORKSPACE_FILES = new Set(["book.json", "chapters/index.json"]);
 
 function pathIsContained(root: string, candidate: string): boolean {
@@ -349,6 +357,33 @@ type ControlledChapterFile = {
 
 function configuredValue(value: string | undefined): boolean {
 	return Boolean(value?.trim());
+}
+
+/** 对账发现的一次章节变更，返回给写作台用于刷新文件树与已打开的章节。 */
+export interface ReconciledChapterSummary {
+	readonly chapterNumber: number;
+	readonly path: string;
+	readonly kind: "created" | "modified";
+	readonly wordCount: number;
+}
+
+/**
+ * 章节变更流水的一次读取结果。
+ * - `epoch`：服务进程标识，重启后变化；轮询方发现变化应整体刷新；
+ * - `revision`：本书当前修订号，轮询方下次带上它；
+ * - `changes`：修订号大于 `since` 的变更，同一路径只留最新一条；
+ * - `truncated`：轮询方落后太多，部分变更已不在流水里，应整体刷新。
+ */
+export interface ChapterChangeFeedRead {
+	readonly epoch: string;
+	readonly revision: number;
+	readonly changes: ReconciledChapterSummary[];
+	readonly truncated?: true;
+}
+
+interface ChapterChangeFeed {
+	revision: number;
+	entries: { readonly revision: number; readonly change: ReconciledChapterSummary }[];
 }
 
 /** 有凭据的供应商；model 为 null 表示它自己和全局默认模型都没有指定可用模型。 */
@@ -911,10 +946,24 @@ function resolveDomainBookRoot(bookId: string): string {
 	return resolveBookStorageDir(dirname(getControlledBooksRoot()), bookId);
 }
 
-function createDomainWritingResourceService(bookId: string, bookRoot?: string) {
+/** 书籍计数方式：英文书按词、其余按中文字符，与章节长度校验一致。 */
+function bookCountingMode(config: Record<string, unknown>): LengthCountingMode {
+	return resolveLengthCountingMode(config.language === "en" ? "en" : "zh");
+}
+
+function isChapterPath(relativePath: string): boolean {
+	return relativePath === "chapters" || relativePath.startsWith("chapters/");
+}
+
+function createDomainWritingResourceService(
+	bookId: string,
+	bookRoot?: string,
+	countingMode?: LengthCountingMode,
+) {
 	const domainRoot = bookRoot ?? resolveDomainBookRoot(bookId);
 	return createWritingResourceService({
 		storage: getStorageDatabase(),
+		countingMode,
 		resolveBookDir: (requestedBookId) => {
 			if (requestedBookId !== bookId)
 				throw new ValidationError("Writing resource book binding mismatch");
@@ -979,6 +1028,107 @@ export class NovelForkProductBookService {
 	private readonly workspaceFileTreeCache = new Map<string, WorkspaceFileTreeSnapshot>();
 	private readonly workspaceFileTreeBuilds = new Map<string, Promise<WorkspaceFileTreeSnapshot>>();
 	private readonly workspaceFileTreeGenerations = new Map<string, number>();
+	private readonly chapterIndexLocks = new Map<string, Promise<unknown>>();
+	/**
+	 * 对账可能由写作台轮询、加载工作区、文件网关写入等多个入口触发；发现的变更一律记进流水，
+	 * 轮询方按修订号取回，谁触发的对账都不会让别的界面漏掉通知。
+	 */
+	private readonly chapterChangeFeeds = new Map<string, ChapterChangeFeed>();
+	private readonly chapterChangeEpoch = randomUUID();
+
+	private recordChapterChanges(bookId: string, changes: readonly ReconciledChapterSummary[]): void {
+		if (changes.length === 0) return;
+		const feed = this.chapterChangeFeeds.get(bookId) ?? { revision: 0, entries: [] };
+		for (const change of changes) {
+			feed.revision += 1;
+			feed.entries.push({ revision: feed.revision, change });
+		}
+		if (feed.entries.length > MAX_CHAPTER_CHANGE_FEED_ENTRIES) {
+			feed.entries.splice(0, feed.entries.length - MAX_CHAPTER_CHANGE_FEED_ENTRIES);
+		}
+		this.chapterChangeFeeds.set(bookId, feed);
+	}
+
+	private readChapterChangeFeed(bookId: string, since: number | undefined): ChapterChangeFeedRead {
+		const feed = this.chapterChangeFeeds.get(bookId) ?? { revision: 0, entries: [] };
+		const base = { epoch: this.chapterChangeEpoch, revision: feed.revision };
+		// 首次读取只拿基准修订号：此前的变更已经反映在轮询方刚加载的内容里。
+		if (since === undefined || since >= feed.revision) return { ...base, changes: [] };
+		const latestByPath = new Map<string, ReconciledChapterSummary>();
+		for (const entry of feed.entries) {
+			if (entry.revision > since) latestByPath.set(entry.change.path, entry.change);
+		}
+		const oldest = feed.entries[0]?.revision;
+		const truncated = oldest === undefined || oldest > since + 1;
+		return { ...base, changes: [...latestByPath.values()], ...(truncated ? { truncated: true as const } : {}) };
+	}
+
+	/**
+	 * 同一本书的章节索引读改写串行执行：写作台保存与章节对账都会改 chapters/index.json，
+	 * 交错时保存写进索引的结果会被对账覆盖，下一次对账就会把这次保存的增量重复记一遍。
+	 */
+	private withChapterIndexLock<T>(bookId: string, task: () => Promise<T>): Promise<T> {
+		const previous = this.chapterIndexLocks.get(bookId) ?? Promise.resolve();
+		const run = previous.catch(() => undefined).then(task);
+		const tail = run.catch(() => undefined);
+		this.chapterIndexLocks.set(bookId, tail);
+		void tail.then(() => {
+			if (this.chapterIndexLocks.get(bookId) === tail) this.chapterIndexLocks.delete(bookId);
+		});
+		return run;
+	}
+
+	/**
+	 * 章节文件对账：补做绕过产品层的写入（叙述者通用写工具、Runtime 编辑器与回退、外部编辑器）
+	 * 漏掉的附带动作——写作日志、审计过期标记、索引字数、书籍时间戳、文件树缓存。
+	 *
+	 * 写作管线与领域工具写章时持有书籍写锁；拿不到锁就跳过本轮，等下次对账，不与它们交错。
+	 */
+	private async reconcileBookChapters(
+		bookId: string,
+		root: string,
+		config: Record<string, unknown>,
+	): Promise<ReconciledChapterSummary[]> {
+		return this.withChapterIndexLock(bookId, async () => {
+			let release: (() => Promise<void>) | undefined;
+			try {
+				release = await new StateManager("", { resolveBookDir: () => root }).acquireBookLock(bookId);
+			} catch {
+				return [];
+			}
+			try {
+				const changes = await createDomainWritingResourceService(
+					bookId,
+					root,
+					bookCountingMode(config),
+				).reconcileChapters(bookId);
+				if (changes.length === 0) return [];
+				await updateBookTimestamp(root, config);
+				this.invalidateWorkspaceFileTree(bookId);
+				const summaries = changes.map((change) => ({
+					chapterNumber: change.chapterNumber,
+					path: change.relativePath,
+					kind: change.kind,
+					wordCount: change.wordCount,
+				}));
+				this.recordChapterChanges(bookId, summaries);
+				return summaries;
+			} finally {
+				await release().catch(() => undefined);
+			}
+		});
+	}
+
+	/** 先对账，再按修订号读取变更流水。`since` 为轮询方上次拿到的修订号，首次不传。 */
+	async reconcileWorkspaceChapters(
+		bookId: string,
+		actor: ProductActor,
+		since?: number,
+	): Promise<ChapterChangeFeedRead> {
+		const { root, config, operation } = await this.getReadyBookRoot(bookId, actor);
+		await this.reconcileBookChapters(operation.bookId, root, config);
+		return this.readChapterChangeFeed(operation.bookId, since);
+	}
 
 	async listReadyBooks(actor: ProductActor): Promise<ProductBookSummary[]> {
 		const operations = await productDb().query.bookProvisionOperations.findMany({
@@ -1891,7 +2041,7 @@ export class NovelForkProductBookService {
 				"建议怎么做：拆分文件后分别保存，或先在外部编辑器中整理。",
 			].join("\n"));
 		}
-		const { root, operation } = await this.getReadyBookRoot(bookId, actor);
+		const { root, operation, config } = await this.getReadyBookRoot(bookId, actor);
 		const normalizedPath = normalizeWorkspacePath(rawPath);
 		assertMutableWorkspacePath(normalizedPath);
 		const target = await resolveWorkspacePath(root, normalizedPath, { requireExisting: false });
@@ -1899,6 +2049,10 @@ export class NovelForkProductBookService {
 		if (info && !info.isFile()) throw new ValidationError("workspace path must identify a file");
 		await writeFile(target.absolutePath, content, "utf8");
 		this.invalidateWorkspaceFileTree(operation.bookId);
+		// 文件网关直接写章节文件，不经过写作资源服务，立即对账补上附带动作。
+		if (isChapterPath(target.relativePath)) {
+			await this.reconcileBookChapters(operation.bookId, root, config);
+		}
 		return { path: target.relativePath };
 	}
 
@@ -1942,9 +2096,10 @@ export class NovelForkProductBookService {
 		capabilities: RuntimeEntityCapabilities;
 	}> {
 		const { operation, root, config } = await this.getReadyBookRoot(bookId, actor);
-		const resources = (await createDomainWritingResourceService(bookId, root).list(bookId)).map(
-			toWorkspaceWritingResource,
-		);
+		await this.reconcileBookChapters(operation.bookId, root, config);
+		const resources = (
+			await createDomainWritingResourceService(bookId, root, bookCountingMode(config)).list(bookId)
+		).map(toWorkspaceWritingResource);
 		const resourceIds = new Set(resources.map((resource) => resource.id));
 
 		const addReadOnlyFile = async (
@@ -2003,15 +2158,17 @@ export class NovelForkProductBookService {
 			);
 		}
 		const { root, config, operation } = await this.getReadyBookRoot(bookId, actor);
-		const service = createDomainWritingResourceService(bookId, root);
+		const service = createDomainWritingResourceService(bookId, root, bookCountingMode(config));
 		const chapterMatch = /^chapter:(\d{1,9})$/u.exec(resourceId);
-		const current = chapterMatch
-			? await service.findAcceptedChapter(bookId, Number(chapterMatch[1]))
-			: await service.getById(bookId, rawWritingResourceId(resourceId));
-		if (!current || current.status !== "accepted") {
-			throw new NotFoundError("Writable workspace resource", resourceId);
-		}
-		const updated = await service.update(bookId, current.id, { content });
+		const updated = await this.withChapterIndexLock(operation.bookId, async () => {
+			const current = chapterMatch
+				? await service.findAcceptedChapter(bookId, Number(chapterMatch[1]))
+				: await service.getById(bookId, rawWritingResourceId(resourceId));
+			if (!current || current.status !== "accepted") {
+				throw new NotFoundError("Writable workspace resource", resourceId);
+			}
+			return service.update(bookId, current.id, { content });
+		});
 		await updateBookTimestamp(root, config);
 		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { resource: toWorkspaceWritingResource(updated) };
@@ -2026,21 +2183,23 @@ export class NovelForkProductBookService {
 		const requestedTitle = typeof input.title === "string" ? input.title.trim() : "";
 		if (requestedTitle.length > 200)
 			throw new ValidationError("chapter title must be at most 200 characters");
-		const service = createDomainWritingResourceService(bookId, root);
-		const chapters = await service.list(bookId, { type: "chapter" });
-		const chapterNumber =
-			chapters.reduce((max, chapter) => Math.max(max, chapter.chapterNumber ?? 0), 0) + 1;
-		const isEnglish = config.language === "en";
-		const title =
-			requestedTitle || (isEnglish ? `Chapter ${chapterNumber}` : `第 ${chapterNumber} 章`);
-		const resource = await service.create(bookId, {
-			type: "chapter",
-			status: "accepted",
-			title,
-			content: `# ${title}\n\n`,
-			chapterNumber,
-			source: "runtime:workspace",
-			metadata: {},
+		const service = createDomainWritingResourceService(bookId, root, bookCountingMode(config));
+		const resource = await this.withChapterIndexLock(operation.bookId, async () => {
+			const chapters = await service.list(bookId, { type: "chapter" });
+			const chapterNumber =
+				chapters.reduce((max, chapter) => Math.max(max, chapter.chapterNumber ?? 0), 0) + 1;
+			const isEnglish = config.language === "en";
+			const title =
+				requestedTitle || (isEnglish ? `Chapter ${chapterNumber}` : `第 ${chapterNumber} 章`);
+			return service.create(bookId, {
+				type: "chapter",
+				status: "accepted",
+				title,
+				content: `# ${title}\n\n`,
+				chapterNumber,
+				source: "runtime:workspace",
+				metadata: {},
+			});
 		});
 		await updateBookTimestamp(root, config);
 		this.invalidateWorkspaceFileTree(operation.bookId);

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -366,6 +366,62 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		// 删除同样核对版本，外人删不了。
 		expect((await productApp(outsider).request(`/api/books/${bookId}/workflow-recipes/gateway-flow?expectedRevision=2`, { method: "DELETE" })).status).toBe(404);
 		expect((await app.request(`/api/books/${bookId}/workflow-recipes/gateway-flow?expectedRevision=2`, { method: "DELETE" })).status).toBe(200);
+	});
+
+	test("chapter reconcile picks up writes that bypass the product layer, once", async () => {
+		if (!bookId) throw new Error("gateway fixture missing");
+		const app = productApp(owner);
+		const created = await app.request(`/api/books/${bookId}/chapters`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ title: "对账测试" }),
+		});
+		expect(created.status).toBe(201);
+		const { chapter } = await created.json() as { chapter: { path: string; metadata: { chapterNumber?: number } } };
+		const chapterNumber = Number(/\/(\d+)_/u.exec(chapter.path)?.[1]);
+		expect(chapterNumber).toBeGreaterThan(0);
+
+		const saved = await app.request(`/api/books/${bookId}/chapters/${chapterNumber}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ content: `# 对账测试\n\n${"字".repeat(200)}` }),
+		});
+		expect(saved.status).toBe(200);
+
+		type FeedRead = { epoch: string; revision: number; changes: unknown[]; truncated?: true };
+		const reconcile = async (since?: number) => {
+			const query = since === undefined ? "" : `?since=${since}`;
+			return await (await app.request(`/api/books/${bookId}/chapters/reconcile${query}`, { method: "POST" })).json() as FeedRead;
+		};
+		// 首次读取只拿基准修订号；写作台自己的保存不算外部改动。
+		const baseline = await reconcile();
+		expect(baseline.changes).toEqual([]);
+		expect(await reconcile(baseline.revision)).toEqual({ epoch: baseline.epoch, revision: baseline.revision, changes: [] });
+
+		// 模拟叙述者用通用 Write 工具或外部编辑器直接改文件。
+		const absolutePath = join(externalBookRoot, chapter.path);
+		await writeFile(absolutePath, `# 对账测试\n\n${"字".repeat(500)}`, "utf8");
+		const later = new Date(Date.now() + 5_000);
+		await utimes(absolutePath, later, later);
+		const configBefore = JSON.parse(await readFile(join(externalBookRoot, "book.json"), "utf8")) as { updatedAt?: string };
+
+		// 别的入口（加载工作区）先触发了对账：变更进流水，轮询方照样能取回。
+		expect((await app.request(`/api/books/${bookId}/workspace`)).status).toBe(200);
+		const configAfter = JSON.parse(await readFile(join(externalBookRoot, "book.json"), "utf8")) as { updatedAt?: string };
+		expect(configAfter.updatedAt).not.toBe(configBefore.updatedAt);
+
+		const polled = await reconcile(baseline.revision);
+		expect(polled).toEqual({
+			epoch: baseline.epoch,
+			revision: baseline.revision + 1,
+			changes: [{ chapterNumber, path: chapter.path, kind: "modified", wordCount: 500 }],
+		});
+		expect((await reconcile(polled.revision)).changes).toEqual([]);
+
+		const invalid = await app.request(`/api/books/${bookId}/chapters/reconcile?since=-1`, { method: "POST" });
+		expect(invalid.status).toBe(400);
+		const outsiderResponse = await productApp(outsider).request(`/api/books/${bookId}/chapters/reconcile`, { method: "POST" });
+		expect(outsiderResponse.status).toBeGreaterThanOrEqual(403);
 	});
 
 	test("rebinds an existing book to a marked external workspace", async () => {

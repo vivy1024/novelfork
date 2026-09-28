@@ -5,8 +5,12 @@
  * 保存相对于 chapters/ 的 fileName，candidate/draft 不进入文件存储。
  */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+
+import type { LengthCountingMode } from "@vivy1024/novelfork-core";
+
+import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
 import type {
   CreateWritingResourceInput,
   ListWritingResourcesFilter,
@@ -49,10 +53,21 @@ export interface WritingResourceFileStore {
 
 export function createWritingResourceFileStore(
   resolveBookDir: (bookId: string) => string,
-  options?: { readonly resolveChapterVolumeDirectory?: ChapterVolumeDirectoryResolver },
+  options?: {
+    readonly resolveChapterVolumeDirectory?: ChapterVolumeDirectoryResolver;
+    /** 书籍计数方式；缺省按中文字符计。 */
+    readonly countingMode?: LengthCountingMode;
+  },
 ): WritingResourceFileStore {
   const resolveVolumeDirectory = options?.resolveChapterVolumeDirectory
     ?? (() => volumeDirectoryName(1));
+  const countingMode = options?.countingMode;
+
+  /** 写完后记下文件修改时间，对账据此判断之后有没有别人动过这个文件。 */
+  async function observedModifiedAt(path: string): Promise<number | undefined> {
+    const info = await stat(path).catch(() => null);
+    return info ? Math.floor(info.mtimeMs) : undefined;
+  }
 
   function chaptersDir(bookId: string) {
     return join(resolveBookDir(bookId), CHAPTERS_DIRECTORY);
@@ -63,7 +78,7 @@ export function createWritingResourceFileStore(
   }
 
   async function ensureLayout(bookId: string): Promise<void> {
-    await synchronizeChapterLayout(bookId, resolveBookDir(bookId), resolveVolumeDirectory);
+    await synchronizeChapterLayout(bookId, resolveBookDir(bookId), resolveVolumeDirectory, { countingMode });
   }
 
   async function chapterToResource(bookId: string, entry: ChapterIndexRecord, content: string): Promise<WritingResource> {
@@ -123,9 +138,9 @@ export function createWritingResourceFileStore(
     async create(bookId, input) {
       await ensureLayout(bookId);
       const bookRoot = resolveBookDir(bookId);
-      const now = new Date(input.updatedAt ?? Date.now()).toISOString();
       const content = input.content;
-      const wordCount = chapterWordCount(content);
+      const wordCount = chapterWordCount(content, countingMode);
+      const contentHash = chapterContentFingerprint(content);
       const index = await readChapterIndex(bookRoot);
       const chapterNumber = input.chapterNumber ?? (index.reduce((max, entry) => Math.max(max, entry.number), 0) + 1);
       const volumeDirectory = normalizeChapterRelativePath(await resolveVolumeDirectory(bookId, chapterNumber)) || DEFAULT_VOLUME_DIRECTORY;
@@ -136,11 +151,22 @@ export function createWritingResourceFileStore(
       }
       await mkdir(dirname(chapterPath(bookId, fileName)), { recursive: true });
       await writeFile(chapterPath(bookId, fileName), content, "utf-8");
+      const now = new Date(input.updatedAt ?? Date.now()).toISOString();
+      const fileModifiedAt = await observedModifiedAt(chapterPath(bookId, fileName));
+      const record: ChapterIndexRecord = {
+        number: chapterNumber,
+        title: input.title,
+        fileName,
+        wordCount,
+        updatedAt: now,
+        contentHash,
+        ...(fileModifiedAt === undefined ? {} : { fileModifiedAt }),
+      };
       const nextIndex = index.filter((entry) => entry.number !== chapterNumber);
-      nextIndex.push({ number: chapterNumber, title: input.title, fileName, wordCount, updatedAt: now });
+      nextIndex.push(record);
       nextIndex.sort((a, b) => a.number - b.number);
       await writeChapterIndex(bookRoot, nextIndex);
-      return chapterToResource(bookId, { number: chapterNumber, title: input.title, fileName, wordCount, updatedAt: now }, content);
+      return chapterToResource(bookId, record, content);
     },
 
     async update(bookId, id, input) {
@@ -152,7 +178,6 @@ export function createWritingResourceFileStore(
       const idx = index.findIndex((entry) => entry.number === chapterNumber);
       if (idx === -1) return null;
       const entry = { ...index[idx]! };
-      const now = new Date(input.updatedAt ?? Date.now()).toISOString();
       const oldPath = chapterPath(bookId, entry.fileName);
       let content = input.content;
       if (content !== undefined) {
@@ -172,8 +197,11 @@ export function createWritingResourceFileStore(
         }
       }
       content = content ?? await readFile(chapterPath(bookId, entry.fileName), "utf-8").catch(() => "");
-      entry.wordCount = input.wordCount ?? chapterWordCount(content);
-      entry.updatedAt = now;
+      entry.wordCount = input.wordCount ?? chapterWordCount(content, countingMode);
+      entry.contentHash = chapterContentFingerprint(content);
+      entry.updatedAt = new Date(input.updatedAt ?? Date.now()).toISOString();
+      const fileModifiedAt = await observedModifiedAt(chapterPath(bookId, entry.fileName));
+      if (fileModifiedAt !== undefined) entry.fileModifiedAt = fileModifiedAt;
       index[idx] = entry;
       await writeChapterIndex(bookRoot, index);
       return chapterToResource(bookId, entry, content);

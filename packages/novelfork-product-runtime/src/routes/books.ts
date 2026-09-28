@@ -360,6 +360,23 @@ bookDomainRoutes.post("/chapters", async (c) => {
 	return c.json({ chapter: result.resource }, 201);
 });
 
+// 章节文件对账：写作台打开期间轮询。叙述者的通用写工具、Runtime 编辑器、外部编辑器改过的章节
+// 在这里补做写作日志、审计过期、索引字数、书籍时间戳等附带动作，并按修订号返回变更流水供界面刷新。
+bookDomainRoutes.post("/chapters/reconcile", async (c) => {
+	const rawSince = c.req.query("since");
+	const since = rawSince === undefined ? undefined : Number(rawSince);
+	if (since !== undefined && (!Number.isSafeInteger(since) || since < 0)) {
+		throw new ValidationError("since must be a non-negative integer");
+	}
+	return c.json(
+		await novelForkProductBookService.reconcileWorkspaceChapters(
+			requiredParam(c, "bookId"),
+			actor(c),
+			since,
+		),
+	);
+});
+
 bookDomainRoutes.put("/chapters/:chapterNumber", async (c) => {
 	const chapterNumber = Number(requiredParam(c, "chapterNumber"));
 	if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) {

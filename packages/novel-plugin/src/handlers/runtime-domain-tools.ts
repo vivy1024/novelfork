@@ -305,7 +305,7 @@ async function rewriteApply(
     : [...lines.slice(0, start - 1), ...inserted, ...lines.slice(end)];
   const written = await handleChapterWrite(
     { bookId: binding.bookId, chapterNumber, content: next.join("\n"), expectedHash },
-    { bookRoot: binding.root, purpose: "revision" },
+    { bookRoot: binding.root, storage: getStorageDatabase(), purpose: "revision" },
   );
   if (!written.ok) return fail(written.error, written.summary);
   return ok(
