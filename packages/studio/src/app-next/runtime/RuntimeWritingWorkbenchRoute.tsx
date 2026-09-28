@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { IdeWorkbench } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
+import { IdeWorkbench, type WorkbenchOpenRequest } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
 import type {
   WorkbenchCanvasContext,
   WorkbenchResourceNode,
@@ -208,6 +208,7 @@ export function RuntimeWritingWorkbenchRoute({
   const client = suppliedClient ?? defaultClient;
   const [nodes, setNodes] = useState<WorkbenchResourceNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<WorkbenchResourceNode | null>(null);
+  const [openRequest, setOpenRequest] = useState<WorkbenchOpenRequest | null>(null);
   const [narrators, setNarrators] = useState<Awaited<ReturnType<RuntimeProductClient["listNarrators"]>>>([]);
   const [activeNarratorId, setActiveNarratorId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -367,6 +368,7 @@ export function RuntimeWritingWorkbenchRoute({
       return;
     }
     setSelectedNode(node);
+    setOpenRequest((previous) => ({ bookId: bookAtStart, node, seq: (previous?.seq ?? 0) + 1 }));
   }, [reload]);
 
   useEffect(() => {
@@ -487,6 +489,7 @@ export function RuntimeWritingWorkbenchRoute({
           bookId={bookId}
           nodes={nodes}
           selectedNode={selectedNode}
+          openRequest={openRequest}
           onOpen={setSelectedNode}
           onDeselectNode={() => setSelectedNode(null)}
           onSave={handleSave}
@@ -500,6 +503,7 @@ export function RuntimeWritingWorkbenchRoute({
               narrator={activeNarrator}
               compact
               onOpenArtifact={(artifact) => void handleOpenArtifact(artifact)}
+              onOpenChapter={(chapterNumber) => void handleOpenArtifact({ kind: "chapter", id: `chapter:${chapterNumber}` })}
             />
           ) : undefined}
           onSwitchToAgent={activeNarrator ? () => onNavigateToConversation(activeNarrator.id) : undefined}

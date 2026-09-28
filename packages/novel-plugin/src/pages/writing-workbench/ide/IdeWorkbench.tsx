@@ -139,11 +139,22 @@ function copyDestinationFor(sourcePath: string, targetDir: string): string {
 
 export type SidebarView = ViewId;
 
+export interface WorkbenchOpenRequest {
+  readonly bookId: string;
+  readonly node: WorkbenchResourceNode;
+  readonly seq: number;
+}
+
 export interface IdeWorkbenchProps {
   bookId?: string;
   repositoryPath?: string;
   nodes: readonly WorkbenchResourceNode[];
   selectedNode: WorkbenchResourceNode | null;
+  /**
+   * 宿主要求打开的资源（叙述者结果卡「在画布打开」、叙述者面板里点开的章节）。
+   * 每个 seq 只处理一次；bookId 与当前书不同的请求忽略。
+   */
+  openRequest?: WorkbenchOpenRequest | null;
   onOpen: (node: WorkbenchResourceNode) => void;
   onDeselectNode?: () => void;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
@@ -265,6 +276,7 @@ export function IdeWorkbench({
   repositoryPath,
   nodes,
   selectedNode,
+  openRequest,
   onOpen,
   onSave,
   onCanvasContextChange,
@@ -779,6 +791,14 @@ export function IdeWorkbench({
     if (node.capabilities.open) revealTab(toTabKind(node), toTabView(node));
     onOpen(node);
   }, [onOpen, bookId, showPanel]);
+
+  // 不看 selectedNode：它在后台刷新、保存后都会换成新对象，据它重开会把侧栏拽回资源所在视图。
+  const handledOpenRequestRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!openRequest || openRequest.bookId !== bookId || handledOpenRequestRef.current === openRequest.seq) return;
+    handledOpenRequestRef.current = openRequest.seq;
+    handleOpen(openRequest.node);
+  }, [openRequest, bookId, handleOpen]);
 
   const handleOpenJingweiEntry = useCallback((entryId: string): boolean => {
     const findEntry = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {

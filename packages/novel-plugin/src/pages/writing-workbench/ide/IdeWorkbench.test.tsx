@@ -194,3 +194,29 @@ describe("IdeWorkbench 窄屏覆盖层", () => {
     expect(screen.getByTestId("chat-slot")).not.toBeNull();
   });
 });
+
+describe("IdeWorkbench 宿主打开请求", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("每个 openRequest.seq 只打开一次，别的书的请求忽略", () => {
+    const onOpen = vi.fn();
+    const chapter = { id: "chapter:7", kind: "chapter", title: "第7章 夜雪", capabilities: { open: true, edit: true } } as const;
+    const props = { bookId: "book-1", nodes: [], selectedNode: null, onOpen, onSave: vi.fn() };
+    const { rerender } = render(<IdeWorkbench {...props} openRequest={{ bookId: "book-1", node: chapter, seq: 1 }} />);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenLastCalledWith(chapter);
+
+    // 后台刷新让宿主换了新的节点对象，但不是新请求：不重开（否则会把侧栏拽回章节视图）。
+    rerender(<IdeWorkbench {...props} selectedNode={{ ...chapter }} openRequest={{ bookId: "book-1", node: { ...chapter }, seq: 1 }} />);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    rerender(<IdeWorkbench {...props} openRequest={{ bookId: "book-1", node: chapter, seq: 2 }} />);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+
+    rerender(<IdeWorkbench {...props} openRequest={{ bookId: "book-2", node: chapter, seq: 3 }} />);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+});

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     bookId?: string;
     nodes: unknown[];
     selectedNode?: { id: string } | null;
+    openRequest?: { bookId: string; node: { id: string }; seq: number } | null;
     chatSlot?: ReactNode;
     bookSessions?: readonly { id: string; title: string; updatedAt?: string }[];
     activeSessionId?: string | null;
@@ -137,6 +138,8 @@ describe("RuntimeWritingWorkbenchRoute", () => {
       narrator,
       compact: true,
       onOpenArtifact: expect.any(Function),
+      // 叙述者面板里点开的章节交给写作台打开。
+      onOpenChapter: expect.any(Function),
     });
     expect(mocks.workbenchProps.at(-1)?.bookId).toBe("book-1");
     expect(mocks.workbenchProps.at(-1)?.nodes).toEqual([
@@ -437,7 +440,12 @@ describe("RuntimeWritingWorkbenchRoute", () => {
       await screen.findByTestId("runtime-narrator-panel-mount-mock");
       await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({ kind: "chapter", id: "chapter:2", title: "第二章" }));
       await waitFor(() => expect(mocks.workbenchProps.at(-1)?.selectedNode?.id).toBe("chapter:2"));
+      expect(mocks.workbenchProps.at(-1)?.openRequest).toMatchObject({ bookId: "book-1", node: { id: "chapter:2" }, seq: 1 });
       expect(client.getWorkspace).toHaveBeenCalledTimes(1);
+
+      // 同一章再点一次也是新请求：作者可能已关掉那个 tab。
+      await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({ kind: "chapter", id: "chapter:2", title: "第二章" }));
+      await waitFor(() => expect(mocks.workbenchProps.at(-1)?.openRequest?.seq).toBe(2));
     });
 
     it("刚写完的章还不在资源树里：先静默重载再打开", async () => {
@@ -469,6 +477,7 @@ describe("RuntimeWritingWorkbenchRoute", () => {
       await waitFor(() => expect(screen.getByTestId("workbench-open-notice").textContent).toContain("没在资源树里找到「第九章」"));
       expect(screen.getByTestId("ide-workbench-mock")).toBeTruthy();
       expect(mocks.workbenchProps.at(-1)?.selectedNode ?? null).toBeNull();
+      expect(mocks.workbenchProps.at(-1)?.openRequest ?? null).toBeNull();
     });
   });
 });

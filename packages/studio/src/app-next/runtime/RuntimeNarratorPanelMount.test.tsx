@@ -65,6 +65,34 @@ describe("RuntimeNarratorPanelMount", () => {
     expect(typeof props?.toolResultRenderer).toBe("function");
   });
 
+  it("叙述者面板点开本书章节时交给写作台，其它文件与工具改动对比仍走 Runtime", async () => {
+    const onOpenChapter = vi.fn();
+    render(
+      <RuntimeNarratorPanelMount
+        bookId="book-1"
+        narrator={{ ...narrator, cwd: "D:\\books\\青云剑录" }}
+        onOpenChapter={onOpenChapter}
+      />,
+    );
+    await screen.findByTestId("native-narrator-panel-mock");
+    const onOpenFile = (mocks.panelProps.at(-1) as { onOpenFile?: (request: unknown) => boolean }).onOpenFile;
+    expect(typeof onOpenFile).toBe("function");
+
+    expect(onOpenFile?.({ filePath: "D:\\books\\青云剑录\\chapters\\卷01\\0007_夜雪.md", deviceId: "local", toolEdit: false })).toBe(true);
+    expect(onOpenChapter).toHaveBeenCalledWith(7);
+
+    expect(onOpenFile?.({ filePath: "D:\\books\\青云剑录\\chapters\\卷01\\0007_夜雪.md", deviceId: "local", toolEdit: true })).toBe(false);
+    expect(onOpenFile?.({ filePath: "D:\\books\\青云剑录\\story\\world.md", deviceId: "local", toolEdit: false })).toBe(false);
+    expect(onOpenFile?.({ filePath: "D:\\books\\青云剑录\\chapters\\0001_开端.md", deviceId: "remote-1", toolEdit: false })).toBe(false);
+    expect(onOpenChapter).toHaveBeenCalledTimes(1);
+  });
+
+  it("没给 onOpenChapter 时不接管文件打开", async () => {
+    render(<RuntimeNarratorPanelMount bookId="book-1" narrator={narrator} />);
+    await screen.findByTestId("native-narrator-panel-mock");
+    expect((mocks.panelProps.at(-1) as { onOpenFile?: unknown }).onOpenFile).toBeUndefined();
+  });
+
   it("统一拒绝不匹配的可信 bookId 或缺少 read capability", () => {
     const { rerender } = render(<RuntimeNarratorPanelMount bookId="book-2" narrator={narrator} />);
     expect(screen.getByRole("alert").textContent).toContain("不属于此书籍");

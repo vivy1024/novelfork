@@ -20,6 +20,17 @@ export type RuntimeToolResultRenderer = (
 	input: RuntimeToolResultRendererInput,
 ) => unknown;
 
+/** A file the narrator panel is about to open in its own file panel. */
+export interface RuntimeFileOpenRequest {
+	readonly filePath: string;
+	readonly deviceId: string;
+	/** True when the panel would show a tool edit's diff rather than the plain file. */
+	readonly toolEdit: boolean;
+}
+
+/** Return true when the host opened the file itself; the Runtime file panel then stays closed. */
+export type RuntimeFileOpenInterceptor = (request: RuntimeFileOpenRequest) => boolean;
+
 /** Stable Studio-facing contract for the Runtime-owned narrator dock. */
 export interface EmbeddedNarratorDockHostProps {
 	readonly narratorId: string;
@@ -27,6 +38,8 @@ export interface EmbeddedNarratorDockHostProps {
 	readonly onForkFromMessage?: (messageUuid: string) => void;
 	readonly compact?: boolean;
 	readonly toolResultRenderer?: RuntimeToolResultRenderer;
+	/** Lets the host open some files (e.g. chapters) in its own editor. */
+	readonly onOpenFile?: RuntimeFileOpenInterceptor;
 	/** Host-resolved color scheme: the embedded panel follows the host's light/dark switch. */
 	readonly colorScheme?: "light" | "dark";
 }

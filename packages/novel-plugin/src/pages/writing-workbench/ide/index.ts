@@ -1,1 +1,1 @@
-export { IdeWorkbench, type IdeWorkbenchProps } from "./IdeWorkbench";
+export { IdeWorkbench, type IdeWorkbenchProps, type WorkbenchOpenRequest } from "./IdeWorkbench";

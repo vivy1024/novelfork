@@ -8,12 +8,16 @@ const EmbeddedNarratorDockHost = lazy(() =>
 	),
 );
 
-import type { RuntimeToolResultAction } from "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel";
+import type {
+	RuntimeFileOpenInterceptor,
+	RuntimeToolResultAction,
+} from "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
 import { executeToolResultAction } from "../tool-results/actions";
 import { renderToolResult } from "../tool-results/registry";
+import { chapterNumberFromRuntimeFilePath } from "./chapter-file-open";
 import type { ToolResultAction, ToolResultArtifact } from "../tool-results/types";
 import type { RuntimeNarratorSummary } from "./product-contract";
 import type { RuntimeNarratorRecord } from "./runtime-narrator-client";
@@ -24,6 +28,8 @@ export interface RuntimeNativeNarratorPanelMountProps {
 	readonly bookId?: string;
 	/** 结果卡上的「在画布打开」：由宿主（写作工作台）决定打开哪个资源；不给则不显示该按钮。 */
 	readonly onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+	/** 叙述者面板要打开文件时先交给宿主；返回 true 表示宿主已处理，不再打开 Runtime 文件面板。 */
+	readonly onOpenFile?: RuntimeFileOpenInterceptor;
 }
 
 export interface RuntimeNarratorPanelMountProps {
@@ -31,6 +37,8 @@ export interface RuntimeNarratorPanelMountProps {
 	readonly narrator: RuntimeNarratorSummary;
 	readonly compact?: boolean;
 	readonly onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+	/** 叙述者面板里点开本书章节时交给写作台打开；不给则仍用 Runtime 的文件面板。 */
+	readonly onOpenChapter?: (chapterNumber: number) => void;
 }
 
 export interface RuntimeStandaloneNarratorPanelMountProps {
@@ -51,6 +59,7 @@ export function RuntimeNativeNarratorPanelMount({
 	compact,
 	bookId,
 	onOpenArtifact,
+	onOpenFile,
 }: RuntimeNativeNarratorPanelMountProps) {
 	const [highlightMessageId, setHighlightMessageId] = useState(
 		readHighlightMessageId,
@@ -113,6 +122,7 @@ export function RuntimeNativeNarratorPanelMount({
 					highlightMessageId={highlightMessageId}
 					compact={compact}
 					toolResultRenderer={renderToolResultWithAction}
+					{...(onOpenFile ? { onOpenFile } : {})}
 					colorScheme={colorScheme}
 				/>
 			</Suspense>
@@ -126,7 +136,20 @@ export function RuntimeNarratorPanelMount({
 	narrator,
 	compact,
 	onOpenArtifact,
+	onOpenChapter,
 }: RuntimeNarratorPanelMountProps) {
+	const bookRoot = narrator.cwd;
+	// 章节在写作台里编辑（字数、结算、设定都在那边）；工具改动的对比视图仍交给 Runtime。
+	const onOpenFile = useCallback<RuntimeFileOpenInterceptor>(
+		(request) => {
+			if (!onOpenChapter || request.toolEdit || request.deviceId !== "local") return false;
+			const chapterNumber = chapterNumberFromRuntimeFilePath(request.filePath, bookRoot);
+			if (chapterNumber === null) return false;
+			onOpenChapter(chapterNumber);
+			return true;
+		},
+		[bookRoot, onOpenChapter],
+	);
 	if (narrator.bookId !== bookId || narrator.capabilities.read !== true) {
 		return (
 			<p role="alert" className="p-4 text-sm text-destructive">
@@ -140,6 +163,7 @@ export function RuntimeNarratorPanelMount({
 			compact={compact}
 			bookId={bookId}
 			{...(onOpenArtifact ? { onOpenArtifact } : {})}
+			{...(onOpenChapter ? { onOpenFile } : {})}
 		/>
 	);
 }
