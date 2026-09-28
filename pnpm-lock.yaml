@@ -245,6 +245,15 @@ importers:
       '@fontsource-variable/geist':
         specifier: 5.2.8
         version: 5.2.8
+      '@fontsource-variable/jetbrains-mono':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource-variable/noto-serif-sc':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/zcool-xiaowei':
+        specifier: 5.3.0
+        version: 5.3.0
       '@radix-ui/react-context-menu':
         specifier: 2.2.16
         version: 2.2.16(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -417,6 +426,9 @@ importers:
       '@types/diff':
         specifier: 8.0.0
         version: 8.0.0
+      '@types/js-yaml':
+        specifier: 4.0.9
+        version: 4.0.9
       '@types/node':
         specifier: 22.0.0
         version: 22.0.0
@@ -435,6 +447,9 @@ importers:
       autoprefixer:
         specifier: 10.4.0
         version: 10.4.0(postcss@8.5.10)
+      js-yaml:
+        specifier: 4.1.1
+        version: 4.1.1
       jsdom:
         specifier: 29.0.2
         version: 29.0.2(@noble/hashes@2.2.0)
@@ -1931,6 +1946,15 @@ packages:
 
   '@fontsource-variable/geist@5.2.8':
     resolution: {integrity: sha512-cJ6m9e+8MQ5dCYJsLylfZrgBh6KkG4bOLckB35Tr9J/EqdkEM6QllH5PxqP1dhTvFup+HtMRPuz9xOjxXJggxw==}
+
+  '@fontsource-variable/jetbrains-mono@5.3.0':
+    resolution: {integrity: sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw==}
+
+  '@fontsource-variable/noto-serif-sc@5.3.0':
+    resolution: {integrity: sha512-7LcN2NEf4HDjoSkGWc79WqDDyMK8JvSPdA/gsHjJpZ8l9A9mcK/GQTazp3klmkBwJooy0eqeNvlmaZFXPupHrA==}
+
+  '@fontsource/zcool-xiaowei@5.3.0':
+    resolution: {integrity: sha512-iRuUPl9ONFbYzi6JcEshpE4VedINyzQ4hv0Z5XEt0cB0pMPiQeqc2Qvv1NwJCNzkPwG02VCdcO+cF2K8ylYn2A==}
 
   '@hono/node-server@1.19.14':
     resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
@@ -8167,6 +8191,12 @@ snapshots:
   '@floating-ui/utils@0.2.11': {}
 
   '@fontsource-variable/geist@5.2.8': {}
+
+  '@fontsource-variable/jetbrains-mono@5.3.0': {}
+
+  '@fontsource-variable/noto-serif-sc@5.3.0': {}
+
+  '@fontsource/zcool-xiaowei@5.3.0': {}
 
   '@hono/node-server@1.19.14(hono@4.12.14)':
     dependencies:

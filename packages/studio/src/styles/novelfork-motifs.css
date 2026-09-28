@@ -1,0 +1,178 @@
+/*
+  NovelFork 书房主题的纹样：稿面、书封、函套。
+
+  颜色、字体、圆角来自 DESIGN.md 生成的 novelfork-themes.css；这里把它们组合成纹样。
+  主题差异一律写成 CSS 变量（--nf-*），挂在主题作用域上（<html data-nf-style> 与设置页预览卡片的
+  [data-nf-theme-preview]），组件只读变量、不按主题名写分支——这样预览卡片能就地呈现另一套主题。
+*/
+
+/* ── 绿格稿纸：稿面铺淡绿方格，书封是格纸 ── */
+:root,
+[data-nf-theme-preview="gaozhi"] {
+  --nf-manuscript-bg: var(--nf-paper);
+  --nf-manuscript-pattern:
+    linear-gradient(to bottom, var(--nf-grid) 1px, transparent 1px),
+    linear-gradient(to right, var(--nf-grid) 1px, transparent 1px);
+  --nf-manuscript-pattern-size: 30px 30px;
+  --nf-manuscript-attachment: local;
+
+  --nf-cover-bg: var(--nf-paper);
+  --nf-cover-pattern:
+    linear-gradient(to bottom, var(--nf-grid) 1px, transparent 1px),
+    linear-gradient(to right, var(--nf-grid) 1px, transparent 1px);
+  --nf-cover-pattern-size: 7px 7px;
+  --nf-cover-border: color-mix(in srgb, var(--primary) 45%, transparent);
+  --nf-cover-spine: color-mix(in srgb, var(--primary) 55%, transparent);
+  --nf-cover-slip-bg: var(--nf-paper);
+  --nf-cover-slip-border: color-mix(in srgb, var(--primary) 35%, transparent);
+  --nf-cover-slip-ink: var(--primary);
+}
+
+/* ── 书函藏青：稿面素白；书封是藏青函套加米黄题签；活动栏与侧栏是函套 ── */
+:root[data-nf-style="shuhan"],
+[data-nf-theme-preview="shuhan"] {
+  --nf-manuscript-bg: var(--nf-paper);
+  --nf-manuscript-pattern: none;
+  --nf-manuscript-pattern-size: auto;
+  --nf-manuscript-attachment: scroll;
+
+  --nf-cover-bg: var(--nf-rail);
+  --nf-cover-pattern: none;
+  --nf-cover-pattern-size: auto;
+  --nf-cover-border: var(--nf-rail-line);
+  --nf-cover-spine: var(--nf-highlight);
+  --nf-cover-slip-bg: var(--nf-slip);
+  --nf-cover-slip-border: var(--nf-slip-edge);
+  --nf-cover-slip-ink: var(--nf-slip-ink);
+}
+
+/* ── 夜更烛光：稿面上方一圈烛光，书封是暖纸加烛光 ── */
+:root[data-nf-style="yegeng"],
+[data-nf-theme-preview="yegeng"] {
+  --nf-manuscript-bg: var(--nf-paper);
+  --nf-manuscript-pattern: radial-gradient(ellipse 80% 420px at 50% 0, var(--nf-glow), transparent 78%);
+  --nf-manuscript-pattern-size: 100% 100%;
+  --nf-manuscript-attachment: scroll;
+
+  --nf-cover-bg: var(--card);
+  --nf-cover-pattern: radial-gradient(circle at 50% 18%, var(--nf-glow), transparent 70%);
+  --nf-cover-pattern-size: 100% 100%;
+  --nf-cover-border: var(--border);
+  --nf-cover-spine: color-mix(in srgb, var(--primary) 40%, transparent);
+  --nf-cover-slip-bg: transparent;
+  --nf-cover-slip-border: transparent;
+  --nf-cover-slip-ink: var(--primary);
+}
+
+/* ── 函套：书函藏青下的活动栏与侧栏，局部改写令牌，里面的组件照常读令牌 ── */
+:root[data-nf-style="shuhan"] [data-nf-surface="rail"] {
+  --background: var(--nf-rail);
+  --card: var(--nf-rail);
+  --secondary: var(--nf-rail);
+  --muted: var(--nf-rail-hover);
+  --accent: var(--nf-rail-hover);
+  --foreground: var(--nf-rail-ink);
+  --card-foreground: var(--nf-rail-ink);
+  --secondary-foreground: var(--nf-rail-ink);
+  --accent-foreground: var(--nf-rail-ink);
+  --muted-foreground: var(--nf-rail-muted);
+  --border: var(--nf-rail-line);
+  --input: var(--nf-rail-line);
+  --primary: var(--nf-highlight);
+  --primary-foreground: var(--nf-rail);
+  --ring: var(--nf-highlight);
+  color: var(--foreground);
+}
+
+/* ── 稿面：章节编辑器 ── */
+.chapter-editor-wrapper {
+  background-color: var(--nf-manuscript-bg);
+  background-image: var(--nf-manuscript-pattern);
+  background-size: var(--nf-manuscript-pattern-size);
+  background-attachment: var(--nf-manuscript-attachment);
+}
+
+/* ── 书封 ── */
+.nf-book-cover {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  justify-content: center;
+  align-items: flex-start;
+  aspect-ratio: 3 / 4;
+  width: 5rem;
+  padding-top: 14%;
+  overflow: hidden;
+  border: 1px solid var(--nf-cover-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--nf-cover-bg);
+  background-image: var(--nf-cover-pattern);
+  background-size: var(--nf-cover-pattern-size);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 书脊线 */
+.nf-book-cover::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 9%;
+  width: 1px;
+  background: var(--nf-cover-spine);
+}
+
+.nf-book-cover__slip {
+  /* 竖排是正交书写方向，高度按百分比推算在部分布局里会被压扁；按内容取高，封面高度的八成封顶 */
+  inline-size: max-content;
+  max-inline-size: 5.25rem;
+  overflow: hidden;
+  padding: 0.4em 0.22em;
+  border: 1px solid var(--nf-cover-slip-border);
+  background: var(--nf-cover-slip-bg);
+  color: var(--nf-cover-slip-ink);
+  font-family: var(--font-display);
+  font-weight: var(--font-display-weight);
+  font-size: 0.7rem;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+}
+
+.nf-book-cover__slip::after {
+  content: attr(data-title);
+}
+
+/* 侧栏书目里的小书封：只留轮廓、书脊与题签条，不写字 */
+.nf-book-cover[data-size="xs"] {
+  width: 0.875rem;
+  padding-top: 3px;
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.nf-book-cover[data-size="xs"] .nf-book-cover__slip {
+  inline-size: 9px;
+  block-size: 4px;
+  padding: 0;
+  font-size: 0;
+}
+
+/* ── 展示标题：页面大标题与书封用主题的标题字体 ── */
+.nf-display {
+  font-family: var(--font-display);
+  font-weight: var(--font-display-weight);
+  letter-spacing: var(--font-display-tracking);
+  line-height: var(--display-line-height);
+}
+
+/* ── OLED 纯黑：深色下把大面积底色换成纯黑，主色与文字仍随主题 ── */
+:root.dark.oled {
+  --background: #000000;
+  --card: #0a0a0a;
+  --popover: #0a0a0a;
+  --secondary: #111111;
+  --muted: #111111;
+  --nf-paper: #000000;
+}

@@ -1,3 +1,10 @@
+/**
+ * 设计令牌是完整的颜色值（DESIGN.md 生成的十六进制），Tailwind 3 没法直接给 var(--x) 叠透明度，
+ * 以前 bg-primary/10、border-destructive/20 这类写法一律不生成样式。用 color-mix 接住 <alpha-value>，
+ * 不带透明度时 <alpha-value> 为 1，结果与原色相同。
+ */
+const token = (name) => `color-mix(in srgb, var(--${name}) calc(<alpha-value> * 100%), transparent)`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: "class",
@@ -11,25 +18,25 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
-        card: "var(--card)",
-        "card-foreground": "var(--card-foreground)",
-        popover: "var(--popover)",
-        "popover-foreground": "var(--popover-foreground)",
-        primary: "var(--primary)",
-        "primary-foreground": "var(--primary-foreground)",
-        secondary: "var(--secondary)",
-        "secondary-foreground": "var(--secondary-foreground)",
-        muted: "var(--muted)",
-        "muted-foreground": "var(--muted-foreground)",
-        accent: "var(--accent)",
-        "accent-foreground": "var(--accent-foreground)",
-        destructive: "var(--destructive)",
-        "destructive-foreground": "var(--destructive-foreground)",
-        border: "var(--border)",
-        input: "var(--input)",
-        ring: "var(--ring)",
+        background: token("background"),
+        foreground: token("foreground"),
+        card: token("card"),
+        "card-foreground": token("card-foreground"),
+        popover: token("popover"),
+        "popover-foreground": token("popover-foreground"),
+        primary: token("primary"),
+        "primary-foreground": token("primary-foreground"),
+        secondary: token("secondary"),
+        "secondary-foreground": token("secondary-foreground"),
+        muted: token("muted"),
+        "muted-foreground": token("muted-foreground"),
+        accent: token("accent"),
+        "accent-foreground": token("accent-foreground"),
+        destructive: token("destructive"),
+        "destructive-foreground": token("destructive-foreground"),
+        border: token("border"),
+        input: token("input"),
+        ring: token("ring"),
       },
       fontSize: {
         "2xs": ["var(--text-2xs)", { lineHeight: "var(--text-2xs--line-height)" }],

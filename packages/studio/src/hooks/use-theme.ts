@@ -69,8 +69,20 @@ export function useTheme(initialTheme?: Theme) {
   } as const;
 }
 
+/** OLED 纯黑是深色下的附加开关，开关本身在「外观与界面」里（本地偏好 narrafork_oled）。 */
+const OLED_STORAGE_KEY = "narrafork_oled";
+
+function applyStoredOledPreference() {
+  if (typeof document === "undefined") return;
+  try {
+    document.documentElement.classList.toggle("oled", globalThis.localStorage?.getItem(OLED_STORAGE_KEY) === "true");
+  } catch { /* ignore */ }
+}
+
 /** Apply theme immediately on page load (call in index.html or entry point) */
 export function initTheme() {
   const stored = loadStoredTheme();
   applyThemeToDOM(resolveTheme(stored));
+  // 此前只有打开外观设置页时才会挂上 oled 类，重启后纯黑模式不生效。
+  applyStoredOledPreference();
 }

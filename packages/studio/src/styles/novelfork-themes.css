@@ -1,0 +1,217 @@
+/*
+  NovelFork 书房主题令牌——由 packages/studio/scripts/generate-design-tokens.ts 从仓库根的 DESIGN.md 生成。
+  勿手改：改 DESIGN.md 后运行 `pnpm --dir packages/studio run design:tokens`。
+*/
+
+/* gaozhi · 浅色 */
+:root,
+[data-nf-theme-preview="gaozhi"] {
+  --font-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --font-display: "ZCOOL XiaoWei", "Noto Serif SC Variable", "Songti SC", STSong, serif;
+  --font-display-weight: 400;
+  --font-display-tracking: 0.02em;
+  --display-line-height: 1.25;
+  --font-serif: "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --font-prose: var(--font-serif);
+  --font-prose-weight: 400;
+  --prose-size: 16px;
+  --prose-line-height: 1.9;
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius: var(--radius-md);
+  --background: #f6f7f3;
+  --foreground: #1d2420;
+  --card: #ffffff;
+  --primary: #2e6b50;
+  --primary-foreground: #f4f7f3;
+  --secondary: #e9eee7;
+  --muted: #eef2ec;
+  --muted-foreground: #5e6b63;
+  --accent: #e3ece5;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --border: #d3dbd2;
+  --input: #dde3db;
+  --card-foreground: #1d2420;
+  --popover: #ffffff;
+  --popover-foreground: #1d2420;
+  --secondary-foreground: #1d2420;
+  --accent-foreground: #1d2420;
+  --ring: #2e6b50;
+  --nf-paper: #fbfbf8;
+  --nf-grid: #dbe7df;
+}
+
+/* gaozhi · 深色 */
+:root.dark,
+.dark [data-nf-theme-preview="gaozhi"] {
+  --background: #111613;
+  --foreground: #e3e9e4;
+  --card: #18201a;
+  --primary: #7cc19e;
+  --primary-foreground: #0e1410;
+  --secondary: #1f2922;
+  --muted: #1d2620;
+  --muted-foreground: #94a49a;
+  --accent: #22302a;
+  --destructive: #f06a6a;
+  --destructive-foreground: #1c0b0b;
+  --border: #28342c;
+  --input: #253029;
+  --card-foreground: #e3e9e4;
+  --popover: #18201a;
+  --popover-foreground: #e3e9e4;
+  --secondary-foreground: #e3e9e4;
+  --accent-foreground: #e3e9e4;
+  --ring: #7cc19e;
+  --nf-paper: #151c17;
+  --nf-grid: #1f2d24;
+}
+
+/* shuhan · 浅色 */
+:root[data-nf-style="shuhan"],
+[data-nf-theme-preview="shuhan"] {
+  --font-display: "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --font-display-weight: 900;
+  --font-display-tracking: 0.04em;
+  --display-line-height: 1.2;
+  --font-serif: "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --font-prose: var(--font-serif);
+  --font-prose-weight: 400;
+  --prose-size: 16px;
+  --prose-line-height: 1.9;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius: var(--radius-md);
+  --background: #f1f3f6;
+  --foreground: #1a2233;
+  --card: #ffffff;
+  --primary: #2b4a7a;
+  --primary-foreground: #f4f6fa;
+  --secondary: #e6eaf0;
+  --muted: #eef1f5;
+  --muted-foreground: #5b6679;
+  --accent: #e3e9f3;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --border: #d2d8e1;
+  --input: #d9dee6;
+  --card-foreground: #1a2233;
+  --popover: #ffffff;
+  --popover-foreground: #1a2233;
+  --secondary-foreground: #1a2233;
+  --accent-foreground: #1a2233;
+  --ring: #2b4a7a;
+  --nf-paper: #f9fafb;
+  --nf-rail: #1f2c47;
+  --nf-rail-ink: #e8e3d2;
+  --nf-rail-muted: #a9b3c7;
+  --nf-rail-line: #2e3d5e;
+  --nf-rail-hover: #2a3a5f;
+  --nf-slip: #f5efdc;
+  --nf-slip-edge: #c7b88c;
+  --nf-slip-ink: #1a2233;
+  --nf-highlight: #d8b65c;
+}
+
+/* shuhan · 深色 */
+:root.dark[data-nf-style="shuhan"],
+.dark [data-nf-theme-preview="shuhan"] {
+  --background: #111827;
+  --foreground: #e5e8ef;
+  --card: #18223a;
+  --primary: #8fb0e6;
+  --primary-foreground: #0d1424;
+  --secondary: #1f2a44;
+  --muted: #1c2741;
+  --muted-foreground: #98a3b9;
+  --accent: #22304f;
+  --destructive: #f06a6a;
+  --destructive-foreground: #1c0b0b;
+  --border: #26324b;
+  --input: #243049;
+  --card-foreground: #e5e8ef;
+  --popover: #18223a;
+  --popover-foreground: #e5e8ef;
+  --secondary-foreground: #e5e8ef;
+  --accent-foreground: #e5e8ef;
+  --ring: #8fb0e6;
+  --nf-paper: #141c2c;
+  --nf-rail: #0b1120;
+  --nf-rail-ink: #d9d2bd;
+  --nf-rail-muted: #8d97ab;
+  --nf-rail-line: #1e2840;
+  --nf-rail-hover: #18223a;
+  --nf-slip: #e9e0c4;
+  --nf-slip-edge: #b5a67a;
+  --nf-slip-ink: #1a2233;
+  --nf-highlight: #d4b25c;
+}
+
+/* yegeng · 浅色 */
+:root[data-nf-style="yegeng"],
+[data-nf-theme-preview="yegeng"] {
+  --font-display: "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --font-display-weight: 300;
+  --font-display-tracking: 0.08em;
+  --display-line-height: 1.3;
+  --font-serif: "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --font-prose: var(--font-serif);
+  --font-prose-weight: 350;
+  --prose-size: 16px;
+  --prose-line-height: 2;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius: var(--radius-md);
+  --background: #f2f1ed;
+  --foreground: #231f18;
+  --card: #fbfaf7;
+  --primary: #9a6412;
+  --primary-foreground: #fbf7ee;
+  --secondary: #e8e4dc;
+  --muted: #ece9e2;
+  --muted-foreground: #6b6356;
+  --accent: #efe6d3;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --border: #d9d4c9;
+  --input: #e0dbd1;
+  --card-foreground: #231f18;
+  --popover: #fbfaf7;
+  --popover-foreground: #231f18;
+  --secondary-foreground: #231f18;
+  --accent-foreground: #231f18;
+  --ring: #9a6412;
+  --nf-paper: #f9f8f5;
+  --nf-glow: #d6a0461a;
+}
+
+/* yegeng · 深色 */
+:root.dark[data-nf-style="yegeng"],
+.dark [data-nf-theme-preview="yegeng"] {
+  --background: #17150f;
+  --foreground: #ede5d5;
+  --card: #211e18;
+  --primary: #e3a649;
+  --primary-foreground: #1a160f;
+  --secondary: #2a261e;
+  --muted: #27231c;
+  --muted-foreground: #a79e8c;
+  --accent: #332c20;
+  --destructive: #f06a6a;
+  --destructive-foreground: #1c0b0b;
+  --border: #322d24;
+  --input: #2e2921;
+  --card-foreground: #ede5d5;
+  --popover: #211e18;
+  --popover-foreground: #ede5d5;
+  --secondary-foreground: #ede5d5;
+  --accent-foreground: #ede5d5;
+  --ring: #e3a649;
+  --nf-paper: #1b1813;
+  --nf-glow: #e3a64929;
+}

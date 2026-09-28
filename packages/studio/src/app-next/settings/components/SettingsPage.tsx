@@ -30,7 +30,7 @@ export function SettingsPage({
     <div data-slot="settings-page" className={cn("flex min-w-0 flex-col gap-6", className)}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">{title}</h2>
+          <h2 className="nf-display text-2xl text-foreground">{title}</h2>
           {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         </div>
         {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}

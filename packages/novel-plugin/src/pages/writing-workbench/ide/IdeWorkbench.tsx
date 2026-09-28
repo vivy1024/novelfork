@@ -1369,7 +1369,7 @@ export function IdeWorkbench({
         data-chat-visible={chatVisible ? "true" : "false"}
       >
       {/* ── ActivityBar（VS Code 规范：48px 宽，48px 项高，左侧 2px 强调条，背景加重区分） ── */}
-      <div className="flex h-full w-12 shrink-0 flex-col justify-between items-center border-r border-border bg-secondary">
+      <div className="flex h-full w-12 shrink-0 flex-col justify-between items-center border-r border-border bg-secondary" data-nf-surface="rail">
         <div className="flex flex-col items-center gap-1 pt-2">
           {SIDEBAR_VIEWS.map(v => (
             <ActivityBarItem

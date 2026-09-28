@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const useShellDataMock = vi.hoisted(() => vi.fn());
@@ -59,7 +59,7 @@ describe("StudioNextApp product entry", () => {
 
     expect(await screen.findByTestId("shell-sidebar")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "作者首页" })).toBeTruthy();
-    expect(screen.getByText("测试作品")).toBeTruthy();
+    expect(within(screen.getByTestId("home-bookshelf")).getByRole("button", { name: "测试作品" })).toBeTruthy();
     expect(screen.queryByTestId("runtime-p0-shell")).toBeNull();
     expect(screen.queryByText("AI 模型尚未就绪")).toBeNull();
   });

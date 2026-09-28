@@ -106,12 +106,14 @@ export function EditorMinimap({
 
     const scale = canvasHeight / contentHeight;
 
-    // 获取当前主题色
+    // 取当前主题的文字色与主色（书房主题与明暗都会改变它们），透明度用 globalAlpha 叠加
     const isDark = document.documentElement.classList.contains("dark");
-    const lineColor = isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.2)";
-    const headingColor = isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.45)";
-    const viewportColor = isDark ? "rgba(100,150,255,0.12)" : "rgba(0,100,255,0.08)";
-    const viewportBorder = isDark ? "rgba(100,150,255,0.3)" : "rgba(0,100,255,0.2)";
+    const rootStyle = getComputedStyle(document.documentElement);
+    const ink = rootStyle.getPropertyValue("--foreground").trim() || (isDark ? "#ffffff" : "#000000");
+    const accent = rootStyle.getPropertyValue("--primary").trim() || ink;
+    const lineAlpha = isDark ? 0.25 : 0.2;
+    const headingAlpha = isDark ? 0.5 : 0.45;
+    ctx.fillStyle = ink;
 
     // 遍历 DOM blocks 绘制
     const blocks = editorEl.querySelectorAll<HTMLElement>(".ProseMirror > *");
@@ -136,7 +138,7 @@ export function EditorMinimap({
           Math.max(8, (isHeading && i === 0 ? 0.8 : Math.min(1, textLen / 80)) * (canvasWidth - padX * 2)),
         );
 
-        ctx.fillStyle = isHeading && i === 0 ? headingColor : lineColor;
+        ctx.globalAlpha = isHeading && i === 0 ? headingAlpha : lineAlpha;
         // 标题行高度略大
         const h = isHeading && i === 0 ? lineHeight + 1 : lineHeight;
         ctx.fillRect(padX, lineY, w, h);
@@ -145,7 +147,7 @@ export function EditorMinimap({
       y += blockHeight;
     }
 
-    // 绘制可视区域高亮。位置与拖拽逻辑共用同一映射，避免蓝色块看起来
+    // 绘制可视区域高亮。位置与拖拽逻辑共用同一映射，避免高亮块看起来
     // 在一个位置、实际点击/拖动却按另一套比例计算。
     const viewport = resolveEditorMinimapViewport({
       canvasHeight,
@@ -154,11 +156,14 @@ export function EditorMinimap({
       scrollHeight: scrollEl.scrollHeight,
     });
 
-    ctx.fillStyle = viewportColor;
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = isDark ? 0.14 : 0.1;
     ctx.fillRect(0, viewport.top, canvasWidth, viewport.height);
-    ctx.strokeStyle = viewportBorder;
+    ctx.strokeStyle = accent;
+    ctx.globalAlpha = 0.35;
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, viewport.top + 0.5, canvasWidth - 1, Math.max(0, viewport.height - 1));
+    ctx.globalAlpha = 1;
   }, [scrollContainerRef, width]);
 
   // Debounced redraw on content change

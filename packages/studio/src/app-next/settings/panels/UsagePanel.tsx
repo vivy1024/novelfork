@@ -76,10 +76,10 @@ type ChartMetric = (typeof CHART_METRICS)[number]["value"];
 const DEFAULT_CHART_METRICS: readonly ChartMetric[] = ["totalTokens", "requestCount", "errorCount"];
 
 const METRIC_COLORS = [
-  "hsl(var(--primary))",
-  "hsl(var(--muted-foreground))",
-  "hsl(var(--destructive))",
-  "hsl(var(--chart-4, var(--primary)))",
+  "var(--primary)",
+  "var(--muted-foreground)",
+  "var(--destructive)",
+  "var(--chart-4, var(--primary))",
 ] as const;
 
 function metricLabel(metric: ChartMetric): string {

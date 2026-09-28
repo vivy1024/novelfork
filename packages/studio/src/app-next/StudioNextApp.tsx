@@ -65,6 +65,7 @@ const RuntimeWritingWorkbenchRouteLazy = lazy(() =>
   })),
 );
 import { SettingsLayout } from "./components/layouts";
+import { BookCover } from "../components/BookCover";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 const RuntimeProviderSettingsHost = lazy(() =>
@@ -315,7 +316,7 @@ function HomeRouteLive({
           <p className="text-xs font-medium text-muted-foreground">
             NovelFork Next
           </p>
-          <h1 className="text-2xl font-semibold">作者首页</h1>
+          <h1 className="nf-display text-3xl">作者首页</h1>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -342,6 +343,26 @@ function HomeRouteLive({
           </Button>
         </div>
       </header>
+
+      {books.length > 0 ? (
+        <section aria-labelledby="home-bookshelf-title" className="space-y-3" data-testid="home-bookshelf">
+          <h2 id="home-bookshelf-title" className="nf-display text-xl">书架</h2>
+          <ul className="flex flex-wrap gap-3">
+            {books.map((book) => (
+              <li key={book.id}>
+                <button
+                  type="button"
+                  className="group flex w-28 flex-col items-center gap-2 rounded-md p-2 text-center transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => onNavigate({ kind: "book", bookId: book.id })}
+                >
+                  <BookCover title={book.title} className="transition-transform group-hover:-translate-y-0.5" />
+                  <span className="line-clamp-2 text-xs text-foreground">{book.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {error ? (
         <div

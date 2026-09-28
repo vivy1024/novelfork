@@ -4,6 +4,7 @@ import { BookMarked, BookOpen, CalendarClock, ChevronDown, ChevronUp, GripVertic
 import { getShellNavItems, isShellNavItemActive, recentTabKey, type ShellBookItem, type ShellNavItem, type ShellRecentTabItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
 import { resolveRecentNarrators } from "./NarratorWorkspaceDrawer";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { BookCover } from "@/components/BookCover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +40,7 @@ function NavButton({ label, active, onClick, collapsed }: { readonly label: stri
           aria-current={active ? "page" : undefined}
           onClick={onClick}
         >
-          <BookOpen className="size-4" />
+          <BookCover title={label} size="xs" />
         </TooltipTrigger>
         <TooltipContent side="right">{label}</TooltipContent>
       </Tooltip>
@@ -52,11 +53,12 @@ function NavButton({ label, active, onClick, collapsed }: { readonly label: stri
       size="xs"
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center rounded-md px-2 py-1 text-left text-xs transition",
+        "flex w-full items-center justify-start gap-2 rounded-md px-2 py-1 text-left text-xs transition",
         active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
       onClick={onClick}
     >
+      <BookCover title={label} size="xs" />
       <span className="truncate">{label}</span>
     </Button>
   );
@@ -285,13 +287,14 @@ export function ShellSidebar({
           !isMobile && (isCollapsed ? "w-12" : "w-[250px]"),
         )}
         data-slot="shell-sidebar"
+        data-nf-surface="rail"
         data-testid="shell-sidebar"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-2 py-2" role="banner">
           {!isCollapsed && (
             <div className="min-w-0 px-1">
-              <p className="truncate text-sm font-semibold">NovelFork Studio</p>
+              <p className="nf-display truncate text-base">NovelFork Studio</p>
               <p className="text-2xs text-muted-foreground">Agent Shell</p>
             </div>
           )}
