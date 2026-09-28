@@ -17,7 +17,6 @@ import {
 	deleteProjectById,
 	FOLLOW_DEFAULT_MODEL,
 	generateId,
-	isKiroAvailable,
 	narrators,
 	NotFoundError,
 	projects,
@@ -375,11 +374,12 @@ function resolveProviderModel(prefix: string, defaultModel: string | undefined):
  * 只看本地配置，不做网络探测：配置了密钥和地址，请求时仍可能失败。
  */
 function getCredentialedProductProviders(): CredentialedProductProvider[] {
-	const apiProviders = [
+	return [
 		...(settings.customApiProviders ?? []),
 		...(settings.openaiProviders ?? []),
 		...(settings.anthropicProviders ?? []),
 		...(settings.nugProviders ?? []),
+		...(settings.geminiProviders ?? []),
 	]
 		.filter(
 			(provider) =>
@@ -393,27 +393,6 @@ function getCredentialedProductProviders(): CredentialedProductProvider[] {
 			label: provider.name || provider.prefix,
 			model: resolveProviderModel(provider.prefix, provider.defaultModel),
 		}));
-	const cline = (settings.clineProviders ?? [])
-		.filter(
-			(provider) =>
-				!provider.disabled &&
-				configuredValue(provider.prefix) &&
-				configuredValue(provider.accessToken) &&
-				configuredValue(provider.baseUrl),
-		)
-		.map((provider) => ({
-			prefix: provider.prefix,
-			label: provider.name || provider.prefix,
-			model: resolveProviderModel(provider.prefix, provider.defaultModel),
-		}));
-	const providers: CredentialedProductProvider[] = [...apiProviders, ...cline];
-	const kiroDisabled =
-		process.env.NARRAFORK_DISABLE_KIRO_PROVIDER === "1" ||
-		settings.agent.disabledProviders?.includes("kiro");
-	if (!kiroDisabled && isKiroAvailable()) {
-		providers.push({ prefix: "kiro", label: "Kiro", model: "kiro:claude-sonnet-4.5" });
-	}
-	return providers;
 }
 
 /** 有凭据且能确定模型的供应商：决定模型就绪状态和新叙述者的默认模型。 */

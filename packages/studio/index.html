@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <!-- Studio 挂在站点根。嵌入的 Runtime 前端按 document.baseURI 推算自己的挂载路径，
+         没有 <base> 时会把 /next/books/ 这类深链目录当成根，请求落到 /next/books/api/…。
+         生产环境由 Runtime 返回本页时会改写成等价的相对 <base href>。 -->
+    <base href="/" />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📜</text></svg>">

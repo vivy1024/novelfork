@@ -249,7 +249,6 @@ export const registerRuntimeProductIntegration: (...args: any[]) => any;
 export const getDbDir: () => string;
 export const getDbPath: () => string;
 export const generateId: (...args: any[]) => string;
-export const isKiroAvailable: (...args: any[]) => boolean;
 export const requireAdmin: (...args: any[]) => any;
 export const deleteProjectById: (id: string) => Promise<void>;
 export const disableRoutineForProject: (...args: any[]) => Promise<void>;

@@ -167,7 +167,6 @@ export {
 } from "../../narrafork-runtime-private/server/db/schema";
 
 export { generateId } from "../../narrafork-runtime-private/server/lib/id";
-export { isKiroAvailable } from "../../narrafork-runtime-private/server/lib/kiro-adapter";
 export { logger } from "../../narrafork-runtime-private/server/lib/logger";
 export { settings } from "../../narrafork-runtime-private/server/lib/settings";
 export { FOLLOW_DEFAULT_MODEL } from "../../narrafork-runtime-private/server/lib/settings/provider";
@@ -231,8 +230,13 @@ export type {
  * Lazy-load project teardown. A static re-export would evaluate
  * chapter/git services during product bootstrap and lock product-host
  * before main.ts can register the NovelFork integration.
+ *
+ * Delegates to the Runtime's own teardown (the same function behind
+ * DELETE /api/projects/:id), so book deletion follows the Runtime schema as it evolves.
  */
 export async function deleteProjectById(id: string): Promise<void> {
-	const { deleteProjectById: deleteRuntimeProjectById } = await import("./delete-project");
+	const { deleteProjectById: deleteRuntimeProjectById } = await import(
+		"../../narrafork-runtime-private/server/routes/projects"
+	);
 	await deleteRuntimeProjectById(id);
 }

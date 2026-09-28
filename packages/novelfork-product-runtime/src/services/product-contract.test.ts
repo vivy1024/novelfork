@@ -14,9 +14,8 @@ const originalProviders = {
 	openaiProviders: settings.openaiProviders,
 	anthropicProviders: settings.anthropicProviders,
 	nugProviders: settings.nugProviders,
-	clineProviders: settings.clineProviders,
+	geminiProviders: settings.geminiProviders,
 };
-const originalDisableKiro = process.env.NARRAFORK_DISABLE_KIRO_PROVIDER;
 const originalDefaultModel = settings.agent.defaultModel;
 
 beforeEach(() => {
@@ -25,15 +24,12 @@ beforeEach(() => {
 	settings.openaiProviders = [];
 	settings.anthropicProviders = [];
 	settings.nugProviders = [];
-	settings.clineProviders = [];
-	process.env.NARRAFORK_DISABLE_KIRO_PROVIDER = "1";
+	settings.geminiProviders = [];
 });
 
 afterEach(() => {
 	Object.assign(settings, originalProviders);
 	settings.agent.defaultModel = originalDefaultModel;
-	if (originalDisableKiro === undefined) delete process.env.NARRAFORK_DISABLE_KIRO_PROVIDER;
-	else process.env.NARRAFORK_DISABLE_KIRO_PROVIDER = originalDisableKiro;
 });
 
 describe("NovelFork product bootstrap contract", () => {
@@ -94,34 +90,35 @@ describe("NovelFork product bootstrap contract", () => {
 });
 
 describe("product model status", () => {
-	test("counts a complete enabled Cline provider as configured", () => {
-		settings.clineProviders = [
+	test("counts a complete enabled Gemini provider as configured", () => {
+		settings.geminiProviders = [
 			{
-				id: "cline-1",
-				name: "Cline",
-				prefix: "cline",
-				baseUrl: "https://api.cline.test",
-				accessToken: "token",
-				defaultModel: "model",
+				id: "gemini-1",
+				name: "Gemini",
+				prefix: "gemini",
+				apiKey: "key",
+				baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+				defaultModel: "gemini-2.5-flash",
 			},
 		];
-		expect(getProductModelStatus()).toEqual({ setupRequired: false, label: "已配置：Cline" });
+		expect(getProductModelStatus()).toEqual({ setupRequired: false, label: "已配置：Gemini" });
 	});
 
-	test("does not count an incomplete or disabled Cline provider", () => {
-		settings.clineProviders = [
+	test("does not count an incomplete or disabled Gemini provider", () => {
+		settings.geminiProviders = [
 			{
-				id: "cline-1",
-				name: "Cline",
-				prefix: "cline",
-				baseUrl: "https://api.cline.test",
-				defaultModel: "model",
+				id: "gemini-1",
+				name: "Gemini",
+				prefix: "gemini",
+				apiKey: "",
+				baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+				defaultModel: "gemini-2.5-flash",
 			},
 		];
 		expect(getProductModelStatus()).toEqual({ setupRequired: true, label: NO_PROVIDER_LABEL });
-		settings.clineProviders[0] = {
-			...settings.clineProviders[0],
-			accessToken: "token",
+		settings.geminiProviders[0] = {
+			...settings.geminiProviders[0],
+			apiKey: "key",
 			disabled: true,
 		};
 		expect(getProductModelStatus()).toEqual({ setupRequired: true, label: NO_PROVIDER_LABEL });

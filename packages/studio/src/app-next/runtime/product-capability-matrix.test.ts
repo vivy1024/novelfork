@@ -187,7 +187,8 @@ describe("NovelFork Runtime product capability matrix", () => {
 			),
 			"utf8",
 		);
-		const nativeMessageListSource = await readFile(
+		// Runtime 0.7 把消息行从 PretextExactMessageList 拆成 ExactRow，注入点随之在 ExactRow 里。
+		const nativeMessageRowSource = await readFile(
 			join(
 				process.cwd(),
 				"..",
@@ -196,14 +197,15 @@ describe("NovelFork Runtime product capability matrix", () => {
 				"components",
 				"narrator",
 				"vlist",
-				"PretextExactMessageList.tsx",
+				"ExactRow.tsx",
 			),
 			"utf8",
 		);
 		expect(mountSource).toContain("toolResultRenderer={renderToolResultWithAction}");
 		expect(nativeToolCardSource).toContain("runtimeRenderer");
 		expect(nativeToolCardSource).toContain("data-runtime-renderer");
-		expect(nativeMessageListSource).toContain("useRuntimeToolResultRenderer");
+		expect(nativeMessageRowSource).toContain("useRuntimeToolResultRenderer");
+		expect(nativeMessageRowSource).toContain("extra.detailSlot");
 	});
 
 	it("keeps native NarraFork navigation inside the NovelFork product shell", async () => {

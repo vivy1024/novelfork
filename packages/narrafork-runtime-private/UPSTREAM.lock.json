@@ -2,49 +2,43 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime-private",
   "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "dda73094c527ba3975c1ef28051fa47f41708d98",
-  "tree": "e63c4803e2dde22df5883cbfbf6c356e9c448b6f",
-  "branch": "novelfork/integration-v0.6.6",
-  "localBranch": "novelfork/integration-v0.6.6",
-  "version": "0.6.6",
-  "importedAt": "2026-09-26T04:51:58.000Z",
-  "trackedFileCount": 3508,
+  "commit": "bc6347b9107bd58d1ec1eae4a1d2d050a9c40742",
+  "tree": "de6854eaecb00c9cbeaafdebf8f1a3b0d753cdc7",
+  "branch": "novelfork/integration-v0.7.10",
+  "localBranch": "novelfork/upgrade-0.7.10",
+  "version": "0.7.10",
+  "importedAt": "2026-09-28T10:29:50.000Z",
+  "trackedFileCount": 4541,
   "importMethod": "git-archive",
   "provenance": {
-    "note": "fork 远端分支 novelfork/integration-v0.6.6 当前头为 dda73094（2026-09-26 由 f779ff11 快进，合入 Runtime PR #1），维护者宿主库的本地分支 novelfork-seam-066 已同步到同一提交。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。宿主库：packages/.narrafork-runtime-fork-staging（0.6.6 合并工作区 D:/DESKTOP/narrafork-066-work 已在验证后删除）。远端旧分支 novelfork/integration-v0.5.23（31ce7ab6，v0.6.0 + 接缝）原样保留作历史存档。",
-    "forkCommits": [
-      {
-        "commit": "dda73094c527ba3975c1ef28051fa47f41708d98",
-        "parent": "f779ff110e7b5decaddbddd46a77337d43697439",
-        "subject": "fix(skills): 产品内全局技能跟随 NOVELFORK_HOME，不再读取独立 NarraFork 的技能",
-        "status": "merged",
-        "mergedAt": "2026-09-26T18:02:26Z",
-        "mergeMethod": "fast-forward",
-        "pullRequest": "https://github.com/NarraFork/novelfork-runtime-private/pull/1",
-        "head": "MimosaLW/novelfork-runtime-private:fix/novelfork-home-skills",
-        "note": "MimosaLW 经其 fork 提交的 PR。维护者在宿主库把 novelfork/integration-v0.6.6 由 f779ff11 直接快进到本提交并推送（未用 GitHub 的 merge commit），提交号不变，fork 分支头即 lock 的 commit；GitHub 据此把 PR 标为已合并。"
-      }
-    ],
-    "seamBase": {
-      "commit": "5ab50ffe0643845794f776ce3c5098a510326905",
-      "subject": "chore(runtime): 记录 NovelFork 接缝基线（上游 v0.6.5 + 产品定制）",
-      "note": "与 2026-09-05 物化的 0.6.5 生产树逐文件一致（唯一差异为本 lock 文件本身）"
+    "note": "2026-09-28 在宿主库 packages/.narrafork-runtime-fork-staging 的 worktree 分支 novelfork/upgrade-0.7.10 上合并上游 v0.7.10，合并提交 bc6347b9。尚未推送：计划推到 fork 远端新分支 novelfork/integration-v0.7.10（旧分支 novelfork/integration-v0.6.6 保留作存档）。推送前 pnpm runtime:sync 只能从本机取到该提交：先执行 GIT_DIR=packages/.narrafork-runtime-sync git fetch <宿主库路径> +refs/heads/novelfork/upgrade-0.7.10:refs/heads/novelfork/upgrade-0.7.10。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。上一版物化目录备份在 .runtime-backup-v0.6.6-20260928/（不含 node_modules）。",
+    "forkBase": {
+      "commit": "006bf8291456d5140055d037c9adceb1475593cd",
+      "subject": "feat(host): 嵌入宿主接受宿主的明暗方案（colorScheme）",
+      "note": "合并前的 fork 头：远端 novelfork/integration-v0.6.6 的 dda73094 之上加一个本地提交（主题功能用的 colorScheme 参数），该提交同样未推送"
     },
     "upstream": {
-      "commit": "751ad11b99bd77ab906473150dabc2623a04ef3b",
-      "subject": "release: v0.6.6",
-      "ref": "httpsup/main",
-      "note": "0.6.6 曾发布两次：13e9c88d 被 78d739d1 回滚后由 751ad11b 重发，本次取重发版"
+      "commit": "24f2436ab01a8785b93a55616d9216276df4cce6",
+      "subject": "release: v0.7.10",
+      "ref": "upstream/main",
+      "note": "上游 v0.7.9 / v0.7.10 没有打 tag，按 upstream/main 的发布提交合并"
     },
-    "mergeBase": "a657fb7508579e0401bd92ad8e66650e76b0397a",
-    "postMaterializeDeviations": [
-      "bun.lock：@types/bun 与 bun-types 由 1.4.1 下调到 1.3.13（与上游 0.6.6 稳定版的解析一致；package.json 声明的 ^1.3.13 范围两者都满足）。1.4.1 的 Pointer 类型改为不兼容 bigint，会让 narrafork-runtime-bridge 的 tsc 卡在 server/lib/win-handle-guard.ts。此改动仅存在于物化树，未回写提交 f779ff11——若日后从该提交重新物化，需重做此对齐。"
-    ],
+    "mergeBase": "751ad11b99bd77ab906473150dabc2623a04ef3b",
     "conflictsResolved": [
-      "frontend/components/narrator/dock/panels.tsx — 采用上游新增的 hostNarratorId 回填 effect",
-      "server/lib/agent/__tests__/bash-analyze.test.ts — 并集：保留接缝的 analyzeBashCommandImpl 别名与 ExecutionBackend，加入上游 isReviewReadOnlyBashAnalysis",
-      "server/services/worktree-tree-snapshot.ts — 并集：保留 NovelFork 的 core.autocrlf=false，采用上游可配置 timeoutMs",
-      "frontend/components/narrator/workspace/DockviewWorkspace.tsx — 整档采用上游版；接缝此前的 persistSerialized/保存队列属通用修复而非产品接缝，与上游 commitSavedLayout 重复，按单一权威源原则删弱留强"
-    ]
+      "server/services/narrator-session.ts — 上游把 Agent 循环主体移到 server/services/agent-runtime/orchestrator.ts；产品叙述者判断抽到新文件 server/services/product-narrator-tools.ts，会话与 orchestrator 共用。buildSystemPrompt 保留 narratorId 参数与 runtimeToolNames；项目级例程覆盖改用上游三态常驻模式；被拒工具重跑路径在上游重构后重新接入产品工具过滤",
+      "server/services/agent-runtime/orchestrator.ts — 无文本冲突，重新接入产品工具可见性同步与按权限模式过滤；删除 fork 旧有的 permissionMode getter（读的是同一个快照，与上游写法等价）",
+      "frontend/components/narrator/vlist/* — 上游把 ExactRow 从 PretextExactMessageList 拆出，领域工具结果渲染的注入点随之移到 ExactRow.tsx；RenderToolCall.tsx 取上游后重新加 detailSlot / runtimeRenderer",
+      "server/db/run-migrations.ts — 保留 runtime-migrations 优先与嵌入迁移，合入上游新增的重建拷贝校验与退役索引容错",
+      "server/routes/projects.ts — 保留导出的 deleteProjectById（产品删书用），在其开头补上游的 requireSqliteProjectMutation",
+      "server/services/narrator-prompt.ts — 并集：可信资源根的 Resource Instructions 与上游 File References 两段都保留",
+      "server/lib/agent/tools/index.ts — 并集：产品贡献的可选工具与上游 Eval 工具",
+      "server/services/knowledge-service.ts、server/services/worktree-tree-snapshot.ts — 采用上游（fork 的修复已被上游覆盖）",
+      "tests/scripts/build-plugin.test.ts 与 Kiro / Cline 外部命令 e2e 测试 — 上游已删除，随之删除",
+      "测试文件 — Windows 路径修复（fileURLToPath）保留；fork 的图片发送测试被上游 multipart 用例覆盖，取上游；bash-analyze 的 PowerShell git -C 用例改用宿主 resolve（fork 的 POSIX 夹具不适用于 PowerShell 分析）",
+      "bun.lock — 以上游为准，bun install 重建，保留 fork 的 zod 固定版本与 workbox 依赖"
+    ],
+    "migrations": "新增 runtime-migrations/0011_tense_shadow_king（drizzle-kit generate 对 0010 快照求差）：21 张新表与若干新列；narrators 删除 prune_boundary_message_id / pruned_percent / prune_enabled，narrator_message_refs 删除 pruned_percent，均为上游移除动态修剪，按新建处理、无改名。数据回填均按列是否存在触发（run-migrations.ts 与 data-backfills.ts），精简迁移不影响；write_audience 默认 owner，无回填",
+    "verification": "tsgo 类型检查与纯上游 24f2436a 基线逐条一致；fork 层与会话相关 65 个测试文件，与放入同一套迁移的上游基线对照，无合并独有的失败",
+    "postMaterializeDeviations": []
   }
 }
