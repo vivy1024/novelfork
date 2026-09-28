@@ -10,7 +10,7 @@ import {
   listKnowledgeCollections,
   listKnowledgeEntries,
   updateKnowledgeEntry,
-} from "../runtime-admin/knowledge";
+} from "./knowledge";
 
 vi.mock("@/hooks/use-api", () => ({
   fetchJson: vi.fn(),

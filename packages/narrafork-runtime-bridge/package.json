@@ -32,6 +32,11 @@
       "import": "./src/frontend/provider-settings.ts",
       "default": "./src/frontend/provider-settings.ts"
     },
+    "./frontend/runtime-page": {
+      "types": "./src/frontend/runtime-page.ts",
+      "import": "./src/frontend/runtime-page.ts",
+      "default": "./src/frontend/runtime-page.ts"
+    },
     "./frontend/notification-sound": {
       "types": "./src/frontend/notification-sound.ts",
       "import": "./src/frontend/notification-sound.ts",

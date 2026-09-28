@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime-private",
   "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "3d788013a7af3215d4336665025cda34dc3d0523",
-  "tree": "b94a4915828ef3560e0869757cf720643d9d281e",
+  "commit": "16dcbc90228bae8e94189c2baa4cc5d56b57e958",
+  "tree": "24ac9fe2a78aff534295bb34052296aaa526a907",
   "branch": "novelfork/integration-v0.7.10",
   "localBranch": "novelfork/upgrade-0.7.10",
   "version": "0.7.10",
-  "importedAt": "2026-09-28T13:48:37.000Z",
-  "trackedFileCount": 4542,
+  "importedAt": "2026-09-28T14:58:13.000Z",
+  "trackedFileCount": 4545,
   "importMethod": "git-archive",
   "provenance": {
     "note": "2026-09-28 在宿主库 packages/.narrafork-runtime-fork-staging 的 worktree 分支 novelfork/upgrade-0.7.10 上合并上游 v0.7.10，合并提交 bc6347b9，其后本地提交见 forkCommitsAfterMerge。均尚未推送：计划推到 fork 远端新分支 novelfork/integration-v0.7.10（旧分支 novelfork/integration-v0.6.6 保留作存档）。推送前 pnpm runtime:sync 只能从本机取到该提交：先执行 GIT_DIR=packages/.narrafork-runtime-sync git fetch <宿主库路径> +refs/heads/novelfork/upgrade-0.7.10:refs/heads/novelfork/upgrade-0.7.10。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。上一版物化目录备份在 .runtime-backup-v0.6.6-20260928/（不含 node_modules）。",
@@ -54,6 +54,20 @@
         "subject": "feat(host): Monaco 配色跟随嵌入宿主的配色切换",
         "status": "local",
         "note": "Monaco 监听根元素属性变化并重新解析配色，嵌入宿主换书房主题（不翻转明暗）时编辑器跟着换色。与合并提交一起待推送"
+      },
+      {
+        "commit": "4a84267ce175efec449e1e46a5d25047316f688e",
+        "parent": "3d788013a7af3215d4336665025cda34dc3d0523",
+        "subject": "feat(host): 嵌入宿主可显示单个 Runtime 原页（通用页面宿主）",
+        "status": "local",
+        "note": "根路由上下文 embeddedPage 为真时只渲染页面；EmbeddedRuntimePageHost 以 Runtime 路由树 + 内存历史嵌入单个原页，跳出范围的导航交给宿主。与合并提交一起待推送"
+      },
+      {
+        "commit": "16dcbc90228bae8e94189c2baa4cc5d56b57e958",
+        "parent": "4a84267ce175efec449e1e46a5d25047316f688e",
+        "subject": "feat(host): 嵌入的原页里普通链接也走嵌入路由",
+        "status": "local",
+        "note": "同源 <a href> 改经嵌入路由跳转，范围检查与 onNavigateOutside 同样生效。与合并提交一起待推送"
       }
     ]
   }

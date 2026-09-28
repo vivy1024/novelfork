@@ -285,7 +285,7 @@
       "runtimeHttp": "GET /api/books/:bookId/narrators/:narratorId/chunk-manifest",
       "runtimeWs": null,
       "productGateway": "bookNarratorGatewayRoutes.chunkManifest",
-      "studioConsumer": "native NarratorPanel ChunkedMessageList manifest window",
+      "studioConsumer": "native NarratorPanel PretextExactMessageList manifest window（0.7 起 vlist 为唯一消息渲染器）",
       "featureFlag": null,
       "evidence": {
         "runtime": [
@@ -293,8 +293,7 @@
           "packages/novelfork-product-runtime/src/routes/product-gateway.test.ts"
         ],
         "studio": [
-          "packages/narrafork-runtime-private/frontend/components/narrator/ChunkedMessageList.tsx",
-          "packages/narrafork-runtime-private/frontend/components/narrator/chunk-manifest-utils.ts",
+          "packages/narrafork-runtime-private/frontend/components/narrator/vlist/PretextExactMessageList.tsx",
           "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx",
           "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
         ]
@@ -317,7 +316,7 @@
           "packages/narrafork-runtime-private/tests/server/services/narrator-message-queries.test.ts"
         ],
         "studio": [
-          "packages/narrafork-runtime-private/frontend/components/narrator/ChunkedMessageList.tsx",
+          "packages/narrafork-runtime-private/frontend/components/narrator/vlist/PretextExactMessageList.tsx",
           "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx"
         ]
       },
@@ -340,7 +339,7 @@
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/RuntimeNarratorConversationRoute.tsx",
-          "packages/narrafork-runtime-private/frontend/components/narrator/MessageBubble.tsx"
+          "packages/narrafork-runtime-private/frontend/components/narrator/vlist/render/RenderMessageBubble.tsx"
         ]
       },
       "notes": "Book-bound message location fails closed across narrators and supports #msg deep links."
@@ -427,7 +426,7 @@
           "packages/narrafork-runtime-private/server/websocket/narrator-ws-types.ts"
         ],
         "studio": [
-          "packages/narrafork-runtime-private/frontend/components/narrator/CompactMenuSub.tsx",
+          "packages/narrafork-runtime-private/frontend/components/narrator/compact/CompactMenuSub.tsx",
           "packages/narrafork-runtime-private/frontend/components/narrator/NarratorPanel.tsx",
           "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx"
         ]
@@ -615,18 +614,21 @@
       "runtimeHttp": "/api/learning",
       "runtimeWs": null,
       "productGateway": "learningRoutes",
-      "studioConsumer": "LearnPage -> /api/learning catalog, document and search",
+      "studioConsumer": "嵌入 Runtime 原页 /learn（RuntimePageMount → EmbeddedRuntimePageHost）",
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/routes/learning.ts"
+          "packages/narrafork-runtime-private/server/routes/learning.ts",
+          "packages/narrafork-runtime-private/frontend/routes/learn.tsx",
+          "packages/narrafork-runtime-private/frontend/components/host/EmbeddedRuntimePageHost.tsx"
         ],
         "studio": [
-          "packages/studio/src/app-next/learn/LearnPage.tsx",
-          "packages/studio/src/app-next/learn/LearnPage.test.tsx"
+          "packages/studio/src/app-next/runtime/RuntimePageMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimePageMount.test.tsx",
+          "packages/studio/src/app-next/runtime/runtime-page-sections.ts"
         ]
       },
-      "notes": "Studio exposes the Runtime learning catalog, document deep links, localized content, search, loading and retry states."
+      "notes": "Studio 的学习入口嵌入 Runtime 原页，目录、文档、搜索与小说学习内容（服务端合并）都由 Runtime 页面呈现；Studio 复制品已删除。"
     },
     {
       "id": "knowledge.deferred",
@@ -636,21 +638,24 @@
       "runtimeHttp": "/api/knowledge and /api/knowledge/packs",
       "runtimeWs": null,
       "productGateway": "knowledgeRoutes and knowledgePackRoutes",
-      "studioConsumer": "KnowledgeBasePage and knowledgeClient -> /api/knowledge",
+      "studioConsumer": "嵌入 Runtime 原页 /knowledge 与 /knowledge/$entryId（RuntimePageMount → EmbeddedRuntimePageHost）",
       "featureFlag": null,
       "evidence": {
         "runtime": [
           "packages/narrafork-runtime-private/server/routes/knowledge.ts",
-          "packages/narrafork-runtime-private/server/routes/knowledge-packs.ts"
+          "packages/narrafork-runtime-private/server/routes/knowledge-packs.ts",
+          "packages/narrafork-runtime-private/frontend/routes/knowledge/index.tsx",
+          "packages/narrafork-runtime-private/frontend/components/host/EmbeddedRuntimePageHost.tsx"
         ],
         "studio": [
-          "packages/studio/src/app-next/knowledge/KnowledgeBasePage.tsx",
+          "packages/studio/src/app-next/runtime/RuntimePageMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimePageMount.test.tsx",
+          "packages/studio/src/app-next/runtime/runtime-page-sections.ts",
           "packages/studio/src/app-next/runtime-admin/knowledge.ts",
-          "packages/studio/src/app-next/knowledge/KnowledgeBasePage.test.tsx",
-          "packages/studio/src/app-next/knowledge/knowledge-client.test.ts"
+          "packages/studio/src/app-next/runtime-admin/knowledge.test.ts"
         ]
       },
-      "notes": "Studio consumes authenticated Runtime knowledge collections and entries with search, detail, create, metadata update, revision and delete flows."
+      "notes": "Studio 的知识库入口嵌入 Runtime 原页（浏览、我的知识库、审核、访问控制、条目页），子路径与 Studio 地址同步；Studio 复制品已删除。用户知识库 ACL 对话框仍用 runtime-admin/knowledge 客户端。"
     },
     {
       "id": "scheduled.deferred",
@@ -660,20 +665,21 @@
       "runtimeHttp": "/api/scheduled-tasks",
       "runtimeWs": null,
       "productGateway": "scheduledTaskRoutes",
-      "studioConsumer": "ScheduledTasksPage and scheduledTasksClient -> /api/scheduled-tasks",
+      "studioConsumer": "嵌入 Runtime 原页 /scheduled-tasks 与 /scheduled-tasks/$taskId（RuntimePageMount → EmbeddedRuntimePageHost）",
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/routes/scheduled-tasks.ts"
+          "packages/narrafork-runtime-private/server/routes/scheduled-tasks.ts",
+          "packages/narrafork-runtime-private/frontend/routes/scheduled-tasks/index.tsx",
+          "packages/narrafork-runtime-private/frontend/components/host/EmbeddedRuntimePageHost.tsx"
         ],
         "studio": [
-          "packages/studio/src/app-next/scheduled-tasks/ScheduledTasksPage.tsx",
-          "packages/studio/src/app-next/runtime-admin/scheduled-tasks.ts",
-          "packages/studio/src/app-next/scheduled-tasks/ScheduledTasksPage.test.tsx",
-          "packages/studio/src/app-next/scheduled-tasks/client.test.ts"
+          "packages/studio/src/app-next/runtime/RuntimePageMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimePageMount.test.tsx",
+          "packages/studio/src/app-next/runtime/runtime-page-sections.ts"
         ]
       },
-      "notes": "Studio supports Runtime scheduled-task list, create, edit, toggle, immediate run, paginated run history and delete."
+      "notes": "Studio 的定时任务入口嵌入 Runtime 原页（项目与章节选择器、cron 预设、详情页），子路径与 Studio 地址同步；Studio 复制品已删除。"
     },
     {
       "id": "group.deferred",
@@ -703,18 +709,21 @@
       "runtimeHttp": "/api/search",
       "runtimeWs": null,
       "productGateway": "searchRoutes",
-      "studioConsumer": "SearchPage -> POST /api/search",
+      "studioConsumer": "嵌入 Runtime 原页 /search（RuntimePageMount → EmbeddedRuntimePageHost）",
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/routes/search.ts"
+          "packages/narrafork-runtime-private/server/routes/search.ts",
+          "packages/narrafork-runtime-private/frontend/routes/search.tsx",
+          "packages/narrafork-runtime-private/frontend/components/host/EmbeddedRuntimePageHost.tsx"
         ],
         "studio": [
-          "packages/studio/src/app-next/search/SearchPage.tsx",
-          "packages/studio/src/app-next/app-next-api-contracts.test.ts"
+          "packages/studio/src/app-next/runtime/RuntimePageMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimePageMount.test.tsx",
+          "packages/studio/src/app-next/runtime/runtime-page-sections.ts"
         ]
       },
-      "notes": "Studio global search consumes the Runtime search contract with debouncing, result typing, loading, empty and error states."
+      "notes": "Studio 的搜索入口嵌入 Runtime 原页（含知识库实体），结果里的叙述者、章节链接经 onNavigateOutside 转进产品外壳；Studio 复制品已删除。"
     }
   ]
 }

@@ -1,7 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 // import tailwindcss from "@tailwindcss/vite"; // Disabled due to build errors
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import type { PluginOption } from "vite";
 
 const defaultRuntimeRoot = resolve(__dirname, "../narrafork-runtime-private");
 
@@ -18,10 +20,34 @@ export function resolveRuntimeBuildPaths(
 }
 
 const runtimePaths = resolveRuntimeBuildPaths();
+
+/**
+ * 嵌入的 Runtime 原页（设置、套路、知识库……）跑在 Runtime 自己的路由树上。routeTree.gen.ts 是
+ * TanStack Router 插件的生成物，产品构建只构建 Studio、不构建 Runtime 前端，所以由这里生成并按路由拆包；
+ * 插件取 Runtime 依赖里的版本，生成物与 Runtime 的路由库对得上。配置与 Runtime 自己的 vite.config 一致。
+ */
+function runtimeRouteTreePlugin(): PluginOption {
+  const requireFromRuntime = createRequire(resolve(runtimePaths.runtimeRoot, "package.json"));
+  const { TanStackRouterVite } = requireFromRuntime("@tanstack/router-plugin/vite") as {
+    TanStackRouterVite: (options: Record<string, unknown>) => PluginOption;
+  };
+  return TanStackRouterVite({
+    target: "react",
+    autoCodeSplitting: true,
+    routesDirectory: resolve(runtimePaths.frontendRoot, "routes"),
+    generatedRouteTree: resolve(runtimePaths.frontendRoot, "routeTree.gen.ts"),
+    // 开发期的路由热替换按 id 去 window.__TSR_ROUTER__ 找旧路由；那是 Studio 自己的路由器，两边都有
+    // __root__，Runtime 的根路由会被替换进 Studio 的路由器，整个外壳变成 Runtime 的错误页。
+    // 关掉它：改 Runtime 路由文件时整页刷新即可。生产构建本来就不带这段代码。
+    codeSplittingOptions: { addHmr: false },
+  });
+}
+
 const runtimePort = Number(process.env.NOVELFORK_RUNTIME_PORT ?? process.env.PORT ?? "7778");
 
 export default defineConfig({
   plugins: [
+    runtimeRouteTreePlugin(),
     react(),
     // tailwindcss(), // Disabled - using PostCSS instead
     // PWA disabled — local exe does not need offline caching, and Service Worker
@@ -49,6 +75,7 @@ export default defineConfig({
       "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel": resolve(runtimePaths.frontendRoot, "components/narrator/EmbeddedNarratorDockHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/query-client": resolve(runtimePaths.frontendRoot, "lib/query-client.ts"),
       "@vivy1024/narrafork-runtime-bridge/frontend/provider-settings": resolve(runtimePaths.frontendRoot, "components/providers/EmbeddedProviderSettingsHost.tsx"),
+      "@vivy1024/narrafork-runtime-bridge/frontend/runtime-page": resolve(runtimePaths.frontendRoot, "components/host/EmbeddedRuntimePageHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/notification-sound": resolve(runtimePaths.frontendRoot, "lib/notification-sound.ts"),
       "@frontend": runtimePaths.frontendRoot,
       "@shared": runtimePaths.sharedRoot,

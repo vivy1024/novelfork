@@ -8,7 +8,6 @@ export const BOOKS_API_PATH = "/api/books";
 export const BOOK_CREATE_API_PATH = "/api/books/create";
 export const SESSIONS_API_PATH = "/api/sessions";
 export const NARRATORS_API_PATH = "/api/narrators";
-export const SEARCH_API_PATH = "/api/search";
 export const WORKTREE_API_PATH = "/api/worktree";
 export const MARKET_SCAN_API_PATH = "/api/market/scan";
 export const MARKET_SCAN_PREFS_API_PATH = "/api/market/scan-prefs";

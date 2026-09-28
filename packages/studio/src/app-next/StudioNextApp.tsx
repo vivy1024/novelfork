@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -18,9 +19,7 @@ import {
   type ResourceDomainClient,
 } from "./backend-contract";
 import { type StudioNextRoute } from "./entry";
-const SearchPage = lazy(() =>
-  import("./search/SearchPage").then((m) => ({ default: m.SearchPage })),
-);
+// 套路页暂留 Studio 版：它带按书覆盖（套路、技能、MCP、规则、Hooks）与写作配置分区，Runtime 原页没有。
 const RoutinesNextPage = lazy(() =>
   import("./routines/RoutinesNextPage").then((m) => ({
     default: m.RoutinesNextPage,
@@ -31,22 +30,9 @@ const SessionCenterPage = lazy(() =>
     default: m.SessionCenterPage,
   })),
 );
-const LearnPageLazy = lazy(() =>
-  import("./learn/LearnPage").then((m) => ({ default: m.LearnPage })),
-);
 const BookManagementPageLazy = lazy(() =>
   import("./books/BookManagementPage").then((m) => ({
     default: m.BookManagementPage,
-  })),
-);
-const KnowledgeBasePageLazy = lazy(() =>
-  import("./knowledge/KnowledgeBasePage").then((m) => ({
-    default: m.KnowledgeBasePage,
-  })),
-);
-const ScheduledTasksPageLazy = lazy(() =>
-  import("./scheduled-tasks/ScheduledTasksPage").then((m) => ({
-    default: m.ScheduledTasksPage,
   })),
 );
 const MarketResearchPageLazy = lazy(() =>
@@ -122,6 +108,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { RuntimePageMount } from "./runtime/RuntimePageMount";
+import { runtimePageSectionOf, type RuntimePageSection } from "./runtime/runtime-page-sections";
+
+const RUNTIME_PAGE_LABELS: Record<RuntimePageSection, string> = {
+  search: "搜索",
+  knowledge: "知识库",
+  "scheduled-tasks": "定时任务",
+  learn: "学习",
+};
 import { DirectoryPickerDialog } from "./components/DirectoryPickerDialog";
 import { WorkspaceCreateWizard, type WorkspaceCreateInput } from "./components/WorkspaceCreateWizard";
 import type { WorkbenchCanvasContext } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
@@ -569,6 +564,7 @@ function RouteMountPoint({
   onCreateRuntimeBook,
   reloadRuntimeShell,
   selectedBook,
+  onNavigateRuntimePath,
 }: {
   readonly route: ShellRoute;
   readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void;
@@ -585,6 +581,8 @@ function RouteMountPoint({
   readonly onCreateRuntimeBook: (title: string) => Promise<string>;
   readonly reloadRuntimeShell: () => Promise<void>;
   readonly selectedBook: ShellBookItem | null;
+  /** 嵌入的 Runtime 原页要去自己范围以外的 Runtime 路径。 */
+  readonly onNavigateRuntimePath: (path: string) => void;
 }) {
   switch (route.kind) {
     case "narrator":
@@ -680,14 +678,6 @@ function RouteMountPoint({
           </Suspense>
         </LazyErrorBoundary>
       );
-    case "search":
-      return (
-        <LazyErrorBoundary fallbackLabel="搜索">
-          <Suspense fallback={<LazyFallback />}>
-            <SearchPage />
-          </Suspense>
-        </LazyErrorBoundary>
-      );
     case "routines":
       return (
         <LazyErrorBoundary fallbackLabel="套路页">
@@ -699,30 +689,22 @@ function RouteMountPoint({
           </Suspense>
         </LazyErrorBoundary>
       );
+    case "search":
     case "knowledge":
-      return (
-        <LazyErrorBoundary fallbackLabel="知识库">
-          <Suspense fallback={<LazyFallback />}>
-            <KnowledgeBasePageLazy />
-          </Suspense>
-        </LazyErrorBoundary>
-      );
     case "scheduled-tasks":
+    case "learn": {
+      const section = route.kind;
       return (
-        <LazyErrorBoundary fallbackLabel="定时任务">
-          <Suspense fallback={<LazyFallback />}>
-            <ScheduledTasksPageLazy />
-          </Suspense>
+        <LazyErrorBoundary fallbackLabel={RUNTIME_PAGE_LABELS[section]}>
+          <RuntimePageMount
+            section={section}
+            path={route.path}
+            onPathChange={(path) => onNavigate({ kind: section, path })}
+            onNavigateOutside={onNavigateRuntimePath}
+          />
         </LazyErrorBoundary>
       );
-    case "learn":
-      return (
-        <LazyErrorBoundary fallbackLabel="学习中心">
-          <Suspense fallback={<LazyFallback />}>
-            <LearnPageLazy />
-          </Suspense>
-        </LazyErrorBoundary>
-      );
+    }
     case "market":
       return (
         <LazyErrorBoundary fallbackLabel="市场研究">
@@ -762,8 +744,10 @@ function RouteMountPoint({
 export function StudioNextApp(_props: StudioNextAppProps) {
   const routerState = useRouterState();
   const activeRoute: ShellRoute = parseShellRoute(
-    routerState.location.pathname,
+    routerState.location.href,
   );
+  const currentHrefRef = useRef(routerState.location.href);
+  currentHrefRef.current = routerState.location.href;
   const [, setCanvasContext] = useState<WorkbenchCanvasContext | null>(null);
   const runtimeClient = useMemo(() => createRuntimeProductClient(), []);
   const narratorClient = useMemo(() => createRuntimeNarratorClient(), []);
@@ -831,9 +815,23 @@ export function StudioNextApp(_props: StudioNextAppProps) {
 
   const navigate = useCallback(
     (route: ShellRoute) => {
-      void routerNavigate({ to: toShellPath(route) });
+      const href = toShellPath(route);
+      // 嵌入的 Runtime 原页会把 Studio 刚同步给它的路径再报告回来：同一地址不再压一条历史。
+      if (href === currentHrefRef.current) return;
+      void routerNavigate({ href });
     },
     [routerNavigate],
+  );
+
+  // Runtime 原页里的链接用 Runtime 路径：属于某个原页入口的切到那个入口，其余（叙述者、章节、设置）
+  // 交给 router 里的兼容路由转进产品外壳。
+  const navigateRuntimePath = useCallback(
+    (path: string) => {
+      const section = runtimePageSectionOf(path.split(/[?#]/u, 1)[0] ?? path);
+      if (section) navigate({ kind: section, path });
+      else void routerNavigate({ href: path });
+    },
+    [navigate, routerNavigate],
   );
 
   const navigateToConversation = useCallback(
@@ -964,6 +962,7 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         onCreateRuntimeBook={createRuntimeBook}
         reloadRuntimeShell={reloadRuntimeShell}
         selectedBook={selectedBook}
+        onNavigateRuntimePath={navigateRuntimePath}
       />
       <FirstRunDialog
         open={shouldShowFirstRun}

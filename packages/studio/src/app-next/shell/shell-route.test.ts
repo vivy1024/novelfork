@@ -23,6 +23,17 @@ describe("Agent Shell route parsing", () => {
     expect(parseShellRoute("/next/books/book%2Fpart")).toEqual({ kind: "book", bookId: "book/part" });
   });
 
+  it("嵌入的 Runtime 原页保留入口内的子路径与查询串，原样来回", () => {
+    expect(parseShellRoute("/next/knowledge/entry-1?tab=links#v2")).toEqual({ kind: "knowledge", path: "/knowledge/entry-1?tab=links#v2" });
+    expect(parseShellRoute("/next/search?type=all&sort=time")).toEqual({ kind: "search", path: "/search?type=all&sort=time" });
+    expect(parseShellRoute("/next/scheduled-tasks/task%201")).toEqual({ kind: "scheduled-tasks", path: "/scheduled-tasks/task%201" });
+    expect(parseShellRoute("/next/learn/")).toEqual({ kind: "learn" });
+    for (const href of ["/next/knowledge/entry-1?tab=links#v2", "/next/search?type=all&sort=time", "/next/scheduled-tasks/t-1"]) {
+      expect(toShellPath(parseShellRoute(href))).toBe(href);
+    }
+    expect(toShellPath({ kind: "learn" })).toBe("/next/learn");
+  });
+
   it("falls back to the shell home for unknown routes", () => {
     expect(parseShellRoute("/next/dashboard")).toEqual({ kind: "home" });
     expect(parseShellRoute("/other/path")).toEqual({ kind: "home" });

@@ -1,5 +1,6 @@
 import { createRouter, createRootRoute, createRoute, redirect } from "@tanstack/react-router";
-import { resolvePrimaryNarratorForChapter } from "./search/runtime-search";
+import { resolvePrimaryNarratorForChapter } from "./runtime/primary-narrator";
+import { STUDIO_NEXT_BASE_PATH } from "./shell/shell-route";
 
 // ---------------------------------------------------------------------------
 // Root route — 渲染由 main.tsx defaultComponent (StudioNextApp) 处理
@@ -61,6 +62,14 @@ const scheduledTasksRoute = createRoute({
   getParentRoute: () => nextRoute,
   path: "/scheduled-tasks",
 });
+
+// 嵌入的 Runtime 原页在本入口内的子路径（知识条目、定时任务详情……），见 shell-route 的 RuntimePageRoute。
+const runtimePageSubRoutes = ["search", "knowledge", "scheduled-tasks", "learn"].map((section) =>
+  createRoute({
+    getParentRoute: () => nextRoute,
+    path: `/${section}/$`,
+  }),
+);
 
 const settingsRoute = createRoute({
   getParentRoute: () => nextRoute,
@@ -140,6 +149,20 @@ const nativeSettingsSectionRoute = createRoute({
   },
 });
 
+// Runtime 原页的路径整页打开时（新标签页、没经过嵌入路由的链接）转到对应的产品入口；
+// 套路页暂为 Studio 版，一并转过去。
+const nativeRuntimePageRoutes = ["search", "knowledge", "scheduled-tasks", "learn", "routines"].flatMap((section) =>
+  [`/${section}`, `/${section}/$`].map((path) =>
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path,
+      beforeLoad: ({ location }) => {
+        throw redirect({ href: `${STUDIO_NEXT_BASE_PATH}${location.href}`, replace: true });
+      },
+    }),
+  ),
+);
+
 // Catch-all: redirect to /next
 const catchAllRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -166,12 +189,14 @@ const routeTree = rootRoute.addChildren([
     settingsSectionRoute,
     learnRoute,
     marketRoute,
+    ...runtimePageSubRoutes,
   ]),
   nativeNarratorRoute,
   nativeNarratorsRoute,
   nativeChapterRoute,
   nativeSettingsRoute,
   nativeSettingsSectionRoute,
+  ...nativeRuntimePageRoutes,
   catchAllRoute,
 ]);
 

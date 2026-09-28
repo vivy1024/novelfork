@@ -78,3 +78,11 @@
 | 保留：外观与界面（书房主题）、Embedding 供应商（向量模型）、按书覆盖、写作配置 | — | 保留为 NovelFork 专属 |
 | `app-next/routines/` | 约 5200 | 嵌入 Runtime 套路页 |
 | `app-next/scheduled-tasks/`、`knowledge/`、`search/`、`learn/` | 约 2800 | 嵌入 Runtime 原页 |
+
+### 嵌入 Runtime 原页的做法（T1.7，2026-09-28）
+
+- **fork 层**（提交 `4a84267c`）：根路由的路由上下文加 `embeddedPage`，为真时根路由只渲染页面本身；`EmbeddedRuntimePageHost` 用 Runtime 自己的路由树 + 内存历史挂一个原页，外面套 Runtime 前端 Provider 与 `DatesProvider`。页面在自己范围内跳转时报告给宿主（`onPathChange`），跳出范围（叙述者链接等）被拦下交给宿主（`onNavigateOutside`）。
+- **Bridge**：`@vivy1024/narrafork-runtime-bridge/frontend/runtime-page` 只声明类型，Vite / Vitest 别名到 Runtime 实现。
+- **Studio**：`RuntimePageMount` 按入口（搜索、套路、知识库、定时任务、学习）限定路径范围；Studio 地址是 `/next` + Runtime 路径（`/next/knowledge/条目` ↔ `/knowledge/条目`），子路径与查询串原样来回，浏览器前进后退照常。
+- **路由树生成**：`routeTree.gen.ts` 是 TanStack Router 插件的生成物，产品构建只构建 Studio，所以 Studio 的 `vite.config.ts` 用 Runtime 依赖里的插件生成它并按路由拆包。插件开发期的路由热替换必须关掉（`codeSplittingOptions.addHmr: false`）：它按路由 id 去 `window.__TSR_ROUTER__` 找旧路由，那是 Studio 自己的路由器，两边都有 `__root__`，Runtime 的根路由会被换进 Studio 的路由器，整个外壳变成 Runtime 的错误页。
+- **未覆盖**：应用外壳的插件运行时（插件的 React 设置视图）与全局弹窗宿主（配置向导、插件授权弹窗）。`PluginRuntimeShell` 里的 `useBranding()` 会改写页面标题与图标，不能直接搬进 Studio；插件授权弹窗随阶段 5（narrator-team）一起做。

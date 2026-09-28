@@ -1,3 +1,5 @@
+import { isRuntimePageSection, type RuntimePageSection } from "../runtime/runtime-page-sections";
+
 export const STUDIO_NEXT_BASE_PATH = "/next";
 
 export type ShellRoute =
@@ -6,13 +8,19 @@ export type ShellRoute =
   | { readonly kind: "books" }
   | { readonly kind: "book"; readonly bookId: string }
   | { readonly kind: "sessions"; readonly create?: boolean }
-  | { readonly kind: "search" }
+  | RuntimePageRoute
   | { readonly kind: "routines" }
-  | { readonly kind: "knowledge" }
-  | { readonly kind: "scheduled-tasks" }
   | { readonly kind: "settings"; readonly section?: string }
-  | { readonly kind: "learn" }
   | { readonly kind: "market" };
+
+/**
+ * 嵌入的 Runtime 原页（搜索、知识库、定时任务、学习）。`path` 是 Runtime 路径（含查询串），
+ * 缺省为入口根路径；Studio 地址是 `/next` + 这个路径。
+ */
+export interface RuntimePageRoute {
+  readonly kind: RuntimePageSection;
+  readonly path?: string;
+}
 
 export type ShellRouteKind = ShellRoute["kind"];
 
@@ -81,23 +89,25 @@ function encodeSegment(segment: string): string {
   return encodeURIComponent(segment);
 }
 
-export function parseShellRoute(pathname = globalThis.location?.pathname ?? STUDIO_NEXT_BASE_PATH): ShellRoute {
-  const normalized = normalizePathname(pathname);
+/** `href` 可带查询串与锚点；只有 Runtime 原页用得上它们（原样交给 Runtime）。 */
+export function parseShellRoute(href = globalThis.location?.pathname ?? STUDIO_NEXT_BASE_PATH): ShellRoute {
+  const normalized = normalizePathname(href);
   const parts = normalized.split("/").filter(Boolean);
   if (parts[0] !== STUDIO_NEXT_BASE_PATH.slice(1)) return { kind: "home" };
 
   const [, section, id] = parts;
   if (!section) return { kind: "home" };
+  if (isRuntimePageSection(section)) {
+    const suffix = href.slice(href.search(/[?#]|$/u));
+    const runtimePath = `/${parts.slice(1).join("/")}${suffix}`;
+    return runtimePath === `/${section}` ? { kind: section } : { kind: section, path: runtimePath };
+  }
   if (section === "narrators" && id) return { kind: "narrator", sessionId: decodeSegment(id) };
   if (section === "books" && !id) return { kind: "books" };
   if (section === "books" && id) return { kind: "book", bookId: decodeSegment(id) };
   if (section === "sessions") return { kind: "sessions", ...(id === "new" ? { create: true } : {}) };
-  if (section === "search") return { kind: "search" };
   if (section === "routines") return { kind: "routines" };
-  if (section === "knowledge") return { kind: "knowledge" };
-  if (section === "scheduled-tasks") return { kind: "scheduled-tasks" };
   if (section === "settings") return { kind: "settings", ...(id ? { section: decodeSegment(id) } : {}) };
-  if (section === "learn") return { kind: "learn" };
   if (section === "market") return { kind: "market" };
   return { kind: "home" };
 }
@@ -112,20 +122,17 @@ export function toShellPath(route: ShellRoute): string {
       return `${STUDIO_NEXT_BASE_PATH}/books/${encodeSegment(route.bookId)}`;
     case "sessions":
       return route.create ? `${STUDIO_NEXT_BASE_PATH}/sessions/new` : `${STUDIO_NEXT_BASE_PATH}/sessions`;
-    case "search":
-      return `${STUDIO_NEXT_BASE_PATH}/search`;
     case "routines":
       return `${STUDIO_NEXT_BASE_PATH}/routines`;
+    case "search":
     case "knowledge":
-      return `${STUDIO_NEXT_BASE_PATH}/knowledge`;
     case "scheduled-tasks":
-      return `${STUDIO_NEXT_BASE_PATH}/scheduled-tasks`;
+    case "learn":
+      return `${STUDIO_NEXT_BASE_PATH}${route.path ?? `/${route.kind}`}`;
     case "settings":
       return route.section
         ? `${STUDIO_NEXT_BASE_PATH}/settings/${encodeSegment(route.section)}`
         : `${STUDIO_NEXT_BASE_PATH}/settings`;
-    case "learn":
-      return `${STUDIO_NEXT_BASE_PATH}/learn`;
     case "market":
       return `${STUDIO_NEXT_BASE_PATH}/market`;
     case "home":
