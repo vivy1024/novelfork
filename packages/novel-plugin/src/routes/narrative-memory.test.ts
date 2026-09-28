@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import { createStorageDatabase, type StorageDatabase, runStorageMigrations } from "@vivy1024/novelfork-core/storage";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createNarrativeMemoryRouter } from "./narrative-memory.js";
@@ -75,6 +75,21 @@ function fact(input: Partial<NarrativeFact> & Pick<NarrativeFact, "id" | "subjec
 }
 
 describe("narrative memory observability router", () => {
+  it("章节还没审过时 audit-issues 返回空结果（200），不当作失败", async () => {
+    const storage = await createStorage();
+    runStorageMigrations(storage, { migrationsDir: join(process.cwd(), "../core/src/storage/migrations") });
+    try {
+      const app = createNarrativeMemoryRouter({ storage });
+      const response = await app.request("http://localhost/api/books/book-1/narrative-memory/audit-issues?chapter=3");
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, chapterNumber: 3, exists: false, issues: [], stale: false });
+      const invalid = await app.request("http://localhost/api/books/book-1/narrative-memory/audit-issues?chapter=0");
+      expect(invalid.status).toBe(400);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns latest retrieval diagnostics and pending events", async () => {
     const storage = await createStorage();
     try {

@@ -264,8 +264,9 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     }
     try {
       const payload = readLatestAuditIssues(storage(), bookId, chapter);
-      if (!payload) return c.json({ error: "not-found", summary: "该章尚无审计记录。" }, 404);
-      return c.json({ ok: true, chapterNumber: chapter, ...payload });
+      // 没审过是常态，不是错误：与 settlement-status 一样返回 200，免得每开一章都记一次失败请求。
+      if (!payload) return c.json({ ok: true, chapterNumber: chapter, exists: false, issues: [], stale: false, summary: "该章尚无审计记录。" });
+      return c.json({ ok: true, chapterNumber: chapter, exists: true, ...payload });
     } catch (error) {
       return c.json({ error: "audit-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }

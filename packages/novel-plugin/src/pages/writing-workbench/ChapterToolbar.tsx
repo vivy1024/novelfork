@@ -220,8 +220,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
     }).catch((cause) => {
       if (cancelled) return;
       setIssues([]);
-      const status = cause && typeof cause === "object" && "status" in cause ? Number((cause as { status?: number }).status) : undefined;
-      setIssuesError(status === 404 ? null : cause instanceof Error ? cause.message : "读取审稿记录失败");
+      setIssuesError(cause instanceof Error ? cause.message : "读取审稿记录失败");
     }).finally(() => {
       if (!cancelled) setIssuesLoading(false);
     });

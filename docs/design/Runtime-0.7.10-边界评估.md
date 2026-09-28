@@ -38,6 +38,7 @@
 1. C 类约 10 个文件在 T1.3 合并时对照上游 0.7.10，上游已经修掉的直接用上游版本。✅ 2026-09-28 合并后（相对 `24f2436a`）：fork 层 122 个文件，去掉测试与 `runtime-migrations/` 后 50 个（0.6.6 时 71 个）。`worktree-tree-snapshot.ts`（上游已强制 `core.autocrlf=false`）与 `knowledge-service.ts` 的修复被上游覆盖，已回到上游版本；Kiro / Cline 相关改动随上游删除。新增 `server/services/product-narrator-tools.ts`，把产品叙述者判断收成一处，会话与上游新拆出的 `agent-runtime/orchestrator.ts` 共用。
 2. 上游没修的通用修复整理成 PR 候选清单，是否提交给上游由作者决定。目前记录到的：
    - 未配置任何供应商时，叙述者面板请求 `GET /api/settings/context-thresholds?model=&provider=` 返回 500（`Invalid string at ModelQuery.upstreamModelId`），每次打开面板都在控制台报错。fork 层没改过这条路由，属上游边界问题。
+   - 全局默认思考强度是 `max`（`lib/settings/defaults.ts`），NUG 的 `antigravity:gemini-3.x-flash-*` 这类模型不接受该参数，开箱第一句话就报 `reasoning effort "max" is not supported by model metadata`。上游的办法是让用户把模型加进 `agent.reasoningEffortBlocklist`；但 NUG 的模型元数据里本来就有 `effortLevels`（这些模型为空），Runtime 缓存了它却没在发请求时使用。可提议：`effortLevels` 为空数组时不发思考强度，非空时夹到其中最接近的一档。
 3. 长期看，最大的减重是向上游提议把「产品宿主接口」做成官方扩展点（嵌入式宿主 SPI）。这需要作者与上游维护者沟通。
 
 **narrator-team 可用**：产品模式下 Runtime 的插件管理器是启用的（隔离实例启动日志 `Plugin manager initialized`，`enabled: true`）。升级到 0.7.7 及以上后即可安装。

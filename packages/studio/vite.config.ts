@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 // import tailwindcss from "@tailwindcss/vite"; // Disabled due to build errors
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
-import type { PluginOption } from "vite";
+import { join, resolve } from "node:path";
+import type { Plugin, PluginOption } from "vite";
 
 const defaultRuntimeRoot = resolve(__dirname, "../narrafork-runtime-private");
 
@@ -43,11 +44,57 @@ function runtimeRouteTreePlugin(): PluginOption {
   });
 }
 
+/**
+ * 嵌入的 Runtime 界面按需加载代码高亮的语言与主题：`/shiki/langs/*.mjs`、`/shiki/themes/*.mjs`。
+ * Runtime 自己的 vite.config 里有同样职责的插件，但产品只构建 Studio，这些文件得由这里提供：
+ * 开发期经中间件返回，构建期输出进产物（EXE 随之内嵌）。文件取 Runtime 依赖里的 @shikijs 包。
+ */
+function runtimeShikiAssets(): Plugin {
+  const roots = {
+    langs: resolve(runtimePaths.runtimeRoot, "node_modules/@shikijs/langs/dist"),
+    themes: resolve(runtimePaths.runtimeRoot, "node_modules/@shikijs/themes/dist"),
+  } as const;
+  const assetName = /^[a-z0-9_-]+\.mjs$/i;
+  const assetPath = (kind: keyof typeof roots, fileName: string) => {
+    if (!assetName.test(fileName)) return null;
+    const filePath = join(roots[kind], fileName);
+    return existsSync(filePath) ? filePath : null;
+  };
+  return {
+    name: "novelfork-runtime-shiki-assets",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const match = new URL(req.url ?? "/", "http://localhost").pathname.match(/^\/shiki\/(langs|themes)\/([^/]+)$/);
+        if (!match) return next();
+        const filePath = assetPath(match[1] as keyof typeof roots, match[2]!);
+        if (!filePath) {
+          res.statusCode = 404;
+          res.end("Not found");
+          return;
+        }
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.end(readFileSync(filePath));
+      });
+    },
+    generateBundle() {
+      for (const kind of ["langs", "themes"] as const) {
+        for (const fileName of readdirSync(roots[kind])) {
+          const filePath = assetPath(kind, fileName);
+          if (filePath) this.emitFile({ type: "asset", fileName: `shiki/${kind}/${fileName}`, source: readFileSync(filePath) });
+        }
+      }
+    },
+  };
+}
+
 const runtimePort = Number(process.env.NOVELFORK_RUNTIME_PORT ?? process.env.PORT ?? "7778");
 
 export default defineConfig({
   plugins: [
     runtimeRouteTreePlugin(),
+    runtimeShikiAssets(),
     react(),
     // tailwindcss(), // Disabled - using PostCSS instead
     // PWA disabled — local exe does not need offline caching, and Service Worker

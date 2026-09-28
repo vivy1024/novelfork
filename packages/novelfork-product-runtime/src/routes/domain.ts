@@ -104,7 +104,12 @@ novelDomainRoutes.route(
 		}),
 	),
 );
-novelDomainRoutes.route("", asRuntimeRouter(createOverviewRouter()));
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createOverviewRouter({ loadChapterIndex: (bookId) => productRouterContext.state.loadChapterIndex(bookId) }),
+	),
+);
 novelDomainRoutes.route("", asRuntimeRouter(createJingweiRouter()));
 // 驾驶舱「近期章节结果 + 待回收伏笔」轻声提示面板。复用 CockpitService 的只读查询。
 novelDomainRoutes.route("", asRuntimeRouter(createCockpitRouter(productRouterContext)));

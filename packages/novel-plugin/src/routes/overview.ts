@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import { getStorageDatabase, type ChapterMeta } from "@vivy1024/novelfork-core";
+import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 interface OverviewStats {
   volumeProgress: { current: number; total: number; percent: number };
@@ -21,16 +22,25 @@ interface StatusCountRow {
 
 interface CountRow {
   count: number;
-  totalWords: number;
 }
 
 
-export function createOverviewRouter(): Hono {
+export interface OverviewRouterDeps {
+  /**
+   * 章数与字数的权威源是章节索引（`chapters/index.json`）：写作台保存、领域工具与章节文件对账都维护它，
+   * 字数按书籍计数方式。不从经纬「章摘要」数——那要等章后结算才有，写了正文还没结算时会显示 0。
+   */
+  readonly loadChapterIndex: (bookId: string) => Promise<ReadonlyArray<Pick<ChapterMeta, "wordCount">>>;
+  /** 缺省用进程内的存储库。 */
+  readonly storage?: StorageDatabase;
+}
+
+export function createOverviewRouter(deps: OverviewRouterDeps): Hono {
   const app = new Hono();
 
   app.get("/api/books/:id/overview-stats", async (c) => {
     const bookId = c.req.param("id");
-    const storage = getStorageDatabase();
+    const storage = deps.storage ?? getStorageDatabase();
 
     // 1. Get all sections for this book
     const sections = storage.sqlite.prepare(
@@ -98,22 +108,10 @@ export function createOverviewRouter(): Hono {
       activePlotLines = row[0]?.count ?? 0;
     }
 
-    // 4. Chapter count + word count
-    const chapterSectionIds = getSectionIds("chapter-summaries", "chapters");
-    let chapterCount = 0;
-    let totalWords = 0;
-
-    if (chapterSectionIds.length > 0) {
-      const placeholders = chapterSectionIds.map(() => "?").join(",");
-      const row = storage.sqlite.prepare(
-        `SELECT COUNT(*) as count, COALESCE(SUM(CAST(json_extract(custom_fields_json, '$.wordCount') AS INTEGER)), 0) as totalWords
-         FROM story_jingwei_entry
-         WHERE book_id = ? AND deleted_at IS NULL
-           AND section_id IN (${placeholders})`
-      ).all(bookId, ...chapterSectionIds) as CountRow[];
-      chapterCount = row[0]?.count ?? 0;
-      totalWords = row[0]?.totalWords ?? 0;
-    }
+    // 4. Chapter count + word count：章节索引
+    const chapters = await deps.loadChapterIndex(bookId);
+    const chapterCount = chapters.length;
+    const totalWords = chapters.reduce((total, chapter) => total + (chapter.wordCount ?? 0), 0);
 
     // 5. Volume progress from outline
     const outlineSectionIds = getSectionIds("outline", "volume-outline");
