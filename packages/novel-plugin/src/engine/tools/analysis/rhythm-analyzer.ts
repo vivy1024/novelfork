@@ -5,7 +5,7 @@ const SENTENCE_PATTERN = /[^。！？!?\n]+[。！？!?]?/g;
 const UNIFORM_STDDEV_THRESHOLD = 3;
 const LONG_PARAGRAPH_THRESHOLD = 500;
 
-export function analyzeRhythm(text: string, referenceProfile?: StyleProfile): RhythmAnalysis {
+export function analyzeRhythm(text: string, referenceProfile?: Pick<StyleProfile, "avgSentenceLength" | "sentenceLengthStdDev">): RhythmAnalysis {
   const normalized = text.replace(/\r\n/g, "\n");
   const sentenceRanges = extractSentenceRanges(normalized);
   const sentenceLengths = sentenceRanges.map((sentence) => sentence.length);

@@ -1,10 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
-import { Hono } from "hono";
-import {
-  chatCompletion,
-} from "@vivy1024/novelfork-core";
+import { Hono, type Context } from "hono";
 import {
   buildContinuationPrompt,
   buildExpansionPrompt,
@@ -36,11 +30,140 @@ import {
   type ImportStyleProfile,
 } from "../engine/index.js";
 
-import type { RouterContext } from "./context.js";
+import type { HostTextGenerationAvailability, HostTextGenerationRequest, RouterContext } from "./context.js";
+import { adoptRevisionSamples, readChapterVaultDetail, summarizeStyleVault, type AdoptRevisionInput } from "../engine/writing-layers/style-vault.js";
+import { STYLE_SCENE_TYPES } from "../engine/writing-layers/style-preset.js";
+import {
+  loadStylePreset, readStyleFingerprint, saveStylePreset, StylePresetError, updateStyleFingerprint,
+} from "../engine/writing-layers/style-preset-store.js";
 
+type UnavailableGeneration = Extract<HostTextGenerationAvailability, { available: false }>;
+
+const HOST_WITHOUT_TEXT_GENERATION: UnavailableGeneration = {
+  available: false,
+  code: "MODEL_HOST_UNSUPPORTED",
+  message: "当前入口没有接到服务端模型。",
+  suggestedAction: "复制提示词自行使用，或在叙述者对话里请叙述者执行同样的写作动作。",
+};
+
+function modelUnavailableExplanation(unavailable: UnavailableGeneration) {
+  return {
+    what: unavailable.message,
+    why: "网页写作动作要用 Runtime 里配置的模型才能直接生成；没有可用模型时只返回提示词预览，不写入任何章节。",
+    next: unavailable.suggestedAction,
+  };
+}
+
+/** 模型调用本身失败（供应商报错、超时等）；与「没有模型」分开说明。 */
+class WritingModelRequestError extends Error {
+  constructor(readonly model: string | undefined, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+  }
+}
 
 export function createWritingModesRouter(ctx: RouterContext): Hono {
   const app = new Hono();
+
+  /** 服务端文本生成由宿主按当前登录用户提供；宿主缺席或报错都按「无模型」处理。 */
+  async function resolveGeneration(c: Context): Promise<HostTextGenerationAvailability> {
+    if (!ctx.resolveTextGeneration) return HOST_WITHOUT_TEXT_GENERATION;
+    try {
+      return await ctx.resolveTextGeneration(c);
+    } catch (error) {
+      return {
+        available: false,
+        code: "MODEL_STATUS_FAILED",
+        message: `读取模型配置失败：${error instanceof Error ? error.message : String(error)}`,
+        suggestedAction: "稍后重试；若反复失败，检查设置里的模型与供应商配置。",
+      };
+    }
+  }
+
+  async function generate(
+    generation: Extract<HostTextGenerationAvailability, { available: true }>,
+    request: HostTextGenerationRequest,
+  ) {
+    try {
+      const result = await generation.generateText(request);
+      return { content: result.text, model: result.model ?? generation.model, usage: result.usage };
+    } catch (error) {
+      throw new WritingModelRequestError(generation.model, error);
+    }
+  }
+
+  app.onError((error, c) => {
+    if (error instanceof WritingModelRequestError) {
+      return c.json({
+        error: `模型调用失败：${error.message}`,
+        code: "MODEL_REQUEST_FAILED",
+        ...(error.model ? { model: error.model } : {}),
+        explanation: {
+          what: `模型调用失败：${error.message}`,
+          why: "这次没有拿到生成结果，也没有写入任何章节。",
+          next: "稍后重试；若反复失败，检查设置里的模型与供应商配置。",
+        },
+      }, 502);
+    }
+    if (!(error instanceof StylePresetError)) throw error;
+    const status = error.code === "STYLE_PRESET_CONFLICT" ? 409 : error.code === "STYLE_PRESET_INVALID" ? 400 : 422;
+    return c.json({ error: error.message, code: error.code, explanation: {
+      what: error.message, why: "文风配置不能静默覆盖或丢失。", next: "保留你的修改，重新载入有效预设后再保存。",
+    } }, status);
+  });
+
+  app.get("/api/books/:bookId/style/preset", async (c) => {
+    return c.json(await loadStylePreset(ctx.state.bookDir(c.req.param("bookId"))));
+  });
+  app.put("/api/books/:bookId/style/preset", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || !Object.hasOwn(body, "expectedRevision") ||
+      (body.expectedRevision !== null && typeof body.expectedRevision !== "string")) {
+      return c.json({ error: "保存文风预设必须携带读取时的 expectedRevision。" }, 400);
+    }
+    return c.json(await saveStylePreset(ctx.state.bookDir(c.req.param("bookId")), body.preset, body.expectedRevision));
+  });
+
+  // 文风金库：AI 原稿与当前正文逐句比对得出人工占比；只读，不写正文也不写预设。
+  app.get("/api/books/:bookId/style/vault", async (c) => {
+    return c.json({ ok: true, ...(await summarizeStyleVault(ctx.state.bookDir(c.req.param("bookId")))) });
+  });
+  app.get("/api/books/:bookId/style/vault/chapters/:chapterNumber", async (c) => {
+    const chapterNumber = Number(c.req.param("chapterNumber"));
+    if (!Number.isInteger(chapterNumber) || chapterNumber <= 0) {
+      return c.json({ error: "章号必须是正整数。", code: "STYLE_VAULT_INVALID_CHAPTER" }, 400);
+    }
+    try {
+      return c.json({ ok: true, ...(await readChapterVaultDetail(ctx.state.bookDir(c.req.param("bookId")), chapterNumber)) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({
+        error: message,
+        code: "STYLE_VAULT_UNAVAILABLE",
+        explanation: {
+          whatHappened: message,
+          whyItMatters: "没有可比对的 AI 原稿与正文，就算不出这一章的人工占比。",
+          suggestedAction: "确认章节存在；原稿损坏时可让叙述者重写本章生成新原稿，或忽略这一章的占比。",
+        },
+      }, 404);
+    }
+  });
+
+  // 作者把改稿段采纳为本书范文：写入文风预设「作者改稿」来源，带版本号防覆盖。
+  app.post("/api/books/:bookId/style/vault/adopt", async (c) => {
+    const body = await c.req.json().catch(() => null) as { expectedRevision?: unknown; samples?: unknown } | null;
+    if (!body || !Object.hasOwn(body, "expectedRevision") || (body.expectedRevision !== null && typeof body.expectedRevision !== "string")) {
+      return c.json({ error: "采纳改稿必须携带读取文风预设时的 expectedRevision。", code: "STYLE_VAULT_REVISION_REQUIRED" }, 400);
+    }
+    const samples = Array.isArray(body.samples) ? body.samples.filter((item): item is AdoptRevisionInput => (
+      Boolean(item) && typeof item === "object"
+      && Number.isInteger((item as AdoptRevisionInput).chapterNumber) && (item as AdoptRevisionInput).chapterNumber > 0
+      && typeof (item as AdoptRevisionInput).authorText === "string" && (item as AdoptRevisionInput).authorText.trim().length > 0
+      && typeof (item as AdoptRevisionInput).aiText === "string"
+      && ((item as AdoptRevisionInput).sceneType === undefined || (STYLE_SCENE_TYPES as readonly string[]).includes((item as AdoptRevisionInput).sceneType!))
+    )) : [];
+    if (samples.length === 0) return c.json({ error: "没有可采纳的改稿段。", code: "STYLE_VAULT_EMPTY_ADOPTION" }, 400);
+    return c.json(await adoptRevisionSamples(ctx.state.bookDir(c.req.param("bookId")), samples, body.expectedRevision as string | null));
+  });
 
   // Removed v1 apply endpoint: keep a tombstone response so stale clients do not
   // silently fall through to 404 or attempt legacy candidate/draft writes.
@@ -103,22 +226,21 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       prompt = buildRewritePrompt(input, context);
     }
 
-    const sessionLlm = await ctx.getSessionLlm(c);
-    if (!sessionLlm) {
-      return c.json(buildPromptPreviewResponse(prompt, { bookId, writingMode: mode, reason: "no-session-llm" }));
+    const generation = await resolveGeneration(c);
+    if (!generation.available) {
+      return c.json(buildPromptPreviewResponse(prompt, { bookId, writingMode: mode, ...unavailableFields(generation) }));
     }
-    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
-    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+    const response = await generate(generation, { messages: [
       { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出可供用户复制、合并或明确应用到正式章节/多版本流程的正文内容，不要复述提示词。" },
       { role: "user", content: prompt },
-    ], { temperature: 0.7, maxTokens: 2048 });
+    ], temperature: 0.7, maxTokens: 2048 });
 
     return c.json({
       mode: "generated",
       writingMode: mode,
       content: response.content,
       promptPreview: prompt,
-      model: runtimeConfig.model,
+      model: response.model,
       usage: response.usage,
       bookId,
     });
@@ -131,23 +253,31 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const prompt = asString(body.prompt)?.trim();
     if (!prompt) return c.json({ error: "Prompt is required." }, 400);
 
-    const sessionLlm = await ctx.getSessionLlm(c);
-    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
+    const generation = await resolveGeneration(c);
+    if (!generation.available) {
+      // 这里要的就是执行结果，退回提示词预览没有意义：明确告诉作者为什么没执行。
+      return c.json({
+        error: generation.message,
+        code: "MODEL_UNAVAILABLE",
+        ...unavailableFields(generation),
+        bookId,
+      }, 422);
+    }
     const temperature = clampNumber(asNumber(body.temperature) ?? 0.7, 0, 2);
     const maxTokens = Math.min(8192, Math.max(256, asNumber(body.maxTokens) ?? 2048));
-    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+    const response = await generate(generation, { messages: [
       {
         role: "system",
         content: "你是 NovelFork 的小说创作执行模型。请只输出可供用户复制、合并或明确应用到正式章节/多版本流程的正文、对话或大纲内容，不要复述提示词。",
       },
       { role: "user", content: prompt },
-    ], { temperature, maxTokens });
+    ], temperature, maxTokens });
 
     return c.json({
       bookId,
       sourceMode: asString(body.sourceMode) ?? "writing-mode",
       content: response.content,
-      model: runtimeConfig.model,
+      model: response.model,
       usage: response.usage,
     });
   });
@@ -188,21 +318,20 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
 
     const prompt = buildDialoguePrompt(input, context);
 
-    const sessionLlm = await ctx.getSessionLlm(c);
-    if (!sessionLlm) {
-      return c.json(buildPromptPreviewResponse(prompt, { bookId, reason: "no-session-llm" }));
+    const generation = await resolveGeneration(c);
+    if (!generation.available) {
+      return c.json(buildPromptPreviewResponse(prompt, { bookId, ...unavailableFields(generation) }));
     }
-    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
-    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+    const response = await generate(generation, { messages: [
       { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出符合角色性格的对话内容，不要复述提示词。" },
       { role: "user", content: prompt },
-    ], { temperature: 0.8, maxTokens: 2048 });
+    ], temperature: 0.8, maxTokens: 2048 });
 
     return c.json({
       mode: "generated",
       content: response.content,
       promptPreview: prompt,
-      model: runtimeConfig.model,
+      model: response.model,
       usage: response.usage,
       bookId,
     });
@@ -231,24 +360,25 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const count = Math.min(5, Math.max(2, asNumber(body.count) ?? 3));
     const prompts = buildVariantPrompts(input, context, count);
 
-    const sessionLlm = await ctx.getSessionLlm(c);
-    if (!sessionLlm) {
+    const generation = await resolveGeneration(c);
+    if (!generation.available) {
       return c.json({
         mode: "prompt-preview",
         promptPreviews: prompts,
         prompts,
         count,
         bookId,
-        reason: "no-session-llm",
+        ...unavailableFields(generation),
       });
     }
-    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
     const variants: { content: string; prompt: string }[] = [];
+    let model = generation.model;
     for (const prompt of prompts) {
-      const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+      const response = await generate(generation, { messages: [
         { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出变体内容，不要复述提示词。" },
         { role: "user", content: prompt },
-      ], { temperature: 0.9, maxTokens: 2048 });
+      ], temperature: 0.9, maxTokens: 2048 });
+      model = response.model ?? model;
       variants.push({ content: response.content, prompt });
     }
 
@@ -256,7 +386,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       mode: "generated",
       variants,
       count,
-      model: runtimeConfig.model,
+      model,
       usage: { total: variants.length },
       bookId,
     });
@@ -274,21 +404,20 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
 
     const prompt = buildBranchPrompt(outline, hooks, state, summaries);
 
-    const sessionLlm = await ctx.getSessionLlm(c);
-    if (!sessionLlm) {
-      return c.json(buildPromptPreviewResponse(prompt, { bookId, reason: "no-session-llm" }));
+    const generation = await resolveGeneration(c);
+    if (!generation.available) {
+      return c.json(buildPromptPreviewResponse(prompt, { bookId, ...unavailableFields(generation) }));
     }
-    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
-    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+    const response = await generate(generation, { messages: [
       { role: "system", content: "你是 NovelFork 的小说创作执行模型。请输出大纲分支建议，不要复述提示词。" },
       { role: "user", content: prompt },
-    ], { temperature: 0.8, maxTokens: 2048 });
+    ], temperature: 0.8, maxTokens: 2048 });
 
     return c.json({
       mode: "generated",
       content: response.content,
       promptPreview: prompt,
-      model: runtimeConfig.model,
+      model: response.model,
       usage: response.usage,
       bookId,
     });
@@ -318,21 +447,20 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       "- 标注伏笔的埋设和回收时机",
     ].join("\n\n");
 
-    const sessionLlm = await ctx.getSessionLlm(c);
-    if (!sessionLlm) {
-      return c.json(buildPromptPreviewResponse(prompt, { bookId, branchId, reason: "no-session-llm" }));
+    const generation = await resolveGeneration(c);
+    if (!generation.available) {
+      return c.json(buildPromptPreviewResponse(prompt, { bookId, branchId, ...unavailableFields(generation) }));
     }
-    const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
-    const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
+    const response = await generate(generation, { messages: [
       { role: "system", content: "你是 NovelFork 的小说创作执行模型。请输出扩展后的章节大纲，不要复述提示词。" },
       { role: "user", content: prompt },
-    ], { temperature: 0.7, maxTokens: 3072 });
+    ], temperature: 0.7, maxTokens: 3072 });
 
     return c.json({
       mode: "generated",
       content: response.content,
       promptPreview: prompt,
-      model: runtimeConfig.model,
+      model: response.model,
       usage: response.usage,
       bookId,
       branchId,
@@ -355,18 +483,12 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
 
   // ---- GET /api/books/:bookId/style/profile ----
   //
-  // 书籍级文风指纹的唯一权威源是 `story/style_profile.json`。节奏分析与漂移
-  // 检测都读它，因此这里读写的必须是同一个文件，不能另存一份前端状态。
+  // 兼容统计面板；新预设存在时，指纹与指南都从预设派生，不再读旧文件。
   app.get("/api/books/:bookId/style/profile", async (c) => {
     const bookId = c.req.param("bookId");
-    const profilePath = join(ctx.state.bookDir(bookId), "story", "style_profile.json");
-    try {
-      const raw = await readFile(profilePath, "utf-8");
-      return c.json({ profile: JSON.parse(raw) as ImportStyleProfile, exists: true });
-    } catch {
-      // 尚未建立基线不是错误：前端据此显示「未设置」。
-      return c.json({ profile: null, exists: false });
-    }
+    const loaded = await loadStylePreset(ctx.state.bookDir(bookId));
+    const profile = loaded.preset?.fingerprint ?? null;
+    return c.json({ profile, exists: profile !== null, guideText: loaded.guideText, source: loaded.source });
   });
 
   // ---- POST /api/books/:bookId/style/distill ----
@@ -386,9 +508,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     // persist 缺省为 true：作者点「提取并设为基准」就是要它生效。
     const persist = body.persist !== false;
     if (persist) {
-      const storyDir = join(ctx.state.bookDir(bookId), "story");
-      await mkdir(storyDir, { recursive: true });
-      await writeFile(join(storyDir, "style_profile.json"), `${JSON.stringify(profile, null, 2)}\n`, "utf-8");
+      await updateStyleFingerprint(ctx.state.bookDir(bookId), profile);
     }
     return c.json({ profile, persisted: persist, bookId });
   });
@@ -427,16 +547,11 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       return c.json({ error: "current StyleProfile is required." }, 400);
     }
 
-    // Support base: "auto" — read from stored style_profile.json
+    // 与统计面板、写作指南共用同一份启用预设。
     if (base === "auto" || !base) {
-      try {
-        const profilePath = join(ctx.state.bookDir(bookId), "story", "style_profile.json");
-        const raw = await readFile(profilePath, "utf-8");
-        base = JSON.parse(raw) as ImportStyleProfile;
-      } catch {
-        // No stored profile — use sensible defaults as baseline
-        base = { avgSentenceLength: 20, vocabularyDiversity: 0.65, sentenceLengthStdDev: 8, dialogueRatio: 0.3 };
-      }
+      const profile = await readStyleFingerprint(ctx.state.bookDir(bookId));
+      base = profile ? { ...profile, dialogueRatio: profile.dialogueRatio ?? 0 } :
+        { avgSentenceLength: 20, vocabularyDiversity: 0.65, sentenceLengthStdDev: 8, dialogueRatio: 0.3 };
     }
 
     const drift = detectStyleDrift(current, base as ImportStyleProfile);
@@ -444,6 +559,15 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
   });
 
   return app;
+}
+
+/** 没有可用模型时随预览一起返回的说明；reason 保持稳定值，细分原因看 code。 */
+function unavailableFields(unavailable: UnavailableGeneration) {
+  return {
+    reason: "model-unavailable" as const,
+    modelUnavailableCode: unavailable.code,
+    explanation: modelUnavailableExplanation(unavailable),
+  };
 }
 
 function buildPromptPreviewResponse<T extends Record<string, unknown>>(prompt: string, extra: T) {

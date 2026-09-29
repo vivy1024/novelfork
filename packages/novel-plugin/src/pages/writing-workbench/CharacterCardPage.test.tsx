@@ -120,6 +120,31 @@ describe("CharacterCardPage", () => {
     expect(screen.getByTestId("character-development-section")).toBeTruthy();
   });
 
+  it("声线确认后整卡保存会带上最新声线，不被旧快照覆盖", async () => {
+    const confirmedVoice = { schemaVersion: 1, fields: { positioning: { value: "话少", status: "confirmed", source: "author" } } };
+    fetchJsonMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/jingwei/entries/character-1/voice")) {
+        return init?.method === "PUT"
+          ? { entryId: "character-1", version: 3, voice: confirmedVoice, summary: {} }
+          : { entryId: "character-1", version: 2, voice: { schemaVersion: 1, fields: {} }, summary: {} };
+      }
+      if (url.includes("/revisions")) return { revisions: [] };
+      if (url.includes("/jingwei/")) return { entries: [], results: [] };
+      return { groups: [], events: [], facts: [] };
+    });
+    const onSave = vi.fn(async () => undefined);
+    render(<CharacterCardPage entry={{ ...entry, version: 2 }} bookId="book-1" saving={false} onSave={onSave} />);
+    await waitFor(() => expect(screen.getByTestId("voice-field-positioning")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("声音定位"), { target: { value: "话少" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认声音定位" }));
+    await waitFor(() => expect(screen.getByTestId("voice-field-positioning").dataset.status).toBe("confirmed"));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave).toHaveBeenCalledWith("character-1", expect.objectContaining({
+      fields: expect.objectContaining({ voice: confirmedVoice, core_motive: "护住身边的人" }),
+    }));
+  });
+
   it("保存时把分类、层级、可见性、关联一并写回", async () => {
     const onSave = vi.fn(async () => undefined);
     mockJingweiAndMemory(() => ({ groups: [], events: [], facts: [], revisions: [], entries: [] }));

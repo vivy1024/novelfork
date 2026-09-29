@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -50,5 +50,16 @@ describe("writing layers", () => {
     expect(resolved.bookDesignText).toBe("");
     expect(resolved.bookRulesText).toBe("");
     expect(resolved.styleGuideText).toBe("");
+    expect(resolved.stylePreset).toBeNull();
+  });
+
+  it("旧统计指纹只作写后对照，不再作为写作指南注入", async () => {
+    const bookRoot = await tempBook();
+    await writeFile(join(bookRoot, "story", "style_profile.json"), JSON.stringify({ avgSentenceLength: 18, sentenceLengthStdDev: 6, vocabularyDiversity: 0.5 }));
+    const resolved = await resolveWritingLayers({ bookRoot });
+    expect(resolved.bookDesign.stylePresetSource).toBe("legacy");
+    expect(JSON.parse(resolved.bookDesign.styleProfileRaw).avgSentenceLength).toBe(18);
+    expect(resolved.styleGuideText).toBe("");
+    expect(resolved.stylePreset).toBeNull();
   });
 });

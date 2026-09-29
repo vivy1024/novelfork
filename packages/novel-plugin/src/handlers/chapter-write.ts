@@ -14,6 +14,7 @@ import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js"
 import { createWritingResourceFileStore } from "../engine/writing-resource/file-store.js";
 import { applyChapterContentChange } from "../engine/writing-resource/chapter-change-effects.js";
 import { resolveChapterVolumeDirectory } from "./outline-volume.js";
+import { saveChapterAiDraft } from "../engine/writing-layers/style-vault.js";
 
 export interface ChapterWriteInput {
   bookId: string;
@@ -254,6 +255,13 @@ export async function handleChapterWrite(
       });
     }
 
+    // 文风金库：叙述者写入的正文是 AI 产出，留一份原稿供人工占比比对；失败不影响写入结果。
+    const vaultWarning = await saveChapterAiDraft(options.bookRoot, {
+      chapterNumber: input.chapterNumber,
+      text: input.content,
+      source: "chapter.write",
+    }).then(() => null, (error: unknown) => `AI 原稿未保存，本章人工占比将无法计算：${error instanceof Error ? error.message : String(error)}`);
+
     const hash = createHash("sha256").update(input.content, "utf8").digest("hex");
 
     return {
@@ -268,6 +276,7 @@ export async function handleChapterWrite(
         hash,
         length,
         writingSkillWarnings: validation.filter((violation) => violation.severity === "warning"),
+        ...(vaultWarning ? { vaultWarning } : {}),
       },
     };
   } catch (error) {

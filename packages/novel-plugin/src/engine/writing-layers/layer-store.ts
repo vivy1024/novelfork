@@ -1,5 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { loadStylePreset } from "./style-preset-store.js";
+import type { StylePreset } from "./style-preset.js";
 
 import {
   parseBookRules,
@@ -11,7 +13,6 @@ export const BOOK_DESIGN_RELATIVE_PATHS = {
   authorIntent: join("story", "author_intent.md"),
   currentFocus: join("story", "current_focus.md"),
   volumeOutline: join("story", "volume_outline.md"),
-  styleProfile: join("story", "style_profile.json"),
 } as const;
 
 export type WritingLayerKind = "book-design" | "book-rules";
@@ -21,6 +22,8 @@ export interface BookDesignDocuments {
   readonly currentFocus: string;
   readonly volumeOutline: string;
   readonly styleProfileRaw: string;
+  readonly styleGuideText?: string;
+  readonly stylePresetSource?: "preset" | "legacy" | "none";
 }
 
 export interface ResolvedWritingLayers {
@@ -30,6 +33,8 @@ export interface ResolvedWritingLayers {
   readonly bookRulesRaw: string;
   readonly bookRulesText: string;
   readonly styleGuideText: string;
+  /** 新预设（source=preset）才有；范文检索只读它。不进书籍设计接口的返回体。 */
+  readonly stylePreset: StylePreset | null;
 }
 
 async function tryReadFile(path: string): Promise<string> {
@@ -61,13 +66,21 @@ export async function saveBookRules(bookRoot: string, content: string): Promise<
 }
 
 export async function loadBookDesign(bookRoot: string): Promise<BookDesignDocuments> {
-  const [authorIntent, currentFocus, volumeOutline, styleProfileRaw] = await Promise.all([
+  return (await loadBookDesignWithPreset(bookRoot)).design;
+}
+
+async function loadBookDesignWithPreset(bookRoot: string): Promise<{ design: BookDesignDocuments; preset: StylePreset | null }> {
+  const [authorIntent, currentFocus, volumeOutline, style] = await Promise.all([
     tryReadFile(join(bookRoot, BOOK_DESIGN_RELATIVE_PATHS.authorIntent)),
     tryReadFile(join(bookRoot, BOOK_DESIGN_RELATIVE_PATHS.currentFocus)),
     tryReadFile(join(bookRoot, BOOK_DESIGN_RELATIVE_PATHS.volumeOutline)),
-    tryReadFile(join(bookRoot, BOOK_DESIGN_RELATIVE_PATHS.styleProfile)),
+    loadStylePreset(bookRoot),
   ]);
-  return { authorIntent, currentFocus, volumeOutline, styleProfileRaw };
+  const design: BookDesignDocuments = { authorIntent, currentFocus, volumeOutline,
+    styleProfileRaw: style.preset?.fingerprint ? JSON.stringify(style.preset.fingerprint) : "",
+    styleGuideText: style.guideText, stylePresetSource: style.source,
+  };
+  return { design, preset: style.source === "preset" ? style.preset : null };
 }
 
 export async function saveBookDesign(
@@ -76,6 +89,7 @@ export async function saveBookDesign(
 ): Promise<BookDesignDocuments> {
   const current = await loadBookDesign(bookRoot);
   const next: BookDesignDocuments = {
+    ...current,
     authorIntent: patch.authorIntent ?? current.authorIntent,
     currentFocus: patch.currentFocus ?? current.currentFocus,
     volumeOutline: patch.volumeOutline ?? current.volumeOutline,
@@ -124,17 +138,18 @@ export function formatBookRulesForInjection(parsed: ParsedBookRules | null): str
   return parts.join("\n").trim();
 }
 
+/** 只注入作者确认的写法指南；统计指纹（含旧 style_profile.json）只作写后对照，不再当写作指令。 */
 export function formatStyleGuideForInjection(design: BookDesignDocuments): string {
-  const fingerprint = nonEmpty(design.styleProfileRaw);
-  return fingerprint;
+  if (design.stylePresetSource === "preset") return nonEmpty(design.styleGuideText);
+  return "";
 }
 
 /** 组装本书设计与规则。文风只走书内导入/拆书，不再注入跨书作者习惯。 */
 export async function resolveWritingLayers(input: {
   readonly bookRoot: string;
 }): Promise<ResolvedWritingLayers> {
-  const [bookDesign, bookRulesRaw] = await Promise.all([
-    loadBookDesign(input.bookRoot),
+  const [{ design: bookDesign, preset: stylePreset }, bookRulesRaw] = await Promise.all([
+    loadBookDesignWithPreset(input.bookRoot),
     loadBookRulesRaw(input.bookRoot),
   ]);
   const bookRules = bookRulesRaw.trim() ? parseBookRules(bookRulesRaw) : null;
@@ -145,5 +160,6 @@ export async function resolveWritingLayers(input: {
     bookRulesRaw,
     bookRulesText: formatBookRulesForInjection(bookRules),
     styleGuideText: formatStyleGuideForInjection(bookDesign),
+    stylePreset,
   };
 }

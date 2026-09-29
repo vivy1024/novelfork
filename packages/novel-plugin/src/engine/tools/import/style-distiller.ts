@@ -2,8 +2,8 @@
  * 文风指纹蒸馏（纯统计，0 LLM）。
  *
  * 输入作者选定的参考样文，输出可作为本书基线的 `StyleProfile`。它写入
- * `story/style_profile.json` —— 那是文风指纹的唯一权威源，节奏分析
- * (`analyzeRhythm`) 与漂移检测 (`detectStyleDrift`) 都读同一份文件。
+ * 本书文风预设的 fingerprint 字段；节奏分析与漂移检测都经共用读取入口取值。
+ * 旧 `story/style_profile.json` 仅在没有预设时作为兼容输入。
  *
  * 只提取可复用的语言统计特征。样文里的专名、人物口癖和具体情节**不进指纹**：
  * 那些属于来源绑定内容，混进基线会污染当前作品。

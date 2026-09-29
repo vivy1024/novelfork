@@ -64,7 +64,7 @@ const TONE_PROFILES: Record<string, { avgLen: [number, number]; excl: [number, n
   "悲苦孤独": { avgLen: [15, 35], excl: [0, 0.05], short: [0.05, 0.25] },
 };
 
-function computeDrift(stats: TextStats, declaredTone: string, styleProfile?: StyleProfile): number {
+function computeDrift(stats: TextStats, declaredTone: string, styleProfile?: Pick<StyleProfile, "avgSentenceLength">): number {
   const profile = TONE_PROFILES[declaredTone];
   if (!profile) return 0;
 
@@ -141,7 +141,7 @@ function inferDetectedTone(stats: TextStats): string {
 export function detectToneDrift(
   chapterText: string,
   declaredTone: string,
-  styleProfile?: StyleProfile,
+  styleProfile?: Pick<StyleProfile, "avgSentenceLength">,
 ): ToneDriftResult {
   const stats = computeTextStats(chapterText);
   const driftScore = computeDrift(stats, declaredTone, styleProfile);

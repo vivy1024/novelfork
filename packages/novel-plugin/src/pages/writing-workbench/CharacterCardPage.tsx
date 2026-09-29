@@ -51,6 +51,7 @@ import {
   type JingweiCanonValues,
 } from "./JingweiCanonPanel";
 import { useWritingProgressRefresh } from "./use-writing-progress-refresh";
+import { CharacterVoiceSection } from "./CharacterVoiceSection";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -844,6 +845,19 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
               />
             </CardContent>
           </Card>
+
+          {/* ─── 角色声线：权威源是本条目 fields.voice，由声线接口单独读写 ─── */}
+          {props.bookId ? (
+            <CharacterVoiceSection
+              bookId={props.bookId}
+              entryId={entry.id}
+              entryVersion={entry.version}
+              onVoiceSaved={(voice) => {
+                // 整卡保存会整体替换 fields，这里同步最新声线，避免旧快照把刚确认的声线覆盖掉。
+                setCanon((previous) => ({ ...previous, fields: { ...previous.fields, voice } }));
+              }}
+            />
+          ) : null}
 
           <DevelopmentSection bookId={props.bookId} entryId={entry.id} characterName={title} />
 

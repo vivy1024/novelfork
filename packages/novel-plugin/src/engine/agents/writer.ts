@@ -9,6 +9,14 @@ import { parseSettlerDeltaOutput } from "./settler-delta-parser.js";
 import { parseSettlementOutput } from "./settler-parser.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
 import { resolveWritingLayers } from "../writing-layers/layer-store.js";
+import { DEFAULT_NARRATIVE_CHANNEL_BUDGETS } from "../narrative-memory/budget.js";
+import { estimateTokens } from "../jingwei/context/token-budget.js";
+import {
+  formatStyleExplanation,
+  formatStyleSamplesForPrompt,
+  resolveStyleSceneTypes,
+  selectStyleSamples,
+} from "../narrative-memory/style-samples.js";
 import {
   detectCrossChapterRepetition,
   detectIntraChapterDupParagraphs,
@@ -66,6 +74,11 @@ export interface WriteChapterInput {
   readonly lengthSpec?: LengthSpec;
   readonly wordCountOverride?: number;
   readonly temperatureOverride?: number;
+  /**
+   * 角色声线约束（接缝）：调用方传入已成文的约束文本，原样进入系统提示「角色声线」段。
+   * 本类不推断声线。
+   */
+  readonly voiceConstraints?: string;
 }
 
 export interface SettleChapterStateInput {
@@ -155,7 +168,6 @@ export class WriterAgent extends BaseAgent {
     const fanficCanonRaw = "";
     const writingLayers = await resolveWritingLayers({ bookRoot: bookDir });
     const styleGuide = writingLayers.styleGuideText;
-    const styleProfileRaw = writingLayers.bookDesign.styleProfileRaw;
     const bookDesign = writingLayers.bookDesignText;
 
     const recentChapters = await this.loadRecentChapters(bookDir, chapterNumber);
@@ -175,7 +187,15 @@ export class WriterAgent extends BaseAgent {
     const bookRules = parsedBookRules?.rules ?? null;
     const bookRulesBody = parsedBookRules?.body ?? "";
 
-    const styleFingerprint = this.buildStyleFingerprint(styleProfileRaw);
+    // 统计指纹只作写后对照；写前注入作者确认的指南与按场景选出的范文。
+    const styleExamples = this.buildStyleExamples({
+      preset: writingLayers.stylePreset,
+      styleGuide,
+      contextPackage: input.contextPackage,
+      planText: [input.chapterIntent, input.externalContext].filter(Boolean).join("\n"),
+      chapterNumber,
+      language: book.language === "en" ? "en" : "zh",
+    });
 
     const dialogueFingerprints = this.extractDialogueFingerprints(fingerprintChapters);
 
@@ -205,11 +225,12 @@ export class WriterAgent extends BaseAgent {
 
     // ── Phase 1: Creative writing (temperature 0.7) ──
     const creativeSystemPrompt = buildWriterSystemPrompt(
-      book, genreProfile, bookRules, bookRulesBody, genreBody, styleGuide, styleFingerprint,
+      book, genreProfile, bookRules, bookRulesBody, genreBody, styleGuide, styleExamples,
       chapterNumber, "creative", fanficContext, resolvedLanguage,
       "governed",
       resolvedLengthSpec,
       bookDesign,
+      input.voiceConstraints,
     );
 
     const creativeUserPrompt = (input.chapterIntent && input.contextPackage && input.ruleStack
@@ -1330,24 +1351,37 @@ ${overrides}\n`;
     }
   }
 
-  private buildStyleFingerprint(styleProfileRaw: string): string | undefined {
-    if (!styleProfileRaw.trim()) return undefined;
-    try {
-      const profile = JSON.parse(styleProfileRaw);
-      const lines: string[] = [];
-      if (profile.avgSentenceLength) lines.push(`- 平均句长：${profile.avgSentenceLength}字`);
-      if (profile.sentenceLengthStdDev) lines.push(`- 句长标准差：${profile.sentenceLengthStdDev}`);
-      if (profile.avgParagraphLength) lines.push(`- 平均段落长度：${profile.avgParagraphLength}字`);
-      if (profile.paragraphLengthRange) lines.push(`- 段落长度范围：${profile.paragraphLengthRange.min}-${profile.paragraphLengthRange.max}字`);
-      if (profile.vocabularyDiversity) lines.push(`- 词汇多样性(TTR)：${profile.vocabularyDiversity}`);
-      if (profile.topPatterns?.length > 0) lines.push(`- 高频句式：${profile.topPatterns.join("、")}`);
-      if (profile.rhetoricalFeatures?.length > 0) lines.push(`- 修辞特征：${profile.rhetoricalFeatures.join("、")}`);
-      return lines.length > 0 ? lines.join("\n") : undefined;
-    } catch {
-      return undefined;
+  /**
+   * 直调路径（无叙事上下文包）的范文示例。已有叙事上下文且其文风段带了范文时不再重复注入，
+   * 两条路径共用同一套场景判定与排序。预算与文风通道默认预算一致，先扣掉指南本身。
+   */
+  private buildStyleExamples(params: {
+    readonly preset: Parameters<typeof selectStyleSamples>[0]["preset"];
+    readonly styleGuide: string;
+    readonly contextPackage?: ContextPackage;
+    readonly planText: string;
+    readonly chapterNumber: number;
+    readonly language: "zh" | "en";
+  }): string | undefined {
+    if (!params.preset) return undefined;
+    const alreadyInContext = params.contextPackage?.selectedContext.some((entry) => (
+      entry.source === "narrative-memory/style" && (entry.excerpt ?? "").includes("style:sample:")
+    ));
+    if (alreadyInContext) return undefined;
+    const sceneTypes = resolveStyleSceneTypes({ chapterNumber: params.chapterNumber, planText: params.planText });
+    const selection = selectStyleSamples({
+      preset: params.preset,
+      sceneTypes,
+      availableTokens: Math.max(0, DEFAULT_NARRATIVE_CHANNEL_BUDGETS.style - estimateTokens(params.styleGuide)),
+    });
+    for (const explanation of selection.explanations) {
+      this.logWarn(params.language, {
+        zh: `文风范文：${formatStyleExplanation(explanation)}`,
+        en: `Style samples: ${explanation.whatHappened}`,
+      });
     }
+    return formatStyleSamplesForPrompt(selection.selected) || undefined;
   }
-
 
   /**
    * Extract dialogue fingerprints from recent chapters.

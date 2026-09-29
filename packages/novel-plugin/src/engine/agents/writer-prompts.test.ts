@@ -121,4 +121,30 @@ describe("writer prompt writing-skill/style channel boundary", () => {
     expect(prompt).toContain("全书追求真仙长生。");
     expect(prompt).not.toContain("作者跨书习惯");
   });
+
+  it("范文示例与声线约束按接缝注入，不再有「文风指纹（模仿目标）」段", () => {
+    const prompt = buildWriterSystemPrompt(
+      BOOK,
+      GENRE,
+      null,
+      "",
+      "# Genre Body",
+      "# Style Guide",
+      "### 示例 1：对话（参考作品）\n“你来晚了。”她没回头。",
+      3,
+      "creative",
+      undefined,
+      "zh",
+      "governed",
+      buildLengthSpec(2200, "zh"),
+      undefined,
+      "韩立：话少，多用短句。",
+    );
+    expect(prompt).toContain("## 范文示例（只学写法）");
+    expect(prompt).toContain("她没回头");
+    expect(prompt).toContain("不抄原句");
+    expect(prompt).toContain("## 角色声线");
+    expect(prompt).toContain("韩立：话少，多用短句。");
+    expect(prompt).not.toContain("文风指纹");
+  });
 });

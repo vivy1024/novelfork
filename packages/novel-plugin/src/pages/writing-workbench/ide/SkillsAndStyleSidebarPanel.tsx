@@ -3,10 +3,10 @@
  *
  * 核心能力：
  * 1. 【写作技能】：管理本作品启用的 Writing Skills，支持一键导入酒馆（SillyTavern）Chat Completion 预设；
- * 2. 【文风指纹】：读写 `story/style_profile.json` 唯一权威源，提供参考样文统计蒸馏与直方图。
+ * 2. 【文风】：编辑本书预设，提供参考样文统计提取与直方图。
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Sparkles,
   Palette,
@@ -18,12 +18,12 @@ import {
   Loader2,
   FileCode2,
   X,
-  SlidersHorizontal,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { WritingSkillsPanel } from "../WritingSkillsPanel";
+import { StylePresetEditor } from "./StylePresetEditor";
 import { fetchJson, putApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import {
@@ -107,6 +107,21 @@ function SentenceLengthHistogram({ buckets }: { buckets: readonly number[] }) {
 
 export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPanelProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("skills");
+  if (!bookId) {
+    return (
+      <div className="flex h-full items-center justify-center p-4 text-center text-xs text-muted-foreground">
+        先打开一本书，再查看技能与文风。
+      </div>
+    );
+  }
+  return <BookSkillsAndStyleSidebarPanel key={bookId} bookId={bookId} activeTab={activeTab} setActiveTab={setActiveTab} />;
+}
+
+function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab }: {
+  bookId: string;
+  activeTab: TabKey;
+  setActiveTab: (tab: TabKey) => void;
+}) {
   const [profile, setProfile] = useState<StyleProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -115,20 +130,31 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
   const [distillNotice, setDistillNotice] = useState<string | null>(null);
   const [distillError, setDistillError] = useState<string | null>(null);
   const [showTavernImport, setShowTavernImport] = useState(false);
+  const [presetRefreshKey, setPresetRefreshKey] = useState(0);
+  const [presetBusy, setPresetBusy] = useState(false);
+  const mounted = useRef(false);
+  const profileRequest = useRef(0);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; profileRequest.current += 1; };
+  }, []);
 
   const loadProfile = useCallback(async () => {
-    if (!bookId) return;
+    const request = ++profileRequest.current;
     setProfileLoading(true);
     setProfileError(null);
     try {
       const data = await fetchJson<{ profile?: StyleProfile | null }>(
         `/api/books/${encodeURIComponent(bookId)}/style/profile`,
       );
-      setProfile(data.profile ?? null);
+      if (mounted.current && request === profileRequest.current) setProfile(data.profile ?? null);
     } catch (cause) {
-      setProfileError(cause instanceof Error ? cause.message : "读取文风基线失败");
+      if (mounted.current && request === profileRequest.current) {
+        setProfileError(cause instanceof Error ? cause.message : "读取文风基线失败");
+      }
     } finally {
-      setProfileLoading(false);
+      if (mounted.current && request === profileRequest.current) setProfileLoading(false);
     }
   }, [bookId]);
 
@@ -137,7 +163,9 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
   }, [activeTab, loadProfile]);
 
   const handleDistill = useCallback(async () => {
-    if (!bookId || !sampleText.trim()) return;
+    if (distilling || presetBusy || !sampleText.trim()) return;
+    profileRequest.current += 1;
+    setProfileLoading(false);
     setDistilling(true);
     setDistillError(null);
     setDistillNotice(null);
@@ -150,27 +178,27 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
           body: JSON.stringify({ samples: [sampleText] }),
         },
       );
+      if (data.persisted) {
+        window.dispatchEvent(new CustomEvent("novelfork:style-preset-updated", { detail: { bookId } }));
+      }
+      if (!mounted.current) return;
+      profileRequest.current += 1;
+      setProfileLoading(false);
+      setProfileError(null);
       if (data.profile) setProfile(data.profile);
+      if (data.persisted) setPresetRefreshKey((value) => value + 1);
       setDistillNotice(
         data.persisted
-          ? "已提取并写入 story/style_profile.json，节奏分析与漂移检测已使用新基线。"
-          : "已提取，但未落盘。",
+          ? "已更新统计基线，节奏分析与漂移检测已使用新基线。"
+          : "已提取，但未保存统计基线。",
       );
       setSampleText("");
     } catch (cause) {
-      setDistillError(cause instanceof Error ? cause.message : "提取失败");
+      if (mounted.current) setDistillError(cause instanceof Error ? cause.message : "提取失败");
     } finally {
-      setDistilling(false);
+      if (mounted.current) setDistilling(false);
     }
-  }, [bookId, sampleText]);
-
-  if (!bookId) {
-    return (
-      <div className="flex h-full items-center justify-center p-4 text-center text-xs text-muted-foreground">
-        先打开一本书，再查看技能与文风。
-      </div>
-    );
-  }
+  }, [bookId, sampleText, distilling, presetBusy]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs">
@@ -194,7 +222,7 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
             }`}
           >
             <Palette className="size-3" />
-            文风指纹
+            文风
           </button>
         </div>
 
@@ -231,17 +259,17 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
 
         {activeTab === "style" && (
           <div className="space-y-3 p-3">
+            <StylePresetEditor bookId={bookId} refreshKey={presetRefreshKey} disabled={distilling} onBusyChange={setPresetBusy} />
             <div className="space-y-2 rounded-lg border border-border/80 p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 font-medium">
                   <Wand2 className="size-3.5 text-primary" />
-                  <span>当前文风基线</span>
+                  <span>当前统计基线</span>
                 </div>
-                <Button variant="ghost" size="xs" onClick={() => void loadProfile()} disabled={profileLoading} aria-label="刷新文风基线">
+                <Button variant="ghost" size="xs" onClick={() => void loadProfile()} disabled={profileLoading || distilling} aria-label="刷新文风基线">
                   <RefreshCw className={`size-3 ${profileLoading ? "animate-spin" : ""}`} />
                 </Button>
               </div>
-              <p className="text-2xs text-muted-foreground">权威源：story/style_profile.json</p>
 
               {profileError && (
                 <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-2xs text-destructive">
@@ -269,7 +297,7 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
                   <Metric label="段均长度" value={profile.avgParagraphLength !== undefined ? `${profile.avgParagraphLength} 字` : "—"} />
                   <Metric label="弱副词/千字" value={profile.weakAdverbPer1000 !== undefined ? String(profile.weakAdverbPer1000) : "—"} />
                 </div>
-              ) : profileLoading ? null : (
+              ) : profileLoading || profileError ? null : (
                 <p className="text-2xs text-muted-foreground">尚未建立基线。用下方样文提取后即生效。</p>
               )}
 
@@ -281,7 +309,7 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
             <div className="space-y-2 rounded-lg border border-border/80 p-3">
               <div className="flex items-center gap-1 font-medium">
                 <Upload className="size-3 text-primary" />
-                <span>从参考样文提取</span>
+                <span>从参考样文提取统计</span>
               </div>
               <p className="text-2xs text-muted-foreground">
                 贴入你满意的参考正文（建议 500-2000 字）。只提取句长节奏、对话密度、词汇丰富度等可复用统计特征，
@@ -297,7 +325,7 @@ export function SkillsAndStyleSidebarPanel({ bookId }: SkillsAndStyleSidebarPane
               <Button
                 size="xs"
                 className="w-full gap-1"
-                disabled={distilling || !sampleText.trim()}
+                disabled={distilling || presetBusy || !sampleText.trim()}
                 onClick={() => void handleDistill()}
               >
                 {distilling ? <Loader2 className="size-3 animate-spin" /> : <Wand2 className="size-3" />}

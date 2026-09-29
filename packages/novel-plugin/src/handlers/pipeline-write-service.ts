@@ -28,6 +28,9 @@ import { createSiliconFlowEmbeddingProvider } from "../engine/narrative-memory/e
 import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
+import { loadSceneVoiceConstraints } from "../engine/writing-layers/character-voice-context.js";
+import { readBookSettlementFreshness } from "../engine/narrative-memory/settlement-freshness.js";
+import { saveChapterAiDraft } from "../engine/writing-layers/style-vault.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
@@ -35,6 +38,7 @@ import { persistChapterAuditLog } from "../engine/tools/health/audit-log-persist
 import { replaceChapterScenes, sceneFromSpec } from "../engine/narrative-memory/scene-store.js";
 import { selectDueHooks, type DueHookInput } from "../engine/narrative-memory/foreshadow-phase.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
+import { loadForeshadowStates } from "../engine/narrative-taxonomy/foreshadow-states.js";
 import { isPlaceholderFocusDoc, readCurrentFocusDocFromStorage } from "../engine/jingwei/current-focus.js";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { ChapterSettlementResult } from "../engine/narrative-memory/settlement-risk-gate.js";
@@ -472,7 +476,7 @@ const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"
   timeline: "最近几章与时间线，用来接上前情。",
     hooks: "还没收回的伏笔；已触发未兑现的必须本章推进。",
   facts: "已经记下的叙事事实。",
-  style: "文风与写作技能提示。",
+  style: "文风指南，以及按本章场景类型选出的已确认范文（只学写法）。",
   semantic: "按语义召回的相关记忆。",
   "character-kernel": "出场角色此刻的动机、情绪和矛盾。",
   "recent-summary": "最近几章的剧情摘要，用来保持前情连续。",
@@ -486,8 +490,8 @@ function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): Co
 }
 
 /**
- * T2 到期窗口取数：读 foreshadowing 条目（含第五态唤醒中），
- * 交给 selectDueHooks 纯函数筛选排序。字典式失败容错：查不到返回空。
+ * T2 到期窗口取数：读 foreshadowing 条目，交给 selectDueHooks 纯函数筛选排序；
+ * 已触发未兑现的伏笔排在最前（枪已上膛）。字典式失败容错：查不到返回空。
  */
 function collectDueHooks(storage: StorageDatabase, bookId: string, currentChapter: number): Array<{ title: string; excerpt: string; dueChapter: number; armed?: boolean }> {
   try {
@@ -518,26 +522,15 @@ function collectDueHooks(storage: StorageDatabase, bookId: string, currentChapte
       excerpt: hook.seedText ?? "（无种子文本，详见伏笔看板）",
       dueChapter: hook.dueChapter,
     }));
-    let triggered: Array<{ title: string; excerpt: string; dueChapter: number; armed: boolean }> = [];
-    try {
-      triggered = storage.sqlite.prepare<{
-        label: string;
-        triggerChapter: number | null;
-        triggerCondition: string | null;
-        evidenceText: string | null;
-      }>(`
-        SELECT label, trigger_chapter AS triggerChapter, trigger_condition AS triggerCondition, evidence_text AS evidenceText
-        FROM narrative_foreshadow
-        WHERE book_id = ? AND status IN ('triggered','paying_off')
-      `).all(bookId).map((row) => ({
-        title: row.label,
-        excerpt: row.triggerCondition || row.evidenceText || "触发条件已满足，尚未兑现",
-        dueChapter: row.triggerChapter ?? currentChapter,
+    // 已触发未兑现：阶段由经纬伏笔条目 + 关联的已应用 hook 事件派生（见 foreshadow-states）
+    const triggered = loadForeshadowStates(storage, bookId)
+      .filter((state) => state.phase === "triggered")
+      .map((state) => ({
+        title: state.label,
+        excerpt: state.triggerCondition || state.evidenceText || "触发条件已满足，尚未兑现",
+        dueChapter: state.triggerChapter ?? currentChapter,
         armed: true,
       }));
-    } catch {
-      triggered = [];
-    }
     const seen = new Set(triggered.map((hook) => hook.title));
     return [...triggered, ...due.filter((hook) => !seen.has(hook.title))];
   } catch {
@@ -806,6 +799,22 @@ async function executePipelineWriteUnlocked(
         const storage = getStorageDatabase();
         const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir).catch(() => undefined);
         const writingLayers = await resolveWritingLayers({ bookRoot: bookDir }).catch(() => null);
+        // 结算后又被改过的章：其摘要注入时标注可能过期（现算，读失败不阻断写作）。
+        const staleSummaryChapters = await readBookSettlementFreshness(storage, bookId, bookDir)
+          .then((freshness) => freshness.staleChapters)
+          .catch(() => [] as readonly number[]);
+        // 角色声线：只注入本章出场角色、作者已确认的字段；读取失败不阻断写作。
+        const sceneVoices = await loadSceneVoiceConstraints({
+          storage,
+          bookId,
+          characterNames: sceneSpec.scenes.flatMap((scene) => scene.characters),
+        }).catch((err: unknown) => {
+          logger?.warn(`[pipeline.write] 角色声线读取失败，本章不注入声线：${err instanceof Error ? err.message : String(err)}`);
+          return null;
+        });
+        if (sceneVoices && sceneVoices.corruptedIds.length > 0) {
+          logger?.warn(`[pipeline.write] 角色声线数据损坏，未注入：${sceneVoices.corruptedIds.join(", ")}。请在角色卡的「声线」区块重新确认。`);
+        }
         narrativeContext = await buildNarrativeContext({
           storage,
           bookId,
@@ -828,6 +837,9 @@ async function executePipelineWriteUnlocked(
             : {}),
           ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
           ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
+          ...(writingLayers?.stylePreset ? { stylePreset: writingLayers.stylePreset } : {}),
+          ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),
+          ...(staleSummaryChapters.length > 0 ? { staleSummaryChapters } : {}),
           ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
           // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
           ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
@@ -1197,6 +1209,11 @@ async function executePipelineWriteUnlocked(
           metadata,
         });
       }
+
+      // 文风金库：留一份 AI 原稿，作者之后的修改与它逐句比对得出人工占比。失败不影响已落盘正文。
+      await saveChapterAiDraft(bookDir, { chapterNumber, text: finalContent, source: "pipeline.write" }).catch((vaultErr: unknown) => {
+        logger?.warn?.(`[pipeline.write] 第 ${chapterNumber} 章 AI 原稿未保存（人工占比将无法计算）: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`);
+      });
 
       // 场景落盘：写前蓝图 SceneSpec 转成持久化 narrative_scene，正文写完后场景进入承载树。
       // 重写同一章只刷新机器产出且作者没动过的场景，作者建的、确认过的、挂了线的都保留。

@@ -2,6 +2,8 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Hono } from "hono";
+import { readStyleFingerprint, StylePresetError } from "../engine/writing-layers/style-preset-store.js";
+import type { StyleFingerprint } from "../engine/writing-layers/style-preset.js";
 import {
   buildStructuredErrorEnvelope,
   getStorageDatabase,
@@ -58,6 +60,12 @@ type ChapterLookup = {
 
 export function createWritingToolsRouter(ctx: RouterContext): Hono {
   const app = new Hono();
+  app.onError((error, c) => {
+    if (!(error instanceof StylePresetError)) throw error;
+    return c.json({ error: error.message, code: error.code, explanation: {
+      what: error.message, why: "文风配置损坏，无法用作分析基线。", next: "请恢复有效的文风预设后重试。",
+    } }, 422);
+  });
 
   app.post("/api/books/:bookId/hooks/generate", async (c) => {
     const body = await readJsonBody(c);
@@ -350,15 +358,9 @@ async function readStoryFile(ctx: RouterContext, bookId: string, fileName: strin
   return readFile(join(ctx.state.bookDir(bookId), "story", fileName), "utf-8").catch(() => "");
 }
 
-async function readStyleProfile(ctx: RouterContext, bookId: string): Promise<StyleProfile | undefined> {
-  const raw = await readStoryFile(ctx, bookId, "style_profile.json");
-  if (!raw.trim()) return undefined;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return isRecord(parsed) ? parsed as unknown as StyleProfile : undefined;
-  } catch {
-    return undefined;
-  }
+async function readStyleProfile(ctx: RouterContext, bookId: string): Promise<StyleFingerprint | undefined> {
+  const profile = await readStyleFingerprint(ctx.state.bookDir(bookId));
+  return profile ?? undefined;
 }
 
 function readPositiveInteger(value: unknown): number | undefined {

@@ -219,18 +219,6 @@ export class FileSystemStorageAdapter implements StorageAdapter {
     // interface exposes it separately for convenience)
     const outline = jingweiFiles.volumeOutline;
 
-    // Read style profile if available
-    let styleProfile: string | undefined;
-    try {
-      const storyDir = join(this.state.bookDir(bookId), "story");
-      styleProfile = await readFile(
-        join(storyDir, "style_profile.json"),
-        "utf-8",
-      );
-    } catch {
-      styleProfile = undefined;
-    }
-
     return {
       bookConfig,
       chapterIndex,
@@ -238,7 +226,6 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       jingweiFiles,
       controlDocs,
       outline,
-      styleProfile,
     };
   }
 

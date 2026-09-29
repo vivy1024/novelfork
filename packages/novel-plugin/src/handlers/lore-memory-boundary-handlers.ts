@@ -10,6 +10,7 @@ import { createSiliconFlowEmbeddingProvider, loadEntityVectorsFromStore, similar
 import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
+import { loadSceneVoiceConstraints } from "../engine/writing-layers/character-voice-context.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { createNarrativeEvent, persistNarrativeEvents } from "../engine/narrative-memory/events.js";
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
@@ -17,6 +18,7 @@ import { parseCausedBy } from "../engine/narrative-memory/causal-resolve.js";
 import { ensureNarrativeMemorySchema, getNarrativeEventById, listPendingNarrativeEvents, loadMentionsByChapter, queryNarrativeFacts, updateNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import { buildCooccurrenceFromEvents } from "../engine/narrative-memory/wave/narrative-cooccurrence-source.js";
 import { buildNarrativeGraph } from "../engine/narrative-taxonomy/narrative-graph.js";
+import { loadForeshadowEntries } from "../engine/narrative-taxonomy/foreshadow-states.js";
 import type { NarrativeEvent, NarrativeEventType, NarrativeFactLayer, NarrativeRetrievalPurpose } from "../engine/narrative-memory/types.js";
 import { handleJingweiRead, type JingweiReadInput, type JingweiReadResult } from "./jingwei-read-unified.js";
 import { handleJingweiWrite, type JingweiWriteInput, type JingweiWriteResult } from "./jingwei-write-handler.js";
@@ -126,6 +128,10 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     : null;
   const maxTokens = input.budgetTokens ?? memoryConfig?.retrieval.maxTokens;
   const namedEntities = [...(input.namedEntities ?? []), ...(input.entities ?? [])];
+  // 写作与修改时注入点名角色的已确认声线；按名字精确匹配，只会命中角色条目。
+  const sceneVoices = input.purpose === "write" || input.purpose === "revise"
+    ? await loadSceneVoiceConstraints({ storage, bookId, characterNames: namedEntities }).catch(() => null)
+    : null;
   const result = await buildNarrativeContext({
     storage,
     bookId,
@@ -147,6 +153,8 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
       : {}),
     ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
     ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
+    ...(writingLayers?.stylePreset ? { stylePreset: writingLayers.stylePreset } : {}),
+    ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),
     ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
     // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
     ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
@@ -366,51 +374,11 @@ export async function handleMemoryGraph(
     mentionsByChapter,
     ...(similarity ? { similarity, useNovelGain: true } : {}),
   });
-  let foreshadowRecords: Array<{
-    id: string;
-    entryId: string | null;
-    label: string;
-    status: string;
-    setupChapter: number | null;
-    triggerChapter: number | null;
-    triggerCondition: string | null;
-    payoffChapter: number | null;
-  }> = [];
-  try {
-    foreshadowRecords = storage.sqlite.prepare<{
-      id: string;
-      entryId: string | null;
-      label: string;
-      status: string;
-      setupChapter: number | null;
-      triggerChapter: number | null;
-      triggerCondition: string | null;
-      payoffChapter: number | null;
-    }>(`
-      SELECT id, entry_id AS entryId, label, status,
-             setup_chapter AS setupChapter,
-             trigger_chapter AS triggerChapter,
-             trigger_condition AS triggerCondition,
-             payoff_chapter AS payoffChapter
-      FROM narrative_foreshadow
-      WHERE book_id = ?
-    `).all(bookId);
-  } catch {
-    foreshadowRecords = [];
-  }
   const narrativeGraph = buildNarrativeGraph({
     dictionary,
     facts: filteredFacts,
-    foreshadowRecords: foreshadowRecords.map((row) => ({
-      id: row.id,
-      ...(row.entryId ? { entryId: row.entryId } : {}),
-      label: row.label,
-      status: row.status,
-      ...(row.setupChapter !== null ? { setupChapter: row.setupChapter } : {}),
-      ...(row.triggerChapter !== null ? { triggerChapter: row.triggerChapter } : {}),
-      ...(row.triggerCondition ? { triggerCondition: row.triggerCondition } : {}),
-      ...(row.payoffChapter !== null ? { payoffChapter: row.payoffChapter } : {}),
-    })),
+    // 伏笔网络只认经纬伏笔条目；事件只作推进证据（见 foreshadow-states）
+    entries: loadForeshadowEntries(storage, bookId).map((entry) => ({ ...entry, category: "foreshadowing" })),
     events: eventsWithCauses.map((event) => ({
       id: String(event.id ?? ""),
       chapterNumber: typeof event.chapterNumber === "number" ? event.chapterNumber : Number(event.chapterNumber),
@@ -420,6 +388,7 @@ export async function handleMemoryGraph(
       object: typeof event.object === "string" ? event.object : "",
       evidenceText: typeof event.evidenceText === "string" ? event.evidenceText : "",
       riskLevel: typeof event.riskLevel === "string" ? event.riskLevel : undefined,
+      status: typeof event.status === "string" ? event.status : undefined,
       subjectEntryId: typeof event.subjectEntryId === "string" ? event.subjectEntryId : undefined,
       causedBy: Array.isArray(event.causedBy) ? event.causedBy as string[] : undefined,
     })),

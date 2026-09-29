@@ -138,7 +138,7 @@ export async function loadResourceTreeFromContract(
   // Show jingwei files only in the "经纬资料" group; exclude them from "大纲与设定".
   const jingweiFileNames = new Set(jingweiFiles?.files.map((f) => f.name) ?? []);
   // Also exclude internal data files that should never appear in the resource tree
-  const INTERNAL_FILES = new Set(["jingwei_sections.json", "jingwei_entries.json", "style_profile.json", ".write.lock"]);
+  const INTERNAL_FILES = new Set(["jingwei_sections.json", "jingwei_entries.json", "style_profile.json", "style_preset.json", ".write.lock"]);
   const nonJingweiStoryFiles = storyFiles?.files.filter((f) => !jingweiFileNames.has(f.name) && !INTERNAL_FILES.has(f.name)) ?? [];
 
   const resourceGroups = writingResources ? buildWritingResourceGroups(writingResources.resources) : {

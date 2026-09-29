@@ -23,7 +23,8 @@ export function buildWriterSystemPrompt(
   bookRulesBody: string,
   genreBody: string,
   styleGuide: string,
-  styleFingerprint?: string,
+  /** 按本章场景类型选出的已确认范文（已成文）；统计指纹不再作为写作指令传入。 */
+  styleExamples?: string,
   chapterNumber?: number,
   mode: "full" | "creative" = "full",
   fanficContext?: FanficContext,
@@ -31,6 +32,8 @@ export function buildWriterSystemPrompt(
   inputProfile: "legacy" | "governed" = "legacy",
   lengthSpec?: LengthSpec,
   bookDesign?: string,
+  /** 角色声线约束接缝：调用方传入已成文的约束文本，这里只负责放进提示词。 */
+  voiceConstraints?: string,
 ): string {
   const isEnglish = (languageOverride ?? genreProfile.language) === "en";
   const governed = inputProfile === "governed";
@@ -54,7 +57,8 @@ export function buildWriterSystemPrompt(
         buildBookRulesBody(bookRulesBody),
         buildBookDesignSection(bookDesign),
         buildStyleGuide(styleGuide),
-        buildStyleFingerprint(styleFingerprint),
+        buildStyleExamples(styleExamples),
+        buildVoiceConstraints(voiceConstraints),
         fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
         fanficContext ? buildCharacterVoiceProfiles(fanficContext.fanficCanon) : "",
         fanficContext ? buildFanficModeInstructions(fanficContext.fanficMode, fanficContext.allowedDeviations) : "",
@@ -80,7 +84,8 @@ export function buildWriterSystemPrompt(
         buildBookRulesBody(bookRulesBody),
         buildBookDesignSection(bookDesign),
         buildStyleGuide(styleGuide),
-        buildStyleFingerprint(styleFingerprint),
+        buildStyleExamples(styleExamples),
+        buildVoiceConstraints(voiceConstraints),
         fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
         fanficContext ? buildCharacterVoiceProfiles(fanficContext.fanficCanon) : "",
         fanficContext ? buildFanficModeInstructions(fanficContext.fanficMode, fanficContext.allowedDeviations) : "",
@@ -173,7 +178,7 @@ function buildToolOrchestrationSop(): string {
 - 静态人物、地点、势力、规则、平台规则、作者备注：lore.read / lore.write。
 - 动态剧情事实、时间线、状态变化、事件和关系余波：memory.read / memory.graph / memory.events；不要写进 Lore canon。
 - 伏笔的埋设、推进、兑现、到期检查：hooks.manage；不要用 cockpit.snapshot 代替伏笔变更。
-- 卷纲：outline.volume；角色成长弧：arc.character；角色连续性审查：character.check_consistency。
+- 卷纲：outline.volume；角色成长弧：arc.character；角色连续性审查：character.check_consistency；角色声线：character.voice.read 查看，character.voice.draft 出待审草稿（确认只由作者在角色卡完成）。
 - Writing Skills：writing-skills.read 查看，writing-skills.recommend 推荐，writing-skills.write 落库，writing-skills.check_compliance 验收。
 - Narrative Line 图谱：narrative.read_line 查看，narrative.propose_change 先出草案，narrative.approve_change 才正式写入。
 - 正式章节结果的列出/归档/删除：resource.manage；范围废稿连同章域记忆清理：chapter.discard_range。两者不能混用。
@@ -196,10 +201,16 @@ function buildToolOrchestrationSop(): string {
 - 工具：rewrite.apply；何时：依据审计结果对已有章的明确行号做 replace/insert_after；前置：chapter.read 得到当前行号，改动是定点且可解释；失败回退：原文不变，重新读取行号后重试，不能扩大成无依据整章覆盖。
 - 工具：pipeline.import_chapters；何时：把显式提供的 txt/md 文本按章节导入当前书；前置：文本内容和导入范围明确，不传服务器文件路径；失败回退：保留已成功导入结果，只重试失败范围，导入后检查 autoSettle/preflight，不重复导入整书。
 - 工具：book.dissect；何时：从已有正文生成角色/世界/伏笔/摘要/focus 草案，或按 settle=true 回填记忆；前置：正文可读；默认只出草案，apply/settle 才写入且需确认；失败回退：保留草案或空结果，不把抽取结果直接升为 canon，改用 lore.read/memory.read 人工核对。
+- 工具：style.distill_preview；何时：作者要求从参考稿学习文风、开始蒸馏前确认切章与覆盖范围；前置：sourceName 与 text/chapters 二选一；失败回退：报告切章或范围问题，不直接开始抽取。
+- 工具：style.distill_start；何时：作者确认参考范围后生成来源包，或带 jobId 继续未完成/失败批次；前置：预览范围已确认；失败回退：模型不可用或批次失败时如实转述 explanation，带 jobId（失败批次加 retryFailed=true）再调用，不把结果自动写入 active 文风预设。
+- 工具：style.distill_status；何时：上下文压缩后恢复蒸馏任务、或作者询问任务进度与证据；前置：jobId；失败回退：报告任务不存在，不臆造来源规则。
+- 工具：style.distill_adopt；何时：作者在对话中逐条确认了来源包里要采纳的规则或范文；前置：先 style.distill_status 取 expectedVersion 与条目 id，只传作者明确确认的 id；失败回退：版本冲突（STYLE_PRESET_CONFLICT/409）时重新读取并再次向作者确认，不替作者确认、不重试覆盖。
 - 工具：outline.volume；何时：读取当前卷、生成卷纲草案或设置卷纲；前置：get 先于 suggest/set，set 前目标卷和章节范围明确；失败回退：先 get 现状并报告冲突，不把卷纲写进 Lore，不覆盖未知范围。
 - 工具：arc.character；何时：查看角色弧状态，或从指定章同步动态 beats；前置：status 可先读，sync 必须有章节来源；失败回退：保留原动态弧，报告无法抽取的章节，不把弧线写入 canon。
 - 工具：publish.check；何时：投稿前、章后或用户要求检查敏感词/AI味/完整性/连续性；前置：正文或书籍范围明确，平台按 book.platform 映射；失败回退：标记报告不可用/不确定，不能因此阻断 pipeline.write，也不能宣称平台审核通过。
 - 工具：character.check_consistency；何时：检查角色在章节范围的出现与上下文连续性；前置：角色或章节范围明确；失败回退：用 chapter.read + lore.read/memory.read 定点核对，报告证据不足，不直接改人设。
+- 工具：character.voice.read；何时：写重要对白前核对角色怎么说话、作者询问声线、或草稿前取 expectedVersion；前置：entryId 或精确角色名；失败回退：重名时改用 entryId，找不到角色时报告并建议先建卡，不臆造声线。
+- 工具：character.voice.draft；何时：作者要求整理或补全某角色声线；前置：先 character.voice.read 取 expectedVersion，可附该角色本人的对白样本；失败回退：版本冲突（409）时重新读取再调用，模型不可用或依据不足时如实转述 warnings 的 explanation；产物只是待审草稿，由作者在角色卡逐项确认，不替作者确认、不把待审项当设定。
 - 工具：hooks.manage；何时：埋设、推进、兑现、到期检查或列出伏笔；前置：list/check_due 先读，写入必须有 hook 目标、章节和具体证据；失败回退：重新 list 防重复，不确定时只报告/不变更；查询伏笔状态不能用 cockpit.snapshot 代替。
 - 工具：writing-skills.read；何时：查看当前启用技能正文或可用 catalog；前置：明确 scope=enabled/available；失败回退：先 scope=available 再报告目录缺失，不自行复制一份技能文本。
 - 工具：writing-skills.write；何时：启用/停用/创建/更新项目 .novelfork/skills 文件；前置：先 read，目标 slug 和冲突策略明确，写入遵守 Runtime 确认；失败回退：冲突不覆盖，保留旧文件并请用户选择；技能生效源以项目目录扫描为准。
@@ -645,16 +656,23 @@ function buildStyleGuide(styleGuide: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Style fingerprint (Phase 9: C3)
+// Style examples（T2.4：范文取代统计数字）
 // ---------------------------------------------------------------------------
 
-function buildStyleFingerprint(fingerprint?: string): string {
-  if (!fingerprint) return "";
-  return `## 文风指纹（模仿目标）
+function buildStyleExamples(examples?: string): string {
+  if (!examples?.trim()) return "";
+  return `## 范文示例（只学写法）
 
-以下是从参考文本中提取的写作风格特征。你的输出必须尽量贴合这些特征：
+以下是作者确认过的范文，按本章场景类型挑选。只学节奏、句式、对白与描写的分寸，不抄原句；其中出现的人物、地名与设定一律不得迁移进本书。
 
-${fingerprint}`;
+${examples.trim()}`;
+}
+
+function buildVoiceConstraints(voiceConstraints?: string): string {
+  if (!voiceConstraints?.trim()) return "";
+  return `## 角色声线
+
+${voiceConstraints.trim()}`;
 }
 
 // ---------------------------------------------------------------------------

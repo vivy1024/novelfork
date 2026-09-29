@@ -33,7 +33,6 @@ export interface WriteSnapshot {
   readonly jingweiFiles: JingweiFilesData;
   readonly controlDocs: ControlDocuments;
   readonly outline: string;
-  readonly styleProfile?: string;
 }
 
 export interface MutationOp {

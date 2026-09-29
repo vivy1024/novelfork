@@ -412,6 +412,70 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
+  "style.distill_preview": {
+    type: "object",
+    properties: {
+      sourceName: stringSchema("参考来源名称。"),
+      text: stringSchema("待分析的参考正文；与 chapters 二选一。"),
+      chapters: arraySchema("已切分的章节数组；与 text 二选一。"),
+      splitPattern: stringSchema("可选章节标题匹配规则。"),
+    },
+    required: ["sourceName"],
+    additionalProperties: false,
+  },
+  "style.distill_start": {
+    type: "object",
+    properties: {
+      sourceName: stringSchema("新建任务时必填：参考来源名称。"),
+      text: stringSchema("新建任务时的参考正文；与 chapters 二选一。"),
+      chapters: arraySchema("新建任务时已切分的章节数组；与 text 二选一。"),
+      splitPattern: stringSchema("可选章节标题匹配规则。"),
+      jobId: stringSchema("继续已有任务时传入；此时不要再传来源正文。"),
+      maxBatches: numberSchema("本次最多处理几批模型批次（1–10，缺省 3）；剩余批次可再次调用继续。"),
+      retryFailed: booleanSchema("继续已有任务时，是否把失败批次重新排队（默认 false）。"),
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  "style.distill_status": {
+    type: "object",
+    properties: { jobId: stringSchema("文风蒸馏任务 ID。") },
+    required: ["jobId"],
+    additionalProperties: false,
+  },
+  "style.distill_adopt": {
+    type: "object",
+    properties: {
+      jobId: stringSchema("文风蒸馏任务 ID。"),
+      ruleIds: arraySchema("作者已确认要采纳的规则 ID 列表。", { type: "string" }),
+      sampleIds: arraySchema("作者已确认要采纳的范文 ID 列表。", { type: "string" }),
+      expectedVersion: stringSchema("style.distill_status 返回的 expectedVersion，原样传回；本书尚无文风预设时传空字符串。"),
+    },
+    required: ["jobId", "expectedVersion"],
+    additionalProperties: false,
+  },
+  "character.voice.read": {
+    type: "object",
+    properties: {
+      entryId: stringSchema("经纬角色条目 ID；与 characterName 二选一。"),
+      characterName: stringSchema("角色名或别名（精确匹配）；与 entryId 二选一，重名时须改用 entryId。"),
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  "character.voice.draft": {
+    type: "object",
+    properties: {
+      entryId: stringSchema("经纬角色条目 ID；与 characterName 二选一。"),
+      characterName: stringSchema("角色名或别名（精确匹配）；与 entryId 二选一，重名时须改用 entryId。"),
+      expectedVersion: numberSchema("character.voice.read 返回的 expectedVersion，原样传回；角色卡已被改过时返回冲突（409）。"),
+      dialogueSamples: arraySchema("可选：该角色本人的对白原句，每项一句；只放能确定是这个角色说的话。", { type: "string" }),
+      scanChapters: numberSchema("可选：扫描最近几章正文抽取该角色对白（0–30，缺省 10，0 表示不扫描）。"),
+      useModel: booleanSchema("可选：是否用当前会话模型增补（缺省：会话有模型时增补）。模型字段必须带能在材料里找到的原文依据，否则丢弃。"),
+    },
+    required: ["expectedVersion"],
+    additionalProperties: false,
+  },
   "character.check_consistency": {
     type: "object",
     properties: {
