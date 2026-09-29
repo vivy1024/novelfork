@@ -9,9 +9,11 @@ import {
   type BundledWritingSkill,
 } from "./bundled-skills.generated.js";
 import {
+  WRITING_SKILL_ENTRIES,
   WRITING_SKILL_KINDS,
   type ParsedWritingSkill,
   type WritingSkillComplianceCheck,
+  type WritingSkillEntry,
   type WritingSkillKind,
   type WritingSkillProvenance,
   type WritingSkillSource,
@@ -21,15 +23,21 @@ import {
 export type { ParsedWritingSkill } from "./types.js";
 
 const WRITING_SKILL_KINDS_SET: ReadonlySet<string> = new Set(WRITING_SKILL_KINDS);
+const WRITING_SKILL_ENTRIES_SET: ReadonlySet<string> = new Set(WRITING_SKILL_ENTRIES);
 const MAX_CHECK_PATTERN_LENGTH = 256;
 const MAX_CHECK_OCCURRENCES = 10_000;
 
 function resolveBuiltinWritingSkillsDir(): string {
   const moduleDir = typeof __dirname !== "undefined" ? __dirname : dirname(fileURLToPath(import.meta.url));
-  return join(moduleDir, "../../../../skills");
+  return join(moduleDir, "../../../builtin-skills");
 }
 
-/** 内置 SKILL.md 的唯一磁盘根目录。 */
+/**
+ * 内置 SKILL.md 的唯一磁盘根目录：`packages/novel-plugin/builtin-skills/`，只放 NovelFork 自研技能。
+ *
+ * 旧的 `packages/novel-plugin/skills/` 是本地忽略的第三方导入缓存，loader 不再读取；
+ * 第三方技能改为作者自行安装到作者目录（见 third-party-sources.ts）。
+ */
 export const BUILTIN_WRITING_SKILLS_DIR = resolveBuiltinWritingSkillsDir();
 
 /**
@@ -251,6 +259,8 @@ export function parseWritingSkill(
     : "workflow";
   const rawMode = asString(frontmatter.mode);
   const mode = rawMode === "always" || rawMode === "auto" ? rawMode : "manual";
+  const rawEntry = asString(frontmatter.entry);
+  const entry = WRITING_SKILL_ENTRIES_SET.has(rawEntry) ? rawEntry as WritingSkillEntry : undefined;
 
   return {
     id: asString(frontmatter.id) || `writing-skill-${slug}`,
@@ -261,6 +271,7 @@ export function parseWritingSkill(
     body,
     source,
     mode,
+    ...(entry ? { entry } : {}),
     ...(asStringArray(frontmatter.compatibleGenres) ? { compatibleGenres: asStringArray(frontmatter.compatibleGenres) } : {}),
     ...(asStringArray(frontmatter.tags) ? { tags: asStringArray(frontmatter.tags) } : {}),
     ...(asString(frontmatter.conflictGroup) ? { conflictGroup: asString(frontmatter.conflictGroup) } : {}),
@@ -288,12 +299,7 @@ function loadWritingSkillsFromSources(home?: string): ReadonlyArray<ParsedWritin
 
   // 编译态使用单一内联快照；开发态的唯一 builtin root 覆盖同 slug 快照。
   addBundle(BUNDLED_WRITING_SKILLS);
-  const builtinSlugs = listSkillSlugsSync(BUILTIN_WRITING_SKILLS_DIR);
-  const convertedSlugs = new Set(builtinSlugs.filter((slug) => slug.startsWith("nf-")));
-  for (const slug of builtinSlugs) {
-    // 外部聚合技能已一对一转化为 nf- 版（功能相同）；两者并存时只暴露 nf- 版，
-    // 外部原版留在仓库作为市场下载源，不出现在内置列表。
-    if (!slug.startsWith("nf-") && convertedSlugs.has(`nf-${slug}`)) continue;
+  for (const slug of listSkillSlugsSync(BUILTIN_WRITING_SKILLS_DIR)) {
     const raw = tryReadFileSync(skillFile(BUILTIN_WRITING_SKILLS_DIR, slug));
     const parsed = raw ? parseWritingSkill(raw, slug, "builtin") : null;
     if (parsed) {
@@ -311,7 +317,10 @@ function loadWritingSkillsFromSources(home?: string): ReadonlyArray<ParsedWritin
   for (const slug of listSkillSlugsSync(authorDir)) {
     const raw = tryReadFileSync(skillFile(authorDir, slug));
     const parsed = raw ? parseWritingSkill(raw, slug, "user") : null;
-    if (parsed) bySlug.set(slug, parsed);
+    if (!parsed) continue;
+    // 作者自行安装的第三方技能带 _source.json，保留来源与许可证供界面展示。
+    const provenance = parsed.provenance ?? readProvenanceSync(authorDir, slug);
+    bySlug.set(slug, provenance ? { ...parsed, provenance } : parsed);
   }
 
   return [...bySlug.values()].sort((left, right) => left.id.localeCompare(right.id));

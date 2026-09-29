@@ -19,6 +19,25 @@ export const WRITING_SKILL_KINDS = [
 ] as const;
 
 export type WritingSkillKind = (typeof WRITING_SKILL_KINDS)[number];
+
+/**
+ * 「NovelFork 创作」预设的作者入口，顺序即界面陈列顺序。
+ *
+ * 技能在 frontmatter 写 `entry: <入口名>` 即成为该入口；未声明的技能不对作者陈列为入口，
+ * 由模型按任务调用。入口集合是产品决定，不在这里的值会被解析器忽略。
+ */
+export const WRITING_SKILL_ENTRIES = [
+  "看进度",
+  "写下一章",
+  "审这一章",
+  "改这段",
+  "伏笔",
+  "设定",
+  "写法记忆",
+  "导出",
+] as const;
+
+export type WritingSkillEntry = (typeof WRITING_SKILL_ENTRIES)[number];
 export type WritingSkillMode = "manual" | "auto" | "always";
 export type WritingSkillSource = "builtin" | "user" | "project";
 
@@ -94,6 +113,8 @@ export interface ParsedWritingSkill {
   readonly body: string;
   readonly source: WritingSkillSource;
   readonly mode: WritingSkillMode;
+  /** 作者入口；未声明表示该技能由模型按任务调用，不作为作者入口陈列。 */
+  readonly entry?: WritingSkillEntry;
   readonly compatibleGenres?: ReadonlyArray<string>;
   readonly tags?: ReadonlyArray<string>;
   readonly conflictGroup?: string;

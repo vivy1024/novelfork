@@ -1,224 +1,127 @@
 /**
- * 把外部参考仓库的 SKILL.md 装进 NovelFork 内置 skills 市场。
+ * 把本地参考仓库里许可明确的第三方 SKILL.md 装进**作者技能目录**，供作者自己使用。
  *
  * 用法：
- *   bun scripts/import-market-skills.ts --report-only      # 只看会装什么
- *   bun scripts/import-market-skills.ts                    # 装 MIT 许可的
- *   bun scripts/import-market-skills.ts --include-unlicensed
- *                                                          # 连未声明许可的一起装（需自行承担风险）
+ *   bun scripts/import-market-skills.ts --report-only       # 只看会装什么
+ *   bun scripts/import-market-skills.ts                     # 装到作者技能目录（默认 <NOVELFORK_HOME>/skills）
+ *   bun scripts/import-market-skills.ts --target <目录>      # 装到指定目录
+ *   bun scripts/import-market-skills.ts --overwrite         # 覆盖作者目录里已存在的同名技能
+ *
+ * 前提：仓库根的 `reference-skills/<目录>` 下已有上游仓库的本地检出（该目录被 Git 忽略）。
  *
  * 许可纪律（重要）：
  *
- * 标明来源满足的是**署名**义务，不产生**分发权**。没有 LICENSE 文件的仓库，
- * 法律默认是「保留所有权利」，把它的内容打进 NovelFork 分发属侵权，作者可要求
- * 下架或索赔。CC BY-NC-SA 明确禁止商业使用，署名也不够。
- *
- * 所以默认只装 `allowedByDefault: true` 的仓库；其余需要显式 --include-unlicensed，
- * 由调用者对风险负责。每个装入的 skill 都会写入 `_source.json` 记录来源与许可。
+ * 第三方技能一律不随 NovelFork 内置分发——内置只有 `packages/novel-plugin/builtin-skills/`
+ * 下的自研技能，本脚本也绝不写进那里。它只处理 `third-party-sources.ts` 中
+ * `optional: true` 的来源，即许可证明确允许使用与再分发的仓库。没有许可证（法律默认
+ * 保留所有权利）或禁止商用的仓库永远不安装，也没有绕过的开关。每个装入的技能都写入
+ * `_source.json` 记录来源与许可，界面据此展示出处。
  */
 
-import { mkdir, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
+
+import { authorWritingSkillsDir } from "../packages/novel-plugin/src/engine/writing-skills/loader";
+import {
+	OPTIONAL_SKILL_SOURCES,
+	THIRD_PARTY_SKILL_SOURCES,
+} from "../packages/novel-plugin/src/engine/writing-skills/third-party-sources";
 
 const REFERENCE_ROOT = "reference-skills";
-const TARGET_ROOT = join("packages", "novel-plugin", "skills-market");
 
-interface SourceRepo {
+/** 本地检出的布局信息；许可与仓库地址以 third-party-sources.ts 为准，这里不重复登记。 */
+interface LocalCheckout {
+	readonly slugPrefix: string;
 	/** reference-skills 下的目录名 */
 	readonly dir: string;
-	/** 上游仓库地址，写进 _source.json 并在 UI 里展示 */
-	readonly repo: string;
-	readonly license: string;
-	/**
-	 * 是否允许默认打包进分发物。
-	 * 只有作者明确授予分发权（MIT / Apache / CC BY 等）才为 true。
-	 */
-	readonly allowedByDefault: boolean;
 	/** 相对仓库根的 skill 搜索目录；省略则全仓递归找 SKILL.md */
 	readonly skillDirs?: ReadonlyArray<string>;
 	/** 跳过的 skill 目录名：环境部署、浏览器控制等与写作无关的 */
 	readonly skip?: ReadonlyArray<string>;
 }
 
-const SOURCES: ReadonlyArray<SourceRepo> = [
+const LOCAL_CHECKOUTS: ReadonlyArray<LocalCheckout> = [
 	{
+		slugPrefix: "worldwonderer",
 		dir: "worldwonderer_oh-story-claudecode",
-		repo: "https://github.com/worldwonderer/oh-story-claudecode",
-		license: "MIT",
-		allowedByDefault: true,
 		skillDirs: ["skills"],
 		// browser-cdp / story-setup 是运行环境部署，不是写作方法
 		skip: ["browser-cdp", "story-setup"],
 	},
-	{
-		dir: "XINGANLIU_web-novel-writing-skill",
-		repo: "https://github.com/XINGANLIU/web-novel-writing-skill",
-		license: "MIT",
-		allowedByDefault: true,
-	},
-	{
-		dir: "LAY-lgtm_novel-writing-framework",
-		repo: "https://github.com/LAY-lgtm/novel-writing-framework",
-		license: "MIT",
-		allowedByDefault: true,
-	},
-	{
-		dir: "sigpanic_goink-skills",
-		repo: "https://github.com/sigpanic/goink-skills",
-		license: "CC-BY-SA-4.0",
-		// BY-SA 允许分发，但要求以相同许可共享衍生内容。
-		allowedByDefault: true,
-	},
-	{
-		dir: "lornshrimp_Lorn.NovelWriteSkills",
-		repo: "https://github.com/lornshrimp/Lorn.NovelWriteSkills",
-		license: "UNSPECIFIED",
-		// 无 LICENSE 文件 = 保留所有权利。量最大（354 份）但默认不打包。
-		allowedByDefault: false,
-	},
-	{
-		dir: "mane23-ai_claude-novel-skill",
-		repo: "https://github.com/mane23-ai/claude-novel-skill",
-		license: "UNSPECIFIED",
-		allowedByDefault: false,
-	},
-	{
-		dir: "zy-zmc_tianming-skill",
-		repo: "https://github.com/zy-zmc/tianming-skill",
-		license: "CC-BY-NC-SA-4.0",
-		// NC = 禁止商业使用。NovelFork 商业化时不可带。
-		allowedByDefault: false,
-	},
+	{ slugPrefix: "xinganliu", dir: "XINGANLIU_web-novel-writing-skill" },
+	{ slugPrefix: "lay", dir: "LAY-lgtm_novel-writing-framework" },
+	{ slugPrefix: "goink", dir: "sigpanic_goink-skills" },
 ];
 
 interface ImportedSkill {
 	readonly slug: string;
 	readonly name: string;
-	readonly description: string;
 	readonly repo: string;
 	readonly license: string;
 	readonly upstreamPath: string;
-	readonly referenceCount: number;
 }
 
 /**
  * 按 skill 名称推断套路分类。
  *
  * 外部仓库的 frontmatter 没有 `kind`（那是 NovelFork 自定义字段），
- * 若不推断，解析器会把它们全兜底成 `workflow` —— 370 个挤在一格，分类等于没用。
- *
- * 规则放在导入脚本里而不是解析器里：解析器只认显式声明的 kind，
- * 保持「分类由声明决定，不靠内容正则猜」这条纪律；这里是导入期的一次性归类，
- * 归类结果会写进 SKILL.md 的 frontmatter，之后就是显式声明。
+ * 若不推断，解析器会把它们全兜底成 `workflow`。规则放在导入脚本里而不是解析器里：
+ * 解析器只认显式声明的 kind；这里是导入期的一次性归类，结果写进 SKILL.md 的
+ * frontmatter，之后就是显式声明。
  */
 const KIND_RULES: ReadonlyArray<readonly [RegExp, string]> = [
-  // 平台分发：输出各平台版、母稿提纯、投稿组包、签约评估
-  [/输出.*版|多平台|母稿|投稿|签约|分发|平台/, "platform"],
-  // 包装：标题、简介、封面、书评、作者有话说 —— 作品外围而非正文
-  [/设计标题|标题|内容简介|简介|封面|书评|有话说/, "packaging"],
-  // 调研：竞对分析、题材定位、深度研究、蒸馏（拆解他人作品）
-  [/竞对|分析.*作品|题材定位|深度研究|研究|蒸馏|扫榜/, "research"],
-  // 修订审阅：审阅、润色、去 AI 味、优化闭环
-  [/审阅|润色|去ai味|去AI味|优化闭环|回炉|重写|humanizer|slop|renhua/i, "revision"],
-  // 开篇：黄金三章、章节开头
-  [/黄金三章|开篇|章节开头|开头/, "opening"],
-  // 节奏：章末钩子、节拍、爽点、章节控制卡
-  [/章末钩子|钩子|节奏|节拍|爽点|控制卡/, "pacing"],
-  // 人物：人物传记、角色
-  [/人物|角色|传记/, "character"],
-  // 情节：大纲、伏笔、事件引擎、故事设定、连续性
-  [/大纲|伏笔|线索|事件|案件|故事设定|故事面|冷热线|连续性/, "plot"],
-  // 文笔：对话冲突、场景单元、正文创作、文风
-  [/对话|冲突|场景|正文|文风/, "prose"],
-  // 其余归流程：项目初始化、章节创作闭环、素材库
-  [/初始化|闭环|素材/, "workflow"],
+	[/输出.*版|多平台|母稿|投稿|签约|分发|平台/, "platform"],
+	[/设计标题|标题|内容简介|简介|封面|书评|有话说/, "packaging"],
+	[/竞对|分析.*作品|题材定位|深度研究|研究|蒸馏|扫榜/, "research"],
+	[/审阅|润色|去ai味|去AI味|优化闭环|回炉|重写|humanizer|slop|renhua/i, "revision"],
+	[/黄金三章|开篇|章节开头|开头/, "opening"],
+	[/章末钩子|钩子|节奏|节拍|爽点|控制卡/, "pacing"],
+	[/人物|角色|传记/, "character"],
+	[/大纲|伏笔|线索|事件|案件|故事设定|故事面|冷热线|连续性/, "plot"],
+	[/对话|冲突|场景|正文|文风/, "prose"],
+	[/初始化|闭环|素材/, "workflow"],
 ];
 
 /**
- * 排除项：上游仓库里嵌套了整个第三方仓库（如 `通用-去AI味重写/taste-skill-main/`），
- * 递归扫描会把它们的设计/前端类 skill 一并带进来 —— brandkit、imagegen、
- * image-to-code 这些和网文写作无关，是噪音。
- *
- * 中文去 AI 味的（humanizer / shuorenhua / stop-slop）保留，那是对口内容。
+ * 排除项：上游仓库里嵌套了整个第三方仓库（如 `taste-skill-main/`），
+ * 递归扫描会把与网文写作无关的设计/前端类 skill 一并带进来。
  */
 const EXCLUDE_NESTED = [
-  /taste-skill-main[\\/]skills[\\/](?!taste-skill)/i,
-  /[\\/](brandkit|brutalist-skill|minimalist-skill|soft-skill|stitch-skill|redesign-skill|output-skill|image-to-code-skill|imagegen-frontend-\w+)[\\/]/i,
+	/taste-skill-main[\\/]skills[\\/](?!taste-skill)/i,
+	/[\\/](brandkit|brutalist-skill|minimalist-skill|soft-skill|stitch-skill|redesign-skill|output-skill|image-to-code-skill|imagegen-frontend-\w+)[\\/]/i,
 ];
 
 function isExcluded(upstreamPath: string): boolean {
-  return EXCLUDE_NESTED.some((pattern) => pattern.test(upstreamPath));
+	return EXCLUDE_NESTED.some((pattern) => pattern.test(upstreamPath));
 }
 
 function inferKind(skillName: string, dirName: string): string {
-  const haystack = `${skillName} ${dirName}`;
-  for (const [pattern, kind] of KIND_RULES) {
-    if (pattern.test(haystack)) return kind;
-  }
-  return "workflow";
+	const haystack = `${skillName} ${dirName}`;
+	for (const [pattern, kind] of KIND_RULES) {
+		if (pattern.test(haystack)) return kind;
+	}
+	return "workflow";
 }
 
-/** lornshrimp 按题材分目录；把题材提出来当 tag，作者才能按题材筛。 */
-const GENRE_DIRS: ReadonlyArray<string> = [
-  "AI科幻",
-  "太空科幻",
-  "女频爱情",
-  "异能志怪",
-  "悬疑推理",
-  "赛博庞克",
-  "都市悬疑",
-  "都市职场",
-];
-
-function extractGenre(upstreamPath: string, skillName: string): string | null {
-  const head = upstreamPath.split("/")[0] ?? "";
-  if (GENRE_DIRS.includes(head)) return head;
-  for (const genre of GENRE_DIRS) {
-    if (skillName.startsWith(`${genre}-`)) return genre;
-  }
-  return null;
+/** 只在 frontmatter 缺 kind 时补上；已有 kind 的原样保留。 */
+function annotateFrontmatter(rawInput: string, kind: string): string {
+	// 上游文件多为 CRLF；正则按 \n 写，先统一换行再处理，否则匹配不到 frontmatter。
+	const raw = rawInput.replace(/\r\n/g, "\n");
+	const match = /^(﻿?)---\n([\s\S]*?)\n---/.exec(raw);
+	if (!match) return raw;
+	const frontmatter = match[2] ?? "";
+	if (/^kind:/m.test(frontmatter)) return raw;
+	return `${match[1] ?? ""}---\n${frontmatter}\nkind: ${kind}\n---${raw.slice(match[0].length)}`;
 }
 
-/**
- * 给外部 SKILL.md 补上 `kind` 与题材 tag。
- *
- * 只在 frontmatter 缺 kind 时补；已有 kind 的（我们自己的格式）原样保留。
- */
-function annotateFrontmatter(
-  rawInput: string,
-  kind: string,
-  genre: string | null,
-): string {
-  // 上游文件多为 CRLF；正则按 \n 写，先统一换行再处理，否则匹配不到 frontmatter。
-  const raw = rawInput.replace(/\r\n/g, "\n");
-  const match = /^(\ufeff?)---\n([\s\S]*?)\n---/.exec(raw);
-  if (!match) return raw;
-
-  const bom = match[1] ?? "";
-  let frontmatter = match[2] ?? "";
-  const rest = raw.slice(match[0].length);
-
-  const additions: string[] = [];
-  if (!/^kind:/m.test(frontmatter)) additions.push(`kind: ${kind}`);
-  if (genre && !/^tags:/m.test(frontmatter)) {
-    additions.push(`tags:\n  - ${genre}`);
-  } else if (genre && /^tags:/m.test(frontmatter)) {
-    // 已有 tags 时追加题材，保持原缩进风格
-    frontmatter = frontmatter.replace(/^tags:\s*$/m, `tags:\n  - ${genre}`);
-  }
-
-  if (additions.length === 0) return raw;
-  return `${bom}---\n${frontmatter}\n${additions.join("\n")}\n---${rest}`;
-}
-
-function slugify(repoDir: string, skillDirName: string): string {
-	const prefix = repoDir.split("_")[0]?.toLowerCase() ?? "src";
+/** 与历史内置 slug 同形（`nf-<前缀>--<名>`），已有书籍里的副本装回后能重新对上作者目录。 */
+function slugify(slugPrefix: string, skillDirName: string): string {
 	const base = skillDirName
 		.toLowerCase()
-		.replace(/[^a-z0-9\u4e00-\u9fa5-_]/g, "-")
+		.replace(/[^a-z0-9一-龥-_]/g, "-")
 		.replace(/-+/g, "-")
 		.replace(/^-+|-+$/g, "");
-	return `${prefix}--${base || "skill"}`;
+	return `nf-${slugPrefix}--${base || "skill"}`;
 }
 
 function readFrontmatterField(raw: string, field: string): string {
@@ -252,12 +155,8 @@ async function findSkillFiles(root: string): Promise<string[]> {
 }
 
 /**
- * skill 附件里允许带进来的文件类型。
- *
- * 早期只收 `.md`，导致上游 `scripts/*.js` 全部丢失，而 SKILL.md 里
- * 「必须先运行本 skill 自带脚本」的指令原样保留 —— 叙述者照做会直接
- * 报文件不存在。这些脚本是确定性的本地 lint（只读正文、报告问题），
- * 属于 skill 功能的一部分，必须一起导入。
+ * skill 附件里允许带进来的文件类型。上游 `scripts/*.js` 是 SKILL.md 写成必跑步骤的
+ * 确定性本地检查脚本，必须一起导入，否则叙述者照做会报文件不存在。
  */
 const COPYABLE_EXTENSIONS = [".md", ".js", ".mjs", ".cjs", ".json", ".txt", ".yaml", ".yml"];
 
@@ -266,14 +165,8 @@ function isCopyableAttachment(name: string): boolean {
 }
 
 /**
- * 给导入的 `scripts/` 目录划出 CommonJS 边界。
- *
- * 上游脚本用 `require()` 写成，但落地目录在 `packages/novel-plugin/` 下，
- * 而该 package.json 声明了 `"type": "module"` —— Node 会按最近父级
- * package.json 把 `.js` 当 ESM 解析，脚本一跑就 `require is not defined`。
- *
- * 放一个只声明 type 的 package.json 即可把这层边界拉回 CJS：`.mjs` 不受
- * 影响（扩展名本身声明 ESM），也不需要改上游代码或 SKILL.md 里的引用路径。
+ * 给导入的 `scripts/` 目录划出 CommonJS 边界：上游脚本用 `require()` 写成，
+ * 若落地目录的某个父级 package.json 声明了 `"type": "module"`，脚本会按 ESM 解析而失败。
  */
 async function ensureCommonJsBoundary(scriptsDir: string): Promise<void> {
 	let entries;
@@ -309,33 +202,54 @@ async function copyDir(from: string, to: string): Promise<number> {
 	return count;
 }
 
+async function exists(path: string): Promise<boolean> {
+	try {
+		await stat(path);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function readArgValue(argv: ReadonlyArray<string>, name: string): string | null {
+	const index = argv.indexOf(name);
+	if (index < 0) return null;
+	const value = argv[index + 1];
+	if (!value || value.startsWith("--")) throw new Error(`${name} 需要一个目录参数。`);
+	return value;
+}
+
 async function main(): Promise<void> {
-	const args = new Set(process.argv.slice(2));
+	const argv = process.argv.slice(2);
+	const args = new Set(argv);
 	const reportOnly = args.has("--report-only");
-	const includeUnlicensed = args.has("--include-unlicensed");
+	const overwrite = args.has("--overwrite");
+	if (args.has("--include-unlicensed")) {
+		throw new Error("未声明许可证或禁止商用的来源不提供安装；--include-unlicensed 已移除。");
+	}
+	const targetRoot = resolve(readArgValue(argv, "--target") ?? authorWritingSkillsDir());
 
-	const selected = SOURCES.filter((s) => s.allowedByDefault || includeUnlicensed);
-	const excluded = SOURCES.filter((s) => !s.allowedByDefault && !includeUnlicensed);
-
+	const sourceByPrefix = new Map(OPTIONAL_SKILL_SOURCES.map((source) => [source.slugPrefix, source]));
 	const imported: ImportedSkill[] = [];
+	const skippedExisting: string[] = [];
 	const seen = new Set<string>();
 	const kindTally = new Map<string, number>();
 
-	for (const source of selected) {
-		const repoRoot = join(REFERENCE_ROOT, source.dir);
-		try {
-			await stat(repoRoot);
-		} catch {
-			console.warn(`[skip] 找不到仓库目录：${repoRoot}`);
+	for (const checkout of LOCAL_CHECKOUTS) {
+		const source = sourceByPrefix.get(checkout.slugPrefix);
+		if (!source) continue;
+		const repoRoot = join(REFERENCE_ROOT, checkout.dir);
+		if (!(await exists(repoRoot))) {
+			console.warn(`[skip] 找不到本地检出：${repoRoot}（先把 ${source.repo} 检出到这里）`);
 			continue;
 		}
 
-		const searchRoots = source.skillDirs?.map((d) => join(repoRoot, d)) ?? [repoRoot];
+		const searchRoots = checkout.skillDirs?.map((d) => join(repoRoot, d)) ?? [repoRoot];
 		for (const searchRoot of searchRoots) {
 			for (const skillFile of await findSkillFiles(searchRoot)) {
 				const skillDir = skillFile.slice(0, skillFile.length - "SKILL.md".length - 1);
 				const dirName = skillDir.split(sep).pop() ?? "skill";
-				if (source.skip?.includes(dirName)) continue;
+				if (checkout.skip?.includes(dirName)) continue;
 
 				const raw = await readFile(skillFile, "utf-8");
 				const name = readFrontmatterField(raw, "name");
@@ -345,29 +259,26 @@ async function main(): Promise<void> {
 					continue;
 				}
 
-				let slug = slugify(source.dir, dirName);
-				let dedupe = 2;
-				while (seen.has(slug)) slug = `${slugify(source.dir, dirName)}-${dedupe++}`;
-				seen.add(slug);
-
 				const upstreamRel = relative(repoRoot, skillFile).split(sep).join("/");
 				if (isExcluded(upstreamRel)) continue;
+
+				let slug = slugify(source.slugPrefix, dirName);
+				let dedupe = 2;
+				while (seen.has(slug)) slug = `${slugify(source.slugPrefix, dirName)}-${dedupe++}`;
+				seen.add(slug);
+
 				const kind = inferKind(name, dirName);
-				const genre = extractGenre(upstreamRel, name);
 				kindTally.set(kind, (kindTally.get(kind) ?? 0) + 1);
 
-				let referenceCount = 0;
 				if (!reportOnly) {
-					const target = join(TARGET_ROOT, slug);
+					const target = join(targetRoot, slug);
+					if (!overwrite && await exists(join(target, "SKILL.md"))) {
+						skippedExisting.push(slug);
+						continue;
+					}
 					await mkdir(target, { recursive: true });
-					await writeFile(
-						join(target, "SKILL.md"),
-						annotateFrontmatter(raw, kind, genre),
-						"utf-8",
-					);
-					referenceCount = await copyDir(join(skillDir, "references"), join(target, "references"));
-					// 上游 skill 自带的确定性检查脚本（check-ai-patterns.js 等）。
-					// SKILL.md 把它们写成必跑步骤，漏掉会让叙述者执行时报文件不存在。
+					await writeFile(join(target, "SKILL.md"), annotateFrontmatter(raw, kind), "utf-8");
+					await copyDir(join(skillDir, "references"), join(target, "references"));
 					const scriptsTarget = join(target, "scripts");
 					await copyDir(join(skillDir, "scripts"), scriptsTarget);
 					await ensureCommonJsBoundary(scriptsTarget);
@@ -385,64 +296,41 @@ async function main(): Promise<void> {
 						)}\n`,
 						"utf-8",
 					);
-				} else {
-					referenceCount = (await findSkillFiles(join(skillDir, "references"))).length;
 				}
 
 				imported.push({
 					slug,
 					name,
-					description: description.slice(0, 80),
 					repo: source.repo,
 					license: source.license,
 					upstreamPath: upstreamRel,
-					referenceCount,
 				});
 			}
 		}
 	}
 
-	if (!reportOnly) {
-		await writeFile(
-			join(TARGET_ROOT, "index.json"),
-			`${JSON.stringify(
-				{
-					generatedBy: "scripts/import-market-skills.ts",
-					sources: selected.map((s) => ({ repo: s.repo, license: s.license })),
-					skills: imported.map((s) => ({
-						slug: s.slug,
-						name: s.name,
-						repo: s.repo,
-						license: s.license,
-						upstreamPath: s.upstreamPath,
-					})),
-				},
-				null,
-				2,
-			)}\n`,
-			"utf-8",
-		);
+	console.log(`${reportOnly ? "[report-only] 会装入" : "已装入"} ${imported.length} 个 skill → ${targetRoot}`);
+	const byRepo = new Map<string, { count: number; license: string }>();
+	for (const skill of imported) {
+		const current = byRepo.get(skill.repo);
+		byRepo.set(skill.repo, { count: (current?.count ?? 0) + 1, license: skill.license });
+	}
+	for (const [repo, { count, license }] of byRepo) {
+		console.log(`   ${count.toString().padStart(4)} ← ${repo}（${license}）`);
+	}
+	if (skippedExisting.length > 0) {
+		console.log(`\n作者目录已有同名技能，未覆盖 ${skippedExisting.length} 个（需要覆盖时加 --overwrite）。`);
 	}
 
-	console.log(`${reportOnly ? "[report-only] 会装入" : "已装入"} ${imported.length} 个 skill`);
-	const byRepo = new Map<string, number>();
-	for (const s of imported) byRepo.set(s.repo, (byRepo.get(s.repo) ?? 0) + 1);
-	for (const [repo, count] of byRepo) console.log(`   ${count.toString().padStart(4)} ← ${repo}`);
-
-	console.log("\n分类分布（作者按这个筛选，不该出现一类独大）：");
+	console.log("\n分类分布：");
 	for (const [kind, count] of [...kindTally.entries()].sort((a, b) => b[1] - a[1])) {
 		console.log(`   ${count.toString().padStart(4)}  ${kind}`);
 	}
 
-	if (excluded.length > 0) {
-		console.log("\n未装入（许可不允许默认分发）：");
-		for (const s of excluded) {
-			console.log(`   ${s.dir}  license=${s.license}`);
-		}
-		console.log(
-			"\n标明来源满足署名义务，但不产生分发权。要纳入需先取得授权，" +
-				"或用 --include-unlicensed 自行承担风险。",
-		);
+	const refused = THIRD_PARTY_SKILL_SOURCES.filter((source) => !source.optional);
+	if (refused.length > 0) {
+		console.log("\n不提供安装（许可不允许）：");
+		for (const source of refused) console.log(`   ${source.repo}  license=${source.license}`);
 	}
 }
 

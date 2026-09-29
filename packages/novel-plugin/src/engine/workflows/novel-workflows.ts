@@ -41,6 +41,7 @@ export interface NovelWorkflowStep {
   readonly agentId?: string;
   readonly modelOverride?: string;
   readonly tools?: readonly string[];
+  /** Runtime Skill 工具按 SKILL.md 的 name 精确查找，不接受 catalog id / slug。 */
   readonly skills?: readonly string[];
   readonly customPrompt?: string;
   readonly parallelSubagents?: readonly NovelParallelSubagentConfig[];
@@ -75,7 +76,7 @@ export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = linearRecipeTo
       label: "生成镜头蓝图 (SceneSpec)",
       enabled: true,
       tools: ["scene.spec"],
-      skills: ["xuanhuan-suppression-release", "chapter-end-hook"],
+      skills: ["爽点密度与分级", "强化章末钩子"],
       requiresApproval: false,
       onFailure: "stop",
     },
@@ -136,7 +137,7 @@ export const ZHIHU_SHORT_STORY_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph
       label: "构建情绪高压镜头蓝图",
       enabled: true,
       tools: ["scene.spec"],
-      skills: ["emotional-tension-twist"],
+      skills: ["冲突与悬念分工"],
       onFailure: "stop",
     },
     {

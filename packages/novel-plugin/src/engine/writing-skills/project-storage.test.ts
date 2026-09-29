@@ -7,6 +7,7 @@ import { loadWritingSkills } from "./loader.js";
 import {
   extractGeneralSkillReferences,
   legacyProjectWritingSkillsDir,
+  loadProjectWritingSkills,
   projectWritingSkillFile,
   projectWritingSkillsDir,
   readProjectWritingSkillSelection,
@@ -173,6 +174,64 @@ mode: manual
       expect(result.migratedSlugs).toEqual([skill.slug]);
       expect(await exists(projectWritingSkillFile(bookRoot, skill.slug)!)).toBe(true);
       expect(await exists(join(legacyDir, "SKILL.md"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("已移出内置的第三方技能：书内副本保留可用，来源补回，旧路径照常迁移，不被静默删除", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-retired-skills-"));
+    const home = join(root, "home");
+    const bookRoot = join(root, "book");
+    try {
+      // 开发态物化的副本：带 _source.json。
+      const withSource = join(projectWritingSkillsDir(bookRoot), "nf-worldwonderer--story-review");
+      await mkdir(withSource, { recursive: true });
+      await writeFile(join(withSource, "SKILL.md"), skillContent("nf-worldwonderer--story-review", "长篇审阅"), "utf8");
+      await writeFile(join(withSource, "_source.json"), JSON.stringify({
+        repo: "https://github.com/worldwonderer/oh-story-claudecode",
+        license: "MIT",
+      }), "utf8");
+      // 编译态物化的副本：没有 _source.json，只能按历史来源登记表认出。
+      const withoutSource = join(projectWritingSkillsDir(bookRoot), "nf-lornshrimp--通用-去ai味重写");
+      await mkdir(join(withoutSource, "references"), { recursive: true });
+      await writeFile(join(withoutSource, "SKILL.md"), skillContent("nf-lornshrimp--通用-去ai味重写", "通用-去AI味重写"), "utf8");
+      await writeFile(join(withoutSource, "references", "patterns.md"), "附件\n", "utf8");
+      // 更早的物化路径 `.narrafork/skills`。
+      const legacy = join(legacyProjectWritingSkillsDir(bookRoot), "nf-goink--emotional-arc");
+      await mkdir(legacy, { recursive: true });
+      await writeFile(join(legacy, "SKILL.md"), skillContent("nf-goink--emotional-arc", "情感弧"), "utf8");
+
+      const catalog = await loadWritingSkills(home);
+      expect(catalog.some((skill) => skill.slug.includes("--"))).toBe(false);
+
+      const loaded = await loadProjectWritingSkills(bookRoot, catalog);
+      const bySlug = new Map(loaded.skills.map((skill) => [skill.slug, skill]));
+      expect(loaded.migratedSlugs).toEqual(["nf-goink--emotional-arc"]);
+      expect(bySlug.get("nf-worldwonderer--story-review")).toMatchObject({
+        source: "project",
+        name: "长篇审阅",
+        provenance: { repo: "https://github.com/worldwonderer/oh-story-claudecode", license: "MIT" },
+      });
+      expect(bySlug.get("nf-lornshrimp--通用-去ai味重写")).toMatchObject({
+        source: "project",
+        body: expect.stringContaining("项目级正文"),
+        provenance: { repo: "https://github.com/lornshrimp/Lorn.NovelWriteSkills", license: "UNSPECIFIED" },
+      });
+      expect(bySlug.get("nf-goink--emotional-arc")).toMatchObject({
+        provenance: { repo: "https://github.com/sigpanic/goink-skills", license: "CC-BY-SA-4.0" },
+      });
+
+      // 启用 / 移除其它技能时，这些副本与附件原样保留。
+      const added = await syncProjectWritingSkills(bookRoot, catalog, { addSkillIds: ["nf-lore"] }, { home });
+      expect(added.createdSlugs).toEqual(["nf-lore"]);
+      const removed = await syncProjectWritingSkills(bookRoot, catalog, { removeSkillIds: ["nf-lore"] }, { home });
+      expect(removed.projectSkillSlugs.sort()).toEqual([
+        "nf-goink--emotional-arc",
+        "nf-lornshrimp--通用-去ai味重写",
+        "nf-worldwonderer--story-review",
+      ]);
+      expect(await readFile(join(withoutSource, "references", "patterns.md"), "utf8")).toBe("附件\n");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

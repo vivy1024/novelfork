@@ -30,6 +30,7 @@ function toListItem(skill: Awaited<ReturnType<typeof loadWritingSkills>>[number]
     kind: skill.kind,
     source: skill.source,
     mode: skill.mode,
+    entry: skill.entry ?? null,
     tags: skill.tags ?? [],
     version: skill.version ?? null,
     provenance: skill.provenance ?? null,

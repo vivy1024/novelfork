@@ -66,8 +66,43 @@ describe("writing skill loader", () => {
     expect(getWritingSkillRawContentSync("../golden-opening")).toBeNull();
     expect(getWritingSkillRawContentSync("nf-golden-opening")).toContain("# 黄金三章");
 
-    const skills = loadWritingSkillsSync();
-    expect(skills.some((skill) => skill.slug === "nf-worldwonderer--story-review" && skill.provenance?.repo)).toBe(true);
+  });
+
+  it("第三方技能不再内置；作者自行安装后带着 _source.json 的来源与许可出现", async () => {
+    const home = await mkdtemp(join(tmpdir(), "novelfork-writing-skills-third-party-"));
+    try {
+      expect(loadWritingSkillsSync(home).some((skill) => skill.slug.includes("--"))).toBe(false);
+
+      const dir = join(authorWritingSkillsDir(home), "nf-worldwonderer--story-review");
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "SKILL.md"), validSkill("作者安装的审阅技能"), "utf8");
+      await writeFile(join(dir, "_source.json"), JSON.stringify({
+        repo: "https://github.com/worldwonderer/oh-story-claudecode",
+        license: "MIT",
+      }), "utf8");
+
+      const installed = loadWritingSkillsSync(home).find((skill) => skill.slug === "nf-worldwonderer--story-review");
+      expect(installed).toMatchObject({
+        source: "user",
+        provenance: { repo: "https://github.com/worldwonderer/oh-story-claudecode", license: "MIT" },
+      });
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it("只认产品定义的作者入口，未知入口名被忽略", () => {
+    const withEntry = (entry: string) => `---
+name: 入口测试
+description: 测试用
+kind: workflow
+entry: ${entry}
+---
+
+正文。
+`;
+    expect(parseWritingSkill(withEntry("写下一章"), "entry-ok", "user")?.entry).toBe("写下一章");
+    expect(parseWritingSkill(withEntry("随便写写"), "entry-unknown", "user")).not.toHaveProperty("entry");
   });
 
   it("作者目录默认跟随 NOVELFORK_HOME，显式 home 仍按 <home>/.novelfork/skills 解析", () => {

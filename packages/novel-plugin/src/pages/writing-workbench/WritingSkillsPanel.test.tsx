@@ -303,3 +303,85 @@ describe("WritingSkillsPanel 的书籍级隔离", () => {
     await waitFor(() => expect(enabledSkillNames(view.container)).toEqual(["技能B"]));
   });
 });
+
+describe("WritingSkillsPanel 的作者入口、已移出内置标记与可选来源", () => {
+  const ENTRY_CATALOG = [
+    { id: "nf-review-chapter", slug: "nf-review-chapter", name: "审阅章节正文", description: "d", kind: "revision", source: "builtin", editable: false, entry: "审这一章" },
+    { id: "nf-chapter-hook", slug: "nf-chapter-hook", name: "强化章末钩子", description: "d", kind: "pacing", source: "builtin", editable: false, entry: null },
+    { id: "nf-progress", slug: "nf-progress", name: "看进度", description: "d", kind: "workflow", source: "builtin", editable: false, entry: "看进度" },
+  ];
+  const RETIRED = {
+    id: "nf-lornshrimp--通用-强化章末钩子",
+    slug: "nf-lornshrimp--通用-强化章末钩子",
+    name: "通用-强化章末钩子",
+    description: "旧版内置",
+    kind: "pacing",
+    source: "project",
+    editable: true,
+    retiredFromBuiltin: true,
+    provenance: { repo: "https://github.com/lornshrimp/Lorn.NovelWriteSkills", license: "UNSPECIFIED" },
+  };
+
+  function stubCatalog() {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (/\/api\/books\/[^/]+\/writing-skills$/u.test(url)) {
+        return jsonResponse({ projectSkillSlugs: [RETIRED.slug], skills: [RETIRED] });
+      }
+      if (url.endsWith("/api/writing-skills")) return jsonResponse({ skills: ENTRY_CATALOG });
+      return jsonResponse({});
+    }));
+  }
+
+  it("入口按固定顺序排在最前，其余技能默认折叠，点开后出现", async () => {
+    const { fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+    const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
+    stubCatalog();
+
+    render(<WritingSkillsPanel bookId="book-entry" />, { wrapper: Providers });
+    const entries = await waitFor(() => screen.getByTestId("writing-skills-entries"));
+    const names = [...entries.querySelectorAll('[data-testid^="writing-skill-card-"]')]
+      .map((node) => node.getAttribute("data-testid"));
+    expect(names).toEqual(["writing-skill-card-nf-progress", "writing-skill-card-nf-review-chapter"]);
+    expect(within(entries).getByText("入口 · 看进度")).toBeTruthy();
+
+    const toggle = screen.getByTestId("writing-skills-others-toggle");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("强化章末钩子")).toBeNull();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.getByText("强化章末钩子")).toBeTruthy());
+  });
+
+  it("书内已移出内置的第三方副本照常列出并标明来源已移出", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
+    stubCatalog();
+
+    render(<WritingSkillsPanel bookId="book-retired" />, { wrapper: Providers });
+    await waitFor(() => screen.getByTestId("writing-skills-entries"));
+    fireEvent.click(screen.getByTestId("writing-skills-others-toggle"));
+
+    const card = await waitFor(() => screen.getByTestId(`writing-skill-card-${RETIRED.slug}`));
+    expect(card.textContent).toContain("来源已移出内置");
+    expect(card.textContent).toContain("本书里的副本照常生效");
+    expect(card.textContent).toContain("lornshrimp/Lorn.NovelWriteSkills · UNSPECIFIED");
+    const toggle = card.querySelector('[role="switch"]');
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("可选技能来源只列许可明确的仓库，并说明放进作者技能目录即可加载", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { OptionalSkillSourcesNote } = await import("./WritingSkillsPanel");
+
+    render(<OptionalSkillSourcesNote />);
+    const note = screen.getByTestId("writing-skills-optional-sources");
+    expect(note.textContent).toContain("worldwonderer/oh-story-claudecode");
+    expect(note.textContent).toContain("MIT");
+    expect(note.textContent).toContain("作者技能目录");
+    expect(note.textContent).not.toContain("lornshrimp");
+    expect(note.textContent).not.toContain("mane23-ai");
+    expect(note.textContent).not.toContain("zy-zmc");
+    const links = [...note.querySelectorAll("a")].map((link) => link.getAttribute("href"));
+    expect(links).toContain("https://github.com/worldwonderer/oh-story-claudecode");
+  });
+});

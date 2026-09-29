@@ -31,6 +31,7 @@ import {
   isProseCheck,
   type WritingSkillConstraintDigest,
 } from "../engine/writing-skills/compliance.js";
+import { retiredBuiltinSourceOf } from "../engine/writing-skills/third-party-sources.js";
 import type {
   ParsedWritingSkill,
 } from "../engine/writing-skills/types.js";
@@ -218,6 +219,7 @@ function toListItem(skill: ParsedWritingSkill, projectActive: boolean) {
     kind: skill.kind,
     source: skill.source,
     mode: skill.mode,
+    entry: skill.entry ?? null,
     tags: skill.tags ?? [],
     version: skill.version ?? null,
     provenance: skill.provenance ?? null,
@@ -227,8 +229,9 @@ function toListItem(skill: ParsedWritingSkill, projectActive: boolean) {
 }
 
 /**
- * 技能来源说明：当前为本地自研体系（content/builtins 全量预置 + 作品目录 .novelfork/skills 启用物化）。
- * 在线技能市场（用户间分享 / 按需下载外部技能）为后续规划，届时本模块需扩展远端来源与下载同步逻辑。
+ * 技能来源：内置 NovelFork 自研技能（builtin-skills/）+ 作者技能目录，启用后物化到作品目录
+ * `.novelfork/skills`。第三方技能不内置、不做网络下载，由作者自行安装到作者技能目录；
+ * 作品目录里残留的旧版内置第三方副本照常生效，并以 `retiredFromBuiltin` 标明。
  */
 export async function handleWritingSkillsRead(
   input: WritingSkillsReadInput,
@@ -251,6 +254,8 @@ export async function handleWritingSkillsRead(
     );
     const listItem = (skill: ParsedWritingSkill, projectActive: boolean) => ({
       ...toListItem(skill, projectActive),
+      // 曾经内置、现已移出内置的第三方技能：书内副本继续生效，界面据此标明来源已移出。
+      retiredFromBuiltin: !catalogSlugs.has(skill.slug) && retiredBuiltinSourceOf(skill.slug) !== null,
       ...(projectContent.has(skill.slug) ? { content: projectContent.get(skill.slug) } : {}),
     });
 

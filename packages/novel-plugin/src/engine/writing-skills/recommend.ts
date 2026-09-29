@@ -1,16 +1,14 @@
 /**
- * 按新书十一问答案推荐内置 Writing Skills。
+ * 按新书十一问答案推荐 Writing Skills。
  *
- * 为什么不做「按题材元数据精确匹配」：372 份内置 SKILL.md 里 `compatibleGenres`
- * 命中 0 次、`mode: auto` 只有 1 份，没有可直接查表的题材字段。可靠信号只有三个：
+ * 推荐池是当前 catalog：NovelFork 内置自研技能（不按题材分版），加上作者自行安装到
+ * 作者目录的技能（可能带题材 tag，如「AI科幻」「都市悬疑」）。可靠信号有三个：
  *
- * 1. `kind` —— 全量分布已知（opening 7 / pacing 13 / prose 25 / revision 54 /
- *    platform 129 / plot 43 / packaging 30 / research 21 / character 7 / workflow 37）
- * 2. `tags` —— 262 份带 tag，其中 5 个题材簇覆盖 250 份：
- *    AI科幻 54、都市悬疑 53、异能志怪 51、女频爱情 46、都市职场 46
- * 3. 命名规律 —— `{题材}-{能力}`，且每类能力都有「通用-{能力}」兜底版
+ * 1. `kind` —— 能力位按 kind 挑；
+ * 2. 题材 tag —— 作者装了题材版时优先用它，并排除别的题材簇；
+ * 3. 名称偏好 —— 同 kind 内能力差别大，按名称关键词挑到名副其实的那条。
  *
- * 因此策略是：先按答案定位题材簇，再在必备能力位上挑「题材版优先、通用版兜底」，
+ * 策略：先按答案定位题材簇，再在必备能力位上挑「题材版优先、通用版兜底」，
  * 最后按目标平台补一条平台 skill。每条推荐都带 reason，作者与 Agent 都能复述
  * 它是被哪条答案触发的，不做黑箱启用。
  */
@@ -140,9 +138,12 @@ function hasTag(skill: ParsedWritingSkill, tag: string): boolean {
   return (skill.tags ?? []).some((candidate) => candidate.trim() === tag);
 }
 
-/** 「通用-xxx」类 skill：题材没命中时的兜底版本。 */
+/**
+ * 通用版 skill：不带任何题材簇 tag 的都算（NovelFork 内置技能均属此类，
+ * 作者安装的「通用-xxx」也是）。只按题材 tag 判断，普通标签不影响。
+ */
 function isGeneralPurpose(skill: ParsedWritingSkill): boolean {
-  return skill.name.includes("通用") || (skill.tags ?? []).length === 0;
+  return skill.name.includes("通用") || !GENRE_CLUSTERS.some(({ cluster }) => hasTag(skill, cluster));
 }
 
 /** 属于某个题材簇但不是当前簇 —— 这类必须排除，否则会把别的题材规则灌进本书。 */

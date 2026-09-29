@@ -7,8 +7,9 @@ target/
 # 只忽略仓库根目录的 plugins；packages/*/src/plugins 是开源 runtime 插件宿主源码，必须入版本库。
 # 否则新建文件会被静默忽略、从不 commit，磁盘事故后 git 无法恢复（曾丢过 runtime-plugin-host.ts）。
 /plugins/
-# 注意：skills/ 保持原语义——packages/novel-plugin/skills 是导入物化的中间产物（可能被大批量导入），
-# 真正进版本库的是编译产物 bundled-skills.generated.ts。落盘到 .novelfork/skills 的启用副本本来就不入库。
+# 注意：skills/ 保持原语义——packages/novel-plugin/skills 是旧的第三方导入缓存（本地文件，产品不再读取），
+# 内置技能源码在被跟踪的 packages/novel-plugin/builtin-skills/（只放自研 MIT 技能），编译快照为 bundled-skills.generated.ts。
+# 落盘到 .novelfork/skills 的启用副本本来就不入库。
 skills/
 novelfork.json
 *.log

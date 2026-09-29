@@ -8,7 +8,8 @@ import {
   isSafeSkillAttachmentPath,
   parseWritingSkill,
 } from "./loader.js";
-import type { ParsedWritingSkill } from "./types.js";
+import { retiredBuiltinProvenanceOf, retiredBuiltinSourceOf } from "./third-party-sources.js";
+import type { ParsedWritingSkill, WritingSkillProvenance } from "./types.js";
 
 /** NovelFork 作品项目 Skill 的唯一 canonical 目录。Runtime 会自动扫描这里。 */
 export const PROJECT_WRITING_SKILLS_RELATIVE_DIR = join(".novelfork", "skills");
@@ -134,16 +135,42 @@ async function moveLegacySkillToCanonical(bookRoot: string, slug: string): Promi
   return true;
 }
 
-/** 只迁移本产品 catalog 已知的旧物化目录，不碰其它 Runtime project skills。 */
+/**
+ * 只迁移本产品认识的旧物化目录，不碰其它 Runtime project skills。
+ *
+ * 「认识」包括当前 catalog 中的技能，以及曾经内置、现已移出内置的第三方技能——
+ * 后者已不在 catalog 里，但仍是本产品当年物化进去的，照旧迁到 canonical 目录保留可用。
+ */
 export async function migrateLegacyProjectWritingSkills(
   bookRoot: string,
   skills: readonly ParsedWritingSkill[],
 ): Promise<readonly string[]> {
+  const candidates = new Set(skills.map((skill) => skill.slug));
+  for (const slug of await listSkillSlugs(legacyProjectWritingSkillsDir(bookRoot))) {
+    if (retiredBuiltinSourceOf(slug)) candidates.add(slug);
+  }
   const migrated: string[] = [];
-  for (const skill of skills) {
-    if (await moveLegacySkillToCanonical(bookRoot, skill.slug)) migrated.push(skill.slug);
+  for (const slug of candidates) {
+    if (await moveLegacySkillToCanonical(bookRoot, slug)) migrated.push(slug);
   }
   return migrated;
+}
+
+/** 读取项目副本目录里的 `_source.json`（开发态物化会一并复制）。 */
+async function readProjectSkillProvenance(bookRoot: string, slug: string): Promise<WritingSkillProvenance | undefined> {
+  const dir = projectWritingSkillDir(bookRoot, slug);
+  if (!dir) return undefined;
+  const raw = await readFile(join(dir, "_source.json"), "utf8").catch(() => null);
+  if (!raw) return undefined;
+  try {
+    const record = JSON.parse(raw) as Record<string, unknown>;
+    const repo = typeof record.repo === "string" ? record.repo.trim() : "";
+    if (!repo) return undefined;
+    const license = typeof record.license === "string" && record.license.trim() ? record.license.trim() : "UNSPECIFIED";
+    return { repo, license };
+  } catch {
+    return undefined;
+  }
 }
 
 export async function readProjectWritingSkillSelection(bookRoot: string): Promise<ProjectWritingSkillSelection> {
@@ -236,16 +263,23 @@ export async function loadProjectWritingSkills(
     const parsed = parseWritingSkill(raw, slug, "project");
     if (!parsed) continue;
     const catalog = catalogBySlug.get(slug);
-    skills.push(catalog
-      ? {
-          ...catalog,
-          ...parsed,
-          id: catalog.id,
-          slug,
-          source: "project",
-          provenance: parsed.provenance ?? catalog.provenance,
-        }
-      : parsed);
+    if (catalog) {
+      skills.push({
+        ...catalog,
+        ...parsed,
+        id: catalog.id,
+        slug,
+        source: "project",
+        provenance: parsed.provenance ?? catalog.provenance,
+      });
+      continue;
+    }
+    // 不在 catalog 的项目副本（含已移出内置的第三方技能）照常生效；来源信息从副本自带的
+    // _source.json 或历史来源登记表补回，界面才能继续标明出处与许可证。
+    const provenance = parsed.provenance
+      ?? await readProjectSkillProvenance(bookRoot, slug)
+      ?? retiredBuiltinProvenanceOf(slug);
+    skills.push(provenance ? { ...parsed, provenance } : parsed);
   }
 
   return {

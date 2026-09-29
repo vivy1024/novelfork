@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { loadWritingSkillsSync } from "./loader.js";
@@ -161,14 +163,18 @@ describe("recommendWritingSkills（合成用例）", () => {
 });
 
 /**
- * 真实资产用例：只按合成 fixture 验证会漏掉「372 份真实 SKILL.md 里挑出的
- * 那条名不副实」这类问题（例如 prose 位曾选中「创建小说正文」而非文笔类）。
+ * 真实资产用例：只按合成 fixture 验证会漏掉「真实内置 SKILL.md 里挑出的那条名不副实」
+ * 这类问题（例如 prose 位曾选中「创建小说正文」而非文笔类）。
+ *
+ * 内置只有 NovelFork 自研技能，不按题材分版；题材版技能只可能来自作者自行安装。
+ * 显式传入空的作者目录，避免本机作者目录里的技能混进断言。
  */
 describe("recommendWritingSkills（真实内置 skills）", () => {
-  const realSkills = loadWritingSkillsSync();
+  const realSkills = loadWritingSkillsSync(join(tmpdir(), "novelfork-recommend-no-author-home"));
 
-  it("能加载到内置 skills 作为推荐池", () => {
-    expect(realSkills.length).toBeGreaterThan(100);
+  it("推荐池只有内置自研技能", () => {
+    expect(realSkills.length).toBeGreaterThanOrEqual(15);
+    expect(realSkills.every((item) => item.source === "builtin" && !item.slug.includes("--"))).toBe(true);
   });
 
   it("玄幻+番茄+重度+零容忍：推荐名称与 reason 语义一致", () => {
@@ -182,27 +188,29 @@ describe("recommendWritingSkills（真实内置 skills）", () => {
 
     expect(result.matchedGenreCluster).toBe("异能志怪");
     const byKind = new Map(result.recommended.map((item) => [item.kind, item]));
-    expect(byKind.get("opening")?.name).toContain("强化章节开头");
-    expect(byKind.get("pacing")?.name).toContain("强化章末钩子");
+    expect(byKind.get("opening")?.name).toBe("黄金三章");
+    expect(byKind.get("pacing")?.name).toBe("强化章末钩子");
     expect(byKind.get("platform")?.name).toContain("番茄");
     // reason 说的是「去 AI 味复核」，挑出来的就必须是去 AI 味 skill
     expect(byKind.get("revision")?.name).toContain("去AI味");
+    expect(byKind.get("plot")?.name).toBe("设计分卷大纲");
     expect(result.recommended.length).toBeLessThanOrEqual(MAX_RECOMMENDED_WRITING_SKILLS);
+    // 内置技能不属于任何题材簇，reason 不能冒充「题材版」。
+    for (const item of result.recommended) expect(item.reason).not.toContain("题材「异能志怪」");
   });
 
-  it("未知题材回落通用版，不串到某个具体题材", () => {
+  it("没有对应平台技能时不硬塞平台位", () => {
     const result = recommendWritingSkills({ genre: "蒸汽朋克飞艇冒险", platform: "七猫小说" }, realSkills);
     expect(result.matchedGenreCluster).toBeNull();
-    const opening = result.recommended.find((item) => item.kind === "opening");
-    expect(opening?.name).toContain("通用");
-    expect(result.recommended.find((item) => item.kind === "platform")?.name).toContain("七猫");
+    expect(result.recommended.find((item) => item.kind === "opening")?.name).toBe("黄金三章");
+    expect(result.recommended.find((item) => item.kind === "platform")).toBeUndefined();
   });
 
-  it("不同题材答案会得到不同的推荐组合", () => {
+  it("题材簇如实返回，但内置不按题材分版", () => {
     const weird = recommendWritingSkills({ genre: "玄幻" }, realSkills);
     const romance = recommendWritingSkills({ genre: "言情" }, realSkills);
     expect(weird.matchedGenreCluster).toBe("异能志怪");
     expect(romance.matchedGenreCluster).toBe("女频爱情");
-    expect(weird.recommended.map((item) => item.id)).not.toEqual(romance.recommended.map((item) => item.id));
+    expect(weird.recommended.map((item) => item.id)).toEqual(romance.recommended.map((item) => item.id));
   });
 });

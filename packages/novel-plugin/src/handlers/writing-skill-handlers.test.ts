@@ -286,4 +286,57 @@ checks:
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("已移出内置的第三方技能：书内副本继续生效并标明来源已移出，内置技能不带此标记", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-retired-builtin-"));
+    const home = join(root, "home");
+    const bookRoot = join(root, "book");
+    const bookId = "book-retired-builtin";
+    try {
+      await setupBook(bookRoot, bookId, { title: "旧书" });
+      const retiredDir = join(bookRoot, ".novelfork", "skills", "nf-lornshrimp--通用-强化章末钩子");
+      await mkdir(retiredDir, { recursive: true });
+      await writeFile(join(retiredDir, "SKILL.md"), `---
+name: 通用-强化章末钩子
+description: 旧版内置的第三方技能
+kind: pacing
+mode: manual
+checks:
+  - type: forbidden-terms
+    terms: ["且听下回分解"]
+---
+
+# 通用-强化章末钩子
+
+旧正文。
+`, "utf8");
+      await handleWritingSkillsWrite({ bookId, addSkillIds: ["nf-foreshadow"] }, { bookRoot, home });
+
+      const available = await handleWritingSkillsRead({ bookId }, { bookRoot, home });
+      expect(available.ok).toBe(true);
+      const items = (available.data as { skills: Array<Record<string, unknown>> }).skills;
+      const retired = items.find((item) => item.slug === "nf-lornshrimp--通用-强化章末钩子");
+      expect(retired).toMatchObject({
+        source: "project",
+        projectActive: true,
+        retiredFromBuiltin: true,
+        provenance: { repo: "https://github.com/lornshrimp/Lorn.NovelWriteSkills", license: "UNSPECIFIED" },
+      });
+      expect(items.find((item) => item.slug === "nf-foreshadow")).toMatchObject({
+        source: "builtin",
+        entry: "伏笔",
+        retiredFromBuiltin: false,
+      });
+
+      // 副本仍参与写作：合规检查照常执行它声明的检查。
+      const checked = await handleWritingSkillsCheckCompliance(
+        { bookId, content: "他推开门，且听下回分解。" },
+        { bookRoot, home },
+      );
+      const violations = (checked.data as { violations: Array<{ skillName: string }> }).violations;
+      expect(violations.some((item) => item.skillName === "通用-强化章末钩子")).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

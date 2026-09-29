@@ -1,15 +1,20 @@
 /**
- * 将唯一的内置 `skills/` 根目录编译为 TypeScript 快照，以便内容随 EXE 分发。
+ * 将唯一的内置技能根目录 `packages/novel-plugin/builtin-skills/` 编译为 TypeScript 快照，
+ * 以便内容随 EXE 分发。
  *
  * 开发态 loader 每次从磁盘读取；编译态则回落到此文件的
  * `BUNDLED_WRITING_SKILLS`。不要手改生成文件。
+ *
+ * 内置只放 NovelFork 自研、MIT 许可的技能：每个目录必须带
+ * `_source.json`（origin=novelfork、license=MIT），否则生成直接失败。
+ * 第三方技能不随产品分发，由作者自行安装到作者技能目录。
  */
 
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const PLUGIN_ROOT = join("packages", "novel-plugin");
-const SKILLS_ROOT = join(PLUGIN_ROOT, "skills");
+const SKILLS_ROOT = join(PLUGIN_ROOT, "builtin-skills");
 const OUT_DIR = join(PLUGIN_ROOT, "src", "engine", "writing-skills");
 const OUT_FILE = join(OUT_DIR, "bundled-skills.generated.ts");
 
@@ -86,15 +91,30 @@ async function collectSkillFiles(dir: string, base: string): Promise<Record<stri
   return files;
 }
 
+/** 内置技能必须是 NovelFork 自研、MIT 许可；不满足就拒绝生成，而不是静默跳过。 */
+function assertOwnSkill(slug: string, raw: string | null): void {
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    parsed = raw ? JSON.parse(raw) as Record<string, unknown> : null;
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || parsed.origin !== "novelfork" || parsed.license !== "MIT") {
+    throw new Error(
+      `内置技能「${slug}」缺少 _source.json 或不是 NovelFork 自研 MIT 技能（需要 origin=novelfork、license=MIT）。`
+      + "第三方技能不能放进 builtin-skills/，请改为作者自行安装到作者技能目录。",
+    );
+  }
+}
+
 async function collectBuiltinSkills(): Promise<ReadonlyArray<BundledEntry>> {
   const skills: BundledEntry[] = [];
   for (const slug of await readDirSafe(SKILLS_ROOT)) {
-    // 只打包 NovelFork 自研 nf- 技能。外部聚合技能（无 nf- 前缀）保留在仓库
-    // 作为市场下载源，不进 EXE，规避 UNSPECIFIED / CC-BY-NC-SA 许可证风险。
-    if (!slug.startsWith("nf-")) continue;
     const skillDir = join(SKILLS_ROOT, slug);
     const content = await readFileSafe(join(skillDir, "SKILL.md"));
-    if (!content) continue;
+    if (!content) throw new Error(`内置技能目录「${slug}」缺少 SKILL.md。`);
+    const sourceRaw = await readFileSafe(join(skillDir, "_source.json"));
+    assertOwnSkill(slug, sourceRaw);
     // _source.json 是溯源元数据（provenance 已入类型），不随附件分发。
     const files = await collectSkillFiles(skillDir, "");
     delete files["/_source.json"];
@@ -106,7 +126,8 @@ async function collectBuiltinSkills(): Promise<ReadonlyArray<BundledEntry>> {
       slug,
       content: content.replace(/\r\n/g, "\n"),
       files: normalizedFiles,
-      provenance: parseProvenance(await readFileSafe(join(skillDir, "_source.json"))),
+      // 自研技能的 _source.json 不带 repo，provenance 为 null，界面据此显示「NovelFork 原生」。
+      provenance: parseProvenance(sourceRaw),
     });
   }
   return skills;
@@ -117,7 +138,7 @@ async function main(): Promise<void> {
   const header = `/**
  * 自动生成，请勿手改。
  *
- * 由 scripts/generate-skills-bundle.ts 从 packages/novel-plugin/skills/ 生成。
+ * 由 scripts/generate-skills-bundle.ts 从 packages/novel-plugin/builtin-skills/ 生成。
  * 此快照是 EXE 中唯一的 builtin fallback；开发态仍以该目录中的 SKILL.md 为准。
  */
 
