@@ -1,5 +1,5 @@
 /**
- * StoryScope 结构打分子集（从已落库事件/伏笔派生，不跑 304 维论文全量）。
+ * StoryScope 结构打分子集（从已落库事件与经纬伏笔条目派生，不跑 304 维论文全量）。
  *
  * 特征 id 对齐 0032 注释口径（EVT_CAU / PLT_MOR），但只算现在能诚实算出的：
  * 因果覆盖、伏笔悬置、触发未回收、时间线是否推进。
@@ -7,6 +7,8 @@
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
+import { DEBT_OVERDUE_CHAPTERS } from "../narrative-taxonomy/foreshadow-debts.js";
+import { loadForeshadowStates } from "../narrative-taxonomy/foreshadow-states.js";
 import { parseCausedBy } from "./causal-resolve.js";
 import { ensureNarrativeMemorySchema } from "./storage.js";
 
@@ -54,7 +56,7 @@ export function scoreNarrativeStructure(input: {
   const triggeredOpen = openHooks.filter((hook) => hook.status === "triggered" || hook.status === "paying_off");
   const dangling = openHooks.filter((hook) => {
     const setup = hook.setupChapter;
-    return typeof setup === "number" && setup > 0 && input.chapterNumber - setup >= 12;
+    return typeof setup === "number" && setup > 0 && input.chapterNumber - setup >= DEBT_OVERDUE_CHAPTERS;
   });
   const danglingRatio = openHooks.length === 0 ? 0 : dangling.length / openHooks.length;
   const triggeredOpenRatio = openHooks.length === 0 ? 0 : triggeredOpen.length / openHooks.length;
@@ -104,11 +106,6 @@ interface EventScanRow {
   causedByJson: string | null;
 }
 
-interface HookScanRow {
-  status: string;
-  setupChapter: number | null;
-}
-
 export function loadStructureScoreInputs(storage: StorageDatabase, bookId: string, chapterNumber: number): {
   readonly events: StructureScoreInputEvent[];
   readonly foreshadows: StructureScoreInputHook[];
@@ -120,11 +117,8 @@ export function loadStructureScoreInputs(storage: StorageDatabase, bookId: strin
     WHERE book_id = ? AND chapter_number = ?
     ORDER BY created_at ASC, id ASC
   `).all(bookId, chapterNumber);
-  const hookRows = storage.sqlite.prepare<HookScanRow>(`
-    SELECT status, setup_chapter AS setupChapter
-    FROM narrative_foreshadow
-    WHERE book_id = ?
-  `).all(bookId);
+  // 伏笔阶段由经纬伏笔条目 + 关联的已应用 hook 事件派生，不另存
+  const hookStates = loadForeshadowStates(storage, bookId);
   return {
     events: eventRows.map((row) => {
       const causedBy = parseCausedBy(row.causedByJson);
@@ -135,9 +129,9 @@ export function loadStructureScoreInputs(storage: StorageDatabase, bookId: strin
         ...(causedBy.length > 0 ? { causedBy } : {}),
       };
     }),
-    foreshadows: hookRows.map((row) => ({
-      status: row.status,
-      setupChapter: row.setupChapter,
+    foreshadows: hookStates.map((state) => ({
+      status: state.phase,
+      setupChapter: state.setupChapter ?? null,
     })),
   };
 }

@@ -6,7 +6,7 @@
  * 2. 【经典声口与口癖 (Voice Bubble)】解析展示角色的标志性台词或说话口癖，给作者和 AI 最直观的声音感知；
  * 3. 【当前时态看板 (Live State)】实时展示所在位置、伤势状况、掌握秘密，支持就地新增/纠正/作废；
  * 4. 【出场设定档案 (Persona)】性格底色、行事准则、能力背景，支持一键打开编辑器；
- * 5. 【人物羁绊网络 (Bonds)】与全书其它实体的双向/有向关系网络，点击直接无缝跳转；
+ * 5. 【关系】按经纬条目 id → 实体 id 读实体索引里的关系（当前关系 + 关系史 + 走向），不按名字匹配；
  * 6. 【变迁历史轨迹 (Timeline)】按章节推进的时间线与心境转折大事记。
  */
 
@@ -18,7 +18,6 @@ import {
   Clock,
   ExternalLink,
   GitBranch,
-  HeartHandshake,
   History,
   Info,
   Loader2,
@@ -58,11 +57,14 @@ import {
   retireFact,
   type EntityFact,
 } from "./narrative-fact-edits";
+import { EntityRelationsTab } from "./relation-network/EntityRelationsTab";
 
 export interface EntityDetailDrawerProps {
   readonly bookId: string;
   /** 实体名（同时是经纬条目 title 与 fact subject/object 的关联键）。 */
   readonly entity: string;
+  /** 已知的经纬条目 id（从图谱 / 关系网打开时带上）；没有时按标题或别名精确找条目。 */
+  readonly entryId?: string;
   readonly onClose: () => void;
   /** 打开经纬条目；返回 false 表示条目未载入，与 WorkbenchCanvas 契约一致。 */
   readonly onOpenJingweiEntry?: (entryId: string) => boolean;
@@ -92,9 +94,17 @@ type JingweiState =
   | { readonly status: "error"; readonly message: string }
   | { readonly status: "ready"; readonly entries: readonly JingweiEntryHit[] };
 
+/** 标题剥掉尾部括号装饰后比较：「薛行之（主角）」与「薛行之」是同一条目。 */
+function sameName(title: string | undefined, name: string): boolean {
+  if (!title) return false;
+  const strip = (value: string) => value.replace(/\s*[（(][^()（）]+[)）]\s*$/u, "").trim();
+  return title.trim() === name.trim() || strip(title) === strip(name);
+}
+
 export function EntityDetailDrawer({
   bookId,
   entity,
+  entryId,
   onClose,
   onOpenJingweiEntry,
   currentChapter,
@@ -153,8 +163,20 @@ export function EntityDetailDrawer({
 
   const matchedJingwei = useMemo(() => {
     if (jingweiState.status !== "ready") return null;
-    return jingweiState.entries.find((entry) => entry.title === entity) ?? jingweiState.entries[0] ?? null;
-  }, [jingweiState, entity]);
+    return (entryId ? jingweiState.entries.find((entry) => entry.id === entryId) : undefined)
+      ?? jingweiState.entries.find((entry) => entry.title === entity)
+      ?? jingweiState.entries[0]
+      ?? null;
+  }, [jingweiState, entity, entryId]);
+
+  // 关系页只认确定的条目：传入的 entryId，或标题 / 别名与名字完全一致的条目；检索的「第一条」不算。
+  const relationEntryId = useMemo(() => {
+    if (entryId) return entryId;
+    if (jingweiState.status !== "ready") return null;
+    const exact = jingweiState.entries.find((entry) => sameName(entry.title, entity)
+      || (entry.aliases ?? []).some((alias) => sameName(alias, entity)));
+    return exact?.id ?? null;
+  }, [entryId, jingweiState, entity]);
 
   // 解析经典台词或口癖片段
   const voiceQuote = useMemo(() => {
@@ -256,7 +278,13 @@ export function EntityDetailDrawer({
             </TabsContent>
 
             <TabsContent value="relations" className="space-y-2.5 pt-1">
-              <RelationsTab state={factsState} currentChapter={currentChapter} />
+              <EntityRelationsTab
+                bookId={bookId}
+                entryId={relationEntryId}
+                resolving={!entryId && jingweiState.status === "loading"}
+                entityName={entity}
+                {...(currentChapter !== undefined ? { currentChapter } : {})}
+              />
             </TabsContent>
 
             <TabsContent value="history" className="space-y-2.5 pt-1">
@@ -616,39 +644,6 @@ function JingweiTab({
             </div>
           ) : null}
         </article>
-      ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* 人物羁绊 tab：关系列表                                              */
-/* ------------------------------------------------------------------ */
-
-function RelationsTab({ state, currentChapter }: { state: LoadState; currentChapter?: number }) {
-  if (state.status === "loading") return <LoadingBlock label="正在读关系网络…" />;
-  if (state.status === "error") return <p className="text-xs text-destructive">{state.message}</p>;
-
-  const { live: liveFacts } = filterFactsAsOfChapter(state.facts, currentChapter);
-  const relFacts = liveFacts.filter((fact) => fact.category === "relationship" || fact.category === "relations");
-  if (relFacts.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10">
-        暂无显式人物羁绊记录。
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-1.5">
-      {relFacts.map((fact) => (
-        <div key={fact.id} className="rounded-lg border border-border/70 bg-card p-2.5 flex items-center justify-between text-xs shadow-xs">
-          <div className="flex items-center gap-2">
-            <HeartHandshake className="size-3.5 text-primary/80" />
-            <span>与 <strong className="font-semibold text-foreground">{fact.object}</strong></span>
-          </div>
-          <Badge variant="secondary" className="text-2xs">{fact.predicate}</Badge>
-        </div>
       ))}
     </div>
   );

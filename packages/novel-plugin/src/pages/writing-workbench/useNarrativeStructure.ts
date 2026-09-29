@@ -15,22 +15,18 @@ export type NarrativeStructureState =
   | { readonly status: "error"; readonly message: string }
   | { readonly status: "ready"; readonly data: NarrativeStructurePayload };
 
-// 全局在途请求去重缓存池
+// 全局在途请求去重缓存池。共享请求不绑定任何一个调用者的 AbortSignal：
+// 否则先挂载的面板卸载（或开发模式 StrictMode 首次挂载被清理）时会中止请求，
+// 同时复用它的其他面板全部拿到 AbortError。调用者取消时只忽略结果。
 const inFlightRequests = new Map<string, Promise<NarrativeStructurePayload>>();
 
-async function fetchNarrativeStructure(
-  bookId: string,
-  signal?: AbortSignal,
-): Promise<NarrativeStructurePayload> {
+async function fetchNarrativeStructure(bookId: string): Promise<NarrativeStructurePayload> {
   const existing = inFlightRequests.get(bookId);
   if (existing) return existing;
 
   const promise = (async () => {
     try {
-      const res = await fetch(
-        `/api/books/${encodeURIComponent(bookId)}/narrative-structure`,
-        { signal },
-      );
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-structure`);
       if (!res.ok) {
         throw new Error(`读取叙事结构失败: HTTP ${res.status}`);
       }
@@ -66,11 +62,10 @@ export function useNarrativeStructure(bookId: string | undefined): {
     }
 
     let cancelled = false;
-    const controller = new AbortController();
 
     setState({ status: "loading" });
 
-    fetchNarrativeStructure(bookId, controller.signal)
+    fetchNarrativeStructure(bookId)
       .then((data) => {
         if (!cancelled && activeBookIdRef.current === bookId) {
           setState({ status: "ready", data });
@@ -85,7 +80,6 @@ export function useNarrativeStructure(bookId: string | undefined): {
 
     return () => {
       cancelled = true;
-      controller.abort();
     };
   }, [bookId, nonce]);
 

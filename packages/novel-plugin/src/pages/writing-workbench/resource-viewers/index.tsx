@@ -9,6 +9,7 @@ import { fetchJson } from "@/hooks/use-api";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
 import { ChapterEditor } from "./ChapterEditor";
+import type { MentionEntity } from "../ide/EntityMentionExtension";
 import { getImageRawUrl, isImageResourceNode } from "./image-resource";
 import { submitNarrativeLineChange } from "../narrative-line-proposals";
 import { memoryFactLabel } from "../lore-workspace-split";
@@ -36,6 +37,10 @@ export interface ResourceViewerRenderOptions {
   styleProfileSummary?: string;
   /** 语义类选段动作的执行通道；缺省时选中浮出按钮会显式提示不可用。 */
   onSendToNarrator?: (message: string) => Promise<void> | void;
+  /** 正文里要高亮的经纬实体。 */
+  mentionEntities?: readonly MentionEntity[];
+  /** Ctrl / ⌘ + 点击实体提及时打开资料卡。 */
+  onOpenEntity?: (name: string) => void;
 }
 
 export interface ResourceViewerDefinition {
@@ -101,6 +106,8 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
         onSendToNarrator={options.onSendToNarrator}
         language={options.language}
         styleProfileSummary={options.styleProfileSummary}
+        mentionEntities={options.mentionEntities}
+        onOpenEntity={options.onOpenEntity}
       />
     </ViewerShell>
   );
@@ -930,6 +937,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string }) {
-  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary })}</>;
+export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string; mentionEntities?: readonly MentionEntity[]; onOpenEntity?: (name: string) => void }) {
+  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity })}</>;
 }

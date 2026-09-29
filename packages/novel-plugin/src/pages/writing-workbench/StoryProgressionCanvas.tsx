@@ -29,10 +29,10 @@ const WorkflowTimelinePanel = lazy(() =>
 // ─── 视图定义 ─────────────────────────────────────────────────────────────
 
 /**
- * 故事推进的视图分两层（IA 重构）：
+ * 故事推进的视图（IA 重构）：
  *  - board     推进（默认，主视觉）：章 × 剧情线网格 + 下一章焦点 + 伏笔债务
- *  - chronicle 章节脉络（参考）：表/里世界分枝树
- *  - network   关系网（参考）：共现关系树
+ *  - tree      故事树（参考）：章节 / 因果 / 脉络 / 发展历程；世界观与人物关系在「作品基础」
+ *  - workflow  执行：按创作工作流方案逐道工序推进本章
  *
  * 为什么主视觉不再是图：调研 Plottr / Arc Studio / Scrivener / Aeon / Twine 等后确认，
  * 线性叙事的「推进」主视觉几乎都是看板/章节网格（≈45%），力导向图当推进主视觉没有成功案例
@@ -52,7 +52,7 @@ export interface StoryProgressionViewDef {
 
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
   { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
-  { id: "tree", label: "故事树", description: "章节 / 因果 / 脉络 / 发展历程（世界观与关系树在「作品基础」）", icon: FolderTree },
+  { id: "tree", label: "故事树", description: "章节 / 因果 / 脉络 / 发展历程（世界观与人物关系在「作品基础」）", icon: FolderTree },
   // 工作流的归宿：它回答的是「这一章按什么工序推进」，属于推进镜头，不是一个可选分析工具。
   { id: "workflow", label: "执行", description: "按创作工作流方案逐道工序推进本章", icon: Workflow },
 ] as const;

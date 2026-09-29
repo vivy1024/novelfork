@@ -11,7 +11,9 @@ import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry
 import { createStoryJingweiSectionRepository } from "../jingwei/repositories/section-repo.js";
 import { buildNarrativeContext } from "./build-narrative-context.js";
 import { upsertNarrativeFact } from "./facts.js";
-import { upsertNarrativeContextVector } from "./storage.js";
+import { getLatestNarrativeRetrievalLog, upsertNarrativeContextVector } from "./storage.js";
+import { createScene } from "./scene-store.js";
+import { createStylePreset } from "../writing-layers/style-preset.js";
 import type { NarrativeEmbeddingProvider } from "./channels/semantic-channel.js";
 import type { NarrativeContextCard, NarrativeContextVector, NarrativeFact } from "./types.js";
 
@@ -341,6 +343,52 @@ describe("buildNarrativeContext", () => {
       expect(result.diagnostics.channelStats).toEqual(expect.arrayContaining([
         expect.objectContaining({ channel: "recent-summary", status: "ok" }),
       ]));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("按本章场景功能检索已确认范文注入文风段，并把选择过程写进检索日志", async () => {
+    const storage = await createStorage();
+    try {
+      createScene(storage, { bookId: "book-1", chapterNumber: 12, title: "药园夜斗", function: "climax", status: "confirmed", source: "manual" });
+      const preset = createStylePreset();
+      preset.sources = [{
+        id: "ref",
+        title: "参考作品",
+        rules: [],
+        samples: [
+          { id: "calm", sceneType: "description", text: "药园里只剩虫声。", evidence: "第1章", transfer: "transferable", status: "confirmed" },
+          { id: "fight", sceneType: "action", text: "他矮身抢进，一掌拍在对方肋下。", evidence: "第2章", transfer: "source-only", status: "confirmed" },
+        ],
+      }];
+
+      const result = await buildNarrativeContext({
+        storage,
+        bookId: "book-1",
+        purpose: "write_chapter",
+        chapterNumber: 12,
+        sceneSpec,
+        maxTokens: 4000,
+        styleGuideText: "文风克制。",
+        stylePreset: preset,
+        voiceConstraints: "韩立：话少。",
+      });
+
+      expect(result.sections.style).toContain("他矮身抢进，一掌拍在对方肋下。");
+      expect(result.sections.style).toContain("[style:sample:ref/fight]");
+      expect(result.sections.style).toContain("作品专属");
+      expect(result.sections.style).toContain("韩立：话少。");
+      const styleStat = result.diagnostics.channelStats.find((item) => item.channel === "style");
+      const styleSamples = styleStat?.metadata?.styleSamples as Record<string, any>;
+      expect(styleSamples.sceneTypes).toMatchObject({ source: "narrative-scene", types: ["action"] });
+      expect(styleSamples.selected.map((item: { key: string }) => item.key)).toEqual(["ref/fight", "ref/calm"]);
+      expect(styleSamples.budget.channelBudgetTokens).toBeGreaterThan(0);
+      expect(styleSamples.droppedAfterPacking).toEqual([]);
+
+      const log = getLatestNarrativeRetrievalLog(storage, "book-1");
+      const loggedStyle = log?.diagnostics.channelStats.find((item) => item.channel === "style");
+      expect((loggedStyle?.metadata?.styleSamples as Record<string, any>).selected).toHaveLength(2);
     } finally {
       storage.close();
     }

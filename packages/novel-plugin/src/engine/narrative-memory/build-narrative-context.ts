@@ -3,7 +3,8 @@ import { emptyChapterStateProjection, loadChapterStateProjection } from "@vivy10
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import type { SceneSpec } from "../../handlers/scene-spec-handler.js";
-import { packNarrativeContext, type NarrativeBudgetPolicy } from "./budget.js";
+import type { StylePreset } from "../writing-layers/style-preset.js";
+import { packNarrativeContext, resolveNarrativeChannelBudgets, type NarrativeBudgetPolicy } from "./budget.js";
 import { runChannelWithTimeout, type ChannelResult, type NarrativeRetrievalChannel } from "./channels.js";
 import { createFactsChannel } from "./channels/facts-channel.js";
 import { createHardChannel } from "./channels/hard-channel.js";
@@ -12,7 +13,8 @@ import { createRecentSummaryChannel } from "./channels/recent-summary-channel.js
 import { createSceneSpecChannel } from "./channels/scene-spec-channel.js";
 import { createSemanticChannel, type NarrativeEmbeddingProvider } from "./channels/semantic-channel.js";
 import { createStateChannel } from "./channels/state-channel.js";
-import { createStyleChannel, type StyleSnippet } from "./channels/style-channel.js";
+import { createStyleChannel } from "./channels/style-channel.js";
+import { listScenesByChapter, type NarrativeScene } from "./scene-store.js";
 import { createTimelineChannel } from "./channels/timeline-channel.js";
 import { buildKernelCards, type KernelChannelInput } from "./channels/kernel-channel.js";
 import { buildNarrativeRetrievalDiagnostics, formatNarrativeSections, persistNarrativeRetrievalLog } from "./diagnostics.js";
@@ -50,6 +52,15 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   bookRulesText?: string;
   complianceRules?: readonly string[];
   styleGuideText?: string;
+  /** 本书文风预设；文风通道据此按本章场景类型检索已确认范文。 */
+  stylePreset?: StylePreset | null;
+  /**
+   * 角色声线约束（接缝）：调用方传入已成文的约束文本，由文风通道注入并计入预算。
+   * 声线如何推断不归这里管。
+   */
+  voiceConstraints?: string;
+  /** 正文在结算后被改过的章号（调用方由章节索引与结算台账现算）；这些章的摘要会被标注可能过期。 */
+  staleSummaryChapters?: readonly number[];
   bookDesignText?: string;
   channelTimeoutMs?: number;
   retrievalLogId?: string;
@@ -78,6 +89,54 @@ function disabledChannelResult(channel: NarrativeContextChannel): ChannelResult 
     estimatedTokens: 0,
     warnings: [`${channel} channel 已在本书叙事记忆配置中关闭。`],
   };
+}
+
+/** 本章已有的场景记录，是判断范文场景类型的第一来源；读不到只影响范文匹配，不阻断召回。 */
+function loadChapterScenesForStyle(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number | undefined,
+): { scenes: NarrativeScene[]; error?: string } {
+  if (!chapterNumber) return { scenes: [] };
+  try {
+    return { scenes: listScenesByChapter(storage, bookId, chapterNumber) };
+  } catch (error) {
+    return { scenes: [], error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * 范文卡片过了通道自裁，仍可能在全局 maxTokens 打包时被裁掉；
+ * 把这部分回写到文风通道诊断里，让「选了哪些 / 最终注入哪些」在同一处可查。
+ */
+function annotateStyleSampleOutcome(
+  channelResults: readonly ChannelResult[],
+  droppedCards: readonly NarrativeContextCard[],
+  sceneLoadError: string | undefined,
+): ChannelResult[] {
+  return channelResults.map((result) => {
+    if (result.channel !== "style" || !result.diagnostics) return result;
+    const styleSamples = result.diagnostics.styleSamples as Record<string, unknown> | undefined;
+    if (!styleSamples) return result;
+    const droppedSamples = droppedCards
+      .filter((card) => card.channel === "style" && card.tags.includes("style-sample"))
+      .map((card) => ({ cardId: card.id, reason: "全局上下文预算不足，打包时整段裁掉。" }));
+    const warnings = droppedSamples.length > 0
+      ? [...result.warnings, `文风范文：发生了什么：已选的 ${droppedSamples.length} 段范文在全局预算打包时被裁掉（${droppedSamples.map((item) => item.cardId).join("、")}）。为什么要看：这些写法示范最终没有进入写作上下文。建议怎么做：调高本书召回预算，或减少其它通道的注入量。`]
+      : result.warnings;
+    return {
+      ...result,
+      warnings,
+      diagnostics: {
+        ...result.diagnostics,
+        styleSamples: {
+          ...styleSamples,
+          droppedAfterPacking: droppedSamples,
+          ...(sceneLoadError ? { chapterSceneLoadError: sceneLoadError } : {}),
+        },
+      },
+    };
+  });
 }
 
 function isOptionalChannelEnabled(
@@ -197,6 +256,14 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   const currentChapter = parsed.chapterNumber;
   const startedAt = performance.now();
   const timeoutMs = input.channelTimeoutMs ?? 2500;
+  const styleEnabled = isOptionalChannelEnabled(input, "style");
+  const chapterScenes = styleEnabled
+    ? loadChapterScenesForStyle(input.storage, parsed.bookId, currentChapter)
+    : { scenes: [] };
+  const styleBudgetTokens = resolveNarrativeChannelBudgets({
+    maxTokens: parsed.maxTokens,
+    ...(input.budgetPolicy ?? {}),
+  }).style;
 
   const channelResults = await Promise.all([
     runChannel(createSceneSpecChannel(), { bookId: parsed.bookId, sceneSpec }, timeoutMs),
@@ -264,12 +331,19 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         config: input.semanticConfig,
       }, timeoutMs)
       : disabledChannelResult("semantic"),
-    isOptionalChannelEnabled(input, "style")
+    styleEnabled
       ? runChannel(createStyleChannel(), {
         bookId: parsed.bookId,
         styleGuideText: input.styleGuideText,
         complianceRules: input.complianceRules,
         bookDesignText: input.bookDesignText,
+        stylePreset: input.stylePreset,
+        chapterNumber: currentChapter,
+        chapterScenes: chapterScenes.scenes,
+        sceneSpec,
+        planText: parsed.sceneText,
+        budgetTokens: styleBudgetTokens,
+        voiceConstraints: input.voiceConstraints,
       }, timeoutMs)
       : disabledChannelResult("style"),
     // 角色内核通道：config.characterKernel.enabled 且本书 channels["character-kernel"] 未关闭时注入。
@@ -296,6 +370,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         bookId: parsed.bookId,
         currentChapter,
         limit: writeProfileCaps.recentSummaries,
+        ...(input.staleSummaryChapters?.length ? { staleChapters: input.staleSummaryChapters } : {}),
       }, timeoutMs)
       : disabledChannelResult("recent-summary"),
   ]);
@@ -357,7 +432,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   const diagnostics = buildNarrativeRetrievalDiagnostics({
     startedAt,
     endedAt: performance.now(),
-    channelResults,
+    channelResults: annotateStyleSampleOutcome(channelResults, budget.droppedCards, chapterScenes.error),
     budget,
     wave: wave.diagnostics,
     trimReasons,

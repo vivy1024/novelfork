@@ -11,6 +11,8 @@ export interface RecentSummaryChannelInput {
   readonly currentChapter?: number;
   /** 注入最近 N 章的手动摘要，默认 3。 */
   readonly limit?: number;
+  /** 正文在结算后又被改过的章：摘要照样注入，但标明可能过期、以正文为准。 */
+  readonly staleChapters?: readonly number[];
 }
 
 interface RawSummaryRow {
@@ -93,7 +95,10 @@ export function createRecentSummaryChannel(): NarrativeRetrievalChannel<RecentSu
           if (chapter === undefined || !summary) continue;
 
           const rawTitle = typeof fields.title === "string" && fields.title.trim() ? fields.title.trim() : row.title;
-          const { title, content } = buildSummaryTitleAndContent(chapter, rawTitle, summary);
+          const built = buildSummaryTitleAndContent(chapter, rawTitle, summary);
+          const stale = input.staleChapters?.includes(chapter) ?? false;
+          const title = built.title;
+          const content = stale ? `${built.content}（注意：本章正文在结算后被改过，这段摘要可能已过期，与正文冲突时以正文为准。）` : built.content;
           cards.push(NarrativeContextCardSchema.parse({
             id: `recent-summary:${input.bookId}:${row.id}`,
             bookId: input.bookId,
@@ -103,16 +108,18 @@ export function createRecentSummaryChannel(): NarrativeRetrievalChannel<RecentSu
             title,
             content,
             brief: content.slice(0, 180),
-            tags: ["chapter-summary", "recent-summary"],
+            tags: stale ? ["chapter-summary", "recent-summary", "stale"] : ["chapter-summary", "recent-summary"],
             entities: [],
-            priority: input.currentChapter !== undefined
+            priority: Math.max(1, (input.currentChapter !== undefined
               ? Math.max(10, 85 - Math.max(0, input.currentChapter - chapter) * 5)
-              : 70,
+              : 70) - (stale ? 20 : 0)),
             importance: 70,
             accessCount: 0,
             validFromChapter: chapter,
             validUntilChapter: chapter,
-            reason: "近章手动剧情摘要（chapter-summaries 类目），保持前情连续。",
+            reason: stale
+              ? "近章剧情摘要；本章正文在结算后被改过，摘要可能过期，已降低优先级并标注。"
+              : "近章手动剧情摘要（chapter-summaries 类目），保持前情连续。",
             estimatedTokens: Math.max(1, estimateTokens(content)),
           }));
         }

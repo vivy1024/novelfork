@@ -29,9 +29,47 @@ const entries = [
   },
 ];
 
+const XUE = "ent:book-1:c1";
+const FANG = "ent:book-1:c2";
+
+/** 人物关系网的两个接口：实体概况 + 焦点网络（按实体 id）。 */
+function entityGraph(url: string): unknown {
+  if (url.includes("/entity-graph/entities")) {
+    return {
+      ok: true,
+      status: "ok",
+      stats: { entities: 2, relations: 1, participations: 0, latestChapter: 2 },
+      defaultFocusId: XUE,
+      entities: [
+        { id: XUE, entryId: "c1", name: "薛行之", type: "character", relationCount: 1 },
+        { id: FANG, entryId: "c2", name: "方工", type: "character", relationCount: 1 },
+      ],
+    };
+  }
+  return {
+    ok: true,
+    status: "ok",
+    network: {
+      focusId: XUE,
+      hops: 1,
+      chapter: null,
+      nodes: [
+        { id: XUE, entryId: "c1", name: "薛行之", type: "character", hop: 0, via: null, degree: 1 },
+        { id: FANG, entryId: "c2", name: "方工", type: "character", hop: 1, via: null, degree: 1 },
+      ],
+      edges: [{
+        id: `edge:${XUE}->${FANG}`, source: XUE, target: FANG, predicates: ["协作"], relationCount: 1, latestPredicate: "协作",
+        latestPolarity: { score: 1, label: "友好", keyword: "协作" }, sharedEvents: 1, trend: "insufficient",
+      }],
+      omitted: 0,
+    },
+  };
+}
+
 beforeEach(() => {
   fetchJson.mockReset();
   fetchJson.mockImplementation(async (url: string) => {
+    if (url.includes("/entity-graph/")) return entityGraph(url);
     if (url.includes("narrative-memory/graph")) {
       return {
         facts: [],
@@ -62,13 +100,18 @@ describe("CanonicalTreesPanel 四张正图", () => {
     expect(screen.getByTestId("tidy-tree-row-dimension:story")).toBeTruthy();
   });
 
-  it("可切到关系树，枢纽来自共现而不是脏短语", async () => {
+  it("人物关系页签画按实体 id 连边的焦点网络，不再是共现生成树", async () => {
     render(<CanonicalTreesPanel bookId="book-1" />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
+    expect(screen.getByTestId("canonical-tree-tab-relations").textContent).toBe("人物关系");
     fireEvent.click(screen.getByTestId("canonical-tree-tab-relations"));
-    expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("relations");
-    expect(screen.getByText("薛行之")).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId(`relation-node-${XUE}`)).toBeTruthy());
+    expect(screen.queryByTestId("tidy-tree-canvas")).toBeNull();
+    expect(screen.getByTestId(`relation-node-${FANG}`).textContent).toContain("方工");
+    // 共现里的事件短语不会出现在关系网里
     expect(screen.queryByText("自费转诊")).toBeNull();
+    // 关系网不是树：不显示「N 项」与节点搜索
+    expect(screen.queryByLabelText("搜索正图")).toBeNull();
   });
 
   it("章节图按卷纲分叉，占位章不假装已写", async () => {
@@ -99,29 +142,33 @@ describe("CanonicalTreesPanel 四张正图", () => {
   });
 
   it("独立入口可关掉切换条", async () => {
-    render(<CanonicalTreesPanel bookId="book-1" initialKind="relations" showSwitcher={false} />);
+    render(<CanonicalTreesPanel bookId="book-1" initialKind="timeline" showSwitcher={false} />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
     expect(screen.queryByTestId("canonical-tree-tab-worldview")).toBeNull();
-    expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("relations");
+    expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("timeline");
   });
 
-  it("总图挂三棵浅层", async () => {
+  it("总图挂世界观与章节两棵浅层，不再挂共现关系树", async () => {
     render(<CanonicalTreesPanel bookId="book-1" />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
     fireEvent.click(screen.getByTestId("canonical-tree-tab-overview"));
     expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("overview");
-    expect(screen.getByTestId("tidy-tree-row-overview:relations")).toBeTruthy();
+    expect(screen.queryByTestId("tidy-tree-row-overview:relations")).toBeNull();
     expect(screen.getByTestId("tidy-tree-row-overview:worldview")).toBeTruthy();
     expect(screen.getByTestId("tidy-tree-row-overview:chapters")).toBeTruthy();
   });
 
-  it("点条目回调 entryId", async () => {
+  it("关系网里的人物可打开经纬条目或实体资料卡（带条目 id）", async () => {
     const onOpenEntry = vi.fn();
-    render(<CanonicalTreesPanel bookId="book-1" onOpenEntry={onOpenEntry} />);
+    const onOpenEntity = vi.fn();
+    render(<CanonicalTreesPanel bookId="book-1" onOpenEntry={onOpenEntry} onOpenEntity={onOpenEntity} />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
     fireEvent.click(screen.getByTestId("canonical-tree-tab-relations"));
-    fireEvent.click(screen.getByTestId("tidy-tree-node-rel:%E8%96%9B%E8%A1%8C%E4%B9%8B"));
+    fireEvent.click(await waitFor(() => screen.getByTestId(`relation-node-${XUE}`)));
+    fireEvent.click(await waitFor(() => screen.getByTestId("relation-node-open-entry")));
     expect(onOpenEntry).toHaveBeenCalledWith("c1", "薛行之");
+    fireEvent.click(screen.getByTestId("relation-node-open-entity"));
+    expect(onOpenEntity).toHaveBeenCalledWith("薛行之", "c1");
   });
 
   it("缩放按钮生效；视口按作品与视图记住，重新打开回到原处", async () => {
@@ -159,7 +206,7 @@ describe("CanonicalTreesPanel 四张正图", () => {
   });
 
   it("kinds 属性支持按镜头精确筛选展示的子树集合", async () => {
-    // 模拟理镜头：只看世界观与关系树
+    // 模拟理镜头：只看世界观与人物关系
     render(<CanonicalTreesPanel bookId="book-1" kinds={["worldview", "relations"]} />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
 

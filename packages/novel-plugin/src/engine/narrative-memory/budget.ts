@@ -76,6 +76,11 @@ function scaleBudgets(budgets: Readonly<Record<NarrativeContextChannel, number>>
   return scaled;
 }
 
+/** 各通道最终预算（含 maxTokens 缩放）；召回前通道据此自裁，与打包时用的是同一份数字。 */
+export function resolveNarrativeChannelBudgets(policy: NarrativeBudgetPolicy = {}): Record<NarrativeContextChannel, number> {
+  return resolveChannelBudgets(policy);
+}
+
 function resolveChannelBudgets(policy: NarrativeBudgetPolicy): Record<NarrativeContextChannel, number> {
   const source = policy.channelBudgets
     ? Object.fromEntries(Object.keys(DEFAULT_NARRATIVE_CHANNEL_BUDGETS).map((channel) => [channel, policy.channelBudgets?.[channel as NarrativeContextChannel] ?? 0])) as Record<NarrativeContextChannel, number>

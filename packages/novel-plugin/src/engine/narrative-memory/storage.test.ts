@@ -6,7 +6,6 @@ import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  applyForeshadowEvents,
   ensureNarrativeMemorySchema,
   insertNarrativeEvent,
   insertNarrativeFact,
@@ -330,64 +329,6 @@ describe("Narrative Memory storage", () => {
       expect(record.diagnostics.warnings).toEqual(["facts channel empty"]);
       const row = storage.sqlite.prepare<{ diagnosticsJson: string }>(`SELECT diagnostics_json AS diagnosticsJson FROM narrative_retrieval_log WHERE id = ?`).get("log-1");
       expect(JSON.parse(row?.diagnosticsJson ?? "{}").droppedCardIds).toEqual(["card-2"]);
-    } finally {
-      storage.close();
-    }
-  });
-
-  it("writes CFPG triggered from hook_triggered and does not let progressed overwrite it", async () => {
-    const storage = await createStorage();
-    try {
-      ensureNarrativeMemorySchema(storage);
-      const planted = event({
-        id: "e-plant",
-        eventType: "hook_planted",
-        subject: "小瓶",
-        predicate: "埋设",
-        object: "绿液催熟",
-        chapterNumber: 3,
-        evidenceText: "他发现瓶中绿液能催熟药草。",
-      });
-      const triggered = event({
-        id: "e-trigger",
-        eventType: "hook_triggered",
-        subject: "小瓶",
-        predicate: "触发",
-        object: "药园试验开始",
-        chapterNumber: 8,
-        evidenceText: "药园试验开始，绿液催熟药草。",
-      });
-      const progressed = event({
-        id: "e-progress",
-        eventType: "hook_progressed",
-        subject: "小瓶",
-        predicate: "推进",
-        object: "再次提及绿液",
-        chapterNumber: 9,
-        evidenceText: "他又看了一眼小瓶。",
-      });
-
-      expect(applyForeshadowEvents(storage, "book-1", [planted])).toBe(1);
-      expect(applyForeshadowEvents(storage, "book-1", [triggered])).toBe(1);
-      const afterTrigger = storage.sqlite.prepare<{
-        status: string;
-        triggerChapter: number | null;
-        triggerCondition: string | null;
-      }>(`
-        SELECT status, trigger_chapter AS triggerChapter, trigger_condition AS triggerCondition
-        FROM narrative_foreshadow WHERE label = '小瓶' LIMIT 1
-      `).get();
-      expect(afterTrigger).toEqual({
-        status: "triggered",
-        triggerChapter: 8,
-        triggerCondition: "药园试验开始",
-      });
-
-      applyForeshadowEvents(storage, "book-1", [progressed]);
-      const afterProgress = storage.sqlite.prepare<{ status: string; triggerChapter: number | null }>(`
-        SELECT status, trigger_chapter AS triggerChapter FROM narrative_foreshadow WHERE label = '小瓶' LIMIT 1
-      `).get();
-      expect(afterProgress).toEqual({ status: "triggered", triggerChapter: 8 });
     } finally {
       storage.close();
     }

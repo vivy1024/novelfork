@@ -1,7 +1,8 @@
 /**
- * 正图面板：世界观 / 关系树 / 章节 / 发展历程 / 章节脉络 / 总图。
+ * 正图面板：世界观 / 人物关系 / 章节 / 因果 / 发展历程 / 章节脉络 / 总图。
  *
- * 数据只读经纬条目 + memory.graph 共现与事件。不写 Lore，不碰真实库回填。
+ * 树的数据只读经纬条目 + memory.graph 共现与事件。不写 Lore，不碰真实库回填。
+ * 「人物关系」不是树：交给 RelationNetworkPanel 按实体 id 画焦点人物网络（自己取数）。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +19,7 @@ import {
   collectDefaultExpanded,
   indexCanonicalTree,
   type CanonicalForest,
+  type CanonicalForestKind,
   type CanonicalTreeKind,
   type CanonicalTreeNode,
   type CanonicalTrees,
@@ -29,11 +31,14 @@ import { buildCarrierTree } from "../../engine/narrative-taxonomy/scene-trees";
 import type { TreeEntryInput } from "../../engine/narrative-taxonomy/story-tree";
 import type { NarrativeStructurePayload } from "../../engine/narrative-taxonomy/narrative-structure";
 import { CausalCanvas } from "./causal-canvas/CausalCanvas";
+import { RelationNetworkPanel } from "./relation-network/RelationNetworkPanel";
 import { TidyTreeCanvas } from "./TidyTreeCanvas";
 
 export interface CanonicalTreesPanelProps {
   readonly bookId: string;
   readonly onOpenEntry?: (entryId: string, label: string) => void;
+  /** 人物关系网里打开实体资料卡（实体抽屉，按经纬条目 id 读关系）。 */
+  readonly onOpenEntity?: (name: string, entryId?: string) => void;
   readonly onOpenChapter?: (chapterNumber: number) => void;
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
   readonly initialKind?: CanonicalTreeKind;
@@ -143,6 +148,7 @@ function NodeInspector({ node }: { node: CanonicalTreeNode | null }) {
 export function CanonicalTreesPanel({
   bookId,
   onOpenEntry,
+  onOpenEntity,
   onOpenChapter,
   onSendToNarrator,
   initialKind = "worldview",
@@ -317,7 +323,8 @@ export function CanonicalTreesPanel({
     };
   }, [bookId, nonce]);
 
-  const forest: CanonicalForest | null = state.status === "ready" ? state.trees[kind] : null;
+  const networkView = kind === "relations";
+  const forest: CanonicalForest | null = state.status === "ready" && !networkView ? state.trees[kind as CanonicalForestKind] : null;
 
   const expanded = useMemo(() => {
     if (!forest) return new Set<string>();
@@ -357,7 +364,8 @@ export function CanonicalTreesPanel({
 
   const reload = useCallback(() => setNonce((value) => value + 1), []);
 
-  if (state.status === "loading") {
+  // 人物关系网自己取数，不等树数据。
+  if (state.status === "loading" && !networkView) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground" data-testid="canonical-trees-loading">
         <Loader2 className="size-4 animate-spin" /> 正在铺开正图…
@@ -365,7 +373,7 @@ export function CanonicalTreesPanel({
     );
   }
 
-  if (state.status === "error") {
+  if (state.status === "error" && !networkView) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="canonical-trees-error">
         <AlertCircle className="size-6 text-destructive" />
@@ -377,18 +385,20 @@ export function CanonicalTreesPanel({
     );
   }
 
-  if (!forest) return null;
+  if (!forest && !networkView) return null;
 
-  const causalStructure = kind === "causal" && state.structure ? state.structure : null;
-  const emptyPrompt = !causalStructure && forest.emptyReason
+  const causalStructure = kind === "causal" && state.status === "ready" && state.structure ? state.structure : null;
+  // 因果画布与人物关系网都不是树：不显示「N 项」与节点搜索。
+  const treeView = !causalStructure && !networkView;
+  const emptyPrompt = treeView && forest?.emptyReason
     ? `正图「${forest.root.label}」还是空的。${forest.emptyReason}请基于已有正文补齐对应经纬条目，并保持 needs-review 待我确认。`
     : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="canonical-trees-panel">
-      {state.degraded ? (
+      {state.status === "ready" && state.degraded && !networkView ? (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-2xs text-amber-700 dark:text-amber-300" data-testid="canonical-trees-degraded">
-          动态记忆没读到，世界观和章节仍可用；关系树、发展历程、章节脉络会缺事件和共现。
+          动态记忆没读到，世界观和章节仍可用；发展历程、章节脉络会缺事件。
         </p>
       ) : null}
 
@@ -423,7 +433,8 @@ export function CanonicalTreesPanel({
           })}
         </nav>
         ) : null}
-        {causalStructure ? null : <span className="text-2xs text-muted-foreground">{forest.root.count} 项</span>}
+        {treeView && forest ? <span className="text-2xs text-muted-foreground">{forest.root.count} 项</span> : null}
+        {networkView ? null : (
         <div className="ml-auto flex items-center gap-1">
           <div className="relative">
             <Search className="pointer-events-none absolute left-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
@@ -441,13 +452,22 @@ export function CanonicalTreesPanel({
             </Button>
           ) : null}
         </div>
+        )}
       </div>
 
-      {query && !causalStructure && matched.size === 0 ? (
+      {query && treeView && matched.size === 0 ? (
         <p className="px-1 text-2xs text-muted-foreground">没有匹配「{query}」的节点。</p>
       ) : null}
 
-      {causalStructure ? (
+      {networkView ? (
+        <RelationNetworkPanel
+          bookId={bookId}
+          className="flex min-h-0 flex-1 flex-col gap-1.5"
+          {...(onOpenEntry ? { onOpenEntry } : {})}
+          {...(onOpenEntity ? { onOpenEntity } : {})}
+          {...(onOpenChapter ? { onOpenChapter } : {})}
+        />
+      ) : causalStructure ? (
         <CausalCanvas
           bookId={bookId}
           structure={causalStructure}
@@ -455,7 +475,7 @@ export function CanonicalTreesPanel({
           {...(onOpenChapter ? { onOpenChapter } : {})}
           className="flex min-h-0 flex-1 gap-2"
         />
-      ) : (
+      ) : forest ? (
       <div className="flex min-h-0 flex-1 gap-2">
         <div className="min-w-0 flex-1 overflow-hidden rounded-md border">
           <TidyTreeCanvas
@@ -474,9 +494,9 @@ export function CanonicalTreesPanel({
           <NodeInspector node={selected} />
         </div>
       </div>
-      )}
+      ) : null}
 
-      {emptyPrompt && onSendToNarrator ? (
+      {emptyPrompt && onSendToNarrator && forest ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-2 py-1.5">
           <span className="text-2xs text-muted-foreground">{forest.emptyReason}</span>
           <Button
@@ -489,7 +509,7 @@ export function CanonicalTreesPanel({
             让叙述者补
           </Button>
         </div>
-      ) : forest.emptyReason && !causalStructure ? (
+      ) : treeView && forest?.emptyReason ? (
         <p className="px-1 text-2xs text-muted-foreground">{forest.emptyReason}</p>
       ) : null}
     </div>

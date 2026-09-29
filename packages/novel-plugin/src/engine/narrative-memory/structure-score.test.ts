@@ -2,10 +2,12 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { applyForeshadowEvents, ensureNarrativeMemorySchema, insertNarrativeEvent } from "./storage.js";
+import { createBookRepository } from "../jingwei/repositories/book-repo.js";
+import { upsertLedgerEntry } from "../../handlers/jingwei-ledger-store.js";
+import { ensureNarrativeMemorySchema, insertNarrativeEvent } from "./storage.js";
 import {
   listStructureScores,
   scoreAndPersistNarrativeStructure,
@@ -75,6 +77,23 @@ describe("scoreAndPersistNarrativeStructure", () => {
   it("writes chapter scores after events and foreshadows exist", async () => {
     const storage = await createStorage();
     try {
+      runStorageMigrations(storage, { migrationsDir: join(process.cwd(), "../core/src/storage/migrations") });
+      await createBookRepository(storage).create({
+        id: "book-1",
+        name: "测试书",
+        jingweiMode: "dynamic",
+        currentChapter: 8,
+        createdAt: new Date("2026-06-22T00:00:00.000Z"),
+        updatedAt: new Date("2026-06-22T00:00:00.000Z"),
+      });
+      // 伏笔的权威是经纬条目；事件只作推进证据
+      upsertLedgerEntry(storage, {
+        bookId: "book-1",
+        category: "foreshadowing",
+        title: "小瓶",
+        contentMd: "瓶中绿液",
+        fields: { status: "已埋设" },
+      });
       ensureNarrativeMemorySchema(storage);
       insertNarrativeEvent(storage, event({
         id: "e-plant",
@@ -93,26 +112,6 @@ describe("scoreAndPersistNarrativeStructure", () => {
         chapterNumber: 8,
         causedBy: ["e-plant"],
       }));
-      applyForeshadowEvents(storage, "book-1", [
-        event({
-          id: "e-plant",
-          eventType: "hook_planted",
-          subject: "小瓶",
-          predicate: "埋设",
-          object: "绿液",
-          chapterNumber: 3,
-        }),
-        event({
-          id: "e-trigger",
-          eventType: "hook_triggered",
-          subject: "小瓶",
-          predicate: "触发",
-          object: "药园试验开始",
-          chapterNumber: 8,
-          causedBy: ["e-plant"],
-        }),
-      ]);
-
       const written = scoreAndPersistNarrativeStructure(storage, "book-1", 8, 1);
       expect(written).toHaveLength(4);
       const stored = listStructureScores(storage, "book-1", 8);

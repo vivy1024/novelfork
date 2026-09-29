@@ -46,6 +46,7 @@ function stubBackend(options: {
   readonly jingweiSearch?: () => Response;
   readonly mutation?: () => Response;
   readonly history?: () => Response;
+  readonly relations?: () => Response;
 }): FetchCall[] {
   const calls: FetchCall[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -55,6 +56,7 @@ function stubBackend(options: {
       method: (init?.method ?? "GET").toUpperCase(),
       body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {},
     });
+    if (url.includes("/entity-graph/relations")) return options.relations?.() ?? jsonResponse({ ok: true, status: "ok", counterparts: [] });
     if (url.includes("/facts/by-entity")) return options.byEntity();
     if (url.includes("/jingwei/search")) return options.jingweiSearch?.() ?? jsonResponse({ results: [] });
     if (url.includes("/history")) return options.history?.() ?? jsonResponse({ items: [] });
@@ -210,6 +212,56 @@ describe("EntityDetailDrawer", () => {
     fireEvent.click(await screen.findByRole("button", { name: "打开编辑" }));
     expect(onOpenJingweiEntry).toHaveBeenCalledWith("entry-zhangsan");
     expect(screen.getByText(/经纬条目不存在或尚未载入/u)).toBeTruthy();
+  });
+
+  it("关系页按经纬条目 id 读实体索引里的关系，不按名字匹配", async () => {
+    const calls = stubBackend({
+      byEntity: () => jsonResponse({ groups: [] }),
+      relations: () => jsonResponse({
+        ok: true,
+        status: "ok",
+        entity: { id: "ent:book-1:entry-zhangsan", name: "张三" },
+        counterparts: [{
+          entity: { id: "ent:book-1:entry-lisi", name: "李四", entryId: "entry-lisi" },
+          current: [{ relationId: "r1", subjectId: "ent:book-1:entry-zhangsan", objectId: "ent:book-1:entry-lisi", predicate: "结盟", validFrom: 5, validTo: null, active: true, evidence: "从今往后同进退", polarity: { label: "紧密" } }],
+          history: [{ relationId: "r1", subjectId: "ent:book-1:entry-zhangsan", objectId: "ent:book-1:entry-lisi", predicate: "结盟", validFrom: 5, validTo: null, active: true, evidence: "从今往后同进退", polarity: { label: "紧密" } }],
+          trend: { kind: "insufficient", label: "数据不足", explanation: "共 1 条关系记录。" },
+          sharedEvents: 1,
+        }],
+      }),
+    });
+
+    render(<EntityDetailDrawer bookId="book-1" entity="张三" entryId="entry-zhangsan" onClose={() => {}} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "关系" }));
+    const card = await screen.findByTestId("entity-relation-counterpart");
+    expect(card.textContent).toContain("李四");
+    expect(card.textContent).toContain("结盟");
+    expect(card.textContent).toContain("数据不足");
+    const call = calls.find((item) => item.url.includes("/entity-graph/relations"))!;
+    expect(call.url).toContain("entryId=entry-zhangsan");
+    fireEvent.click(card.querySelector("button")!);
+    expect((await screen.findByText(/从今往后同进退/u)).textContent).toContain("依据");
+  });
+
+  it("只有名字时按经纬标题精确找条目；找不到就说明原因", async () => {
+    const calls = stubBackend({
+      byEntity: () => jsonResponse({ groups: [] }),
+      jingweiSearch: () => jsonResponse({ results: [{ id: "entry-zhangsan", title: "张三（主角）" }] }),
+    });
+    const first = render(<EntityDetailDrawer bookId="book-1" entity="张三" onClose={() => {}} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "关系" }));
+    await waitFor(() => expect(calls.some((item) => item.url.includes("/entity-graph/relations?entryId=entry-zhangsan"))).toBe(true));
+    first.unmount();
+
+    const misses = stubBackend({
+      byEntity: () => jsonResponse({ groups: [] }),
+      jingweiSearch: () => jsonResponse({ results: [{ id: "entry-zhangsanfeng", title: "张三丰" }] }),
+    });
+    render(<EntityDetailDrawer bookId="book-1" entity="张三" onClose={() => {}} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "关系" }));
+    const explanation = await screen.findByTestId("entity-relations-explanation");
+    expect(explanation.textContent).toContain("经纬里没有标题或别名正好是「张三」的条目");
+    expect(misses.some((item) => item.url.includes("/entity-graph/relations"))).toBe(false);
   });
 
   it("closes via the sheet onOpenChange when false", async () => {

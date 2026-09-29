@@ -107,6 +107,25 @@ describe("recent-summary channel", () => {
     }
   });
 
+  it("正文结算后被改过的章：摘要仍注入，但标注可能过期并降低优先级", async () => {
+    const storage = await createStorage();
+    try {
+      await insertSummaryEntry(storage, "sum-25", { chapterNumber: 25, title: "夺丹", summary: "韩立夺得筑基丹。" });
+      await insertSummaryEntry(storage, "sum-24", { chapterNumber: 24, title: "围杀", summary: "墨大夫设局围杀。" });
+
+      const result = await runChannelWithTimeout(createRecentSummaryChannel(), { storage, bookId: "book-1", currentChapter: 26, staleChapters: [25] });
+
+      const stale = result.cards.find((card) => card.validUntilChapter === 25)!;
+      const fresh = result.cards.find((card) => card.validUntilChapter === 24)!;
+      expect(stale.content).toContain("可能已过期");
+      expect(stale.tags).toContain("stale");
+      expect(fresh.content).toBe("第24章《围杀》：墨大夫设局围杀。");
+      expect(stale.priority).toBeLessThan(fresh.priority);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("tolerates string chapter numbers and skips entries without summary", async () => {
     const storage = await createStorage();
     try {

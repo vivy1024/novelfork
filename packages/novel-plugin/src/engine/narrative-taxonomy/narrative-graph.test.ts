@@ -33,22 +33,20 @@ describe("buildNarrativeGraph causal chain", () => {
 });
 
 describe("buildNarrativeGraph foreshadow CFPG", () => {
-  it("keeps triggered as its own phase with trigger chapter and condition", () => {
+  it("derives triggered from applied hook events linked to the jingwei entry", () => {
     const graph = buildNarrativeGraph({
-      foreshadowRecords: [
-        {
-          id: "fs-1",
-          label: "小瓶",
-          status: "triggered",
-          setupChapter: 3,
-          triggerChapter: 8,
-          triggerCondition: "药园试验开始",
-        },
+      entries: [
+        { id: "entry-bottle", category: "foreshadowing", title: "小瓶", fields: { status: "已埋设", plantedChapter: 3 } },
+      ],
+      events: [
+        { id: "e1", chapterNumber: 3, eventType: "hook_planted", subject: "小瓶", object: "绿液", subjectEntryId: "entry-bottle", status: "applied" },
+        { id: "e2", chapterNumber: 8, eventType: "hook_triggered", subject: "小瓶", object: "药园试验开始", subjectEntryId: "entry-bottle", status: "applied" },
       ],
       currentChapter: 12,
     });
     expect(graph.foreshadows).toEqual([
       expect.objectContaining({
+        entryId: "entry-bottle",
         label: "小瓶",
         phase: "triggered",
         setupChapter: 3,
@@ -57,5 +55,15 @@ describe("buildNarrativeGraph foreshadow CFPG", () => {
         dangling: false,
       }),
     ]);
+  });
+
+  it("does not turn hook events without a jingwei entry into foreshadows", () => {
+    const graph = buildNarrativeGraph({
+      events: [
+        { id: "e1", chapterNumber: 3, eventType: "hook_planted", subject: "小瓶", object: "绿液", status: "applied" },
+      ],
+      currentChapter: 12,
+    });
+    expect(graph.foreshadows).toEqual([]);
   });
 });

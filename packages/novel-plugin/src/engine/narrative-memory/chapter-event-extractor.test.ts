@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractNarrativeEventsFromChapter, parseLLMChapterExtraction } from "./chapter-event-extractor.js";
+import { createRuntimeChapterEventExtractor, extractNarrativeEventsFromChapter, parseLLMChapterExtraction } from "./chapter-event-extractor.js";
 
 const baseInput = {
   bookId: "book-1",
@@ -51,6 +51,35 @@ describe("chapter event extractor", () => {
     expect(result.mentionedEntities.map((item) => item.name)).toEqual(
       expect.arrayContaining(["韩立", "药园", "小瓶"]),
     );
+  });
+
+  it("关系事件的对方写成描述句时保留草案并告警，写成名字时不告警", async () => {
+    const content = "薛行之出手救下了野修老四。老四其实就是陈默。";
+    const result = await extractNarrativeEventsFromChapter({
+      ...baseInput,
+      content,
+      llmExtractor: async () => [
+        { eventType: "relationship_changed", subject: "薛行之", predicate: "救下", object: "陈默", evidenceText: "薛行之出手救下了野修老四", confidence: 0.8, source: "settle" },
+        { eventType: "relationship_changed", subject: "薛行之", predicate: "救下", object: "野修『老四』（陈默）：被围攻时出手", evidenceText: "薛行之出手救下了野修老四", confidence: 0.8, source: "settle" },
+      ],
+    });
+
+    expect(result.drafts).toHaveLength(2);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("不是名字");
+    expect(result.warnings[0]).toContain("薛行之 / 救下");
+  });
+
+  it("抽取规则要求关系事件的双方都写名字", async () => {
+    let systemPrompt = "";
+    const extractor = createRuntimeChapterEventExtractor(async ({ messages }) => {
+      systemPrompt = messages.find((message) => message.role === "system")?.content ?? "";
+      return { text: JSON.stringify({ events: [], mentionedEntities: [] }) };
+    });
+    await extractor(baseInput);
+
+    expect(systemPrompt).toContain("relationship_changed）：subject 与 object 都只写一方的名字");
+    expect(systemPrompt).not.toMatch(/状态类变化（[^）]*关系/u);
   });
 
   it("keeps causedBy refs from the LLM payload", async () => {

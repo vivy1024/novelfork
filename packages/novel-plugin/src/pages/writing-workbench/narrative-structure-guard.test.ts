@@ -59,7 +59,8 @@ describe("writing-workbench 叙事结构取数守卫", () => {
       const fileName = file.split(/[\\/]/).pop()!;
       const content = readFileSync(file, "utf8");
 
-      const hasDirectJingweiEntries = content.includes("jingwei/entries") && !content.includes("narrative-structure");
+      // 只拦「拉全书条目列表」；单个条目的子资源（如 /jingwei/entries/:id/voice）是定点读写，不属于碎片化取数。
+      const hasDirectJingweiEntries = /jingwei\/entries(?!\/)/.test(content) && !content.includes("narrative-structure");
       const hasDirectGraph = content.includes("narrative-memory/graph") && !content.includes("narrative-structure");
 
       if (hasDirectJingweiEntries || hasDirectGraph) {

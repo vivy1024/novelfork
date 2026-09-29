@@ -4,7 +4,6 @@ import {
   buildCanonicalTrees,
   buildChapterForkTree,
   buildChronicleTree,
-  buildRelationTree,
   buildTimelineTree,
   buildWorldviewTree,
   collectDefaultExpanded,
@@ -48,32 +47,6 @@ const volumes: VolumeTreeInput[] = [
     mainlineBeats: [{ id: "b1", title: "接手 B-17", status: "done" }],
   },
 ];
-
-describe("buildRelationTree 关系树", () => {
-  it("按共现枢纽展开，每个实体只出现一次", () => {
-    const forest = buildRelationTree({ edges: cooccurrence, entries: settingEntries });
-    expect(forest.root.children.map((node) => node.label)).toEqual(["薛行之"]);
-    expect(forest.root.children[0]!.children.map((node) => node.label).sort()).toEqual(["方工", "灵科院西京分院"]);
-    const ids = new Set<string>();
-    const walk = (node: CanonicalTreeNode) => {
-      expect(ids.has(node.id)).toBe(false);
-      ids.add(node.id);
-      for (const child of node.children) walk(child);
-    };
-    walk(forest.root);
-  });
-
-  it("未命中经纬的事件短语不进关系树", () => {
-    const forest = buildRelationTree({ edges: cooccurrence, entries: settingEntries });
-    expect(JSON.stringify(forest.root)).not.toContain("自费转诊");
-  });
-
-  it("没有共现边时给可执行空态，不画假树", () => {
-    const forest = buildRelationTree({ entries: settingEntries });
-    expect(forest.root.children).toEqual([]);
-    expect(forest.emptyReason).toContain("共现");
-  });
-});
 
 describe("buildWorldviewTree 世界观", () => {
   it("复用 NarraBench 层级，伏笔进话语维度", () => {
@@ -164,15 +137,16 @@ describe("buildChronicleTree 章节脉络", () => {
   });
 });
 
-describe("buildCanonicalTrees 四张正图", () => {
-  it("总图挂三棵浅层，不把全量叶子一次铺开", () => {
+describe("buildCanonicalTrees 正图", () => {
+  it("总图挂世界观与章节两棵浅层，不把全量叶子一次铺开；关系网不再建成共现树", () => {
     const trees = buildCanonicalTrees({
       entries: settingEntries,
       cooccurrence,
       volumes,
       events,
     });
-    expect(trees.overview.root.children.map((node) => node.label)).toEqual(["关系树", "世界观", "章节"]);
+    expect(trees.overview.root.children.map((node) => node.label)).toEqual(["世界观", "章节"]);
+    expect("relations" in trees).toBe(false);
     const worldviewBranch = trees.overview.root.children.find((node) => node.label === "世界观")!;
     const hasEntryLeaf = worldviewBranch.children.some((node) =>
       node.children.some((child) => child.children.some((leaf) => leaf.kind === "entry")),
@@ -180,12 +154,14 @@ describe("buildCanonicalTrees 四张正图", () => {
     expect(hasEntryLeaf).toBe(false);
   });
 
-  it("tidy-tree 能吃展开后的关系树，同深度对齐", () => {
+  it("tidy-tree 能吃展开后的章节树，同深度对齐", () => {
     const trees = buildCanonicalTrees({ entries: settingEntries, cooccurrence, volumes });
-    const expanded = collectDefaultExpanded(trees.relations.root);
-    const layout = layoutTidyTree(toLayoutInput(trees.relations.root, expanded));
-    const hub = layout.points.get("rel:%E8%96%9B%E8%A1%8C%E4%B9%8B")!;
-    const childIds = trees.relations.root.children[0]!.children.map((node) => node.id);
+    const expanded = collectDefaultExpanded(trees.chapters.root);
+    const layout = layoutTidyTree(toLayoutInput(trees.chapters.root, expanded));
+    const volume = trees.chapters.root.children[0]!;
+    const hub = layout.points.get(volume.id)!;
+    const childIds = volume.children.map((node) => node.id);
+    expect(childIds.length).toBeGreaterThan(0);
     for (const id of childIds) {
       expect(layout.points.get(id)!.depthCoord).toBeGreaterThan(hub.depthCoord);
       expect(layout.points.get(id)!.depth).toBe(hub.depth + 1);

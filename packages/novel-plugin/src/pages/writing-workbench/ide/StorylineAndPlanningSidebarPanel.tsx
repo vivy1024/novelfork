@@ -17,6 +17,7 @@ import { Bookmark, BookOpen, ChevronDown, ChevronRight, FilePlus2, FileText, Lis
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateApiPaths, useApi } from "@/hooks/use-api";
+import { StaleSettlementList, freshnessPath, useStaleSettlementCount } from "./StaleSettlementList";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { computeForeshadowingDebt, type ForeshadowingDebt } from "../../../engine/jingwei/foreshadowing-debt";
 import { useForeshadowThresholds } from "../use-foreshadow-thresholds";
@@ -247,7 +248,7 @@ function countPlannedOutlineNodes(
 
 /** NEXT 建议的唯一动作形态。 */
 interface NextAction {
-  readonly key: "outline-empty" | "promote-outline" | "review-pending" | "foreshadow-due" | "all-set";
+  readonly key: "outline-empty" | "promote-outline" | "review-pending" | "resettle-stale" | "foreshadow-due" | "all-set";
   readonly label: string;
   /** 点击后切到哪个 tab；undefined 表示纯叙述者 seed 动作或只读状态。 */
   readonly tab?: StorylineSubTab;
@@ -267,17 +268,20 @@ const OUTLINE_SEED_MESSAGE =
 /**
  * NEXT 五级规则：按序取第一个命中，永远只给一条建议。
  * 1 缺纲 → 叙述者 seed；2 有规划未落稿 → 提拔；3 有待审 → 章后事实；
- * 4 有到期伏笔 → 账本；5 默认就绪态（只读文案，写作入口在写作视图避免双入口）。
+ * 3.5 有记忆过期的章 → 章后事实重新结算；4 有到期伏笔 → 账本；5 默认就绪态（只读文案，写作入口在写作视图避免双入口）。
  */
 export function resolveNextAction(input: {
   readonly hasOutline: boolean;
   readonly plannedCount: number;
   readonly pendingCount: number;
   readonly dueNowCount: number;
+  /** 正文结算后又被改过的章数（记忆过期）。 */
+  readonly staleCount?: number;
 }): NextAction {
   if (!input.hasOutline) return { key: "outline-empty", label: "让叙述者生成第一卷卷纲" };
   if (input.plannedCount > 0) return { key: "promote-outline", tab: "outline", label: `提拔规划中的大纲落稿（${input.plannedCount} 条）` };
   if (input.pendingCount > 0) return { key: "review-pending", tab: "memory", label: `处理章后待审事件（${input.pendingCount} 条）` };
+  if ((input.staleCount ?? 0) > 0) return { key: "resettle-stale", tab: "memory", label: `重新结算记忆过期的章节（${input.staleCount} 章）` };
   if (input.dueNowCount > 0) return { key: "foreshadow-due", tab: "foreshadowing", label: `本章有 ${input.dueNowCount} 条伏笔到期` };
   return { key: "all-set", label: "一切就绪 · 继续写下一章" };
 }
@@ -375,6 +379,7 @@ export function StorylineAndPlanningSidebarPanel({
   // ── 驾驶舱数据 ──
   const currentChapter = useMemo(() => maxChapterFromTree(chapterTreeNodes), [chapterTreeNodes]);
   const pendingCount = usePendingEventCount(bookId);
+  const staleCount = useStaleSettlementCount(bookId);
   // 驾驶舱需要伏笔统计，账本也需要同一份数据：hook 在顶层调用一次共享。
   const foreshadow = useStorylineForeshadowing(bookId, currentChapter);
   useWritingProgressRefresh(bookId, () => {
@@ -382,6 +387,7 @@ export function StorylineAndPlanningSidebarPanel({
       `/api/books/${encodeURIComponent(bookId)}/jingwei/entries`,
       `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
       `/api/books/${encodeURIComponent(bookId)}/state`,
+      freshnessPath(bookId),
     ]);
   });
 
@@ -394,9 +400,10 @@ export function StorylineAndPlanningSidebarPanel({
       hasOutline: outlineTreeNodes.length > 0,
       plannedCount,
       pendingCount,
+      staleCount,
       dueNowCount: foreshadow.stats.dueNowCount,
     }),
-    [outlineTreeNodes.length, plannedCount, pendingCount, foreshadow.stats.dueNowCount],
+    [outlineTreeNodes.length, plannedCount, pendingCount, staleCount, foreshadow.stats.dueNowCount],
   );
 
   /** NEXT 卡点击的唯一入口：tab 类动作切 tab；叙述者 seed 动作一键发送。 */
@@ -513,6 +520,7 @@ export function StorylineAndPlanningSidebarPanel({
 
         {activeSubTab === "memory" && (
           <div data-testid="storyline-memory-section">
+            <StaleSettlementList bookId={bookId} />
             <NarrativeMemorySummary
               bookId={bookId}
               onOpenCenter={() => onOpen(createMemoryCenterNode(bookId))}
@@ -525,7 +533,7 @@ export function StorylineAndPlanningSidebarPanel({
             <MapIcon className="size-8 text-primary/60" />
             <p className="text-xs font-medium text-foreground">故事画布已在中央打开</p>
             <p className="text-2xs leading-relaxed">
-              正图 / 推进 / 发展历程 / 章节脉络 / 关系网共用同一个画布 Tab，全部是树，在画布顶部切换。
+              推进 / 故事树 / 执行共用同一个画布 Tab，在画布顶部切换；故事树里再分章节、因果、脉络与发展历程。
             </p>
             <Button size="xs" variant="outline" className="h-7 justify-start text-2xs" onClick={() => openProgressionCanvas("tree")}>
               🌳 打开故事树

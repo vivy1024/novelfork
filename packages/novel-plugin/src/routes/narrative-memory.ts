@@ -23,6 +23,10 @@ import { readChapterSettlementRecord, chapterContentFingerprint } from "../engin
 import { readLatestSettlementArtifact } from "../engine/narrative-memory/storage.js";
 import { readLatestAuditIssues, markChapterAuditStale } from "../engine/tools/health/audit-log-persist.js";
 import { backfillNarrativeEventEntityIds } from "../engine/narrative-memory/entity-id-backfill.js";
+import { readBookSettlementFreshness } from "../engine/narrative-memory/settlement-freshness.js";
+import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
+import type { HostTextGenerationAvailability } from "./context.js";
+import { rebuildNarrativeEntityIndex } from "../engine/narrative-entity/entity-index.js";
 import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embedding-provider.js";
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
@@ -56,6 +60,7 @@ import {
 import { getLatestNarrativeRetrievalLog } from "../engine/narrative-memory/storage.js";
 import {
   NarrativeEventStatusSchema,
+  NarrativeEventTypeSchema,
   NarrativeFactLayerSchema,
   type NarrativeEvent,
   type NarrativeEventType,
@@ -66,6 +71,8 @@ export interface NarrativeMemoryRouterOptions {
   readonly storage?: StorageDatabase;
   /** Resolve trusted absolute book root for config IO. */
   readonly resolveBookRoot?: (bookId: string) => string;
+  /** 宿主提供的服务端文本生成（按当前登录用户选模型、记用量）；网页端重新结算用。 */
+  readonly resolveTextGeneration?: (c: Context) => Promise<HostTextGenerationAvailability>;
 }
 
 type HandlerResult = {
@@ -273,6 +280,64 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
   });
 
   // T4b 改章 stale 比对：前端传当前正文，后端用同一指纹算法对比已结算台账。
+  // 全书结算新鲜度：任何入口改过正文、指纹与结算时不一致的章都列为过期（现算，不落盘）。
+  app.get(`${base}/settlement-freshness`, async (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const freshness = await readBookSettlementFreshness(storage(), bookId, bookRootFor(bookId));
+      return c.json({
+        ok: true,
+        ...freshness,
+        ...(freshness.staleChapters.length > 0 ? {
+          explanation: {
+            whatHappened: `第 ${freshness.staleChapters.join("、")} 章的正文在结算后又被改过。`,
+            whyItMatters: "这些章的事实、事件和章摘要还停在旧正文上，后面写作时召回的记忆可能与正文对不上。",
+            suggestedAction: "逐章点「重新结算」，或让叙述者对这些章调用 memory.settle_chapter。",
+          },
+        } : {}),
+      });
+    } catch (error) {
+      return c.json({ error: "settlement-freshness-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // 网页端重新结算一章：经宿主服务端文本生成调模型；没有可用模型时不用规则兜底冒充结算。
+  app.post(`${base}/chapters/:chapterNumber/resettle`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const chapterNumber = Number(c.req.param("chapterNumber"));
+    if (!Number.isInteger(chapterNumber) || chapterNumber <= 0) return invalidQuery(c, "章号必须是正整数。");
+    const generation = options.resolveTextGeneration
+      ? await options.resolveTextGeneration(c).catch((): HostTextGenerationAvailability => ({
+        available: false, code: "MODEL_PROVIDER_UNAVAILABLE", message: "读取模型配置失败。", suggestedAction: "稍后重试，或改用叙述者对话结算本章。",
+      }))
+      : { available: false as const, code: "MODEL_NOT_CONFIGURED", message: "当前宿主没有提供服务端模型能力。", suggestedAction: "在叙述者对话里让它结算本章。" };
+    if (!generation.available) {
+      return c.json({
+        ok: false,
+        code: generation.code,
+        explanation: {
+          whatHappened: `第 ${chapterNumber} 章没有重新结算：${generation.message}`,
+          whyItMatters: "章后结算要靠模型从正文里抽取事实和事件，只用规则会漏掉大部分变化。",
+          suggestedAction: generation.suggestedAction,
+        },
+      }, 422);
+    }
+    try {
+      const { handleMemorySettleChapter } = await import("../handlers/memory-settle-chapter.js");
+      const result = await handleMemorySettleChapter({
+        bookId,
+        bookRoot: bookRootFor(bookId),
+        chapterNumber,
+        storage: storage(),
+        llmExtractor: createRuntimeChapterEventExtractor(generation.generateText),
+        kernelGenerateText: generation.generateText,
+      });
+      return c.json(result, result.ok ? 200 : 422);
+    } catch (error) {
+      return c.json({ error: "resettle-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
   app.post(`${base}/settlement-status`, async (c) => {
     const bookId = c.req.param("bookId");
     try {
@@ -345,6 +410,36 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       });
     } catch (error) {
       return c.json({ error: "backfill-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // 实体索引整本重建：结算后会自动跑；作者改了经纬名字 / 别名后可手动触发。dryRun=1 只统计不写入。
+  app.post(`${base}/entity-index/rebuild`, (c) => {
+    const bookId = c.req.param("bookId");
+    const dryRun = c.req.query("dryRun") === "1";
+    try {
+      const result = rebuildNarrativeEntityIndex(storage(), bookId, { dryRun });
+      if (!result.ok) {
+        return c.json({
+          ok: false,
+          code: "ENTITY_INDEX_SCHEMA_MISSING",
+          explanation: {
+            whatHappened: result.explanation,
+            whyItMatters: "没有实体索引时，关系图与状态回放只能按名字猜，同一角色的不同称呼不会被归到一起。",
+            suggestedAction: "重启 NovelFork 让数据库迁移执行完成后再试。",
+          },
+        }, 409);
+      }
+      const linkRate = result.totalMentions > 0 ? Math.round((result.resolvedMentions / result.totalMentions) * 100) : null;
+      return c.json({
+        ...result,
+        linkRate,
+        summary: `实体 ${result.entities} 个，事件参与者 ${result.participants} 条，关系边 ${result.relations} 条，状态流水 ${result.stateChanges} 条；`
+          + (linkRate === null ? "没有可归并的称呼。" : `称呼归并率 ${linkRate}%（${result.resolvedMentions}/${result.totalMentions}）。`)
+          + (result.unresolvedSamples.length > 0 ? ` 未归并的称呼如：${result.unresolvedSamples.slice(0, 5).join("、")}——若是重要角色或地点，请先在经纬里建条目。` : ""),
+      });
+    } catch (error) {
+      return c.json({ error: "entity-index-rebuild-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 
@@ -469,6 +564,20 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
 
   app.post(`${base}/events`, async (c) => {
     const body = await readJson(c);
+    if (body.eventType !== undefined) {
+      const parsedType = NarrativeEventTypeSchema.safeParse(body.eventType);
+      if (!parsedType.success) {
+        return c.json({
+          error: "invalid-event-type",
+          code: "NARRATIVE_EVENT_TYPE_INVALID",
+          explanation: {
+            whatHappened: `事件类型「${String(body.eventType)}」不在可接受的取值里。`,
+            whyItMatters: "未知类型的事件无法参与伏笔、关系与状态的推导，写进去只会成为看不懂的记录。",
+            suggestedAction: `改用以下之一：${NarrativeEventTypeSchema.options.join("、")}。`,
+          },
+        }, 400);
+      }
+    }
     const result = await handleMemoryEvents({
       bookId: c.req.param("bookId"),
       action: "create",

@@ -85,14 +85,53 @@ describe("hooks channel", () => {
 
       const ids = result.cards.map((card) => card.sourceId);
       const text = result.cards.map((card) => `${card.title}\n${card.content}`).join("\n");
-      expect(ids[0]).toBe("stale-hook");
+      // 经纬伏笔条目是权威，排最前；Runtime 伏笔按相关度排在其后，长期未推进的最靠前
+      expect(ids[0]).toBe("jingwei-hook");
+      expect(ids[1]).toBe("stale-hook");
       expect(ids).toContain("active-hook");
       expect(ids).toContain("pending-hook:0");
       expect(ids).toContain("jingwei-hook");
       expect(text).not.toContain("future-hook");
       expect(text).not.toContain("未来伏笔");
       expect(ids.indexOf("resolved-hook")).toBeGreaterThan(ids.indexOf("active-hook"));
-      expect(result.cards[0]?.reason).toContain("长期未推进");
+      expect(result.cards[1]?.reason).toContain("长期未推进");
+      expect(result.cards[1]?.reason).toContain("只作证据");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("名额不够时先保经纬伏笔条目，同名的 Runtime 伏笔不重复注入", async () => {
+    const storage = await createStorage();
+    try {
+      const sections = createStoryJingweiSectionRepository(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      await sections.create({ id: "sec-hooks", bookId: "book-1", key: "foreshadowing", name: "伏笔", description: "", icon: null, order: 1, enabled: true, showInSidebar: true, participatesInAi: true, defaultVisibility: "tracked", fieldsJson: [], builtinKind: "foreshadowing", sourceTemplate: null, createdAt: now, updatedAt: now });
+      await entries.create({ id: "jingwei-bottle", bookId: "book-1", sectionId: "sec-hooks", title: "小瓶异动", contentMd: "小瓶异动尚未解释。", summaryMd: null, tags: [], aliases: [], customFields: { category: "foreshadowing" }, relatedChapterNumbers: [3], relatedEntryIds: [], visibilityRule: { type: "tracked" }, participatesInAi: true, tokenBudget: null, priorityTier: "relevant", importance: 10, summaryL0: null, createdAt: now, updatedAt: now });
+
+      const merged = await createHooksChannel().run({
+        storage,
+        bookId: "book-1",
+        currentChapter: 20,
+        runtimeSnapshot: snapshot(),
+        entities: ["小瓶"],
+      });
+      const mergedIds = merged.cards.map((card) => card.sourceId);
+      expect(mergedIds[0]).toBe("jingwei-bottle");
+      // stale-hook 的预期兑现就是「小瓶异动」，与经纬条目是同一条伏笔
+      expect(mergedIds).not.toContain("stale-hook");
+      expect(mergedIds).toContain("active-hook");
+
+      const limited = await createHooksChannel().run({
+        storage,
+        bookId: "book-1",
+        currentChapter: 20,
+        runtimeSnapshot: snapshot(),
+        pendingHooks: ["墨大夫对小瓶产生新怀疑"],
+        entities: ["小瓶"],
+        limit: 1,
+      });
+      expect(limited.cards.map((card) => card.sourceId)).toEqual(["jingwei-bottle"]);
     } finally {
       storage.close();
     }

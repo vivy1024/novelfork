@@ -35,6 +35,21 @@ vi.mock("@/hooks/use-api", () => ({
         refetch: vi.fn(async () => undefined),
       };
     }
+    if (path?.endsWith("/settlement-freshness")) {
+      return {
+        data: {
+          chapters: [
+            { chapterNumber: 2, title: "入城", status: "fresh" },
+            { chapterNumber: 3, title: "雨夜", status: "stale", settledAt: "2026-09-28T00:00:00.000Z" },
+          ],
+          staleChapters: [3],
+          explanation: { whatHappened: "第 3 章的正文在结算后又被改过。", whyItMatters: "这些章的记忆停在旧正文上。", suggestedAction: "重新结算。" },
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn(async () => undefined),
+      };
+    }
     if (path?.endsWith("/state")) {
       return {
         data: {
@@ -184,6 +199,20 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     );
   });
 
+  it("章后事实 Tab 列出记忆过期的章节，点重新结算调用对应接口", async () => {
+    const { fetchJson } = await import("@/hooks/use-api");
+    vi.mocked(fetchJson).mockResolvedValueOnce({ summary: "第 3 章已重新结算。" });
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "章后事实" }));
+
+    const region = screen.getByRole("region", { name: "记忆过期的章节" });
+    expect(region.textContent).toContain("第 3 章 · 雨夜");
+    expect(region.textContent).not.toContain("入城");
+    fireEvent.click(screen.getByRole("button", { name: "重新结算第 3 章" }));
+    expect(await screen.findByText("第 3 章已重新结算。")).toBeTruthy();
+    expect(fetchJson).toHaveBeenCalledWith("/api/books/book-1/narrative-memory/chapters/3/resettle", { method: "POST" });
+  });
+
   it("故事画布 Tab 点击即在中央打开画布，并提供故事树/推进/脉络快捷入口；经典图谱入口已移除", () => {
     const { onOpen } = renderPanel();
 
@@ -262,6 +291,9 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(resolveNextAction({ hasOutline: false, plannedCount: 3, pendingCount: 2, dueNowCount: 1 }).key).toBe("outline-empty");
     expect(resolveNextAction({ hasOutline: true, plannedCount: 2, pendingCount: 9, dueNowCount: 4 }).key).toBe("promote-outline");
     expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 3, dueNowCount: 4 }).key).toBe("review-pending");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, staleCount: 2, dueNowCount: 4 }))
+      .toMatchObject({ key: "resettle-stale", tab: "memory" });
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 1, staleCount: 2, dueNowCount: 0 }).key).toBe("review-pending");
     expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, dueNowCount: 2 }).key).toBe("foreshadow-due");
     expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, dueNowCount: 0 }).key).toBe("all-set");
   });

@@ -20,6 +20,8 @@
 import { inferHookCausalLinks, parseCausedBy } from "../narrative-memory/causal-resolve.js";
 import { resolveEntity, stripParentheticalSuffix, type EntityDictionary } from "../narrative-memory/entity-dictionary.js";
 import { looksLikeEntity, looksLikeEventPhrase, splitCompositeName } from "./entity-name-heuristics.js";
+import { DEBT_OVERDUE_CHAPTERS } from "./foreshadow-debts.js";
+import { deriveForeshadowStates, type ForeshadowPhase } from "./foreshadow-states.js";
 
 export { looksLikeEntity, looksLikeEventPhrase, splitCompositeName } from "./entity-name-heuristics.js";
 
@@ -66,22 +68,10 @@ export interface GraphEntryInput {
   readonly status?: string;
 }
 
-export interface GraphForeshadowRecord {
-  readonly id?: string;
-  readonly entryId?: string;
-  readonly label?: string;
-  readonly status?: string;
-  readonly setupChapter?: number;
-  readonly triggerChapter?: number;
-  readonly triggerCondition?: string;
-  readonly payoffChapter?: number;
-}
-
 export interface BuildNarrativeGraphInput {
   readonly entries?: readonly GraphEntryInput[];
   readonly facts?: readonly GraphFactInput[];
   readonly events?: readonly GraphEventInput[];
-  readonly foreshadowRecords?: readonly GraphForeshadowRecord[];
   readonly currentChapter?: number;
   /**
    * 实体字典。命中时用 canonical 名合并「薛行之（主角·权威版）」与「薛行之」。
@@ -135,7 +125,7 @@ export interface CausalNode {
   readonly causeSource: "explicit" | "heuristic" | "none";
 }
 
-export type ForeshadowPhase = "planted" | "reinforced" | "triggered" | "paid_off" | "abandoned" | "unknown";
+export type { ForeshadowPhase };
 
 export interface ForeshadowNode {
   readonly id: string;
@@ -383,8 +373,8 @@ export function buildNarrativeGraph(input: BuildNarrativeGraphInput): NarrativeG
   // ③ 因果链：显式 causedBy / 伏笔三态优先，同参与者最近事件只作回落
   const causal = buildCausalChain(events, touchEntity);
 
-  // ④ 伏笔网络：经纬条目 ∪ narrative_foreshadow 三态机
-  const foreshadows = buildForeshadowNetwork(entries, currentChapter, input.foreshadowRecords ?? []);
+  // ④ 伏笔网络：经纬伏笔条目为唯一权威，关联到条目的已应用 hook 事件推动阶段（见 foreshadow-states）
+  const foreshadows = buildForeshadowNetwork(entries, events, currentChapter, input.dictionary);
 
   // ⑤ 知识边界：事件参与者从该事件起知道这件事
   const knowledge = buildKnowledgeEdges(events, entityByName);
@@ -500,99 +490,43 @@ function buildCausalChain(
 
 // ─── 伏笔网络 ─────────────────────────────────────────────────────────────
 
-const DEBT_DANGLING_CHAPTERS = 12;
-
-function resolvePhase(fields: Record<string, unknown>): ForeshadowPhase {
-  const raw = clean(fields.status).toLowerCase();
-  if (raw === "paid_off" || raw === "paid-off" || raw === "resolved") return "paid_off";
-  if (raw === "triggered" || raw === "paying_off") return "triggered";
-  if (raw === "reinforced" || raw === "progressing" || raw === "partial") return "reinforced";
-  if (raw === "abandoned") return "abandoned";
-  if (raw === "planted" || raw === "open" || raw === "pending") return "planted";
-  // 脏值/缺失 → 用章号推断，推不出记 unknown（不猜）
-  if (toChapter(fields.payoffChapter) !== undefined) return "paid_off";
-  if (toChapter(fields.triggerChapter) !== undefined) return "triggered";
-  if (toChapter(fields.plantedChapter) !== undefined) return "planted";
-  return "unknown";
-}
-
-function mapRecordStatus(status: string | undefined): ForeshadowPhase {
-  const raw = clean(status).toLowerCase();
-  if (raw === "paid_off" || raw === "resolved") return "paid_off";
-  if (raw === "triggered" || raw === "paying_off") return "triggered";
-  if (raw === "reinforced" || raw === "progressing") return "reinforced";
-  if (raw === "abandoned" || raw === "contradicted") return "abandoned";
-  if (raw === "planted" || raw === "open") return "planted";
-  return "unknown";
-}
-
 function buildForeshadowNetwork(
   entries: readonly GraphEntryInput[],
+  events: readonly GraphEventInput[],
   currentChapter: number,
-  records: readonly GraphForeshadowRecord[],
+  dictionary: EntityDictionary | undefined,
 ): ForeshadowNode[] {
-  const nodes = new Map<string, ForeshadowNode>();
-  const push = (node: ForeshadowNode) => {
-    const key = node.entryId || node.label;
-    const existing = nodes.get(key);
-    if (!existing) {
-      nodes.set(key, node);
-      return;
-    }
-    const rank = (phase: ForeshadowPhase) => ({ paid_off: 5, triggered: 4, reinforced: 3, planted: 2, abandoned: 1, unknown: 0 })[phase] ?? 0;
-    if (rank(node.phase) >= rank(existing.phase)) nodes.set(key, { ...existing, ...node, id: existing.id });
-  };
-
-  for (const entry of entries) {
-    if (entry.category !== "foreshadowing") continue;
-    if (entry.lifecycle === "archived" || entry.lifecycle === "retired") continue;
-    const fields = entry.fields ?? {};
-    const phase = resolvePhase(fields);
-    const setupChapter = toChapter(fields.plantedChapter);
-    const triggerChapter = toChapter(fields.triggerChapter);
-    const triggerCondition = clean(fields.triggerCondition) || undefined;
-    const payoffChapter = toChapter(fields.payoffChapter);
-    const chaptersPending = phase !== "paid_off" && setupChapter !== undefined
-      ? Math.max(0, currentChapter - setupChapter)
-      : undefined;
-    push({
-      id: `foreshadow:${entry.id}`,
-      entryId: entry.id,
-      label: (clean(entry.title) || "未命名伏笔").slice(0, 40),
-      phase,
-      ...(setupChapter !== undefined ? { setupChapter } : {}),
-      ...(triggerChapter !== undefined ? { triggerChapter } : {}),
-      ...(triggerCondition ? { triggerCondition } : {}),
-      ...(payoffChapter !== undefined ? { payoffChapter } : {}),
-      ...(chaptersPending !== undefined ? { chaptersPending } : {}),
-      dangling: phase !== "paid_off" && (chaptersPending ?? 0) >= DEBT_DANGLING_CHAPTERS,
-    });
-  }
-
-  for (const record of records) {
-    const phase = mapRecordStatus(record.status);
-    const setupChapter = toChapter(record.setupChapter);
-    const triggerChapter = toChapter(record.triggerChapter);
-    const triggerCondition = clean(record.triggerCondition) || undefined;
-    const payoffChapter = toChapter(record.payoffChapter);
-    const chaptersPending = phase !== "paid_off" && setupChapter !== undefined
-      ? Math.max(0, currentChapter - setupChapter)
-      : undefined;
-    push({
-      id: record.id ? `foreshadow:${record.id}` : `foreshadow:${clean(record.label) || "unnamed"}`,
-      ...(record.entryId ? { entryId: record.entryId } : {}),
-      label: (clean(record.label) || "未命名伏笔").slice(0, 40),
-      phase,
-      ...(setupChapter !== undefined ? { setupChapter } : {}),
-      ...(triggerChapter !== undefined ? { triggerChapter } : {}),
-      ...(triggerCondition ? { triggerCondition } : {}),
-      ...(payoffChapter !== undefined ? { payoffChapter } : {}),
-      ...(chaptersPending !== undefined ? { chaptersPending } : {}),
-      dangling: phase !== "paid_off" && (chaptersPending ?? 0) >= DEBT_DANGLING_CHAPTERS,
-    });
-  }
-
-  return [...nodes.values()].sort((left, right) => (right.chaptersPending ?? -1) - (left.chaptersPending ?? -1));
+  const states = deriveForeshadowStates(
+    entries
+      .filter((entry) => entry.category === "foreshadowing")
+      .map((entry) => ({
+        id: entry.id,
+        ...(entry.title !== undefined ? { title: entry.title } : {}),
+        ...(entry.fields ? { fields: entry.fields } : {}),
+        ...(entry.lifecycle !== undefined ? { lifecycle: entry.lifecycle } : {}),
+      })),
+    events,
+    { resolveEntryId: (subject) => resolveEntity(dictionary, subject)?.entry.entryId },
+  );
+  return states
+    .map((state): ForeshadowNode => {
+      const chaptersPending = state.phase !== "paid_off" && state.setupChapter !== undefined
+        ? Math.max(0, currentChapter - state.setupChapter)
+        : undefined;
+      return {
+        id: `foreshadow:${state.entryId}`,
+        entryId: state.entryId,
+        label: state.label.slice(0, 40),
+        phase: state.phase,
+        ...(state.setupChapter !== undefined ? { setupChapter: state.setupChapter } : {}),
+        ...(state.triggerChapter !== undefined ? { triggerChapter: state.triggerChapter } : {}),
+        ...(state.triggerCondition ? { triggerCondition: state.triggerCondition } : {}),
+        ...(state.payoffChapter !== undefined ? { payoffChapter: state.payoffChapter } : {}),
+        ...(chaptersPending !== undefined ? { chaptersPending } : {}),
+        dangling: state.phase !== "paid_off" && state.phase !== "abandoned" && (chaptersPending ?? 0) >= DEBT_OVERDUE_CHAPTERS,
+      };
+    })
+    .sort((left, right) => (right.chaptersPending ?? -1) - (left.chaptersPending ?? -1));
 }
 
 // ─── 知识边界 ─────────────────────────────────────────────────────────────

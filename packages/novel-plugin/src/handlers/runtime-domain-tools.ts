@@ -13,7 +13,6 @@ import type {
   RuntimeToolResult,
   ToolExecutionContext,
 } from "@vivy1024/novelfork-core/plugins";
-import { analyzeStyle } from "../engine/index.js";
 import {
   exportPendingHooksMarkdown,
   findLedgerEntryById,
@@ -31,6 +30,8 @@ import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/c
 import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
 import { executeWorkflowRecipeTool } from "./workflow-recipe-tools.js";
 import { executeWorkflowRunTool } from "./workflow-run-tools.js";
+import { executeStyleDistillationTool } from "./style-distill-tools.js";
+import { executeCharacterVoiceTool } from "./character-voice-tools.js";
 import {
   DEFAULT_VOLUME_DIRECTORY,
   chapterRelativePath,
@@ -370,8 +371,7 @@ async function importChapters(
       binding.root,
       [...existing, ...imported].sort((left, right) => left.number - right.number),
     );
-    const profile = analyzeStyle(content.slice(0, 50000), sourceName);
-    await writeFile(join(storyDir, "style_profile.json"), `${JSON.stringify(profile, null, 2)}\n`, "utf8");
+    // 导入章节只接纳正文；不能顺带覆盖作者已确认的文风预设或旧统计基线。
 
     const firstChapter = startNumber;
     const lastChapter = startNumber + chapters.length - 1;
@@ -388,7 +388,6 @@ async function importChapters(
     if (autoSettle || extractBrief) {
       const { handleBookDissect } = await import("./book-dissect.js");
       const { createRuntimeChapterEventExtractor } = await import("../engine/narrative-memory/chapter-event-extractor.js");
-      const generator = undefined;
       const dissected = await handleBookDissect({
         bookId: binding.bookId,
         bookRoot: binding.root,
@@ -397,7 +396,7 @@ async function importChapters(
         settle: autoSettle,
         apply: applyDissectDraft,
         targets: ["all"],
-        generateText: generator,
+        ...(context.generateText ? { generateText: context.generateText } : {}),
         // autoSettle 的叙事事件抽取与 memory.settle_chapter 同源。
         ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
       });
@@ -450,7 +449,6 @@ async function bookDissect(
   const targets = Array.isArray(input.targets)
     ? input.targets.filter((item): item is string => typeof item === "string")
     : undefined;
-  const generator = undefined;
   // settle=true 时叙事事件抽取与 memory.settle_chapter 同源：会话 generateText 构造。
   const { createRuntimeChapterEventExtractor } = await import("../engine/narrative-memory/chapter-event-extractor.js");
   const result = await handleBookDissect({
@@ -462,7 +460,7 @@ async function bookDissect(
     ...(typeof input.purpose === "string" ? { purpose: input.purpose } : {}),
     apply: input.apply === true,
     settle: input.settle === true,
-    generateText: generator,
+    ...(context.generateText ? { generateText: context.generateText } : {}),
     ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
   });
   if (!result.ok) return fail(result.error ?? "dissect-failed", result.summary);
@@ -475,7 +473,6 @@ async function outlineVolume(
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
   const { handleOutlineVolume } = await import("./outline-volume.js");
-  const generator = undefined;
   const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
   const result = await handleOutlineVolume({
     bookId: binding.bookId,
@@ -486,7 +483,9 @@ async function outlineVolume(
     ...(typeof input.volumeCount === "number" ? { volumeCount: input.volumeCount } : {}),
     ...(typeof input.targetChapters === "number" ? { targetChapters: input.targetChapters } : {}),
     ...(input.endgameReserve !== undefined ? { endgameReserve: input.endgameReserve } : {}),
-    generateText: generator,
+    // 卷纲建议是创作决策，按单一 Agent 契约由叙述者自己规划后用 action=save 落盘；
+    // 工具内部不再起一次规划模型调用，这里只给规则草案。
+    generateText: undefined,
   });
   if (!result.ok) return fail(result.error ?? "outline-volume-failed", result.summary);
   return ok(result.summary, result);
@@ -907,6 +906,15 @@ export async function executeRuntimeDomainTool(
     case "book_dissect":
     case "book.dissect":
       return bookDissect(input, binding, context);
+    case "style_distill_preview":
+    case "style.distill_preview":
+    case "style_distill_start":
+    case "style.distill_start":
+    case "style_distill_status":
+    case "style.distill_status":
+    case "style_distill_adopt":
+    case "style.distill_adopt":
+      return executeStyleDistillationTool(toolName, input, binding, context);
     case "outline_volume":
     case "outline.volume":
       return outlineVolume(input, binding, context);
@@ -922,6 +930,9 @@ export async function executeRuntimeDomainTool(
     case "character_check_consistency":
     case "character.check_consistency":
       return characterConsistency(input, binding);
+    case "character_voice_read":
+    case "character_voice_draft":
+      return executeCharacterVoiceTool(toolName, input, binding, context);
     case "hooks_manage":
     case "hooks.manage":
       return hooksManage(input, binding);

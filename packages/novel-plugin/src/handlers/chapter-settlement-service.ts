@@ -18,8 +18,10 @@ import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backf
 import { inferHookCausalLinks, parseCausedBy, resolveCausedByRefs } from "../engine/narrative-memory/causal-resolve.js";
 import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embedding-provider.js";
 import { scoreAndPersistNarrativeStructure } from "../engine/narrative-memory/structure-score.js";
-import { applyForeshadowEvents, ensureNarrativeMemorySchema, insertNarrativeEvent, replaceChapterMentions, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
+import { ensureNarrativeMemorySchema, insertNarrativeEvent, replaceChapterMentions, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
+import { stageForeshadowDrafts } from "./foreshadow-draft-staging.js";
+import { rebuildNarrativeEntityIndex } from "../engine/narrative-entity/entity-index.js";
 import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
 import { foreshadowPhase } from "../engine/narrative-memory/foreshadow-phase.js";
@@ -829,7 +831,15 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
           settledAt,
         );
         replaceChapterMentions(storage, input.bookId, input.chapterNumber, extraction.mentionedEntities);
-        applyForeshadowEvents(storage, input.bookId, persisted.reducible);
+        // 新埋伏笔在经纬里没有条目时写成待审草稿（伏笔唯一权威是经纬条目）；失败不阻断结算
+        try {
+          const drafts = stageForeshadowDrafts(storage, input.bookId, eventResults, entityDictionary);
+          if (drafts.length > 0) {
+            warnings.push(`本章发现 ${drafts.length} 条经纬里还没有的新伏笔：${drafts.map((draft) => `「${draft.title}」`).join("、")}。已写成待审的经纬伏笔草稿，确认后才会参与伏笔追踪与写作注入；不是伏笔就在经纬里删掉。`);
+          }
+        } catch (error) {
+          warnings.push(`新伏笔草稿写入失败（不影响结算主体）：${error instanceof Error ? error.message : String(error)}`);
+        }
         backfillHookCausalLinks(storage, input.bookId);
         scoreAndPersistNarrativeStructure(storage, input.bookId, input.chapterNumber, Date.parse(settledAt) || Date.now());
 
@@ -868,6 +878,16 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
 
   const { persisted, applied, eventResults, downgradedPendingIds, record, stateRevision, stateFingerprint } = commit;
+
+  // 实体索引（参与者 / 关系边 / 状态流水）由经纬 + 记忆整本派生；失败不影响已提交的结算。
+  try {
+    const entityIndex = rebuildNarrativeEntityIndex(storage, input.bookId);
+    if (entityIndex.ok && entityIndex.duplicateEntryIds.length > 0) {
+      warnings.push(`经纬里有 ${entityIndex.duplicateEntryIds.length} 个条目与其他条目同名（去掉括号注释后），没有进入实体索引，关系图里不会出现。建议合并重复条目或改成可区分的名字。`);
+    }
+  } catch (error) {
+    warnings.push(`实体索引未更新（不影响结算）：${error instanceof Error ? error.message : String(error)}`);
+  }
 
   try {
     await refreshBookEntityEmbeddings({ storage, bookId: input.bookId, dictionary: entityDictionary });

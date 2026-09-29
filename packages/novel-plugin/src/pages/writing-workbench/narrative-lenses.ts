@@ -36,7 +36,7 @@ export const NARRATIVE_LENSES: readonly NarrativeLensDef[] = [
     id: "lore",
     label: "理",
     question: "设定是什么",
-    description: "理顺世界观、人物经纬、势力门派与共现关系",
+    description: "理顺世界观、人物经纬、势力门派与人物关系",
     isPrimary: true,
   },
   {
@@ -180,7 +180,7 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     panel: "CanonicalTreesPanel",
     lens: "lore",
     role: "叙事正统正图（6图合一切换器）",
-    explanation: { what: "世界观树/关系树/章节树/发展历程/脉络/总图", why: "全视角理清全书概念与结构脉络", action: "在切换器内自由变换观察视角" },
+    explanation: { what: "世界观树/人物关系网/章节树/发展历程/脉络/总图", why: "全视角理清全书概念与结构脉络", action: "在切换器内自由变换观察视角" },
   },
   {
     panel: "NarrativeMemoryPanel",
@@ -405,6 +405,11 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
  */
 export const RETIRED_DUPLICATE_ENTRIES = [
   {
+    name: "CanonicalTreesPanel.relations（共现生成树）",
+    replacement: "RelationNetworkPanel（设定图谱 › 人物关系）",
+    reason: "共现生成树按名字连边、会丢环和多余关系，同场出现也不等于有关系；改为按实体 ID 连边、可按章切片的焦点人物 1–2 跳网络",
+  },
+  {
     name: "StoryProgressionCanvas.timeline",
     replacement: "CanonicalTreesPanel (kind='timeline')",
     reason: "与故事树内置的「发展历程」子视图 100% 重复，已按 DoD 彻底下线顶层 Tab，并由 normalizeStoryProgressionView 自动引导",
@@ -416,7 +421,7 @@ export const RETIRED_DUPLICATE_ENTRIES = [
   },
   {
     name: "StoryProgressionCanvas.network",
-    replacement: "CanonicalTreesPanel (kind='relations')",
+    replacement: "RelationNetworkPanel（设定图谱 › 人物关系）",
     reason: "与故事树内置的「关系树」子视图 100% 重复，已按 DoD 彻底下线顶层 Tab，并由 normalizeStoryProgressionView 自动引导",
   },
   {
@@ -436,7 +441,7 @@ export const RETIRED_DUPLICATE_ENTRIES = [
   },
   {
     name: "NarrativeMemoryGraphWorkspace",
-    replacement: "CanonicalTreesPanel (kind='relations') / NarrativeMemoryPanel",
+    replacement: "RelationNetworkPanel（设定图谱 › 人物关系） / NarrativeMemoryPanel",
     reason: "早期的重型独立图谱工作台，已下线并收拢为权威正图的关系树与叙事记忆条目审阅",
   },
   {

@@ -12,6 +12,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { SearchExtension, scrollToCurrentMatch } from "../ide/SearchExtension";
+import { ENTITY_MENTION_REFRESH, EntityMentionExtension, type MentionEntity } from "../ide/EntityMentionExtension";
 import { SearchBar } from "../ide/SearchBar";
 import { EditorMinimap } from "./EditorMinimap";
 import { LOCATE_IN_EDITOR_EVENT } from "../audit-issue-actions";
@@ -314,6 +315,10 @@ interface ChapterEditorProps {
   language?: LengthLanguage;
   /** 全书文风基准摘要（由宿主从 style/profile 读取透传），注入划词 AI prompt。 */
   styleProfileSummary?: string;
+  /** 正文里要高亮的经纬实体（规范名 + 别名），由宿主从叙事结构快照传入。 */
+  mentionEntities?: readonly MentionEntity[];
+  /** Ctrl / ⌘ + 点击实体提及时打开资料卡。 */
+  onOpenEntity?: (name: string) => void;
 }
 
 export function ChapterEditor({
@@ -328,12 +333,20 @@ export function ChapterEditor({
   onSendToNarrator,
   language = "zh",
   styleProfileSummary,
+  mentionEntities,
+  onOpenEntity,
 }: ChapterEditorProps) {
   const [wordCount, setWordCount] = useState(0);
   const [searchMode, setSearchMode] = useState<"search" | "replace" | null>(null);
   const isExternalUpdate = useRef(false);
   const languageRef = useRef(language);
   languageRef.current = language;
+
+  // 实体提及：扩展只读 ref，名单或回调变化不需要重建编辑器
+  const mentionEntitiesRef = useRef<readonly MentionEntity[]>(mentionEntities ?? []);
+  mentionEntitiesRef.current = mentionEntities ?? [];
+  const onOpenEntityRef = useRef(onOpenEntity);
+  onOpenEntityRef.current = onOpenEntity;
 
   // Task B: Minimap 需要的 ref
   const editorRef = useRef<HTMLDivElement>(null);
@@ -352,6 +365,10 @@ export function ChapterEditor({
         transformCopiedText: true,
       }),
       SearchExtension,
+      EntityMentionExtension.configure({
+        getEntities: () => mentionEntitiesRef.current,
+        onOpen: (name) => onOpenEntityRef.current?.(name),
+      }),
     ],
     content: content || "",
     editable: !readonly,
@@ -372,10 +389,18 @@ export function ChapterEditor({
     },
   });
 
+  // 名单变化时重算提及高亮
+  const mentionSignature = (mentionEntities ?? []).map((entity) => `${entity.name}:${(entity.aliases ?? []).join("/")}`).join("|");
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.view.dispatch(editor.state.tr.setMeta(ENTITY_MENTION_REFRESH, true));
+  }, [editor, mentionSignature]);
+
   // Sync editable state
   useEffect(() => {
     if (editor) {
-      editor.setEditable(!readonly);
+      // 切换编辑权限不是正文输入，不能触发 onUpdate 把 Markdown 规范化结果自动写回。
+      editor.setEditable(!readonly, false);
     }
   }, [editor, readonly]);
 

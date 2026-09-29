@@ -56,6 +56,20 @@ export function deriveInvalidationPaths(path: string): ReadonlyArray<string> {
   return [];
 }
 
+/**
+ * 服务端解释有两种形态：一句话字符串，或项目约定的三段式对象
+ * （whatHappened / whyItMatters / suggestedAction）。对象形态取「发生了什么 + 建议怎么做」。
+ */
+function formatExplanation(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() || null;
+  if (!value || typeof value !== "object") return null;
+  const record = value as { whatHappened?: unknown; suggestedAction?: unknown };
+  const parts = [record.whatHappened, record.suggestedAction]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .map((part) => part.trim());
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 async function readErrorDetails(res: Response): Promise<{ message: string; code?: string }> {
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
@@ -67,10 +81,7 @@ async function readErrorDetails(res: Response): Promise<{ message: string; code?
         explanation?: unknown;
         code?: unknown;
       };
-      const explanation =
-        typeof json.explanation === "string" && json.explanation.trim()
-          ? json.explanation.trim()
-          : null;
+      const explanation = formatExplanation(json.explanation);
       if (typeof json.error === "string" && json.error.trim()) {
         return {
           message: explanation ? `${json.error.trim()}：${explanation}` : json.error.trim(),
@@ -90,7 +101,12 @@ async function readErrorDetails(res: Response): Promise<{ message: string; code?
           };
         }
       }
-      if (explanation) return { message: explanation };
+      if (explanation) {
+        return {
+          message: explanation,
+          code: typeof json.code === "string" && json.code.trim() ? json.code : undefined,
+        };
+      }
     } catch {
       // fall through
     }

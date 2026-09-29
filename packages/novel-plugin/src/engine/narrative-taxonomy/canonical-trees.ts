@@ -1,10 +1,12 @@
 /**
- * 四张正图数据层（纯函数）。
+ * 正图数据层（纯函数）。
  *
- *   关系树   —— 共现图的生成树（枢纽优先，节点只出现一次）
  *   世界观   —— 现有 NarraBench 分类树（buildStoryTree）
  *   章节分叉 —— 卷纲 → 章；没有卷就按章摘要铺开，不假装有分支
- *   总图     —— 三棵的浅层总览
+ *   总图     —— 世界观与章节的浅层总览
+ *
+ * 人物关系不是树：它由实体索引按实体 id 连边、按章切片（engine/narrative-entity/relation-graph.ts），
+ * 在「设定图谱 › 人物关系」画焦点人物网络。旧的「共现生成树」会丢环、丢多余关系，已下线。
  *
  * 布局交给 tidy-tree-layout；这里只负责树，不画坐标。
  */
@@ -107,14 +109,14 @@ export interface BuildCanonicalTreesInput extends BuildStoryTreeInput {
   readonly cooccurrence?: readonly CooccurrenceEdgeInput[];
   readonly volumes?: readonly VolumeTreeInput[];
   readonly events?: readonly TimelineEventInput[];
-  readonly maxRelationHubs?: number;
-  readonly maxRelationChildren?: number;
   readonly maxChaptersPerVolume?: number;
   readonly maxEventsPerChapter?: number;
 }
 
+/** 由本模块建树的视图；「relations」是网络视图，不在这里建树。 */
+export type CanonicalForestKind = Exclude<CanonicalTreeKind, "relations">;
+
 export interface CanonicalTrees {
-  readonly relations: CanonicalForest;
   readonly worldview: CanonicalForest;
   readonly chapters: CanonicalForest;
   readonly overview: CanonicalForest;
@@ -123,9 +125,6 @@ export interface CanonicalTrees {
   readonly causal: CanonicalForest;
 }
 
-const SETTING_CATEGORIES = new Set(["characters", "factions", "locations", "props"]);
-const DEFAULT_MAX_HUBS = 16;
-const DEFAULT_MAX_RELATION_CHILDREN = 8;
 const DEFAULT_MAX_CHAPTERS = 40;
 const OVERVIEW_DEPTH = 3;
 const OVERVIEW_MAX_CHILDREN = 8;
@@ -244,152 +243,6 @@ export function canonicalFromStoryNode(node: StoryTreeNode): CanonicalTreeNode {
     ...(node.degree !== undefined ? { degree: node.degree } : {}),
     ...(node.webNovelSpecific ? { webNovelSpecific: true } : {}),
   };
-}
-
-interface EntityRef {
-  readonly name: string;
-  readonly entryId?: string;
-  readonly category?: string;
-  readonly subtitle?: string;
-}
-
-function entityIndex(entries: readonly TreeEntryInput[]): Map<string, EntityRef> {
-  const index = new Map<string, EntityRef>();
-  const remember = (name: string, ref: EntityRef) => {
-    const key = clean(name);
-    if (!key) return;
-    if (!index.has(key)) index.set(key, { ...ref, name: key });
-  };
-  for (const entry of entries) {
-    const category = clean(entry.category);
-    if (!SETTING_CATEGORIES.has(category)) continue;
-    const name = clean(entry.fields?.name) || clean(entry.title);
-    if (!name) continue;
-    const subtitle = clean(entry.fields?.roleType) || clean(entry.fields?.type) || clean(entry.fields?.locationType);
-    remember(name, {
-      name,
-      entryId: entry.id,
-      category,
-      ...(subtitle ? { subtitle } : {}),
-    });
-  }
-  return index;
-}
-
-function acceptRelationName(name: string, known: ReadonlyMap<string, EntityRef>): boolean {
-  const key = clean(name);
-  if (!key) return false;
-  if (known.has(key)) return true;
-  return looksLikeEntity(key);
-}
-
-/**
- * 共现生成树：按度数从高到低 BFS，每个实体只出现一次，避免把网硬画成有环图。
- */
-export function buildRelationTree(input: {
-  readonly edges?: readonly CooccurrenceEdgeInput[];
-  readonly entries?: readonly TreeEntryInput[];
-  readonly maxHubs?: number;
-  readonly maxChildren?: number;
-}): CanonicalForest {
-  const known = entityIndex(input.entries ?? []);
-  const maxHubs = input.maxHubs ?? DEFAULT_MAX_HUBS;
-  const maxChildren = input.maxChildren ?? DEFAULT_MAX_RELATION_CHILDREN;
-  const adjacency = new Map<string, Map<string, { weight: number; coCount: number }>>();
-  const bump = (source: string, target: string, weight: number, coCount: number) => {
-    if (source === target) return;
-    if (!acceptRelationName(source, known) || !acceptRelationName(target, known)) return;
-    const from = adjacency.get(source) ?? new Map();
-    const existing = from.get(target);
-    if (!existing || weight > existing.weight) from.set(target, { weight, coCount });
-    adjacency.set(source, from);
-  };
-
-  for (const edge of input.edges ?? []) {
-    const source = clean(edge.source);
-    const target = clean(edge.target);
-    if (!source || !target) continue;
-    const weight = typeof edge.weight === "number" && Number.isFinite(edge.weight) ? edge.weight : 1;
-    const coCount = typeof edge.coCount === "number" && edge.coCount > 0 ? edge.coCount : 1;
-    bump(source, target, weight, coCount);
-    bump(target, source, weight, coCount);
-  }
-
-  if (adjacency.size === 0) {
-    return {
-      kind: "relations",
-      root: emptyRoot("relations", "关系树"),
-      truncated: false,
-      emptyReason: "还没有共现边。正文结算后，同场出现的人物/地点才会连上。",
-    };
-  }
-
-  const degree = [...adjacency.entries()]
-    .map(([name, neighbors]) => ({ name, degree: neighbors.size }))
-    .sort((left, right) => right.degree - left.degree || left.name.localeCompare(right.name, "zh"));
-
-  const used = new Set<string>();
-  let truncated = degree.length > maxHubs;
-  const hubs: CanonicalTreeNode[] = [];
-
-  const makeEntityNode = (
-    name: string,
-    children: readonly CanonicalTreeNode[],
-    expanded: boolean,
-  ): CanonicalTreeNode => {
-    const ref = known.get(name);
-    return {
-      id: `rel:${encodeURIComponent(name)}`,
-      kind: "entity",
-      label: name,
-      count: Math.max(1, children.length),
-      children,
-      defaultExpanded: expanded,
-      degree: adjacency.get(name)?.size ?? 0,
-      ...(ref?.entryId ? { entryId: ref.entryId } : {}),
-      ...(ref?.subtitle ? { subtitle: ref.subtitle } : {}),
-    };
-  };
-
-  for (const hub of degree) {
-    if (hubs.length >= maxHubs) {
-      truncated = true;
-      break;
-    }
-    if (used.has(hub.name)) continue;
-    used.add(hub.name);
-    const neighbors = [...(adjacency.get(hub.name)?.entries() ?? [])]
-      .filter(([name]) => !used.has(name))
-      .sort((left, right) => right[1].weight - left[1].weight || left[0].localeCompare(right[0], "zh"));
-    const visible = neighbors.slice(0, maxChildren);
-    if (neighbors.length > visible.length) truncated = true;
-    const childNodes = visible.map(([name, meta]) => {
-      used.add(name);
-      const child = makeEntityNode(name, [], false);
-      return {
-        ...child,
-        subtitle: [child.subtitle, meta.coCount > 1 ? `同场 ${meta.coCount} 次` : undefined]
-          .filter(Boolean)
-          .join(" · ") || child.subtitle,
-      };
-    });
-    hubs.push(makeEntityNode(hub.name, childNodes, true));
-  }
-
-  const leftover = degree.length - used.size;
-  if (leftover > 0) truncated = true;
-
-  const root: CanonicalTreeNode = {
-    id: "relations",
-    kind: "root",
-    label: "关系树",
-    count: used.size,
-    children: hubs,
-    defaultExpanded: true,
-    subtitle: truncated ? `按共现枢纽展开，已省略部分节点` : `按同场共现连边，${used.size} 个实体`,
-  };
-
-  return { kind: "relations", root, truncated };
 }
 
 export function relationsFromCooccurrence(
@@ -959,12 +812,10 @@ function attachOverviewBranch(
 }
 
 export function buildOverviewTree(forests: {
-  readonly relations: CanonicalForest;
   readonly worldview: CanonicalForest;
   readonly chapters: CanonicalForest;
 }): CanonicalForest {
   const children = [
-    attachOverviewBranch("overview:relations", "关系树", forests.relations),
     attachOverviewBranch("overview:worldview", "世界观", forests.worldview),
     attachOverviewBranch("overview:chapters", "章节", forests.chapters),
   ].filter((node): node is CanonicalTreeNode => node !== null);
@@ -974,11 +825,11 @@ export function buildOverviewTree(forests: {
       kind: "overview",
       root: emptyRoot("overview", "总图"),
       truncated: false,
-      emptyReason: "关系、世界观、章节都还是空的，总图没有可挂的分支。",
+      emptyReason: "世界观、章节都还是空的，总图没有可挂的分支。",
     };
   }
 
-  const truncated = forests.relations.truncated || forests.worldview.truncated || forests.chapters.truncated
+  const truncated = forests.worldview.truncated || forests.chapters.truncated
     || children.some((child) => Boolean(child.subtitle?.includes("另有") || child.subtitle?.includes("下有")));
 
   return {
@@ -990,7 +841,7 @@ export function buildOverviewTree(forests: {
       count: children.reduce((sum, child) => sum + child.count, 0),
       children,
       defaultExpanded: true,
-      subtitle: "三张正图的浅层总览，点开各图看全量",
+      subtitle: "世界观与章节的浅层总览，点开各图看全量",
     },
     truncated,
   };
@@ -1007,18 +858,12 @@ export function buildCanonicalTrees(input: BuildCanonicalTreesInput): CanonicalT
     ...(input.dimensions ? { dimensions: input.dimensions } : {}),
     ...(input.maxEntriesPerCategory ? { maxEntriesPerCategory: input.maxEntriesPerCategory } : {}),
   });
-  const relations = buildRelationTree({
-    ...(input.cooccurrence ? { edges: input.cooccurrence } : {}),
-    ...(input.entries ? { entries: input.entries } : {}),
-    ...(input.maxRelationHubs ? { maxHubs: input.maxRelationHubs } : {}),
-    ...(input.maxRelationChildren ? { maxChildren: input.maxRelationChildren } : {}),
-  });
   const chapters = buildChapterForkTree({
     ...(input.entries ? { entries: input.entries } : {}),
     ...(input.volumes ? { volumes: input.volumes } : {}),
     ...(input.maxChaptersPerVolume ? { maxChaptersPerVolume: input.maxChaptersPerVolume } : {}),
   });
-  const overview = buildOverviewTree({ relations, worldview, chapters });
+  const overview = buildOverviewTree({ worldview, chapters });
   const timeline = buildTimelineTree({
     ...(input.events ? { events: input.events } : {}),
     ...(input.entries ? { entries: input.entries } : {}),
@@ -1035,7 +880,7 @@ export function buildCanonicalTrees(input: BuildCanonicalTreesInput): CanonicalT
     truncated: false,
     emptyReason: "还没有剧情线，也没有场景；这棵树描述「为什么发生」，需要先有剧情线。",
   };
-  return { relations, worldview, chapters, overview, timeline, chronicle, causal };
+  return { worldview, chapters, overview, timeline, chronicle, causal };
 }
 
 export function forestHasContent(forest: CanonicalForest): boolean {
@@ -1048,7 +893,7 @@ export const CANONICAL_TREE_VIEWS: readonly {
   readonly description: string;
 }[] = [
   { id: "worldview", label: "世界观", description: "按叙事分类看设定层级" },
-  { id: "relations", label: "关系树", description: "按共现枢纽看谁和谁同场" },
+  { id: "relations", label: "人物关系", description: "焦点人物 1–2 跳关系网：按实体 ID 连边，可看截至第 N 章" },
   { id: "chapters", label: "章节", description: "卷纲到章的分叉骨架" },
   { id: "causal", label: "因果树", description: "按剧情线看场景与因果推进" },
   { id: "timeline", label: "发展历程", description: "按章看已经发生的事" },

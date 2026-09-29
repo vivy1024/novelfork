@@ -118,7 +118,8 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   "若用户消息提供了「官方实体名单」：subject、object 与 mentionedEntities 必须优先使用名单中的名字或其列出的称呼；名单中没有的新实体才使用正文原名称。",
   "不要写入静态 Lore/canon；只提出 NarrativeEvent 草案。",
   "若提供了「当前叙事记忆台账」，events 只抽取相对台账发生变化或新增的状态；与台账一致、本章未改变的内容不要重复输出。mentionedEntities 不受此限制。",
-  "对状态类变化（修为/位置/关系/情绪等），subject+predicate 标识状态槽位，object 是本章后的新值；同一槽位的新值会由系统自动作废旧值，你只需给出新值。",
+  "对人物状态类变化（修为/位置/情绪/伤势等），subject+predicate 标识状态槽位，object 是本章后的新值；同一槽位的新值会由系统自动作废旧值，你只需给出新值。",
+  "对关系变化（relationship_changed）：subject 与 object 都只写一方的名字（人物或势力，优先用官方实体名单里的名字），predicate 写两人之间的关系或变化，如「救下」「结为师徒」「反目」「暗中提防」。object 不要写描述句，经过与细节放进 evidenceText。一件事牵涉多人时拆成多条，每条一对。",
   "对伏笔：本章新埋用 hook_planted；已有伏笔被提及/推进但触发条件尚未满足用 hook_progressed；触发条件已出现、该兑现但尚未兑现用 hook_triggered（object 写触发条件）；被揭晓/回收用 hook_resolved。同一条伏笔的后续事件 causedBy 必须指向它更早的 planted/progressed/triggered。",
 ].join("\n");
 
@@ -229,12 +230,16 @@ function dedupeDrafts(drafts: readonly NarrativeEventDraft[]): { drafts: Narrati
 }
 
 /**
- * 从章节正文抽取叙事事件草案。
- *
- * 抽取只走 LLM：没有可用的 llmExtractor 或 LLM 调用失败时直接抛错，由上层把
- * 结算表达为失败（agent 重试工具调用），绝不静默降级为规则兜底 —— 兜底会以
- * 「抽到 0 条 / 抽偏」的假成功写进结算台账，下回同章幂等跳过，漏抽就再也补不回来。
+ * 关系事件的对方应是一个名字（关系图按名字连线）。已对上实体字典的一定是名字；
+ * 对不上时，过长或带句读、括注的多半是模型写成了描述句，只告警、不丢弃——
+ * 关系事件本来就进待审，由作者改成人名或驳回。
  */
+function relationObjectIsNotAName(draft: NarrativeEventDraft): boolean {
+  if (draft.eventType !== "relationship_changed" || draft.objectEntryId) return false;
+  const object = draft.object.trim();
+  return object.length > 16 || /[。！？；，：:,;（）()『』「」]/u.test(object);
+}
+
 /**
  * 身份链归一化：subject/object 命中实体字典时改写为 canonical 名并回填 entryId。
  * 未命中保持原文——新登场实体、非实体的状态值（"兴奋""重伤"）都不强行映射。
@@ -283,7 +288,11 @@ export async function extractNarrativeEventsFromChapter(input: ChapterEventExtra
   const validDrafts: NarrativeEventDraft[] = [];
   for (const draft of rawDrafts) {
     if (isValidDraft(draft, input.content)) {
-      validDrafts.push(normalizeDraftEntities(draft, input.entityDictionary));
+      const normalized = normalizeDraftEntities(draft, input.entityDictionary);
+      validDrafts.push(normalized);
+      if (relationObjectIsNotAName(normalized)) {
+        warnings.push(`关系事件「${normalized.subject} / ${normalized.predicate}」的对方写成了描述「${normalized.object.slice(0, 30)}」，不是名字，人物关系图连不上这条线；审核时可把对方改成人物名。`);
+      }
     } else {
       warnings.push("丢弃无效事件草案：缺少 subject/predicate/object/evidenceText，或 evidenceText 不是正文原文摘录。");
     }

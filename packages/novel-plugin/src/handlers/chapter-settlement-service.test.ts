@@ -10,6 +10,8 @@ import { buildNarrativeContext } from "../engine/narrative-memory/build-narrativ
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { createManualNarrativeFact } from "../engine/narrative-memory/fact-mutations.js";
 import { readChapterSettlementRecord } from "../engine/narrative-memory/settlement-idempotency.js";
+import { loadForeshadowStates } from "../engine/narrative-taxonomy/foreshadow-states.js";
+import { upsertLedgerEntry } from "./jingwei-ledger-store.js";
 import { settleConfirmedChapter } from "./chapter-settlement-service.js";
 
 const tempDirs: string[] = [];
@@ -31,6 +33,19 @@ async function createSummaryStorage(): Promise<StorageDatabase> {
     currentChapter: 20,
     createdAt: new Date("2026-06-22T00:00:00.000Z"),
     updatedAt: new Date("2026-06-22T00:00:00.000Z"),
+  });
+  return storage;
+}
+
+/** 伏笔的权威是经纬条目：结算事件只作推进证据，阶段由条目 + 事件派生。 */
+async function createForeshadowStorage(): Promise<StorageDatabase> {
+  const storage = await createSummaryStorage();
+  upsertLedgerEntry(storage, {
+    bookId: "book-1",
+    category: "foreshadowing",
+    title: "小瓶",
+    contentMd: "瓶中绿液",
+    fields: { status: "已埋设" },
   });
   return storage;
 }
@@ -98,8 +113,8 @@ describe("chapter settlement service", () => {
     }
   });
 
-  it("writes explicit hook causes and foreshadow tri-state on settlement", async () => {
-    const storage = await createStorage();
+  it("writes explicit hook causes and derives the foreshadow phase from settlement events", async () => {
+    const storage = await createForeshadowStorage();
     try {
       const plantedContent = "他发现瓶中绿液能催熟药草。";
       await settleConfirmedChapter({
@@ -143,17 +158,16 @@ describe("chapter settlement service", () => {
         `SELECT caused_by_json AS causedByJson FROM narrative_event WHERE event_type = 'hook_progressed' LIMIT 1`,
       ).get();
       expect(progressed?.causedByJson).toContain("chapter-settle");
-      const hook = storage.sqlite.prepare<{ status: string; label: string }>(
-        `SELECT status, label FROM narrative_foreshadow WHERE label = '小瓶' LIMIT 1`,
-      ).get();
-      expect(hook).toEqual({ status: "reinforced", label: "小瓶" });
+      expect(loadForeshadowStates(storage, "book-1")).toEqual([
+        expect.objectContaining({ label: "小瓶", phase: "reinforced", setupChapter: 3 }),
+      ]);
     } finally {
       storage.close();
     }
   });
 
-  it("writes CFPG triggered when the trigger condition event appears", async () => {
-    const storage = await createStorage();
+  it("derives CFPG triggered when the trigger condition event appears", async () => {
+    const storage = await createForeshadowStorage();
     try {
       const plantedContent = "他发现瓶中绿液能催熟药草。";
       await settleConfirmedChapter({
@@ -193,19 +207,14 @@ describe("chapter settlement service", () => {
       });
 
       expect(result.status).toBe("completed");
-      const hook = storage.sqlite.prepare<{
-        status: string;
-        triggerChapter: number | null;
-        triggerCondition: string | null;
-      }>(`
-        SELECT status, trigger_chapter AS triggerChapter, trigger_condition AS triggerCondition
-        FROM narrative_foreshadow WHERE label = '小瓶' LIMIT 1
-      `).get();
-      expect(hook).toEqual({
-        status: "triggered",
-        triggerChapter: 8,
-        triggerCondition: "药园试验开始",
-      });
+      expect(loadForeshadowStates(storage, "book-1")).toEqual([
+        expect.objectContaining({
+          label: "小瓶",
+          phase: "triggered",
+          triggerChapter: 8,
+          triggerCondition: "药园试验开始",
+        }),
+      ]);
       const scores = storage.sqlite.prepare<{ featureId: string; numericValue: number }>(`
         SELECT feature_id AS featureId, numeric_value AS numericValue
         FROM narrative_structure_score

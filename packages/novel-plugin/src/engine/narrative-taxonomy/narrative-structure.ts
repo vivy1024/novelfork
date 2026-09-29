@@ -45,6 +45,10 @@ export interface NarrativeEntityInfo {
   readonly id: string;
   readonly canonicalName: string;
   readonly entityType: string;
+  /** 对应的经纬条目（实体身份的权威源）。 */
+  readonly entryId?: string;
+  /** 其余称呼，正文提及高亮与归并用。 */
+  readonly aliases?: readonly string[];
   readonly firstChapter?: number;
   readonly lastChapter?: number;
 }
@@ -223,6 +227,16 @@ function extractForeshadows(
 /**
  * 提取实体。
  */
+function parseAliases(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
 function extractEntities(storage: StorageDatabase, bookId: string): NarrativeEntityInfo[] {
   try {
     const rows = storage.sqlite
@@ -232,8 +246,10 @@ function extractEntities(storage: StorageDatabase, bookId: string): NarrativeEnt
         entity_type: string;
         first_chapter: number | null;
         last_chapter: number | null;
+        entry_id: string | null;
+        aliases_json: string | null;
       }>(`
-        SELECT id, canonical_name, entity_type, first_chapter, last_chapter
+        SELECT id, canonical_name, entity_type, first_chapter, last_chapter, entry_id, aliases_json
         FROM narrative_entity
         WHERE book_id = ?
         ORDER BY first_chapter ASC, canonical_name ASC
@@ -244,6 +260,8 @@ function extractEntities(storage: StorageDatabase, bookId: string): NarrativeEnt
       id: r.id,
       canonicalName: r.canonical_name,
       entityType: r.entity_type,
+      ...(r.entry_id ? { entryId: r.entry_id } : {}),
+      ...(parseAliases(r.aliases_json).length > 0 ? { aliases: parseAliases(r.aliases_json) } : {}),
       ...(r.first_chapter !== null ? { firstChapter: r.first_chapter } : {}),
       ...(r.last_chapter !== null ? { lastChapter: r.last_chapter } : {}),
     }));

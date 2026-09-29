@@ -246,7 +246,7 @@ export function CharactersAndLoreSidebarPanel({
             variant="outline"
             onClick={() => onOpen(createLoreTreesNode(bookId))}
             className="h-6 text-xs gap-1"
-            title="在中央打开世界观树与关系树"
+            title="在中央打开世界观树与人物关系网"
             data-testid="characters-lore-open-trees"
           >
             <Network className="size-3" />

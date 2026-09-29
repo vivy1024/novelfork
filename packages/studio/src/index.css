@@ -281,6 +281,15 @@ h3 { font-size: 1.25rem; }
   margin: 0.6em 0;
 }
 
+/* 正文里的经纬实体提及：淡虚下划线，不抢正文；Ctrl / ⌘ + 点击打开资料卡 */
+.chapter-editor__content .tiptap .nf-entity-mention {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in oklch, var(--primary) 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.25em;
+}
+
 /* 稿面里的章节标题用主题的标题字体（全局 h1–h3 是界面字体） */
 .chapter-editor__content .tiptap h1,
 .chapter-editor__content .tiptap h2,

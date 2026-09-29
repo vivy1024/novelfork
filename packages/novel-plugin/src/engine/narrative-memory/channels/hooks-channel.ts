@@ -8,6 +8,7 @@ import type { StoryJingweiEntryRecord, StoryJingweiSectionRecord } from "../../j
 import { estimateTokens } from "../../jingwei/context/token-budget.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
 import { hookToContextCard, jingweiEntryToContextCard } from "../context-card.js";
+import { stripParentheticalSuffix } from "../entity-dictionary.js";
 import { NarrativeContextCardSchema, type NarrativeContextCard } from "../types.js";
 
 export interface HooksChannelInput {
@@ -95,6 +96,14 @@ function entryVisible(entry: StoryJingweiEntryRecord, currentChapter?: number): 
   return entry.relatedChapterNumbers.some((chapter) => chapter <= visibleChapter);
 }
 
+const EVIDENCE_NOTE = "（Runtime 状态，只作证据；与经纬伏笔条目冲突时以经纬为准）";
+
+/** 伏笔卡的可比名：标题、别名与 Runtime hookId，归一化后用于合并同一条伏笔的重复表达。 */
+function cardNames(card: NarrativeContextCard): string[] {
+  const names = [card.title, card.sourceType === "hook" ? card.sourceId : "", ...(card.sourceType === "jingwei" ? card.entities : [])];
+  return uniqueStrings(names.map((name) => stripParentheticalSuffix(name?.trim() ?? "").replace(/\s+/gu, "").toLowerCase()));
+}
+
 function pendingHookCard(input: HooksChannelInput, hookText: string, index: number): NarrativeContextCard {
   return NarrativeContextCardSchema.parse({
     id: `pending-hook:${input.bookId}:${index}`,
@@ -110,7 +119,7 @@ function pendingHookCard(input: HooksChannelInput, hookText: string, index: numb
     priority: 75,
     importance: 75,
     accessCount: 0,
-    reason: "调用方提供的 pending hook，需要在本章写作中保持连续性。",
+    reason: `调用方提供的 pending hook，需要在本章写作中保持连续性。${EVIDENCE_NOTE}`,
     estimatedTokens: Math.max(1, estimateTokens(hookText)),
   });
 }
@@ -127,7 +136,7 @@ export function createHooksChannel(): NarrativeRetrievalChannel<HooksChannelInpu
         if (!isHookVisible(hook, input.currentChapter)) continue;
         const { score, reason } = runtimeHookScore(hook, input, terms);
         const base = hookToContextCard({ bookId: input.bookId, hook, currentChapter: input.currentChapter });
-        scored.push({ card: { ...base, reason }, score });
+        scored.push({ card: { ...base, reason: `${reason}${EVIDENCE_NOTE}` }, score });
       }
 
       for (const [index, hookText] of (input.pendingHooks ?? []).entries()) {
@@ -155,16 +164,18 @@ export function createHooksChannel(): NarrativeRetrievalChannel<HooksChannelInpu
         });
       }
 
-      // 先按相关度排序；limit 截断时优先保住 runtime/pending hook，经纬 foreshadowing 作兜底。
-      const ordered = scored
-        .sort((a, b) => b.score - a.score || a.card.sourceId.localeCompare(b.card.sourceId))
-        .map((item) => item.card);
-      const authoritative = ordered.filter((card) => card.sourceType === "hook" || card.sourceType === "fact");
-      const fallback = ordered.filter((card) => card.sourceType !== "hook" && card.sourceType !== "fact");
-      const reserved = authoritative.slice(0, limit);
-      const remainingSlots = Math.max(0, limit - reserved.length);
-      const chosenIds = new Set([...reserved, ...fallback.slice(0, remainingSlots)].map((card) => card.id));
-      const cards = ordered.filter((card) => chosenIds.has(card.id)).slice(0, limit);
+      // 单一权威源：经纬伏笔条目是权威，先占名额、排在前面；Runtime 状态里的伏笔、调用方给的
+      // pending hook 与 hook fact 只作证据补充剩余名额。与已选经纬条目同名的证据卡视为同一条伏笔的
+      // 重复表达，不再单独注入。
+      const byScore = (a: ScoredHookCard, b: ScoredHookCard) => b.score - a.score || a.card.sourceId.localeCompare(b.card.sourceId);
+      const authoritative = scored.filter((item) => item.card.sourceType === "jingwei").sort(byScore).map((item) => item.card).slice(0, limit);
+      const authoritativeNames = new Set(authoritative.flatMap((card) => cardNames(card)));
+      const evidence = scored
+        .filter((item) => item.card.sourceType !== "jingwei")
+        .sort(byScore)
+        .map((item) => item.card)
+        .filter((card) => !cardNames(card).some((name) => authoritativeNames.has(name)));
+      const cards = [...authoritative, ...evidence.slice(0, Math.max(0, limit - authoritative.length))];
 
       if (cards.length === 0) {
         return { status: "skipped", cards: [], warnings: ["hooks channel 为空：未找到 runtime hooks、pending hooks 或伏笔经纬条目。"] };
