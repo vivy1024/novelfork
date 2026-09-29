@@ -249,7 +249,7 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 | 角色/关系/世界「当前设定」 | 经纬对应分类（`layer=dynamic` 可变） | 拆书 JSON 仅调试快照 |
 | 章后事实与事件流 | Narrative Memory（`narrative_fact` / `narrative_event`） | 无文件权威源 |
 | 角色弧 beats | `jingwei_character_arc` | 无 |
-| 文风 | 待重定（原 presets / `enabledPresetIds` 已下线；现行只有 `story/style_profile.json` 统计指纹，见 `docs/路线与任务.md` T2.1） | — |
+| 文风 | 每书一份 `story/style_preset.json`：通用写法、带证据及审核状态的来源规则/范文、本书声音与原则、统计指纹。指南由已确认且可迁移的规则派生；本书设定仍归经纬 | 旧 `story/style_profile.json` 仅在没有新预设时只读兼容，首次显式保存后不再生效；导入正文不得覆盖文风。自动蒸馏与按场景范文检索见 T2.2 / T2.4 |
 | 诊断结果（preflight / publish / audit） | 不落盘，一次性返回 | 无 |
 
 配套规则：
@@ -272,6 +272,7 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 - 保持用户已有的工作区改动；未经授权不还原、删除或覆盖。
 - 使用宿主提供的代码图谱、文件搜索和编辑工具；工具名称和参数以当前宿主实际提供的版本为准。
 - 数据库结构变更遵循目标 package 的 schema 与迁移生成流程；不手改生成迁移，不删除数据库文件。
+- 产品库迁移（`packages/core/src/storage/migrations/`）新增或改动后运行 `bun scripts/generate-embedded-migrations.ts` 重新生成 `embedded-migrations.ts`（EXE 唯一的迁移来源），不要手改。迁移校验和连注释一起算；嵌入副本与文件走样会让开发环境与 EXE 迁移过的库互相打不开，一致性测试会逐字比对。已应用的迁移文件不要再改。
 - 不提交密钥、Token、`.env`、用户数据，以及 Runtime/overlay 私有源码。
 
 ## 常见错误行为（不可重犯）
