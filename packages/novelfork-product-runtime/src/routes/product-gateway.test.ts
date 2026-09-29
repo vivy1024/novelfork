@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { access, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -92,6 +92,69 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		const workspace = await app.request(`/api/books/${bookId}/workspace`);
 		expect(workspace.status).toBe(200);
 		expect(await workspace.json()).toMatchObject({ resources: expect.arrayContaining([expect.objectContaining({ path: "jingwei/source-material.md", content: "# 已有经纬资料\n\n必须从外部 workspace 读取。\n" })]) });
+	});
+
+	test("文风预设经真实产品路由存到绑定的外部书籍目录，统计更新保留作者指南", async () => {
+		if (!bookId) throw new Error("gateway fixture missing");
+		const app = productApp(owner);
+		const presetPath = `/api/books/${bookId}/style/preset`;
+		const initial = await app.request(presetPath);
+		expect(initial.status).toBe(200);
+		const { revision } = await initial.json() as { revision: string | null };
+		const preset = {
+			schemaVersion: 1, name: "外部书籍文风", generalRules: ["用动作表现犹豫，不直接解释情绪"], sources: [],
+			bookVoice: { tone: "克制", narrativeVoice: "限知第三人称", principles: ["保持角色视角边界"] }, fingerprint: null,
+		};
+		const saved = await app.request(presetPath, {
+			method: "PUT", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ expectedRevision: revision, preset }),
+		});
+		expect(saved.status).toBe(200);
+		expect(JSON.parse(await readFile(join(externalBookRoot, "story", "style_preset.json"), "utf8"))).toEqual(preset);
+		const layers = await (await app.request(`/api/books/${bookId}/writing-layers`)).json() as { styleGuideText: string };
+		expect(layers.styleGuideText).toContain(preset.generalRules[0]);
+		const stale = await app.request(presetPath, {
+			method: "PUT", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ expectedRevision: revision, preset }),
+		});
+		expect(stale.status).toBe(409);
+		const distill = await app.request(`/api/books/${bookId}/style/distill`, {
+			method: "POST", headers: { "content-type": "application/json" },
+			body: JSON.stringify({ samples: ["她捏住杯沿，没有喝。门外又响了两下。"] }),
+		});
+		expect(distill.status).toBe(200);
+		const loaded = await (await app.request(presetPath)).json() as { preset: typeof preset; guideText: string };
+		expect(loaded.preset.generalRules).toEqual(preset.generalRules);
+		expect(loaded.preset.fingerprint).not.toBeNull();
+		expect(loaded.guideText).toContain("限知第三人称");
+	});
+
+	test("file gateway creates missing parent directories inside the book and still rejects escapes", async () => {
+		if (!bookId) throw new Error("gateway fixture missing");
+		const app = productApp(owner);
+		const write = await app.request(`/api/books/${bookId}/files`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ path: "notes/deep/new-idea.md", content: "# 灵感\n" }),
+		});
+		expect(write.status).toBe(200);
+		expect(await readFile(join(externalBookRoot, "notes", "deep", "new-idea.md"), "utf8")).toBe("# 灵感\n");
+
+		const mkdirResponse = await app.request(`/api/books/${bookId}/files/mkdir`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ path: "drafts/a/b" }),
+		});
+		expect(mkdirResponse.status).toBe(201);
+		expect((await stat(join(externalBookRoot, "drafts", "a", "b"))).isDirectory()).toBe(true);
+
+		const escape = await app.request(`/api/books/${bookId}/files`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ path: "../outside/x.md", content: "x" }),
+		});
+		expect(escape.status).toBeGreaterThanOrEqual(400);
+		expect(escape.status).toBeLessThan(500);
 	});
 
 	test("caches the trusted workspace tree, refreshes on demand, and invalidates after mutations", async () => {

@@ -16,7 +16,13 @@ export {
   type AuthorWebCaptureResult,
 } from "./author-materials.js";
 export { createJingweiRouter, type CreateJingweiRouterOptions } from "./jingwei.js";
+export {
+  createCharacterVoiceRouter,
+  type CharacterVoiceWarning,
+  type CreateCharacterVoiceRouterOptions,
+} from "./character-voice.js";
 export { createWritingModesRouter } from "./writing-modes.js";
+export { createStyleDistillationsRouter, type CreateStyleDistillationsRouterOptions } from "./style-distillations.js";
 export { createPipelineRouter, createPipelineRun, updatePipelineStage, completePipelineRun } from "./pipeline.js";
 export { createFilterRouter, type CreateFilterRouterOptions } from "./filter.js";
 export { createComplianceRouter } from "./compliance.js";
@@ -34,6 +40,7 @@ export { createMarketRouter } from "./market.js";
 export { createEmbeddingSettingsRouter } from "./embedding.js";
 export { createCockpitRouter, type CreateCockpitRouterOptions } from "./cockpit.js";
 export { createNarrativeMemoryRouter } from "./narrative-memory.js";
+export { createEntityGraphRouter, type EntityGraphRouterOptions } from "./entity-graph.js";
 export { createNarrativeStructureRouter, type NarrativeStructureRouterOptions } from "./narrative-structure.js";
 export {
   createWorkflowRunsRouter,
@@ -41,6 +48,7 @@ export {
   type CreateWorkflowRunsRouterOptions,
 } from "./workflow-runs.js";
 export { createNarrativeLineRouter, type CreateNarrativeLineRouterOptions } from "./narrative-line.js";
+export { createBookArchiveRouter, type BookArchiveImportRequest, type BookArchiveImportResult, type CreateBookArchiveRouterOptions } from "./book-archive.js";
 export type {
   AiObservationScope,
   AiObservationSuccess,

@@ -7,8 +7,11 @@ import {
 	StateManager,
 } from "@vivy1024/novelfork-core";
 import {
+	createBookArchiveRouter,
+	createCharacterVoiceRouter,
 	createCockpitRouter,
 	createComplianceRouter,
+	createEntityGraphRouter,
 	createEmbeddingSettingsRouter,
 	createFilterRouter,
 	createJingweiRouter,
@@ -20,6 +23,7 @@ import {
 	createWriteReadinessRouter,
 	createWritingLayersRouter,
 	createWritingModesRouter,
+	createStyleDistillationsRouter,
 	createWritingResourceRouter,
 	createWritingSkillsRouter,
 	createWritingToolsRouter,
@@ -28,7 +32,15 @@ import {
 	createNarrativeStructureRouter,
 	type RouterContext,
 } from "@vivy1024/novelfork-novel-plugin/routes";
+import {
+	ValidationError,
+	runtimeProductHostServices,
+	type RuntimeProductHostServices,
+	type RuntimeProductTextGenerationStatus,
+} from "@vivy1024/narrafork-runtime-bridge";
 import { getControlledBooksRoot } from "../services/book-binding";
+import { novelForkProductBookService } from "../services/book-provision";
+import rootPackage from "../../../../package.json";
 import { assertBookNarratorAccess } from "../services/narrator-access";
 
 /**
@@ -59,6 +71,70 @@ export function resolveDomainBookRoot(bookId: string): string {
 	return resolveBookStorageDir(dirname(getControlledBooksRoot()), normalized);
 }
 
+type ProductTextGenerationResolver = NonNullable<RouterContext["resolveTextGeneration"]>;
+type ProductTextGenerationAvailability = Awaited<ReturnType<ProductTextGenerationResolver>>;
+
+function explainUnavailableModel(
+	status: Extract<RuntimeProductTextGenerationStatus, { available: false }>,
+): ProductTextGenerationAvailability {
+	if (status.code === "MODEL_NOT_CONFIGURED") {
+		return {
+			available: false,
+			code: status.code,
+			message: "Runtime 还没有设置默认模型。",
+			suggestedAction: "在设置里配置 AI 供应商并选定默认模型后重试。",
+		};
+	}
+	return {
+		available: false,
+		code: status.code,
+		message: `默认模型当前不可用：${status.message}`,
+		suggestedAction: "在设置里检查默认模型的供应商是否已启用、凭据是否有效，或改选其他默认模型后重试。",
+	};
+}
+
+/**
+ * Server-side text generation for novel HTTP routes, provided by the Runtime
+ * through the Product Host SPI. Generation follows the Runtime's configured
+ * default model (the model a narrator uses without an override) and every
+ * request is attributed to the authenticated user for usage accounting. The
+ * product never reads provider credentials or picks a model itself.
+ */
+export function createProductTextGenerationResolver(
+	services: RuntimeProductHostServices = runtimeProductHostServices,
+): ProductTextGenerationResolver {
+	return async (c) => {
+		const user = c.get("user") as { sub?: unknown } | undefined;
+		const userId = typeof user?.sub === "string" ? user.sub.trim() : "";
+		if (!userId) {
+			return {
+				available: false,
+				code: "UNAUTHENTICATED",
+				message: "这次请求没有登录身份，服务端模型只对已登录的作者开放。",
+				suggestedAction: "重新登录后再试。",
+			};
+		}
+		const status = await services.getTextGenerationStatus("default");
+		if (!status.available) return explainUnavailableModel(status);
+		return {
+			available: true,
+			model: `${status.provider}:${status.model}`,
+			generateText: (request) =>
+				services.generateText(
+					{
+						messages: request.messages,
+						...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+						...(request.maxTokens !== undefined ? { maxTokens: request.maxTokens } : {}),
+						modelRole: "default",
+					},
+					{ userId },
+				),
+		};
+	};
+}
+
+const resolveProductTextGeneration = createProductTextGenerationResolver();
+
 class ProductBookStateManager extends StateManager {
 	bookDir(bookId: string): string {
 		return resolveDomainBookRoot(bookId);
@@ -75,7 +151,9 @@ function createProductRouterContext(): RouterContext {
 		buildPipelineConfig: async () => {
 			throw new Error("AI pipeline is not available from this product HTTP adapter");
 		},
+		// 产品层不接触供应商密钥：服务端模型调用一律走 resolveTextGeneration。
 		getSessionLlm: async () => undefined,
+		resolveTextGeneration: resolveProductTextGeneration,
 		getRuntimeModelStatus: async () => ({ hasUsableModel: false }),
 	};
 }
@@ -101,9 +179,12 @@ novelDomainRoutes.route(
 	asRuntimeRouter(
 		createNarrativeMemoryRouter({
 			resolveBookRoot: resolveDomainBookRoot,
+			resolveTextGeneration: resolveProductTextGeneration,
 		}),
 	),
 );
+// 关系图谱：按实体 id 查第 N 章关系、关系史、焦点人物网络、共同关系人与趋势；数据只读实体索引。
+novelDomainRoutes.route("", asRuntimeRouter(createEntityGraphRouter()));
 novelDomainRoutes.route(
 	"",
 	asRuntimeRouter(
@@ -111,6 +192,17 @@ novelDomainRoutes.route(
 	),
 );
 novelDomainRoutes.route("", asRuntimeRouter(createJingweiRouter()));
+// 角色声线：权威源是经纬角色条目 fields_json.voice；草稿待审、作者逐项确认，写入带版本校验。
+// 「请模型增补」走 Runtime 提供的服务端文本生成（当前用户、默认模型）；没有模型时只出规则初稿并说明原因。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createCharacterVoiceRouter({
+			resolveBookRoot: resolveDomainBookRoot,
+			resolveTextGeneration: resolveProductTextGeneration,
+		}),
+	),
+);
 // 驾驶舱「近期章节结果 + 待回收伏笔」轻声提示面板。复用 CockpitService 的只读查询。
 novelDomainRoutes.route("", asRuntimeRouter(createCockpitRouter(productRouterContext)));
 // 叙事线快照 + proposal 审批。propose 只算预览，apply 才写入并留审批台账。
@@ -188,6 +280,30 @@ novelDomainRoutes.route(
 // 质量趋势（章级 AI 味/漂移分/质量分时间序列）和写作模式（文风漂移检测基线）。
 novelDomainRoutes.route("", asRuntimeRouter(createQualityTrendRouter(productRouterContext)));
 novelDomainRoutes.route("", asRuntimeRouter(createWritingModesRouter(productRouterContext)));
+novelDomainRoutes.route("", asRuntimeRouter(createStyleDistillationsRouter(productRouterContext, {
+	resolveBookRoot: resolveDomainBookRoot,
+})));
+// 项目档案：导出整本书为单个 zip；导入只能导入为新书。作品目录只经可信绑定解析，
+// 导入的建书、目录转正与 Runtime 绑定由产品书籍服务完成，失败整体撤销。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createBookArchiveRouter({
+			resolveBookRoot: resolveDomainBookRoot,
+			novelforkVersion: typeof rootPackage.version === "string" ? rootPackage.version : "unknown",
+			importArchive: async (c, request) => {
+				const user = c.get("user") as { sub?: string; role?: "admin" | "user" } | undefined;
+				if (!user?.sub) throw new ValidationError("导入作品需要登录");
+				return novelForkProductBookService.importBookArchive(
+					{ userId: user.sub, role: user.role === "admin" ? "admin" : "user" },
+					request.idempotencyKey,
+					request.bytes,
+					request.modules,
+				);
+			},
+		}),
+	),
+);
 novelDomainRoutes.route("", asRuntimeRouter(createMarketRouter()));
 // 独立 embedding 提供商：落到 NovelFork 产品库，不挤进 Runtime AI 供应商。
 novelDomainRoutes.route("", asRuntimeRouter(createEmbeddingSettingsRouter()));

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import type { RefObject } from "react";
 import {
@@ -13,7 +13,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
+import { useResourceAutosave } from "./use-resource-autosave";
 import { ResourceViewer } from "./resource-viewers";
+import { useNarrativeStructure } from "./useNarrativeStructure";
+import type { MentionEntity } from "./ide/EntityMentionExtension";
 import { summarizeStyleProfile } from "./resource-viewers/style-profile-summary";
 import { isChapterWorkflowNode } from "./chapter-workflow-node";
 import { ChapterActionsBar } from "./ChapterActionsBar";
@@ -30,7 +33,7 @@ import { QualityPanel } from "./panels/QualityPanel";
 import type { ToolPanelId } from "./useWorkbenchResources";
 import { GovernanceCockpitPanel } from "./GovernanceCockpitPanel";
 
-// 作品基础只看设定类的树；结构类的树归故事推进（见 StoryProgressionCanvas 的 PROGRESSION_TREE_KINDS）。
+// 作品基础只看设定类的视图：世界观树与人物关系网；结构类的树归故事推进（见 StoryProgressionCanvas 的 PROGRESSION_TREE_KINDS）。
 const LORE_TREE_KINDS = ["worldview", "relations"] as const;
 
 // Lazy-loaded tool panels
@@ -98,10 +101,6 @@ function toOpenResourceTab(node: WorkbenchResourceNode, dirty: boolean): OpenRes
     dirty,
     source: "user",
   };
-}
-
-function saveErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 const resourceTypeLabels: Partial<Record<WorkbenchResourceKind, string>> = {
@@ -295,6 +294,8 @@ export interface WorkbenchCanvasProps {
   onOpenJingweiEntry?: (entryId: string) => boolean;
   /** 图谱节点打开实体详情抽屉。 */
   onOpenEntityDetail?: (entity: string) => void;
+  /** 人物关系网打开实体资料卡：总是打开抽屉，并带上经纬条目 id（抽屉据此按实体 id 读关系）。 */
+  onOpenEntityDrawer?: (entity: string, entryId?: string) => void;
   /** 大纲/规划节点一键提拔落稿为手稿章节 */
   onPromoteOutline?: (node: WorkbenchResourceNode) => void;
   /**
@@ -311,11 +312,8 @@ export interface WorkbenchCanvasProps {
   narratorId?: string;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId }: WorkbenchCanvasProps) {
-  const [content, setContent] = useState(node?.content ?? "");
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId }: WorkbenchCanvasProps) {
+  const { resourceKey, content, dirty, saving, saveError, setContent, save: handleSave, setSaveError } = useResourceAutosave(node, bookId, onSave);
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -324,43 +322,59 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   const [sceneSpec, setSceneSpec] = useState<SceneSpec | null>(null);
   const [sceneSpecLoading, setSceneSpecLoading] = useState(false);
   const [contextRailOpen, setContextRailOpen] = useState(true);
-  // TipTap 可能规范化 markdown，但 dirty 基准必须始终从当前资源正文开始，
-  // 不能把第一次真实编辑误当成规范化基准值。
-  const normalizedBaseRef = useRef(node?.content ?? "");
-
-  // 文风指纹 → 划词 AI 的约束摘要。只在打开章节时取；没有指纹或读取失败都视为「无约束」，
-  // 划词指令与未接入文风前逐字一致，不因为指纹缺失而阻断改写。
+  // 已启用预设提供写法指南；尚未升级的旧书继续兼容统计摘要。
   const [styleProfileSummary, setStyleProfileSummary] = useState<string | undefined>(undefined);
   const isChapterNode = Boolean(node && isChapterWorkflowNode(node));
+  // 正文提及高亮的名单：叙事结构快照里的经纬实体（规范名 + 别名）；只在打开章节时读取。
+  const { state: narrativeStructure } = useNarrativeStructure(isChapterNode ? bookId : undefined);
+  const mentionEntities = useMemo<readonly MentionEntity[]>(() => (
+    narrativeStructure.status === "ready"
+      ? (narrativeStructure.data.entities ?? []).map((entity) => ({
+        name: entity.canonicalName,
+        ...(entity.aliases ? { aliases: entity.aliases } : {}),
+        entityType: entity.entityType,
+      }))
+      : []
+  ), [narrativeStructure]);
   useEffect(() => {
     if (!bookId || !isChapterNode) {
       setStyleProfileSummary(undefined);
       return;
     }
     let cancelled = false;
-    void fetchJson<{ profile?: unknown }>(`/api/books/${encodeURIComponent(bookId)}/style/profile`)
-      .then((data) => {
-        if (!cancelled) setStyleProfileSummary(summarizeStyleProfile(data?.profile));
-      })
-      .catch(() => {
-        if (!cancelled) setStyleProfileSummary(undefined);
-      });
+    let requestId = 0;
+    setStyleProfileSummary(undefined);
+    const reloadStyle = () => {
+      const currentRequest = ++requestId;
+      void fetchJson<{ profile?: unknown; guideText?: string; source?: string }>(`/api/books/${encodeURIComponent(bookId)}/style/profile`)
+        .then((data) => {
+          if (!cancelled && currentRequest === requestId) {
+            setStyleProfileSummary(data?.source === "preset"
+              ? data.guideText?.trim() || undefined : summarizeStyleProfile(data?.profile));
+          }
+        })
+        .catch(() => {
+          if (!cancelled && currentRequest === requestId) setStyleProfileSummary(undefined);
+        });
+    };
+    const handleStyleChange = (event: Event) => {
+      if ((event as CustomEvent<{ bookId: string }>).detail?.bookId === bookId) reloadStyle();
+    };
+    reloadStyle();
+    window.addEventListener("novelfork:style-preset-updated", handleStyleChange);
     return () => {
       cancelled = true;
+      window.removeEventListener("novelfork:style-preset-updated", handleStyleChange);
     };
   }, [bookId, isChapterNode]);
 
   useEffect(() => {
-    setContent(node?.content ?? "");
-    setDirty(false);
-    setSaveError(null);
     setHistoryEntries(null);
     setHistoryError(null);
     setSceneSpec(null);
     setSceneSpecOpen(false);
     setContextRailOpen(true);
-    normalizedBaseRef.current = node?.content ?? ""; // reset on node change
-  }, [node]);
+  }, [resourceKey]);
 
   useEffect(() => {
     onCanvasContextChange({
@@ -375,12 +389,12 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   }, [content, dirty, node, onCanvasContextChange]);
 
   // ide:save 自定义事件监听（必须在所有 early return 之前声明，避免 hooks 数量变化）
-  const saveRef = useRef(() => {});
   useEffect(() => {
-    const handler = () => { saveRef.current(); };
+    if (!isActive) return;
+    const handler = () => { void handleSave(); };
     window.addEventListener("ide:save", handler);
     return () => window.removeEventListener("ide:save", handler);
-  }, []);
+  }, [handleSave, isActive]);
 
   // ── 编辑器状态缓存（Tab 切换时保存/恢复滚动位置） ──
   const containerRef = useRef<HTMLDivElement>(null);
@@ -461,7 +475,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
     }
   }
 
-  // 设定图谱 — 作品基础的中央视图，只放回答「设定是什么」的两棵树。
+  // 设定图谱 — 作品基础的中央视图，只放回答「设定是什么」的两张图：世界观树、人物关系网。
   if (node.metadata?.isLoreTrees && bookId) {
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden" data-testid="lore-trees-view">
@@ -474,6 +488,10 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
               // 条目已载入就直接跳经纬卡；否则退回实体详情抽屉，至少让名字有去处。
               if (onOpenJingweiEntry?.(entryId)) return;
               onOpenEntityDetail?.(label);
+            }}
+            onOpenEntity={(name: string, entryId?: string) => {
+              if (onOpenEntityDrawer) onOpenEntityDrawer(name, entryId);
+              else onOpenEntityDetail?.(name);
             }}
             {...(onJumpToChapter ? { onOpenChapter: onJumpToChapter } : {})}
             {...(onSendToNarrator ? { onSendToNarrator } : {})}
@@ -525,23 +543,6 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
   const needsHydration = resourceNeedsDetailHydration(node);
   const hydrateError = typeof node.metadata?.detailError === "string" ? node.metadata.detailError : null;
-
-  async function handleSave() {
-    if (!node || readonly || needsHydration || saving) return;
-    setSaveError(null);
-    setSaving(true);
-    try {
-      await onSave(node, content);
-      setDirty(false);
-    } catch (error) {
-      setSaveError(saveErrorMessage(error));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // saveRef 赋值（放在 early return 之后是安全的，因为 ref 已在上方声明）
-  saveRef.current = handleSave;
 
   // 工具栏按钮（可 portal 到外部容器，也可本地渲染）
   const toolbarButtons = (
@@ -736,11 +737,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
               />
             );
           })() : (
-            <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} styleProfileSummary={styleProfileSummary} onContentChange={(nextContent) => {
-              setContent(nextContent);
-              setDirty(nextContent !== normalizedBaseRef.current);
-              setSaveError(null);
-            }} onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
+            <ResourceViewer key={resourceKey} node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} styleProfileSummary={styleProfileSummary} mentionEntities={mentionEntities} onOpenEntity={onOpenEntityDetail} onContentChange={setContent} onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
               const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
               try {
                 const data = await fetchJson<{ text?: string; content?: string }>(
@@ -839,11 +836,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
           chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
           content={content}
           bookPlatform={resolveBookPlatform(nodes)}
-          onApplyContent={(nextContent) => {
-            setContent(nextContent);
-            setDirty(nextContent !== normalizedBaseRef.current);
-            setSaveError(null);
-          }}
+          onApplyContent={setContent}
           onSendToNarrator={onSendToNarrator}
         />
       )}

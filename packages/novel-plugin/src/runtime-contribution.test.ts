@@ -681,6 +681,8 @@ describe("novel Runtime contribution", () => {
         && !system.includes("网文章节张力评分器")
         && !system.includes("状态追踪分析师")
         && !system.includes("事实提取专家")
+        // 拆书知识包增补是从正文抽取角色 / 关系 / 伏笔，与事实提取同属辅助抽取，不做创作决策。
+        && !system.includes("小说内容解构专家")
         && !system.includes("网络小说作家")
         && !system.includes("你是一位专业的")
         && !system.includes("你是一位")

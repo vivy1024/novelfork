@@ -661,6 +661,27 @@ function RouteMountPoint({
                 await runtimeClient.deleteBook(bookId, deleteWorkspace);
                 await reloadRuntimeShell();
               }}
+              loadArchiveModules={runtimeClient.listBookArchiveModules}
+              onExportBookArchive={async (bookId, modules) => {
+                const { blob, fileName } = await runtimeClient.exportBookArchive(bookId, modules);
+                const url = URL.createObjectURL(blob);
+                try {
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = fileName;
+                  document.body.appendChild(link);
+                  link.click();
+                  link.remove();
+                } finally {
+                  // 给浏览器留出开始下载的时间再释放。
+                  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                }
+              }}
+              onImportBookArchive={async (archive, modules) => {
+                const result = await runtimeClient.importBookArchive(archive, modules, crypto.randomUUID());
+                await reloadRuntimeShell();
+                return result;
+              }}
             />
           </Suspense>
         </LazyErrorBoundary>

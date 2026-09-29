@@ -1,6 +1,8 @@
 import { useState } from "react";
 import {
   BookOpen,
+  Download,
+  FileArchive,
   FolderOpen,
   FolderPen,
   Plus,
@@ -37,7 +39,10 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DirectoryPickerDialog } from "../components/DirectoryPickerDialog";
 import { WorkspaceCreateWizard, type WorkspaceCreateInput } from "../components/WorkspaceCreateWizard";
+import { BookArchiveExportDialog, BookArchiveImportDialog } from "./BookArchiveDialogs";
 import type {
+  RuntimeBookArchiveImportResult,
+  RuntimeBookArchiveModule,
   RuntimeBookProvisionOperation,
   RuntimeBookSummary,
   RuntimeRebindBookWorkspaceResult,
@@ -65,6 +70,13 @@ export interface BookManagementPageProps {
     workspaceRoot: string,
   ) => Promise<RuntimeRebindBookWorkspaceResult>;
   readonly onDeleteBook: (bookId: string, deleteWorkspace?: boolean) => Promise<void>;
+  /** 项目档案：三个回调齐备时才显示导出 / 导入入口。 */
+  readonly loadArchiveModules?: () => Promise<readonly RuntimeBookArchiveModule[]>;
+  readonly onExportBookArchive?: (bookId: string, modules: readonly string[]) => Promise<void>;
+  readonly onImportBookArchive?: (
+    archive: File,
+    modules: readonly string[],
+  ) => Promise<RuntimeBookArchiveImportResult>;
 }
 
 export function BookManagementPage({
@@ -78,6 +90,9 @@ export function BookManagementPage({
   onRepairBook,
   onRebindBookWorkspace,
   onDeleteBook,
+  loadArchiveModules,
+  onExportBookArchive,
+  onImportBookArchive,
 }: BookManagementPageProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -95,6 +110,10 @@ export function BookManagementPage({
   const [rebindTarget, setRebindTarget] = useState<ManagedBook | null>(null);
   const [rebindPath, setRebindPath] = useState("");
   const [rebindPickerOpen, setRebindPickerOpen] = useState(false);
+  const [archiveExportTarget, setArchiveExportTarget] = useState<ManagedBook | null>(null);
+  const [archiveImportOpen, setArchiveImportOpen] = useState(false);
+  const archiveExportEnabled = Boolean(loadArchiveModules && onExportBookArchive);
+  const archiveImportEnabled = Boolean(loadArchiveModules && onImportBookArchive);
 
   const claimLegacyBook = async () => {
     const bookId = legacyBookId.trim();
@@ -208,6 +227,12 @@ export function BookManagementPage({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {archiveImportEnabled ? (
+            <Button variant="outline" onClick={() => setArchiveImportOpen(true)}>
+              <FileArchive data-icon="inline-start" />
+              导入档案
+            </Button>
+          ) : null}
           {onImportBook ? (
             <Button variant="outline" onClick={() => setPickerOpen(true)}>
               <FolderOpen data-icon="inline-start" />
@@ -308,6 +333,16 @@ export function BookManagementPage({
                   <FolderPen data-icon="inline-start" />
                   修正目录
                 </Button>
+                {archiveExportEnabled ? (
+                  <Button
+                    variant="outline"
+                    disabled={actionBookId === book.id}
+                    onClick={() => setArchiveExportTarget(book)}
+                  >
+                    <Download data-icon="inline-start" />
+                    导出档案
+                  </Button>
+                ) : null}
                 <Button
                   variant="destructive"
                   disabled={actionBookId === book.id}
@@ -325,6 +360,28 @@ export function BookManagementPage({
           ))}
         </div>
       )}
+
+      {loadArchiveModules && onExportBookArchive ? (
+        <BookArchiveExportDialog
+          book={archiveExportTarget}
+          loadModules={loadArchiveModules}
+          onExport={onExportBookArchive}
+          onClose={() => setArchiveExportTarget(null)}
+          onExported={(message) => {
+            setActionError(null);
+            setActionMessage(message);
+          }}
+        />
+      ) : null}
+      {loadArchiveModules && onImportBookArchive ? (
+        <BookArchiveImportDialog
+          open={archiveImportOpen}
+          loadModules={loadArchiveModules}
+          onImport={onImportBookArchive}
+          onClose={() => setArchiveImportOpen(false)}
+          onOpenBook={onNavigateToBook}
+        />
+      ) : null}
 
       <WorkspaceCreateWizard
         open={createOpen}

@@ -4,7 +4,7 @@
  * 三栏布局：ActivityBar + Sidebar + Editor(含 Tabs) + ChatPanel
  * 参考 VS Code：ActivityBar 图标切换 Sidebar 内容，底部只有全局操作。
  */
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
@@ -16,7 +16,7 @@ import {
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
 import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
-import { createMemoryCenterNode, createStoryProgressionNode, createToolSectionNodes } from "../useWorkbenchResources";
+import { createLoreTreesNode, createMemoryCenterNode, createStoryProgressionNode, createToolSectionNodes } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
 import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
@@ -27,6 +27,8 @@ import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel, type BookSettingsSection } from "../panels/BookSettingsPanel";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
 import { SkillsAndStyleSidebarPanel } from "./SkillsAndStyleSidebarPanel";
+import { StyleDistillationWorkspace, type StyleDistillationFetchJson } from "./StyleDistillationWorkspace";
+import { StyleVaultPanel } from "./StyleVaultPanel";
 import { CharactersAndLoreSidebarPanel, type EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
 import { EntityDetailDrawer } from "../EntityDetailDrawer";
@@ -46,6 +48,7 @@ import { useIdeCommands } from "./use-ide-commands";
 import { ProblemsPanel, type EditorIssue } from "./ProblemsPanel";
 import { clearEditorState } from "./editor-state-cache";
 import { useWorkbenchDialogs } from "./use-workbench-dialogs";
+import { useWorkbenchLeaveGuard } from "../use-workbench-leave-guard";
 import { toast } from "@/components/ui/toast";
 import {
   defaultIdePaneVisibility,
@@ -159,6 +162,8 @@ export interface IdeWorkbenchProps {
   onDeselectNode?: () => void;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
+  /** 注册宿主导航前的未保存确认；true 放行，false 阻止，卸载时传 null。 */
+  onBeforeLeaveChange?: (guard: (() => Promise<boolean>) | null) => void;
   onCreateChapter?: () => void;
   onGuideComplete?: (outcome?: GuidedSetupOutcome) => void;
   chapterActions?: ChapterActionHandlers;
@@ -280,6 +285,7 @@ export function IdeWorkbench({
   onOpen,
   onSave,
   onCanvasContextChange,
+  onBeforeLeaveChange,
   onGuideComplete,
   chapterActions,
   chatSlot,
@@ -298,7 +304,7 @@ export function IdeWorkbench({
   const [layoutMode, setLayoutMode] = useState<IdeLayoutMode>(() => initialIdeLayoutMode());
   const [sidebarVisible, setSidebarVisible] = useState(() => defaultIdePaneVisibility(initialIdeLayoutMode()).sidebar);
   const [chatVisible, setChatVisible] = useState(() => defaultIdePaneVisibility(initialIdeLayoutMode()).chat);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, updateShowSettings] = useState(false);
   const layoutStorageId = bookId ?? "global";
   const initialLayoutSizes = useMemo(() => loadIdeLayoutSizes(layoutStorageId), [layoutStorageId]);
   const layoutSizesRef = useRef(initialLayoutSizes);
@@ -336,9 +342,20 @@ export function IdeWorkbench({
   }, []);
   // 写作视图「一键修」跳设置时要落到具体分区（如 Writing Skills），不是只打开长表单。
   const [settingsSection, setSettingsSection] = useState<BookSettingsSection | undefined>(undefined);
-  const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
+  const [splitNodeId, updateSplitNodeId] = useState<string | null>(null);
+  const splitDraftRef = useRef({ dirty: false, title: "分屏正文" });
   const [entityDetailEntity, setEntityDetailEntity] = useState<string | null>(null);
+  // 抽屉按经纬条目 id 读关系；只有名字时由抽屉自己按经纬条目精确匹配。
+  const [entityDetailEntryId, setEntityDetailEntryId] = useState<string | undefined>(undefined);
   const [fileClipboard, setFileClipboard] = useState<{ node: WorkbenchResourceNode; mode: "copy" | "cut" } | null>(null);
+
+  const styleDistillationFetch = useCallback<StyleDistillationFetchJson>(async (input, init) => {
+    if (runtimeFetch) return runtimeFetch(input, init);
+    const response = await fetch(input, init);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw Object.assign(new Error(typeof payload?.error === "string" ? payload.error : "文风蒸馏请求失败"), { status: response.status });
+    return payload;
+  }, [runtimeFetch]);
 
   // 文件/条目操作的产品内弹层，取代浏览器原生 confirm/prompt/alert。
   // confirm/prompt/alert 由 useCallback 稳定，可安全进入依赖数组。
@@ -350,7 +367,7 @@ export function IdeWorkbench({
 
   // --- 命令式面板管理(纯 DOM 操作,学 VS Code CompositePart) ---
   const overlayPanes = idePanesUseOverlay(layoutMode);
-  const { activeView, showPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("explorer", overlayPanes ? "overlay" : "split");
+  const { activeView, showPanel: revealPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("explorer", overlayPanes ? "overlay" : "split");
   // handleOpen 需要在不重建 callback 链的前提下读取当前视图（它被 handleOpenJingweiEntry/
   // handleJumpToChapter/handleResourceAction 等层层引用，activeView 进依赖会全链路重建）。
   const activeViewRef = useRef(activeView);
@@ -362,6 +379,39 @@ export function IdeWorkbench({
   const ideTabs = useIdeTabs(bookId, tabView);
   const ideTabsRef = useRef(ideTabs);
   ideTabsRef.current = ideTabs;
+
+  const guardLeave = useWorkbenchLeaveGuard(JSON.stringify([bookId, activeView]), confirmDialog);
+  const dirtyTabTitles = useCallback(() => ideTabsRef.current.tabs.filter(tab => tab.dirty).map(tab => tab.title), []);
+  useLayoutEffect(() => {
+    if (!onBeforeLeaveChange) return;
+    let registered = true;
+    onBeforeLeaveChange(async () => {
+      if (!registered) return false;
+      const titles = dirtyTabTitles();
+      if (splitDraftRef.current.dirty) titles.push(splitDraftRef.current.title);
+      let allowed = false;
+      await guardLeave(titles, () => { allowed = true; });
+      // 回调更换/撤销后，即使原弹窗确认同意，也不能替新宿主导航放行。
+      return registered && allowed;
+    });
+    return () => {
+      registered = false;
+      onBeforeLeaveChange(null);
+    };
+  }, [dirtyTabTitles, guardLeave, onBeforeLeaveChange]);
+  const showPanel = useCallback((view: SidebarView) => {
+    void guardLeave(view === activeViewRef.current ? [] : dirtyTabTitles(), () => revealPanel(view));
+  }, [dirtyTabTitles, guardLeave, revealPanel]);
+  const setShowSettings = useCallback((value: boolean | ((current: boolean) => boolean)) => {
+    const next = typeof value === "function" ? value(showSettings) : value;
+    void guardLeave(next && !showSettings ? dirtyTabTitles() : [], () => updateShowSettings(next));
+  }, [dirtyTabTitles, guardLeave, showSettings]);
+  const setSplitNodeId = useCallback((nodeId: string | null) => {
+    void guardLeave(nodeId !== splitNodeId && splitDraftRef.current.dirty ? [splitDraftRef.current.title] : [], () => {
+      if (nodeId !== splitNodeId) splitDraftRef.current.dirty = false;
+      updateSplitNodeId(nodeId);
+    });
+  }, [guardLeave, splitNodeId]);
 
   // --- Portal container for toolbar (WorkbenchCanvas → EditorTabs) ---
   const toolbarSlotRef = useRef<HTMLDivElement>(null);
@@ -574,6 +624,8 @@ export function IdeWorkbench({
   const memoryCenterNode = useMemo(() => (bookId ? createMemoryCenterNode(bookId) : null), [bookId]);
   // 故事推进大屏画布的默认节点（evolution 视图）；侧栏跳转会以带 preferredView 的节点覆盖缓存。
   const storyProgressionNode = useMemo(() => (bookId ? createStoryProgressionNode(bookId) : null), [bookId]);
+  // 「设定图谱」合成节点：不在资源树里，登记进 resourceMap，Tab 才解析得到（含刷新后恢复的 Tab），否则画布停在书籍总览。
+  const loreTreesNode = useMemo(() => (bookId ? createLoreTreesNode(bookId) : null), [bookId]);
 
   const resourceMap = useMemo(() => {
     const map = new Map<string, WorkbenchResourceNode>();
@@ -587,8 +639,9 @@ export function IdeWorkbench({
     toolNodes.forEach(walk);
     if (memoryCenterNode) map.set(memoryCenterNode.id, memoryCenterNode);
     if (storyProgressionNode) map.set(storyProgressionNode.id, storyProgressionNode);
+    if (loreTreesNode) map.set(loreTreesNode.id, loreTreesNode);
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, memoryCenterNode, storyProgressionNode]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, memoryCenterNode, storyProgressionNode, loreTreesNode]);
 
   // 文件树节点点击后加载的内容缓存；key 带 bookId，避免跨书复用同名资源。
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -701,28 +754,36 @@ export function IdeWorkbench({
     return () => controller.abort();
   }, [activeNode, bookId, loadedFiles]);
 
-  // --- Tab 关闭:dirty 时弹确认 + 清理缓存 ---
-  const handleCloseTab = useCallback(async (tabId: string) => {
-    const tab = ideTabsRef.current.tabs.find(t => t.id === tabId);
-    if (tab?.dirty) {
-      const confirmed = await confirmDialog({
-        title: `"${tab.title}" 有未保存的修改`,
-        description: "关闭后未保存的修改将丢失，确认关闭？",
-        confirmLabel: "关闭",
-        destructive: true,
+  // 所有关闭入口共用确认；只关闭发起时的目标，不把等待弹窗期间新开的标签算进去。
+  const handleCloseTabs = useCallback((tabIds: readonly string[]) => {
+    const targets = ideTabsRef.current.tabs.filter(tab => tabIds.includes(tab.id));
+    return guardLeave(targets.filter(tab => tab.dirty).map(tab => tab.title), () => {
+      for (const tab of targets) {
+        ideTabsRef.current.closeTab(tab.id);
+        clearEditorState(tab.id);
+      }
+      setLoadedFiles(previous => {
+        const next = new Map(previous);
+        for (const tab of targets) next.delete(loadedFileKey(bookId, tab.id));
+        return next;
       });
-      if (!confirmed) return;
-    }
-    ideTabs.closeTab(tabId);
-    clearEditorState(tabId);
-    const cacheKey = loadedFileKey(bookId, tabId);
-    setLoadedFiles(prev => {
-      if (!prev.has(cacheKey)) return prev;
-      const next = new Map(prev);
-      next.delete(cacheKey);
-      return next;
     });
-  }, [ideTabs.closeTab, confirmDialog]);
+  }, [bookId, guardLeave]);
+  const handleCloseTab = useCallback((tabId: string) => handleCloseTabs([tabId]), [handleCloseTabs]);
+  const handleCloseAllTabs = useCallback(() => handleCloseTabs(
+    ideTabsRef.current.tabs.filter(tab => !tab.pinned).map(tab => tab.id),
+  ), [handleCloseTabs]);
+  const handleCloseOthers = useCallback((tabId: string) => handleCloseTabs(
+    ideTabsRef.current.tabs.filter(tab => tab.id !== tabId && !tab.pinned).map(tab => tab.id),
+  ), [handleCloseTabs]);
+  const handleCloseRight = useCallback((tabId: string) => {
+    const tabs = ideTabsRef.current.tabs;
+    const index = tabs.findIndex(tab => tab.id === tabId);
+    if (index >= 0) void handleCloseTabs(tabs.slice(index + 1).filter(tab => !tab.pinned).map(tab => tab.id));
+  }, [handleCloseTabs]);
+  const handleCloseSaved = useCallback(() => handleCloseTabs(
+    ideTabsRef.current.tabs.filter(tab => !tab.dirty && !tab.pinned).map(tab => tab.id),
+  ), [handleCloseTabs]);
 
   const handleOpen = useCallback((node: WorkbenchResourceNode) => {
     // 核心不变量：Tab 按 toTabView(node) 归属到对应工作区，而 EditorTabs/主区只渲染
@@ -819,8 +880,15 @@ export function IdeWorkbench({
   // （角色类目落角色卡、世界侧落世界卡）；未命中回落实体详情抽屉。
   const handleOpenEntityFromGraph = useCallback((entity: string, entryId?: string) => {
     if (entryId && handleOpenJingweiEntry(entryId)) return;
+    setEntityDetailEntryId(entryId);
     setEntityDetailEntity(entity);
   }, [handleOpenJingweiEntry]);
+
+  // 人物关系网的「资料卡」：总是打开实体抽屉（不跳经纬卡），带上条目 id。
+  const handleOpenEntityDrawer = useCallback((entity: string, entryId?: string) => {
+    setEntityDetailEntryId(entryId);
+    setEntityDetailEntity(entity);
+  }, []);
 
   // 伏笔看板"目标章节"跳转：按章节号在资源/文件树中找到章节节点并打开
   const handleJumpToChapter = useCallback((chapterNumber: number) => {
@@ -877,10 +945,12 @@ export function IdeWorkbench({
   }, [bookId, resourceMap, handleOpen]);
 
   const handleCanvasContextChange = useCallback((ctx: WorkbenchCanvasContext) => {
-    const { activeTabId: tabId, setDirty } = ideTabsRef.current;
+    const { activeTabId, setDirty } = ideTabsRef.current;
+    const tabId = ctx.activeTabId;
     if (tabId) setDirty(tabId, ctx.dirty);
-    onCanvasContextChange?.(ctx);
-  }, [onCanvasContextChange]);
+    if (tabId === activeTabId || !tabId) onCanvasContextChange?.(ctx);
+    // 切换已挂载的 Tab 时也让画布重新上报上下文，后台保存只更新自身 dirty。
+  }, [onCanvasContextChange, ideTabs.activeTabId]);
 
   // 经纬条目保存/删除（调 API），供 WorkbenchCanvas 的 JingweiEntryEditor 使用
   const jingweiActions = useMemo(() => {
@@ -931,7 +1001,7 @@ export function IdeWorkbench({
   const handleBreadcrumbNavigate = useCallback((segment: string, index: number) => {
     if (index === 0) {
       // 点击书名 → 关闭所有 tab 回到驾驶舱
-      ideTabsRef.current.closeAll();
+      void handleCloseAllTabs();
       return;
     }
     if (!activeNode) return;
@@ -960,7 +1030,7 @@ export function IdeWorkbench({
         if (sectionNode) { handleOpen(sectionNode); return; }
       }
     }
-  }, [activeNode, fileTree.nodes, jingweiSections, handleOpen]);
+  }, [activeNode, fileTree.nodes, jingweiSections, handleOpen, handleCloseAllTabs]);
 
   // ActivityBar click: VS Code 行为 — 同一个图标折叠，不同图标切换
   // ActivityBar click: 命令式切换面板
@@ -1024,7 +1094,16 @@ export function IdeWorkbench({
    * 轮询定时器：只在真正保存成功时触发一次。
    */
   const handleSaveWithProgress = useCallback(async (node: WorkbenchResourceNode, content: string) => {
+    const generation = fileReadGenerationRef.current;
     await onSave(node, content);
+    if (currentBookIdRef.current !== bookId || generation !== fileReadGenerationRef.current) return;
+    // 文件 Tab 优先读取 loadedFiles；成功后同步这份缓存，避免重挂载时显示保存前的正文。
+    setLoadedFiles((previous) => {
+      const key = loadedFileKey(bookId, node.id);
+      const cached = previous.get(key);
+      if (!cached) return previous;
+      return new Map(previous).set(key, { ...cached, content });
+    });
     dispatchWritingProgress({ reason: "chapter-save", ...(bookId ? { bookId } : {}) });
   }, [bookId, onSave]);
 
@@ -1054,7 +1133,7 @@ export function IdeWorkbench({
   const handleOpenSettingsSection = useCallback((section?: BookSettingsSection) => {
     setSettingsSection(section);
     setShowSettings(true);
-  }, []);
+  }, [setShowSettings]);
 
   /**
    * 写作视图「一键修」→ 切到角色与设定视图并定位分类。
@@ -1079,7 +1158,7 @@ export function IdeWorkbench({
       const target = findCategory(jingweiSections);
       if (target) onOpen(target);
     }
-  }, [showPanel, jingweiSections, onOpen]);
+  }, [showPanel, jingweiSections, onOpen, setShowSettings]);
 
   // ── 快捷键系统 ──
   const keybindingActions = useMemo(() => ({
@@ -1088,16 +1167,7 @@ export function IdeWorkbench({
     },
     closeTab: () => {
       const tabId = ideTabsRef.current.activeTabId;
-      if (tabId) {
-        ideTabsRef.current.closeTab(tabId);
-        setLoadedFiles(prev => {
-          const cacheKey = loadedFileKey(bookId, tabId);
-          if (!prev.has(cacheKey)) return prev;
-          const next = new Map(prev);
-          next.delete(cacheKey);
-          return next;
-        });
-      }
+      if (tabId) void handleCloseTab(tabId);
     },
     toggleSidebar: () => {
       setSidebarVisible((visible) => {
@@ -1133,7 +1203,7 @@ export function IdeWorkbench({
       setPaletteMode("files");
       setPaletteOpen(true);
     },
-  }), [handleChatToggle]);
+  }), [handleChatToggle, handleCloseTab, setShowSettings, showPanel]);
   useIdeKeybindings(keybindingActions);
 
   // ── 命令面板 ──
@@ -1143,13 +1213,13 @@ export function IdeWorkbench({
     toggleChat: keybindingActions.toggleChat,
     setShowSettings,
     closeTab: keybindingActions.closeTab,
-    closeAllTabs: () => ideTabsRef.current.closeAll(),
+    closeAllTabs: handleCloseAllTabs,
     // 导入是写操作：交给叙述者执行，保留 Runtime 的权限确认。
     openImportWizard: () => onSendToNarrator?.(
       "我要导入一本已有的旧书继续写。请先问我要导入的文本或文件，然后用 pipeline.import_chapters（autoSettle+extractBrief）导入；拆书产物先留在 needs-review，等我确认再入 canon。",
     ),
     sendToNarrator: (message: string) => { void onSendToNarrator?.(message); },
-  }), [onSendToNarrator]);
+  }), [onSendToNarrator, keybindingActions, setShowSettings, handleCloseAllTabs]);
   const ideCommands = useIdeCommands(ideCommandOptions);
 
   // Quick Open: flatten file tree + jingwei entries into palette commands
@@ -1586,10 +1656,10 @@ export function IdeWorkbench({
                       activeView={tabView}
                       onActivate={ideTabs.activateTab}
                       onClose={handleCloseTab}
-                      onCloseOthers={ideTabs.closeOthers}
-                      onCloseAll={ideTabs.closeAll}
-                      onCloseSaved={ideTabs.closeSaved}
-                      onCloseRight={ideTabs.closeRight}
+                      onCloseOthers={handleCloseOthers}
+                      onCloseAll={handleCloseAllTabs}
+                      onCloseSaved={handleCloseSaved}
+                      onCloseRight={handleCloseRight}
                       onTogglePin={ideTabs.togglePin}
                       onReorder={ideTabs.reorderTabs}
                       actionsSlotRef={toolbarSlotRef}
@@ -1607,6 +1677,15 @@ export function IdeWorkbench({
                           {...(settingsSection ? { initialSection: settingsSection } : {})}
                         />
                       </div>
+                    ) : activeView === "skills-style" && bookId ? (
+                      <div className="h-full space-y-5 overflow-y-auto p-5">
+                        <StyleDistillationWorkspace
+                          bookId={bookId}
+                          fetchJson={styleDistillationFetch}
+                          onAdopted={() => window.dispatchEvent(new CustomEvent("novelfork:style-preset-updated", { detail: { bookId } }))}
+                        />
+                        <StyleVaultPanel bookId={bookId} />
+                      </div>
                     ) : activeNode || multiTabNodes.length > 0 ? (
                       <>
                         {/* 多实例条件渲染：所有打开的 Tab 保持 mount，非 active 用 display:none 隐藏 */}
@@ -1619,7 +1698,7 @@ export function IdeWorkbench({
                               repositoryPath={repositoryPath}
                               runtimeFetch={runtimeFetch}
                               onSave={handleSaveWithProgress}
-                              onCanvasContextChange={tabId === ideTabs.activeTabId ? handleCanvasContextChange : undefined}
+                              onCanvasContextChange={handleCanvasContextChange}
                               onGuideComplete={handleGuideCompleteWithOnboarding}
                               chapterActions={chapterActions}
                               jingweiActions={jingweiActions}
@@ -1628,6 +1707,7 @@ export function IdeWorkbench({
                               onJumpToChapter={handleJumpToChapter}
                               onOpenJingweiEntry={handleOpenJingweiEntry}
                               onOpenEntityDetail={handleOpenEntityFromGraph}
+                              onOpenEntityDrawer={handleOpenEntityDrawer}
                               onSendToNarrator={onSendToNarrator}
                               {...(activeSessionId ? { narratorId: activeSessionId } : {})}
                               onOpenResourceNode={handleOpen}
@@ -1654,6 +1734,7 @@ export function IdeWorkbench({
                         onJumpToChapter={handleJumpToChapter}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={handleOpenEntityFromGraph}
+                        onOpenEntityDrawer={handleOpenEntityDrawer}
                         onSendToNarrator={onSendToNarrator}
                         {...(activeSessionId ? { narratorId: activeSessionId } : {})}
                         onPromoteOutline={(outlineNode) => {
@@ -1693,12 +1774,15 @@ export function IdeWorkbench({
                         repositoryPath={repositoryPath}
                         runtimeFetch={runtimeFetch}
                         onSave={handleSaveWithProgress}
-                        onCanvasContextChange={() => {}}
+                        onCanvasContextChange={(context) => {
+                          splitDraftRef.current = { dirty: context.dirty, title: splitNode.title };
+                        }}
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
                         onJumpToChapter={handleJumpToChapter}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={handleOpenEntityFromGraph}
+                        onOpenEntityDrawer={handleOpenEntityDrawer}
                         onSendToNarrator={onSendToNarrator}
                         {...(activeSessionId ? { narratorId: activeSessionId } : {})}
                         onOpenResourceNode={handleOpen}
@@ -1820,6 +1904,7 @@ export function IdeWorkbench({
       <EntityDetailDrawer
         bookId={bookId}
         entity={entityDetailEntity}
+        {...(entityDetailEntryId ? { entryId: entityDetailEntryId } : {})}
         onClose={() => setEntityDetailEntity(null)}
         onOpenJingweiEntry={handleOpenJingweiEntry}
       />

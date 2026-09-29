@@ -71,6 +71,8 @@ mkdirSync(runtimeDir, { recursive: true });
 
 const environment: NodeJS.ProcessEnv = {
 	...process.env,
+	// 本地目录无法隔离外部 PostgreSQL；验证实例始终显式使用自己的 SQLite。
+	NF_DATABASE_BACKEND: "sqlite",
 	// Never open a window: verification must not take over the user's screen.
 	NOVELFORK_NO_BROWSER: "1",
 	PORT: String(options.port),
@@ -85,6 +87,11 @@ const environment: NodeJS.ProcessEnv = {
 	NOVELFORK_STORAGE_DB_PATH: join(options.root, "novelfork.db"),
 	NOVELFORK_MARKET_DIR: join(options.root, "market"),
 };
+
+// 只清理子进程环境，不改变宿主或产品正式启动时的后端选择。
+for (const name of ["NF_DATABASE_URL", "DATABASE_URL", "NF_READ_BACKEND", "NF_WRITE_BACKEND"]) {
+	delete environment[name];
+}
 
 console.log("→ Isolated NovelFork verification instance");
 console.log(`  data root:    ${options.root}`);

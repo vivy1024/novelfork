@@ -46,6 +46,8 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 
 	const environment: NodeJS.ProcessEnv = {
 		...process.env,
+		// 默认测试使用临时 SQLite；PostgreSQL 集成测试必须自行创建隔离目标。
+		NF_DATABASE_BACKEND: "sqlite",
 		NARRAFORK_MIGRATIONS_DIR: migrationsRoot,
 		NARRAFORK_TEST_REAL_HOME: homedir(),
 		NARRAFORK_DEFER_WINDOWS_TEMP_CLEANUP: "1",
@@ -65,6 +67,10 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 		GIT_CONFIG_KEY_0: "core.autocrlf",
 		GIT_CONFIG_VALUE_0: "false",
 	};
+
+	for (const name of ["NF_DATABASE_URL", "DATABASE_URL", "NF_READ_BACKEND", "NF_WRITE_BACKEND"]) {
+		delete environment[name];
+	}
 
 	if (scope === "public") {
 		// Public packages import Runtime modules but do not exercise the Runtime

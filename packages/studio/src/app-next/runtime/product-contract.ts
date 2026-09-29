@@ -15,7 +15,7 @@ import type {
   SkillUpdateInput,
 } from "../runtime-admin/skills";
 import type { OkResponse } from "../runtime-admin/client";
-import { runtimeJson, type RuntimeFetchOptions } from "./auth";
+import { runtimeFetch, runtimeJson, type RuntimeFetchOptions } from "./auth";
 
 export const RUNTIME_BOOTSTRAP_PATH = "/api/novelfork/bootstrap";
 export const RUNTIME_PRODUCT_BOOKS_PATH = "/api/novelfork/books";
@@ -232,6 +232,80 @@ export type RuntimeBookHookCreateInput = CreateHookInput extends infer Input
     : never
   : never;
 export type RuntimeBookHookUpdateInput = UpdateHookInput;
+
+export const RUNTIME_BOOK_ARCHIVES_PATH = "/api/novelfork/book-archives";
+
+/** 项目档案的可选模块；清单以服务端为准。 */
+export interface RuntimeBookArchiveModule {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+}
+
+export interface RuntimeBookArchiveReportItem {
+  readonly severity: "missing" | "unrecoverable" | "warning" | "info";
+  readonly module?: string;
+  readonly target: string;
+  readonly explanation: string;
+}
+
+export interface RuntimeBookArchiveImportReport {
+  readonly sourceBookId: string;
+  readonly bookId: string;
+  readonly title: string;
+  readonly exportedAt: string;
+  readonly sourceNovelforkVersion: string;
+  readonly modules: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly status: "imported" | "not-in-archive" | "not-selected";
+    readonly files: number;
+    readonly rows: number;
+  }>;
+  readonly items: readonly RuntimeBookArchiveReportItem[];
+  readonly idRemap: {
+    readonly bookId: { readonly from: string; readonly to: string };
+    readonly remapped: number;
+    readonly kept: number;
+    readonly renamedOnCollision: number;
+  };
+}
+
+export interface RuntimeBookArchiveImportResult {
+  readonly operation: RuntimeBookProvisionOperation;
+  /** 同一次提交重复到达时为 null（返回的是先前那次导入的作品）。 */
+  readonly report: RuntimeBookArchiveImportReport | null;
+}
+
+export interface RuntimeBookArchiveDownload {
+  readonly blob: Blob;
+  readonly fileName: string;
+}
+
+function archiveFileName(disposition: string | null, fallback: string): string {
+  const encoded = disposition?.match(/filename\*=UTF-8''([^;]+)/iu)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      // 落到下面的普通 filename。
+    }
+  }
+  return disposition?.match(/filename="([^"]+)"/iu)?.[1] ?? fallback;
+}
+
+async function archiveErrorMessage(response: Response, fallback: string): Promise<string> {
+  const text = await response.text().catch(() => "");
+  try {
+    const payload = JSON.parse(text) as { explanation?: unknown; message?: unknown; error?: unknown };
+    if (typeof payload.explanation === "string") return payload.explanation;
+    if (typeof payload.message === "string") return payload.message;
+    if (typeof payload.error === "string") return payload.error;
+  } catch {
+    // 非 JSON 响应：用原文或兜底文案。
+  }
+  return text.trim() || fallback;
+}
 
 export interface RuntimeProductClientOptions {
   readonly fetch?: RuntimeFetchOptions;
@@ -649,6 +723,58 @@ export function createRuntimeProductClient(
           fetchOptions,
         ),
       );
+    },
+    listBookArchiveModules: async (): Promise<readonly RuntimeBookArchiveModule[]> => {
+      const payload = await runtimeJson<{ modules?: RuntimeBookArchiveModule[] }>(
+        `${RUNTIME_BOOK_ARCHIVES_PATH}/modules`,
+        {},
+        fetchOptions,
+      );
+      return Array.isArray(payload.modules) ? payload.modules : [];
+    },
+    /** 导出项目档案；modules 省略即全选。书籍路径只由服务端可信绑定解析。 */
+    exportBookArchive: async (
+      bookId: string,
+      modules?: readonly string[],
+    ): Promise<RuntimeBookArchiveDownload> => {
+      const normalizedBookId = bookId.trim();
+      if (!normalizedBookId) throw new Error("导出档案需要 bookId");
+      const query = modules && modules.length > 0 ? `?modules=${encodeURIComponent(modules.join(","))}` : "";
+      const response = await runtimeFetch(
+        `/api/books/${encodeURIComponent(normalizedBookId)}/archive${query}`,
+        {},
+        fetchOptions,
+      );
+      if (!response.ok) throw new Error(await archiveErrorMessage(response, "导出档案失败"));
+      return {
+        blob: await response.blob(),
+        fileName: archiveFileName(response.headers.get("content-disposition"), `${normalizedBookId}.zip`),
+      };
+    },
+    /** 从档案导入为新书；只能导入为新书，不覆盖已有作品。 */
+    importBookArchive: async (
+      archive: Blob,
+      modules: readonly string[] | undefined,
+      idempotencyKey: string,
+    ): Promise<RuntimeBookArchiveImportResult> => {
+      const key = idempotencyKey.trim();
+      if (!key) throw new Error("导入档案需要 Idempotency-Key");
+      const query = modules && modules.length > 0 ? `?modules=${encodeURIComponent(modules.join(","))}` : "";
+      const response = await runtimeFetch(
+        `${RUNTIME_BOOK_ARCHIVES_PATH}/import${query}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/zip", "Idempotency-Key": key },
+          body: archive,
+        },
+        fetchOptions,
+      );
+      if (!response.ok) throw new Error(await archiveErrorMessage(response, "导入档案失败"));
+      const payload = await response.json() as { operation?: unknown; report?: RuntimeBookArchiveImportReport | null };
+      return {
+        operation: mapBookProvisionOperation(payload.operation),
+        report: payload.report ?? null,
+      };
     },
     deleteBook: async (bookId: string, deleteWorkspace = false): Promise<OkResponse> => {
       const normalizedBookId = bookId.trim();

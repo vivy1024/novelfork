@@ -16,6 +16,7 @@ import {
 } from "./product-contract";
 import type { ToolResultArtifact } from "../tool-results/types";
 import { RuntimeNarratorPanelMount } from "./RuntimeNarratorPanelMount";
+import { useWorkbenchNavigationGuard } from "./use-workbench-navigation-guard";
 
 export interface RuntimeWritingWorkbenchRouteProps {
   readonly bookId: string;
@@ -192,6 +193,18 @@ function replaceNode(nodes: readonly WorkbenchResourceNode[], replacement: Workb
   });
 }
 
+/** 文件树的 file:… 是界面身份；保存必须匹配服务端工作区返回的正式章节身份。 */
+export function findWritableChapterByPath(nodes: readonly WorkbenchResourceNode[], path: string): WorkbenchResourceNode | null {
+  const normalized = path.replaceAll("\\", "/");
+  for (const node of nodes) {
+    if (node.kind === "chapter" && node.capabilities.edit && !node.id.startsWith("file:")
+      && node.path?.replaceAll("\\", "/") === normalized) return node;
+    const nested = node.children ? findWritableChapterByPath(node.children, path) : null;
+    if (nested) return nested;
+  }
+  return null;
+}
+
 /**
  * Runtime workspace facade for the preserved IDE shell. The book ID is only a
  * semantic product identifier; every `/api/books/*` request is authenticated and
@@ -204,6 +217,7 @@ export function RuntimeWritingWorkbenchRoute({
   onChanged,
   client: suppliedClient,
 }: RuntimeWritingWorkbenchRouteProps) {
+  const registerBeforeLeave = useWorkbenchNavigationGuard(bookId);
   const defaultClient = useMemo(() => createRuntimeProductClient(), []);
   const client = suppliedClient ?? defaultClient;
   const [nodes, setNodes] = useState<WorkbenchResourceNode[]>([]);
@@ -387,7 +401,19 @@ export function RuntimeWritingWorkbenchRoute({
     const controller = new AbortController();
     actionControllersRef.current.add(controller);
     try {
-      const result = await client.saveWorkspaceResource(bookId, node.id, content, { signal: controller.signal });
+      let resourceId = node.id;
+      if (node.id.startsWith("file:") && (node.kind === "chapter" || node.metadata?.isChapter === true)) {
+        const path = typeof node.metadata?.filePath === "string" ? node.metadata.filePath : node.path;
+        if (!path) throw new Error("章节缺少文件路径，无法确认保存目标，请重新打开章节。");
+        const target = findWritableChapterByPath(nodesRef.current, path)
+          ?? findWritableChapterByPath((await reload({ silent: true })) ?? [], path);
+        if (!target) throw new Error("此文件尚未关联到正式章节，请先接纳或导入为章节后保存；你的修改仍保留在编辑器中。");
+        resourceId = target.id;
+      }
+      if (controller.signal.aborted || generation !== actionGenerationRef.current || currentBookIdRef.current !== bookId) {
+        throw new Error("书籍已切换，本次保存未执行。");
+      }
+      const result = await client.saveWorkspaceResource(bookId, resourceId, content, { signal: controller.signal });
       if (controller.signal.aborted || generation !== actionGenerationRef.current || currentBookIdRef.current !== bookId) return;
       const saved = toNode(bookId, result.resource);
       setNodes((current) => replaceNode(current, saved));
@@ -395,7 +421,7 @@ export function RuntimeWritingWorkbenchRoute({
     } finally {
       actionControllersRef.current.delete(controller);
     }
-  }, [bookId, client]);
+  }, [bookId, client, reload]);
 
   const handleCreateSession = useCallback(async () => {
     if (creatingSession) return;
@@ -494,6 +520,7 @@ export function RuntimeWritingWorkbenchRoute({
           onDeselectNode={() => setSelectedNode(null)}
           onSave={handleSave}
           onCanvasContextChange={onCanvasContextChange}
+          onBeforeLeaveChange={registerBeforeLeave}
           runtimeProductMode
           runtimeFetch={handleRuntimeFetch}
           chatSlot={activeNarrator ? (

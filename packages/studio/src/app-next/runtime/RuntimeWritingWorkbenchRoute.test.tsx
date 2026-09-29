@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeNarratorSummary } from "./product-contract";
+import type { WorkbenchResourceNode } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 const mocks = vi.hoisted(() => ({
   mountProps: [] as Array<{ bookId: string; narrator: RuntimeNarratorSummary; compact?: boolean; onOpenArtifact?: (artifact: { kind: string; id: string; [key: string]: unknown }) => void }>,
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     onCreateSession?: () => void;
     onSendToNarrator?: (message: string) => Promise<void> | void;
     runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
+    onSave?: (node: WorkbenchResourceNode, content: string) => Promise<void>;
   }>,
 }));
 
@@ -64,6 +66,25 @@ afterEach(() => {
 });
 
 describe("RuntimeWritingWorkbenchRoute", () => {
+  it("文件树章节按真实路径映射到正式资源 ID，保存不使用 UI ID 或猜测章号", async () => {
+    const resource = { id: "chapter:7", kind: "chapter", title: "归来", content: "原正文", path: "chapters/卷01/自定义文件.md",
+      capabilities: { read: true, update: true } };
+    const client = {
+      getWorkspace: vi.fn(async () => ({ book: { id: "book-1", title: "测试书", capabilities: { read: true } }, resources: [resource], capabilities: { read: true, update: true } })),
+      listNarrators: vi.fn(async () => []),
+      saveWorkspaceResource: vi.fn(async (_book: string, _id: string, content: string) => ({ resource: { ...resource, content } })),
+    };
+    render(<RuntimeWritingWorkbenchRoute bookId="book-1" onCanvasContextChange={vi.fn()} onNavigateToConversation={vi.fn()} client={client as never} />);
+    await screen.findByTestId("ide-workbench-mock");
+    const fileNode: WorkbenchResourceNode = { id: `file:${resource.path}`, kind: "chapter", title: "自定义文件.md", path: resource.path,
+      metadata: { isFile: true, isChapter: true, filePath: resource.path, chapterNumber: 999 },
+      capabilities: { open: true, edit: true, readonly: false, unsupported: false, delete: true, apply: false } };
+    await act(async () => { await mocks.workbenchProps.at(-1)!.onSave!(fileNode, "新正文"); });
+    expect(client.saveWorkspaceResource).toHaveBeenCalledWith("book-1", "chapter:7", "新正文", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    await expect(mocks.workbenchProps.at(-1)!.onSave!({ ...fileNode, path: "chapters/未知.md", metadata: { filePath: "chapters/未知.md", isChapter: true } }, "不会误写")).rejects.toThrow("尚未关联");
+    expect(client.saveWorkspaceResource).toHaveBeenCalledTimes(1);
+  });
+
   it("maps Runtime resources and keeps non-chapter references readable but read-only", () => {
     const nodes = mapRuntimeWorkspaceToWorkbenchNodes("book-1", [
       {

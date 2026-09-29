@@ -46,6 +46,14 @@ import { resolveChapterVolumeDirectory } from "../../../novel-plugin/src/handler
 import type { WritingResource } from "../../../novel-plugin/src/engine/writing-resource/types";
 import { loadWritingSkills } from "../../../novel-plugin/src/engine/writing-skills/loader";
 import {
+	BookArchiveError,
+	importBookArchiveIntoStorage,
+	purgeBookArchiveData,
+	readBookArchive,
+	type BookArchiveImportReport,
+	type BookArchiveModuleId,
+} from "../../../novel-plugin/src/engine/book-archive";
+import {
 	recommendWritingSkills,
 	type WritingSkillRecommendation,
 	type WritingSkillRecommendationInput,
@@ -298,7 +306,7 @@ function normalizeWorkspacePath(rawPath: string, { allowRoot = false }: { allowR
 async function resolveWorkspacePath(
 	bookRoot: string,
 	rawPath: string,
-	options: { allowRoot?: boolean; requireExisting?: boolean } = {},
+	options: { allowRoot?: boolean; requireExisting?: boolean; allowMissingParents?: boolean } = {},
 ): Promise<{ absolutePath: string; relativePath: string }> {
 	const relativePath = normalizeWorkspacePath(rawPath, { allowRoot: options.allowRoot });
 	const absolutePath = resolve(bookRoot, relativePath);
@@ -306,9 +314,16 @@ async function resolveWorkspacePath(
 		throw new ValidationError("workspace path escapes the trusted book root");
 	}
 
-	const existingPath = options.requireExisting === false
+	let existingPath = options.requireExisting === false
 		? dirname(absolutePath)
 		: absolutePath;
+	// 允许缺上级目录时，校验最近一个已存在的祖先：它的真实路径在作品目录内，缺的层级由调用方新建，
+	// 新建的目录不可能是符号链接，所以不会被带出作品目录。
+	if (options.allowMissingParents && options.requireExisting === false) {
+		while (!(await pathExists(existingPath)) && pathIsContained(bookRoot, dirname(existingPath)) && dirname(existingPath) !== existingPath) {
+			existingPath = dirname(existingPath);
+		}
+	}
 	const canonicalExistingPath = await realpath(existingPath).catch(() => {
 		throw new ValidationError(options.requireExisting === false ? "workspace parent directory does not exist" : "workspace path does not exist");
 	});
@@ -730,13 +745,46 @@ async function updateBookTimestamp(
 	);
 }
 
+/**
+ * 旧版「导入已有作品目录」把 book.json 与 chapters/index.json 的结尾写成了字面的反斜杠 + n，
+ * 导致 JSON 无法解析（章节索引会被静默读成空）。只修这一种确定的损坏：末尾恰好是这两个字符、
+ * 去掉后能正常解析时才改写为正常换行；其他任何情况原样保留、按原逻辑报错。
+ */
+const LITERAL_NEWLINE_TAIL = String.fromCharCode(92) + "n";
+
+export async function repairLegacyImportTail(path: string, raw: string): Promise<string> {
+	const trimmed = raw.trimEnd();
+	if (!trimmed.endsWith(LITERAL_NEWLINE_TAIL)) return raw;
+	const candidate = trimmed.slice(0, -LITERAL_NEWLINE_TAIL.length);
+	try {
+		JSON.parse(candidate);
+	} catch {
+		return raw;
+	}
+	const repaired = `${candidate}\n`;
+	const temporary = `${path}.repair-${randomUUID()}.tmp`;
+	await writeFile(temporary, repaired, "utf8");
+	await rename(temporary, path);
+	console.warn(`[book-provision] 已修复旧版导入写坏的文件结尾：${path}`);
+	return repaired;
+}
+
+async function repairLegacyImportArtifacts(bookRoot: string): Promise<void> {
+	const indexPath = join(bookRoot, "chapters", "index.json");
+	const indexRaw = await readFile(indexPath, "utf8").catch(() => null);
+	if (indexRaw !== null) await repairLegacyImportTail(indexPath, indexRaw).catch(() => undefined);
+}
+
 async function readBookConfig(
 	bookRoot: string,
 	expectedBookId: string,
 ): Promise<Record<string, unknown>> {
-	const raw = await readFile(join(bookRoot, "book.json"), "utf8").catch(() => {
+	const configPath = join(bookRoot, "book.json");
+	const original = await readFile(configPath, "utf8").catch(() => {
 		throw new ValidationError("Book does not have a readable book.json");
 	});
+	const raw = await repairLegacyImportTail(configPath, original).catch(() => original);
+	await repairLegacyImportArtifacts(bookRoot);
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
@@ -1399,12 +1447,12 @@ export class NovelForkProductBookService {
 			const importedConfig = { ...sourceConfig, id: bookId, updatedAt: now() };
 			await writeFile(
 				join(stagingRoot, "book.json"),
-				`${JSON.stringify(importedConfig, null, 2)}\\n`,
+				`${JSON.stringify(importedConfig, null, 2)}\n`,
 				"utf8",
 			);
 			await mkdir(join(stagingRoot, "chapters"), { recursive: true });
 			if (!(await pathExists(join(stagingRoot, "chapters", "index.json"))))
-				await writeFile(join(stagingRoot, "chapters", "index.json"), "[]\\n", "utf8");
+				await writeFile(join(stagingRoot, "chapters", "index.json"), "[]\n", "utf8");
 			await rename(stagingRoot, targetRoot);
 		} catch (error) {
 			await rm(stagingRoot, { recursive: true, force: true });
@@ -1440,6 +1488,140 @@ export class NovelForkProductBookService {
 		await syncImportedChapters(bookId, targetRoot);
 		current = await this.updateOperation(operation.id, { state: "filesystem-promoted" });
 		return publicOperation(await this.resume(current, actor));
+	}
+
+	/**
+	 * 从项目档案导入为新书（不覆盖任何已有作品）。
+	 *
+	 * 顺序：校验档案（无副作用）→ 生成新 bookId → 文件写暂存目录 + 数据单事务入库 →
+	 * 暂存目录转正为受控作品目录 → 登记建书流程并完成 Runtime 绑定。
+	 * 数据入库之后任何一步失败都走补偿：撤掉 Runtime 项目与绑定、删掉流程记录、清掉导入的数据与目录，
+	 * 不留半本书。
+	 */
+	async importBookArchive(
+		actor: ProductActor,
+		idempotencyKey: string,
+		bytes: Uint8Array,
+		modules?: readonly BookArchiveModuleId[],
+	): Promise<{ operation: ReturnType<typeof publicOperation>; report: BookArchiveImportReport | null }> {
+		const key = idempotencyKey.trim();
+		if (!key || key.length > 200) throw new ValidationError("Idempotency-Key header is required");
+		const existingOperation = await productDb().query.bookProvisionOperations.findFirst({
+			where: and(
+				eq(bookProvisionOperations.actorUserId, actor.userId),
+				eq(bookProvisionOperations.idempotencyKey, key),
+			),
+		});
+		// 同一次提交重复到达：返回已有结果，不再导入第二本。
+		if (existingOperation) return { operation: publicOperation(await this.resume(existingOperation, actor)), report: null };
+
+		const archive = readBookArchive(bytes);
+		const sourceConfig = (() => {
+			const file = archive.files.find((candidate) => candidate.path === "book.json");
+			try {
+				const parsed = JSON.parse(Buffer.from(file?.data ?? new Uint8Array()).toString("utf8")) as unknown;
+				return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+			} catch {
+				return {};
+			}
+		})();
+		const title = archive.manifest.source.title.trim().slice(0, 200) || "导入的作品";
+		const bookId = generatedBookId(title);
+		if (await productDb().query.bookProvisionOperations.findFirst({ where: eq(bookProvisionOperations.bookId, bookId), columns: { id: true } })) {
+			throw new BookArchiveError("book-id-conflict", "为导入生成的作品 ID 恰好与已有作品重复，请再导入一次。");
+		}
+		const targetRoot = await this.controlledBookRoot(bookId, true);
+		if (await pathExists(targetRoot)) {
+			throw new BookArchiveError("book-root-conflict", "为导入生成的作品目录已经存在，请再导入一次。");
+		}
+		const stagingRoot = join(dirname(targetRoot), `.archive-import-${randomUUID()}`);
+		const storage = getStorageDatabase();
+		const report = await importBookArchiveIntoStorage({
+			storage,
+			archive,
+			newBookId: bookId,
+			stagingRoot,
+			...(modules && modules.length > 0 ? { modules } : {}),
+			// 导入后的作品一律落在受控目录里；源机器的外部 workspace 标记不再成立。
+			transformBookConfig: (config) => {
+				const next = { ...config };
+				delete next[EXTERNAL_BOOK_WORKSPACE_MARKER];
+				return next;
+			},
+		});
+
+		let operationId: string | null = null;
+		try {
+			await rename(stagingRoot, targetRoot);
+			const timestamp = now();
+			const chapterWordCount = Number(sourceConfig.chapterWordCount);
+			const operation: ProvisionOperation = {
+				id: generateId(),
+				actorUserId: actor.userId,
+				idempotencyKey: key,
+				bookId,
+				title,
+				inputJson: {
+					bookId,
+					title,
+					genre: typeof sourceConfig.genre === "string" ? sourceConfig.genre : undefined,
+					language: sourceConfig.language === "en" ? "en" : "zh",
+					platform: ["tomato", "feilu", "qidian"].includes(String(sourceConfig.platform)) ? sourceConfig.platform : "other",
+					...(Number.isInteger(chapterWordCount) && chapterWordCount >= 500 ? { chapterWordCount } : {}),
+					projectInit: { source: "none", managedByNovelFork: true },
+				},
+				// 书籍行与目录都已就位，直接从 Runtime 绑定这一步继续。
+				state: "filesystem-promoted",
+				runtimeProjectId: null,
+				runtimeChapterId: null,
+				narratorId: null,
+				errorMessage: null,
+				createdAt: timestamp,
+				updatedAt: timestamp,
+			};
+			await productDb().insert(bookProvisionOperations).values(operation);
+			operationId = operation.id;
+			const current = await this.resume(operation, actor);
+			if (operationState(current) !== READY_STATE) {
+				throw new Error(current.errorMessage ?? `Runtime 绑定停在 ${current.state}`);
+			}
+			this.invalidateWorkspaceFileTree(bookId);
+			return { operation: publicOperation(current), report };
+		} catch (error) {
+			await this.compensateArchiveImport(bookId, operationId, stagingRoot, targetRoot);
+			const detail = error instanceof Error ? error.message : String(error);
+			throw new BookArchiveError(
+				"runtime-bind-failed",
+				`数据已通过校验，但新书没能完成目录转正或 Runtime 绑定，已撤销本次导入，没有留下半本书（${detail}）。请在「我的作品」里确认 Runtime 正常后重试。`,
+			);
+		}
+	}
+
+	/** 档案导入的补偿：逐项撤销，单项失败不影响其余清理。 */
+	private async compensateArchiveImport(
+		bookId: string,
+		operationId: string | null,
+		stagingRoot: string,
+		targetRoot: string,
+	): Promise<void> {
+		const operation = operationId
+			? await productDb().query.bookProvisionOperations.findFirst({ where: eq(bookProvisionOperations.id, operationId) }).catch(() => undefined)
+			: undefined;
+		if (operation?.runtimeProjectId) {
+			await deleteProjectById(operation.runtimeProjectId).catch(() => undefined);
+			await bookRuntimeBindingService.deleteByProjectId(operation.runtimeProjectId).catch(() => false);
+		}
+		if (operationId) {
+			await productDb().delete(bookProvisionOperations).where(eq(bookProvisionOperations.id, operationId)).catch(() => undefined);
+		}
+		try {
+			purgeBookArchiveData(getStorageDatabase(), bookId);
+		} catch {
+			// 数据库不可用时无法清理；目录仍会删除，残留行在报告里无从体现，只能交给修复流程。
+		}
+		await rm(targetRoot, { recursive: true, force: true }).catch(() => undefined);
+		await rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
+		this.invalidateWorkspaceFileTree(bookId);
 	}
 
 	async getOperation(bookId: string, actor: ProductActor): Promise<ProvisionOperation> {
@@ -2044,9 +2226,10 @@ export class NovelForkProductBookService {
 		const { root, operation, config } = await this.getReadyBookRoot(bookId, actor);
 		const normalizedPath = normalizeWorkspacePath(rawPath);
 		assertMutableWorkspacePath(normalizedPath);
-		const target = await resolveWorkspacePath(root, normalizedPath, { requireExisting: false });
+		const target = await resolveWorkspacePath(root, normalizedPath, { requireExisting: false, allowMissingParents: true });
 		const info = await stat(target.absolutePath).catch(() => null);
 		if (info && !info.isFile()) throw new ValidationError("workspace path must identify a file");
+		await mkdir(dirname(target.absolutePath), { recursive: true });
 		await writeFile(target.absolutePath, content, "utf8");
 		this.invalidateWorkspaceFileTree(operation.bookId);
 		// 文件网关直接写章节文件，不经过写作资源服务，立即对账补上附带动作。
@@ -2058,9 +2241,9 @@ export class NovelForkProductBookService {
 
 	async mkdirWorkspacePath(bookId: string, rawPath: string, actor: ProductActor): Promise<{ path: string }> {
 		const { root, operation } = await this.getReadyBookRoot(bookId, actor);
-		const target = await resolveWorkspacePath(root, rawPath, { requireExisting: false });
+		const target = await resolveWorkspacePath(root, rawPath, { requireExisting: false, allowMissingParents: true });
 		if (await stat(target.absolutePath).catch(() => null)) throw new ValidationError("workspace path already exists");
-		await mkdir(target.absolutePath);
+		await mkdir(target.absolutePath, { recursive: true });
 		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { path: target.relativePath };
 	}
