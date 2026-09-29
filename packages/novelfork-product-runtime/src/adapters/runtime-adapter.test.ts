@@ -47,10 +47,16 @@ const CANONICAL_READY_TOOL_NAMES = [
   "rewrite.apply",
   "pipeline.import_chapters",
   "book.dissect",
+  "style.distill_preview",
+  "style.distill_start",
+  "style.distill_status",
+  "style.distill_adopt",
   "outline.volume",
   "arc.character",
   "publish.check",
   "character.check_consistency",
+  "character.voice.read",
+  "character.voice.draft",
   "hooks.manage",
   "writing-skills.read",
   "writing-skills.write",
@@ -209,7 +215,7 @@ describe("NovelRuntimeAdapter", () => {
 		expect(definitions.find((tool) => tool.name === toRuntimeToolName("writing-skills.write"))?.metadata?.runtimeRisk).toBe(
 			"confirmed-write",
 		);
-		for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write"]) {
+		for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write", "style.distill_adopt"]) {
 			expect(definitions.find((tool) => tool.name === toRuntimeToolName(name))?.metadata?.runtimeRisk).toBe("confirmed-write");
 		}
 		expect(definitions.some((tool) => tool.name === toRuntimeToolName("pipeline.revise"))).toBe(false);

@@ -129,6 +129,74 @@ export interface RuntimeProductIntegration {
 	createNarratorAccessDeniedEvent?: (narratorId?: string) => RuntimeProductAccessDeniedEvent;
 }
 
+/** Which configured Runtime model a product text generation follows. */
+export type RuntimeProductTextModelRole = "default" | "summary";
+
+export interface RuntimeProductTextMessage {
+	readonly role: "system" | "user" | "assistant";
+	readonly content: string;
+}
+
+/** Tool-free generation request: ToolContext.generateText's shape plus a model role. */
+export interface RuntimeProductTextGenerationRequest {
+	readonly messages: readonly RuntimeProductTextMessage[];
+	/** Accepted for parity with ToolContext.generateText; currently not forwarded. */
+	readonly temperature?: number;
+	readonly maxTokens?: number;
+	/** Defaults to "default". */
+	readonly modelRole?: RuntimeProductTextModelRole;
+}
+
+/** Trusted caller identity, taken from the authenticated request only. */
+export interface RuntimeProductTextGenerationOptions {
+	readonly userId: string;
+	readonly signal?: AbortSignal;
+}
+
+export interface RuntimeProductTextGenerationResult {
+	readonly text: string;
+	/** Concrete provider:model that served the request. */
+	readonly model: string;
+	readonly outputTruncated?: boolean;
+	readonly usage?: {
+		readonly promptTokens?: number;
+		readonly completionTokens?: number;
+		readonly totalTokens?: number;
+	};
+}
+
+export type RuntimeProductTextGenerationUnavailableCode =
+	| "MODEL_NOT_CONFIGURED"
+	| "MODEL_PROVIDER_UNAVAILABLE";
+
+export type RuntimeProductTextGenerationStatus =
+	| {
+			readonly available: true;
+			readonly modelRole: RuntimeProductTextModelRole;
+			readonly provider: string;
+			readonly model: string;
+	  }
+	| {
+			readonly available: false;
+			readonly modelRole: RuntimeProductTextModelRole;
+			readonly code: RuntimeProductTextGenerationUnavailableCode;
+			readonly message: string;
+	  };
+
+/** Runtime-owned services callable from authenticated product server code. */
+export interface RuntimeProductHostServices {
+	getTextGenerationStatus(
+		modelRole?: RuntimeProductTextModelRole,
+	): Promise<RuntimeProductTextGenerationStatus>;
+	generateText(
+		request: RuntimeProductTextGenerationRequest,
+		options: RuntimeProductTextGenerationOptions,
+	): Promise<RuntimeProductTextGenerationResult>;
+}
+
+/** Lazy Runtime text generation; model, routing and usage accounting stay in the Runtime. */
+export const runtimeProductHostServices: RuntimeProductHostServices;
+
 export class AppError extends Error {
 	constructor(message: string, statusCode?: number, code?: string, details?: unknown);
 	readonly statusCode: number;

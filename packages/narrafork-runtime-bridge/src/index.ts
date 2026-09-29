@@ -10,10 +10,45 @@ export type {
 	ResolvedRuntimeContributions,
 	RuntimeLearningContribution,
 	RuntimeProductAccessDeniedEvent,
+	RuntimeProductHostServices,
 	RuntimeProductIntegration,
 	RuntimeProductNarratorAdapter,
+	RuntimeProductTextGenerationOptions,
+	RuntimeProductTextGenerationRequest,
+	RuntimeProductTextGenerationResult,
+	RuntimeProductTextGenerationStatus,
+	RuntimeProductTextGenerationUnavailableCode,
+	RuntimeProductTextMessage,
+	RuntimeProductTextModelRole,
 	RuntimeResolveContext,
 } from "./product-host";
+import type { RuntimeProductHostServices } from "./product-host";
+
+async function loadRuntimeProductHostServices(): Promise<RuntimeProductHostServices> {
+	const { runtimeProductHostServices: services } = await import(
+		"../../narrafork-runtime-private/server/lib/product-host/text-generation"
+	);
+	return services;
+}
+
+/**
+ * Runtime-owned server-side text generation for authenticated product routes.
+ *
+ * Model choice (configured default / summary model), provider routing, retries
+ * and per-user usage accounting stay inside the Runtime; the product passes the
+ * authenticated user id and never touches provider credentials. Loaded lazily
+ * for the same reason as deleteProjectById: evaluating the agent/provider graph
+ * during product bootstrap would lock product-host before main.ts registers
+ * the NovelFork integration.
+ */
+export const runtimeProductHostServices: RuntimeProductHostServices = {
+	async getTextGenerationStatus(modelRole) {
+		return (await loadRuntimeProductHostServices()).getTextGenerationStatus(modelRole);
+	},
+	async generateText(request, options) {
+		return (await loadRuntimeProductHostServices()).generateText(request, options);
+	},
+};
 
 export {
 	AppError,

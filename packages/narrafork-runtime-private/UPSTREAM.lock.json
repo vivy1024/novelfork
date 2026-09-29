@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime-private",
   "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "7088e4fb0a4dce82750d7dfe72586c8249e499f1",
-  "tree": "c7aa7eb921a3327ac5b29f6039d9389b09027dd2",
+  "commit": "9b1678765c39c5c1966b50ecdded5fb93d72ffe7",
+  "tree": "a296c061ad1bead97e8339c698357cb45cde6211",
   "branch": "novelfork/integration-v0.7.10",
   "localBranch": "novelfork/upgrade-0.7.10",
   "version": "0.7.10",
-  "importedAt": "2026-09-28T17:05:29.000Z",
-  "trackedFileCount": 4545,
+  "importedAt": "2026-09-29T07:40:00.000Z",
+  "trackedFileCount": 4547,
   "importMethod": "git-archive",
   "provenance": {
     "note": "2026-09-28 在宿主库 packages/.narrafork-runtime-fork-staging 的 worktree 分支 novelfork/upgrade-0.7.10 上合并上游 v0.7.10，合并提交 bc6347b9，其后本地提交见 forkCommitsAfterMerge。均尚未推送：计划推到 fork 远端新分支 novelfork/integration-v0.7.10（旧分支 novelfork/integration-v0.6.6 保留作存档）。推送前 pnpm runtime:sync 只能从本机取到该提交：先执行 GIT_DIR=packages/.narrafork-runtime-sync git fetch <宿主库路径> +refs/heads/novelfork/upgrade-0.7.10:refs/heads/novelfork/upgrade-0.7.10。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。上一版物化目录备份在 .runtime-backup-v0.6.6-20260928/（不含 node_modules）。",
@@ -75,6 +75,13 @@
         "subject": "fix(fork): 全量测试里只在 fork 上失败的三项",
         "status": "local",
         "note": "与纯上游基线分批对照整套测试后修正：ExactRow 产品卡读取移出 memo 行体；迁移目录与技能根目录两个测试按 fork 层约定改断言。与合并提交一起待推送"
+      },
+      {
+        "commit": "9b1678765c39c5c1966b50ecdded5fb93d72ffe7",
+        "parent": "7088e4fb0a4dce82750d7dfe72586c8249e499f1",
+        "subject": "feat(host): 产品宿主可调用 Runtime 的服务端文本生成",
+        "status": "local",
+        "note": "新增 RuntimeProductHostServices（product-host/text-generation.ts）：产品 HTTP 路由按当前用户调用 Runtime 配置的默认 / 摘要模型做无工具补全，用量经 trackApiRequest 记到该用户（kind=external）。与合并提交一起待推送"
       }
     ]
   }

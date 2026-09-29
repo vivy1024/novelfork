@@ -61,6 +61,49 @@ export interface AiRequestObserver {
   ) => void;
 }
 
+/** Tool-free text generation request; same shape as the narrator tools' generateText. */
+export interface HostTextGenerationRequest {
+  readonly messages: ReadonlyArray<{ readonly role: "system" | "user" | "assistant"; readonly content: string }>;
+  readonly temperature?: number;
+  readonly maxTokens?: number;
+}
+
+export interface HostTextGenerationResult {
+  readonly text: string;
+  /** Concrete provider:model that served the request, when the host reports it. */
+  readonly model?: string;
+  readonly outputTruncated?: boolean;
+  readonly usage?: {
+    readonly promptTokens?: number;
+    readonly completionTokens?: number;
+    readonly totalTokens?: number;
+  };
+}
+
+export type HostTextGenerator = (request: HostTextGenerationRequest) => Promise<HostTextGenerationResult>;
+
+/**
+ * Whether the host can generate text for this authenticated request. The host
+ * binds the generator to the request's user (model choice and usage accounting
+ * stay in the host); routes never see provider credentials.
+ */
+export type HostTextGenerationAvailability =
+  | {
+    readonly available: true;
+    /** provider:model the host will use, for display only. */
+    readonly model?: string;
+    readonly generateText: HostTextGenerator;
+  }
+  | {
+    readonly available: false;
+    /** MODEL_NOT_CONFIGURED / MODEL_PROVIDER_UNAVAILABLE / UNAUTHENTICATED / … */
+    readonly code: string;
+    /** 发生了什么（面向作者的中文）。 */
+    readonly message: string;
+    /** 建议怎么做（面向作者的中文）。 */
+    readonly suggestedAction: string;
+  };
+
 export interface SessionLlmOverrides {
   readonly apiKey: string;
   readonly baseUrl: string;
@@ -83,6 +126,12 @@ export interface RouterContext {
     overrides?: Partial<Pick<PipelineConfig, "externalContext">> & Partial<SessionLlmOverrides>,
   ) => Promise<PipelineConfig>;
   readonly getSessionLlm: (c: Context) => Promise<SessionLlmOverrides | undefined>;
+  /**
+   * Host-owned server-side text generation for this request (writing modes,
+   * web style distillation, character voice enrichment). Absent means the host
+   * offers none; routes then fall back to prompt previews / rule drafts.
+   */
+  readonly resolveTextGeneration?: (c: Context) => Promise<HostTextGenerationAvailability>;
   readonly getRuntimeModelStatus?: () => Promise<RuntimeModelStatus>;
   readonly getContextGovernance?: () => Promise<ContextGovernance>;
   readonly aiRequestObserver?: AiRequestObserver;
