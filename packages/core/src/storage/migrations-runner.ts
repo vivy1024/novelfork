@@ -100,12 +100,20 @@ export function runStorageMigrations(
     appliedByHash.set(hash, name);
   });
 
+  // 历史上出现过的旧写法（手工内嵌副本、迁移文件旧版本）也算同一个迁移：
+  // 开发环境与 EXE 迁移过的库互相打开时不能因为注释或排版不同被拒绝启动。
+  const legacyHashesByName = new Map(embeddedMigrations.map((migration) => [migration.name, migration.legacyHashes ?? []] as const));
+  const acceptedHashes = (name: string, sql: string): ReadonlySet<string> => new Set([
+    ...equivalentSqlHashes(sql),
+    ...(legacyHashesByName.get(name) ?? []),
+  ]);
+
   // Use filesystem migrations if available, otherwise fall back to embedded
   if (migrationFiles.length > 0) {
     for (const file of migrationFiles) {
       const sql = readFileSync(join(migrationsDir, file), "utf8");
       const hash = hashSql(sql);
-      const equivalentHashes = equivalentSqlHashes(sql);
+      const equivalentHashes = acceptedHashes(file, sql);
       const existingHash = appliedByName.get(file);
       if (existingHash) {
         if (!equivalentHashes.has(existingHash)) {
@@ -124,7 +132,7 @@ export function runStorageMigrations(
     // Embedded fallback (compiled binary mode)
     for (const migration of embeddedMigrations) {
       const hash = hashSql(migration.sql);
-      const equivalentHashes = equivalentSqlHashes(migration.sql);
+      const equivalentHashes = acceptedHashes(migration.name, migration.sql);
       const existingHash = appliedByName.get(migration.name);
       if (existingHash) {
         if (!equivalentHashes.has(existingHash)) {

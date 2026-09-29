@@ -1,21 +1,23 @@
 /**
- * 磁盘迁移目录与嵌入式迁移清单的名单一致性。
+ * 磁盘迁移目录与嵌入式迁移清单的一致性。
  *
  * migrations-runner 优先读磁盘目录，读不到才回落 embeddedMigrations——
  * 编译产物（bun compile 的 EXE）里没有 migrations 目录，走的正是回落分支。
- * 因此漏同步 embedded-migrations.ts 的后果是：开发机一切正常，用户拿到的 EXE
- * 少建表，直到运行时报「no such table」才暴露，且此时已经在用户的真实库上。
  *
- * 这里只比名单不比正文：现存条目的嵌入副本是人工精简过的注释版本，
- * 逐字比对会把「注释写得短一点」误报成缺陷。而真正会造成事故的失败模式是
- * 「磁盘有、嵌入没有」，名单比对足以拦住。
+ * 必须逐字比对正文：迁移校验和连注释一起算。此前嵌入副本是手工精简的注释版本，
+ * 导致开发环境迁移过的库用 EXE 打开报「迁移已被修改」、拒绝启动（反之亦然）。
+ * 现在嵌入清单由 scripts/generate-embedded-migrations.ts 生成，历史旧写法登记在 legacyHashes。
  */
-import { readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import { embeddedMigrations } from "../storage/embedded-migrations.js";
+import { createStorageDatabase } from "../storage/db.js";
+import { runStorageMigrations } from "../storage/migrations-runner.js";
 
 const migrationsDir = fileURLToPath(new URL("../storage/migrations/", import.meta.url));
 
@@ -44,6 +46,31 @@ describe("嵌入式迁移与磁盘目录", () => {
     expect(embeddedMigrations.map((migration) => migration.name)).toEqual(diskMigrationNames());
     for (const migration of embeddedMigrations) {
       expect(migration.sql.trim().length, `${migration.name} 的嵌入 SQL 为空`).toBeGreaterThan(0);
+    }
+  });
+
+  it("嵌入 SQL 与磁盘文件逐字一致（统一 LF），走样时提示重新生成", () => {
+    const drifted = embeddedMigrations
+      .filter((migration) => readFileSync(join(migrationsDir, migration.name), "utf8").replace(/\r\n?/gu, "\n") !== migration.sql)
+      .map((migration) => migration.name);
+    expect(drifted, "请运行 bun scripts/generate-embedded-migrations.ts").toEqual([]);
+  });
+
+  it("磁盘方式迁移过的库，用嵌入方式（EXE）打开不会被拒绝，反之亦然", () => {
+    const dir = mkdtempSync(join(tmpdir(), "nf-migration-parity-"));
+    const missingDir = join(dir, "no-migrations-here");
+    try {
+      const fromDisk = createStorageDatabase({ databasePath: join(dir, "disk.db") });
+      runStorageMigrations(fromDisk, { migrationsDir });
+      expect(runStorageMigrations(fromDisk, { migrationsDir: missingDir }).applied).toEqual([]);
+      fromDisk.close();
+
+      const fromEmbedded = createStorageDatabase({ databasePath: join(dir, "embedded.db") });
+      runStorageMigrations(fromEmbedded, { migrationsDir: missingDir });
+      expect(runStorageMigrations(fromEmbedded, { migrationsDir }).applied).toEqual([]);
+      fromEmbedded.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

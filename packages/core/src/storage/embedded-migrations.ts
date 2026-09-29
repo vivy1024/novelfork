@@ -1,9 +1,19 @@
-// Auto-generated embedded migrations for compiled binary.
-// When the migrations directory is not available on disk (e.g. bun compile exe),
-// the runner falls back to these embedded SQL strings.
+// 自动生成，请勿手改：bun scripts/generate-embedded-migrations.ts
+// 编译产物没有 migrations 目录时，运行器改用这里的 SQL；内容与迁移文件逐字一致（LF）。
+// legacyHashes 是历史上出现过的旧写法（手工内嵌副本、迁移文件旧版本）的校验和，
+// 按旧写法迁移过的库照常视为已应用。
 
-export const embeddedMigrations: ReadonlyArray<{ readonly name: string; readonly sql: string }> = [
-  { name: "0001_initial.sql", sql: `CREATE TABLE IF NOT EXISTS "session" (
+export interface EmbeddedMigration {
+  readonly name: string;
+  readonly sql: string;
+  readonly legacyHashes: readonly string[];
+}
+
+export const embeddedMigrations: ReadonlyArray<EmbeddedMigration> = [
+  {
+    name: "0001_initial.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS "session" (
   "id" TEXT PRIMARY KEY NOT NULL,
   "created_at" INTEGER NOT NULL,
   "updated_at" INTEGER NOT NULL,
@@ -51,8 +61,12 @@ CREATE TABLE IF NOT EXISTS "drizzle_migrations" (
   "name" TEXT NOT NULL UNIQUE,
   "created_at" INTEGER NOT NULL
 );
-` },
-  { name: "0002_bible_v1.sql", sql: `CREATE TABLE IF NOT EXISTS "book" (
+`,
+  },
+  {
+    name: "0002_bible_v1.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS "book" (
   "id" TEXT PRIMARY KEY NOT NULL,
   "name" TEXT NOT NULL,
   "bible_mode" TEXT NOT NULL DEFAULT 'static',
@@ -140,8 +154,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS "bible_chapter_summary_book_chapter_idx"
 
 CREATE INDEX IF NOT EXISTS "bible_chapter_summary_book_id_idx"
   ON "bible_chapter_summary" ("book_id");
-` },
-  { name: "0003_bible_phaseB.sql", sql: `CREATE TABLE IF NOT EXISTS "bible_conflict" (
+`,
+  },
+  {
+    name: "0003_bible_phaseB.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS "bible_conflict" (
   "id" TEXT PRIMARY KEY NOT NULL,
   "book_id" TEXT NOT NULL,
   "name" TEXT NOT NULL,
@@ -221,8 +239,12 @@ CREATE TABLE IF NOT EXISTS "bible_character_arc" (
 
 CREATE INDEX IF NOT EXISTS "bible_character_arc_book_character_idx"
   ON "bible_character_arc" ("book_id", "character_id");
-` },
-  { name: "0004_bible_phaseC.sql", sql: `CREATE TABLE IF NOT EXISTS "questionnaire_template" (
+`,
+  },
+  {
+    name: "0004_bible_phaseC.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS "questionnaire_template" (
   "id" TEXT PRIMARY KEY NOT NULL,
   "version" TEXT NOT NULL,
   "genre_tags_json" TEXT NOT NULL DEFAULT '[]',
@@ -279,8 +301,12 @@ CREATE TABLE IF NOT EXISTS "core_shift" (
 
 CREATE INDEX IF NOT EXISTS "core_shift_book_status_idx"
   ON "core_shift" ("book_id", "status");
-` },
-  { name: "0005_filter_v1.sql", sql: `CREATE TABLE IF NOT EXISTS "filter_report" (
+`,
+  },
+  {
+    name: "0005_filter_v1.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS "filter_report" (
   "id" TEXT PRIMARY KEY NOT NULL,
   "book_id" TEXT NOT NULL,
   "chapter_number" INTEGER NOT NULL,
@@ -296,8 +322,12 @@ CREATE INDEX IF NOT EXISTS "core_shift_book_status_idx"
 
 CREATE INDEX IF NOT EXISTS "filter_report_by_chapter_idx"
   ON "filter_report" ("book_id", "chapter_number", "scanned_at");
-` },
-  { name: "0006_story_jingwei.sql", sql: `CREATE TABLE IF NOT EXISTS "story_jingwei_section" (
+`,
+  },
+  {
+    name: "0006_story_jingwei.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS "story_jingwei_section" (
   "id" TEXT PRIMARY KEY NOT NULL,
   "book_id" TEXT NOT NULL,
   "key" TEXT NOT NULL,
@@ -350,8 +380,12 @@ CREATE INDEX IF NOT EXISTS "story_jingwei_entry_book_section_updated_idx"
 
 CREATE INDEX IF NOT EXISTS "story_jingwei_entry_book_ai_idx"
   ON "story_jingwei_entry" ("book_id", "participates_in_ai");
-` },
-  { name: "0007_session_recovery.sql", sql: `ALTER TABLE "session_message_cursor" ADD COLUMN "acked_seq" INTEGER NOT NULL DEFAULT 0;
+`,
+  },
+  {
+    name: "0007_session_recovery.sql",
+    legacyHashes: [],
+    sql: `ALTER TABLE "session_message_cursor" ADD COLUMN "acked_seq" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "session_message_cursor" ADD COLUMN "recovery_json" TEXT NOT NULL DEFAULT '{}';
 
 UPDATE "session_message_cursor"
@@ -361,8 +395,12 @@ SET "acked_seq" = CASE
   ELSE "acked_seq"
 END,
 "recovery_json" = COALESCE(NULLIF("recovery_json", ''), '{}');
-` },
-  { name: "0008_writing_log.sql", sql: `CREATE TABLE IF NOT EXISTS "writing_log" (
+`,
+  },
+  {
+    name: "0008_writing_log.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS "writing_log" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "book_id" TEXT NOT NULL REFERENCES "book"("id") ON DELETE CASCADE,
   "chapter_number" INTEGER NOT NULL,
@@ -373,8 +411,12 @@ END,
 
 CREATE INDEX "writing_log_book_date_idx" ON "writing_log" ("book_id", "date");
 CREATE INDEX "writing_log_date_idx" ON "writing_log" ("date");
-` },
-  { name: "0009_chapter_audit_log.sql", sql: `CREATE TABLE IF NOT EXISTS "chapter_audit_log" (
+`,
+  },
+  {
+    name: "0009_chapter_audit_log.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS "chapter_audit_log" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "book_id" TEXT NOT NULL REFERENCES "book"("id") ON DELETE CASCADE,
   "chapter_number" INTEGER NOT NULL,
@@ -391,12 +433,20 @@ CREATE INDEX "writing_log_date_idx" ON "writing_log" ("date");
 
 CREATE INDEX "chapter_audit_log_book_chapter_idx" ON "chapter_audit_log" ("book_id", "chapter_number");
 CREATE INDEX "chapter_audit_log_book_audited_idx" ON "chapter_audit_log" ("book_id", "audited_at");
-` },
-  { name: "0011_session_fork.sql", sql: `-- Add fork tracking columns to session table
+`,
+  },
+  {
+    name: "0011_session_fork.sql",
+    legacyHashes: [],
+    sql: `-- Add fork tracking columns to session table
 ALTER TABLE "session" ADD COLUMN "parent_session_id" TEXT;
 ALTER TABLE "session" ADD COLUMN "fork_mode" TEXT;
-` },
-  { name: "0012_jingwei_overhaul.sql", sql: `-- Extend story_jingwei_entry with structured fields for jingwei overhaul
+`,
+  },
+  {
+    name: "0012_jingwei_overhaul.sql",
+    legacyHashes: ["68962f23dcd7914c9d4d6aa233e8d2c8d42ac61c8086d7d6ffb18fce1eb56e22","b9d28e03a4b84b073410d6bd1e919730f60991a1edb5888ae10970ed10105c0c"],
+    sql: `-- Extend story_jingwei_entry with structured fields for jingwei overhaul
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "parent_id" TEXT;
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "category" TEXT NOT NULL DEFAULT 'setting';
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "fields_json" TEXT NOT NULL DEFAULT '{}';
@@ -456,8 +506,12 @@ CREATE TABLE IF NOT EXISTS "jingwei_volume_summaries" (
   "created_at" INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS "idx_jingwei_volume_summaries_book" ON "jingwei_volume_summaries"("book_id");
-` },
-  { name: "0013_jingwei_cooccurrence.sql", sql: `CREATE TABLE IF NOT EXISTS jingwei_cooccurrence (
+`,
+  },
+  {
+    name: "0013_jingwei_cooccurrence.sql",
+    legacyHashes: [],
+    sql: `CREATE TABLE IF NOT EXISTS jingwei_cooccurrence (
   book_id TEXT NOT NULL,
   tag_a TEXT NOT NULL,
   tag_b TEXT NOT NULL,
@@ -467,8 +521,12 @@ CREATE INDEX IF NOT EXISTS "idx_jingwei_volume_summaries_book" ON "jingwei_volum
 );
 CREATE INDEX IF NOT EXISTS idx_jingwei_cooccurrence_a ON jingwei_cooccurrence(book_id, tag_a);
 CREATE INDEX IF NOT EXISTS idx_jingwei_cooccurrence_b ON jingwei_cooccurrence(book_id, tag_b);
-` },
-  { name: "0014_bible_to_jingwei_migration.sql", sql: `-- Migration: Bible v1 → Jingwei unified table
+`,
+  },
+  {
+    name: "0014_bible_to_jingwei_migration.sql",
+    legacyHashes: ["23855dcf708522b6529eac8aac53c2eb798df62124ca7d0d8880956acc92fc3f","3d570cc5cdf5f3ec6604ed54d9cace536eefe861015a8a7468ab59958ad6135e"],
+    sql: `-- Migration: Bible v1 → Jingwei unified table
 -- Creates a placeholder section per book for migrated entries, then copies data.
 -- Idempotent: uses INSERT OR IGNORE throughout.
 -- Safe for fresh installs: each SELECT guards against missing bible tables via sqlite_master check.
@@ -718,8 +776,12 @@ SELECT
   NULL
 FROM bible_chapter_summary WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_chapter_summary')
 AND deleted_at IS NULL;
-` },
-  { name: "0015_request_log.sql", sql: `-- Migration: Request log persistence
+`,
+  },
+  {
+    name: "0015_request_log.sql",
+    legacyHashes: [],
+    sql: `-- Migration: Request log persistence
 -- Stores all AI/API request logs in SQLite for cross-restart persistence.
 
 CREATE TABLE IF NOT EXISTS "request_log" (
@@ -758,8 +820,12 @@ CREATE TABLE IF NOT EXISTS "request_log" (
 CREATE INDEX IF NOT EXISTS "idx_request_log_timestamp" ON "request_log" ("timestamp" DESC);
 CREATE INDEX IF NOT EXISTS "idx_request_log_provider_model" ON "request_log" ("provider", "model");
 CREATE INDEX IF NOT EXISTS "idx_request_log_status" ON "request_log" ("status");
-` },
-  { name: "0016_writing_resource.sql", sql: `-- Migration: Unified writing resource table
+`,
+  },
+  {
+    name: "0016_writing_resource.sql",
+    legacyHashes: [],
+    sql: `-- Migration: Unified writing resource table
 -- Replaces file-based chapters/candidates/drafts with a single SQLite table.
 
 CREATE TABLE IF NOT EXISTS "writing_resource" (
@@ -786,11 +852,19 @@ CREATE INDEX IF NOT EXISTS "idx_wr_book_chapter" ON "writing_resource" ("book_id
   WHERE "type" = 'chapter' AND "status" = 'accepted' AND "deleted_at" IS NULL;
 CREATE INDEX IF NOT EXISTS "idx_wr_parent" ON "writing_resource" ("parent_id") WHERE "parent_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_wr_status" ON "writing_resource" ("book_id", "status", "deleted_at");
-` },
-  { name: "0017_jingwei_priority_tier.sql", sql: `-- Migration: Add priority_tier to story_jingwei_entry for context layering
+`,
+  },
+  {
+    name: "0017_jingwei_priority_tier.sql",
+    legacyHashes: [],
+    sql: `-- Migration: Add priority_tier to story_jingwei_entry for context layering
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "priority_tier" TEXT DEFAULT 'auto';
-` },
-  { name: "0018_agent_runtime_hardening.sql", sql: `-- Migration: Agent runtime hardening
+`,
+  },
+  {
+    name: "0018_agent_runtime_hardening.sql",
+    legacyHashes: [],
+    sql: `-- Migration: Agent runtime hardening
 -- Adds turn checkpoint table for interrupt recovery and collapsed flag for segment compaction.
 
 CREATE TABLE IF NOT EXISTS "turn_checkpoints" (
@@ -807,20 +881,36 @@ CREATE TABLE IF NOT EXISTS "turn_checkpoints" (
 CREATE INDEX IF NOT EXISTS "idx_turn_checkpoints_session" ON "turn_checkpoints"("session_id");
 
 ALTER TABLE "session_message" ADD COLUMN "collapsed" INTEGER NOT NULL DEFAULT 0;
-` },
-  { name: "0019_jingwei_summary_md.sql", sql: `-- Migration: Add summary_md to story_jingwei_entry for indexed Jingwei reading
+`,
+  },
+  {
+    name: "0019_jingwei_summary_md.sql",
+    legacyHashes: [],
+    sql: `-- Migration: Add summary_md to story_jingwei_entry for indexed Jingwei reading
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "summary_md" TEXT;
-` },
-  { name: "0020_jingwei_layer.sql", sql: `-- Migration: Add layer field to story_jingwei_entry for Canon/Dynamic/Reference separation
+`,
+  },
+  {
+    name: "0020_jingwei_layer.sql",
+    legacyHashes: [],
+    sql: `-- Migration: Add layer field to story_jingwei_entry for Canon/Dynamic/Reference separation
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "layer" TEXT NOT NULL DEFAULT 'dynamic';
-` },
-  { name: "0021_jingwei_importance_l0.sql", sql: `-- Migration: Add importance score + L0 one-line summary to story_jingwei_entry
+`,
+  },
+  {
+    name: "0021_jingwei_importance_l0.sql",
+    legacyHashes: [],
+    sql: `-- Migration: Add importance score + L0 one-line summary to story_jingwei_entry
 -- importance: 0-100 数值评分，用于分级注入排序与逐条降级（默认 40，对应 auto 层）
 -- summary_l0: 一句话摘要（L0），用于上下文预算紧张时的最简降级
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "importance" INTEGER NOT NULL DEFAULT 40;
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "summary_l0" TEXT;
-` },
-  { name: "0022_jingwei_collaborative_fields.sql", sql: `-- Migration: Add collaborative maintenance fields to story_jingwei_entry
+`,
+  },
+  {
+    name: "0022_jingwei_collaborative_fields.sql",
+    legacyHashes: [],
+    sql: `-- Migration: Add collaborative maintenance fields to story_jingwei_entry
 -- source: who last modified (user/agent-write/auto-settle/system-init/ai-enrich)
 -- revision_history: JSON array of recent revisions [{timestamp, source, changedFields, previousSnapshot?}]
 -- conflict_status: none/pending/resolved — marks when agent and user edits disagree
@@ -829,8 +919,12 @@ ALTER TABLE "story_jingwei_entry" ADD COLUMN "source" TEXT NOT NULL DEFAULT 'use
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "revision_history" TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "conflict_status" TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "conflict_detail" TEXT;
-` },
-  { name: "0023_normalize_jingwei_categories.sql", sql: `-- Normalize legacy category values to unified category enum
+`,
+  },
+  {
+    name: "0023_normalize_jingwei_categories.sql",
+    legacyHashes: [],
+    sql: `-- Normalize legacy category values to unified category enum
 UPDATE "story_jingwei_entry" SET "category" = 'world-model' WHERE "category" IN ('setting', 'worldview', 'special') AND "deleted_at" IS NULL;
 UPDATE "story_jingwei_entry" SET "category" = 'characters' WHERE "category" = 'character' AND "deleted_at" IS NULL;
 UPDATE "story_jingwei_entry" SET "category" = 'locations' WHERE "category" = 'geography' AND "deleted_at" IS NULL;
@@ -839,8 +933,12 @@ UPDATE "story_jingwei_entry" SET "category" = 'factions' WHERE "category" = 'fac
 UPDATE "story_jingwei_entry" SET "category" = 'props' WHERE "category" IN ('item', 'skill', 'currency') AND "deleted_at" IS NULL;
 UPDATE "story_jingwei_entry" SET "category" = 'relationships' WHERE "category" = 'relationship' AND "deleted_at" IS NULL;
 UPDATE "story_jingwei_entry" SET "category" = 'chapter-summaries' WHERE "category" = 'chapter-summary' AND "deleted_at" IS NULL;
-` },
-  { name: "0024_jingwei_v2.sql", sql: `-- Jingwei v2: simplify data model + add revision history + dependencies + custom categories
+`,
+  },
+  {
+    name: "0024_jingwei_v2.sql",
+    legacyHashes: [],
+    sql: `-- Jingwei v2: simplify data model + add revision history + dependencies + custom categories
 
 -- 1. Entry table: add status, version columns
 ALTER TABLE story_jingwei_entry ADD COLUMN status TEXT DEFAULT 'confirmed';
@@ -883,8 +981,12 @@ CREATE TABLE IF NOT EXISTS jingwei_custom_category (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_jingwei_custom_cat_book ON jingwei_custom_category(book_id);
-` },
-  { name: "0025_rename_bible_to_jingwei.sql", sql: `-- Rename legacy bible_* tables to jingwei_*
+`,
+  },
+  {
+    name: "0025_rename_bible_to_jingwei.sql",
+    legacyHashes: [],
+    sql: `-- Rename legacy bible_* tables to jingwei_*
 ALTER TABLE "bible_character" RENAME TO "jingwei_character";
 ALTER TABLE "bible_event" RENAME TO "jingwei_event";
 ALTER TABLE "bible_setting" RENAME TO "jingwei_setting";
@@ -896,11 +998,19 @@ ALTER TABLE "bible_character_arc" RENAME TO "jingwei_character_arc";
 
 -- Rename bible_mode column in book table
 ALTER TABLE "book" RENAME COLUMN "bible_mode" TO "jingwei_mode";
-` },
-  { name: "0026_drop_legacy_jingwei_volume_summaries.sql", sql: `-- Retire the abandoned recursive volume-summary table.
+`,
+  },
+  {
+    name: "0026_drop_legacy_jingwei_volume_summaries.sql",
+    legacyHashes: [],
+    sql: `-- Retire the abandoned recursive volume-summary table.
 DROP TABLE IF EXISTS "jingwei_volume_summaries";
-` },
-  { name: "0027_jingwei_authority_consolidation.sql", sql: `-- Consolidate legacy Jingwei custom fields into the authoritative fields_json.
+`,
+  },
+  {
+    name: "0027_jingwei_authority_consolidation.sql",
+    legacyHashes: [],
+    sql: `-- Consolidate legacy Jingwei custom fields into the authoritative fields_json.
 -- Only valid JSON objects are eligible, and existing authoritative values win.
 UPDATE "story_jingwei_entry"
 SET "fields_json" = "custom_fields_json"
@@ -912,8 +1022,12 @@ WHERE ("fields_json" IS NULL OR "fields_json" = '' OR "fields_json" = '{}')
   AND json_type("custom_fields_json") = 'object';
 
 ALTER TABLE "jingwei_revision" ADD COLUMN "snapshot_json" TEXT;
-` },
-  { name: "0028_jingwei_search_index.sql", sql: `-- 0028: Jingwei bigram FTS5 search index.
+`,
+  },
+  {
+    name: "0028_jingwei_search_index.sql",
+    legacyHashes: [],
+    sql: `-- 0028: Jingwei bigram FTS5 search index.
 --
 -- 背景：FTS5 默认 unicode61 tokenizer 将整段中文视为单个 token，
 -- 「韩立」「太清门」等查询 0 命中；trigram 有 3 字符下限，漏掉 2 字人名。
@@ -944,8 +1058,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS "jingwei_entry_fts" USING fts5(
   content='',
   contentless_delete=1
 );
-` },
-  { name: "0029_chapter_audit_issue_lifecycle.sql", sql: `-- T4b: 审计 issue 生命周期——明细/指纹/stale 三列。
+`,
+  },
+  {
+    name: "0029_chapter_audit_issue_lifecycle.sql",
+    legacyHashes: [],
+    sql: `-- T4b: 审计 issue 生命周期——明细/指纹/stale 三列。
 --
 -- 背景：chapter_audit_log 此前只存各类计数，审计 issue 明细（含
 -- issue_id/evidence/severity/suggestion）随写章结果返回后即丢弃，
@@ -957,8 +1075,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS "jingwei_entry_fts" USING fts5(
 ALTER TABLE "chapter_audit_log" ADD COLUMN "issues_json" TEXT;
 ALTER TABLE "chapter_audit_log" ADD COLUMN "content_fingerprint" TEXT;
 ALTER TABLE "chapter_audit_log" ADD COLUMN "stale" INTEGER NOT NULL DEFAULT 0;
-` },
-  { name: "0030_jingwei_entry_identity.sql", sql: `-- P0.5: entry_key + source_refs_json —— 经纬条目确定性身份与来源引用。
+`,
+  },
+  {
+    name: "0030_jingwei_entry_identity.sql",
+    legacyHashes: [],
+    sql: `-- P0.5: entry_key + source_refs_json —— 经纬条目确定性身份与来源引用。
 --
 -- entry_key:       同一 book 内的人类可读稳定标识（category/normalized-title 格式）。
 --                  不加唯一约束——允许重复，由上层业务按需去重。
@@ -1044,8 +1166,15 @@ WHERE "source_refs_json" = '[]'
   AND json_valid("fields_json") = 1
   AND json_type(json_extract("fields_json", '$.source_refs')) = 'array'
   AND json_array_length(json_extract("fields_json", '$.source_refs')) > 0;
-` },
-  { name: "0031_chapter_state_delta.sql", sql: `ALTER TABLE "book" ADD COLUMN "state_revision" INTEGER NOT NULL DEFAULT 0;
+`,
+  },
+  {
+    name: "0031_chapter_state_delta.sql",
+    legacyHashes: ["4c3d786c75aeace6f119a4027085640111ba9573a7ea64cea7a77c2dc39d702b","c66c3460cb9856dbf5fc13cc4125fe83c5c2fcec57c7c19dd73a87da76bf0804"],
+    sql: `-- 0031_chapter_state_delta.sql
+-- 书级 state_revision 与单次状态提交 ChapterStateDelta 记录表
+
+ALTER TABLE "book" ADD COLUMN "state_revision" INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS "chapter_state_delta" (
   "id" TEXT PRIMARY KEY NOT NULL,
@@ -1064,31 +1193,64 @@ CREATE INDEX IF NOT EXISTS "idx_chapter_state_delta_book_chapter"
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_chapter_state_delta_book_fingerprint"
   ON "chapter_state_delta"("book_id", "fingerprint");
-` },
-  { name: "0032_narrative_entity_model.sql", sql: `-- 0032 叙事实体模型：给关系图一个可靠的骨架
+`,
+  },
+  {
+    name: "0032_narrative_entity_model.sql",
+    legacyHashes: ["00420ec6cdb2cbce24f5545208c2da4397a35dd5206054ced99d577f47d6d4e6","cef779db4b713d42cd19db5624de4d4b1774f444fabb4284e9a65d6e46b83311"],
+    sql: `-- 0032 叙事实体模型：给关系图一个可靠的骨架
+--
+-- 病灶（2026-09-01 实测「这个世界修仙讲科学-e664adad」）：
+--   narrative_fact 326 条里只有 36 条有 subject_entry_id（11%），
+--   narrative_event 340 条里只有 39 条（11%）。
+--   → 89% 的关系边只能靠字符串名匹配，于是「薛行之与方工」被当成一个实体，
+--     jingwei_relations 0 条、story_jingwei_entry.parent_id 全空，图永远建不起来。
+--
+-- 学术依据：
+--   · 事件中心知识图谱（Rospocher et al. 2016, J. Web Semantics）——事件是一等公民，
+--     关系边从事件派生而非独立维护。
+--   · Event Calculus（Kowalski & Sergot 1986）——用 fluent + initiates 流水回放世界状态，
+--     而不是给每章存全量快照。
+--   · bi-temporal（Zep/Graphiti, arXiv 2501.13956）——区分故事内有效期与系统记录期，
+--     旧事实用失效标记而非删除。
+--   · Foreshadow-Trigger-Payoff 三态（CFPG, arXiv 2601.07033）——两态 planted/paid_off
+--     无法表达「触发条件已满足但没兑现」，也就抓不到没击发的契诃夫之枪。
+--
+-- 本迁移只建表，不动既有表；数据由迁移脚本回填，失败不影响老链路。
+
+-- ─── 实体主表：一切引用的锚点 ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "narrative_entity" (
   "id"               TEXT PRIMARY KEY NOT NULL,
   "book_id"          TEXT NOT NULL,
   "canonical_name"   TEXT NOT NULL,
+  -- character/location/faction/item/concept/power/organization/other
   "entity_type"      TEXT NOT NULL DEFAULT 'other',
+  -- 别名数组：共指消解的依据（「薛行之」「薛道友」「他」都归一到同一 id）
   "aliases_json"     TEXT NOT NULL DEFAULT '[]',
   "attrs_json"       TEXT NOT NULL DEFAULT '{}',
+  -- 关联的经纬条目（如果这个实体已有设定条目）
   "entry_id"         TEXT,
   "first_chapter"    INTEGER,
   "last_chapter"     INTEGER,
+  -- active/dead/sealed/departed/unknown
   "lifecycle"        TEXT NOT NULL DEFAULT 'active',
+  -- 归并来源：dissect/settlement/manual/inferred，便于回溯错误归并
   "source"           TEXT NOT NULL DEFAULT 'inferred',
   "confidence"       REAL NOT NULL DEFAULT 1.0,
   "created_at"       INTEGER NOT NULL,
   "updated_at"       INTEGER NOT NULL,
   FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
 );
+
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_narrative_entity_book_name"
   ON "narrative_entity"("book_id", "canonical_name");
 CREATE INDEX IF NOT EXISTS "idx_narrative_entity_book_type"
   ON "narrative_entity"("book_id", "entity_type");
 CREATE INDEX IF NOT EXISTS "idx_narrative_entity_entry"
   ON "narrative_entity"("book_id", "entry_id");
+
+-- 别名索引表：把 aliases_json 摊平，供 O(1) 名字 → entity_id 查找。
+-- 有了它，抽取阶段才能可靠地把文本提及归到已有实体，而不是新建一个重复实体。
 CREATE TABLE IF NOT EXISTS "narrative_entity_alias" (
   "book_id"    TEXT NOT NULL,
   "alias"      TEXT NOT NULL,
@@ -1097,51 +1259,69 @@ CREATE TABLE IF NOT EXISTS "narrative_entity_alias" (
   PRIMARY KEY ("book_id", "alias"),
   FOREIGN KEY ("entity_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS "idx_narrative_entity_alias_entity"
   ON "narrative_entity_alias"("entity_id");
+
+-- ─── 关系边：五元组（s, p, o, valid_from, valid_to），外键而非名字 ─────────
 CREATE TABLE IF NOT EXISTS "narrative_relation" (
   "id"              TEXT PRIMARY KEY NOT NULL,
   "book_id"         TEXT NOT NULL,
   "subject_id"      TEXT NOT NULL,
   "predicate"       TEXT NOT NULL,
   "object_id"       TEXT NOT NULL,
+  -- 语义分类：ally/enemy/kin/mentor/subordinate/located_in/owns/is_a/knows...
   "relation_kind"   TEXT NOT NULL DEFAULT 'related',
   "sentiment"       TEXT,
+  -- valid time：故事内有效区间。valid_to NULL = 至今仍成立
   "valid_from"      INTEGER,
   "valid_to"        INTEGER,
+  -- 这条边由哪个事件建立，可溯源
   "source_event_id" TEXT,
   "evidence_text"   TEXT,
   "confidence"      REAL NOT NULL DEFAULT 1.0,
+  -- transaction time：系统记录/失效时刻（bi-temporal 的第二轴）
   "recorded_at"     INTEGER NOT NULL,
   "invalidated_at"  INTEGER,
   FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE,
   FOREIGN KEY ("subject_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE,
   FOREIGN KEY ("object_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS "idx_narrative_relation_subject"
   ON "narrative_relation"("book_id", "subject_id");
 CREATE INDEX IF NOT EXISTS "idx_narrative_relation_object"
   ON "narrative_relation"("book_id", "object_id");
+-- 时间旅行查询主索引：WHERE valid_from <= N AND (valid_to IS NULL OR valid_to > N)
 CREATE INDEX IF NOT EXISTS "idx_narrative_relation_valid"
   ON "narrative_relation"("book_id", "valid_from", "valid_to");
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_narrative_relation_triple"
   ON "narrative_relation"("book_id", "subject_id", "predicate", "object_id", "valid_from");
+
+-- ─── 事件参与者：事件 ↔ 实体多对多，取代复合主体字符串 ───────────────────
+-- 「薛行之与方工联手」不该是一个实体，而是一个事件挂两个 participant。
 CREATE TABLE IF NOT EXISTS "narrative_event_participant" (
   "book_id"   TEXT NOT NULL,
   "event_id"  TEXT NOT NULL,
   "entity_id" TEXT NOT NULL,
+  -- agent/patient/instrument/witness/beneficiary
   "role"      TEXT NOT NULL DEFAULT 'agent',
   PRIMARY KEY ("event_id", "entity_id", "role"),
   FOREIGN KEY ("entity_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS "idx_event_participant_entity"
   ON "narrative_event_participant"("book_id", "entity_id");
 CREATE INDEX IF NOT EXISTS "idx_event_participant_event"
   ON "narrative_event_participant"("event_id");
+
+-- ─── 状态变更流水：Event Calculus 的 initiates ───────────────────────────
+-- 不存每章全量快照。第 N 章的世界 = 对每个 (entity, fluent) 取 chapter <= N 的最后一条。
 CREATE TABLE IF NOT EXISTS "narrative_state_change" (
   "id"             TEXT PRIMARY KEY NOT NULL,
   "book_id"        TEXT NOT NULL,
   "entity_id"      TEXT NOT NULL,
+  -- fluent：随时间变化的属性名（境界/存活/位置/持有物/身份/伤势）
   "fluent"         TEXT NOT NULL,
   "old_value"      TEXT,
   "new_value"      TEXT NOT NULL,
@@ -1153,28 +1333,40 @@ CREATE TABLE IF NOT EXISTS "narrative_state_change" (
   FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE,
   FOREIGN KEY ("entity_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
 );
+
+-- 回放查询主索引
 CREATE INDEX IF NOT EXISTS "idx_state_change_replay"
   ON "narrative_state_change"("book_id", "entity_id", "fluent", "chapter_number");
 CREATE INDEX IF NOT EXISTS "idx_state_change_chapter"
   ON "narrative_state_change"("book_id", "chapter_number");
+
+-- ─── 知识断言：谁在第几章知道什么（知识边界） ────────────────────────────
+-- 世界真相与「角色是否知情」必须分开存，否则写作时会让角色用上他还不知道的信息。
 CREATE TABLE IF NOT EXISTS "narrative_knowledge" (
   "id"           TEXT PRIMARY KEY NOT NULL,
   "book_id"      TEXT NOT NULL,
   "knower_id"    TEXT NOT NULL,
+  -- 指向 narrative_event.id / narrative_relation.id / narrative_state_change.id
   "fact_kind"    TEXT NOT NULL DEFAULT 'event',
   "fact_ref"     TEXT NOT NULL,
   "knows_from"   INTEGER NOT NULL,
   "knows_until"  INTEGER,
+  -- knows/suspects/believes_falsely/unaware
   "certainty"    TEXT NOT NULL DEFAULT 'knows',
   "evidence_text" TEXT,
   "recorded_at"  INTEGER NOT NULL,
   FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE,
   FOREIGN KEY ("knower_id") REFERENCES "narrative_entity"("id") ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS "idx_narrative_knowledge_knower"
   ON "narrative_knowledge"("book_id", "knower_id", "knows_from");
 CREATE INDEX IF NOT EXISTS "idx_narrative_knowledge_fact"
   ON "narrative_knowledge"("book_id", "fact_ref");
+
+-- ─── 伏笔三态机：Foreshadow → Trigger → Payoff ──────────────────────────
+-- 旧模型把状态写在 fields_json.status 里，实测出现整句话当状态值的脏数据，
+-- 且 52 条里 16 条完全没有状态。这里用 CHECK 约束把状态收敛成枚举。
 CREATE TABLE IF NOT EXISTS "narrative_foreshadow" (
   "id"               TEXT PRIMARY KEY NOT NULL,
   "book_id"          TEXT NOT NULL,
@@ -1182,11 +1374,13 @@ CREATE TABLE IF NOT EXISTS "narrative_foreshadow" (
   "entry_id"         TEXT,
   "setup_chapter"    INTEGER,
   "setup_event_id"   TEXT,
+  -- trigger：触发条件已满足（枪已上膛且该响了），CFPG 的关键中间态
   "trigger_chapter"  INTEGER,
   "trigger_condition" TEXT,
   "payoff_chapter"   INTEGER,
   "payoff_event_id"  TEXT,
   "status"           TEXT NOT NULL DEFAULT 'planted',
+  -- 期望兑现章：超过仍未 paid_off 则告警
   "deadline_chapter" INTEGER,
   "importance"       INTEGER NOT NULL DEFAULT 50,
   "evidence_text"    TEXT,
@@ -1195,64 +1389,121 @@ CREATE TABLE IF NOT EXISTS "narrative_foreshadow" (
   CHECK ("status" IN ('planted','reinforced','triggered','paying_off','paid_off','abandoned','contradicted')),
   FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS "idx_narrative_foreshadow_status"
   ON "narrative_foreshadow"("book_id", "status", "setup_chapter");
 CREATE INDEX IF NOT EXISTS "idx_narrative_foreshadow_deadline"
   ON "narrative_foreshadow"("book_id", "deadline_chapter");
+
+-- ─── 叙事结构特征：StoryScope 304 特征的打分结果 ─────────────────────────
+-- 依据 StoryScope（arXiv 2604.03136）：只用结构特征即可 93.2% 区分人写/AI 写，
+-- 且对文风改写鲁棒（LAMP 去陈词后仅掉 1.6 分）。词频式 AI 味检测抓的是表层，
+-- 被润色即失效；这张表存的是结构层指标。
 CREATE TABLE IF NOT EXISTS "narrative_structure_score" (
   "id"             TEXT PRIMARY KEY NOT NULL,
   "book_id"        TEXT NOT NULL,
+  -- 章节级为章号；全书级为 NULL
   "chapter_number" INTEGER,
+  -- StoryScope 特征 id，如 EVT_CAU_002 / PLT_MOR_002
   "feature_id"     TEXT NOT NULL,
   "dimension"      TEXT NOT NULL,
   "value"          TEXT NOT NULL,
+  -- 归一化到 0-1 便于聚合与画曲线
   "numeric_value"  REAL,
+  -- 与网文理想区间的偏差（正=偏 AI 侧）。注意网文口味与「越像人类越好」不同向
   "deviation"      REAL,
   "model"          TEXT,
   "recorded_at"    INTEGER NOT NULL,
   FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
 );
+
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_structure_score_unique"
   ON "narrative_structure_score"("book_id", "chapter_number", "feature_id");
 CREATE INDEX IF NOT EXISTS "idx_structure_score_dimension"
   ON "narrative_structure_score"("book_id", "dimension");
-` },
-  { name: "0033_chapter_mention.sql", sql: `-- 0033 本章提及清单：共现图要「谁在这一章出现过」，与增量事件分列。
+`,
+  },
+  {
+    name: "0033_chapter_mention.sql",
+    legacyHashes: ["913e47fc60775156719246cc95ae0896d463404ef265eb77131e2d5b92f0799a","c8d23627333f8a7e004c17388becce4ef5f35cd1296141c2f056386a95ac1f94"],
+    sql: `-- 0033 本章提及清单：共现图要「谁在这一章出现过」，与增量事件分列。
+--
+-- 增量抽取（settlement）只记状态变化，所以每章事件实体偏少。
+-- 这张表存全量出场，供有向共现当标签序列；表空时回落到事件 subject/object。
+
 CREATE TABLE IF NOT EXISTS "narrative_chapter_mention" (
   "book_id"         TEXT NOT NULL,
   "chapter_number"  INTEGER NOT NULL,
   "position"        INTEGER NOT NULL,
   "entity_name"     TEXT NOT NULL,
   "entry_id"        TEXT,
+  -- dictionary / event / llm
   "source"          TEXT NOT NULL DEFAULT 'dictionary',
   PRIMARY KEY ("book_id", "chapter_number", "entity_name"),
   FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS "idx_chapter_mention_book_chapter"
   ON "narrative_chapter_mention"("book_id", "chapter_number", "position");
 CREATE INDEX IF NOT EXISTS "idx_chapter_mention_entry"
   ON "narrative_chapter_mention"("book_id", "entry_id");
-` },
-  { name: "0034_event_caused_by.sql", sql: `-- 0034 事件显式因果：前驱写在 narrative_event.caused_by_json。
--- narrative_event 由 ensureNarrativeMemorySchema 维护；本文件只登记版本号。
+`,
+  },
+  {
+    name: "0034_event_caused_by.sql",
+    legacyHashes: ["376120773e8bda26ba29444ac111f6aa8ea4083a61bfc9fe042f615252a1a5a8","7c3d7c748ce7ecf5f0b777c8c0cae7f353a342c21e338d7df0c6bc04fcbe8f47"],
+    sql: `-- 0034 事件显式因果：前驱写在 narrative_event.caused_by_json。
+--
+-- narrative_event 由 ensureNarrativeMemorySchema 维护，不在编号迁移里建表。
+-- 本文件只登记版本号；实际加列走 ensureNarrativeMemorySchema 的 ALTER，
+-- 避免新库在建表前执行 ALTER 失败。
+
 SELECT 1;
-` },
-  { name: "0035_narrative_scene_storyline.sql", sql: `-- 0035 场景与剧情线：让叙事结构长出第二棵树。
--- 承载树 卷 → 章 → 场景（在哪讲）；因果树 剧情线 → 场景（为什么发生）。
--- 两树正交的前提是场景本身有身份，故在此建表。
--- 卷刻意不建表：权威源仍是经纬 outline 条目的 fields_json.volumes，
--- 章节归属由 chapterRange 推导，按「能派生的状态不存储」不落 volume_id。
+`,
+  },
+  {
+    name: "0035_narrative_scene_storyline.sql",
+    legacyHashes: ["7c4ffbe7e1d00a7dba5ffae7e9b90d025c0407d8a397c631832ca63cee13932d","df7619da2d9a660d400d3754c86ed15bf90a776b5dad8a613236b0f60ed2b0cb"],
+    sql: `-- 0035 场景与剧情线：让叙事结构长出第二棵树。
+--
+-- 在此之前，本产品最小的「有身份」叙事单元是章（writing_resource 的一行，
+-- 按 chapter_number 平铺）。章以下没有任何东西有 id，于是：
+--   · 剧情线横跨二十章时选不中、看不了完整弧；
+--   · 调整叙事顺序在数据层没有表示，只能改正文；
+--   · 伏笔只能记章号，挂不到具体场景；
+--   · 节拍预算只能做到章粒度——而产品自己的写作方法论
+--     （writing-skills 的 playwright 细纲模板）是按场景列 Beat Sheet 的。
+--     方法论要求场景是一等公民，数据结构里却没有对应物。
+--
+-- 两棵正交树的关键不是「有两棵树」，而是同一个场景同时挂在两棵树上：
+--   承载树  卷 → 章 → 场景     （在哪讲）
+--   因果树  剧情线 → 场景       （为什么发生）
+-- 这要求场景本身有身份，因此这里给它建表。
+--
+-- 卷刻意不建表：VolumeEntry 已有 id 与 chapterRange，权威源是经纬 outline 条目的
+-- fields_json.volumes；章节归属可由区间推导，按「能派生的状态不存储」不再落一列
+-- volume_id，也不另立第二个权威源。
+--
+-- 建表同时也写进 ensureNarrativeMemorySchema：未跑编号迁移的库（测试夹具走
+-- createStorageDatabase 直建）同样需要这些表。
 
 CREATE TABLE IF NOT EXISTS "narrative_storyline" (
   "id"          TEXT PRIMARY KEY NOT NULL,
   "book_id"     TEXT NOT NULL,
   "name"        TEXT NOT NULL,
+  -- main/sub/romance/faction/mystery/character-arc/other
   "kind"        TEXT NOT NULL DEFAULT 'other',
+  -- 剧情线自身的生命周期，与审核门 status 正交：
+  -- planned/active/paused/resolved/abandoned
   "lifecycle"   TEXT NOT NULL DEFAULT 'active',
   "goal"        TEXT NOT NULL DEFAULT '',
+  -- 关联的经纬条目（作者若已建 plot 分类条目，设定正文仍以经纬为权威）
   "entry_id"    TEXT,
+  -- canon/dynamic：机器抽取一律 dynamic，作者确认后才可升 canon
   "layer"       TEXT NOT NULL DEFAULT 'dynamic',
+  -- 审核门：needs-review/confirmed/rejected
   "status"      TEXT NOT NULL DEFAULT 'needs-review',
+  -- dissect/settlement/workflow/manual/inferred
   "source"      TEXT NOT NULL DEFAULT 'inferred',
   "confidence"  REAL NOT NULL DEFAULT 1.0,
   "created_at"  INTEGER NOT NULL,
@@ -1266,11 +1517,17 @@ CREATE INDEX IF NOT EXISTS "idx_narrative_storyline_book"
 CREATE TABLE IF NOT EXISTS "narrative_scene" (
   "id"                  TEXT PRIMARY KEY NOT NULL,
   "book_id"             TEXT NOT NULL,
+  -- 承载树的父：章。章在 writing_resource 里以 chapter_number 为键，
+  -- 这里同样按章号引用，避免绑定到某一版正文行（改写会换 id）。
   "chapter_number"      INTEGER NOT NULL,
+  -- 章内次序，从 1 起。调整叙事顺序就是改这一列，不必动正文。
   "ordinal"             INTEGER NOT NULL,
   "title"               TEXT NOT NULL DEFAULT '',
   "summary"             TEXT NOT NULL DEFAULT '',
+  -- 场景在故事推进中承担什么：
+  -- advance/reveal/plant/payoff/relationship/transition/setup/climax/other
   "function"            TEXT NOT NULL DEFAULT 'advance',
+  -- 视角人物与发生地，指向 narrative_entity（可空：尚未归并出实体时留空）
   "pov_entity_id"       TEXT,
   "location_entity_id"  TEXT,
   "word_count"          INTEGER NOT NULL DEFAULT 0,
@@ -1283,14 +1540,19 @@ CREATE TABLE IF NOT EXISTS "narrative_scene" (
   FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
 );
 
+-- 承载树的主查询：按书取某章的场景，按章内次序排。
 CREATE INDEX IF NOT EXISTS "idx_narrative_scene_chapter"
   ON "narrative_scene" ("book_id", "chapter_number", "ordinal");
 CREATE INDEX IF NOT EXISTS "idx_narrative_scene_pov"
   ON "narrative_scene" ("pov_entity_id");
 
+-- 正交挂载。刻意做成多对多而不是在 scene 上放一列 storyline_id：
+-- 一个场景同时推进主线和感情线是常态，强行一对一会立刻失真。
+-- role=primary 决定它在因果树里默认挂在哪条线下，supporting 是次要服务。
 CREATE TABLE IF NOT EXISTS "narrative_scene_storyline" (
   "scene_id"      TEXT NOT NULL,
   "storyline_id"  TEXT NOT NULL,
+  -- primary/supporting
   "role"          TEXT NOT NULL DEFAULT 'primary',
   "created_at"    INTEGER NOT NULL,
   PRIMARY KEY ("scene_id", "storyline_id"),
@@ -1298,18 +1560,33 @@ CREATE TABLE IF NOT EXISTS "narrative_scene_storyline" (
   FOREIGN KEY ("storyline_id") REFERENCES "narrative_storyline"("id") ON DELETE CASCADE
 );
 
+-- 因果树的主查询：按剧情线取场景。
 CREATE INDEX IF NOT EXISTS "idx_narrative_scene_storyline_line"
   ON "narrative_scene_storyline" ("storyline_id", "role");
-` },
-  { name: "0036_narrative_scene_spec_alignment.sql", sql: `ALTER TABLE "narrative_scene" ADD COLUMN "conflict" TEXT NOT NULL DEFAULT '';
+`,
+  },
+  {
+    name: "0036_narrative_scene_spec_alignment.sql",
+    legacyHashes: ["13f4d8c0ad73a0fea24f0b240c125b2496629b035795209727568251cffd75c3","8699ebeda90313d1bd6a3ecabfa222b90ee7fa77378f778a5def83e463182ed8"],
+    sql: `-- 0036 对齐 SceneSpec 与 narrative_scene：为场景补齐写前蓝图的六项字段与节拍预算。
+--
+-- 写前蓝图（SceneSpec）产出角色、冲突、氛围、结局、伏笔进出等核心指标，
+-- 此前在持久层无处安放。本迁移为 narrative_scene 补齐对应列，
+-- 让写前规划成果能够无损沉淀为持久化场景。
+
+ALTER TABLE "narrative_scene" ADD COLUMN "conflict" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "narrative_scene" ADD COLUMN "mood" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "narrative_scene" ADD COLUMN "outcome" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "narrative_scene" ADD COLUMN "characters_json" TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE "narrative_scene" ADD COLUMN "hooks_used_json" TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE "narrative_scene" ADD COLUMN "hooks_planted_json" TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE "narrative_scene" ADD COLUMN "beat_budget_json" TEXT;
-` },
-  { name: "0037_workflow_runs.sql", sql: `-- 0037 创作工作流运行：产品持有的工序状态机。
+`,
+  },
+  {
+    name: "0037_workflow_runs.sql",
+    legacyHashes: [],
+    sql: `-- 0037 创作工作流运行：产品持有的工序状态机。
 --
 -- 叙述者仍是唯一执行者；它在每道工序能用什么工具、必须交什么产物、何时被拦，
 -- 由这里的运行状态决定。状态迁移只在后端发生，模型只能提交候选、报告阻塞。
@@ -1400,13 +1677,33 @@ CREATE TABLE IF NOT EXISTS "workflow_run_events" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_workflow_run_events_seq"
   ON "workflow_run_events" ("run_id", "seq");
-` },
-  { name: "0038_workflow_run_step_outcome.sql", sql: `-- 0038 工作流按图推进：记录每道工序提交时给出的结果。
+`,
+  },
+  {
+    name: "0038_workflow_run_step_outcome.sql",
+    legacyHashes: [],
+    sql: `-- 0038 工作流按图推进：记录每道工序提交时给出的结果。
 --
 -- 工序可声明提交结果（如审查的「通过 / 不通过」），出线按结果分支；
 -- 分支、汇合与运行级状态都由各工序的状态与结果派生，因此结果必须随工序落库。
 -- 工序状态新增 bypassed：所在分支没被选中、不会执行（与执行路径上被跳过的 skipped 区分）。
 
 ALTER TABLE "workflow_run_steps" ADD COLUMN "outcome" TEXT;
-` },
+`,
+  },
+  {
+    name: "0039_drop_narrative_foreshadow.sql",
+    legacyHashes: ["45ff7612765e140edc8e214ed6ce0375a0e84f04194957b77c5ed918194c06b8","69645a76f8c769db284a0577b2793b5b151dc6d3d1f2551717d487998cfdbaab"],
+    sql: `-- 0039 伏笔回到单一权威源：删掉 0032 建的 narrative_foreshadow。
+--
+-- 伏笔的唯一权威源是经纬 foreshadowing 条目（状态存 fields_json）。这张表是按事件主语
+-- 另存的第二份伏笔状态：行全部由章后结算从 narrative_event 的 hook_* 事件投影而来
+-- （含未经作者审核的事件），或由回填脚本从经纬条目复制，没有任何只存在于这里的作者数据。
+-- 现在伏笔阶段在读取时由「经纬条目 + 关联的已应用 hook 事件」派生（foreshadow-states），
+-- 不再存储。
+DROP INDEX IF EXISTS "idx_narrative_foreshadow_status";
+DROP INDEX IF EXISTS "idx_narrative_foreshadow_deadline";
+DROP TABLE IF EXISTS "narrative_foreshadow";
+`,
+  },
 ];
