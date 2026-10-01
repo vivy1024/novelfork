@@ -237,7 +237,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：memory.bulk_approve；何时：明确筛选的一批 pending events 统一批准；前置：先 memory.list/search 核对筛选和逐项风险；失败回退：只重试失败/跳过项，保留未批准项，不扩大筛选。
 - 工具：memory.bulk_delete；何时：明确 filter 下批量硬删 facts/events；前置：memory.export 或可回滚快照、显式 filter、reason 和确认；失败回退：停止并保留未删数据，不能改成无条件全删或重复执行。
 - 工具：jingwei.audit；何时：怀疑静态设定未满足 active + confirmed + participates_in_ai 门禁时；前置：明确 category/范围；失败回退：先报告 draft/needs-review/archived/禁用原因，改用 lore.read 重新筛选，不直接写 Lore。
-- 工具：scene.spec；何时：write.preflight 通过后生成结构化场景蓝图；前置：userDirectives 至少 8 字或明确接受 focus 默认句，scenes 每项必须有 characters/location/conflict/outcome；失败回退：修正缺字段/预算后重调，不能直接调用 pipeline.write。
+- 工具：scene.spec；何时：write.preflight 通过后生成结构化场景蓝图；前置：userDirectives 至少 8 字或明确接受 focus 默认句，scenes 每项必须有 characters/location/conflict/outcome，关键场景可按需标 1–2 处留白（gaps：motivation/detail/pacing，各附真实答案）；失败回退：修正缺字段/预算后重调，不能直接调用 pipeline.write。
 - 工具：resource.manage；何时：列出、归档或永久删除正式章节结果；前置：list 先盘点，archive/delete 需目标和确认；失败回退：删除失败保留原结果并报告，若目标是废稿连同章域记忆清理则改用 chapter.discard_range。
 - 工具：market.scan；何时：用户要求扫描起点/番茄公开榜单并留存市场快照；前置：平台或榜单范围明确；失败回退：报告采集失败，不把缺失榜单当成市场结论。
 - 工具：market.query；何时：读取已留存的市场快照并分析题材、标题、字数趋势；前置：先确认平台和日期范围；失败回退：缩小范围或报告暂无快照，不凭空补数据。

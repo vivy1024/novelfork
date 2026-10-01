@@ -112,6 +112,16 @@ const sceneSpecSchema = {
         outcome: stringSchema("场景结果。"),
         hooks_used: arraySchema("回收的伏笔。", { type: "string" }),
         hooks_planted: arraySchema("新增的伏笔。", { type: "string" }),
+        gaps: arraySchema("规划留白（可选）：为关键场景标 1–2 处动机/细节/节奏的真实答案；写作时注入，避免模型把关键点写成标准解答。", {
+          type: "object",
+          properties: {
+            kind: enumSchema(["motivation", "detail", "pacing"], "留白类别：动机 | 细节 | 节奏。"),
+            gap: stringSchema("留白（缺口问题，例：她为什么这次没有反驳）。"),
+            answer: stringSchema("作者或导演的真实答案；写作时注入，不再让模型自行给出一套。"),
+          },
+          required: ["kind", "gap", "answer"],
+          additionalProperties: false,
+        }),
       },
       required: ["characters", "location", "conflict", "outcome"],
       additionalProperties: false,

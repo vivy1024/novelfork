@@ -54,6 +54,43 @@ describe("scene.spec deterministic contract", () => {
     expect(result.summary).toContain("点名实体");
   });
 
+  it("留白：合法条目原样透传，非法条目剔除而不让蓝图失败", async () => {
+    const base = spec(5, "雨夜", [
+      { summary: "铺垫", density: "normal", words: 900 },
+      { summary: "冲突", density: "dense", words: 1200 },
+      { summary: "揭示", density: "dense", words: 900 },
+    ]);
+    const withGaps = {
+      ...base,
+      scenes: [
+        {
+          ...base.scenes[0],
+          gaps: [
+            { kind: "motivation", gap: "林舟为什么这次没有当场追上去", answer: "他看到账本上的旧编号，先回家核实" },
+            { kind: "detail", gap: "三轮车停在了哪一侧", answer: "靠墙的阴影里" },
+            { kind: "unknown-kind", gap: "x", answer: "y" },
+            { kind: "pacing", gap: "", answer: "空 gap 剔除" },
+          ],
+        },
+      ],
+    };
+    const result = await handleSceneSpec({
+      bookId: "book-1",
+      chapterNumber: 5,
+      userDirectives: "让林舟在雨夜跟踪三轮车",
+      skipContextGate: true,
+      cockpitSnapshot: { bookConfig: { chapterWordCount: 3000 } },
+      sceneSpec: withGaps,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const gaps = result.data.sceneSpec.scenes[0]!.gaps;
+    expect(gaps).toEqual([
+      { kind: "motivation", gap: "林舟为什么这次没有当场追上去", answer: "他看到账本上的旧编号，先回家核实" },
+      { kind: "detail", gap: "三轮车停在了哪一侧", answer: "靠墙的阴影里" },
+    ]);
+  });
+
   it("接受合规蓝图且不调用模型", async () => {
     const result = await handleSceneSpec({
       bookId: "book-1",

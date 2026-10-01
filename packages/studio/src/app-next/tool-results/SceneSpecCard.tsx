@@ -16,6 +16,7 @@ interface SceneRow {
   readonly outcome: string;
   readonly hooksUsed: readonly string[];
   readonly hooksPlanted: readonly string[];
+  readonly gaps: readonly { readonly kind: string; readonly gap: string; readonly answer: string }[];
 }
 
 interface BeatRow {
@@ -39,6 +40,12 @@ function readScenes(value: unknown): SceneRow[] {
   return value.flatMap((item, index) => {
     const record = asRecord(item);
     if (!record) return [];
+    const gaps = Array.isArray(record.gaps)
+      ? record.gaps.flatMap((gap) => {
+          const entry = asRecord(gap);
+          return entry && getString(entry.gap) ? [{ kind: getString(entry.kind), gap: getString(entry.gap), answer: getString(entry.answer) }] : [];
+        })
+      : [];
     return [{
       key: `scene-${index}`,
       characters: getStringArray(record.characters),
@@ -48,6 +55,7 @@ function readScenes(value: unknown): SceneRow[] {
       outcome: getString(record.outcome),
       hooksUsed: getStringArray(record.hooks_used),
       hooksPlanted: getStringArray(record.hooks_planted),
+      gaps,
     }];
   });
 }
@@ -84,6 +92,8 @@ function readBudgetFindings(value: unknown): BudgetFinding[] {
 }
 
 const DENSITY_LABEL: Record<string, string> = { dense: "密", sparse: "疏", normal: "中" };
+
+const GAP_KIND_LABEL: Record<string, string> = { motivation: "动机", detail: "细节", pacing: "节奏" };
 
 function BeatBar({ words, ceiling }: { words: number | null; ceiling: number }) {
   if (!words || ceiling <= 0) return null;
@@ -149,6 +159,15 @@ export const SceneSpecCard: ToolResultRenderer = (context: ToolResultRendererCon
                 {scene.mood && scene.outcome ? "　" : ""}
                 {scene.outcome && <span>结果：{scene.outcome}</span>}
               </p>
+            )}
+            {scene.gaps.length > 0 && (
+              <ul className="mt-0.5 space-y-0.5" data-testid={`scene-spec-gaps-${index}`}>
+                {scene.gaps.map((gap, gapIndex) => (
+                  <li key={`${scene.key}-gap-${gapIndex}`} className="text-muted-foreground">
+                    留白（{GAP_KIND_LABEL[gap.kind] ?? gap.kind}）：{gap.gap} → <span className="text-foreground">{gap.answer}</span>
+                  </li>
+                ))}
+              </ul>
             )}
           </li>
         ))}
