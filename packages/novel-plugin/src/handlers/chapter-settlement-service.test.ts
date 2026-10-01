@@ -10,6 +10,7 @@ import { buildNarrativeContext } from "../engine/narrative-memory/build-narrativ
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { createManualNarrativeFact } from "../engine/narrative-memory/fact-mutations.js";
 import { readChapterSettlementRecord } from "../engine/narrative-memory/settlement-idempotency.js";
+import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import { loadForeshadowStates } from "../engine/narrative-taxonomy/foreshadow-states.js";
 import { upsertLedgerEntry } from "./jingwei-ledger-store.js";
 import { settleConfirmedChapter } from "./chapter-settlement-service.js";
@@ -1014,6 +1015,23 @@ describe("章后结算幂等", () => {
       expect(result).toMatchObject({ status: "failed", error: "settlement-extraction-failed" });
       expect(result.explanation?.whatHappened).toContain("记忆没抽出来");
       expect(result.explanation?.suggestedAction).toContain("再结算这一章");
+      expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 7 })).toBeUndefined();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("模型输出被截断时如实说明原因，不记结算、不锁死同一正文", async () => {
+    const storage = await createStorage();
+    try {
+      const result = await settleConfirmedChapter(
+        { bookId: "book-1", chapterNumber: 7, content: "韩立抵达药园。" },
+        { storage, llmExtractor: createRuntimeChapterEventExtractor(async () => ({ text: '{"events":[{"eventType":"location_changed"' })) },
+      );
+
+      expect(result).toMatchObject({ status: "failed", error: "settlement-extraction-failed" });
+      expect(result.explanation?.whatHappened).toContain("截断");
+      expect(result.explanation?.suggestedAction).toContain("重试");
       expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 7 })).toBeUndefined();
     } finally {
       storage.close();

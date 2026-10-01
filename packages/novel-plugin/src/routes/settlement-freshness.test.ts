@@ -108,6 +108,34 @@ describe("网页端重新结算", () => {
   });
 });
 
+describe("网页端强制重新结算", () => {
+  it("正文没改时默认幂等跳过；带 force 时重新抽取", async () => {
+    await writeChapterIndex(bookRoot, [await writeChapter(1, "雨夜", chapterOne, chapterContentFingerprint(chapterOne))]);
+    recordSettlement(1, chapterOne);
+    const generateText = vi.fn(async () => ({ text: JSON.stringify({ events: [] }) }));
+    const server = app(async () => ({ available: true, generateText }));
+
+    const skipped = await (await server.request("/api/books/book-1/narrative-memory/chapters/1/resettle", { method: "POST" })).json();
+    expect(skipped.alreadySettled).toBe(true);
+    expect(generateText).not.toHaveBeenCalled();
+
+    const forced = await server.request("/api/books/book-1/narrative-memory/chapters/1/resettle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+    expect((await forced.json()).alreadySettled).toBeUndefined();
+    expect(generateText).toHaveBeenCalled();
+  });
+});
+
+describe("待审事件列表", () => {
+  it("limit 超过存储上限时截到 200，不返回 500", async () => {
+    const response = await app().request("/api/books/book-1/narrative-memory/events/pending?limit=500");
+    expect(response.status).toBe(200);
+  });
+});
+
 describe("新建事件接口", () => {
   it("未知事件类型返回 400 并列出可接受的取值，不写入", async () => {
     const response = await app().request("/api/books/book-1/narrative-memory/events", {

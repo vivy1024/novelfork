@@ -82,6 +82,32 @@ describe("chapter event extractor", () => {
     expect(systemPrompt).not.toMatch(/状态类变化（[^）]*关系/u);
   });
 
+  it("模型把中文引号写成未转义的 ASCII 引号时照样解析出事件（2026-09-30 真模型基准）", async () => {
+    let maxTokens: number | undefined;
+    const extractor = createRuntimeChapterEventExtractor(async (request) => {
+      maxTokens = request.maxTokens;
+      return {
+        text: '{"events":[{"eventType":"location_changed","subject":"韩立","predicate":"抵达","object":"药园","evidenceText":"韩立抵达"药园"","confidence":0.9,"source":"settle"}],"mentionedEntities":["韩立"]}',
+      };
+    });
+    const parsed = await extractor(baseInput) as { events: Array<{ evidenceText: string }> };
+    expect(parsed.events).toHaveLength(1);
+    expect(parsed.events[0]!.evidenceText).toBe("韩立抵达“药园”");
+    expect(maxTokens).toBeGreaterThanOrEqual(8000);
+  });
+
+  it("输出被截断时抛出带原因的错误，不返回空结果", async () => {
+    const extractor = createRuntimeChapterEventExtractor(async () => ({ text: '{"events":[{"eventType":"location_changed","subject":"韩' }));
+    await expect(extractor(baseInput)).rejects.toMatchObject({ name: "ChapterExtractionParseError", reason: "truncated" });
+    const noJson = createRuntimeChapterEventExtractor(async () => ({ text: "我先想一想", outputTruncated: true }));
+    await expect(noJson(baseInput)).rejects.toMatchObject({ reason: "truncated" });
+  });
+
+  it("合法 JSON 缺少 events 数组时失败，不把格式错误当成零事件", async () => {
+    const extractor = createRuntimeChapterEventExtractor(async () => ({ text: '{"summary":"本章没有变化"}' }));
+    await expect(extractor(baseInput)).rejects.toMatchObject({ name: "ChapterExtractionParseError", reason: "invalid" });
+  });
+
   it("keeps causedBy refs from the LLM payload", async () => {
     const result = await extractNarrativeEventsFromChapter({
       ...baseInput,

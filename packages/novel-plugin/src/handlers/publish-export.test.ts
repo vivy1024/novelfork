@@ -61,7 +61,7 @@ describe("handlePublishExport", () => {
     expect(result.chapters?.map((chapter) => chapter.number)).toEqual([1, 2]);
     expect(result.included).toEqual(expect.arrayContaining(["作品信息", "目录", "章节正文"]));
     expect(result.excluded?.join(" ")).toContain("附件");
-    expect(result.excluded?.join(" ")).toContain("Narrative Memory");
+    expect(result.excluded?.join(" ")).toContain("叙事记忆");
 
     const output = join(bookRoot, PUBLISH_EXPORT_DIRECTORY);
     const top = await readdir(output);

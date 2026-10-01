@@ -226,27 +226,47 @@ describe("novel Runtime contribution", () => {
     const docs = learning?.docs ?? [];
     const documentIds = docs.map((doc) => doc.id);
 
+    // 两条线：「用 NovelFork 写书」按作者任务讲功能，「网文写作课」讲写作本身。
     expect(learning?.categories.map((category) => category.id)).toEqual([
-      "novelfork-writing",
-      "novelfork-context",
-      "novelfork-settings",
-      "novelfork-advanced",
+      "novelfork-book",
+      "novelfork-craft",
     ]);
     expect(documentIds).toEqual(expect.arrayContaining([
-      "overview",
-      "book-management",
-      "ai-writing",
-      "guided-generation",
-      "narrator-conversation",
-      "story-jingwei",
-      "writing-tools",
-      "agent-pipeline",
+      "book-first-run",
+      "book-new-book",
+      "book-write-next-chapter",
+      "book-revise",
+      "book-style-preset",
+      "book-character-voice",
+      "book-style-vault",
+      "book-foreshadow-memory",
+      "book-relations",
+      "book-workflow",
+      "book-export-archive",
+      "craft-opening",
+      "craft-de-ai",
+      "craft-revision",
     ]));
     expect(new Set(documentIds).size).toBe(documentIds.length);
-    expect(docs.every((doc) => doc.title["zh-CN"].trim() && doc.summary["zh-CN"].trim())).toBe(true);
-    expect(docs.flatMap((doc) => doc.actions).every((action) => action.href.startsWith("/next"))).toBe(true);
-    expect(docs.find((doc) => doc.id === "ai-writing")?.sections
-      .some((section) => section.body["zh-CN"].includes("正式章节结果"))).toBe(true);
+    // 与 Runtime 自带文档（overview、skills……）重名的贡献会被静默丢弃，所以 id 一律带线前缀。
+    expect(docs.every((doc) => /^(book|craft)-/u.test(doc.id))).toBe(true);
+    expect(docs.every((doc) => doc.category === (doc.id.startsWith("book-") ? "novelfork-book" : "novelfork-craft"))).toBe(true);
+    expect(docs.every((doc) => doc.title["zh-CN"].trim() && doc.summary["zh-CN"].trim() && doc.sections.length > 0)).toBe(true);
+
+    const actions = docs.flatMap((doc) => doc.actions);
+    expect(actions.every((action) => action.href.startsWith("/next") && !/\/:[A-Za-z]/u.test(action.href))).toBe(true);
+    expect(actions.every((action) => action.label["zh-CN"].trim().length > 0)).toBe(true);
+    const learnTargets = actions
+      .map((action) => /^\/next\/learn\?doc=([^&#]+)/u.exec(action.href)?.[1])
+      .filter((id): id is string => Boolean(id));
+    expect(learnTargets.length).toBeGreaterThan(0);
+    expect(learnTargets.filter((id) => !documentIds.includes(id))).toEqual([]);
+
+    // 学习中心把正文当纯文本显示：生成物里不应残留 Markdown 标记。
+    const bodies = docs.flatMap((doc) => doc.sections.map((section) => section.body["zh-CN"]));
+    expect(bodies.some((body) => /\*\*|`|^\|/mu.test(body))).toBe(false);
+    expect(docs.find((doc) => doc.id === "book-start-here")?.sections
+      .some((section) => section.body["zh-CN"].includes("章后结算"))).toBe(true);
   });
 
   it("registers market tools without requiring a book binding", () => {
@@ -554,6 +574,8 @@ describe("novel Runtime contribution", () => {
         return { text: "=== FIXED_ISSUES ===\n已润色\n=== REVISED_CONTENT ===\n林舟走进山门。\n青铜铃骤然响起。\n守门人抬起头。\n=== UPDATED_STATE ===\n林舟抵达山门\n=== UPDATED_HOOKS ===\n- [ ] 青铜铃" };
       }
       if (system.includes("网文改写编辑")) return { text: "青铜铃骤然响起，林舟停下脚步。" };
+      // 章后结算抽取：返回合法的空结果（解析失败现在会如实报错，不再当成 0 条成功）
+      if (system.includes("叙事记忆结算器")) return { text: JSON.stringify({ events: [], mentionedEntities: [] }) };
       return {
         text: `=== PRE_WRITE_CHECK ===\n蓝图已检查\n=== CHAPTER_TITLE ===\n铃声之后\n=== CHAPTER_CONTENT ===\n${"林舟沿石阶向上，青铜铃在风里发出清响。".repeat(160)}\n=== POST_SETTLEMENT ===\n完成\n=== UPDATED_STATE ===\n林舟取得试炼资格\n=== UPDATED_HOOKS ===\n- [x] 青铜铃\n=== CHAPTER_SUMMARY ===\n林舟取得试炼资格。`,
       };

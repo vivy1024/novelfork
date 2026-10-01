@@ -1,5 +1,6 @@
 import { chatCompletion, type LLMClient } from "@vivy1024/novelfork-core";
 
+import { modelJsonFailureAdvice, parseModelJson, type ModelJsonFailureReason } from "../model-output/lenient-json.js";
 import { NarrativeEventTypeSchema } from "./types.js";
 import type { NarrativeEventDraft } from "./settlement-risk-gate.js";
 import { parseCausedBy } from "./causal-resolve.js";
@@ -67,34 +68,48 @@ export interface ParsedChapterExtraction {
   readonly mentionedEntities: readonly string[];
 }
 
-function extractJsonValue(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
-  const raw = fenced ?? text.trim();
-  const objectStart = raw.indexOf("{");
-  const arrayStart = raw.indexOf("[");
-  if (objectStart >= 0 && (arrayStart < 0 || objectStart < arrayStart)) {
-    return JSON.parse(raw.slice(objectStart, raw.lastIndexOf("}") + 1));
-  }
-  if (arrayStart >= 0) {
-    return JSON.parse(raw.slice(arrayStart, raw.lastIndexOf("]") + 1));
-  }
-  return null;
-}
-
-/** 兼容旧数组与新对象 `{ events, mentionedEntities }`。 */
-export function parseLLMChapterExtraction(content: string): ParsedChapterExtraction {
-  try {
-    const parsed = extractJsonValue(content);
-    if (Array.isArray(parsed)) return { events: parsed, mentionedEntities: [] };
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const record = parsed as Record<string, unknown>;
-      const events = Array.isArray(record.events) ? record.events : [];
-      return { events, mentionedEntities: parseMentionedEntityNames(record.mentionedEntities) };
-    }
-  } catch {
-    // fall through
+function toParsedExtraction(parsed: unknown): ParsedChapterExtraction {
+  if (Array.isArray(parsed)) return { events: parsed, mentionedEntities: [] };
+  if (parsed && typeof parsed === "object") {
+    const record = parsed as Record<string, unknown>;
+    const events = Array.isArray(record.events) ? record.events : [];
+    return { events, mentionedEntities: parseMentionedEntityNames(record.mentionedEntities) };
   }
   return { events: [], mentionedEntities: [] };
+}
+
+/**
+ * 模型输出解析失败（截断、没有 JSON、JSON 无效）。
+ *
+ * 必须抛出而不是返回空结果：空结果会被当成「本章没有变化」写进结算台账，
+ * 同一正文之后被幂等跳过，漏抽就再也补不回来（2026-09-30 真模型基准：9 章里 8 章如此）。
+ */
+export class ChapterExtractionParseError extends Error {
+  readonly reason: ModelJsonFailureReason;
+  constructor(reason: ModelJsonFailureReason, message: string) {
+    super(message);
+    this.name = "ChapterExtractionParseError";
+    this.reason = reason;
+  }
+  get advice(): string {
+    return modelJsonFailureAdvice(this.reason);
+  }
+}
+
+/** 解析抽取输出；失败时抛 ChapterExtractionParseError。兼容旧数组与新对象 `{ events, mentionedEntities }`。 */
+export function parseChapterExtractionOrThrow(content: string, options: { readonly outputTruncated?: boolean } = {}): ParsedChapterExtraction {
+  const parsed = parseModelJson(content, options.outputTruncated ? { outputTruncated: true } : {});
+  if (!parsed.ok) throw new ChapterExtractionParseError(parsed.reason, parsed.message);
+  if (!Array.isArray(parsed.value) && (!parsed.value || typeof parsed.value !== "object" || !Array.isArray((parsed.value as Record<string, unknown>).events))) {
+    throw new ChapterExtractionParseError("invalid", "模型输出缺少 events 数组，无法确认本章是否真的没有叙事变化。");
+  }
+  return toParsedExtraction(parsed.value);
+}
+
+/** 宽松版本：解析失败时返回空结果。只用于不影响结算台账的读取场景。 */
+export function parseLLMChapterExtraction(content: string): ParsedChapterExtraction {
+  const parsed = parseModelJson(content);
+  return parsed.ok ? toParsedExtraction(parsed.value) : { events: [], mentionedEntities: [] };
 }
 
 function unpackExtractorPayload(payload: unknown): { events: readonly unknown[]; mentionedEntities: readonly string[] } {
@@ -140,13 +155,19 @@ function buildExtractorUserPrompt(input: ChapterEventExtractorInput): string {
   return `bookId: ${input.bookId}\nchapterNumber: ${input.chapterNumber}\ntitle: ${input.title ?? ""}${entityBlock}${ledgerBlock}\n\n正式章节正文：\n${input.content.slice(0, 20_000)}`;
 }
 
+/**
+ * 抽取输出上限。一章通常 10–30 条事件加全量出场实体，JSON 约 3–8KB；
+ * 2000 时 claude 在 9 章里有 7 章被截断（2026-09-30 真模型基准），思考型模型还要额外的推理预算。
+ */
+const EXTRACTOR_MAX_TOKENS = 8000;
+
 export function createLLMChapterEventExtractor(client: LLMClient, model: string): NonNullable<ChapterEventExtractorInput["llmExtractor"]> {
   return async (input) => {
     const response = await chatCompletion(client, model, [
       { role: "system", content: EXTRACTOR_SYSTEM_PROMPT },
       { role: "user", content: buildExtractorUserPrompt(input) },
-    ], { temperature: 0.1, maxTokens: 2000 });
-    return parseLLMChapterExtraction(response.content);
+    ], { temperature: 0.1, maxTokens: EXTRACTOR_MAX_TOKENS });
+    return parseChapterExtractionOrThrow(response.content);
   };
 }
 
@@ -160,7 +181,7 @@ export function createRuntimeChapterEventExtractor(
     messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;
     maxTokens?: number;
-  }) => Promise<{ text: string }>,
+  }) => Promise<{ text: string; outputTruncated?: boolean }>,
 ): NonNullable<ChapterEventExtractorInput["llmExtractor"]> {
   return async (input) => {
     const response = await generateText({
@@ -169,9 +190,9 @@ export function createRuntimeChapterEventExtractor(
         { role: "user", content: buildExtractorUserPrompt(input) },
       ],
       temperature: 0.1,
-      maxTokens: 2000,
+      maxTokens: EXTRACTOR_MAX_TOKENS,
     });
-    return parseLLMChapterExtraction(response.text);
+    return parseChapterExtractionOrThrow(response.text, response.outputTruncated ? { outputTruncated: true } : {});
   };
 }
 

@@ -68,10 +68,10 @@ interface BookInfo {
 
 const EXCLUDED = [
   "附件 / 图片 / 音视频",
-  "Narrative Memory（facts/events/logs）",
+  "叙事记忆（事实、事件、检索日志）",
   "经纬设定与关系图",
-  "Writing Skills / .novelfork 工作数据",
-  "迁移备份与 last-pipeline-run",
+  "写作技能与工作数据（.novelfork 目录）",
+  "迁移备份与流水线运行记录",
 ] as const;
 
 function asRecord(value: unknown): Record<string, unknown> | null {

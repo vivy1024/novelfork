@@ -6,7 +6,7 @@ import {
   type ChapterStateDelta,
 } from "@vivy1024/novelfork-core";
 
-import { extractNarrativeEventsFromChapter, type ChapterEventExtractorInput, type ChapterEventExtractionResult } from "../engine/narrative-memory/chapter-event-extractor.js";
+import { ChapterExtractionParseError, extractNarrativeEventsFromChapter, type ChapterEventExtractorInput, type ChapterEventExtractionResult } from "../engine/narrative-memory/chapter-event-extractor.js";
 import {
   DEFAULT_NARRATIVE_MEMORY_CONFIG,
   loadNarrativeMemoryConfig,
@@ -432,7 +432,7 @@ function explainAlreadySettled(
   return {
     whatHappened: `第${input.chapterNumber}章的正文与上一次结算（${settledAt}）时完全一致，本次没有重新抽取，也没有写入任何叙事记忆。${breakdown}。`,
     whyItMatters: "重复结算同一份正文只会反复写入同样的事实、反复往待审队列塞同样的条目。跳过是为了让台账与待审队列保持干净，这不是失败。",
-    suggestedAction: "不用处理，这一章的记忆已经是最新。若正文确实改过，先保存再结算；若上次漏记了，结算时勾选强制重算；待审条目去叙事记忆面板处理。",
+    suggestedAction: "不用处理，这一章的记忆已经是最新。若正文确实改过，先保存再结算；若上次漏记了，在写作视图「收尾」一步点「强制重新结算」，或让叙述者带 force 重新结算；待审条目去叙事记忆面板处理。",
   };
 }
 
@@ -555,14 +555,20 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
       entityDictionary,
       llmExtractor: options.llmExtractor,
     });
-  } catch {
+  } catch (error) {
+    // 模型输出解析失败（截断、没有 JSON、JSON 无效）要说清原因：作者据此决定重试还是换模型。
+    const parseError = error instanceof ChapterExtractionParseError ? error : undefined;
     return failed(
       input,
       "settlement-extraction-failed",
       {
-        whatHappened: `第${input.chapterNumber}章的记忆没抽出来：从正文里读人物位置、伏笔这些事时中断了。`,
+        whatHappened: parseError
+          ? `第${input.chapterNumber}章的记忆没抽出来：${parseError.message}`
+          : `第${input.chapterNumber}章的记忆没抽出来：从正文里读人物位置、伏笔这些事时中断了。`,
         whyItMatters: "抽失败时如果继续结算，只能记空账或记错。这次没有写入任何记忆，也没有当成已经结算。",
-        suggestedAction: "让叙述者再结算这一章即可。正文已经保存，不会丢稿。",
+        suggestedAction: parseError
+          ? `${parseError.advice}正文已经保存，不会丢稿。`
+          : "让叙述者再结算这一章即可。正文已经保存，不会丢稿。",
       },
     );
   }

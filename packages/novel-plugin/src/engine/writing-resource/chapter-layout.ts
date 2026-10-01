@@ -4,12 +4,14 @@ import { dirname, join } from "node:path";
 import { countChapterLength, type LengthCountingMode } from "@vivy1024/novelfork-core";
 
 import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
+import { parseChapterFileName, type ParsedChapterFile } from "./chapter-file-name.js";
+
+// 文件名约定在不依赖 node:fs 的 chapter-file-name.ts，前端显示名也从那里解析。
+export { CHAPTER_FILE_PATTERN, parseChapterFileName, type ParsedChapterFile } from "./chapter-file-name.js";
 
 export const CHAPTERS_DIRECTORY = "chapters";
 export const CHAPTER_INDEX_FILE = "index.json";
 export const DEFAULT_VOLUME_DIRECTORY = "卷01";
-
-export const CHAPTER_FILE_PATTERN = /^(\d{1,9})[_-](.+)\.md$/iu;
 
 export type ChapterIndexRecord = Record<string, unknown> & {
   number: number;
@@ -22,12 +24,6 @@ export type ChapterIndexRecord = Record<string, unknown> & {
   /** 上次观察到的文件修改时间（毫秒，取整）。对账只拿它判断文件是否被动过，不影响 updatedAt 的含义。 */
   fileModifiedAt?: number;
 };
-
-export interface ParsedChapterFile {
-  readonly number: number;
-  readonly fileName: string;
-  readonly title: string;
-}
 
 export interface ChapterFileEntry extends ParsedChapterFile {
   /** Relative to the book root, e.g. chapters/卷01/0001_标题.md. */
@@ -74,19 +70,6 @@ export function chapterFileName(chapterNumber: number, title: string): string {
 export function chapterRelativePath(volumeDirectory: string, chapterNumber: number, title: string): string {
   const normalizedVolume = normalizeChapterRelativePath(volumeDirectory) || DEFAULT_VOLUME_DIRECTORY;
   return normalizeChapterRelativePath(join(normalizedVolume, chapterFileName(chapterNumber, title)));
-}
-
-export function parseChapterFileName(fileName: string): ParsedChapterFile | null {
-  const baseName = fileName.replaceAll("\\", "/").split("/").filter(Boolean).pop() ?? fileName;
-  const match = CHAPTER_FILE_PATTERN.exec(baseName);
-  if (!match) return null;
-  const number = Number(match[1]);
-  if (!Number.isSafeInteger(number) || number < 1) return null;
-  return {
-    number,
-    fileName: baseName,
-    title: match[2]!.replace(/[_-]+/gu, " ").trim() || `第 ${number} 章`,
-  };
 }
 
 export function chapterTitleFromContent(file: ParsedChapterFile, content: string): string {

@@ -57,11 +57,15 @@ import {
   queryNarrativeFactHistory,
   retireNarrativeFact,
 } from "../engine/narrative-memory/fact-mutations.js";
-import { getLatestNarrativeRetrievalLog } from "../engine/narrative-memory/storage.js";
+import { getLatestChapterRetrievalLog, getLatestNarrativeRetrievalLog } from "../engine/narrative-memory/storage.js";
+import { buildWriteInjectionReport } from "../engine/narrative-memory/write-injection-report.js";
+import { loadActiveWritingSkillsForBook } from "../handlers/writing-skill-handlers.js";
+import { estimateTokens } from "../engine/jingwei/context/token-budget.js";
 import {
   NarrativeEventStatusSchema,
   NarrativeEventTypeSchema,
   NarrativeFactLayerSchema,
+  NarrativeRetrievalPurposeSchema,
   type NarrativeEvent,
   type NarrativeEventType,
 } from "../engine/narrative-memory/types.js";
@@ -122,6 +126,56 @@ function diagnosticsSummary(log: NarrativeRetrievalLogRecord) {
     trimReasons: diagnostics.trimReasons ?? [],
     writeProfile: diagnostics.writeProfile,
   };
+}
+
+interface WriteInjectionSkillsSection {
+  readonly source: "current-enabled" | "unavailable";
+  readonly note: string;
+  readonly items: readonly {
+    readonly slug: string;
+    readonly name: string;
+    readonly entry: string | null;
+    readonly mode: string;
+    readonly estimatedTokens: number;
+  }[];
+}
+
+/**
+ * 写作技能不进 narrative_retrieval_log：启用即物化到作品 .novelfork/skills/，
+ * 由正在写作的模型按需加载，写前另有合规硬门。因此技能清单没有「写时快照」可查，
+ * 只能如实给「当前启用状态 + 正文体积（估算 tokens）」，并在 note 里说清这层语义。
+ */
+async function loadWriteInjectionSkills(
+  options: NarrativeMemoryRouterOptions,
+  bookId: string,
+): Promise<WriteInjectionSkillsSection> {
+  if (!options.resolveBookRoot) {
+    return {
+      source: "unavailable",
+      note: "当前宿主没有提供书籍目录入口，读不到这本书启用了哪些写作技能。",
+      items: [],
+    };
+  }
+  try {
+    const { skills } = await loadActiveWritingSkillsForBook(bookId, { bookRoot: options.resolveBookRoot(bookId) });
+    return {
+      source: "current-enabled",
+      note: "技能正文不进写作上下文：启用即物化到作品 .novelfork/skills/，由写章的模型自行加载。这里列的是当前启用的技能与其正文估算体积，不是这一章写作当时的快照。",
+      items: skills.map((skill) => ({
+        slug: skill.slug,
+        name: skill.name,
+        entry: skill.entry ?? null,
+        mode: skill.mode,
+        estimatedTokens: estimateTokens(`${skill.name}\n${skill.description}\n${skill.body}`),
+      })),
+    };
+  } catch (error) {
+    return {
+      source: "unavailable",
+      note: `读取技能目录失败：${error instanceof Error ? error.message : String(error)}`,
+      items: [],
+    };
+  }
 }
 
 function pendingEventSummary(event: NarrativeEvent) {
@@ -301,11 +355,14 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     }
   });
 
-  // 网页端重新结算一章：经宿主服务端文本生成调模型；没有可用模型时不用规则兜底冒充结算。
+  // 网页端结算一章：经宿主服务端文本生成调模型；没有可用模型时不用规则兜底冒充结算。
+  // 请求体可带 { force: true }：正文没改也重新抽取（上次漏记时用）。
   app.post(`${base}/chapters/:chapterNumber/resettle`, async (c) => {
     const bookId = c.req.param("bookId");
     const chapterNumber = Number(c.req.param("chapterNumber"));
     if (!Number.isInteger(chapterNumber) || chapterNumber <= 0) return invalidQuery(c, "章号必须是正整数。");
+    const body = await readJson(c);
+    const force = body.force === true;
     const generation = options.resolveTextGeneration
       ? await options.resolveTextGeneration(c).catch((): HostTextGenerationAvailability => ({
         available: false, code: "MODEL_PROVIDER_UNAVAILABLE", message: "读取模型配置失败。", suggestedAction: "稍后重试，或改用叙述者对话结算本章。",
@@ -316,7 +373,7 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
         ok: false,
         code: generation.code,
         explanation: {
-          whatHappened: `第 ${chapterNumber} 章没有重新结算：${generation.message}`,
+          whatHappened: `第 ${chapterNumber} 章没有结算：${generation.message}`,
           whyItMatters: "章后结算要靠模型从正文里抽取事实和事件，只用规则会漏掉大部分变化。",
           suggestedAction: generation.suggestedAction,
         },
@@ -331,6 +388,7 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
         storage: storage(),
         llmExtractor: createRuntimeChapterEventExtractor(generation.generateText),
         kernelGenerateText: generation.generateText,
+        ...(force ? { force: true } : {}),
       });
       return c.json(result, result.ok ? 200 : 422);
     } catch (error) {
@@ -434,7 +492,7 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       return c.json({
         ...result,
         linkRate,
-        summary: `实体 ${result.entities} 个，事件参与者 ${result.participants} 条，关系边 ${result.relations} 条，状态流水 ${result.stateChanges} 条；`
+        summary: `实体 ${result.entities} 个，事件参与者 ${result.participants} 条，关系边 ${result.relations} 条，状态流水 ${result.stateChanges} 条，知情账 ${result.knowledge} 条；`
           + (linkRate === null ? "没有可归并的称呼。" : `称呼归并率 ${linkRate}%（${result.resolvedMentions}/${result.totalMentions}）。`)
           + (result.unresolvedSamples.length > 0 ? ` 未归并的称呼如：${result.unresolvedSamples.slice(0, 5).join("、")}——若是重要角色或地点，请先在经纬里建条目。` : ""),
       });
@@ -551,11 +609,51 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     return c.json({ log, summary: diagnosticsSummary(log) });
   });
 
+  // W6 写作可见：某章最近一次写作（默认 purpose=write_chapter）的注入清单。
+  // 与 audit-issues 同纪律：没写过是常态，返回 200 + exists:false + 解释，不算失败。
+  app.get(`${base}/write-injection`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const chapterRaw = c.req.query("chapter");
+    const chapter = Number(chapterRaw);
+    if (!Number.isInteger(chapter) || chapter <= 0) {
+      return invalidQuery(c, "chapter 必须是正整数。");
+    }
+    const purposeRaw = c.req.query("purpose")?.trim() || "write_chapter";
+    const purpose = NarrativeRetrievalPurposeSchema.safeParse(purposeRaw);
+    if (!purpose.success) {
+      return invalidQuery(c, `purpose 必须是 ${NarrativeRetrievalPurposeSchema.options.join(" | ")}。`);
+    }
+    try {
+      const log = getLatestChapterRetrievalLog(storage(), { bookId, chapterNumber: chapter, purpose: purpose.data });
+      if (!log) {
+        return c.json({
+          ok: true,
+          exists: false,
+          chapterNumber: chapter,
+          purpose: purpose.data,
+          summary: `第 ${chapter} 章没有「${purpose.data === "write_chapter" ? "写章" : purpose.data}」的注入记录。`,
+          explanation: {
+            whatHappened: `没有找到第 ${chapter} 章最近一次写作的上下文注入记录。`,
+            whyItMatters: "只有经写作管线（pipeline.write）召回过上下文的章才有注入日志；用别的方式写或还没写的章，看不到「写作时模型看到了什么」。",
+            suggestedAction: "经「写下一章」流程写过这一章后再来查看；或换个章号查询。",
+          },
+        });
+      }
+      const report = buildWriteInjectionReport(log);
+      const skills = await loadWriteInjectionSkills(options, bookId);
+      return c.json({ ok: true, exists: true, ...report, skills });
+    } catch (error) {
+      return c.json({ error: "write-injection-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
   app.get(`${base}/events/pending`, async (c) => {
+    // 存储层上限 200；超出的请求截到 200，而不是让校验失败变成 500。
+    const requestedLimit = queryLimit(c);
     const result = await handleMemoryEvents({
       bookId: c.req.param("bookId"),
       action: "list",
-      limit: queryLimit(c),
+      limit: requestedLimit === undefined ? undefined : Math.min(requestedLimit, 200),
     }, storage());
     if (!result.ok) return respondHandler(c, result);
     const events = Array.isArray(result.data.events) ? result.data.events as NarrativeEvent[] : [];
