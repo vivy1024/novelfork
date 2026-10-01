@@ -82,7 +82,7 @@ function laneStats(input: {
     return {
       storyline,
       kind: storyline.kind,
-      title: storyline.title,
+      title: storyline.name,
       chaptersSinceLastBeat: last !== undefined ? Math.max(0, input.currentChapter - last) : undefined,
       active: storyline.lifecycle === "active" || storyline.lifecycle === "planned",
     };
@@ -98,7 +98,7 @@ export function buildNextChapterPlan(input: {
   readonly focus: CurrentFocusSnapshot | null;
   readonly currentChapter?: number;
 }): NextChapterPlan {
-  const latestChapter = input.chapters.length > 0 ? Math.max(...input.chapters.map((chapter) => chapter.chapterNumber)) : 0;
+  const latestChapter = input.chapters.length > 0 ? Math.max(...input.chapters.map((chapter) => chapter.number)) : 0;
   const currentChapter = input.currentChapter ?? latestChapter;
   const nextChapter = Math.max(currentChapter + 1, latestChapter + 1);
 

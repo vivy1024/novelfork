@@ -249,18 +249,19 @@ export function NextChapterPanel({ bookId, currentChapter, onOpenChapter, onSend
     );
   }
 
+  const payload = state.status === "ready" ? state.data : null;
   const lanes = plan.suggestions.map((suggestion) => ({
     id: suggestion.storylineId ?? suggestion.id,
     title: suggestion.laneTitle,
     kind: suggestion.laneKind,
     reasonText: suggestion.reasonText,
   }));
-  const extraLanes: typeof lanes = (state.data.storylines as readonly NarrativeStoryline[])
+  const extraLanes: typeof lanes = (payload!.storylines as readonly NarrativeStoryline[])
     .filter((line) => line.lifecycle === "active" && !lanes.some((lane) => lane.id === line.id))
     .slice(0, 4)
-    .map((line) => ({ id: line.id, title: line.title, kind: line.kind, reasonText: "" }));
+    .map((line) => ({ id: line.id, title: line.name, kind: line.kind, reasonText: "" }));
   const allLanes = [...lanes, ...extraLanes];
-  const latestChapter = state.data.chapters.length > 0 ? Math.max(...state.data.chapters.map((chapter) => chapter.chapterNumber)) : 0;
+  const latestChapter = payload!.chapters.length > 0 ? Math.max(...payload!.chapters.map((chapter) => chapter.number)) : 0;
   const boardChapters = [Math.max(1, latestChapter - 3), latestChapter - 2, latestChapter - 1, latestChapter, plan.nextChapter].filter((value, index, list) => list.indexOf(value) === index && value > 0);
 
   return (

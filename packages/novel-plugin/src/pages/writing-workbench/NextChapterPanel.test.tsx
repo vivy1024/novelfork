@@ -8,17 +8,17 @@ function structurePayload() {
     bookId: "book-1",
     volumes: [],
     chapters: [
-      { chapterNumber: 10, title: "比试", status: "accepted", wordCount: 2100 },
-      { chapterNumber: 11, title: "识破暗算", status: "accepted", wordCount: 2300 },
-      { chapterNumber: 12, title: "旧站", status: "accepted", wordCount: 2400 },
+      { number: 10, title: "比试", status: "accepted", wordCount: 2100 },
+      { number: 11, title: "识破暗算", status: "accepted", wordCount: 2300 },
+      { number: 12, title: "旧站", status: "accepted", wordCount: 2400 },
     ],
     scenes: [
       { id: "s10", bookId: "book-1", chapterNumber: 10, ordinal: 1, title: "守门人试炼", summary: "", locationText: null, status: "confirmed", layer: "canon", source: "manual", canonStatus: "confirmed", canonSourceRef: null, conflictWith: [], provenance: {}, createdAt: "", updatedAt: "" },
       { id: "s2", bookId: "book-1", chapterNumber: 2, ordinal: 1, title: "雨夜初遇", summary: "", locationText: null, status: "confirmed", layer: "canon", source: "manual", canonStatus: "confirmed", canonSourceRef: null, conflictWith: [], provenance: {}, createdAt: "", updatedAt: "" },
     ],
     storylines: [
-      { id: "main", bookId: "book-1", title: "夺回师门", kind: "main", lifecycle: "active", createdAt: "", updatedAt: "" },
-      { id: "rom", bookId: "book-1", title: "与沈遥", kind: "romance", lifecycle: "active", createdAt: "", updatedAt: "" },
+      { id: "main", bookId: "book-1", name: "夺回师门", kind: "main", lifecycle: "active", createdAt: "", updatedAt: "" },
+      { id: "rom", bookId: "book-1", name: "与沈遥", kind: "romance", lifecycle: "active", createdAt: "", updatedAt: "" },
     ],
     mounts: [
       { id: "m1", sceneId: "s10", storylineId: "main", role: "primary", createdAt: "" },

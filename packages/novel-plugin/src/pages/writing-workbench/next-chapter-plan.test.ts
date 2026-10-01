@@ -10,7 +10,7 @@ function storyline(overrides: Partial<NarrativeStoryline>): NarrativeStoryline {
   return {
     id: "line-1",
     bookId: "book-1",
-    title: "主线",
+    name: "主线",
     kind: "main",
     lifecycle: "active",
     createdAt: "2026-01-01T00:00:00Z",
@@ -66,7 +66,7 @@ function debt(id: string, urgency: ForeshadowDebt["urgency"], pending?: number):
 describe("下一章计划组装", () => {
   it("下一章 = 最新章 +1；没有剧情线时给引导而不是空建议", () => {
     const plan = buildNextChapterPlan({
-      chapters: [{ chapterNumber: 12 } as never],
+      chapters: [{ number: 12 } as never],
       scenes: [],
       storylines: [],
       mounts: [],
@@ -79,12 +79,12 @@ describe("下一章计划组装", () => {
   });
 
   it("有焦点时建议焦点点名线 + 最长的另一条停滞线", () => {
-    const main = storyline({ id: "main", kind: "main", title: "夺回师门" });
-    const romance = storyline({ id: "rom", kind: "romance", title: "感情线" });
+    const main = storyline({ id: "main", kind: "main", name: "夺回师门" });
+    const romance = storyline({ id: "rom", kind: "romance", name: "感情线" });
     const chapterList = [scene("s10", 10), scene("s2", 2)] as const;
     const mounts = [mount("s10", "main"), mount("s2", "rom")];
     const plan = buildNextChapterPlan({
-      chapters: [{ chapterNumber: 12 } as never],
+      chapters: [{ number: 12 } as never],
       scenes: [...chapterList],
       storylines: [main, romance],
       mounts,
@@ -98,10 +98,10 @@ describe("下一章计划组装", () => {
   });
 
   it("焦点线与最长停滞线相同（或唯一线）时只出一条", () => {
-    const main = storyline({ id: "main", kind: "main", title: "主线" });
+    const main = storyline({ id: "main", kind: "main", name: "主线" });
     const s = scene("s1", 8);
     const plan = buildNextChapterPlan({
-      chapters: [{ chapterNumber: 12 } as never],
+      chapters: [{ number: 12 } as never],
       scenes: [s],
       storylines: [main],
       mounts: [mount("s1", "main")],
@@ -113,9 +113,9 @@ describe("下一章计划组装", () => {
   });
 
   it("暂无焦点且只有一条活跃线时 fallback 只给最长停滞线", () => {
-    const main = storyline({ id: "main", kind: "main", title: "主线" });
+    const main = storyline({ id: "main", kind: "main", name: "主线" });
     const plan = buildNextChapterPlan({
-      chapters: [{ chapterNumber: 12 } as never],
+      chapters: [{ number: 12 } as never],
       scenes: [scene("s5", 5)],
       storylines: [main],
       mounts: [mount("s5", "main")],
@@ -137,7 +137,7 @@ describe("下一章计划组装", () => {
       debt("e-no-age", "overdue"),
     ];
     const plan = buildNextChapterPlan({
-      chapters: [{ chapterNumber: 20 } as never],
+      chapters: [{ number: 20 } as never],
       scenes: [],
       storylines: [],
       mounts: [],
@@ -152,12 +152,12 @@ describe("下一章计划组装", () => {
   });
 
   it("已完结（resolved）与已放弃的剧情线不出现在建议里", () => {
-    const active = storyline({ id: "a", title: "活跃" });
-    const done = storyline({ id: "d", title: "完结", lifecycle: "resolved" });
+    const active = storyline({ id: "a", name: "活跃" });
+    const done = storyline({ id: "d", name: "完结", lifecycle: "resolved" });
     const s1 = scene("s1", 10);
     const s2 = scene("s2", 9);
     const plan = buildNextChapterPlan({
-      chapters: [{ chapterNumber: 12 } as never],
+      chapters: [{ number: 12 } as never],
       scenes: [s1, s2],
       storylines: [active, done],
       mounts: [mount("s1", "a"), mount("s2", "d")],
