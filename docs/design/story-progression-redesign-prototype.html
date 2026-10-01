@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>故事推进重做草图（T4.5）— 下一章写什么</title>
+<style>
+  :root {
+    --bg: #f3f5f0; --panel: #ffffff; --ink: #2a2f2a; --muted: #6b7168;
+    --primary: #2f6f4f; --primary-soft: #e5efe8; --line: #dfe4db;
+    --amber: #9a6a0a; --amber-soft: #f7ecda; --red: #b1423a; --red-soft: #f6e4e2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 "Noto Serif SC", "Source Han Serif SC", serif; }
+  .page { max-width: 1180px; margin: 0 auto; padding: 20px; }
+  .page > h1 { font-size: 20px; margin: 0 0 4px; }
+  .page > .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 8px; letter-spacing: .5px; color: var(--muted); font-weight: 600; }
+  .focus { border-left: 3px solid var(--primary); }
+  .focus .goal { font-size: 15px; }
+  .focus .why { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .next { margin-top: 12px; background: var(--primary-soft); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+  .board { overflow-x: auto; }
+  table.plan { border-collapse: collapse; min-width: 640px; }
+  .plan th, .plan td { border: 1px solid var(--line); font-size: 12.5px; padding: 6px 8px; text-align: left; vertical-align: top; }
+  .plan th { background: #f6f7f3; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .plan td.lane { background: #f6f7f3; width: 132px; }
+  .plan td.lane .stalled { color: var(--amber); font-size: 12px; display: block; margin-top: 2px; }
+  .beat { background: var(--primary-soft); border-radius: 4px; padding: 2px 5px; display: block; margin: 1px 0; }
+  .beat.fresh { outline: 2px solid var(--primary); }
+  .empty-add { color: var(--muted); }
+  .debts ul { list-style: none; margin: 0; padding: 0; }
+  .debts li { padding: 6px 0; border-top: 1px dashed var(--line); font-size: 13px; }
+  .debts li:first-child { border-top: none; }
+  .tag { display: inline-block; font-size: 11px; border-radius: 3px; padding: 0 5px; margin-right: 5px; }
+  .tag.overdue { background: var(--red-soft); color: var(--red); }
+  .tag.watch { background: var(--amber-soft); color: var(--amber); }
+  .tag.soon { background: var(--primary-soft); color: var(--primary); }
+  .tag.plant { background: #eef0fa; color: #4c5aa9; }
+  .debts .why { color: var(--muted); font-size: 12px; }
+  .debts .act { margin-top: 3px; }
+  .debts .act button { font-size: 12px; border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 1px 8px; cursor: default; }
+  .debts .act button.on { border-color: var(--primary); color: var(--primary); }
+  .footer-strip { margin-top: 16px; color: var(--muted); font-size: 12.5px; }
+  .legend { margin-top: 14px; font-size: 12.5px; color: var(--muted); }
+  .legend .tag { margin-left: 10px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>故事推进 · 第 13 章要写什么</h1>
+  <div class="sub">《这个世界修仙讲科学》 · 第 3 卷 · 刚写完第 12 章 · 本页所有数字都来自现有数据字段（推进看板 stalled / 伏笔债务 debtUrgency / 创作罗盘 current-focus / 经纬伏笔条目）</div>
+
+  <div class="grid">
+    <div>
+      <section class="card focus">
+        <h2>焦点</h2>
+        <div class="goal">让薛行之在守擂战中正式输给方工，暴露「科学修法」的瓶颈。</div>
+        <div class="why">为什么现在：感情线已 15 章没推进；主线需要在拍卖会之前把战力退一档，否则第 3 卷高潮没有张力。</div>
+        <div class="next">下一章建议：<b>第 13 章：守擂失利</b> · 挂主线推进 2 个节拍、回收到期伏笔 1 条（断剑来历），顺带给感情线一场戏（沈遥观战）。</div>
+      </section>
+
+      <section class="card" style="margin-top:16px">
+        <h2>情节板 · 剧情线 × 章（失败/待推进的行自动冒到最上）</h2>
+        <div class="board">
+        <table class="plan">
+          <tr><th>剧情线</th><th>第 10 章</th><th>第 11 章</th><th>第 12 章</th><th>第 13 章（建议）</th></tr>
+          <tr>
+            <td class="lane">主线：夺回师门<span class="stalled">已推进至第 12 章 · 焦点点名</span></td>
+            <td><span class="beat">查出考官被买通</span></td>
+            <td><span class="beat">外门比试夺魁</span></td>
+            <td><span class="beat">识破暗算</span></td>
+            <td><span class="beat fresh">守擂失利（建议）</span></td>
+          </tr>
+          <tr>
+            <td class="lane">感情线：与沈遥<span class="stalled">15 章未推进</span></td>
+            <td class="empty-add">＋</td>
+            <td class="empty-add">＋</td>
+            <td class="empty-add">＋</td>
+            <td><span class="beat fresh">沈遥观战，第一次替他包扎</span></td>
+          </tr>
+          <tr>
+            <td class="lane">复仇线：旧师门灭门</td>
+            <td><span class="beat">旧剑来历被提及</span></td>
+            <td class="empty-add">＋</td>
+            <td class="empty-add">＋</td>
+            <td class="empty-add">＋</td>
+          </tr>
+        </table>
+        </div>
+        <div class="legend">图例：<span class="tag soon">建议推进</span><span class="tag watch">超 N 章未推进</span><span class="tag overdue">伏笔账本联动</span></div>
+      </section>
+    </div>
+
+    <aside class="card debts">
+      <h2>伏笔账本</h2>
+      <ul>
+        <li>
+          <span class="tag overdue">超期</span>锈剑来历
+          <div class="why">第 1 章埋 · 已 12 章未回收（阈值 12）</div>
+          <div class="act"><button class="on">排进第 13 章</button> <button>标记已回收</button></div>
+        </li>
+        <li>
+          <span class="tag watch">临近</span>考官被买通的幕后
+          <div class="why">第 10 章埋 · 已 3 章未回收（阈值 5）</div>
+          <div class="act"><button>排进第 13 章</button></div>
+        </li>
+        <li>
+          <span class="tag soon">近期可用</span>科学修法流出都市传说
+          <div class="why">第 8 章埋 · 未超期，可作比赛场外的余波</div>
+        </li>
+        <li>
+          <span class="tag plant">待埋入</span>拍卖会上「科学丹方」现世（大纲已定，尚未埋点）
+          <div class="act"><button>在第 13 章埋点</button></div>
+        </li>
+      </ul>
+      <h2 style="margin-top:14px">近章记忆</h2>
+      <div class="footer-strip">第 12 章已结算 · 提出 4 条事实（2 条待确认） · 第 11 章摘要：识破暗算，比试夺魁。</div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

@@ -1,3 +1,9 @@
+**版本**: v0.1.0
+**创建日期**: 2026-09-29
+**更新日期**: 2026-09-30
+**状态**: current
+**文档类型**: planning
+
 # Runtime PostgreSQL 兼容核查与验收方案
 
 核查日期：2026-09-29。任务：T1.1b。范围：已物化 Runtime v0.7.10、公开 Bridge、product-runtime 和隔离验证入口。

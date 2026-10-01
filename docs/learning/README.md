@@ -1,115 +1,74 @@
 ---
 title: 学习中心
-summary: NovelFork Studio 学习中心索引，快速找到你需要的文档
+summary: NovelFork 学习中心索引：「用 NovelFork 写书」讲功能怎么用，「网文写作课」讲写作本身
 tags: [索引, 目录, 学习中心]
 routes:
-  - /next/learn
+  - /next/learn | 打开学习中心
 ---
 
-# NovelFork Studio 学习中心
+# NovelFork 学习中心
 
-> 从入门到精通，按需查阅。每篇文档独立成文，可按任意顺序阅读。
+分两条线。第一次用，从「用 NovelFork 写书」的第 1 篇读起；想把书写好，读「网文写作课」，每课末尾都告诉你在 NovelFork 里怎么练。
 
----
+叙述者、权限、子代理、套路、终端、通知、供应商这类通用功能，由 Runtime 学习中心自带的文章讲，这里不重复。
 
-## 文档索引
+## 用 NovelFork 写书
 
-| # | 文档 | 摘要 | 标签 |
-|---|------|------|------|
-| 00 | [一页理解 NovelFork](./00-overview.md) | 核心概念、三栏布局、5 分钟上手 | `入门` `概览` |
-| 01 | [作品与章节管理](./01-book-management.md) | 创建作品、资源树、新书引导向导 | `作品` `章节` `资源树` |
-| 02 | [AI 写作功能](./02-ai-writing.md) | 选段写作、变体、正式章节结果、预设、节拍 | `AI写作` `正式章节` `预设` |
-| 03 | [引导式生成](./03-guided-generation.md) | PGI 追问、AskUserQuestion、scene.spec 蓝图批准 | `PGI` `引导式生成` |
-| 04 | [叙述者对话](./04-narrator-conversation.md) | 会话界面、确认门、Slash 命令 | `叙述者` `对话` `确认门` |
-| 05 | [故事经纬](./05-story-jingwei.md) | 静态 Lore、Canon evidence 门禁、智能注入（触发/级联/互斥）、剧情线状态卡 | `经纬` `Lore` `设定` |
-| 06 | [设置与套路](./06-settings-and-routines.md) | 供应商、模型聚合、套路、MCP、Hooks | `设置` `供应商` `套路` |
-| 07 | [写作分析工具](./07-writing-tools.md) | AI 味检测、健康度、文风、弧线、合规导出 | `写作工具` `分析` |
-| 08 | [Agent 写作管线](./08-agent-pipeline.md) | cockpit/lore/memory/PGI/scene.spec/pipeline.write 工具链 | `Agent` `Pipeline` |
-| 09 | [Agent 设置](./09-agent-settings.md) | 模型、推理强度、运行时控制 | `Agent` `设置` `模型` |
-| 10 | [代理设置](./10-proxy-settings.md) | 网络代理配置 | `代理` `网络` |
-| 11 | [使用历史](./11-usage-history.md) | Token 用量、费用统计 | `用量` `费用` |
-| 12 | [外观设置](./12-appearance.md) | 主题、字体、终端外观 | `主题` `外观` |
-| 13 | [运行时能力](./13-runtime-capabilities.md) | CLAUDE.md、压缩摘要、Staleness、Dedup、Cache | `运行时` `安全` |
-| 14 | [子代理系统](./14-subagent-system.md) | 四种类型、后台任务、Fork、Await | `子代理` `后台` |
-| 15 | [工具搜索与技能](./15-tool-search-and-skills.md) | ToolSearch、Skill、MCP 扩展 | `工具` `技能` `MCP` |
-| 16 | [安全与沙箱](./16-security-and-sandbox.md) | 三级沙箱、白名单、权限模式 | `安全` `沙箱` |
-| 17 | [浏览器与终端](./17-browser-and-terminal.md) | Browser 截图、Terminal 持久化进程 | `浏览器` `终端` |
-| 18 | [网络工具](./18-web-tools.md) | WebSearch、WebFetch 四种模式 | `网络` `搜索` |
-| 19 | [预设规则与节拍模板](./19-presets-and-beats.md) | 53 条内置预设 + 自定义 + 节拍模板 + Agent 工具 | `预设` `节拍` `自定义` |
-| 20 | [书籍叙述者分工](./20-book-narrators.md) | 五个专职叙述者的职责和快捷操作 | `叙述者` `角色` `分工` |
-| 21 | [Agent 行为规范](./21-agent-behavior-rules.md) | 失败循环检测、默认行动、验证流程、Bash 规则 | `Agent` `规范` `验证` |
-| 22 | [新书引导](./22-new-book-guide.md) | 创建新书后回答关键问题，生成作品骨架 | `新书` `引导` `经纬` |
-| 23 | [上下文管理](./23-context-management.md) | token、压缩、budget pressure、microcompact | `上下文` `压缩` `token` |
-| 24 | [模型选择与配置](./24-model-configuration.md) | 供应商、模型、fallback 与推理强度 | `模型` `供应商` `fallback` |
-| 25 | [调试与排错](./25-debugging.md) | 日志、Prompt Dump、上下文详情与排错流程 | `调试` `日志` `诊断` |
-| 26 | [平台写作卡](./26-platform-writing-cards.md) | 各平台章字数与钩子建议、投稿风险自检边界 | `平台` `投稿风险` `人工复核` |
-| 27 | [写作 SOP](./27-writing-sop.md) | 写下一章、续写旧书、废稿重开、发布自检的动作顺序 | `SOP` `流程` `写前预检` |
+按写一本书的顺序排。每篇讲：这一步解决什么问题、在哪里点、结果去哪里、常见问题。
 
----
+| # | 文档 | 讲什么 |
+|---|---|---|
+| 1 | [先看这篇：一本书在 NovelFork 里长什么样](./book/01-start-here.md) | 六个组成部分、经纬与叙事记忆的区别、章后结算、写作台布局 |
+| 2 | [第一次使用：配好模型](./book/02-first-run.md) | 添加供应商、选默认模型、测试连接、书房主题 |
+| 3 | [开一本新书：建书十一问](./book/03-new-book.md) | 新建作品、十一问、叙述者追问、导入旧稿 |
+| 4 | [写下一章：写作侧栏与创作罗盘](./book/04-write-next-chapter.md) | 就绪条、创作罗盘、检查项、生成蓝图与写章、本章提议 |
+| 5 | [和叙述者一起写](./book/05-narrator.md) | 对话栏、八个作者入口、权限确认 |
+| 6 | [改稿：划词操作与人味化](./book/06-revise.md) | 续写 / 润色 / 改写 / 扩写 / 人味化 / 精简，审这一章 |
+| 7 | [文风预设与自动蒸馏](./book/07-style-preset.md) | 本书文风预设、网页蒸馏、对话蒸馏 |
+| 8 | [角色声线：让每个人说话不一样](./book/08-character-voice.md) | 十项声线、生成草稿、逐项确认 |
+| 9 | [文风金库：把你的改稿变成范文](./book/09-style-vault.md) | 作者改动比例、改稿段采纳为范文 |
+| 10 | [伏笔与记忆：章后结算、记忆过期、重新结算](./book/10-foreshadow-memory.md) | 待审事项、记忆过期的章节、进度账本、伏笔阈值 |
+| 11 | [人物关系与正文人名高亮](./book/11-relations.md) | 人名高亮与资料卡、焦点人物关系网 |
+| 12 | [工作流：按固定工序写一章](./book/12-workflow.md) | 启动、确认与打回、编辑与发布方案 |
+| 13 | [导出、发布与项目档案](./book/13-export-archive.md) | 投稿风险自检、导出正文、项目档案备份与迁移 |
+| 14 | [投稿平台写作建议](./book/14-platforms.md) | 各平台章字数与钩子建议、线索可信度 |
 
-## 按场景查找
+## 网文写作课
 
-### 我是新用户
+讲通用的写作方法，内容原创。每课：核心道理、常见毛病、小练习、在 NovelFork 里练。
 
-1. [00-overview](./00-overview.md) — 建立整体认知
-2. [01-book-management](./01-book-management.md) — 创建第一个作品
-3. [04-narrator-conversation](./04-narrator-conversation.md) — 学会与叙述者对话
+| # | 课 | 一句话 |
+|---|---|---|
+| 1 | [开篇与黄金三章](./craft/01-opening.md) | 让读者关心一个人，并马上看到他的处境要变了 |
+| 2 | [主角与欲望](./craft/02-protagonist-desire.md) | 欲望决定往哪走，阻碍决定走多远 |
+| 3 | [冲突与悬念](./craft/03-conflict-suspense.md) | 冲突让人站队，悬念让人翻页 |
+| 4 | [节奏与爽点](./craft/04-pacing-payoff.md) | 期待、满足、新期待的循环 |
+| 5 | [伏笔的埋与收](./craft/05-foreshadowing.md) | 先说出口的承诺，要记账、要兑现 |
+| 6 | [对话与角色声线](./craft/06-dialogue-voice.md) | 推动情节、暴露人物、制造张力 |
+| 7 | [场景与描写](./craft/07-scene-description.md) | 几个准确的细节，通过人物写出来 |
+| 8 | [去 AI 味——用真实置换虚假](./craft/08-de-ai.md) | 把假的换成真的，不是换个说法 |
+| 9 | [长篇连贯与设定管理](./craft/09-continuity.md) | 设定、状态、欠账分开管 |
+| 10 | [改稿的方法](./craft/10-revision.md) | 先结构，再场景，最后句子 |
 
-### 我想了解 AI 写作
+## 几个词的白话解释
 
-1. [02-ai-writing](./02-ai-writing.md) — 写作能力概览
-2. [03-guided-generation](./03-guided-generation.md) — 引导式生成流程
-3. [08-agent-pipeline](./08-agent-pipeline.md) — 底层管线原理
+| 词 | 白话 |
+|---|---|
+| 经纬 | 这本书的设定库：人物、世界、规则、伏笔、大纲。界面入口叫「作品基础」 |
+| 叙事记忆 | 正文里已经发生的事：谁在哪、受了什么伤、关系怎么变、谁知道了什么 |
+| 章后结算 / 结算 | 写完一章后，让模型把这一章发生的事记进叙事记忆 |
+| 记忆过期 | 结算之后正文又被改过，记下的内容可能对不上了，需要重新结算 |
+| 叙述者 | 右侧对话栏里的 AI 写作搭档 |
+| 创作罗盘 | 写作侧栏里记近 1–3 章焦点的四栏：本章目标、必须守住、必须避开、备注 |
+| 文风预设 | 这本书「怎么写」：写法规则和范文，每本书一份 |
+| 写作技能 | 做事的方法，比如怎么写开篇、怎么审一章；启用后叙述者照着做 |
+| 工作流 | 做事的顺序：先做什么、后做什么、哪一步要你确认 |
+| 待确认 / 待审 | 机器从正文里抽出来的内容，你确认后才算数 |
 
-### 我想管理世界观
+## 维护说明
 
-1. [05-story-jingwei](./05-story-jingwei.md) — 经纬系统完整指南
-
-### 我想配置系统
-
-1. [06-settings-and-routines](./06-settings-and-routines.md) — 供应商和套路
-2. [09-agent-settings](./09-agent-settings.md) — Agent 运行时参数
-3. [16-security-and-sandbox](./16-security-and-sandbox.md) — 安全与沙箱
-4. [24-model-configuration](./24-model-configuration.md) — 模型与 fallback
-
-### 我想了解 Agent 能力
-
-1. [13-runtime-capabilities](./13-runtime-capabilities.md) — 运行时核心能力
-2. [14-subagent-system](./14-subagent-system.md) — 子代理系统
-3. [15-tool-search-and-skills](./15-tool-search-and-skills.md) — 工具与技能
-4. [17-browser-and-terminal](./17-browser-and-terminal.md) — 浏览器与终端
-5. [18-web-tools](./18-web-tools.md) — 网络工具
-
-### 我想分析作品质量
-
-1. [07-writing-tools](./07-writing-tools.md) — 所有分析工具
-
-### 我遇到了问题
-
-1. [25-debugging](./25-debugging.md) — 日志、Prompt Dump 与排错
-2. [23-context-management](./23-context-management.md) — 上下文超限与压缩
-
----
-
-## 术语表
-
-| 术语 | 英文 | 说明 |
-|------|------|------|
-| 经纬 / Lore | Jingwei / Lore | 作者显式维护的静态设定库（人物、地点、规则、术语等），支持触发词/章号窗口/级联/互斥智能注入 |
-| 叙述者 | Narrator | AI 对话助手，每本书有多个专职叙述者 |
-| 叙事记忆 | Narrative Memory | 动态事实、时间线、伏笔、角色弧线和召回诊断；剧情线状态卡按主体聚合当前状态 |
-| 写作技能 | Writing Skills | 内置 377 个自研技能（nf- 编号，十类方法论），可组合启用（文风/节奏/钩子/平台），物化后由叙述者加载、带 checks 的按规则写后合规校验 |
-| 正式章节结果 | Formal Chapter Result | 叙述者提交正文、pipeline.write 校验落盘的章节结果 |
-| 三层闭环 | Knowledge Loop | 写前查经纬+记忆+技能 → 写后结算沉淀 → 下次再查，循环治愈长篇遗忘 |
-| 确认门 | Confirmation Gate | 写入正式资源前的审批机制 |
-| PGI | Pre-Generation Interview | 生成前追问 |
-| 套路 | Routines | Agent 行为规则集（命令/工具/权限/提示词/MCP） |
-| 管线 | Pipeline | Runtime Agent 单环驱动的写作流程（蓝图与正文由 Agent 提交，工具校验落盘） |
-| 投稿风险自检 | Submission Risk Check | 敏感词/AI 味/格式/连续性证据化汇总，只供人工复核 |
-| 子代理 | Subagent | 独立执行子任务的 Agent（explore/plan/general/fork） |
-
----
-
-## 贡献
-
-学习中心文档位于 `docs/learning/` 目录。如需补充或修正，请直接编辑对应文件。
+- 教程只放在 `book/` 和 `craft/` 两个目录里，目录就是学习中心的分类；放在别处的 Markdown 不会进学习中心，生成时会报错。
+- 改完运行 `bun scripts/generate-learning-contribution.ts`，重新生成 `packages/novel-plugin/src/learning-contribution.generated.ts`，不要手改生成文件。
+- Frontmatter 要有 `title`、`summary`、`tags`、`routes`。`routes` 每行一个入口，可写成 `- /next/books | 打开「我的作品」`；入口必须以 `/next` 开头，不能带 `:bookId` 这类占位符；`/next/learn?doc=<文档 id>` 链到另一篇教程，文档 id 是「目录-去掉序号的文件名」，如 `book-write-next-chapter`。
+- 学习中心把正文当纯文本显示，不渲染 Markdown。`## 推荐使用流程`、`## 最佳实践`、`## 常见问题`（或「常见坑」「常见毛病」）会显示成列表，其余小节显示成段落；每节不超过 1200 字、每篇普通小节不超过 8 个。
+- 只写当前代码里真实存在的功能，界面文字照源码写；半成品不写。写作课内容自写，不抄参考项目的原文与提示词。
