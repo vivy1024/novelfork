@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitChapters } from "../utils/chapter-splitter.js";
+import { splitChapters, splitChaptersWithVolumes } from "../utils/chapter-splitter.js";
 
 describe("splitChapters", () => {
   it("splits classical Chinese chapter headings with 第X回 by default", () => {
@@ -152,5 +152,47 @@ describe("splitChapters", () => {
     expect(chapters).toHaveLength(1);
     expect(chapters[0]?.content).toBe("The harbor bells rang once and went silent.");
     expect(chapters[0]?.content).not.toContain("Project Gutenberg");
+  });
+});
+
+
+describe("splitChaptersWithVolumes", () => {
+  it("按「第N卷」分卷，卷标题行不再吃进上一章正文", () => {
+    const input = [
+      "第一卷 光与影",
+      "第一章 正义",
+      "夜里开店。",
+      "第二章 坠落",
+      "天亮了。",
+      "第二卷 血海",
+      "第三章 报仇",
+      "再见。",
+      "",
+      "第四十章 远行",
+      "上路。",
+    ].join("\n");
+
+    const { volumes, chapters } = splitChaptersWithVolumes(input);
+    expect(volumes).toEqual([
+      { index: 1, title: "光与影" },
+      { index: 2, title: "血海" },
+    ]);
+    expect(chapters.map((chapter) => chapter.title)).toEqual(["正义", "坠落", "报仇", "远行"]);
+    expect(chapters.map((chapter) => chapter.volumeIndex)).toEqual([1, 1, 2, 2]);
+    expect(chapters[1]!.content).toBe("天亮了。");
+  });
+
+  it("没有卷标题的旧稿整体归一卷，行为与 splitChapters 一致", () => {
+    const input = "第一章 起\n开头。\n第二章 承\n中段。";
+    const { volumes, chapters } = splitChaptersWithVolumes(input);
+    expect(volumes).toEqual([]);
+    expect(chapters.map((chapter) => chapter.volumeIndex)).toEqual([1, 1]);
+  });
+
+  it("自定义切分 pattern 时不做卷捕获", () => {
+    const input = "第一卷 x\n第一章 a\n第一段。\n第二章 b\n第二段。";
+    const { volumes, chapters } = splitChaptersWithVolumes(input, "^第[一二三四五六七八九十百千万\\d]+章");
+    expect(volumes).toEqual([]);
+    expect(chapters.map((chapter) => chapter.title)).toEqual(["第1章", "第2章"]);
   });
 });

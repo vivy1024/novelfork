@@ -110,7 +110,7 @@ export { filterHooks, filterSummaries, filterSubplots, filterEmotionalArcs, filt
 export { extractPOVFromOutline, filterMatrixByPOV, filterHooksByPOV } from "./utils/pov-filter.js";
 export { detectToxicPatterns, type ToxicDetectionContext, type ToxicDetectionResult } from "./utils/toxic-detector.js";
 export { parseOutlineTree, findOutlineNodeForChapter, detectOutlineDrift, type OutlineNode, type OutlineDriftResult } from "./utils/outline-drift.js";
-export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
+export { splitChapters, splitChaptersWithVolumes, type SplitChapter, type SplitChapterWithVolume, type SplitVolume } from "./utils/chapter-splitter.js";
 export {
   detectFormat,
   htmlToPlainText,
