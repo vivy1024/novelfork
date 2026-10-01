@@ -42,6 +42,7 @@ export { createCockpitRouter, type CreateCockpitRouterOptions } from "./cockpit.
 export { createNarrativeMemoryRouter } from "./narrative-memory.js";
 export { createEntityGraphRouter, type EntityGraphRouterOptions } from "./entity-graph.js";
 export { createKnowledgeRouter, type KnowledgeRouterOptions } from "./knowledge.js";
+export { createChapterRevisionRouter, type CreateChapterRevisionRouterOptions } from "./chapter-revision.js";
 export { createNarrativeStructureRouter, type NarrativeStructureRouterOptions } from "./narrative-structure.js";
 export {
   createWorkflowRunsRouter,

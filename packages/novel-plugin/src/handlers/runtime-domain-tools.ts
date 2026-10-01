@@ -40,6 +40,7 @@ import {
   writeChapterIndex,
   type ChapterIndexRecord,
 } from "../engine/writing-resource/chapter-layout.js";
+import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
 
 export interface TrustedRuntimeBookBinding {
   readonly bookId: string;
@@ -315,6 +316,102 @@ async function rewriteApply(
       ? `已在第 ${end} 行后插入 ${inserted.length} 行。`
       : `已替换第 ${start}-${end} 行。`,
     { bookId: binding.bookId, chapterNumber, mode, linesAffected: inserted.length },
+  );
+}
+
+/**
+ * T5.3：整章改动候选。本工具不改正文——交出 before/after 摘要与原文预览，
+ * 由作者在叙述者面板的候选卡里核对后再决定是否采用；应用时校验 originalHash 防覆盖。
+ */
+async function proposeChapterRevision(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+): Promise<RuntimeToolResult> {
+  const chapterNumber = positiveInteger(input.chapterNumber);
+  const content = typeof input.content === "string" ? input.content : null;
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (!chapterNumber || content === null || !content.trim() || !reason) {
+    return fail("invalid-input", "需要有效的 chapterNumber、content（改后的完整正文）与 reason（为什么这么改）。候选没有写入章节。");
+  }
+  if (content.length > 60_000) return fail("content-too-large", "单章候选正文不能超过 6 万字；请拆成多个候选分别提交。");
+  const chapter = await readBoundChapter(binding, chapterNumber);
+  const originalText = chapter.ok && chapter.data ? chapter.data.content : "";
+  const originalHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+
+  // 段落级对照（空行分段）：算一致/删除/新增数量，不整段差分。
+  const splitParagraphs = (text: string) => text.split(/\r?\n\r?\n/).map((item) => item.trim()).filter((item) => item.length > 0);
+  const originalParas = splitParagraphs(originalText);
+  const newParas = splitParagraphs(content);
+  const originalSet = new Set(originalParas);
+  const newSet = new Set(newParas);
+  const unchanged = originalParas.filter((item) => newSet.has(item)).length;
+  const removed = originalParas.length - unchanged;
+  const added = newParas.filter((item) => !originalSet.has(item)).length;
+
+  const artifact = {
+    kind: "chapter-revision",
+    id: crypto.randomUUID(),
+    bookId: binding.bookId,
+    chapterNumber,
+    reason,
+    originalHash,
+    originalExists: chapter.ok === true,
+    originalPreview: originalText.slice(0, 600),
+    newPreview: content.slice(0, 600),
+    stats: {
+      originalChars: originalText.length,
+      newChars: content.length,
+      unchangedParagraphs: unchanged,
+      removedParagraphs: removed,
+      addedParagraphs: added,
+    },
+    newText: content,
+  };
+  return ok(
+    `已生成第 ${chapterNumber} 章改动候选（原 ${originalText.length} 字 → 新 ${content.length} 字；保持 ${unchanged} 段、删 ${removed} 段、增 ${added} 段）。请作者在候选卡核对后决定；候选尚未写入正文。`,
+    { artifact },
+  );
+}
+
+/**
+ * T5.3：经纬条目字段改动候选。本工具不改条目——按字段列 before/after，
+ * 作者采用时走 PUT jingwei/entries 的 fieldsPatch 合并通道，不改写的字段原样保留。
+ */
+async function proposeLoreUpdate(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+): Promise<RuntimeToolResult> {
+  const entryId = typeof input.entryId === "string" ? input.entryId.trim() : "";
+  const fieldsPatch = record(input.fieldsPatch);
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (!entryId || !fieldsPatch || Object.keys(fieldsPatch).length === 0 || !reason) {
+    return fail("invalid-input", "需要有效的 entryId、fieldsPatch（至少一个要改的字段）与 reason。候选没有改设定。");
+  }
+  const storage = getStorageDatabase();
+  const repo = createStoryJingweiEntryRepository(storage);
+  const entry = await repo.getById(binding.bookId, entryId);
+  if (!entry) return fail("entry-not-found", `找不到经纬条目 ${entryId}；候选没有改设定。`);
+  const currentFields: Record<string, unknown> = (entry.fields && typeof entry.fields === "object"
+    ? entry.fields
+    : {}) as Record<string, unknown>;
+  // before 只投被 patch 的键，免得把整份 fields 摆进消息里
+  const before: Record<string, unknown> = {};
+  for (const key of Object.keys(fieldsPatch)) before[key] = currentFields[key] ?? null;
+
+  const artifact = {
+    kind: "lore-update",
+    id: crypto.randomUUID(),
+    bookId: binding.bookId,
+    entryId,
+    entryTitle: entry.title,
+    category: entry.category,
+    reason,
+    fieldsPatch,
+    before,
+  };
+  return ok(
+    `已生成条目「${entry.title}」的改动候选，共 ${Object.keys(fieldsPatch).length} 个字段（${Object.keys(fieldsPatch).join("、")}）。请作者核对后决定；候选尚未写入。`,
+    { artifact },
   );
 }
 
@@ -900,6 +997,10 @@ export async function executeRuntimeDomainTool(
       return chapterAudit(input, binding);
     case "chapter_propose_selection":
       return proposeSelectionCandidate(input, binding.bookId);
+    case "chapter_propose_revision":
+      return proposeChapterRevision(input, binding);
+    case "lore_propose_update":
+      return proposeLoreUpdate(input, binding);
     case "rewrite_apply":
     case "rewrite.apply":
       return rewriteApply(input, binding);

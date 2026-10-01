@@ -317,6 +317,28 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "chapterNumber", "lineRange", "newText"],
     additionalProperties: false,
   },
+  "chapter.propose_revision": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      chapterNumber: numberSchema("目标章节序号。"),
+      content: stringSchema("改后的完整章节正文（≤6 万字）；本工具只生成候选不改正文，大改请先拆成多个候选。"),
+      reason: stringSchema("为什么这样改；随候选展示给作者。"),
+    },
+    required: ["bookId", "chapterNumber", "content", "reason"],
+    additionalProperties: false,
+  },
+  "lore.propose_update": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      entryId: stringSchema("要改的经纬条目 id。"),
+      fieldsPatch: { type: "object", description: "要改的字段集合（至少一个键）；应用时按 fieldsPatch 合并，其余字段原样保留。" },
+      reason: stringSchema("为什么这么改；随候选展示给作者。"),
+    },
+    required: ["bookId", "entryId", "fieldsPatch", "reason"],
+    additionalProperties: false,
+  },
   "pipeline.import_chapters": {
     type: "object",
     properties: {

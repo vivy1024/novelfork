@@ -11,6 +11,7 @@ import {
 	createCharacterVoiceRouter,
 	createCockpitRouter,
 	createComplianceRouter,
+	createChapterRevisionRouter,
 	createEntityGraphRouter,
 	createEmbeddingSettingsRouter,
 	createFilterRouter,
@@ -287,6 +288,16 @@ novelDomainRoutes.route(
 	"",
 	asRuntimeRouter(
 		createPendingReviewRouter({
+			resolveBookRoot: resolveDomainBookRoot,
+		}),
+	),
+);
+// 整章改动的「采用」落盘：叙述者大写操作一律先产候选，作者点了采用才从这里写入，
+// 用正文 hash 闸门防止把候选期间的最新正文覆盖掉。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createChapterRevisionRouter({
 			resolveBookRoot: resolveDomainBookRoot,
 		}),
 	),

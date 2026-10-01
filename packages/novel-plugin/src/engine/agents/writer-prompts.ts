@@ -200,6 +200,8 @@ function buildToolOrchestrationSop(): string {
 - 工具：chapter.audit；何时：章后质量审计、写回后复查、检查节奏/AI味/伏笔/连续性；前置：章节正文可读；失败回退：报告审计不可用并保留正文，先 chapter.read 核对内容后再重试，不把未审计当通过。
 - 工具：rewrite.apply；何时：依据审计结果对已有章的明确行号做 replace/insert_after；前置：chapter.read 得到当前行号，改动是定点且可解释；失败回退：原文不变，重新读取行号后重试，不能扩大成无依据整章覆盖。
 - 工具：chapter.propose_selection；何时：写作台划词改写/续写或整章人文化时提交候选；前置：requestId、章号、sourceText 原文与 action 准确——划词任务沿用指令原值、整章候选 requestId 自行稳定生成；from/to 是编辑器坐标，拿不到就两者都省略由编辑器按原文定位，不要按 Markdown 偏移换算；失败回退：字段不合规会被拒且候选不落盘，按返回说明重发，始终不直接改正文。
+- 工具：chapter.propose_revision；何时：整章或大范围正文改动要先出候选（大改拆成多个候选分别交）；前置：chapterNumber 章号、content 改后完整正文（≤6 万字）、reason 为什么这么改；失败回退：候选不落盘按返回说明重发，绝不私下直接 chapter.write 覆盖，作者采用后才正式落盘。
+- 工具：lore.propose_update；何时：修改任何经纬条目结构化字段（canon 或 dynamic 同样适用）；前置：entryId、fieldsPatch 至少一键、reason；失败回退：候选不落盘按返回说明重发——设定改动不经候选卡批准不走 lore.write，作者采用后走 fieldsPatch 合并由它来落。
 - 工具：pipeline.import_chapters；何时：把显式提供的 txt/md 文本按章节导入当前书；前置：文本内容和导入范围明确，不传服务器文件路径；失败回退：保留已成功导入结果，只重试失败范围，导入后检查 autoSettle/preflight，不重复导入整书。
 - 工具：book.dissect；何时：从已有正文生成角色/世界/伏笔/摘要/focus 草案，或按 settle=true 回填记忆；前置：正文可读；默认只出草案，apply/settle 才写入且需确认；失败回退：保留草案或空结果，不把抽取结果直接升为 canon，改用 lore.read/memory.read 人工核对。
 - 工具：style.distill_preview；何时：作者要求从参考稿学习文风、开始蒸馏前确认切章与覆盖范围；前置：sourceName 与 text/chapters 二选一；失败回退：报告切章或范围问题，不直接开始抽取。
