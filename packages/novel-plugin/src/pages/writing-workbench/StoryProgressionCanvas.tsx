@@ -10,6 +10,7 @@ import {
   Minimize2,
   Network,
   ScrollText,
+  Swords,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,9 @@ import { Button } from "@/components/ui/button";
 
 import { StoryProgressBoard } from "./StoryProgressBoard";
 
+const NextChapterPanel = lazy(() =>
+  import("./NextChapterPanel").then((m) => ({ default: m.NextChapterPanel })),
+);
 const CanonicalTreesPanel = lazy(() =>
   import("./CanonicalTreesPanel").then((m) => ({ default: m.CanonicalTreesPanel })),
 );
@@ -30,7 +34,8 @@ const WorkflowTimelinePanel = lazy(() =>
 
 /**
  * 故事推进的视图（IA 重构）：
- *  - board     推进（默认，主视觉）：章 × 剧情线网格 + 下一章焦点 + 伏笔债务
+ *  - next      下一章（默认，主视觉）：一屏回答「下一章写什么」——焦点 + 建议 + 情节板 + 伏笔账本
+ *  - board     推进：章 × 剧情线网格 + 下一章焦点 + 伏笔债务
  *  - tree      故事树（参考）：章节 / 因果 / 脉络 / 发展历程；世界观与人物关系在「作品基础」
  *  - workflow  执行：按创作工作流方案逐道工序推进本章
  *
@@ -41,7 +46,7 @@ const WorkflowTimelinePanel = lazy(() =>
  * 原「发展历程」三层（事件流/关系演化/矛盾冲突）已从推进页移除：
  * 它们是叙事记忆的浏览视图，归 NarrativeMemoryPanel，不回答「下一章写什么」。
  */
-export type StoryProgressionView = "board" | "tree" | "workflow";
+export type StoryProgressionView = "next" | "board" | "tree" | "workflow";
 
 export interface StoryProgressionViewDef {
   readonly id: StoryProgressionView;
@@ -51,6 +56,7 @@ export interface StoryProgressionViewDef {
 }
 
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
+  { id: "next", label: "下一章", description: "一屏回答「下一章写什么」：焦点 + 建议 + 情节板 + 伏笔账本", icon: Swords },
   { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
   { id: "tree", label: "故事树", description: "章节 / 因果 / 脉络 / 发展历程（世界观与人物关系在「作品基础」）", icon: FolderTree },
   // 工作流的归宿：它回答的是「这一章按什么工序推进」，属于推进镜头，不是一个可选分析工具。
@@ -76,14 +82,14 @@ export const LEGACY_VIEW_TARGETS: Record<string, { view: StoryProgressionView; t
 };
 
 export function isStoryProgressionView(value: unknown): value is StoryProgressionView {
-  return value === "tree" || value === "board" || value === "workflow";
+  return value === "next" || value === "tree" || value === "board" || value === "workflow";
 }
 
-/** 兼容旧的 initialView 取值，自动归并在两大主视图下，并提供对应子视图。 */
+/** 兼容旧的 initialView 取值；非法或缺省进「下一章」整合页。 */
 export function normalizeStoryProgressionView(value: unknown): StoryProgressionView {
   if (isStoryProgressionView(value)) return value;
   if (typeof value === "string" && LEGACY_VIEW_TARGETS[value]) return LEGACY_VIEW_TARGETS[value].view;
-  return "tree";
+  return "next";
 }
 
 export function resolveInitialTreeKind(value: unknown): import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind | undefined {
@@ -221,7 +227,18 @@ export function StoryProgressionCanvas({
       </header>
 
       <div className="min-h-0 flex-1 overflow-hidden p-2" data-testid="story-progression-viewport">
-        {view === "board" ? (
+        {view === "next" ? (
+          <div className="h-full min-h-0 overflow-y-auto" data-testid="story-progression-next">
+            <Suspense fallback={fallback("正在组装下一章计划…")}>
+              <NextChapterPanel
+                bookId={bookId}
+                {...(currentChapter !== undefined ? { currentChapter } : {})}
+                {...(onOpenChapter ? { onOpenChapter } : {})}
+                {...(onSendToNarrator ? { onSendToNarrator } : {})}
+              />
+            </Suspense>
+          </div>
+        ) : view === "board" ? (
           <div className="h-full min-h-0" data-testid="story-progression-board">
             <StoryProgressBoard
               bookId={bookId}

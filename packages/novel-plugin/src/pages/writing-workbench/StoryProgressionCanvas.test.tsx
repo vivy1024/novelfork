@@ -179,18 +179,19 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
 
 describe("normalizeStoryProgressionView 与 resolveInitialTreeKind", () => {
   it("保留合法主视图取值", () => {
+    expect(normalizeStoryProgressionView("next")).toBe("next");
     expect(normalizeStoryProgressionView("tree")).toBe("tree");
     expect(normalizeStoryProgressionView("board")).toBe("board");
   });
 
-  it("旧取值落到故事树主视图并解析出对应子树 kind，非法值回落到故事树", () => {
+  it("旧取值落到故事树主视图并解析出对应子树 kind，非法值回落到「下一章」整合页", () => {
     expect(normalizeStoryProgressionView("chronicle")).toBe("tree");
     expect(normalizeStoryProgressionView("network")).toBe("tree");
     expect(normalizeStoryProgressionView("timeline")).toBe("tree");
     expect(normalizeStoryProgressionView("map")).toBe("tree");
     expect(normalizeStoryProgressionView("evolution")).toBe("tree");
     expect(normalizeStoryProgressionView("outline")).toBe("tree");
-    expect(normalizeStoryProgressionView(undefined)).toBe("tree");
-    expect(normalizeStoryProgressionView(42)).toBe("tree");
+    expect(normalizeStoryProgressionView(undefined)).toBe("next");
+    expect(normalizeStoryProgressionView(42)).toBe("next");
   });
 });
