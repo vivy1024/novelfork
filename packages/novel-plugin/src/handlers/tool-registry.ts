@@ -50,6 +50,7 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "chapter.list",
   "chapter.discard_range",
   "chapter.audit",
+  "chapter.propose_selection",
   "rewrite.apply",
   "pipeline.import_chapters",
   "book.dissect",
@@ -90,8 +91,6 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "memory.bulk_approve",
   "memory.bulk_delete",
   "jingwei.audit",
-  "jingwei.write",
-  "jingwei.read",
   "resource.manage",
   "scene.spec",
   "market.scan",
@@ -245,6 +244,15 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
     risk: "read",
     renderer: "chapter.audit",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "chapter.propose_selection",
+    description: "把写作台选区的候选改写交还作者审阅。requestId、from/to 和 sourceText 必须沿用作者划词指令的原值；这里只生成候选卡，不覆盖正文。作者在编辑器中确认后才应用。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["chapter.propose_selection"]),
+    risk: "draft-write",
+    renderer: "chapter.selection-candidate",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({
@@ -644,61 +652,12 @@ action=create | update | delete | retire。
     scope: "novel",
   }),
   sessionTool({
-    name: "jingwei.write",
-    description: `兼容别名（= lore.write）。经纬静态设定写入工具，用于管理作者显式维护、可审阅的静态设定。
-
-action=create：创建新条目。必须传入 title、category、contentMd。
-action=update：更新已有条目（传 entryId 或 title 匹配）。
-action=delete：删除非 canon 条目。
-action=retire：退役错误/过期条目（含 canon）。不改 layer、不改正文；设 participates_in_ai=0 并 archived 软删。必须 reason；canon 另需 confirmCanonEdit=true。
-entries：一次写入多条（最多 20）。传入后忽略顶层单条 title/contentMd。
-
-边界：
-- 只写入静态设定、世界规则、平台规则、作者备注等 Lore 内容。
-- 写入 canon 或 rules 类设定时必须提供 reason，并提供 source 或 evidence。
-- Canon 不能硬删或降级 layer；错误 canon 请 retire，不要试图改 layer 绕过。
-- 动态事实不得直接写入 Lore；章节后抽取事实、关系变化、伏笔推进、Pending NarrativeEvents 请使用 memory.events / Narrative Memory 流程。
-- 不要把诊断结果、市场材料、工具临时输出直接写入 Lore canon。
-
-兼容说明：jingwei.* 与 lore.* 等价；经纬是产品名，lore 是后端工具名。`,
-    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.write"]),
-    risk: "draft-write",
-    renderer: "jingwei.write",
-    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
-    visibility: "advanced",
-    scope: "novel",
-  }),
-  sessionTool({
     name: "scene.spec",
     description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 必须先 write.preflight；blockers 非空禁止调用本工具\n2. 用 preflight.resolvedDirective（或用户确认后的一句指示）作为 userDirectives\n3. 可选：lore.read(scope=brief) 静态设定、memory.read 动态记忆\n4. 再调用 scene.spec 生成蓝图\n\n硬约束：\n- userDirectives 必须是一句明确本章目标（≥8 字），禁止塞写作理论/文风大道理\n- 仅有 focus 默认句时需 acceptFocusDefault=true 或补用户句\n- 已有正式章但近章记忆空时会 context-not-ready\n\n不要用的时候：\n- 用户没有要求写章节时\n- preflight 未通过时\n\n注意：软门（文风/去 AI）留在写后 audit/revise；pipeline.write 成功后自动章后结算。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["scene.spec"]),
     risk: "read",
     renderer: "scene.spec",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
-    scope: "novel",
-  }),
-  sessionTool({
-    name: "jingwei.read",
-    description: `兼容别名（= lore.read）。经纬静态设定读取工具。
-
-scope=brief：返回作者显式维护的核心静态设定包 + 分类目录。
-scope=category：按分类读取详细静态设定条目。
-scope=search：关键词搜索静态设定。
-
-默认过滤：archived、draft、needs-review、participates_in_ai=0 或等价非活跃条目不会作为 Agent 可读经纬返回。
-
-使用时机：
-- 用户说"看经纬"/"看设定"/"看世界模型" → scope=brief
-- 写作前读取静态设定 → lore.read 或 jingwei.read
-- 查找特定设定 → scope=search
-
-不要用的时候：
-- 不要用经纬读取动态叙事记忆；动态请用 memory.read / memory.graph / memory.events。`,
-    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read"]),
-    risk: "read",
-    renderer: "jingwei.read",
-    enabledForModes: ALL_SESSION_PERMISSION_MODES,
-    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({

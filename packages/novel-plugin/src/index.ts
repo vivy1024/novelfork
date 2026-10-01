@@ -109,8 +109,6 @@ const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "narrative.approve_change": "审批叙事线变更（批准或驳回）",
   "lore.read": "Lore 静态设定读取（brief/category/search）",
   "lore.write": "Lore 静态设定写入（含 canon/rules 门禁）",
-  "jingwei.read": "deprecated alias of lore.read（静态设定读取）",
-  "jingwei.write": "deprecated alias of lore.write（静态设定写入）",
   "jingwei.audit": "经纬 / Lore 读取门禁审计",
   "memory.read": "动态叙事记忆召回",
   "memory.graph": "动态记忆图谱读取",

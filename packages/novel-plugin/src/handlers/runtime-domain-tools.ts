@@ -32,6 +32,7 @@ import { executeWorkflowRecipeTool } from "./workflow-recipe-tools.js";
 import { executeWorkflowRunTool } from "./workflow-run-tools.js";
 import { executeStyleDistillationTool } from "./style-distill-tools.js";
 import { executeCharacterVoiceTool } from "./character-voice-tools.js";
+import { proposeSelectionCandidate } from "./selection-candidate-tools.js";
 import {
   DEFAULT_VOLUME_DIRECTORY,
   chapterRelativePath,
@@ -897,6 +898,8 @@ export async function executeRuntimeDomainTool(
     case "chapter_audit":
     case "chapter.audit":
       return chapterAudit(input, binding);
+    case "chapter_propose_selection":
+      return proposeSelectionCandidate(input, binding.bookId);
     case "rewrite_apply":
     case "rewrite.apply":
       return rewriteApply(input, binding);

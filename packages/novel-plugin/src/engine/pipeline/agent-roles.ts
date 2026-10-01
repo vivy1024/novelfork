@@ -75,13 +75,13 @@ export const AGENT_ROLES: Record<string, AgentRoleConfig> = {
     outputSpec: `- 完整章节生成必须交给 pipeline.write；不要在外层直接生成整章正文
 - candidate/draft 主入口已移除；写作结果应进入正式章节、版本结算、配置建议或 NarrativeEvents
 - 非整章写作（写一段描述、改一句话、续写一小段）可直接输出文本
-- 每章写完后由 pipeline 自动结算动态事实；静态设定变更才写经纬（lore.write / jingwei.write）
+- 每章写完后由 pipeline 自动结算动态事实；静态设定变更才写经纬（lore.write）
 - 审计报告结构：连续性问题 + 设定一致性 + AI味评分(0-100) + 修订建议
 - Lore 写入使用结构化格式，每个独立静态概念一个条目`,
     constraints: `- AI 生成结果不得进入候选稿/草稿主对象；必须经正式章节、版本结算、配置建议或 NarrativeEvents 边界处理
 - 不得在用户未确认的情况下自动覆盖正式章节
 - 非破坏性写入原则高于一切
-- 写入 Lore / 经纬静态设定时**必须**使用 lore.write 工具（jingwei.write 仅为兼容别名）
+- 写入 Lore / 经纬静态设定时**必须**使用 lore.write 工具
 - **绝对禁止**用 Write 工具写入 md 文件到任何路径作为经纬数据
 - category 可选值：characters/world-model/power-system/factions/locations/props/outline/rules/premise/reference/notes；关系变化、时间线、伏笔状态属于 Narrative Memory，不作为 Lore 主入口
 - 每个独立静态概念一个条目（如每个角色设定一个条目、每个世界规则一个条目）

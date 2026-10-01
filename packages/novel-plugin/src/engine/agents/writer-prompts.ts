@@ -199,6 +199,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：chapter.list；何时：只需要章节序号、标题、字数、状态；前置：无额外前置；失败回退：用 cockpit.snapshot 获取概览，不能把目录缺失解释成记忆缺失。
 - 工具：chapter.audit；何时：章后质量审计、写回后复查、检查节奏/AI味/伏笔/连续性；前置：章节正文可读；失败回退：报告审计不可用并保留正文，先 chapter.read 核对内容后再重试，不把未审计当通过。
 - 工具：rewrite.apply；何时：依据审计结果对已有章的明确行号做 replace/insert_after；前置：chapter.read 得到当前行号，改动是定点且可解释；失败回退：原文不变，重新读取行号后重试，不能扩大成无依据整章覆盖。
+- 工具：chapter.propose_selection；何时：写作台划词改写/续写或整章人文化时提交候选；前置：requestId、章号、sourceText 原文与 action 准确——划词任务沿用指令原值、整章候选 requestId 自行稳定生成；from/to 是编辑器坐标，拿不到就两者都省略由编辑器按原文定位，不要按 Markdown 偏移换算；失败回退：字段不合规会被拒且候选不落盘，按返回说明重发，始终不直接改正文。
 - 工具：pipeline.import_chapters；何时：把显式提供的 txt/md 文本按章节导入当前书；前置：文本内容和导入范围明确，不传服务器文件路径；失败回退：保留已成功导入结果，只重试失败范围，导入后检查 autoSettle/preflight，不重复导入整书。
 - 工具：book.dissect；何时：从已有正文生成角色/世界/伏笔/摘要/focus 草案，或按 settle=true 回填记忆；前置：正文可读；默认只出草案，apply/settle 才写入且需确认；失败回退：保留草案或空结果，不把抽取结果直接升为 canon，改用 lore.read/memory.read 人工核对。
 - 工具：style.distill_preview；何时：作者要求从参考稿学习文风、开始蒸馏前确认切章与覆盖范围；前置：sourceName 与 text/chapters 二选一；失败回退：报告切章或范围问题，不直接开始抽取。
@@ -236,9 +237,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：memory.bulk_approve；何时：明确筛选的一批 pending events 统一批准；前置：先 memory.list/search 核对筛选和逐项风险；失败回退：只重试失败/跳过项，保留未批准项，不扩大筛选。
 - 工具：memory.bulk_delete；何时：明确 filter 下批量硬删 facts/events；前置：memory.export 或可回滚快照、显式 filter、reason 和确认；失败回退：停止并保留未删数据，不能改成无条件全删或重复执行。
 - 工具：jingwei.audit；何时：怀疑静态设定未满足 active + confirmed + participates_in_ai 门禁时；前置：明确 category/范围；失败回退：先报告 draft/needs-review/archived/禁用原因，改用 lore.read 重新筛选，不直接写 Lore。
-- 工具：jingwei.write；何时：兼容旧调用方写静态设定；前置：同 lore.write，优先迁移调用到 lore.write；失败回退：按 lore.write 的 reason/source/evidence 和 canon 规则处理，不另建第二套数据。
 - 工具：scene.spec；何时：write.preflight 通过后生成结构化场景蓝图；前置：userDirectives 至少 8 字或明确接受 focus 默认句，scenes 每项必须有 characters/location/conflict/outcome；失败回退：修正缺字段/预算后重调，不能直接调用 pipeline.write。
-- 工具：jingwei.read；何时：兼容旧调用方读静态经纬；前置：同 lore.read，优先迁移调用到 lore.read；失败回退：动态内容转 memory.read/memory.graph，不把别名当独立权威源。
 - 工具：resource.manage；何时：列出、归档或永久删除正式章节结果；前置：list 先盘点，archive/delete 需目标和确认；失败回退：删除失败保留原结果并报告，若目标是废稿连同章域记忆清理则改用 chapter.discard_range。
 - 工具：market.scan；何时：用户要求扫描起点/番茄公开榜单并留存市场快照；前置：平台或榜单范围明确；失败回退：报告采集失败，不把缺失榜单当成市场结论。
 - 工具：market.query；何时：读取已留存的市场快照并分析题材、标题、字数趋势；前置：先确认平台和日期范围；失败回退：缩小范围或报告暂无快照，不凭空补数据。

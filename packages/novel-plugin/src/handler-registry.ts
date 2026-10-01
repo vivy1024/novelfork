@@ -32,8 +32,6 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "pipeline.write", serviceKey: "direct", method: "handlePipelineWrite" },
   { toolName: "lore.write", serviceKey: "direct", method: "handleLoreWrite" },
   { toolName: "lore.read", serviceKey: "direct", method: "handleLoreRead" },
-  { toolName: "jingwei.write", serviceKey: "direct", method: "handleJingweiWrite" },
-  { toolName: "jingwei.read", serviceKey: "direct", method: "handleJingweiRead" },
   { toolName: "jingwei.audit", serviceKey: "direct", method: "handleJingweiAudit" },
   { toolName: "memory.read", serviceKey: "direct", method: "handleMemoryRead" },
   { toolName: "memory.graph", serviceKey: "direct", method: "handleMemoryGraph" },

@@ -7,16 +7,14 @@ function tool(name: string) {
 }
 
 describe("novel tool registry lore/memory boundary", () => {
-  it("registers lore tools as static setting tools and keeps jingwei as compatibility aliases", () => {
+  it("注册 lore 静态设定工具作为唯一入口；jingwei.read / jingwei.write 兼容别名已下线", () => {
     expect(tool("lore.read")?.description).toContain("静态设定");
     expect(tool("lore.write")?.description).toContain("静态设定");
 
-    expect(tool("jingwei.read")?.description).toContain("兼容别名");
-    expect(tool("jingwei.read")?.description).toContain("memory.read");
-    expect(tool("jingwei.write")?.description).toContain("兼容别名");
-    expect(tool("jingwei.write")?.description).toContain("动态事实不得直接写入 Lore");
-    expect(tool("jingwei.read")?.visibility).toBe("advanced");
-    expect(tool("jingwei.write")?.visibility).toBe("advanced");
+    // 别名下线后不再注册；jingwei.audit 是独有功能，保留
+    expect(tool("jingwei.read")).toBeUndefined();
+    expect(tool("jingwei.write")).toBeUndefined();
+    expect(tool("jingwei.audit")?.description).toContain("经纬审计门禁");
   });
 
   /**
@@ -99,6 +97,7 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(tool("memory.settle_range")?.risk).toBe("confirmed-write");
     expect(tool("chapter.discard_range")?.risk).toBe("destructive");
     expect(tool("pipeline.write")?.description).toContain("context-not-ready");
+    expect(tool("chapter.propose_selection")).toMatchObject({ risk: "draft-write", renderer: "chapter.selection-candidate", runtimeStatus: "ready" });
   });
 
   it("registers import closed-loop and book.dissect tools", () => {

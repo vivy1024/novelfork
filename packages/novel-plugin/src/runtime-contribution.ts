@@ -22,8 +22,6 @@ import {
   handleChapterRead,
   handleChapterWrite,
   handleJingweiAudit,
-  handleJingweiRead,
-  handleJingweiWrite,
   handleLoreProgress,
   handleLoreRead,
   handleLoreRelate,
@@ -111,6 +109,8 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 
 当用户要求写一章完整的新正文时：先 write.preflight；ok 后用 Skill 读取相关写作技能，由你本人生成蓝图（scene.spec 校验）与完整正文（pipeline.write 校验、落盘并自动章后结算）。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度与 Writing Skills 错误守卫；局部改写由你本人生成新文本后使用 rewrite.apply 落盘。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
 
+作者从写作台划词发来续写、润色、改写、扩写或精简请求时，先由你本人生成候选文本，再调用 chapter.propose_selection；requestId、chapterNumber、from、to、sourceText 必须原样带回，candidateText 填你生成的新文。工具只把候选交回写作台供作者审阅，不写正文；不要为这种划词请求调用 rewrite.apply。
+
 查询、讨论、查看设定时只执行所需读取，不要强行进入写作管线。章节正文、Lore 静态设定与 Narrative Memory 动态事实必须保持边界；高风险或待确认事件不得冒充已确认事实。`;
 
 const HOST_CONTROLLED_FIELDS = new Set(["bookId", "sessionId", "bookRoot", "skipContextGate", "writePreflight"]);
@@ -133,6 +133,7 @@ type CustomReadyRuntimeToolName =
   | "resource.manage"
   | "scene.spec"
   | "chapter.audit"
+  | "chapter.propose_selection"
   | "rewrite.apply"
   | "pipeline.import_chapters"
   | "book.dissect"
@@ -187,8 +188,6 @@ const READY_LEGACY_HANDLERS: Readonly<Record<Exclude<ReadyRuntimeToolName, Custo
   "memory.bulk_approve": bridgeLegacyHandler(handleMemoryBulkApprove),
   "memory.bulk_delete": bridgeLegacyHandler(handleMemoryBulkDelete),
   "jingwei.audit": bridgeLegacyHandler(handleJingweiAudit),
-  "jingwei.write": bridgeLegacyHandler(handleJingweiWrite),
-  "jingwei.read": bridgeLegacyHandler(handleJingweiRead),
 };
 
 function fail(error: string, summary: string): RuntimeToolResult {
