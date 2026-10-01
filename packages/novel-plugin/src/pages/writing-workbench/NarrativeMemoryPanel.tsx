@@ -26,6 +26,7 @@ import {
   fetchNarrativeLineApprovals,
   type NarrativeLineApproval,
 } from "./narrative-line-proposals";
+import { useWriteInjection, type WriteInjectionReport } from "./use-write-injection";
 
 type ResourceTreeAction = {
   type: "open-side";
@@ -1745,6 +1746,9 @@ export function NarrativeMemoryPanelShell({
           )}
         </section>
 
+          {/* W6 写作可见：按章还原「写这一章时上下文里注入了什么」。 */}
+          <WriteInjectionSection bookId={bookId} currentChapter={currentChapter} />
+
           {/*
             叙事线审批台账。
             服务端从 propose → apply 起就在记录每次批准与驳回，但此前界面上没有
@@ -1910,6 +1914,296 @@ export function EvidenceChainLookup({ bookId }: { bookId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// W6 写作注入（按章）：还原某章最近一次写作的上下文注入清单。
+// 数据来自 narrative_retrieval_log；技能是「当前启用状态」，语义在界面文案里说清。
+// ---------------------------------------------------------------------------
+
+const TRIM_REASON_DISPLAY_LIMIT = 10;
+
+function formatInjectionTime(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function InjectionExplanation({ explanation }: { explanation: { whatHappened: string; whyItMatters: string; suggestedAction: string } }) {
+  return (
+    <div className="space-y-0.5 text-2xs text-muted-foreground">
+      <p>发生了什么：{explanation.whatHappened}</p>
+      <p>为什么要看：{explanation.whyItMatters}</p>
+      <p>建议怎么做：{explanation.suggestedAction}</p>
+    </div>
+  );
+}
+
+function InjectionReportView({ report }: { report: WriteInjectionReport }) {
+  const [showAllTrims, setShowAllTrims] = useState(false);
+  const trimReasons = report.trimming.reasons.filter((item) => item.kind !== "named-keep");
+  const visibleTrims = showAllTrims ? trimReasons : trimReasons.slice(0, TRIM_REASON_DISPLAY_LIMIT);
+  const samples = report.style.samples;
+  return (
+    <div className="space-y-3 rounded border border-border/60 bg-muted/20 p-2 text-2xs" data-testid="write-injection-report">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
+        <span className="font-medium text-foreground">
+          {report.purposeLabel} · 第 {report.chapterNumber ?? "—"} 章
+        </span>
+        <span>{formatInjectionTime(report.createdAt)}</span>
+        <span>共约 {report.totalEstimatedTokens} tokens · {Math.round(report.totalMs)}ms</span>
+      </div>
+
+      {/* 写作技能：当前启用状态，正文由模型按需加载，不进检索日志。 */}
+      <div className="space-y-1" data-testid="write-injection-skills">
+        <div className="font-medium">写作技能（{report.skills.items.length}）</div>
+        {report.skills.items.length === 0 ? (
+          <p className="text-muted-foreground">{report.skills.source === "unavailable" ? "读不到启用清单。" : "当前没有启用任何写作技能。"}</p>
+        ) : (
+          <ul className="space-y-0.5">
+            {report.skills.items.map((skill) => (
+              <li key={skill.slug} className="flex flex-wrap items-center gap-1.5">
+                <span className="font-medium">{skill.name}</span>
+                {skill.entry ? <span className="rounded bg-muted px-1 py-px text-muted-foreground">入口·{skill.entry}</span> : null}
+                <span className="text-muted-foreground">约 {skill.estimatedTokens} tokens</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-muted-foreground/80">{report.skills.note}</p>
+      </div>
+
+      {/* 文风：非范文卡片 + 角色声线 + 范文。 */}
+      <div className="space-y-1.5" data-testid="write-injection-style">
+        <div className="font-medium">文风注入</div>
+        {!report.style.recorded ? (
+          <p className="text-muted-foreground">这次召回没有跑到文风通道。</p>
+        ) : report.style.status === "skipped" ? (
+          <p className="text-muted-foreground">文风通道在本书叙事记忆配置里被关闭了。</p>
+        ) : (
+          <>
+            {report.style.fixedCardsRecorded ? (
+              report.style.fixedCards.length > 0 ? (
+                <ul className="space-y-0.5">
+                  {report.style.fixedCards.map((card) => (
+                    <li key={card.id} className="flex flex-wrap items-center gap-1.5">
+                      <span>{card.title}</span>
+                      <span className="text-muted-foreground">约 {card.estimatedTokens} tokens</span>
+                      {card.droppedInPacking ? <span className="rounded bg-amber-500/20 px-1 py-px text-amber-700 dark:text-amber-400">全局打包时被裁，未进上下文</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">文风通道没有产出非范文卡片（无文风指南 / 声线 / 合规 / 本书设计）。</p>
+              )
+            ) : null}
+
+            {report.style.voices.provided ? (
+              report.style.voices.characters.length > 0 ? (
+                <div className="space-y-0.5" data-testid="write-injection-voices">
+                  <div className="text-muted-foreground">角色声线（作者已确认字段）：</div>
+                  <ul className="space-y-0.5">
+                    {report.style.voices.characters.map((character) => (
+                      <li key={character.name} className="flex flex-wrap items-center gap-1">
+                        <span className="font-medium">{character.name}</span>
+                        {character.confirmedFields.map((field) => (
+                          <span key={field} className="rounded bg-muted px-1 py-px text-muted-foreground">{field}</span>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">注入了角色声线约束。</p>
+              )
+            ) : (
+              <p className="text-muted-foreground">本章没有注入角色声线（出场角色没有已确认的声线字段，或未配置）。</p>
+            )}
+
+            {samples ? (
+              <div className="space-y-1" data-testid="write-injection-samples">
+                <div className="text-muted-foreground">
+                  范文（选中 {samples.selected.length} / 确认可用 {samples.totals.confirmedSamples}）
+                  {samples.sceneTypes.labels.length > 0
+                    ? ` · 场景类型 ${samples.sceneTypes.labels.join(" / ")}（判定来源：${samples.sceneTypes.sourceLabel}）`
+                    : ` · ${samples.sceneTypes.sourceLabel}，按通用范文处理`}
+                </div>
+                {samples.selected.length === 0 && samples.trimmed.length === 0 ? (
+                  <p className="text-muted-foreground">本章没有选中任何范文。</p>
+                ) : null}
+                <ul className="space-y-1">
+                  {samples.selected.map((sample) => (
+                    <li key={sample.key} className="rounded border border-border/50 p-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-medium">第{sample.rank}名 · {sample.key}</span>
+                        <span className="rounded bg-muted px-1 py-px text-muted-foreground">{sample.sceneTypeLabel}</span>
+                        <span className="rounded bg-muted px-1 py-px text-muted-foreground">{sample.matchLabel}</span>
+                        <span className="text-muted-foreground">约 {sample.estimatedTokens} tokens</span>
+                        {sample.droppedInPacking ? <span className="rounded bg-amber-500/20 px-1 py-px text-amber-700 dark:text-amber-400">全局打包时被裁</span> : null}
+                      </div>
+                      <div className="mt-0.5 text-muted-foreground">{sample.sourceTitle} · {sample.transferLabel}</div>
+                      <div className="mt-0.5 text-muted-foreground/80">{sample.reason}</div>
+                    </li>
+                  ))}
+                </ul>
+                {samples.trimmed.length > 0 ? (
+                  <ul className="space-y-0.5">
+                    {samples.trimmed.map((sample) => (
+                      <li key={sample.key} className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
+                        <span className="rounded bg-muted px-1 py-px">被裁·{sample.kindLabel}</span>
+                        <span>第{sample.rank}名 · {sample.key}（{sample.sceneTypeLabel}）</span>
+                        <span className="basis-full text-muted-foreground/80">{sample.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {samples.budget.channelBudgetTokens !== null || samples.budget.availableTokens !== null ? (
+                  <div className="text-muted-foreground/80">
+                    文风通道预算 {samples.budget.channelBudgetTokens ?? "不限"} tokens
+                    {samples.budget.reservedTokens !== null ? ` · 固定内容占 ${samples.budget.reservedTokens}` : ""}
+                    {samples.budget.availableTokens !== null ? ` · 范文可用 ${samples.budget.availableTokens}` : ""}
+                    {samples.budget.usedTokens !== null ? ` · 范文实注 ${samples.budget.usedTokens}` : ""}
+                  </div>
+                ) : null}
+                {samples.sceneTypes.evidence.length > 0 ? (
+                  <ul className="space-y-0.5 text-muted-foreground/80">
+                    {samples.sceneTypes.evidence.map((line, index) => <li key={index}>判定依据：{line}</li>)}
+                  </ul>
+                ) : null}
+                {samples.explanations.map((explanation, index) => (
+                  <InjectionExplanation key={index} explanation={explanation} />
+                ))}
+                {/* 场景类型判定的解释与 explanations 列表可能同一条，只在没有重复时单独补显。 */}
+                {samples.sceneTypes.explanation
+                  && !samples.explanations.some((item) => item.whatHappened === samples.sceneTypes.explanation!.whatHappened) ? (
+                    <InjectionExplanation explanation={samples.sceneTypes.explanation} />
+                  ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      {/* 各通道注入量。 */}
+      <div className="space-y-1" data-testid="write-injection-channels">
+        <div className="font-medium">各通道注入</div>
+        <div className="flex flex-wrap gap-1">
+          {report.channels.map((channel) => (
+            <span key={channel.channel} className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground" title={`检索 ${channel.candidateCount} → 返回 ${channel.returnedCount} · ${Math.round(channel.latencyMs)}ms`}>
+              {channel.channelLabel}
+              {channel.status === "skipped" ? "·已关闭" : channel.status === "error" ? "·出错" : ` ${channel.injectedTokens}t`}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 受保护与裁剪。 */}
+      <div className="space-y-1" data-testid="write-injection-trimming">
+        <div className="font-medium">受保护与裁剪</div>
+        {report.protection.namedKeeps.length === 0 && report.protection.namedEntities.length === 0 && trimReasons.length === 0 && report.trimming.degradedCards.length === 0 && report.trimming.droppedCardIds.length === 0 ? (
+          <p className="text-muted-foreground">这次注入没有触发任何裁剪或点名保留。</p>
+        ) : (
+          <>
+            {report.protection.namedEntities.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-muted-foreground">点名实体（超上限仍保留）：</span>
+                {report.protection.namedEntities.map((name) => (
+                  <span key={name} className="rounded bg-primary/10 px-1 py-px text-primary">{name}</span>
+                ))}
+              </div>
+            ) : null}
+            {report.protection.namedKeeps.map((keep, index) => (
+              <div key={`keep-${index}`} className="flex items-center gap-1.5">
+                <span className="rounded bg-primary/10 px-1 py-px text-primary">{keep.kindLabel}</span>
+                <span className="text-muted-foreground">{keep.reason}</span>
+              </div>
+            ))}
+            {visibleTrims.map((trim, index) => (
+              <div key={`trim-${index}`} className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded bg-muted px-1 py-px text-muted-foreground">{trim.kindLabel}</span>
+                <span className="text-muted-foreground">{trim.id}</span>
+                <span className="basis-full text-muted-foreground/80">{trim.reason}</span>
+              </div>
+            ))}
+            {trimReasons.length > TRIM_REASON_DISPLAY_LIMIT && !showAllTrims ? (
+              <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setShowAllTrims(true)}>
+                展开其余 {trimReasons.length - TRIM_REASON_DISPLAY_LIMIT} 条裁剪
+              </button>
+            ) : null}
+            {report.trimming.degradedCards.length > 0 ? (
+              <p className="text-muted-foreground">另有 {report.trimming.degradedCards.length} 张卡片因预算被降档（内容压缩后仍注入）。</p>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      {report.notes.length > 0 ? (
+        <div className="space-y-0.5 border-t border-border/50 pt-1.5 text-muted-foreground/80" data-testid="write-injection-notes">
+          {report.notes.map((note, index) => <p key={index}>{note}</p>)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function WriteInjectionSection({ bookId, currentChapter }: { bookId: string; currentChapter?: number }) {
+  const [chapterInput, setChapterInput] = useState(currentChapter ? String(currentChapter) : "");
+  const [inputError, setInputError] = useState<string | null>(null);
+  const { data, loading, error, lookup } = useWriteInjection(bookId);
+
+  const submit = () => {
+    const chapter = Number(chapterInput);
+    if (!Number.isInteger(chapter) || chapter <= 0) {
+      setInputError("请输入有效章号");
+      return;
+    }
+    setInputError(null);
+    void lookup(chapter);
+  };
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-write-injection">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold">写作注入</h3>
+        <span className="text-2xs text-muted-foreground">写这一章时，模型上下文里实际有什么</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={1}
+          value={chapterInput}
+          onChange={(event) => setChapterInput(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submit();
+          }}
+          placeholder="章号"
+          aria-label="写作注入查询章号"
+          className="h-6 w-16 rounded border border-border bg-background px-1 text-2xs"
+        />
+        <Button type="button" size="xs" variant="outline" className="h-6 text-2xs" onClick={submit} disabled={loading}>
+          {loading ? <Loader2 className="size-3 animate-spin" /> : <Search className="size-3" />}
+          查注入
+        </Button>
+        {currentChapter ? (
+          <button
+            type="button"
+            className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted"
+            onClick={() => setChapterInput(String(currentChapter))}
+          >
+            填入当前章（第 {currentChapter} 章）
+          </button>
+        ) : null}
+      </div>
+      {inputError ? <p className="text-2xs text-destructive">{inputError}</p> : null}
+      {error ? <p className="text-2xs text-destructive">{error}</p> : null}
+      {data && !data.exists ? (
+        <div className="space-y-1 rounded border border-border/60 bg-muted/20 p-2 text-2xs" data-testid="write-injection-empty">
+          <p className="font-medium">{data.summary}</p>
+          <InjectionExplanation explanation={data.explanation} />
+        </div>
+      ) : null}
+      {data?.exists ? <InjectionReportView report={data} /> : null}
+    </section>
   );
 }
 

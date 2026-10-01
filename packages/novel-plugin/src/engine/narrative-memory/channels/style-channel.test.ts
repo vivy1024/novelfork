@@ -166,5 +166,54 @@ describe("style channel", () => {
       expect(result.cards.map((item) => item.title)).toEqual(["角色声线"]);
       expect((result.diagnostics?.styleSamples as Record<string, any>).voiceConstraintsProvided).toBe(true);
     });
+
+    it("诊断记录非范文卡片清单（fixedCards）：指南 / 声线 / 合规 / 本书设计各带 id 与体量，不含范文", async () => {
+      const result = await createStyleChannel().run({
+        bookId: "book-1",
+        styleGuideText: "文风克制。",
+        complianceRules: ["避免平台导流"],
+        voiceConstraints: "韩立：话少。",
+        bookDesignText: "本书聚焦试炼。",
+        stylePreset: preset(),
+        planText: "韩立与刺客交手",
+        budgetTokens: 1000,
+      });
+
+      const fixedCards = (result.diagnostics?.fixedCards ?? []) as { id: string; title: string; estimatedTokens: number }[];
+      expect(fixedCards.map((item) => item.id)).toEqual([
+        "style:style-guide",
+        "style:voice-constraints",
+        "style:style-compliance-rules",
+        "style:book-design",
+      ]);
+      expect(fixedCards.map((item) => item.title)).toEqual(["文风指南", "角色声线", "合规/发布风格约束", "本书设计"]);
+      expect(fixedCards.every((item) => item.estimatedTokens > 0)).toBe(true);
+      expect(fixedCards.some((item) => item.id.startsWith("style:sample:"))).toBe(false);
+    });
+
+    it("声线结构化摘要（voices）随诊断落盘：逐角色列出已确认字段，供写作注入视图还原", async () => {
+      const result = await createStyleChannel().run({
+        bookId: "book-1",
+        voiceConstraints: "韩立：话少。\n银月：轻声细语。",
+        voiceProfiles: [
+          { name: "韩立", confirmedFields: ["声音定位", "长短句倾向"] },
+          { name: "银月", confirmedFields: ["声音定位"] },
+        ],
+        budgetTokens: 1000,
+      });
+
+      const voices = result.diagnostics?.voices as { provided: boolean; characters: { name: string; confirmedFields: string[] }[] };
+      expect(voices.provided).toBe(true);
+      expect(voices.characters).toEqual([
+        { name: "韩立", confirmedFields: ["声音定位", "长短句倾向"] },
+        { name: "银月", confirmedFields: ["声音定位"] },
+      ]);
+    });
+
+    it("没有声线时 voices.provided=false 且 characters 为空，不编造角色", async () => {
+      const result = await createStyleChannel().run({ bookId: "book-1", styleGuideText: "文风克制。" });
+      const voices = result.diagnostics?.voices as { provided: boolean; characters: unknown[] };
+      expect(voices).toEqual({ provided: false, characters: [] });
+    });
   });
 });

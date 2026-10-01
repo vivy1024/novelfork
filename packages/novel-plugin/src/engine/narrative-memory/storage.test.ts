@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   ensureNarrativeMemorySchema,
+  getLatestChapterRetrievalLog,
   insertNarrativeEvent,
   insertNarrativeFact,
   insertRetrievalLog,
@@ -329,6 +330,39 @@ describe("Narrative Memory storage", () => {
       expect(record.diagnostics.warnings).toEqual(["facts channel empty"]);
       const row = storage.sqlite.prepare<{ diagnosticsJson: string }>(`SELECT diagnostics_json AS diagnosticsJson FROM narrative_retrieval_log WHERE id = ?`).get("log-1");
       expect(JSON.parse(row?.diagnosticsJson ?? "{}").droppedCardIds).toEqual(["card-2"]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("getLatestChapterRetrievalLog 按章号与 purpose 取最近一次写作日志，取不到返回 undefined", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      const diagnostics: NarrativeRetrievalDiagnostics = {
+        totalMs: 5,
+        totalEstimatedTokens: 10,
+        channelStats: [],
+        injectedTokensByChannel: {},
+        droppedCardIds: [],
+        degradedCards: [],
+        warnings: [],
+      };
+      insertRetrievalLog(storage, { id: "log-old", bookId: "book-1", chapterNumber: 12, purpose: "write_chapter", totalTokens: 10, diagnostics, createdAt: "2026-06-20T00:00:00.000Z" });
+      insertRetrievalLog(storage, { id: "log-new", bookId: "book-1", chapterNumber: 12, purpose: "write_chapter", totalTokens: 10, diagnostics, createdAt: "2026-06-22T00:00:00.000Z" });
+      // 同章但 purpose 不同、同 book 但章节不同，都不应命中。
+      insertRetrievalLog(storage, { id: "log-audit", bookId: "book-1", chapterNumber: 12, purpose: "audit", totalTokens: 10, diagnostics, createdAt: "2026-06-23T00:00:00.000Z" });
+      insertRetrievalLog(storage, { id: "log-other-chapter", bookId: "book-1", chapterNumber: 13, purpose: "write_chapter", totalTokens: 10, diagnostics, createdAt: "2026-06-24T00:00:00.000Z" });
+      insertRetrievalLog(storage, { id: "log-other-book", bookId: "book-2", chapterNumber: 12, purpose: "write_chapter", totalTokens: 10, diagnostics, createdAt: "2026-06-25T00:00:00.000Z" });
+
+      const latest = getLatestChapterRetrievalLog(storage, { bookId: "book-1", chapterNumber: 12 });
+      expect(latest?.id).toBe("log-new");
+
+      const audit = getLatestChapterRetrievalLog(storage, { bookId: "book-1", chapterNumber: 12, purpose: "audit" });
+      expect(audit?.id).toBe("log-audit");
+
+      expect(getLatestChapterRetrievalLog(storage, { bookId: "book-1", chapterNumber: 99 })).toBeUndefined();
+      expect(getLatestChapterRetrievalLog(storage, { bookId: "book-3", chapterNumber: 12 })).toBeUndefined();
     } finally {
       storage.close();
     }

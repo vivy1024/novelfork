@@ -921,6 +921,33 @@ export function getLatestNarrativeRetrievalLog(storage: StorageDatabase, bookId:
   return row ? retrievalLogRowToRecord(row) : undefined;
 }
 
+/**
+ * 某次写作的注入依据：取某章最近一次指定 purpose（默认 write_chapter）的召回日志。
+ * 「写作注入」视图靠它还原「写这一章时上下文里有什么」；查不到说明该章没走过这条管线。
+ */
+export function getLatestChapterRetrievalLog(
+  storage: StorageDatabase,
+  input: { bookId: string; chapterNumber: number; purpose?: NarrativeRetrievalPurpose },
+): NarrativeRetrievalLogRecord | undefined {
+  ensureNarrativeMemorySchema(storage);
+  const purpose = input.purpose ?? "write_chapter";
+  const row = storage.sqlite.prepare<NarrativeRetrievalLogRow>(`
+    SELECT
+      id,
+      book_id AS bookId,
+      chapter_number AS chapterNumber,
+      purpose,
+      total_tokens AS totalTokens,
+      diagnostics_json AS diagnosticsJson,
+      created_at AS createdAt
+    FROM narrative_retrieval_log
+    WHERE book_id = ? AND chapter_number = ? AND purpose = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+  `).get(input.bookId, input.chapterNumber, purpose);
+  return row ? retrievalLogRowToRecord(row) : undefined;
+}
+
 export function listPendingNarrativeEvents(storage: StorageDatabase, input: ListPendingNarrativeEventsInput): NarrativeEvent[] {
   ensureNarrativeMemorySchema(storage);
   const parsed = ListPendingNarrativeEventsInputSchema.parse(input);

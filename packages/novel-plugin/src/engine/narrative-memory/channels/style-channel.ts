@@ -39,6 +39,11 @@ export interface StyleChannelInput {
    * 不做任何声线推断。
    */
   readonly voiceConstraints?: string;
+  /**
+   * 与 voiceConstraints 同一份声线的结构化摘要（角色 + 已确认字段），只进诊断不进卡片；
+   * 「写作注入」视图据此逐角色列出这次注入了哪些声线字段。
+   */
+  readonly voiceProfiles?: readonly { readonly name: string; readonly confirmedFields: readonly string[] }[];
 }
 
 function nonEmpty(value?: string): string | undefined {
@@ -146,6 +151,10 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
         planText: input.planText,
       });
       const selection = selectStyleSamples({ preset: input.stylePreset, sceneTypes, availableTokens });
+      // 非范文卡片（文风指南/角色声线/合规/本书设计）的注入清单：记 id 与体量，
+      // 查询侧与 droppedCardIds 对照即可知道这张卡是否在全局打包时被裁。
+      const fixedCards = [...cards, ...(bookDesignCard ? [bookDesignCard] : [])]
+        .map((card) => ({ id: card.id, title: card.title, estimatedTokens: card.estimatedTokens }));
       cards.push(...selection.selected.map((sample) => sampleCard(input.bookId, sample)));
       if (bookDesignCard) cards.push(bookDesignCard);
       warnings.push(...selection.explanations.map((item) => `文风范文：${formatStyleExplanation(item)}`));
@@ -160,6 +169,14 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
           },
           voiceConstraintsProvided: Boolean(voice),
           explanations: selection.explanations,
+        },
+        fixedCards,
+        voices: {
+          provided: Boolean(voice),
+          characters: (input.voiceProfiles ?? []).map((profile) => ({
+            name: profile.name,
+            confirmedFields: [...profile.confirmedFields],
+          })),
         },
       };
 
