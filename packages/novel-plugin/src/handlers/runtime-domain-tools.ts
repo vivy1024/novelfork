@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 
 import {
   splitChapters,
+  splitChaptersWithVolumes,
   StateManager,
   getStorageDatabase,
   type ChapterMeta,
@@ -37,6 +38,7 @@ import {
   DEFAULT_VOLUME_DIRECTORY,
   chapterRelativePath,
   readChapterIndex as readChapterLayoutIndex,
+  volumeDirectoryName,
   writeChapterIndex,
   type ChapterIndexRecord,
 } from "../engine/writing-resource/chapter-layout.js";
@@ -422,14 +424,17 @@ async function importChapters(
 ): Promise<RuntimeToolResult> {
   const content = typeof input.content === "string" ? input.content : "";
   const sourceName = typeof input.sourceName === "string" ? input.sourceName : "导入文本";
-  const maxChapters = Math.min(optionalPositiveInteger(input.maxChapters) ?? 500, 500);
+  // 默认 500 章防误贴整本；允许的调用方可显式提高到 2000（如整书旧稿导入）。单次 dissect 上限另算。
+  const maxChapters = Math.min(optionalPositiveInteger(input.maxChapters) ?? 500, 2000);
   if (content.length < 1000) return fail("text-too-short", "导入文本至少需要 1000 字。");
-  let chapters;
+  let split;
   try {
-    chapters = splitChapters(content, typeof input.splitPattern === "string" ? input.splitPattern : undefined).slice(0, maxChapters);
+    split = splitChaptersWithVolumes(content, typeof input.splitPattern === "string" ? input.splitPattern : undefined);
   } catch (error) {
     return fail("invalid-split-pattern", `章节分割规则无效：${error instanceof Error ? error.message : String(error)}`);
   }
+  const chapters = split.chapters.slice(0, maxChapters);
+  const splitVolumes = split.volumes;
   if (chapters.length === 0) return fail("no-chapters", "未能识别出章节，请检查文本格式或 splitPattern。");
 
   return withBookLock(binding, async () => {
@@ -446,7 +451,8 @@ async function importChapters(
       const chapter = chapters[index]!;
       const number = startNumber + index;
       const title = chapter.title || `第${number}章`;
-      const fileName = chapterRelativePath(DEFAULT_VOLUME_DIRECTORY, number, title);
+      const volumeDir = volumeDirectoryName(chapter.volumeIndex);
+      const fileName = chapterRelativePath(volumeDir, number, title);
       const chapterContent = `# ${title}\n\n${chapter.content}`;
       const chapterPath = join(chaptersDir, fileName);
       await mkdir(dirname(chapterPath), { recursive: true });
@@ -469,6 +475,33 @@ async function importChapters(
       binding.root,
       [...existing, ...imported].sort((left, right) => left.number - right.number),
     );
+
+    // 原文带卷标题时同步落成经纬卷纲（chapterRange 按卷内章号划），否则后续分卷定位全落空。
+    if (splitVolumes.length > 0) {
+      const outlineVolumes = splitVolumes.map((volume) => {
+        const inVolumeChapters = chapters
+          .map((chapter, index) => ({ chapter, number: startNumber + index }))
+          .filter((item) => item.chapter.volumeIndex === volume.index)
+          .map((item) => item.number);
+        return {
+          title: volume.title,
+          chapterRange: {
+            from: Math.min(...inVolumeChapters),
+            to: Math.max(...inVolumeChapters),
+          },
+        };
+      }).filter((volume) => Number.isFinite(volume.chapterRange.from) && Number.isFinite(volume.chapterRange.to));
+      if (outlineVolumes.length > 0) {
+  upsertLedgerEntry(getStorageDatabase(), {
+          bookId: binding.bookId,
+          category: "outline",
+          title: "导入卷纲",
+          contentMd: "",
+          fields: { volumes: outlineVolumes, importedFrom: sourceName },
+          status: "confirmed",
+        });
+      }
+    }
     // 导入章节只接纳正文；不能顺带覆盖作者已确认的文风预设或旧统计基线。
 
     const firstChapter = startNumber;
