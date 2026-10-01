@@ -21,6 +21,14 @@ export interface StyleDistillationWorkspaceProps {
   onBusyChange?: (busy: boolean) => void;
 }
 
+export interface StyleSkillExportResponse {
+  readonly slug: string;
+  readonly file: string;
+  readonly content: string;
+  readonly ruleCount: number;
+  readonly sourceTitles: readonly string[];
+}
+
 export interface StyleDistillationPreviewChapter {
   readonly chapterNumber?: number;
   readonly title?: string;
@@ -426,6 +434,11 @@ function BookStyleDistillationWorkspace({
   const [notice, setNotice] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [progressBatches, setProgressBatches] = useState<StyleDistillationBatchView[]>([]);
+  const [adopted, setAdopted] = useState(false);
+  const [skillBusy, setSkillBusy] = useState(false);
+  const [skillExport, setSkillExport] = useState<StyleSkillExportResponse | null>(null);
+  const [skillError, setSkillError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -448,6 +461,7 @@ function BookStyleDistillationWorkspace({
       job: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}`,
       resume: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/resume`,
       adopt: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/adopt`,
+      skillExport: `/api/books/${encodedBookId}/style/skill-export`,
     };
   }, [bookId]);
 
@@ -581,6 +595,10 @@ function BookStyleDistillationWorkspace({
       });
       if (!mounted.current) return;
       setNotice("已采纳到本书文风预设。作品专属内容仍保留在来源包中，不会进入通用写法指南。");
+      setAdopted(true);
+      setSkillExport(null);
+      setSkillError(null);
+      setCopied(false);
       onAdopted?.(response);
     } catch (cause) {
       if (!mounted.current) return;
@@ -595,12 +613,50 @@ function BookStyleDistillationWorkspace({
     }
   }
 
+  /** 采纳完成后一键把「已确认且可迁移」的来源规则汇总生成本书专属技能；重复生成覆盖同一文件。 */
+  async function exportSkill() {
+    if (skillBusy || !adopted) return;
+    setSkillBusy(true);
+    setSkillError(null);
+    setCopied(false);
+    try {
+      const record = asRecord(await fetchJson<unknown>(paths.skillExport, { method: "POST" }));
+      const result: StyleSkillExportResponse = {
+        slug: firstString(record?.slug) ?? "book-style-memory",
+        file: firstString(record?.file) ?? "",
+        content: firstString(record?.content) ?? "",
+        ruleCount: asNumber(record?.ruleCount) ?? 0,
+        sourceTitles: firstArray(record?.sourceTitles).filter((title): title is string => typeof title === "string"),
+      };
+      if (!mounted.current) return;
+      setSkillExport(result);
+    } catch (cause) {
+      if (mounted.current) setSkillError(errorMessage(cause, "生成技能失败，请稍后重试。"));
+    } finally {
+      if (mounted.current) setSkillBusy(false);
+    }
+  }
+
+  async function copySkillContent() {
+    if (!skillExport?.content || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(skillExport.content);
+      if (mounted.current) setCopied(true);
+    } catch {
+      if (mounted.current) setSkillError("复制失败，请手动复制技能内容。");
+    }
+  }
+
   async function startAndRememberJob() {
     if (!preview || busy) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     setConflict(false);
+    setAdopted(false);
+    setSkillExport(null);
+    setSkillError(null);
+    setCopied(false);
     setProgressBatches([]);
     setStage("processing");
     try {
@@ -830,6 +886,34 @@ function BookStyleDistillationWorkspace({
               </Button>
             </CardContent>
           </Card>
+          {adopted && (
+            <Card aria-label="生成本书专属技能">
+              <CardHeader>
+                <CardTitle>生成本书专属技能</CardTitle>
+                <CardDescription>
+                  把文风预设里「已确认且可迁移」的写法规则汇总成本书技能（.novelfork/skills/book-style-memory/SKILL.md），
+                  叙述者写作本书时按它加载；待审与作品专属条目不进入。重新生成会覆盖同一文件。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" disabled={skillBusy} onClick={() => void exportSkill()}>
+                  {skillBusy && <Loader2 className="size-3.5 animate-spin" />}
+                  {skillExport ? "重新生成本书专属技能" : "生成本书专属技能"}
+                </Button>
+                {skillExport && (
+                  <>
+                    <p role="status" className="text-xs text-muted-foreground">
+                      已写入 .novelfork/skills/{skillExport.slug}/SKILL.md（{skillExport.ruleCount} 条规则{skillExport.sourceTitles.length > 0 ? `，来源：${skillExport.sourceTitles.join("、")}` : ""}）
+                    </p>
+                    <Button type="button" size="sm" variant="outline" disabled={!skillExport.content} onClick={() => void copySkillContent()}>
+                      {copied ? "已复制" : "复制 SKILL.md 内容"}
+                    </Button>
+                  </>
+                )}
+                {skillError && <p role="alert" className="text-xs text-destructive">{skillError}</p>}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </section>

@@ -173,6 +173,68 @@ describe("角色声线 HTTP", () => {
     const third = await createEntry(failing, { title: "顾长风", category: "characters", fields: { personality: "圆滑" } });
     const failed = await (await failing.request(`${voicePath(third.id)}/draft`, json({ expectedVersion: third.version, useModel: true }))).json();
     expect(failed.warnings.find((item: { code: string }) => item.code === "MODEL_FAILED")?.explanation.whatHappened).toContain("超时");
+    expect(failed.draft.modelStatus).toBe("failed");
+  });
+
+  it("模型输出被截断 / 没有 JSON / 格式错误分别如实提示；缺字段说明写明是模型失败而不是没有依据", async () => {
+    type Warning = { code: string; message: string; explanation: { whatHappened: string; whyItMatters: string; suggestedAction: string } };
+    const draftWith = async (text: string, extra: { outputTruncated?: boolean } = {}) => {
+      // 走宿主服务端文本生成（resolveTextGeneration），确认 outputTruncated 原样传到解析层。
+      const server = app({ resolveTextGeneration: async () => ({ available: true, generateText: async () => ({ text, ...extra }) }) });
+      const entry = await createEntry(server, { title: `角色${crypto.randomUUID().slice(0, 4)}`, category: "characters", fields: { personality: "圆滑" } });
+      return (await (await server.request(`${voicePath(entry.id)}/draft`, json({ expectedVersion: entry.version, useModel: true }))).json()) as { warnings: Warning[]; draft: { modelStatus: string }; voice: { fields: Record<string, { status: string }> } };
+    };
+    const codes = (body: { warnings: Warning[] }) => body.warnings.map((item) => item.code);
+
+    const truncated = await draftWith("```json\n{\"fields\": {\"underAnger\": {\"value\": \"越气越");
+    expect(codes(truncated)).toContain("MODEL_OUTPUT_TRUNCATED");
+    expect(truncated.draft.modelStatus).toBe("failed");
+    expect(truncated.voice.fields.underAnger!.status).toBe("missing");
+    const truncatedWarning = truncated.warnings.find((item) => item.code === "MODEL_OUTPUT_TRUNCATED")!;
+    expect(truncatedWarning.explanation.whatHappened).toContain("截断");
+    expect(truncatedWarning.explanation.suggestedAction).toContain("重试");
+
+    const missing = truncated.warnings.find((item) => item.code === "FIELDS_MISSING")!;
+    expect(missing.message).toContain("模型增补失败");
+    expect(missing.explanation.whatHappened).toContain("不代表角色卡和对白里没有依据");
+    expect(missing.explanation.whatHappened).not.toContain("找不到这些方面的依据");
+    expect(missing.explanation.suggestedAction).toMatch(/重试.*换一个模型/u);
+
+    const hostTruncated = await draftWith("我先分析一下这个角色", { outputTruncated: true });
+    expect(codes(hostTruncated)).toContain("MODEL_OUTPUT_TRUNCATED");
+
+    const noJson = await draftWith("这个角色话不多。");
+    expect(codes(noJson)).toContain("MODEL_OUTPUT_NO_JSON");
+    expect(noJson.warnings.find((item) => item.code === "MODEL_OUTPUT_NO_JSON")!.explanation.whatHappened).toContain("没有 JSON");
+
+    const invalid = await draftWith("{\"fields\": {\"underAnger\": 1 2}}");
+    expect(codes(invalid)).toContain("MODEL_OUTPUT_INVALID");
+
+    // 所有提示都带三段解释。
+    for (const body of [truncated, hostTruncated, noJson, invalid]) {
+      for (const warning of body.warnings) {
+        expect(warning.explanation).toMatchObject({ whatHappened: expect.any(String), whyItMatters: expect.any(String), suggestedAction: expect.any(String) });
+      }
+    }
+  });
+
+  it("模型输出里未转义的 ASCII 引号修补后照常写入", async () => {
+    const raw = "{\"fields\": {\"underAnger\": {\"value\": \"一急就骂\"妈妈的\"\", \"evidence\": [\"记着罢，妈妈的……\"]}}}";
+    const server = app({ resolveGenerateText: async () => async () => ({ text: raw }) });
+    const aq = await createEntry(server, { title: "阿Q", category: "characters", fields: {} });
+    const body = await (await server.request(`${voicePath(aq.id)}/draft`, json({ expectedVersion: aq.version, useModel: true, dialogueSamples: ["记着罢，妈妈的……", "畜生！", "没有。"] }))).json();
+    expect(body.draft).toMatchObject({ modelUsed: true, modelStatus: "applied" });
+    expect(body.voice.fields.underAnger).toMatchObject({ value: "一急就骂“妈妈的”", source: "model", status: "needs-review" });
+  });
+
+  it("不请模型时，缺字段说明是规则初稿没找到直接依据，并提示可请模型增补", async () => {
+    const server = app();
+    const lu = await createEntry(server, { title: "陆沉", category: "characters", fields: { personality: "沉默寡言" } });
+    const body = await (await server.request(`${voicePath(lu.id)}/draft`, json({ expectedVersion: lu.version }))).json();
+    expect(body.draft.modelStatus).toBe("not-requested");
+    const missing = body.warnings.find((item: { code: string }) => item.code === "FIELDS_MISSING");
+    expect(missing.explanation.whatHappened).toContain("规则初稿");
+    expect(missing.explanation.suggestedAction).toContain("请模型增补");
   });
 
   it("没有任何依据时不写入、不增版本", async () => {

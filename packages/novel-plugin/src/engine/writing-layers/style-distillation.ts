@@ -301,7 +301,8 @@ function excerptFor(chapter: DistillableChapter): string {
   return (lastEnd > 120 ? cut.slice(0, lastEnd + 1) : cut).trim();
 }
 
-function sampleSceneType(text: string): StyleDistillationSample["sceneType"] {
+/** 基于关键词与引号的确定性场景分类；判不出时如实标「通用」，不冒充具体场景。 */
+export function sampleSceneType(text: string): StyleDistillationSample["sceneType"] {
   if (/[“”「」"：:]/u.test(text)) return "dialogue";
   if (/(?:冲|追|逃|打|杀|跑|撞|拔|挥|战|躲)/u.test(text)) return "action";
   if (/(?:想|记得|意识|心中|暗自|不由得)/u.test(text)) return "interiority";

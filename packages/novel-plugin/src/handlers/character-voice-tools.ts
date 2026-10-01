@@ -211,9 +211,13 @@ export async function executeCharacterVoiceTool(
 
   const appliedKeys = stringList(body.draft?.appliedKeys);
   const warnings = body.warnings ?? [];
+  // 模型增补失败时不能说成「没有依据」：规则初稿之外的字段是没生成，不是材料里没有。
+  const modelFailed = body.draft?.modelStatus === "failed";
   const summary = appliedKeys.length > 0
-    ? `已为「${body.name}」写入 ${appliedKeys.length} 项待审声线草稿（${counts}）。待审项需作者在角色卡「声线」区块逐项确认后才会约束写作。`
-    : `没有找到新的依据，「${body.name}」的声线未改动（${counts}）。`;
+    ? `已为「${body.name}」写入 ${appliedKeys.length} 项待审声线草稿（${counts}）。${modelFailed ? "这次模型增补失败，写入的只是规则初稿，可重试。" : ""}待审项需作者在角色卡「声线」区块逐项确认后才会约束写作。`
+    : modelFailed
+      ? `模型增补失败，规则初稿也没有新内容，「${body.name}」的声线未改动（${counts}）。可重试或换一个模型。`
+      : `没有找到新的依据，「${body.name}」的声线未改动（${counts}）。`;
   return ok(warnings.length > 0 ? `${summary}另有 ${warnings.length} 条提示，见 warnings。` : summary, {
     entryId: body.entryId,
     name: body.name,

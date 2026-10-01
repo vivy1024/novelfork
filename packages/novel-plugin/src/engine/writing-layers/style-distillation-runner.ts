@@ -108,7 +108,8 @@ export async function createStyleDistillationJob(input: {
   return saveStyleDistillationJob(input.bookRoot, job);
 }
 
-function normalizedRuleKey(text: string): string {
+/** 规则去重口径：忽略空白、标点与大小写；预设内所有来源的规则去重共用这一实现。 */
+export function normalizedRuleKey(text: string): string {
   return text.replace(/[\s\p{P}\p{S}]+/gu, "").toLowerCase();
 }
 

@@ -30,7 +30,9 @@ import {
   type CharacterVoiceGenerateText,
   type DialogueVoiceStats,
   type VoiceFieldUpdate,
+  type VoiceModelOutcome,
 } from "../engine/writing-layers/character-voice.js";
+import { modelJsonFailureAdvice } from "../engine/model-output/lenient-json.js";
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
 import { normalizeCategory } from "../engine/jingwei/unified-categories.js";
@@ -273,9 +275,87 @@ async function resolveVoiceGenerator(
     }));
     if (!generation.available) return { unavailable: generation };
     const generate = generation.generateText;
-    return { generateText: async (request) => ({ text: (await generate(request)).text }) };
+    return {
+      generateText: async (request) => {
+        const result = await generate(request);
+        return { text: result.text, ...(result.outputTruncated ? { outputTruncated: true } : {}) };
+      },
+    };
   }
   return { generateText: options.resolveGenerateText ? await options.resolveGenerateText(c, bookId) : undefined };
+}
+
+/** 这次草稿里模型增补的结局，决定失败与缺字段提示怎么说。 */
+type VoiceModelStatus = "not-requested" | "unavailable" | "failed" | "applied";
+
+/** 模型增补失败：按失败类别如实说明发生了什么、该怎么办。 */
+function modelFailureWarning(outcome: VoiceModelOutcome): CharacterVoiceWarning {
+  const reason = outcome.reason ?? "未知原因";
+  switch (outcome.failureKind) {
+    case "truncated":
+      return { code: "MODEL_OUTPUT_TRUNCATED", message: "模型输出被截断，这次增补没有写入，已保留规则初稿。", explanation: explain(
+        `${reason}（思考型模型的推理过程也占用输出额度。）`,
+        "截断的输出缺后半部分字段，硬拼进去会把半截内容当成声线，所以一律不写入；规则初稿照常保存。",
+        modelJsonFailureAdvice("truncated"),
+      ) };
+    case "no-json":
+      return { code: "MODEL_OUTPUT_NO_JSON", message: "模型没有按要求给出 JSON，这次增补没有写入，已保留规则初稿。", explanation: explain(
+        reason,
+        "声线字段必须逐项带原文依据才能核对，不是 JSON 的回答无法逐项核对，所以一律不写入。",
+        modelJsonFailureAdvice("no-json"),
+      ) };
+    case "invalid":
+      return { code: "MODEL_OUTPUT_INVALID", message: "模型给出的 JSON 格式有误，这次增补没有写入，已保留规则初稿。", explanation: explain(
+        `${reason}（已尝试修补字符串里未转义的引号等常见问题，仍无法解析。）`,
+        "格式错误的输出无法可靠地拆成字段，猜着解析会写错内容，所以一律不写入；规则初稿照常保存。",
+        modelJsonFailureAdvice("invalid"),
+      ) };
+    case "invalid-shape":
+      return { code: "MODEL_OUTPUT_INVALID", message: "模型输出的结构不对，这次增补没有写入，已保留规则初稿。", explanation: explain(
+        reason,
+        "结构不对就无法把内容对应到具体的声线字段，猜着对应会张冠李戴。",
+        modelJsonFailureAdvice("invalid"),
+      ) };
+    case "call-failed":
+    default:
+      return { code: "MODEL_FAILED", message: "模型调用失败，这次增补没有写入，已保留规则初稿。", explanation: explain(
+        `模型调用失败：${reason}。`,
+        "失败时不写入任何模型内容，规则初稿照常保存。",
+        "稍后重试；反复失败时检查设置里的模型与供应商配置，或换一个模型。",
+      ) };
+  }
+}
+
+/** 仍待补充的字段：按模型增补的结局说清楚为什么空着，不把「模型失败」说成「材料里没有依据」。 */
+function missingFieldsWarning(keys: readonly CharacterVoiceFieldKey[], modelStatus: VoiceModelStatus): CharacterVoiceWarning {
+  const labels = labelList(keys);
+  const why = "待补充的字段不会注入写作；写对白时这些方面只按角色卡性格自然处理。";
+  switch (modelStatus) {
+    case "failed":
+      return { code: "FIELDS_MISSING", message: `「${labels}」仍待补充：这次模型增补失败，没能生成。`, explanation: explain(
+        "规则初稿只能从角色卡原句与对白统计里提取，这些字段没提取到；本该由模型归纳补上，但这次模型增补失败（原因见上一条提示），所以仍空着。这不代表角色卡和对白里没有依据。",
+        why,
+        "重新点「生成草稿」重试模型增补；反复失败时在设置里换一个模型，或直接手填。",
+      ) };
+    case "unavailable":
+      return { code: "FIELDS_MISSING", message: `「${labels}」仍待补充。`, explanation: explain(
+        "规则初稿只从角色卡原句与对白统计里提取，这些方面没有找到直接依据；当前没有可用模型，没有做模型增补。",
+        why,
+        "配置可用模型后再请模型增补，或直接手填。",
+      ) };
+    case "not-requested":
+      return { code: "FIELDS_MISSING", message: `「${labels}」仍待补充。`, explanation: explain(
+        "规则初稿只从角色卡原句与对白统计里提取，这些方面没有找到直接依据，没有编造。",
+        why,
+        "打开「请模型增补」让模型从角色卡与对白里归纳，或补充角色卡 / 对白样本后重新生成；也可以直接手填。",
+      ) };
+    case "applied":
+      return { code: "FIELDS_MISSING", message: `「${labels}」仍待补充。`, explanation: explain(
+        "角色卡与对白样本里找不到这些方面的依据（规则初稿与模型增补都没找到，或模型给的摘录对不上原文已丢弃），没有编造。",
+        why,
+        "需要时直接手填，或补充角色卡 / 对白样本后重新生成。",
+      ) };
+  }
 }
 
 export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOptions = {}): Hono {
@@ -339,9 +419,11 @@ export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOp
       }
 
       let modelUsed = false;
+      let modelStatus: VoiceModelStatus = "not-requested";
       if (body.useModel === true) {
         const { generateText, unavailable } = await resolveVoiceGenerator(options, c, bookId);
         if (!generateText) {
+          modelStatus = "unavailable";
           warnings.push({ code: "MODEL_UNAVAILABLE", message: "当前没有可用模型，只生成了规则初稿。", explanation: explain(
             unavailable?.message ?? "这个入口没有接到可用的文本模型。",
             "规则初稿只能提取角色卡原句和对白统计，认知滤镜、情绪变化等描述性字段可能仍待补充。",
@@ -353,12 +435,10 @@ export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOp
           const lockedKeys = CHARACTER_VOICE_FIELD_KEYS.filter((key) => existing.fields[key].status === "confirmed");
           const enriched = await enrichCharacterVoiceWithModel({ card, dialogueSamples, draft, lockedKeys, generateText });
           if (enriched.outcome.status === "failed") {
-            warnings.push({ code: "MODEL_FAILED", message: "模型增补失败，已保留规则初稿。", explanation: explain(
-              `模型调用或输出解析失败：${enriched.outcome.reason ?? "未知原因"}。`,
-              "失败时不会写入任何模型内容，规则初稿不受影响。",
-              "稍后重试；若反复失败，检查模型配置或改为手填。",
-            ) });
+            modelStatus = "failed";
+            warnings.push(modelFailureWarning(enriched.outcome));
           } else {
+            modelStatus = "applied";
             modelUsed = true;
             draft = enriched.draft;
             if (enriched.outcome.rejectedKeys.length > 0) {
@@ -391,13 +471,7 @@ export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOp
         saved = updated;
       }
       const summary = summarizeCharacterVoice(merged.voice);
-      if (summary.missing > 0) {
-        warnings.push({ code: "FIELDS_MISSING", message: `「${labelList(summary.missingKeys)}」仍待补充。`, explanation: explain(
-          "角色卡与对白样本里找不到这些方面的依据，没有编造。",
-          "待补充的字段不会注入写作；写对白时这些方面只按角色卡性格自然处理。",
-          "需要时直接手填，或补充角色卡 / 对白样本后重新生成。",
-        ) });
-      }
+      if (summary.missing > 0) warnings.push(missingFieldsWarning(summary.missingKeys, modelStatus));
       return c.json({
         ...serializeVoiceResponse(saved, merged.voice),
         draft: {
@@ -407,6 +481,8 @@ export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOp
           chapterSampleCount: chapterSamples.length,
           scannedChapters,
           modelUsed,
+          /** not-requested / unavailable / failed / applied */
+          modelStatus,
           stats: statsSummary(draft.stats),
         },
         warnings,

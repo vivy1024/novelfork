@@ -9,7 +9,14 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry-repo.js";
 import { normalizeCategory } from "../jingwei/unified-categories.js";
-import { buildVoiceConstraintText, readCharacterVoiceProfiles } from "./character-voice.js";
+import { buildVoiceConstraintText, listConfirmedVoiceFieldLabels, readCharacterVoiceProfiles } from "./character-voice.js";
+
+export interface SceneVoiceProfileSummary {
+  readonly characterId: string;
+  readonly name: string;
+  /** 实际进入约束文本的字段标签（与正文块一一对应，只含作者已确认项）。 */
+  readonly confirmedFields: readonly string[];
+}
 
 export interface SceneVoiceConstraints {
   /** 注入写作上下文的约束文本；没有可用声线时为空串。 */
@@ -18,9 +25,13 @@ export interface SceneVoiceConstraints {
   readonly matchedIds: readonly string[];
   /** 声线数据损坏、未参与注入的条目 id。 */
   readonly corruptedIds: readonly string[];
+  /** 本次真正注入声线的角色（顺序与正文块一致），供「写作注入」诊断逐角色列出。 */
+  readonly profiles: readonly SceneVoiceProfileSummary[];
+  /** 匹配到条目、但没有任何已确认声线字段的角色名（不会进约束文本）。 */
+  readonly matchedWithoutVoiceNames: readonly string[];
 }
 
-const EMPTY: SceneVoiceConstraints = { text: "", matchedIds: [], corruptedIds: [] };
+const EMPTY: SceneVoiceConstraints = { text: "", matchedIds: [], corruptedIds: [], profiles: [], matchedWithoutVoiceNames: [] };
 
 function normalizeName(value: string): string {
   return value.trim().toLowerCase();
@@ -54,5 +65,22 @@ export async function loadSceneVoiceConstraints(input: {
   const { profiles, corruptedIds } = readCharacterVoiceProfiles(
     matchedEntries.map((entry) => ({ id: entry.id, title: entry.title, fields: entry.fields ?? {} })),
   );
-  return { text: buildVoiceConstraintText(profiles, matchedIds), matchedIds, corruptedIds };
+  // 摘要与约束文本同源同序：buildVoiceConstraintText 跳过没有任何已确认字段的角色，这里同样跳过。
+  const byId = new Map(profiles.map((profile) => [profile.characterId, profile] as const));
+  const injected: SceneVoiceProfileSummary[] = [];
+  const withoutVoice: string[] = [];
+  for (const id of [...new Set(matchedIds)]) {
+    const profile = byId.get(id);
+    if (!profile) continue;
+    const confirmedFields = listConfirmedVoiceFieldLabels(profile.voice);
+    if (confirmedFields.length > 0) injected.push({ characterId: id, name: profile.name, confirmedFields });
+    else withoutVoice.push(profile.name);
+  }
+  return {
+    text: buildVoiceConstraintText(profiles, matchedIds),
+    matchedIds,
+    corruptedIds,
+    profiles: injected,
+    matchedWithoutVoiceNames: withoutVoice,
+  };
 }

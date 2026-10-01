@@ -65,6 +65,29 @@ describe("loadSceneVoiceConstraints", () => {
     expect(result.corruptedIds).toEqual([]);
   });
 
+  it("同时给出注入角色的结构化摘要：谁注入了哪些已确认字段，谁匹配了但没有可注入的字段", async () => {
+    const luChen = await createCharacter("陆沉", ["阿沉"], {
+      schemaVersion: 1,
+      fields: {
+        positioning: { value: "冷硬克制", status: "confirmed", source: "author" },
+        catchphrases: { value: ["罢了"], status: "needs-review", source: "dialogue" },
+      },
+    });
+    await createCharacter("苏晚", [], {
+      schemaVersion: 1,
+      fields: { catchphrases: { value: ["哎"], status: "needs-review", source: "dialogue" } },
+    });
+
+    const result = await loadSceneVoiceConstraints({ storage, bookId: "book-1", characterNames: ["阿沉", "苏晚", "路人甲"] });
+
+    // 陆沉注入了 positioning（confirmed）；catchphrases 是待审，不进清单。
+    expect(result.profiles).toEqual([{ characterId: luChen.id, name: "陆沉", confirmedFields: ["声音定位"] }]);
+    // 苏晚匹配到条目，但没有任何已确认字段：如实单独列出，不进 profiles。
+    expect(result.matchedWithoutVoiceNames).toEqual(["苏晚"]);
+    expect(result.text).toContain("### 陆沉");
+    expect(result.text).not.toContain("苏晚");
+  });
+
   it("声线损坏的条目单独列出，不注入也不抛错", async () => {
     const broken = await createCharacter("坏卡", [], { schemaVersion: 9 });
     const result = await loadSceneVoiceConstraints({ storage, bookId: "book-1", characterNames: ["坏卡"] });

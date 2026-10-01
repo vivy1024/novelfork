@@ -36,6 +36,15 @@ import { STYLE_SCENE_TYPES } from "../engine/writing-layers/style-preset.js";
 import {
   loadStylePreset, readStyleFingerprint, saveStylePreset, StylePresetError, updateStyleFingerprint,
 } from "../engine/writing-layers/style-preset-store.js";
+import {
+  adoptStyleMemories,
+  previewStyleMemory,
+  STYLE_MEMORY_MAX_NOTE_CHARS,
+  STYLE_MEMORY_MAX_RULES,
+  STYLE_MEMORY_MAX_SAMPLES,
+  STYLE_MEMORY_MAX_TEXT_CHARS,
+} from "../engine/writing-layers/style-memory.js";
+import { exportBookStyleSkill, StyleSkillExportError } from "../engine/writing-skills/style-skill-export.js";
 
 type UnavailableGeneration = Extract<HostTextGenerationAvailability, { available: false }>;
 
@@ -163,6 +172,93 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     )) : [];
     if (samples.length === 0) return c.json({ error: "没有可采纳的改稿段。", code: "STYLE_VAULT_EMPTY_ADOPTION" }, 400);
     return c.json(await adoptRevisionSamples(ctx.state.bookDir(c.req.param("bookId")), samples, body.expectedRevision as string | null));
+  });
+
+  // ---- 写法记忆（T3.5）：作者「记住这种写法」的显式通道。预览纯统计推断不调模型；确认才写预设。
+
+  // 写法记忆预览：推断候选写法规则、原文例句与适用场景标签；只读，不写任何文件。
+  app.post("/api/books/:bookId/style/memories/preview", async (c) => {
+    const body = await c.req.json().catch(() => null) as { text?: unknown; note?: unknown } | null;
+    const text = typeof body?.text === "string" ? body.text : "";
+    if (!text.trim()) {
+      return c.json({
+        error: "示例文本不能为空。",
+        code: "STYLE_MEMORY_EMPTY_TEXT",
+        explanation: {
+          what: "没有收到示例文本。",
+          why: "写法记忆要守着一段具体文字提炼，没有文本就没有依据。",
+          next: "贴入一段作者认可的正文或参考段落后重新预览。",
+        },
+      }, 400);
+    }
+    if (text.length > STYLE_MEMORY_MAX_TEXT_CHARS) {
+      return c.json({
+        error: `示例文本最多 ${STYLE_MEMORY_MAX_TEXT_CHARS} 字，当前 ${text.length} 字。`,
+        code: "STYLE_MEMORY_TOO_LARGE",
+      }, 400);
+    }
+    const note = typeof body?.note === "string" && body.note.trim() ? body.note.trim().slice(0, STYLE_MEMORY_MAX_NOTE_CHARS) : undefined;
+    return c.json(previewStyleMemory({ text, ...(note ? { note } : {}) }));
+  });
+
+  // 写法记忆确认：把作者确认的规则与例句写进预设「手动写法记忆」来源，带版本号防覆盖。
+  app.post("/api/books/:bookId/style/memories/confirm", async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body || !Object.hasOwn(body, "expectedRevision") || (body.expectedRevision !== null && typeof body.expectedRevision !== "string")) {
+      return c.json({ error: "写入写法记忆必须携带读取文风预设时的 expectedRevision。", code: "STYLE_MEMORY_REVISION_REQUIRED" }, 400);
+    }
+    const note = typeof body.note === "string" ? body.note.slice(0, STYLE_MEMORY_MAX_NOTE_CHARS) : undefined;
+    const rules = (Array.isArray(body.rules) ? body.rules : [])
+      .map((item) => item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : null)
+      .filter((item): item is Record<string, unknown> => item !== null && typeof item.text === "string" && item.text.trim().length > 0)
+      .map((item) => ({ text: item.text as string, ...(typeof item.evidence === "string" ? { evidence: item.evidence } : {}) }))
+      .slice(0, STYLE_MEMORY_MAX_RULES);
+    const rawScenes = (Array.isArray(body.samples) ? body.samples : [])
+      .map((item) => item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : null)
+      .filter((item): item is Record<string, unknown> => item !== null && typeof item.text === "string" && item.text.trim().length > 0)
+      .map((item) => ({ text: item.text as string, sceneType: typeof item.sceneType === "string" ? item.sceneType : "general" }))
+      .slice(0, STYLE_MEMORY_MAX_SAMPLES);
+    const invalidScene = rawScenes.find((sample) => !(STYLE_SCENE_TYPES as readonly string[]).includes(sample.sceneType));
+    if (invalidScene) {
+      return c.json({ error: `例句场景类型无效：${invalidScene.sceneType}。`, code: "STYLE_MEMORY_INVALID_SCENE" }, 400);
+    }
+    const samples = rawScenes as { text: string; sceneType: (typeof STYLE_SCENE_TYPES)[number] }[];
+    if (rules.length === 0 && samples.length === 0) {
+      return c.json({
+        error: "没有可写入的写法规则或例句。",
+        code: "STYLE_MEMORY_EMPTY_CONFIRM",
+        explanation: {
+          what: "确认请求里既没有规则也没有例句。",
+          why: "写入空记忆只会让预设里多一条没有内容的来源记录。",
+          next: "回到预览勾选至少一条规则或例句，再确认写入。",
+        },
+      }, 400);
+    }
+    return c.json(await adoptStyleMemories(
+      ctx.state.bookDir(c.req.param("bookId")),
+      { ...(note ? { note } : {}), rules, samples },
+      body.expectedRevision as string | null,
+    ));
+  });
+
+  // 一键把「已确认且可迁移」的来源规则汇总生成本书专属技能（.novelfork/skills 下的 SKILL.md）。
+  app.post("/api/books/:bookId/style/skill-export", async (c) => {
+    try {
+      return c.json(await exportBookStyleSkill(ctx.state.bookDir(c.req.param("bookId"))));
+    } catch (error) {
+      if (error instanceof StyleSkillExportError) {
+        return c.json({
+          error: error.message,
+          code: error.code,
+          explanation: {
+            what: error.message,
+            why: "本书技能只收录作者确认过、标记为可迁移的写法规则；待审或作品专属条目不写入。",
+            next: "先在文风面板确认「手动写法记忆 / 作者改稿」规则，或在蒸馏审阅里确认条目并采纳，再生成。",
+          },
+        }, 422);
+      }
+      throw error;
+    }
   });
 
   // Removed v1 apply endpoint: keep a tombstone response so stale clients do not

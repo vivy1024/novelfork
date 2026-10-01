@@ -97,6 +97,19 @@ describe("叙述者角色声线工具", () => {
     expect(stale).toMatchObject({ ok: false, error: "CHARACTER_VOICE_CONFLICT", data: { status: 409, explanation: { suggestedAction: expect.any(String) } } });
   });
 
+  it("会话模型输出被截断时，摘要说明是模型增补失败，而不是「没有找到依据」", async () => {
+    const lu = await createCharacter("陆沉", {});
+    const generateText = vi.fn(async () => ({ text: "```json\n{\"fields\": {\"positioning\": {\"value\": \"话少" }));
+    const result = await run("character.voice.draft", { entryId: lu.id, expectedVersion: lu.version, scanChapters: 0 }, generateText);
+    expect(result.ok).toBe(true);
+    expect(result.summary).toContain("模型增补失败");
+    expect(result.summary).not.toContain("没有找到新的依据");
+    const data = result.data as { draft: { modelStatus: string }; warnings: { code: string; explanation: { whatHappened: string } }[] };
+    expect(data.draft.modelStatus).toBe("failed");
+    expect(data.warnings.map((item) => item.code)).toEqual(expect.arrayContaining(["MODEL_OUTPUT_TRUNCATED", "FIELDS_MISSING"]));
+    expect(data.warnings.find((item) => item.code === "FIELDS_MISSING")!.explanation.whatHappened).toContain("模型增补失败");
+  });
+
   it("没有会话模型时只出规则初稿并如实提示；缺版本、找不到或重名角色时带解释失败", async () => {
     const lu = await createCharacter("陆沉", { personality: "沉默寡言" });
     const noModel = await run("character.voice.draft", { entryId: lu.id, expectedVersion: lu.version, useModel: true });

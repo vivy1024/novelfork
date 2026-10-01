@@ -12,6 +12,8 @@
 
 import { z } from "zod";
 
+import { parseModelJson, type ModelJsonFailureReason } from "../model-output/lenient-json.js";
+
 // ---------------------------------------------------------------------------
 // 字段定义
 // ---------------------------------------------------------------------------
@@ -636,12 +638,82 @@ export function draftCharacterVoice(input: {
 // 章节对白抽取（启发式，宁缺毋滥）
 // ---------------------------------------------------------------------------
 
-const SPEECH_VERB = /(说|道|问|喊|叫|笑|骂|嘀咕|吼|答|哼|低语|开口)/u;
+/**
+ * 说话动词。排除「知道 / 想道 / 听说 / 据说」这类字面含「道」「说」却不是开口说话的词。
+ * 2026-09-30 真模型基准：旧判据只要求引号前同句有名字、有任一说话动词，
+ * 「他讳说“癞”」「那里还会有“著之竹帛”」这类叙述引语被当成了阿Q的对白。
+ */
+const SPEECH_VERB_SOURCE = "(?:(?<![知难味地街轨频渠通报称公霸想])道|(?<![听据虽小传学游演解])说|问|喊|叫|笑|骂|嘀咕|吼|答|哼|嚷|低语|开口|叹)";
+const SPEECH_VERB = new RegExp(SPEECH_VERB_SOURCE, "u");
+/** 引号前紧贴说话动词：「X说：」「X问道，」「X叫了一声：」…… */
+const SPEECH_VERB_AT_END = new RegExp(`${SPEECH_VERB_SOURCE}(?:道|着|了|起来|了一声|一声)?\\s*[：:，,]?\\s*$`, "u");
 const QUOTE_PATTERN = /[“「]([^”」\n]{1,300})[”」]/gu;
+/** 句末标点：真对白通常自带，叙述里的引语（术语、转述的词）通常没有。 */
+const DIALOGUE_END_PUNCT = /[。！？!?…～~—]\s*$/u;
+/** 没有句末标点、又短于此字数的引号内容，默认是叙述引语而不是对白。 */
+const MIN_UNPUNCTUATED_DIALOGUE_CHARS = 5;
+/** 名字到说话动词之间允许的最大字数（同一句内，含中间的动作描写）。 */
+const MAX_NAME_TO_VERB_CHARS = 18;
+/** 名字之前、同一小句内允许的最大字数（「于是」「这才」之类）。 */
+const MAX_SUBJECT_PREFIX_CHARS = 4;
+/**
+ * 名字与说话动词之间出现这些词，说话人可能换了人（「阿Q看着他说」「他对阿Q说」），不猜。
+ * 名字前的同一小句里出现这些词或介词，名字多半是宾语（「赵太爷骂阿Q道」「他对阿Q说」）。
+ */
+const OTHER_SUBJECT = /[他她我你您谁]|人们|别人|大家|众人|有人/u;
+const OBJECT_MARKER = /[对向跟和与同给把被叫让问骂打朝冲望看听]/u;
+const CLAUSE_BREAK = /[，,；;：:、]/u;
+
+/** 引号前：本人名字是这句的主语，且说话动词紧贴引号。 */
+function attributedBefore(before: string, names: readonly string[], others: readonly string[]): boolean {
+  if (!SPEECH_VERB_AT_END.test(before)) return false;
+  let nameIndex = -1;
+  let nameLength = 0;
+  for (const name of names) {
+    const index = before.lastIndexOf(name);
+    if (index > nameIndex) {
+      nameIndex = index;
+      nameLength = name.length;
+    }
+  }
+  if (nameIndex < 0) return false;
+  const span = before.slice(nameIndex);
+  const afterName = before.slice(nameIndex + nameLength);
+  if (afterName.startsWith("的")) return false; // 「阿Q的意思」是定语，不是说话人
+  if (countChars(afterName) > MAX_NAME_TO_VERB_CHARS) return false;
+  if (OTHER_SUBJECT.test(afterName) || others.some((name) => span.includes(name))) return false;
+  let clauseStart = 0;
+  for (let index = nameIndex - 1; index >= 0; index -= 1) {
+    if (CLAUSE_BREAK.test(before[index]!)) {
+      clauseStart = index + 1;
+      break;
+    }
+  }
+  const prefix = before.slice(clauseStart, nameIndex);
+  if (countChars(prefix) > MAX_SUBJECT_PREFIX_CHARS || OTHER_SUBJECT.test(prefix) || OBJECT_MARKER.test(prefix)) return false;
+  return !others.some((name) => prefix.includes(name));
+}
+
+/** 引号后：紧跟本人名字，同一小句内很快出现说话动词（「“……”阿Q说」「“……”阿Q歪着头问道」）。 */
+function attributedAfter(after: string, names: readonly string[], others: readonly string[]): boolean {
+  const trimmed = after.replace(/^[，,\s]+/u, "");
+  const name = names.filter((candidate) => trimmed.startsWith(candidate)).sort((left, right) => right.length - left.length)[0];
+  if (!name) return false;
+  const rest = trimmed.slice(name.length);
+  if (rest.startsWith("的")) return false;
+  const clause = rest.split(CLAUSE_BREAK)[0] ?? "";
+  const verb = SPEECH_VERB.exec(clause);
+  if (!verb || countChars(clause.slice(0, verb.index)) > 8) return false;
+  const between = clause.slice(0, verb.index);
+  return !OTHER_SUBJECT.test(between) && !others.some((other) => between.includes(other));
+}
 
 /**
- * 从正文里抽出能明确归给该角色的对白：引号前同句内出现本人名字且以说话动词收尾，
- * 或引号后紧跟本人名字与说话动词。前后文同时出现其他角色名的跳过，不猜。
+ * 从正文里抽出能明确归给该角色的对白（宁缺毋滥）：
+ * - 引号前：本人名字是该句主语，说话动词紧贴引号（「阿Q说：“……”」「阿Q一想，便回答说，“……”」）；
+ * - 引号后：紧跟本人名字，同一小句内出现说话动词（「“……”阿Q说」）；
+ * - 名字与动词之间出现别的角色或人称代词、名字前有「对 / 向 / 骂」等介词动词的，说话人可能不是本人，跳过；
+ * - 引号内容没有句末标点且很短（少于 5 字）的，是叙述里的引语（术语、转述的词），不算对白。
  */
 export function extractCharacterDialogue(
   text: string,
@@ -654,23 +726,17 @@ export function extractCharacterDialogue(
   const result: string[] = [];
   for (const match of text.matchAll(QUOTE_PATTERN)) {
     if (result.length >= limit) break;
+    const line = cleanDialogueLine(match[1]!);
+    if (countChars(line) === 0) continue;
+    if (!DIALOGUE_END_PUNCT.test(line) && countChars(line) < MIN_UNPUNCTUATED_DIALOGUE_CHARS) continue;
     const start = match.index ?? 0;
     const end = start + match[0].length;
-    const beforeRaw = text.slice(Math.max(0, start - 24), start);
-    const before = beforeRaw.split(/[。！？\n”」]/u).pop() ?? "";
-    const afterRaw = text.slice(end, end + 24);
-    const after = afterRaw.split(/[。！？\n“「]/u)[0] ?? "";
-    const mentions = (segment: string, list: readonly string[]) => list.some((name) => segment.includes(name));
-    const beforeHit = mentions(before, names) && SPEECH_VERB.test(before) && /[：:，,]?\s*$/u.test(before);
-    const afterHit = names.some((name) => {
-      const index = after.indexOf(name);
-      return index >= 0 && index <= 2 && SPEECH_VERB.test(after.slice(index + name.length, index + name.length + 8));
-    });
-    if (!beforeHit && !afterHit) continue;
-    const context = beforeHit ? before : after;
-    if (mentions(context, others)) continue;
-    const line = cleanDialogueLine(match[1]!);
-    if (countChars(line) > 0) result.push(line);
+    // 「阿Q歪着头，说道：」之后另起一段写引号，冒号后的换行不算断句。
+    const beforeRaw = text.slice(Math.max(0, start - 40), start).replace(/([：:])\s+$/u, "$1");
+    const before = beforeRaw.split(/[。！？!?\n“”「」]/u).pop() ?? "";
+    const after = text.slice(end, end + 24).split(/[。！？!?\n“「]/u)[0] ?? "";
+    if (!attributedBefore(before, names, others) && !attributedAfter(after, names, others)) continue;
+    result.push(line);
   }
   return result;
 }
@@ -771,19 +837,38 @@ export function applyVoiceFieldUpdates(
 // 模型增补（可选）
 // ---------------------------------------------------------------------------
 
-/** 与章后结算、张力评分同形的文本生成能力，由宿主注入。 */
+/**
+ * 与章后结算、张力评分同形的文本生成能力，由宿主注入。
+ * 宿主知道输出因长度上限被截断时带 outputTruncated，便于如实报告。
+ */
 export type CharacterVoiceGenerateText = (request: {
   messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>;
   temperature?: number;
   maxTokens?: number;
-}) => Promise<{ text: string }>;
+}) => Promise<{ text: string; outputTruncated?: boolean }>;
+
+/**
+ * 模型增补的输出上限。10 个字段各带 1–3 条原文摘录，JSON 约 2–3KB（中文约 1.5–2.5K token）；
+ * 2026-09-30 真模型基准里 1200 让思考型模型（gemini-3.7-flash）把额度耗在推理上，
+ * 只吐出 136 字节就 finish=length。6000 给推理留足余量，同时远小于常见模型的输出上限。
+ */
+export const VOICE_MODEL_MAX_TOKENS = 6_000;
+
+const ModelVoiceFieldSchema = z.object({
+  value: z.union([z.string(), z.array(z.string())]),
+  evidence: z.array(z.string()).optional(),
+});
 
 const ModelVoiceResponseSchema = z.object({
-  fields: z.record(z.string(), z.object({
-    value: z.union([z.string(), z.array(z.string())]),
-    evidence: z.array(z.string()).optional(),
-  })),
+  fields: z.record(z.string(), z.unknown()),
 });
+
+/**
+ * 模型增补失败的类别，调用方据此给出如实的说明：
+ * call-failed=调用本身失败；truncated=输出被截断；no-json=输出里没有 JSON；
+ * invalid=JSON 修补后仍解析不了；invalid-shape=JSON 能解析但不是 {fields:{…}} 结构。
+ */
+export type VoiceModelFailureKind = "call-failed" | ModelJsonFailureReason | "invalid-shape";
 
 export interface VoiceModelOutcome {
   readonly status: "applied" | "failed";
@@ -791,6 +876,10 @@ export interface VoiceModelOutcome {
   /** 模型给了值但证据在材料里找不到、因此丢弃的字段 */
   readonly rejectedKeys: readonly CharacterVoiceFieldKey[];
   readonly reason?: string;
+  /** status=failed 时的失败类别 */
+  readonly failureKind?: VoiceModelFailureKind;
+  /** 解析时修补过字符串里的裸引号等（内容没丢，仅供诊断） */
+  readonly repaired?: boolean;
 }
 
 const VOICE_EXTRACT_SYSTEM_PROMPT = [
@@ -801,6 +890,7 @@ const VOICE_EXTRACT_SYSTEM_PROMPT = [
   "- 只输出一个 JSON 对象：{\"fields\": {\"字段键\": {\"value\": 值, \"evidence\": [\"摘录\"]}}}，不要任何解释。",
   "- 文本字段的 value 是字符串，不超过 80 字；列表字段的 value 是字符串数组，每项不超过 20 字。",
   "- 每个非空字段必须带 1–3 条 evidence，evidence 必须是从材料原样复制的片段（角色卡原句或对白原句）。复制不出原文的字段直接留空。",
+  "- 字符串里要引用词句时用「」，不要用英文双引号 \"。",
   "- 留空写法：文本字段 \"\"，列表字段 []。",
 ].join("\n");
 
@@ -850,14 +940,6 @@ export function buildVoiceExtractionMessages(input: {
   ];
 }
 
-function extractJsonObject(text: string): unknown {
-  const withoutFence = text.replace(/```(?:json)?/giu, "");
-  const start = withoutFence.indexOf("{");
-  const end = withoutFence.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("模型输出里没有 JSON 对象");
-  return JSON.parse(withoutFence.slice(start, end + 1));
-}
-
 /** 统计类字段以实测为准，模型不覆盖。 */
 const MEASURED_KEYS = new Set<CharacterVoiceFieldKey>(["sentenceLength", "pauses"]);
 
@@ -887,27 +969,39 @@ export async function enrichCharacterVoiceWithModel(input: {
     const normalized = normalizeForMatch(snippet.replace(/^[^：:]{1,8}[：:]/u, ""));
     return normalized.length >= minLength && materialText.includes(normalized);
   };
-  let parsed: z.infer<typeof ModelVoiceResponseSchema>;
+  const failed = (failureKind: VoiceModelFailureKind, reason: string) => ({
+    draft: input.draft,
+    outcome: { status: "failed" as const, acceptedKeys: [], rejectedKeys: [], reason, failureKind },
+  });
+  let response: Awaited<ReturnType<CharacterVoiceGenerateText>>;
   try {
-    const response = await input.generateText({
+    response = await input.generateText({
       messages: buildVoiceExtractionMessages({ card: input.card, dialogueSamples: samples, draft: input.draft, targetKeys }),
       temperature: 0.2,
-      maxTokens: 1_200,
+      maxTokens: VOICE_MODEL_MAX_TOKENS,
     });
-    parsed = ModelVoiceResponseSchema.parse(extractJsonObject(response.text));
   } catch (error) {
-    return {
-      draft: input.draft,
-      outcome: { status: "failed", acceptedKeys: [], rejectedKeys: [], reason: error instanceof Error ? error.message : String(error) },
-    };
+    return failed("call-failed", error instanceof Error ? error.message : String(error));
   }
+  const json = parseModelJson(typeof response?.text === "string" ? response.text : "", {
+    expect: "object",
+    ...(response?.outputTruncated ? { outputTruncated: true } : {}),
+  });
+  if (!json.ok) return failed(json.reason, json.message);
+  const shape = ModelVoiceResponseSchema.safeParse(json.value);
+  if (!shape.success) {
+    return failed("invalid-shape", "模型输出的 JSON 缺少 fields 对象，不是约定的 {\"fields\": {…}} 结构。");
+  }
+  const parsed = shape.data;
 
   const fields = { ...input.draft.fields };
   const acceptedKeys: CharacterVoiceFieldKey[] = [];
   const rejectedKeys: CharacterVoiceFieldKey[] = [];
   for (const key of targetKeys) {
-    const candidate = parsed.fields[key];
-    if (!candidate) continue;
+    // 单个字段形态不对（如 value 为 null）按模型留空处理，不连累其他字段。
+    const fieldParsed = ModelVoiceFieldSchema.safeParse(parsed.fields[key]);
+    if (!fieldParsed.success) continue;
+    const candidate = fieldParsed.data;
     const meta = getVoiceFieldMeta(key);
     let value: string | string[];
     if (meta.kind === "list") {
@@ -927,7 +1021,10 @@ export async function enrichCharacterVoiceWithModel(input: {
     fields[key] = { value, source: "model", evidence };
     acceptedKeys.push(key);
   }
-  return { draft: { ...input.draft, fields }, outcome: { status: "applied", acceptedKeys, rejectedKeys } };
+  return {
+    draft: { ...input.draft, fields },
+    outcome: { status: "applied", acceptedKeys, rejectedKeys, ...(json.repaired ? { repaired: true } : {}) },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -963,6 +1060,17 @@ function formatConstraintValue(key: CharacterVoiceFieldKey, value: string | read
   if (!Array.isArray(value)) return value as string;
   if (key === "catchphrases") return `${value.map((item) => `「${item}」`).join("")}（自然带出，不要句句都用）`;
   return value.join("；");
+}
+
+/**
+ * 与 buildVoiceConstraintText 完全同口径：作者已确认且非空的字段标签。
+ * 「写作注入」诊断用它回答「这个角色这次注入了哪些声线字段」，不另写一套过滤条件。
+ */
+export function listConfirmedVoiceFieldLabels(voice: CharacterVoice): string[] {
+  return CHARACTER_VOICE_FIELD_META.flatMap((meta) => {
+    const field = voice.fields[meta.key];
+    return field.status === "confirmed" && !isEmptyValue(field.value) ? [meta.label] : [];
+  });
 }
 
 /**

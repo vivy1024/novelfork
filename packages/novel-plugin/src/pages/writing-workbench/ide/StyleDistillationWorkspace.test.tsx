@@ -156,6 +156,34 @@ describe("StyleDistillationWorkspace", () => {
     expect(JSON.parse(String(resumeCall?.[1]?.body))).toEqual({ retryFailed: false });
   });
 
+  it("采纳完成后可一键生成本书专属技能；采纳前不显示该入口", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    request.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/preview")) return preview;
+      if (path.endsWith("/jobs") && init?.method === "POST") return job;
+      if (path.endsWith("/adopt")) return { ok: true };
+      if (path.endsWith("/skill-export")) return {
+        slug: "book-style-memory",
+        file: "/books/book-1/.novelfork/skills/book-style-memory/SKILL.md",
+        content: "---\nname: 本书写法记忆\n---\n\n# 本书写法记忆",
+        ruleCount: 1,
+        sourceTitles: ["参考作品 A"],
+      };
+      throw new Error(`unexpected request: ${path}`);
+    });
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    await openReview(request);
+    expect(screen.queryByRole("button", { name: "生成本书专属技能" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "采纳到本书文风预设" }));
+    const exportButton = await screen.findByRole("button", { name: "生成本书专属技能" });
+    fireEvent.click(exportButton);
+    await screen.findByText(/已写入 \.novelfork\/skills\/book-style-memory\/SKILL\.md（1 条规则，来源：参考作品 A）/);
+    const exportCall = request.mock.calls.find(([path]) => String(path).endsWith("/skill-export"))!;
+    expect(exportCall[0]).toBe("/api/books/book-1/style/skill-export");
+    expect(exportCall[1]?.method).toBe("POST");
+    expect(screen.getByRole("button", { name: "复制 SKILL.md 内容" })).toBeTruthy();
+  });
+
   it("切回输入阶段保留来源名称、范围提示和参考文本草稿", async () => {
     const request = vi.fn<StyleDistillationFetchJson>();
     seedPreviewRequest(request);

@@ -256,7 +256,11 @@ export interface AdoptRevisionInput {
   readonly sceneType?: (typeof STYLE_SCENE_TYPES)[number];
 }
 
-function sampleId(chapterNumber: number, authorText: string): string {
+/**
+ * 采纳某段作者改稿时生成的范文 id（确定性：同章同文同 id）。
+ * 聚合「未采纳改稿段」时用它与预设里的已采纳范文对账，不要另造一套 id。
+ */
+export function revisionSampleId(chapterNumber: number, authorText: string): string {
   return `rev-${chapterNumber}-${createHash("sha256").update(authorText).digest("hex").slice(0, 10)}`;
 }
 
@@ -274,7 +278,7 @@ export async function adoptRevisionSamples(
   const existing = preset.sources.find((source) => source.id === AUTHOR_REVISION_SOURCE_ID);
   const samples = [...(existing?.samples ?? [])];
   for (const input of inputs) {
-    const id = sampleId(input.chapterNumber, input.authorText);
+    const id = revisionSampleId(input.chapterNumber, input.authorText);
     if (samples.some((sample) => sample.id === id)) continue;
     samples.push({
       id,
