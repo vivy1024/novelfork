@@ -79,6 +79,7 @@ export function groupEntriesByCategory<Entry extends LoreEntryLike>(
  * 这不是第二套分类定义：它只把记忆通道名翻译成作者看得懂的中文标签。
  */
 const MEMORY_FACT_LABELS: Record<string, string> = {
+  state: "状态",
   relationship: "关系",
   hook: "伏笔",
   timeline: "时间线",
@@ -86,8 +87,76 @@ const MEMORY_FACT_LABELS: Record<string, string> = {
   world_fact: "世界事实",
   character_state: "角色状态",
   location: "地点状态",
+  inventory: "持有物品",
 };
 
 export function memoryFactLabel(category: string): string {
   return MEMORY_FACT_LABELS[category] ?? category;
+}
+
+/** 作者手填状态时可选的记忆分类（值仍是记忆通道名，界面只显示中文）。 */
+export const MEMORY_FACT_CATEGORY_OPTIONS: ReadonlyArray<{ readonly value: string; readonly label: string }> =
+  Object.entries(MEMORY_FACT_LABELS).map(([value, label]) => ({ value, label }));
+
+/**
+ * 记忆事实分类的显示名。
+ * 记忆通道名（character_state 等）先查上表；经纬分类名（characters、character 等旧名）
+ * 走 CATEGORY_META 的中文名；两边都认不出时原样显示（多半是作者自己写的中文分类）。
+ */
+export function factCategoryLabel(category: string): string {
+  const memoryLabel = MEMORY_FACT_LABELS[category];
+  if (memoryLabel) return memoryLabel;
+  return jingweiCategoryName(category) ?? category;
+}
+
+/** 经纬分类（含旧分类名）→ CATEGORY_META 中文名；认不出返回 null。 */
+function jingweiCategoryName(rawCategory: string): string | null {
+  const raw = rawCategory.trim();
+  if (!raw) return null;
+  const { category } = normalizeCategory(raw);
+  // normalizeCategory 把认不出的值归到 unclassified；只有真的写了 unclassified 才叫「未分类」。
+  if (category === "unclassified" && raw !== "unclassified") return null;
+  return CATEGORY_META.find((meta) => meta.id === category)?.name ?? null;
+}
+
+/** 经纬分类在界面上的中文名，如 characters → 角色；认不出时原样返回。 */
+export function jingweiCategoryLabel(rawCategory: string): string {
+  return jingweiCategoryName(rawCategory) ?? rawCategory;
+}
+
+/**
+ * 经纬条目层级的作者说法，含义取自 JingweiCategoryLayer：
+ * canon 是不随剧情改的真相，dynamic 是章后会变的状态，reference 是按需查阅的资料。
+ */
+const LAYER_LABELS: Record<string, string> = {
+  canon: "固定设定",
+  dynamic: "随剧情变化",
+  reference: "按需查阅",
+};
+
+export function jingweiLayerLabel(layer: string): string {
+  return LAYER_LABELS[layer] ?? layer;
+}
+
+/** 记忆事实来源（NarrativeFactSourceType）的作者说法。 */
+const FACT_SOURCE_LABELS: Record<string, string> = {
+  manual: "作者手填",
+  event: "章后结算",
+  import: "导入",
+  jingwei: "作品设定",
+  "runtime-state": "章节状态推算",
+};
+
+export function factSourceLabel(sourceType: string): string {
+  return FACT_SOURCE_LABELS[sourceType] ?? "其他来源";
+}
+
+/**
+ * 低于这个置信度才提示「不太确定」。与章后事实待审队列的「低置信 <0.6」同一口径；
+ * 高置信的条目不显示百分比，免得作者以为要逐条核对数字。
+ */
+export const LOW_CONFIDENCE_THRESHOLD = 0.6;
+
+export function isLowConfidence(confidence: number | undefined): boolean {
+  return typeof confidence === "number" && confidence < LOW_CONFIDENCE_THRESHOLD;
 }

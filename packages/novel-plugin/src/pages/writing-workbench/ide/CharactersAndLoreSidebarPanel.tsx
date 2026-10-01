@@ -693,14 +693,14 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
         value={category}
         onChange={(e) => setCategory(e.target.value)}
       >
-        <option value="characters">角色 (Characters)</option>
-        <option value="factions">势力 / 门派 (Factions)</option>
-        <option value="world-model">世界模型 (World)</option>
-        <option value="power-system">力量体系 (Power System)</option>
-        <option value="rules">法则规则 (Rules)</option>
-        <option value="locations">地理场景 (Locations)</option>
-        <option value="props">重要物品 (Props)</option>
-        <option value="timeline">前史时间线 (Timeline)</option>
+        <option value="characters">角色</option>
+        <option value="factions">势力 / 门派</option>
+        <option value="world-model">世界模型</option>
+        <option value="power-system">力量体系</option>
+        <option value="rules">法则规则</option>
+        <option value="locations">地理场景</option>
+        <option value="props">重要物品</option>
+        <option value="timeline">前史时间线</option>
       </select>
       <Textarea
         value={text}

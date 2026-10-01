@@ -32,7 +32,7 @@ afterEach(async () => {
 const BOOK_ID = "book-writing-config";
 
 describe("WritingConfigSection", () => {
-  it("首屏只显示 Writing Skills，并且只请求新的全局和书籍作用域路由", async () => {
+  it("首屏只显示写作技能，并且只请求新的全局和书籍作用域路由", async () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { WritingConfigSection } = await import("./WritingConfigSection");
     stubs["/writing-skills"] = {
@@ -45,7 +45,8 @@ describe("WritingConfigSection", () => {
     expect(requestedPaths).toContain("/writing-skills");
     expect(requestedPaths).toContain(`/books/${BOOK_ID}/writing-skills`);
     expect(requestedPaths.join("\n")).not.toMatch(/\/presets|\/beat|\/market\/templates/);
-    expect(html).toContain("Writing Skills");
+    expect(html).toContain("写作技能");
+    expect(html).not.toContain("Writing Skills");
     expect(html).toContain("冷峻叙述");
     expect(html).not.toContain("写作预设");
     expect(html).not.toContain("节拍模板");
@@ -77,7 +78,7 @@ describe("WritingConfigSection", () => {
     render(<WritingConfigSection bookId={BOOK_ID} />);
 
     fireEvent.click(screen.getAllByRole("button", { name: "叙事记忆" })[0]!);
-    expect(await screen.findByText("角色内核（Character Kernel）")).toBeTruthy();
+    expect(await screen.findByText("角色内核")).toBeTruthy();
     // 默认关闭：编辑器不可见
     expect(screen.queryByTestId("kernel-fields-editor")).toBeNull();
 

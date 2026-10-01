@@ -365,9 +365,9 @@ export function JingweiCanonPanel({
                 <SelectValue placeholder="选择层级" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="canon">Canon（权威设定）</SelectItem>
-                <SelectItem value="dynamic">Dynamic（随剧情推进）</SelectItem>
-                <SelectItem value="reference">Reference（参考）</SelectItem>
+                <SelectItem value="canon">固定设定（不随剧情改）</SelectItem>
+                <SelectItem value="dynamic">随剧情变化</SelectItem>
+                <SelectItem value="reference">按需查阅</SelectItem>
               </SelectContent>
             </Select>
           </div>

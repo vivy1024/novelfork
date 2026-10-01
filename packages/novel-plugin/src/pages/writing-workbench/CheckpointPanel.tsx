@@ -66,7 +66,7 @@ export function CheckpointPanel({ checkpoints, loading, onPreviewRewind, onApply
     return (
       <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
-        加载 Checkpoint 列表...
+        加载还原点列表…
       </div>
     );
   }
@@ -75,8 +75,8 @@ export function CheckpointPanel({ checkpoints, loading, onPreviewRewind, onApply
     return (
       <div className="p-4 text-center space-y-2">
         <History className="size-8 text-muted-foreground/30 mx-auto" />
-        <p className="text-sm text-muted-foreground">暂无 Checkpoint</p>
-        <p className="text-xs text-muted-foreground/60">AI 写入正式资源时会自动创建 Checkpoint，可用于回滚</p>
+        <p className="text-sm text-muted-foreground">暂无还原点</p>
+        <p className="text-xs text-muted-foreground/60">AI 写入正式资源时会自动留一个还原点，写坏了可以退回</p>
       </div>
     );
   }
@@ -86,7 +86,7 @@ export function CheckpointPanel({ checkpoints, loading, onPreviewRewind, onApply
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
           <History className="size-3.5" />
-          Checkpoint 历史 · {checkpoints.length} 条
+          还原点历史 · {checkpoints.length} 条
         </h3>
         <Button variant="ghost" size="xs" onClick={onRefresh}>刷新</Button>
       </div>

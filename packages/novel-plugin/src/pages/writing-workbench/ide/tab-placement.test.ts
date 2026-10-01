@@ -26,6 +26,8 @@ describe("toTabView：侧栏每种入口节点的 tab 归属工作区", () => {
     ["全景图谱（叙事记忆）", node("file", { isNarrativeMemoryEntry: true }), "storyline"],
     ["章后事实", node("file", { isNarrativeMemoryEntry: true, predicate: "位置" }), "storyline"],
     ["伏笔账本（工具节点）", node("tool"), "tools"],
+    // 从作品基础侧栏打开，必须留在作品基础，不能把活动栏拽去资源管理器。
+    ["设定图谱", node("group", { isLoreTrees: true }), "characters-lore"],
     ["章节", node("chapter"), "explorer"],
     ["大纲文档", node("story"), "explorer"],
     ["叙事线快照", node("narrative-line"), "explorer"],

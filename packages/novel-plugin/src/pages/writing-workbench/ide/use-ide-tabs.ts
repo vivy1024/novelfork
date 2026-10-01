@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { ViewId } from "./use-panel-manager";
+import { chapterTabTitle } from "../chapter-display-title";
 
 export type TabKind = "chapter" | "jingwei-entry" | "memory-entry" | "file" | "story-map" | "tool" | "other";
 
@@ -62,6 +63,8 @@ export interface UseIdeTabsReturn {
   closeSaved: () => void;
   closeRight: (tabId: string) => void;
   activateTab: (tabId: string) => void;
+  /** 让某个视图暂时没有激活 Tab（标签保留），主区回到该视图的默认页，如作品总览。 */
+  deactivateView: (view: TabView) => void;
   setDirty: (tabId: string, dirty: boolean) => void;
   togglePin: (tabId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
@@ -95,6 +98,7 @@ type IdeTabsAction =
   | { type: "CLOSE_SAVED"; view: TabView }
   | { type: "CLOSE_RIGHT"; tabId: string; view: TabView }
   | { type: "ACTIVATE"; tabId: string; view: TabView }
+  | { type: "DEACTIVATE"; view: TabView }
   | { type: "SET_DIRTY"; tabId: string; dirty: boolean }
   | { type: "TOGGLE_PIN"; tabId: string }
   | { type: "REORDER"; fromIndex: number; toIndex: number; view: TabView };
@@ -125,10 +129,18 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
       if (existing) {
         // 单例 tab（如全景图谱 narrative-memory-graph）会以同一 nodeId 但不同标题重复打开：
         // 只激活不同步标题会让 tab 停留在第一次打开的标题，故这里顺手校正。
-        const tabs = existing.title === action.title
+        // 归属视图同理：旧版本把某类节点放错了工作区（如设定图谱曾落在资源管理器），
+        // 落盘的 tab 仍带旧视图；按本次打开的归属视图搬过去，否则切到新视图后 tab 隐身。
+        const moved = existing.view !== action.view;
+        const tabs = existing.title === action.title && !moved
           ? state.tabs
-          : state.tabs.map((t) => (t.id === existing.id ? { ...t, title: action.title } : t));
-        return { ...state, tabs, activeByView: { ...state.activeByView, [existing.view]: existing.id } };
+          : state.tabs.map((t) => (t.id === existing.id ? { ...t, title: action.title, view: action.view } : t));
+        const activeByView = { ...state.activeByView, [action.view]: existing.id };
+        if (moved && state.activeByView[existing.view] === existing.id) {
+          const rest = tabs.filter((t) => t.view === existing.view);
+          activeByView[existing.view] = rest[rest.length - 1]?.id ?? null;
+        }
+        return { ...state, tabs, activeByView };
       }
       const newTab: TabState = { id: action.nodeId, nodeId: action.nodeId, title: action.title, dirty: false, pinned: false, kind: action.kind, view: action.view };
       return {
@@ -183,6 +195,11 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
 
     case "ACTIVATE":
       return { ...state, activeByView: { ...state.activeByView, [action.view]: action.tabId } };
+
+    case "DEACTIVATE":
+      return state.activeByView[action.view] === null
+        ? state
+        : { ...state, activeByView: { ...state.activeByView, [action.view]: null } };
 
     case "SET_DIRTY":
       return { ...state, tabs: state.tabs.map((t) => (t.id === action.tabId ? { ...t, dirty: action.dirty } : t)) };
@@ -266,7 +283,8 @@ export function loadState(bookId: string): IdeTabsState {
       tabs.push({
         id: migratedId,
         nodeId: migrateLegacyTabId(tab.nodeId) ?? tab.nodeId,
-        title: tab.title,
+        // 旧版本把章节文件名当标签标题存了下来，读取时换成「第 N 章 标题」。
+        title: chapterTabTitle(migrateLegacyTabId(tab.nodeId) ?? tab.nodeId, tab.title),
         dirty: false,
         pinned: tab.pinned === true,
         kind: tab.kind ?? "other",
@@ -340,6 +358,7 @@ export function useIdeTabs(bookId: string | undefined, activeView: TabView): Use
   const closeSaved = useCallback(() => dispatch({ type: "CLOSE_SAVED", view: activeView }), [activeView]);
   const closeRight = useCallback((tabId: string) => dispatch({ type: "CLOSE_RIGHT", tabId, view: activeView }), [activeView]);
   const activateTab = useCallback((tabId: string) => dispatch({ type: "ACTIVATE", tabId, view: activeView }), [activeView]);
+  const deactivateView = useCallback((view: TabView) => dispatch({ type: "DEACTIVATE", view }), []);
   const setDirty = useCallback((tabId: string, dirty: boolean) => dispatch({ type: "SET_DIRTY", tabId, dirty }), []);
   const togglePin = useCallback((tabId: string) => dispatch({ type: "TOGGLE_PIN", tabId }), []);
   const reorderTabs = useCallback((fromIndex: number, toIndex: number) => dispatch({ type: "REORDER", fromIndex, toIndex, view: activeView }), [activeView]);
@@ -358,6 +377,7 @@ export function useIdeTabs(bookId: string | undefined, activeView: TabView): Use
     closeSaved,
     closeRight,
     activateTab,
+    deactivateView,
     setDirty,
     togglePin,
     reorderTabs,

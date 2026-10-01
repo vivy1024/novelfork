@@ -1026,7 +1026,7 @@ function SkillsSection({
 				<AlertDescription>
 					{scope === "global"
 						? "列表来自 Runtime 扫描 NovelFork 数据目录（NOVELFORK_HOME，默认 ~/.novelfork）下的 skills，以及 ~/.claude、~/.agents 等技能目录；「重新扫描」会重新发现磁盘上的 SKILL.md。「创建」写入 Runtime 全局技能目录。"
-						: "列表来自 Runtime 自动扫描当前作品绑定目录下的 `.novelfork/skills`；Studio 只传 bookId，不传项目路径。作品级 Writing Skills 由 Novel Plugin 面板管理文件。"}
+						: "列表来自当前作品目录下的 `.novelfork/skills`，由系统自动扫描。作品级写作技能在工作台「写作设置 → 写作技能」里管理。"}
 				</AlertDescription>
 			</Alert>
 			{error && <ErrorAlert message={error} />}

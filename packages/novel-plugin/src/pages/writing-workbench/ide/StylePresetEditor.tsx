@@ -221,7 +221,7 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
         </fieldset>
         {state.draft.sources.length > 0 && <div className="space-y-2">
           <p className="font-medium">来源包</p>
-          <p className="text-2xs text-muted-foreground">仅已确认且可迁移的规则进入指南；作品专属内容即使确认也不会进入。样文目前仅供审阅，按场景使用尚未接入。</p>
+          <p className="text-2xs text-muted-foreground">仅已确认且可迁移的规则进入指南；作品专属内容即使确认也不会进入。已确认的样文会按本章场景类型挑选 2–4 段，写章时作为示例。</p>
           {state.draft.sources.map((source, sourceIndex) => <details key={source.id} open className="space-y-2 rounded border border-border p-2">
             <summary className="cursor-pointer font-medium">{source.title}</summary>
             {source.rules.map((entry, index) => sourceEntry(entry, sourceIndex, "rules", index))}

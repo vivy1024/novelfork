@@ -20,6 +20,7 @@ import { createLoreTreesNode, createMemoryCenterNode, createStoryProgressionNode
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
 import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
+import type { SelectionCandidate } from "../resource-viewers/ChapterEditor";
 import type { JingweiEntrySavePayload } from "../JingweiEntryEditor";
 import { EditorTabs } from "./EditorTabs";
 import { useIdeTabs, type TabKind, type TabView } from "./use-ide-tabs";
@@ -38,6 +39,8 @@ import { dispatchWritingProgress } from "../writing-progress-event";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { useChapterReconcile } from "../use-chapter-reconcile";
 import type { GuidedSetupOutcome } from "../NewBookGuide";
+import { containsChapterNode } from "../new-book-guide-state";
+import { fileBreadcrumbParts, resourceDisplayTitle } from "../chapter-display-title";
 import { buildWriteRequestMessage } from "../write-request";
 import type { BeatBudgetItem } from "../../../handlers/beat-budget";
 import { buildOnboardingRequestMessage } from "../onboarding-request";
@@ -96,6 +99,9 @@ export function buildTargetChapterFields(
 /** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区；导出仅供测试核对映射表） */
 export function toTabView(node: WorkbenchResourceNode): TabView {
   if (node.kind === "tool" || node.kind === "tool-group") return "tools";
+  // 设定图谱是作品基础的中央视图（从作品基础侧栏打开），不能落到资源管理器：
+  // 否则打开时活动栏会跳到资源管理器，作者找不回作品基础。
+  if (node.metadata?.isLoreTrees) return "characters-lore";
   // 故事推进大屏画布与叙事记忆条目归入故事推进工作区。
   if (node.metadata?.isNarrativeMemoryEntry) return "storyline";
   if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "storyline";
@@ -183,6 +189,9 @@ export interface IdeWorkbenchProps {
   runtimeProductMode?: boolean;
   /** Authenticated product fetch for book-scoped auxiliary panels. */
   runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
+  /** 叙述者结果卡送回的选区改写候选；经 Canvas 传给候选章打开的编辑器。 */
+  selectionCandidate?: SelectionCandidate | null;
+  onDismissSelectionCandidate?: () => void;
 }
 
 // ── ViewContainer 定义（VS Code 风格：每个 Sidebar 视图的元数据） ──
@@ -299,6 +308,8 @@ export function IdeWorkbench({
   onIssueClick,
   runtimeProductMode = false,
   runtimeFetch,
+  selectionCandidate,
+  onDismissSelectionCandidate,
 }: IdeWorkbenchProps) {
   // --- Layout state ---
   const [layoutMode, setLayoutMode] = useState<IdeLayoutMode>(() => initialIdeLayoutMode());
@@ -791,7 +802,8 @@ export function IdeWorkbench({
     // 否则跨视图点击（写作页/搜索/故事推进里点角色卡、章节、伏笔等）tab 隐身，
     // 主区看起来"没有反应"。
     const revealTab = (kind: TabKind, view: TabView) => {
-      ideTabsRef.current.openTab(node.id, node.title, kind, view);
+      // 标签标题用作者语言：章节显示「第 N 章 标题」，资源管理器里仍是真实文件名。
+      ideTabsRef.current.openTab(node.id, resourceDisplayTitle(node), kind, view);
       if (view !== activeViewRef.current) showPanel(view);
       if (idePanesUseOverlay(layoutModeRef.current)) {
         setSidebarVisible(false);
@@ -1160,6 +1172,28 @@ export function IdeWorkbench({
     }
   }, [showPanel, jingweiSections, onOpen, setShowSettings]);
 
+  /**
+   * 写作视图起书引导卡 →「先回答建书十一问」。
+   *
+   * 十一问长在作品总览画布上：资源管理器视图、且没有激活标签时才显示。这里切到
+   * 资源管理器并让它的标签暂时不激活（标签保留，作者的未保存内容不受影响）。
+   * 窄屏下侧栏是浮层，会盖住画布，所以顺手收起。
+   */
+  const handleOpenNewBookGuide = useCallback(() => {
+    setShowSettings(false);
+    ideTabsRef.current.deactivateView?.("explorer");
+    showPanel("explorer");
+    if (idePanesUseOverlay(layoutModeRef.current)) {
+      setSidebarVisible(false);
+      setChatVisible(false);
+    } else {
+      setSidebarVisible(true);
+    }
+  }, [showPanel, setShowSettings]);
+
+  // 与作品总览同一判据：资源树里已有章节的书不再显示十一问。
+  const bookHasChapters = useMemo(() => containsChapterNode(nodes), [nodes]);
+
   // ── 快捷键系统 ──
   const keybindingActions = useMemo(() => ({
     save: () => {
@@ -1494,6 +1528,34 @@ export function IdeWorkbench({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeNode, handleResourceAction]);
 
+  // 作品总览（新书时是建书十一问）：资源管理器视图没有激活标签时显示。
+  const bookOverviewCanvas = (
+    <WorkbenchCanvas
+      node={null}
+      nodes={nodes}
+      bookId={bookId}
+      repositoryPath={repositoryPath}
+      runtimeFetch={runtimeFetch}
+      onSave={handleSaveWithProgress}
+      onCanvasContextChange={handleCanvasContextChange}
+      onGuideComplete={handleGuideCompleteWithOnboarding}
+      chapterActions={chapterActions}
+      jingweiActions={jingweiActions}
+      toolbarSlotRef={toolbarSlotRef}
+      onJumpToChapter={handleJumpToChapter}
+      onOpenJingweiEntry={handleOpenJingweiEntry}
+      onOpenEntityDetail={handleOpenEntityFromGraph}
+      onOpenEntityDrawer={handleOpenEntityDrawer}
+      onSendToNarrator={onSendToNarrator}
+      {...(activeSessionId ? { narratorId: activeSessionId } : {})}
+      selectionCandidate={selectionCandidate}
+      onDismissSelectionCandidate={onDismissSelectionCandidate}
+      onPromoteOutline={(outlineNode) => {
+        void handleResourceAction({ type: "promote-outline", node: outlineNode });
+      }}
+    />
+  );
+
   return (
     <>
       <div
@@ -1566,6 +1628,8 @@ export function IdeWorkbench({
                   chapterWordTarget={bookChapterWordTarget}
                   onJumpToChapter={handleJumpToChapter}
                   visible={activeView === "write" && sidebarVisible && !showSettings}
+                  hasChapters={bookHasChapters}
+                  onOpenNewBookGuide={handleOpenNewBookGuide}
                 />,
                 getContainer("write")!
               )}
@@ -1619,7 +1683,12 @@ export function IdeWorkbench({
               )}
               {panelsReady && getContainer("skills-style") && createPortal(
                 bookId
-                  ? <SkillsAndStyleSidebarPanel bookId={bookId} />
+                  ? <SkillsAndStyleSidebarPanel
+                      bookId={bookId}
+                      onOpenJingweiEntry={(entryId) => handleOpenJingweiEntry(entryId)}
+                      onOpenChapter={handleJumpToChapter}
+                      onOpenEvents={() => keybindingActions.switchView("storyline")}
+                    />
                   : <div className="flex h-full items-center justify-center p-4 text-center">
                       <span className="text-xs text-muted-foreground">先打开一本书，再查看技能与文风。</span>
                     </div>,
@@ -1710,6 +1779,8 @@ export function IdeWorkbench({
                               onOpenEntityDrawer={handleOpenEntityDrawer}
                               onSendToNarrator={onSendToNarrator}
                               {...(activeSessionId ? { narratorId: activeSessionId } : {})}
+                              selectionCandidate={selectionCandidate}
+                              onDismissSelectionCandidate={onDismissSelectionCandidate}
                               onOpenResourceNode={handleOpen}
                               onPromoteOutline={(outlineNode) => {
                                 void handleResourceAction({ type: "promote-outline", node: outlineNode });
@@ -1717,30 +1788,11 @@ export function IdeWorkbench({
                             />
                           </div>
                         ))}
+                        {/* 资源管理器里有标签但都没激活（起书引导卡要看十一问）：标签保持挂载，前面显示作品总览。 */}
+                        {!ideTabs.activeTabId && activeView === "explorer" ? bookOverviewCanvas : null}
                       </>
                     ) : activeView === "explorer" ? (
-                      <WorkbenchCanvas
-                        node={null}
-                        nodes={nodes}
-                        bookId={bookId}
-                        repositoryPath={repositoryPath}
-                        runtimeFetch={runtimeFetch}
-                        onSave={handleSaveWithProgress}
-                        onCanvasContextChange={handleCanvasContextChange}
-                        onGuideComplete={handleGuideCompleteWithOnboarding}
-                        chapterActions={chapterActions}
-                        jingweiActions={jingweiActions}
-                        toolbarSlotRef={toolbarSlotRef}
-                        onJumpToChapter={handleJumpToChapter}
-                        onOpenJingweiEntry={handleOpenJingweiEntry}
-                        onOpenEntityDetail={handleOpenEntityFromGraph}
-                        onOpenEntityDrawer={handleOpenEntityDrawer}
-                        onSendToNarrator={onSendToNarrator}
-                        {...(activeSessionId ? { narratorId: activeSessionId } : {})}
-                        onPromoteOutline={(outlineNode) => {
-                          void handleResourceAction({ type: "promote-outline", node: outlineNode });
-                        }}
-                      />
+                      bookOverviewCanvas
                     ) : (
                       <ViewEmptyState view={activeView} />
                     )}
@@ -1785,6 +1837,8 @@ export function IdeWorkbench({
                         onOpenEntityDrawer={handleOpenEntityDrawer}
                         onSendToNarrator={onSendToNarrator}
                         {...(activeSessionId ? { narratorId: activeSessionId } : {})}
+                        selectionCandidate={selectionCandidate}
+                        onDismissSelectionCandidate={onDismissSelectionCandidate}
                         onOpenResourceNode={handleOpen}
                         onPromoteOutline={(outlineNode) => {
                           void handleResourceAction({ type: "promote-outline", node: outlineNode });
@@ -2086,11 +2140,11 @@ const KIND_LABEL: Record<string, string> = {
 function breadcrumbSegments(bookTitle: string | undefined, node: WorkbenchResourceNode): string[] {
   const segments: string[] = [bookTitle || "NovelFork"];
 
-  // 文件树节点：用真实文件路径分段
+  // 文件树节点：按真实文件路径分段；章节显示为「正文 › 卷01 › 第 1 章 标题」，段数不变，
+  // 点击某段仍按路径前缀定位（见 handleBreadcrumbNavigate）。
   const filePath = node.metadata?.filePath;
   if (node.metadata?.isFile && typeof filePath === "string") {
-    const parts = filePath.split(/[\\/]/).filter(Boolean);
-    return [bookTitle || "NovelFork", ...parts];
+    return [bookTitle || "NovelFork", ...fileBreadcrumbParts(node)];
   }
 
   // 作品设定条目：书 › 作品基础 › 分类 › 条目

@@ -49,6 +49,19 @@ describe("normalizePersistedTabView", () => {
 });
 
 describe("loadState 迁移", () => {
+  it("旧版本存下的章节文件名标签标题换成「第 N 章 标题」，其它标签不动", () => {
+    localStorage.setItem(KEY, JSON.stringify({
+      tabs: [
+        { id: "file:chapters/卷01/0001_雨夜.md", nodeId: "file:chapters/卷01/0001_雨夜.md", title: "0001_雨夜.md", kind: "chapter", view: "explorer" },
+        { id: "file:story/notes.md", nodeId: "file:story/notes.md", title: "notes.md", kind: "file", view: "explorer" },
+      ],
+      activeByView: { explorer: "file:chapters/卷01/0001_雨夜.md" },
+    }));
+
+    const state = loadState(BOOK);
+    expect(state.tabs.map((t) => t.title)).toEqual(["第 1 章 雨夜", "notes.md"]);
+  });
+
   it("旧视图 tab 分别迁到新工作区且仍可激活", () => {
     localStorage.setItem(KEY, JSON.stringify({
       tabs: [

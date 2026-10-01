@@ -89,3 +89,49 @@ describe("useIdeTabs 打开 tab", () => {
     expect(result.current.activeTabId).toBe("jingwei-entry:char-1");
   });
 });
+
+describe("useIdeTabs 视图归属修正与暂不激活", () => {
+  it("落盘的旧 tab 归属错了视图，再次打开时搬到本次的归属视图（设定图谱曾落在资源管理器）", () => {
+    store.set("nf:ide-tabs:book-move", JSON.stringify({
+      tabs: [
+        { id: "lore-trees:book-move", nodeId: "lore-trees:book-move", title: "设定图谱", kind: "other", view: "explorer" },
+        { id: "file:story/a.md", nodeId: "file:story/a.md", title: "a.md", kind: "file", view: "explorer" },
+      ],
+      activeByView: { explorer: "lore-trees:book-move" },
+    }));
+    let view: "explorer" | "characters-lore" = "characters-lore";
+    const { result, rerender } = renderHook(() => useIdeTabs("book-move", view));
+
+    act(() => {
+      result.current.openTab("lore-trees:book-move", "设定图谱", "other", "characters-lore");
+    });
+
+    expect(result.current.tabs.map((t) => t.id)).toEqual(["lore-trees:book-move"]);
+    expect(result.current.activeTabId).toBe("lore-trees:book-move");
+    // 原视图不再指向搬走的 tab
+    view = "explorer";
+    rerender();
+    expect(result.current.tabs.map((t) => t.id)).toEqual(["file:story/a.md"]);
+    expect(result.current.activeTabId).toBe("file:story/a.md");
+  });
+
+  it("deactivateView 让视图暂时没有激活 tab，标签本身保留", () => {
+    const { result } = renderHook(() => useIdeTabs("book-deactivate", "explorer"));
+
+    act(() => {
+      result.current.openTab("file:story/a.md", "a.md", "file", "explorer");
+    });
+    expect(result.current.activeTabId).toBe("file:story/a.md");
+
+    act(() => {
+      result.current.deactivateView("explorer");
+    });
+    expect(result.current.activeTabId).toBeNull();
+    expect(result.current.tabs.map((t) => t.id)).toEqual(["file:story/a.md"]);
+
+    act(() => {
+      result.current.activateTab("file:story/a.md");
+    });
+    expect(result.current.activeTabId).toBe("file:story/a.md");
+  });
+});

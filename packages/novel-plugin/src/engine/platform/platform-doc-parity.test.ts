@@ -10,7 +10,7 @@ import {
   resolvePublishPlatform,
 } from "./platform-profile.js";
 
-const DOC_PATH = resolve(__dirname, "../../../../../docs/learning/26-platform-writing-cards.md");
+const DOC_PATH = resolve(__dirname, "../../../../../docs/learning/book/14-platforms.md");
 
 function doc(): string {
   return readFileSync(DOC_PATH, "utf8");

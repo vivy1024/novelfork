@@ -444,7 +444,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     setProjectSlugs(nextSlugs);
     setNotice(null);
     try {
-      if (!skill) throw new Error("找不到要操作的 Writing Skill。");
+      if (!skill) throw new Error("找不到要操作的写作技能。");
       if (skill.source === "project") {
         if (enabled) throw new Error("项目独有技能只能由当前作品目录提供。");
         await fetchJson(`/books/${bookId}/writing-skills/${encodeURIComponent(skill.slug)}`, {

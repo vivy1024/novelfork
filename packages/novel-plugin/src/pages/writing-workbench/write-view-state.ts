@@ -53,7 +53,47 @@ export interface WriteViewModel {
   readonly wordTarget: number;
   /** 推荐章号对应的正文是否已经落稿。 */
   readonly alreadyWritten: boolean;
+  /**
+   * 起书引导：新书既没有本章焦点也没有大纲时，就绪条换成引导卡而不是红色报错。
+   * 只在「缺本章方向」是唯一阻断项时出现；有其它阻断（书籍读不到、记忆为空等）照常报错。
+   */
+  readonly onboarding: WriteOnboarding | null;
 }
+
+/**
+ * 起书引导卡。
+ * - answer-guide：还没答建书十一问 → 去作品总览回答十一问；
+ * - fill-focus：答过十一问（或书里已有章节）但本章焦点仍空 → 定位到创作罗盘。
+ */
+export interface WriteOnboarding {
+  readonly kind: "answer-guide" | "fill-focus";
+  readonly title: string;
+  readonly description: string;
+  readonly actionLabel: string;
+}
+
+export interface BuildWriteViewModelOptions {
+  /**
+   * 作品总览此刻是否仍会显示建书十一问（书里没有章节且本机没记过完成）。
+   * 与画布共用 new-book-guide-state 的判据。
+   */
+  readonly newBookGuidePending?: boolean;
+}
+
+const ONBOARDING_CARDS: Record<WriteOnboarding["kind"], WriteOnboarding> = {
+  "answer-guide": {
+    kind: "answer-guide",
+    title: "先回答建书十一问",
+    description: "新书还没有本章焦点和大纲，写章不知道往哪写。先回答十一问（每题都能跳过），会按你的回答搭好主角、世界观等作品基础；也可以直接在下方写一句本章要发生什么。",
+    actionLabel: "打开建书十一问",
+  },
+  "fill-focus": {
+    kind: "fill-focus",
+    title: "补全本章焦点",
+    description: "还没有本章焦点。在创作罗盘写下本章目标，保存后写章会按它推进；也可以直接在下方写一句本章要发生什么。",
+    actionLabel: "去填创作罗盘",
+  },
+};
 
 interface RawExplanation {
   whatHappened?: unknown;
@@ -84,11 +124,17 @@ const CHECK_META: Record<string, { label: string; fixAction?: WriteFixActionId }
   "empty-chapter-summary": { label: "章摘要", fixAction: "settle-range" },
   "high-risk-pending": { label: "待确认事件", fixAction: "review-pending" },
   "hooks-overdue": { label: "伏笔到期", fixAction: "review-hooks" },
-  "style-disabled": { label: "Writing Skills", fixAction: "enable-style" },
+  "style-disabled": { label: "写作技能", fixAction: "enable-style" },
+  "skills-not-acknowledged": { label: "相关写作技能未读" },
   "volume-focus-missing": { label: "卷纲", fixAction: "set-volume" },
+  "volume-range-drift": { label: "章号不在本卷" },
   "platform-target-mismatch": { label: "平台字数", fixAction: "adjust-word-target" },
+  "audit-stale": { label: "审计已过期" },
   "book-not-found": { label: "书籍绑定" },
 };
+
+/** 未登记的 code 不把英文代号露给作者；详情仍来自 preflight 的 message / explanation。 */
+const FALLBACK_CHECK_LABEL = "其他提醒";
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -108,7 +154,7 @@ function toCheck(raw: RawDiagnostic, state: "warn" | "block"): ReadyCheckItem {
   const meta = CHECK_META[code];
   return {
     code,
-    label: meta?.label ?? code,
+    label: meta?.label ?? FALLBACK_CHECK_LABEL,
     state,
     message: text(raw.message) || undefined,
     explanation: readExplanation(raw.explanation),
@@ -144,7 +190,7 @@ function passedChecks(input: {
  * 把 write.preflight 返回体转成写作视图模型。
  * 输入是宽松的 unknown，以容忍 Runtime 返回体演进。
  */
-export function buildWriteViewModel(preflight: unknown): WriteViewModel {
+export function buildWriteViewModel(preflight: unknown, options: BuildWriteViewModelOptions = {}): WriteViewModel {
   const record = preflight && typeof preflight === "object"
     ? preflight as Record<string, unknown>
     : null;
@@ -164,6 +210,7 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
       formalChapterCount: 0,
       wordTarget: 0,
       alreadyWritten: false,
+      onboarding: null,
     };
   }
 
@@ -185,13 +232,15 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
     : [];
 
   const ok = record.ok === true;
+  const onboarding = resolveOnboarding(record, blockers, options);
   const checks = [
     ...passedChecks({
       hasDirective: Boolean(resolvedDirective),
       hasRecentMemory: recentChapters.length > 0,
       codes,
     }),
-    ...blockers,
+    // 引导卡已经说明缺本章方向，不再在清单里重复一条红色 ×。
+    ...(onboarding ? blockers.filter((item) => item.code !== "missing-directive") : blockers),
     ...warnings,
   ];
 
@@ -214,10 +263,12 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
     formalChapterCount >= resolvedChapter
     || recentChapters.some((item) => item.number === resolvedChapter)
   );
-  const light: ReadyLight = ok ? (warnings.length > 0 ? "yellow" : "green") : "red";
+  const light: ReadyLight = onboarding ? "unknown" : ok ? (warnings.length > 0 ? "yellow" : "green") : "red";
   const headline = alreadyWritten
     ? `第 ${resolvedChapter} 章已有正文，可直接打开继续改。`
-    : ok
+    : onboarding
+      ? onboarding.title
+      : ok
       ? warnings.length > 0
         ? `可以开写第 ${resolvedChapter} 章，有 ${warnings.length} 条提醒。`
         : `可以开写第 ${resolvedChapter} 章。`
@@ -238,7 +289,26 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
     formalChapterCount,
     wordTarget,
     alreadyWritten,
+    onboarding,
   };
+}
+
+/**
+ * 新书缺本章方向时给引导而不是报错。
+ *
+ * 条件：唯一的阻断项是 missing-directive，且 preflight 读到的当前焦点不可用
+ * （新书既没有焦点也没有大纲）。还有其它阻断（书籍读不到、数据损坏、近章记忆为空）
+ * 时返回 null，照常显示红色报错。
+ */
+function resolveOnboarding(
+  record: Record<string, unknown>,
+  blockers: readonly ReadyCheckItem[],
+  options: BuildWriteViewModelOptions,
+): WriteOnboarding | null {
+  if (blockers.length === 0 || blockers.some((item) => item.code !== "missing-directive")) return null;
+  const focus = record.currentFocus as { status?: unknown; content?: unknown } | null | undefined;
+  if (focus?.status === "available" && text(focus.content)) return null;
+  return ONBOARDING_CARDS[options.newBookGuidePending ? "answer-guide" : "fill-focus"];
 }
 
 /**
@@ -256,7 +326,7 @@ export interface FixActionPlan {
   /** kind=narrator 时发给叙述者的请求文本 */
   readonly message?: string;
   /** kind=view 时要切到的侧栏视图 */
-  readonly view?: Extract<ViewId, "characters-lore" | "storyline" | "tools" | "explorer">;
+  readonly view?: Extract<ViewId, "characters-lore" | "storyline" | "skills-style" | "tools" | "explorer">;
   /** kind=settings 时要定位到的写作设置分区 */
   readonly settingsSection?: SettingsSectionId;
   /** kind=lore-panel 时要在经纬面板里定位的分类 */
@@ -292,9 +362,9 @@ export function planFixAction(
     case "review-hooks":
       return { kind: "view", view: "storyline", label: "去查看伏笔账本" };
     // 判据是当前项目 `.novelfork/skills/` 的实际文件，唯一能改它的界面是
-    // 写作设置里的 Writing Skills 面板。切「工具」视图只有诊断面板，改不了这项。
+    // 「技能文风」视图里的写作技能面板（写作设置里已没有写作技能分区）。切「工具」视图只有诊断面板，改不了这项。
     case "enable-style":
-      return { kind: "settings", settingsSection: "writing-skills", label: "启用 Writing Skills" };
+      return { kind: "view", view: "skills-style", label: "启用写作技能" };
     case "adjust-word-target":
       return { kind: "view", view: "explorer", label: "调整章字数目标" };
     // preflight 的 currentFocus 来自 cockpit 的 readCurrentFocusFromJingwei，
@@ -315,6 +385,12 @@ export function canStartWriting(input: {
 }): { ok: true } | { ok: false; reason: string } {
   const draft = input.directiveDraft.trim();
   if (!input.model.canWrite) {
+    // 新书唯一缺的是本章方向：作者在下方写了够长的一句，就已补上这项，可以直接写。
+    // 叙述者执行写章时会带着这句指示重新做写前检查。
+    if (input.model.onboarding && draft.length >= 8) return { ok: true };
+    if (input.model.onboarding) {
+      return { ok: false, reason: draft.length > 0 ? "本章目标至少 8 字。" : "先按上面的提示补上本章方向，或在这里写一句本章要发生什么。" };
+    }
     return { ok: false, reason: input.model.headline };
   }
   if (draft.length === 0) {

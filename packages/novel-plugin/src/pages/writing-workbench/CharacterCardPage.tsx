@@ -473,7 +473,7 @@ function DevelopmentSection({
                 <div className="flex items-center gap-2">
                   <Clock3 className="size-3.5 text-emerald-600" />
                   <h3 id="character-current-state-title" className="text-xs font-semibold tracking-wide">当前状态</h3>
-                  <span className="text-2xs text-muted-foreground">来自当前 open facts</span>
+                  <span className="text-2xs text-muted-foreground">来自目前有效的状态记录</span>
                 </div>
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">

@@ -106,7 +106,7 @@ export function FirstRunDialog({
           />
           <EntryCard
             title="打开学习中心"
-            description="查看教程、了解叙述者分工、经纬系统和预设节拍的用法。"
+            description="「用 NovelFork 写书」讲每一步在哪里点，「网文写作课」讲写作本身。"
             onClick={onOpenLearnCenter}
           />
         </div>

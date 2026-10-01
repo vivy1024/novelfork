@@ -26,6 +26,7 @@ import { LedgerProgressTable } from "../LedgerProgressTable";
 import { createMemoryCenterNode, createStoryProgressionNode } from "../useWorkbenchResources";
 import type { ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
+import { resourceDisplayTitle } from "../chapter-display-title";
 
 export interface StorylineAndPlanningSidebarPanelProps {
   bookId: string;
@@ -103,7 +104,8 @@ function StorylineResourceTree({
           >
             {hasChildren ? (isExpanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />) : <span className="w-3 shrink-0" />}
             {node.kind === "chapter" ? <FileText className="size-3 shrink-0 text-blue-500" /> : <ListTree className="size-3 shrink-0 text-sky-500" />}
-            <span className="min-w-0 flex-1 truncate">{node.title}</span>
+            {/* 章节树用作者语言：「正文 › 卷01 › 第 1 章 雨夜」；资源管理器里才显示真实文件名。 */}
+            <span className="min-w-0 flex-1 truncate">{resourceDisplayTitle(node)}</span>
             {stateBadge}
           </button>
 

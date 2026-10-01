@@ -47,7 +47,13 @@ interface VoiceResponse {
   version: number;
   voice: StoredVoicePayload;
   summary: { confirmed: number; needsReview: number; missing: number };
-  draft?: { appliedKeys: CharacterVoiceFieldKey[]; keptConfirmedKeys: CharacterVoiceFieldKey[]; sampleCount: number; modelUsed: boolean };
+  draft?: {
+    appliedKeys: CharacterVoiceFieldKey[];
+    keptConfirmedKeys: CharacterVoiceFieldKey[];
+    sampleCount: number;
+    modelUsed: boolean;
+    modelStatus?: "not-requested" | "unavailable" | "failed" | "applied";
+  };
   warnings?: VoiceWarning[];
 }
 
@@ -198,9 +204,10 @@ export function CharacterVoiceSection({ bookId, entryId, entryVersion, onVoiceSa
       setWarnings(response.warnings ?? []);
       const applied = response.draft?.appliedKeys.length ?? 0;
       const kept = response.draft?.keptConfirmedKeys.length ?? 0;
+      const modelFailed = response.draft?.modelStatus === "failed";
       setDraftNote(applied > 0
-        ? `已写入 ${applied} 项待审草稿（共用到 ${response.draft?.sampleCount ?? 0} 句对白）${kept > 0 ? `，${kept} 项已确认的保持不变` : ""}。`
-        : "没有找到新的依据，声线未改动。");
+        ? `已写入 ${applied} 项待审草稿（共用到 ${response.draft?.sampleCount ?? 0} 句对白）${kept > 0 ? `，${kept} 项已确认的保持不变` : ""}。${modelFailed ? "这次模型增补失败，写入的只是规则初稿。" : ""}`
+        : modelFailed ? "模型增补失败，规则初稿也没有新内容，声线未改动。" : "没有找到新的依据，声线未改动。");
       onVoiceSaved?.(response.voice);
     } catch (cause) {
       setActionError({ message: errorMessage(cause, "生成草稿失败"), conflict: isConflict(cause) });
@@ -315,6 +322,9 @@ export function CharacterVoiceSection({ bookId, entryId, entryVersion, onVoiceSa
                     <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
                       <AlertTriangle className="size-3.5 shrink-0" />{warning.message}
                     </p>
+                    {warning.explanation?.whatHappened && warning.explanation.whatHappened !== warning.message ? (
+                      <p className="mt-0.5 text-2xs text-muted-foreground">{warning.explanation.whatHappened}</p>
+                    ) : null}
                     {warning.explanation?.whyItMatters ? <p className="mt-0.5 text-2xs text-muted-foreground">{warning.explanation.whyItMatters}</p> : null}
                     {warning.explanation?.suggestedAction ? <p className="mt-0.5 text-2xs text-muted-foreground">建议：{warning.explanation.suggestedAction}</p> : null}
                   </li>

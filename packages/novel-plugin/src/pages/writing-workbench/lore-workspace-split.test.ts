@@ -2,9 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { CATEGORY_META } from "../../engine/jingwei/unified-categories";
 import {
+  LOW_CONFIDENCE_THRESHOLD,
+  MEMORY_FACT_CATEGORY_OPTIONS,
   categoriesForWorkspace,
+  factCategoryLabel,
+  factSourceLabel,
   groupEntriesByCategory,
+  isLowConfidence,
   isSettingsCategory,
+  jingweiCategoryLabel,
+  jingweiLayerLabel,
   memoryFactLabel,
   workspaceForCategory,
   workspaceForEntry,
@@ -110,5 +117,48 @@ describe("memoryFactLabel", () => {
 
   it("未知通道原样返回而不是报错", () => {
     expect(memoryFactLabel("brand_new_channel")).toBe("brand_new_channel");
+  });
+});
+
+describe("资料卡的作者说法", () => {
+  it("经纬分类显示 CATEGORY_META 中文名，旧分类名也认得", () => {
+    expect(jingweiCategoryLabel("characters")).toBe("角色");
+    expect(jingweiCategoryLabel("character")).toBe("角色");
+    expect(jingweiCategoryLabel("world-model")).toBe("世界模型");
+    expect(jingweiCategoryLabel("unclassified")).toBe("未分类");
+    // 认不出的不硬归「未分类」，原样显示（多半是作者自己写的中文）
+    expect(jingweiCategoryLabel("门派秘闻")).toBe("门派秘闻");
+  });
+
+  it("层级按 CATEGORY_META 的含义说人话", () => {
+    expect(jingweiLayerLabel("canon")).toBe("固定设定");
+    expect(jingweiLayerLabel("dynamic")).toBe("随剧情变化");
+    expect(jingweiLayerLabel("reference")).toBe("按需查阅");
+  });
+
+  it("记忆事实分类：记忆通道名与经纬分类名都翻成中文", () => {
+    expect(factCategoryLabel("state")).toBe("状态");
+    expect(factCategoryLabel("character_state")).toBe("角色状态");
+    expect(factCategoryLabel("inventory")).toBe("持有物品");
+    expect(factCategoryLabel("characters")).toBe("角色");
+    expect(factCategoryLabel("自定义")).toBe("自定义");
+    expect(MEMORY_FACT_CATEGORY_OPTIONS.every((option) => !/^[a-z_]+$/u.test(option.label))).toBe(true);
+  });
+
+  it("来源说成作者手填 / 章后结算 / 导入，未知来源不露代号", () => {
+    expect(factSourceLabel("manual")).toBe("作者手填");
+    expect(factSourceLabel("event")).toBe("章后结算");
+    expect(factSourceLabel("import")).toBe("导入");
+    expect(factSourceLabel("jingwei")).toBe("作品设定");
+    expect(factSourceLabel("runtime-state")).toBe("章节状态推算");
+    expect(factSourceLabel("weird")).toBe("其他来源");
+  });
+
+  it("只有低于阈值的置信度才算「不太确定」", () => {
+    expect(LOW_CONFIDENCE_THRESHOLD).toBe(0.6);
+    expect(isLowConfidence(0.59)).toBe(true);
+    expect(isLowConfidence(0.6)).toBe(false);
+    expect(isLowConfidence(1)).toBe(false);
+    expect(isLowConfidence(undefined)).toBe(false);
   });
 });

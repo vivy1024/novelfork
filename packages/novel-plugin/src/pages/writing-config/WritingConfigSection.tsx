@@ -279,7 +279,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
       </div>
 
       <div className="space-y-2">
-        <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">角色内核（Character Kernel）</p>
+        <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">角色内核</p>
         <NarrativeMemoryToggle
           label="启用角色内核"
           description="章节结算时由 LLM 为出场角色重算动机、心境等长期状态；下一章写作前注入对应卡片。默认关闭，不影响既有书籍。"
@@ -313,7 +313,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
         <NarrativeMemoryToggle label="时间线通道" description="召回近期章节和前章衔接信息。" checked={config.retrieval.channels.timeline} onCheckedChange={(checked) => updateChannel("timeline", checked)} />
         <NarrativeMemoryToggle label="伏笔通道" description="召回已埋设、待推进的伏笔和对应提醒。" checked={config.retrieval.channels.hooks} onCheckedChange={(checked) => updateChannel("hooks", checked)} />
         <NarrativeMemoryToggle label="结构化事实通道" description="按场景实体召回当前账本事实及一跳关联。" checked={config.retrieval.channels.facts} onCheckedChange={(checked) => updateChannel("facts", checked)} />
-        <NarrativeMemoryToggle label="风格通道" description="召回文风和已启用 Writing Skills 的提示。" checked={config.retrieval.channels.style} onCheckedChange={(checked) => updateChannel("style", checked)} />
+        <NarrativeMemoryToggle label="风格通道" description="召回文风和已启用写作技能的提示。" checked={config.retrieval.channels.style} onCheckedChange={(checked) => updateChannel("style", checked)} />
         <NarrativeMemoryToggle label="语义召回" description="使用向量/语义候选；需要书籍可用的语义索引或提供方。" checked={config.retrieval.semanticEnabled && config.retrieval.channels.semantic} onCheckedChange={(checked) => updateRetrieval({ semanticEnabled: checked, channels: { ...config.retrieval.channels, semantic: checked } })} />
         <NarrativeMemoryToggle label="Wave 重排" description="对已召回上下文进行关联扩展和能量重排，默认关闭以保证稳定预算。" checked={config.retrieval.waveEnabled} onCheckedChange={(checked) => updateRetrieval({ waveEnabled: checked })} />
         <div className="rounded-md border border-border p-3" data-testid="write-profile-caps">
@@ -393,7 +393,7 @@ function ToolsTab({ sessionId }: { sessionId?: string }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-2xs text-muted-foreground">勾选 Agent 写作时可主动调用的辅助工具。未勾选的工具将被禁用。</p>
+      <p className="text-2xs text-muted-foreground">勾选叙述者写作时可主动调用的辅助工具。未勾选的工具将被禁用。</p>
       <div className="space-y-1.5">
         {OPTIONAL_TOOLS.map((tool) => {
           const checked = enabledTools.has(tool.id);
@@ -413,7 +413,7 @@ function ToolsTab({ sessionId }: { sessionId?: string }) {
 }
 
 const TABS: ReadonlyArray<{ id: ConfigTab; label: string; icon: typeof Sparkles }> = [
-  { id: "skills", label: "Writing Skills", icon: Sparkles },
+  { id: "skills", label: "写作技能", icon: Sparkles },
   { id: "memory", label: "叙事记忆", icon: BrainCircuit },
   { id: "tools", label: "辅助工具", icon: Wrench },
 ];

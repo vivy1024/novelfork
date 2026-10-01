@@ -78,6 +78,30 @@ describe("CharacterVoiceSection", () => {
     expect(onVoiceSaved).toHaveBeenLastCalledWith(expect.objectContaining({ fields: expect.objectContaining({ catchphrases: expect.objectContaining({ status: "confirmed" }) }) }));
   });
 
+  it("模型增补失败时显示发生了什么，草稿说明不写成「没有找到依据」", async () => {
+    fetchJsonMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === PATH && !init) return voiceResponse(1, {});
+      if (url === `${PATH}/draft`) {
+        return {
+          ...voiceResponse(1, {}),
+          draft: { appliedKeys: [], keptConfirmedKeys: [], sampleCount: 0, modelUsed: false, modelStatus: "failed" },
+          warnings: [{
+            code: "MODEL_OUTPUT_TRUNCATED",
+            message: "模型输出被截断，这次增补没有写入，已保留规则初稿。",
+            explanation: { whatHappened: "模型输出被截断：JSON 没有闭合，可能达到了输出长度上限。", whyItMatters: "截断的输出缺后半部分字段。", suggestedAction: "重试一次。" },
+          }],
+        };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    render(<CharacterVoiceSection bookId="book-1" entryId="char-1" />);
+    await waitFor(() => expect(screen.getByTestId("voice-field-positioning")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /生成草稿/ }));
+    await waitFor(() => expect(screen.getByTestId("character-voice-warnings").textContent).toContain("JSON 没有闭合"));
+    expect(screen.getByTestId("character-voice-draft-note").textContent).toContain("模型增补失败");
+    expect(screen.getByTestId("character-voice-draft-note").textContent).not.toContain("没有找到新的依据");
+  });
+
   it("版本冲突时提示并可重新载入", async () => {
     let loads = 0;
     fetchJsonMock.mockImplementation(async (url: string, init?: RequestInit) => {

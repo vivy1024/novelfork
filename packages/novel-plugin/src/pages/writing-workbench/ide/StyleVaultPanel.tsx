@@ -21,7 +21,7 @@ interface AuthorShare {
   readonly authorRatio: number;
 }
 
-interface VaultChapter {
+export interface VaultChapter {
   readonly chapterNumber: number;
   readonly title: string;
   readonly hasAiDraft: boolean;
@@ -29,7 +29,7 @@ interface VaultChapter {
   readonly error?: string;
 }
 
-interface VaultSummary {
+export interface VaultSummary {
   readonly chapters?: readonly VaultChapter[];
   readonly overallAuthorRatio?: number | null;
 }
@@ -61,7 +61,8 @@ export function vaultPath(bookId: string): string {
   return `/api/books/${encodeURIComponent(bookId)}/style/vault`;
 }
 
-function ChapterRevisions({ bookId, chapterNumber, onAdopted }: { readonly bookId: string; readonly chapterNumber: number; readonly onAdopted?: () => void }) {
+/** 某章的改稿段：勾选后采纳为范文。文风金库面板与写作视图「收尾」一步共用。 */
+export function ChapterRevisions({ bookId, chapterNumber, onAdopted }: { readonly bookId: string; readonly chapterNumber: number; readonly onAdopted?: () => void }) {
   const { data, loading, error } = useApi<VaultDetail>(`${vaultPath(bookId)}/chapters/${chapterNumber}`);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [sceneTypes, setSceneTypes] = useState<Record<number, string>>({});
@@ -181,7 +182,7 @@ export function StyleVaultPanel({ bookId }: { readonly bookId: string }) {
       <CardContent className="space-y-1">
         {loading ? <p className="text-xs text-muted-foreground">读取中…</p> : null}
         {!loading && drafted.length === 0 ? (
-          <p className="text-xs text-muted-foreground">还没有 AI 写的章节。叙述者用写作管线或 chapter.write 写章后，这里会出现对照。</p>
+          <p className="text-xs text-muted-foreground">还没有 AI 写的章节。叙述者写完一章后，这里会出现 AI 原稿与你改后的对照。</p>
         ) : null}
         {drafted.map((chapter) => {
           const open = openChapter === chapter.chapterNumber;

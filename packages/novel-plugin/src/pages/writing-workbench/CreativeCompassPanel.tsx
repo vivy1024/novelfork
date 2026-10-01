@@ -201,7 +201,7 @@ export function CreativeCompassPanel({ bookId, onFillDirective }: CreativeCompas
         </button>
       </div>
       <p className="mt-0.5 text-2xs text-muted-foreground">
-        近 1–3 章焦点。会写入经纬 current-focus，并注入写章上下文。
+        近 1–3 章的焦点。保存在作品基础里，写章时会按它推进。
       </p>
       {error ? <p className="mt-1 text-2xs text-destructive">加载失败：{error}</p> : null}
       <div className="mt-1.5 flex flex-col gap-1.5">

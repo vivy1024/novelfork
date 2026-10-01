@@ -42,7 +42,7 @@ export function buildOnboardingRequestMessage(payload: OnboardingRequestPayload 
   if (recommended.length > 0) {
     lines.push(
       "",
-      "建书流程已按我的回答预选了这些 Writing Skills：",
+      "建书流程已按我的回答预选了这些写作技能：",
       ...recommended.map((skill) => `- ${skill.name}：${skill.reason}`),
     );
   }

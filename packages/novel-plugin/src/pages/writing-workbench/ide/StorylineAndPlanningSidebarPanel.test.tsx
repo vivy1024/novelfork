@@ -138,6 +138,43 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(onOpen).toHaveBeenCalledWith(outline);
   });
 
+  it("章节树显示「正文 › 卷01 › 第 1 章 雨夜」，不露文件名；点开交出的仍是原节点", () => {
+    const onOpen = vi.fn();
+    const chapterFile: WorkbenchResourceNode = {
+      id: "file:chapters/卷01/0001_雨夜.md",
+      kind: "chapter",
+      title: "0001_雨夜.md",
+      path: "chapters/卷01/0001_雨夜.md",
+      capabilities,
+      metadata: { filePath: "chapters/卷01/0001_雨夜.md", isFile: true, isChapter: true, chapterNumber: 1 },
+    };
+    const volume: WorkbenchResourceNode = {
+      id: "file-dir:chapters/卷01",
+      kind: "group",
+      title: "卷01",
+      capabilities,
+      metadata: { filePath: "chapters/卷01", isDirectory: true },
+      children: [chapterFile],
+    };
+    render(
+      <StorylineAndPlanningSidebarPanel
+        bookId="book-1"
+        chapterTreeNodes={[{ id: "file-dir:chapters", kind: "group", title: "chapters", capabilities, metadata: { filePath: "chapters", isDirectory: true }, children: [volume] }]}
+        outlineTreeNodes={[]}
+        selectedNodeId={null}
+        onOpen={onOpen}
+        onSwitchView={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("正文")).toBeTruthy();
+    // 卷目录默认收起，展开后才看到章节
+    fireEvent.click(screen.getByRole("button", { name: "卷01" }));
+    expect(screen.queryByText("0001_雨夜.md")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "第 1 章 雨夜" }));
+    expect(onOpen).toHaveBeenCalledWith(chapterFile);
+  });
+
   it("T3 身份链：已落稿纲显示 ✓徽标且隐藏提拔按钮，规划中显示 🗺，无目标号不标", () => {
     const onAction = vi.fn();
     const draftedOutline = node("outline:drafted", "第 12 章：通道授权", "jingwei-entry");

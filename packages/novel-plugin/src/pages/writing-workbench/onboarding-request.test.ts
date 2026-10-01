@@ -45,7 +45,7 @@ describe("buildOnboardingRequestMessage", () => {
   it("没有推荐时也能生成可执行请求，不出现空清单段落", () => {
     const message = buildOnboardingRequestMessage({ recommendedWritingSkills: [] });
     expect(message).toContain("writing-skills.recommend");
-    expect(message).not.toContain("预选了这些 Writing Skills");
+    expect(message).not.toContain("预选了这些写作技能");
   });
 
   it("明确禁止跳过确认直接启用或替作者编造设定", () => {
