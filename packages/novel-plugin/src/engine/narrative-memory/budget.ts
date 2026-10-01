@@ -16,6 +16,7 @@ export const DEFAULT_NARRATIVE_CHANNEL_BUDGETS: Readonly<Record<NarrativeContext
   relationship: 1000,
   "character-kernel": 1500,
   "recent-summary": 1200,
+  knowledge: 1000,
 };
 
 export type NarrativeBudgetPolicy = Readonly<{
@@ -68,7 +69,7 @@ function scaleBudgets(budgets: Readonly<Record<NarrativeContextChannel, number>>
   const scaled = Object.fromEntries(Object.entries(budgets).map(([channel, value]) => [channel, Math.floor(normalizeTokenBudget(value) * scale)])) as Record<NarrativeContextChannel, number>;
   const allocated = Object.values(scaled).reduce((sum, value) => sum + value, 0);
   let remainder = normalizedMax - allocated;
-  for (const channel of ["hard", "state", "timeline", "recent-summary", "hooks", "facts", "character-kernel", "semantic", "relationship", "style"] satisfies readonly NarrativeContextChannel[]) {
+  for (const channel of ["hard", "state", "timeline", "recent-summary", "hooks", "facts", "character-kernel", "knowledge", "semantic", "relationship", "style"] satisfies readonly NarrativeContextChannel[]) {
     if (remainder <= 0) break;
     scaled[channel] += 1;
     remainder -= 1;

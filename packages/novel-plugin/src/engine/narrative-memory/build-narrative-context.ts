@@ -9,6 +9,7 @@ import { runChannelWithTimeout, type ChannelResult, type NarrativeRetrievalChann
 import { createFactsChannel } from "./channels/facts-channel.js";
 import { createHardChannel } from "./channels/hard-channel.js";
 import { createHooksChannel } from "./channels/hooks-channel.js";
+import { createKnowledgeChannel } from "./channels/knowledge-channel.js";
 import { createRecentSummaryChannel } from "./channels/recent-summary-channel.js";
 import { createSceneSpecChannel } from "./channels/scene-spec-channel.js";
 import { createSemanticChannel, type NarrativeEmbeddingProvider } from "./channels/semantic-channel.js";
@@ -59,6 +60,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
    * 声线如何推断不归这里管。
    */
   voiceConstraints?: string;
+  /** 与 voiceConstraints 同一份声线的结构化摘要（角色 + 已确认字段），只写进检索诊断日志，不进上下文卡片。 */
+  readonly voiceProfiles?: readonly { readonly name: string; readonly confirmedFields: readonly string[] }[];
   /** 正文在结算后被改过的章号（调用方由章节索引与结算台账现算）；这些章的摘要会被标注可能过期。 */
   staleSummaryChapters?: readonly number[];
   bookDesignText?: string;
@@ -344,6 +347,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         planText: parsed.sceneText,
         budgetTokens: styleBudgetTokens,
         voiceConstraints: input.voiceConstraints,
+        ...(input.voiceProfiles?.length ? { voiceProfiles: input.voiceProfiles } : {}),
       }, timeoutMs)
       : disabledChannelResult("style"),
     // 角色内核通道：config.characterKernel.enabled 且本书 channels["character-kernel"] 未关闭时注入。
@@ -373,6 +377,16 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         ...(input.staleSummaryChapters?.length ? { staleChapters: input.staleSummaryChapters } : {}),
       }, timeoutMs)
       : disabledChannelResult("recent-summary"),
+    // 知情边界通道（T4.3）：本章出场角色的「现状」（状态流水）与「写作禁忌」（他尚不知道从实推的
+    // 剧情事实），按实体索引归并出场名单；内容为机器派生物，卡上明确标注不是作者设定。
+    isOptionalChannelEnabled(input, "knowledge")
+      ? runChannel(createKnowledgeChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        currentChapter,
+        entities,
+      }, timeoutMs)
+      : disabledChannelResult("knowledge"),
   ]);
 
   const merged = mergeNarrativeContextCards(channelResults.flatMap((result) => result.cards), {

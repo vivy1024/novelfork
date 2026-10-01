@@ -480,6 +480,7 @@ const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"
   semantic: "按语义召回的相关记忆。",
   "character-kernel": "出场角色此刻的动机、情绪和矛盾。",
   "recent-summary": "最近几章的剧情摘要，用来保持前情连续。",
+  knowledge: "出场角色此刻知道什么、不知道什么（知情边界），防止知识越界。",
 };
 
 function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): ContextPackage["selectedContext"] {
@@ -839,6 +840,8 @@ async function executePipelineWriteUnlocked(
           ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
           ...(writingLayers?.stylePreset ? { stylePreset: writingLayers.stylePreset } : {}),
           ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),
+          // 结构化声线摘要随文本一起下传：只进检索诊断日志，回答「这章注入了谁的哪些声线字段」。
+          ...(sceneVoices?.profiles.length ? { voiceProfiles: sceneVoices.profiles } : {}),
           ...(staleSummaryChapters.length > 0 ? { staleSummaryChapters } : {}),
           ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
           // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。

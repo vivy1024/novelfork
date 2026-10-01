@@ -46,12 +46,12 @@ async function entry(title: string, category: string, aliases: string[] = []) {
   });
 }
 
-function event(id: string, chapter: number, subject: string, object: string, status = "applied", subjectEntryId: string | null = null) {
+function event(id: string, chapter: number, subject: string, object: string, status = "applied", subjectEntryId: string | null = null, eventType = "relationship_changed") {
   storage.sqlite.prepare(`
     INSERT INTO narrative_event (id, book_id, chapter_number, event_type, subject, predicate, object, evidence_text,
       confidence, source, status, risk_level, subject_entry_id, object_entry_id, created_at)
-    VALUES (?, 'book-1', ?, 'relationship_changed', ?, '相遇', ?, '证据', 0.9, 'settle', ?, 'low', ?, NULL, ?)
-  `).run(id, chapter, subject, object, status, subjectEntryId, iso);
+    VALUES (?, 'book-1', ?, ?, ?, '相遇', ?, '证据', 0.9, 'settle', ?, 'low', ?, NULL, ?)
+  `).run(id, chapter, eventType, subject, object, status, subjectEntryId, iso);
 }
 
 function fact(id: string, chapter: number, subject: string, predicate: string, object: string, category: string, validUntil: number | null = null) {
@@ -164,6 +164,26 @@ describe("rebuildNarrativeEntityIndex", () => {
     if (!result.ok) throw new Error("rebuild failed");
     expect(result.entities).toBe(1);
     expect(result.duplicateEntryIds).toEqual([dup.id]);
+  });
+
+  it("状态类事件的对象是状态值，不参与称呼归并（2026-09-30 真模型基准）", async () => {
+    await entry("阿Q", "characters");
+    await entry("小D", "characters");
+    event("ev-state", 5, "阿Q", "被未庄排斥", "applied", null, "character_state_changed");
+    event("ev-rel", 5, "阿Q", "小D");
+
+    const result = rebuildNarrativeEntityIndex(storage, "book-1", { now: 1 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.unresolvedSamples).not.toContain("被未庄排斥");
+    expect(result.resolvedMentions).toBe(result.totalMentions);
+    expect(result.totalMentions).toBe(3);
+    const roles = storage.sqlite.prepare<{ event_id: string; role: string }>("SELECT event_id, role FROM narrative_event_participant WHERE book_id = 'book-1' ORDER BY event_id, role").all();
+    expect(roles).toEqual([
+      { event_id: "ev-rel", role: "agent" },
+      { event_id: "ev-rel", role: "patient" },
+      { event_id: "ev-state", role: "agent" },
+    ]);
   });
 
   it("没有 0032 表时跳过并说明原因", () => {

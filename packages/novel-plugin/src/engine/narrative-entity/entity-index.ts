@@ -6,11 +6,13 @@
  *   每次都从经纬条目 + narrative_fact + narrative_event 全量推导，所以不存在「两边不同步」。
  * - 实体 id 取 `ent:<bookId>:<经纬条目 id>`：角色改名、加别名都不会改变 id，下游关系边稳定。
  *
- * 写入 0032 的五张表：
+ * 写入 0032 的六张表：
  *   narrative_entity / narrative_entity_alias —— 经纬条目的身份投影与称呼摊平
  *   narrative_event_participant —— 事件参与者；复合主体「甲与乙」在这里拆成两个实体，不再造复合实体
  *   narrative_relation —— 关系类事实按实体 id 建有向边，带故事内有效期
  *   narrative_state_change —— 状态 / 位置类事实按实体记状态流水
+ *   narrative_knowledge —— 已确认事实的知情账：subject（及 relationship/location 的 object）
+ *                         归并到的实体从事实所在章起「知道」该事实（T4.3，规则见 knowledge-index.ts）
  *
  * 只归并能在经纬里找到的名字；找不到的如实计入「未归并」，不凭空建实体——
  * 新角色应先作为待审经纬条目进入权威源，再在下一次重建时获得身份。
@@ -25,6 +27,12 @@ import {
   type EntityDictionaryEntry,
 } from "../narrative-memory/entity-dictionary.js";
 import { ensureNarrativeMemorySchema } from "../narrative-memory/storage.js";
+import {
+  isKnowledgeConfirmed,
+  knowledgeRowsForFact,
+  OBJECT_IS_ENTITY_FACT_CATEGORIES,
+  type KnowledgeRow,
+} from "./knowledge-index.js";
 
 /** 经纬分类 → 实体类型；伏笔不是实体，只用来识别「这是伏笔称呼」。 */
 const ENTITY_TYPE_BY_CATEGORY: Readonly<Record<string, string>> = {
@@ -35,6 +43,8 @@ const ENTITY_TYPE_BY_CATEGORY: Readonly<Record<string, string>> = {
 };
 
 const COMPOSITE_SEPARATORS = /[、，,]|与|和|及|跟/u;
+/** 对象一侧是实体（人物 / 地点）的事件类型；其余事件的对象是状态值。 */
+const OBJECT_IS_ENTITY_EVENT_TYPES: ReadonlySet<string> = new Set(["relationship_changed", "location_changed"]);
 const NON_ENTITY_HINTS = [/风险$/u, /情况$/u, /记忆$/u, /安置$/u, /筛查$/u, /之夜/u];
 /** 实测未归并称呼里占比最大的是事件 / 情节短语（「故事主线时间」「驻场体检」），不计入链接率分母。 */
 const EVENT_PHRASE_HINTS = [
@@ -48,6 +58,7 @@ const INDEX_TABLES = [
   "narrative_event_participant",
   "narrative_relation",
   "narrative_state_change",
+  "narrative_knowledge",
 ] as const;
 
 export interface EntityIndexStats {
@@ -56,6 +67,8 @@ export interface EntityIndexStats {
   readonly participants: number;
   readonly relations: number;
   readonly stateChanges: number;
+  /** 知情账行数（谁从第几章起知道哪条已确认事实）。 */
+  readonly knowledge: number;
   /** 参与归并判定的实体称呼总数（已排除伏笔称呼与事件短语）。 */
   readonly totalMentions: number;
   readonly resolvedMentions: number;
@@ -150,6 +163,7 @@ export interface EntityIndexPlan {
   readonly relations: readonly RelationRow[];
   readonly stateChanges: readonly StateChangeRow[];
   readonly participants: readonly ParticipantRow[];
+  readonly knowledge: readonly KnowledgeRow[];
   readonly stats: EntityIndexStats;
 }
 
@@ -268,19 +282,41 @@ export function planNarrativeEntityIndex(storage: StorageDatabase, bookId: strin
     return { hits, composite: split.composite };
   };
 
+  /**
+   * 知情账专用的静默归并：与 classify 同一套判定（实体字典 + 伏笔/事件短语排除），
+   * 但不计入称呼链接率的分子分母——知情对象的归并不该改写实体归并统计口径。
+   */
+  const resolveSideQuiet = (raw: unknown, entryId: unknown): EntityDictionaryEntry[] => {
+    if (typeof entryId === "string" && entityByEntryId.has(entryId)) return [entityByEntryId.get(entryId)!];
+    const split = splitCompositeSubject(String(raw ?? ""));
+    const hits: EntityDictionaryEntry[] = [];
+    for (const name of split.names) {
+      if (!looksLikeEntityName(name) || looksLikeEventPhrase(name)) continue;
+      const normalized = normalizeKey(name);
+      if (foreshadowKeys.has(normalized) || foreshadowKeys.has(normalizeKey(stripParentheticalSuffix(name)))) continue;
+      const hit = resolveEntity(dictionary, name)?.entry ?? null;
+      if (hit && entityByEntryId.has(hit.entryId) && !hits.some((existing) => existing.entryId === hit.entryId)) hits.push(hit);
+    }
+    return hits;
+  };
+
   // ① 事件 → 参与者
   const participants: ParticipantRow[] = [];
   const participantKeys = new Set<string>();
   const events = storage.sqlite
-    .prepare<{ id: string; chapter_number: number; subject: string; object: string; subject_entry_id: string | null; object_entry_id: string | null }>(`
-      SELECT id, chapter_number, subject, object, subject_entry_id, object_entry_id
+    .prepare<{ id: string; chapter_number: number; event_type: string; subject: string; object: string; subject_entry_id: string | null; object_entry_id: string | null }>(`
+      SELECT id, chapter_number, event_type, subject, object, subject_entry_id, object_entry_id
       FROM narrative_event
       WHERE book_id = ? AND status != 'rejected'
       ORDER BY chapter_number ASC, id ASC
     `)
     .all(bookId);
   for (const event of events) {
-    for (const [role, raw, entryId] of [["agent", event.subject, event.subject_entry_id], ["patient", event.object, event.object_entry_id]] as const) {
+    // 只有关系变化与位置变化的对象是实体；其余事件的对象是状态值（「重伤」「被未庄排斥」），
+    // 拿去当称呼归并会把归并率压低，还会误导作者去经纬里给状态值建条目（2026-09-30 真模型基准）。
+    const sides: Array<readonly ["agent" | "patient", string, string | null]> = [["agent", event.subject, event.subject_entry_id]];
+    if (OBJECT_IS_ENTITY_EVENT_TYPES.has(event.event_type)) sides.push(["patient", event.object, event.object_entry_id]);
+    for (const [role, raw, entryId] of sides) {
       for (const hit of resolveSide(raw, entryId).hits) {
         const key = `${event.id}\u0000${hit.entryId}\u0000${role}`;
         if (participantKeys.has(key)) continue;
@@ -291,17 +327,26 @@ export function planNarrativeEntityIndex(storage: StorageDatabase, bookId: strin
     }
   }
 
-  // ② 事实 → 关系边 / 状态流水
+  // ② 事实 → 关系边 / 状态流水 / 知情账
   const relations: RelationRow[] = [];
   const relationKeys = new Set<string>();
   const stateChanges: StateChangeRow[] = [];
+  const knowledge: KnowledgeRow[] = [];
+  // 知情来源只取已确认事实：event 来源要求其来源事件已应用（待审 / 驳回不算）。
+  const appliedEventIds = new Set(
+    storage.sqlite.prepare<{ id: string }>(
+      "SELECT id FROM narrative_event WHERE book_id = ? AND status = 'applied'",
+    ).all(bookId).map((row) => row.id),
+  );
   const facts = storage.sqlite
     .prepare<{
       id: string; subject: string; predicate: string; object: string; category: string;
+      source_type: string; source_id: string | null;
       source_chapter: number | null; valid_from_chapter: number | null; valid_until_chapter: number | null;
       subject_entry_id: string | null; object_entry_id: string | null; evidence_text: string | null; confidence: number | null;
     }>(`
-      SELECT id, subject, predicate, object, category, source_chapter, valid_from_chapter, valid_until_chapter,
+      SELECT id, subject, predicate, object, category, source_type, source_id,
+             source_chapter, valid_from_chapter, valid_until_chapter,
              subject_entry_id, object_entry_id, evidence_text, confidence
       FROM narrative_fact
       WHERE book_id = ?
@@ -313,6 +358,23 @@ export function planNarrativeEntityIndex(storage: StorageDatabase, bookId: strin
     const confidence = typeof fact.confidence === "number" ? fact.confidence : 1;
     const evidence = fact.evidence_text?.slice(0, 400) || null;
     const subject = resolveSide(fact.subject, fact.subject_entry_id);
+
+    if (isKnowledgeConfirmed(fact.source_type, fact.source_id, appliedEventIds)) {
+      // 知情账：subject 归并到的实体知道；relationship / location 的 object 也是实体（关系事实双方都知道）。
+      const knowers = new Set<string>();
+      for (const hit of subject.hits) knowers.add(entityIdFor(bookId, hit.entryId));
+      if (OBJECT_IS_ENTITY_FACT_CATEGORIES.has(fact.category)) {
+        for (const hit of resolveSideQuiet(fact.object, fact.object_entry_id)) knowers.add(entityIdFor(bookId, hit.entryId));
+      }
+      knowledge.push(...knowledgeRowsForFact({
+        factId: fact.id,
+        sourceType: fact.source_type,
+        sourceId: fact.source_id,
+        chapter,
+        evidence: fact.evidence_text,
+        confidence,
+      }, [...knowers]));
+    }
 
     if (fact.category === "relationship") {
       // 关系事实常把双方都写在 subject（「薛行之与方工」），object 是一句关系描述：
@@ -376,12 +438,14 @@ export function planNarrativeEntityIndex(storage: StorageDatabase, bookId: strin
     relations,
     stateChanges,
     participants,
+    knowledge,
     stats: {
       entities: entities.length,
       aliases: entities.reduce((sum, entity) => sum + entity.aliases.length + 1, 0),
       participants: participants.length,
       relations: relations.length,
       stateChanges: stateChanges.length,
+      knowledge: knowledge.length,
       totalMentions,
       resolvedMentions,
       foreshadowMentions,
@@ -394,7 +458,7 @@ export function planNarrativeEntityIndex(storage: StorageDatabase, bookId: strin
 
 /**
  * 整本重建：一个事务里清掉本书旧索引再写入新推导结果，失败整体回滚、旧索引原样保留。
- * 注意 0032 其余表（narrative_knowledge）外键指向实体，重建会级联清掉；它目前无人写入（T4.3 再定其来源）。
+ * narrative_knowledge 外键指向实体；它与五张索引表同一份推导来源，同一个事务里整体重写。
  */
 export function rebuildNarrativeEntityIndex(
   storage: StorageDatabase,
@@ -445,10 +509,15 @@ export function rebuildNarrativeEntityIndex(
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO NOTHING
   `);
+  const insertKnowledge = db.prepare(`
+    INSERT INTO narrative_knowledge
+      (id, book_id, knower_id, fact_kind, fact_ref, knows_from, knows_until, certainty, evidence_text, recorded_at)
+    VALUES (?, ?, ?, 'fact', ?, ?, NULL, 'knows', ?, ?)
+  `);
 
   db.transaction(() => {
     // 子表先删，父表后删，不依赖连接上是否开启外键级联
-    for (const table of ["narrative_event_participant", "narrative_relation", "narrative_state_change", "narrative_entity_alias", "narrative_entity"]) {
+    for (const table of ["narrative_knowledge", "narrative_event_participant", "narrative_relation", "narrative_state_change", "narrative_entity_alias", "narrative_entity"]) {
       db.prepare(`DELETE FROM ${table} WHERE book_id = ?`).run(bookId);
     }
     for (const entity of plan.entities) {
@@ -469,6 +538,9 @@ export function rebuildNarrativeEntityIndex(
     }
     for (const change of plan.stateChanges) {
       insertState.run(change.id, bookId, change.entityId, change.fluent, change.newValue, change.chapter, change.evidence, change.confidence, now);
+    }
+    for (const row of plan.knowledge) {
+      insertKnowledge.run(row.id, bookId, row.entityId, row.factRef, row.knowsFrom, row.evidence, now);
     }
   })();
 

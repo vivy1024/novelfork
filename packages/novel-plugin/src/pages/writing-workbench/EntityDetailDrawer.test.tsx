@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EntityDetailDrawer } from "./EntityDetailDrawer";
@@ -47,6 +47,7 @@ function stubBackend(options: {
   readonly mutation?: () => Response;
   readonly history?: () => Response;
   readonly relations?: () => Response;
+  readonly knowledge?: () => Response;
 }): FetchCall[] {
   const calls: FetchCall[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -57,6 +58,7 @@ function stubBackend(options: {
       body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {},
     });
     if (url.includes("/entity-graph/relations")) return options.relations?.() ?? jsonResponse({ ok: true, status: "ok", counterparts: [] });
+    if (url.includes("/narrative-memory/knowledge")) return options.knowledge?.() ?? jsonResponse({ ok: true, status: "ok", state: [], knows: [], unaware: [] });
     if (url.includes("/facts/by-entity")) return options.byEntity();
     if (url.includes("/jingwei/search")) return options.jingweiSearch?.() ?? jsonResponse({ results: [] });
     if (url.includes("/history")) return options.history?.() ?? jsonResponse({ items: [] });
@@ -162,14 +164,15 @@ describe("EntityDetailDrawer", () => {
 
     render(<EntityDetailDrawer bookId="book-1" entity="张三" onClose={() => {}} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /新增状态/u }));
+    fireEvent.click(await screen.findByRole("button", { name: /手动补一条/u }));
     // subject 预填当前实体。
     const subjectInput = screen.getByPlaceholderText(/角色|主体/u);
     expect((subjectInput as HTMLInputElement).value).toBe("张三");
 
     fireEvent.change(screen.getByPlaceholderText(/境界|谓词/u), { target: { value: "属于" } });
     fireEvent.change(screen.getByPlaceholderText(/元婴|宾语/u), { target: { value: "青云宗" } });
-    fireEvent.change(screen.getByPlaceholderText(/state|类别/u), { target: { value: "faction" } });
+    // 类别是下拉：界面显示中文，存的仍是记忆通道名。
+    fireEvent.change(screen.getByLabelText("类别"), { target: { value: "relationship" } });
     fireEvent.click(screen.getByRole("button", { name: "写入状态" }));
 
     await waitFor(() => {
@@ -179,6 +182,72 @@ describe("EntityDetailDrawer", () => {
     expect(create.body.subject).toBe("张三");
     expect(create.body.predicate).toBe("属于");
     expect(create.body.object).toBe("青云宗");
+    expect(create.body.category).toBe("relationship");
+  });
+
+  it("资料卡只说作者的话：分类、层级、来源都是中文，不露内部代号和副标题套话", async () => {
+    stubBackend({
+      byEntity: () => jsonResponse({
+        groups: [{
+          entity: "张三",
+          facts: [
+            { ...FACT, id: "fact-manual", category: "character_state", sourceType: "manual", confidence: 1 },
+            { ...FACT, id: "fact-settle", predicate: "位置", object: "青云宗", category: "location", sourceType: "event", confidence: 0.9 },
+            { ...FACT, id: "fact-import", predicate: "身份", object: "外门弟子", category: "state", sourceType: "import", confidence: 0.8 },
+          ],
+        }],
+      }),
+      jingweiSearch: () => jsonResponse({
+        results: [{ id: "entry-zhangsan", title: "张三", category: "characters", layer: "dynamic" }],
+      }),
+    });
+
+    render(<EntityDetailDrawer bookId="book-1" entity="张三" onClose={() => {}} />);
+
+    await screen.findByText("青云宗");
+    expect((await screen.findByTestId("entity-hero-category")).textContent).toBe("角色");
+    expect(screen.getByTestId("entity-hero-layer").textContent).toBe("随剧情变化");
+    const meta = screen.getAllByTestId("entity-fact-meta").map((node) => node.textContent ?? "").join(" | ");
+    expect(meta).toContain("角色状态");
+    expect(meta).toContain("作者手填");
+    expect(meta).toContain("章后结算");
+    expect(meta).toContain("导入");
+    const body = document.body.textContent ?? "";
+    for (const raw of ["characters", "dynamic", "manual", "character_state", "置信", "酒馆式", "当前动态时态", "新增状态"]) {
+      expect(body).not.toContain(raw);
+    }
+    // 置信度都不低：不提示「不太确定」，也不显示百分比。
+    expect(screen.queryByTestId("entity-fact-low-confidence")).toBeNull();
+    expect(body).not.toMatch(/\d+%/u);
+  });
+
+  it("置信度偏低时才提示「不太确定」", async () => {
+    stubBackend({
+      byEntity: () => jsonResponse({
+        groups: [{ entity: "张三", facts: [{ ...FACT, confidence: 0.4 }] }],
+      }),
+    });
+
+    render(<EntityDetailDrawer bookId="book-1" entity="张三" onClose={() => {}} />);
+
+    expect((await screen.findByTestId("entity-fact-low-confidence")).textContent).toBe("不太确定");
+    expect(document.body.textContent).not.toContain("40%");
+  });
+
+  it("设定页的条目徽标同样显示中文分类与层级（兼容旧分类名）", async () => {
+    stubBackend({
+      byEntity: () => jsonResponse({ groups: [] }),
+      jingweiSearch: () => jsonResponse({
+        results: [{ id: "entry-zhangsan", title: "张三", category: "character", layer: "canon" }],
+      }),
+    });
+
+    render(<EntityDetailDrawer bookId="book-1" entity="张三" onClose={() => {}} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "设定" }));
+    const hit = await screen.findByTestId("jingwei-entry-hit");
+    expect(hit.textContent).toContain("角色");
+    expect(hit.textContent).toContain("固定设定");
+    expect(hit.textContent).not.toContain("canon");
   });
 
   it("queries jingwei entries by entity name on the lore tab", async () => {
@@ -211,7 +280,7 @@ describe("EntityDetailDrawer", () => {
     fireEvent.mouseDown(await screen.findByRole("tab", { name: "设定" }));
     fireEvent.click(await screen.findByRole("button", { name: "打开编辑" }));
     expect(onOpenJingweiEntry).toHaveBeenCalledWith("entry-zhangsan");
-    expect(screen.getByText(/经纬条目不存在或尚未载入/u)).toBeTruthy();
+    expect(screen.getByText(/这条设定不存在，或还没载入/u)).toBeTruthy();
   });
 
   it("关系页按经纬条目 id 读实体索引里的关系，不按名字匹配", async () => {
@@ -262,6 +331,38 @@ describe("EntityDetailDrawer", () => {
     const explanation = await screen.findByTestId("entity-relations-explanation");
     expect(explanation.textContent).toContain("经纬里没有标题或别名正好是「张三」的条目");
     expect(misses.some((item) => item.url.includes("/entity-graph/relations"))).toBe(false);
+  });
+
+  it("知情 tab 按经纬条目 id 读知情账，只读展示「知道 / 不知道 / 现状」", async () => {
+    const calls = stubBackend({
+      byEntity: () => jsonResponse({ groups: [] }),
+      jingweiSearch: () => jsonResponse({ results: [{ id: "entry-zhangsan", title: "张三" }] }),
+      knowledge: () => jsonResponse({
+        ok: true,
+        status: "ok",
+        chapter: 5,
+        entity: { id: "ent:book-1:entry-zhangsan", name: "张三", type: "character" },
+        state: [{ fluent: "境界", value: "金丹", chapter: 3 }],
+        knows: [{ factId: "f-1", subject: "张三", predicate: "境界", object: "金丹", category: "character_state", chapter: 3, evidence: null, confidence: 0.9 }],
+        unaware: [{ factId: "f-2", subject: "方工", predicate: "身份", object: "内鬼", category: "world_fact", chapter: 4, evidence: null, confidence: 0.9 }],
+      }),
+    });
+
+    render(<EntityDetailDrawer bookId="book-1" entity="张三" onClose={() => {}} currentChapter={5} />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "知情" }));
+
+    await screen.findByTestId("knowledge-tab");
+    const call = calls.find((item) => item.url.includes("/narrative-memory/knowledge"))!;
+    expect(call.url).toContain("entryId=entry-zhangsan");
+    expect(call.url).toContain("chapter=5");
+    // 现状 + 他知道 + 他还不知道（写作禁忌）
+    expect(screen.getByTestId("knowledge-state-list").textContent).toContain("金丹");
+    expect(screen.getByTestId("knowledge-knows-list").textContent).toContain("张三 · 境界 → 金丹");
+    expect(screen.getByTestId("knowledge-unaware-list").textContent).toContain("方工 · 身份 → 内鬼");
+    // 只读：知情区块不提供纠正 / 作废 / 新增操作
+    const tab = screen.getByTestId("knowledge-tab");
+    expect(tab.querySelector("button[type='submit']")).toBeNull();
+    expect(within(tab).queryByText("纠正")).toBeNull();
   });
 
   it("closes via the sheet onOpenChange when false", async () => {

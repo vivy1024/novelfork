@@ -1,7 +1,10 @@
 /**
- * 实体详情抽屉 —— 酒馆式（SillyTavern 风格）沉浸式多维角色档案页。
+ * 实体详情抽屉（资料卡）—— 一张卡看完一个角色 / 设定的设定与当前状态。
  *
- * 彻底打通经纬静态设定与叙事记忆动态时态：
+ * 界面只说作者的话：分类、层级、来源都换成中文，置信度只在偏低时提示「不太确定」，
+ * 不露出 characters / dynamic / manual 这类内部代号（显示映射见 lore-workspace-split）。
+ *
+ * 打通经纬静态设定与叙事记忆动态状态：
  * 1. 【Hero Banner】图标徽章、实体姓名、别名徽章、门派分类、层级标签；
  * 2. 【经典声口与口癖 (Voice Bubble)】解析展示角色的标志性台词或说话口癖，给作者和 AI 最直观的声音感知；
  * 3. 【当前时态看板 (Live State)】实时展示所在位置、伤势状况、掌握秘密，支持就地新增/纠正/作废；
@@ -58,6 +61,15 @@ import {
   type EntityFact,
 } from "./narrative-fact-edits";
 import { EntityRelationsTab } from "./relation-network/EntityRelationsTab";
+import { EntityKnowledgeTab } from "./EntityKnowledgeTab";
+import {
+  MEMORY_FACT_CATEGORY_OPTIONS,
+  factCategoryLabel,
+  factSourceLabel,
+  isLowConfidence,
+  jingweiCategoryLabel,
+  jingweiLayerLabel,
+} from "./lore-workspace-split";
 
 export interface EntityDetailDrawerProps {
   readonly bookId: string;
@@ -148,7 +160,7 @@ export function EntityDetailDrawer({
       setJingweiState({ status: "ready", entries: payload.results ?? [] });
     } catch (cause) {
       if (generation !== jingweiGenerationRef.current) return;
-      setJingweiState({ status: "error", message: cause instanceof Error ? cause.message : "加载经纬设定失败" });
+      setJingweiState({ status: "error", message: cause instanceof Error ? cause.message : "加载作品设定失败" });
     }
   }, [bookId, entity]);
 
@@ -198,7 +210,7 @@ export function EntityDetailDrawer({
   return (
     <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
       <SheetContent className="w-[min(34rem,95vw)] gap-0 p-0 sm:max-w-none flex flex-col h-full bg-card border-l border-border">
-        {/* 酒馆式 Hero Banner 头部 */}
+        {/* 头部：名字、分类、层级、别名 */}
         <div className="relative border-b border-border bg-muted/20 px-5 py-4 shrink-0 space-y-3">
           <div className="flex items-start gap-3.5">
             {/* 角色图标徽章 */}
@@ -210,26 +222,26 @@ export function EntityDetailDrawer({
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold tracking-tight text-foreground truncate">{entity}</h2>
                 {matchedJingwei?.category ? (
-                  <Badge variant="secondary" className="text-2xs px-1.5 h-4 font-normal">
-                    {matchedJingwei.category}
+                  <Badge variant="secondary" className="text-2xs px-1.5 h-4 font-normal" data-testid="entity-hero-category">
+                    {jingweiCategoryLabel(matchedJingwei.category)}
                   </Badge>
                 ) : null}
                 {matchedJingwei?.layer ? (
-                  <Badge variant="outline" className="text-2xs px-1.5 h-4 text-muted-foreground">
-                    {matchedJingwei.layer}
+                  <Badge variant="outline" className="text-2xs px-1.5 h-4 text-muted-foreground" data-testid="entity-hero-layer">
+                    {jingweiLayerLabel(matchedJingwei.layer)}
                   </Badge>
                 ) : null}
               </div>
 
-              <p className="text-xs text-muted-foreground line-clamp-1">
-                {matchedJingwei?.summary || "酒馆式一体化人物与设定全景总卡"}
-              </p>
+              {matchedJingwei?.summary ? (
+                <p className="text-xs text-muted-foreground line-clamp-1">{matchedJingwei.summary}</p>
+              ) : null}
 
               {matchedJingwei?.aliases && matchedJingwei.aliases.length > 0 ? (
                 <div className="flex flex-wrap gap-1 pt-0.5">
                   {matchedJingwei.aliases.map((alias) => (
                     <span key={alias} className="text-2xs rounded bg-muted px-1.5 py-0.2 text-muted-foreground">
-                      别名: {alias}
+                      别名：{alias}
                     </span>
                   ))}
                 </div>
@@ -251,10 +263,11 @@ export function EntityDetailDrawer({
         {/* 导航 Tabs */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4" data-testid="entity-detail-drawer">
           <Tabs defaultValue="state" className="space-y-3">
-            <TabsList className="w-full grid grid-cols-4 h-8 p-0.5 bg-muted/50">
+            <TabsList className="w-full grid grid-cols-5 h-8 p-0.5 bg-muted/50">
               <TabsTrigger value="state" className="text-xs">当前状态</TabsTrigger>
               <TabsTrigger value="lore" className="text-xs">设定</TabsTrigger>
               <TabsTrigger value="relations" className="text-xs">关系</TabsTrigger>
+              <TabsTrigger value="knowledge" className="text-xs">知情</TabsTrigger>
               <TabsTrigger value="history" className="text-xs">变迁史</TabsTrigger>
             </TabsList>
 
@@ -279,6 +292,16 @@ export function EntityDetailDrawer({
 
             <TabsContent value="relations" className="space-y-2.5 pt-1">
               <EntityRelationsTab
+                bookId={bookId}
+                entryId={relationEntryId}
+                resolving={!entryId && jingweiState.status === "loading"}
+                entityName={entity}
+                {...(currentChapter !== undefined ? { currentChapter } : {})}
+              />
+            </TabsContent>
+
+            <TabsContent value="knowledge" className="space-y-2.5 pt-1">
+              <EntityKnowledgeTab
                 bookId={bookId}
                 entryId={relationEntryId}
                 resolving={!entryId && jingweiState.status === "loading"}
@@ -352,7 +375,7 @@ function FactsTab({
       <div className="flex items-center justify-between gap-2 px-0.5">
         <div className="flex items-center gap-1.5">
           <Sparkles className="size-3 text-primary" />
-          <span className="text-xs font-semibold">当前动态时态</span>
+          <span className="text-xs font-semibold">目前的状态</span>
           <span className="text-2xs text-muted-foreground">
             ({liveFacts.length} 条{currentChapter !== undefined ? ` · 截至第 ${currentChapter} 章` : ""})
           </span>
@@ -363,7 +386,7 @@ function FactsTab({
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
         >
           <Plus className="size-3" />
-          新增状态
+          手动补一条
         </button>
       </div>
 
@@ -388,7 +411,7 @@ function FactsTab({
       {liveFacts.length === 0 && !adding ? (
         <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10 space-y-1">
           <p className="font-medium">这个实体还没有记忆状态</p>
-          <p className="text-2xs text-muted-foreground/80">写章结算后会自动沉淀，也可以点「新增状态」手工补一条。</p>
+          <p className="text-2xs text-muted-foreground/80">写完一章、章后结算后会自动记下来，也可以点「手动补一条」。</p>
         </div>
       ) : (
         <div className="space-y-1.5">
@@ -477,10 +500,18 @@ function FactRow({
           </ActionButton>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
-        <Badge variant="secondary" className="text-2xs px-1 h-3.5">{fact.category}</Badge>
-        {fact.sourceType && <span>来源 {fact.sourceType}</span>}
-        {fact.confidence !== undefined && <span>置信 {Math.round(fact.confidence * 100)}%</span>}
+      <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground" data-testid="entity-fact-meta">
+        <Badge variant="secondary" className="text-2xs px-1 h-3.5">{factCategoryLabel(fact.category)}</Badge>
+        {fact.sourceType && <span>{factSourceLabel(fact.sourceType)}</span>}
+        {isLowConfidence(fact.confidence) && (
+          <span
+            className="text-amber-600 dark:text-amber-400"
+            title="这条是从正文里推断出来的，把握不大，建议核对一下"
+            data-testid="entity-fact-low-confidence"
+          >
+            不太确定
+          </span>
+        )}
         {fact.validFromChapter !== undefined && <span>第 {fact.validFromChapter} 章起</span>}
       </div>
     </article>
@@ -512,11 +543,11 @@ function FactForm({
 
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2 shadow-xs" data-testid="entity-fact-form">
-      {factId && <p className="text-2xs text-muted-foreground">纠正会关闭旧值并写入一条 manual 新值，历史保留。</p>}
-      <Field label="主体" value={subject} onChange={setSubject} placeholder="角色 / 主体" />
-      <Field label="谓词" value={predicate} onChange={setPredicate} placeholder="如：境界 / 谓词 / 位置" />
-      <Field label="宾语" value={object} onChange={setObject} placeholder="如：元婴 / 宾语 / 金丹" />
-      <Field label="类别" value={category} onChange={setCategory} placeholder="如：state / 类别 / relationship" />
+      {factId && <p className="text-2xs text-muted-foreground">纠正后旧的一条留在变迁史里，新的一条记为作者手填。</p>}
+      <Field label="对象" value={subject} onChange={setSubject} placeholder="角色名、地点或物品" />
+      <Field label="方面" value={predicate} onChange={setPredicate} placeholder="如：境界、位置、伤势" />
+      <Field label="现状" value={object} onChange={setObject} placeholder="如：元婴、青云宗、左臂重伤" />
+      <CategorySelect value={category} onChange={setCategory} />
       <div className="flex justify-end gap-1.5 pt-1">
         <ActionButton onClick={onCancel} disabled={busy}>取消</ActionButton>
         <ActionButton
@@ -536,6 +567,31 @@ function FactForm({
         </ActionButton>
       </div>
     </div>
+  );
+}
+
+/**
+ * 记忆分类选择：界面显示中文，存的仍是记忆通道名（state / relationship …）。
+ * 旧数据里不在常用清单的分类也保留为一个选项，纠正时不会被悄悄改掉。
+ */
+function CategorySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const options = MEMORY_FACT_CATEGORY_OPTIONS.some((option) => option.value === value) || !value
+    ? MEMORY_FACT_CATEGORY_OPTIONS
+    : [...MEMORY_FACT_CATEGORY_OPTIONS, { value, label: factCategoryLabel(value) }];
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="w-10 shrink-0 text-2xs text-muted-foreground">类别</span>
+      <select
+        aria-label="类别"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-6 flex-1 min-w-0 rounded border border-border bg-background px-1.5 text-xs outline-none focus:border-primary"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -586,14 +642,14 @@ function JingweiTab({
 }) {
   const [openError, setOpenError] = useState<string | null>(null);
 
-  if (state.status === "loading") return <LoadingBlock label="正在读经纬设定…" />;
+  if (state.status === "loading") return <LoadingBlock label="正在读作品设定…" />;
   if (state.status === "error") return <ErrorBlock message={state.message} onRetry={onRetry} />;
 
   const entries = state.entries;
   if (entries.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10">
-        经纬中尚未建立该实体的设定档案。
+        作品基础里还没有这个名字的设定。
       </div>
     );
   }
@@ -614,8 +670,8 @@ function JingweiTab({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <span className="font-semibold text-xs text-foreground">{entry.title}</span>
-              {entry.category ? <Badge variant="secondary" className="text-2xs px-1 h-3.5">{entry.category}</Badge> : null}
-              {entry.layer ? <Badge variant="outline" className="text-2xs px-1 h-3.5">{entry.layer}</Badge> : null}
+              {entry.category ? <Badge variant="secondary" className="text-2xs px-1 h-3.5">{jingweiCategoryLabel(entry.category)}</Badge> : null}
+              {entry.layer ? <Badge variant="outline" className="text-2xs px-1 h-3.5">{jingweiLayerLabel(entry.layer)}</Badge> : null}
             </div>
             {onOpenJingweiEntry ? (
               <button
@@ -624,8 +680,8 @@ function JingweiTab({
                   setOpenError(null);
                   const ok = onOpenJingweiEntry(entry.id);
                   if (!ok) {
-                    setOpenError("经纬条目不存在或尚未载入");
-                    toast("经纬条目不存在或尚未载入", "error");
+                    setOpenError("这条设定不存在，或还没载入");
+                    toast("这条设定不存在，或还没载入", "error");
                   }
                 }}
                 className="inline-flex items-center gap-1 text-2xs text-primary hover:underline font-medium"
@@ -688,7 +744,7 @@ function HistoryTab({ bookId, state, currentChapter }: { bookId: string; state: 
                 {fact.validUntilChapter !== undefined ? <span>(至第 {fact.validUntilChapter} 章止)</span> : null}
                 {isCurrent ? <Badge variant="secondary" className="text-2xs h-3.5 px-1 bg-primary/10 text-primary">当前有效</Badge> : null}
               </div>
-              <Badge variant="outline" className="text-2xs">{fact.category}</Badge>
+              <Badge variant="outline" className="text-2xs">{factCategoryLabel(fact.category)}</Badge>
             </div>
             <div className="font-medium text-foreground">
               {fact.subject} · {fact.predicate} → <span className="text-primary font-semibold">{fact.object}</span>
