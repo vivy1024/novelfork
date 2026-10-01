@@ -51,6 +51,19 @@ describe("ResourceViewer", () => {
     expect(screen.queryByText("已保存")).toBeNull();
   });
 
+  it("章节文件标题显示「第 N 章 标题」，来源路径仍是真实文件位置", () => {
+    render(<ResourceViewer node={node({
+      id: "file:chapters/卷01/0001_雨夜.md",
+      title: "0001_雨夜.md",
+      path: "chapters/卷01/0001_雨夜.md",
+      content: "雨落在旧站台上。",
+      metadata: { filePath: "chapters/卷01/0001_雨夜.md", isFile: true, isChapter: true, chapterNumber: 1 },
+    })} />);
+    expect(screen.getByRole("heading", { name: "第 1 章 雨夜" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "0001_雨夜.md" })).toBeNull();
+    expect(screen.getByText("chapters/卷01/0001_雨夜.md")).toBeTruthy();
+  });
+
   it("渲染 story/file Markdown 为只读格式化编辑器，并显示来源路径", () => {
     render(
       <ResourceViewer

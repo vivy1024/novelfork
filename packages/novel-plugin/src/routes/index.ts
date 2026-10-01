@@ -41,6 +41,7 @@ export { createEmbeddingSettingsRouter } from "./embedding.js";
 export { createCockpitRouter, type CreateCockpitRouterOptions } from "./cockpit.js";
 export { createNarrativeMemoryRouter } from "./narrative-memory.js";
 export { createEntityGraphRouter, type EntityGraphRouterOptions } from "./entity-graph.js";
+export { createKnowledgeRouter, type KnowledgeRouterOptions } from "./knowledge.js";
 export { createNarrativeStructureRouter, type NarrativeStructureRouterOptions } from "./narrative-structure.js";
 export {
   createWorkflowRunsRouter,
@@ -48,6 +49,19 @@ export {
   type CreateWorkflowRunsRouterOptions,
 } from "./workflow-runs.js";
 export { createNarrativeLineRouter, type CreateNarrativeLineRouterOptions } from "./narrative-line.js";
+export {
+  createPendingReviewRouter,
+  collectPendingReview,
+  PENDING_REVIEW_KINDS,
+  PENDING_REVIEW_LABELS,
+  type CreatePendingReviewRouterOptions,
+  type PendingReviewGroup,
+  type PendingReviewItem,
+  type PendingReviewKind,
+  type PendingReviewSummary,
+  type PendingReviewTarget,
+  type PendingReviewWarning,
+} from "./pending-review.js";
 export { createBookArchiveRouter, type BookArchiveImportRequest, type BookArchiveImportResult, type CreateBookArchiveRouterOptions } from "./book-archive.js";
 export type {
   AiObservationScope,

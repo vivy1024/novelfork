@@ -8,11 +8,14 @@ import { Sparkles, Pencil, Plus, Trash2 } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
-import { ChapterEditor } from "./ChapterEditor";
+import { ChapterEditor, type SelectionCandidate } from "./ChapterEditor";
 import type { MentionEntity } from "../ide/EntityMentionExtension";
+
+export type { SelectionCandidate, SelectionRequest, SelectionAction } from "./ChapterEditor";
 import { getImageRawUrl, isImageResourceNode } from "./image-resource";
 import { submitNarrativeLineChange } from "../narrative-line-proposals";
 import { memoryFactLabel } from "../lore-workspace-split";
+import { resourceDisplayTitle } from "../chapter-display-title";
 
 export type ResourceViewerKind =
   | "chapter"
@@ -41,6 +44,9 @@ export interface ResourceViewerRenderOptions {
   mentionEntities?: readonly MentionEntity[];
   /** Ctrl / ⌘ + 点击实体提及时打开资料卡。 */
   onOpenEntity?: (name: string) => void;
+  /** 叙述者结果卡送回的待审阅选区候选；作者在编辑器里决定应用或放弃。 */
+  selectionCandidate?: SelectionCandidate | null;
+  onDismissSelectionCandidate?: () => void;
 }
 
 export interface ResourceViewerDefinition {
@@ -72,7 +78,8 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
       <header className="resource-viewer__header shrink-0 px-4 py-2 border-b border-border/50">
         <div className="flex items-center gap-2">
           <span className="text-2xs text-muted-foreground">{label}</span>
-          <h2 className="text-sm font-medium truncate">{node.title}</h2>
+          {/* 章节文件显示「第 N 章 标题」；下面的来源路径仍是真实文件位置。 */}
+          <h2 className="text-sm font-medium truncate">{resourceDisplayTitle(node)}</h2>
           <CapabilityNotice node={node} />
         </div>
         {node.path ? (
@@ -108,6 +115,8 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
         styleProfileSummary={options.styleProfileSummary}
         mentionEntities={options.mentionEntities}
         onOpenEntity={options.onOpenEntity}
+        selectionCandidate={options.selectionCandidate}
+        onDismissSelectionCandidate={options.onDismissSelectionCandidate}
       />
     </ViewerShell>
   );
@@ -937,6 +946,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string; mentionEntities?: readonly MentionEntity[]; onOpenEntity?: (name: string) => void }) {
-  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity })}</>;
+export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string; mentionEntities?: readonly MentionEntity[]; onOpenEntity?: (name: string) => void; selectionCandidate?: SelectionCandidate | null; onDismissSelectionCandidate?: () => void }) {
+  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate })}</>;
 }

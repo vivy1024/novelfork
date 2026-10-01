@@ -157,6 +157,51 @@ describe("技能与文风侧栏", () => {
     expect(screen.queryByText("18 字")).toBeNull();
   });
 
+  it("记住这种写法：预览推断规则与例句，勾选后确认写入手动写法记忆来源", async () => {
+    const preview = {
+      note: "对话收得干净",
+      rules: [
+        { text: "对话收得干净", evidence: "作者注解", origin: "note" },
+        { text: "对话密度高：引文约占 64%，以对话推进场景。", evidence: "例：“车还来吗？”她问。", origin: "inferred" },
+      ],
+      samples: [{ text: "“车还来吗？”她问。", sceneType: "dialogue" }],
+      sceneTypes: ["dialogue"],
+      stats: { charCount: 80, sentenceCount: 7, avgSentenceLength: 6.1, shortSentenceRatio: 0.7, longSentenceRatio: 0, dialogueRatio: 0.64 },
+      warnings: [],
+    };
+    request.mockImplementation(async (path) => {
+      if (path.endsWith("/style/memories/preview")) return preview;
+      if (path.endsWith("/style/memories/confirm")) return envelope(createStylePreset(), "r2");
+      if (path.endsWith("/profile")) return { profile: fingerprint };
+      return envelope(createStylePreset(), "r1");
+    });
+    const updated = vi.fn();
+    window.addEventListener("novelfork:style-preset-updated", updated);
+    try {
+      render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
+      fireEvent.click(screen.getByRole("button", { name: "文风" }));
+      await screen.findByLabelText("预设名称");
+      fireEvent.change(screen.getByLabelText("写法注解"), { target: { value: "对话收得干净" } });
+      fireEvent.change(screen.getByLabelText("写法示例文本"), { target: { value: "“车还来吗？”她问。" } });
+      fireEvent.click(screen.getByRole("button", { name: "预览写法" }));
+      await screen.findByText(/对话密度高/);
+      expect(screen.getByText(/推断适用场景：对话/)).toBeTruthy();
+      // 取消勾选注解规则，只采纳推断规则与例句
+      fireEvent.click(screen.getByLabelText("选中规则 1"));
+      fireEvent.click(screen.getByRole("button", { name: /确认写入文风预设（2 项）/ }));
+      await screen.findByText(/已写入「手动写法记忆」来源：1 条规则、1 条例句/);
+      const confirmCall = request.mock.calls.find(([path]) => path.endsWith("/style/memories/confirm"))!;
+      expect(JSON.parse(String(confirmCall[1]?.body))).toEqual({
+        expectedRevision: "r1",
+        note: "对话收得干净",
+        rules: [{ text: "对话密度高：引文约占 64%，以对话推进场景。", evidence: "例：“车还来吗？”她问。" }],
+        samples: [{ text: "“车还来吗？”她问。", sceneType: "dialogue" }],
+      });
+      expect(updated).toHaveBeenCalledTimes(1);
+      expect((screen.getByLabelText("写法示例文本") as HTMLTextAreaElement).value).toBe("");
+    } finally { window.removeEventListener("novelfork:style-preset-updated", updated); }
+  });
+
   it("酒馆 JSON 仍可解析并导入写作技能", async () => {
     vi.mocked(putApi).mockResolvedValue({});
     render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
@@ -170,6 +215,58 @@ describe("技能与文风侧栏", () => {
     expect(vi.mocked(putApi).mock.calls[0]?.[0]).toBe("/api/books/book-a/writing-skills/st-sillytavern-preset");
     expect(vi.mocked(putApi).mock.calls[0]?.[1]).toEqual({ content: expect.stringContaining("为作者写小说") });
     await waitFor(() => expect(screen.queryByText("导入酒馆预设 (SillyTavern Preset)")).toBeNull());
+    expect(screen.getByText("技能列表")).toBeTruthy();
+  });
+
+  it("待确认横幅：有总数才提示，点开聚合面板，文风规则的「去处理」切回文风页签", async () => {
+    const pendingReview = {
+      bookId: "book-a",
+      total: 2,
+      groups: [
+        {
+          kind: "styleRule",
+          label: "文风规则",
+          count: 1,
+          items: [{ id: "styleRule:ref-1:0", kind: "styleRule", typeLabel: "文风规则", location: "来源包「某参考作品」", summary: "短句收在动作前", resolveAt: "文风自动蒸馏 › 审阅", target: { kind: "style-panel" } }],
+        },
+        {
+          kind: "voice",
+          label: "声线",
+          count: 1,
+          items: [{ id: "voice:e1", kind: "voice", typeLabel: "声线", location: "角色「陆沉」", summary: "1 项待审", resolveAt: "角色卡 › 声线", target: { kind: "jingwei-entry", entryId: "e1" } }],
+        },
+      ],
+      explanation: "逐项确认。",
+      warnings: [],
+    };
+    request.mockImplementation(async (path) => {
+      if (path.includes("/pending-review")) return pendingReview;
+      if (path.endsWith("/profile")) return { profile: null };
+      return { preset: createStylePreset(), revision: "r1", source: "preset", guideText: "" };
+    });
+
+    render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
+    // 等待合计返回后横幅出现。
+    const banner = await screen.findByRole("button", { name: /待确认 2 项/ });
+    fireEvent.click(banner);
+    // 聚合面板就地展开，行文风规则行可点「去处理」；声线没有入口回调，只显示去哪决定。
+    const goButtons = await screen.findAllByRole("button", { name: /去处理/ });
+    expect(goButtons).toHaveLength(1);
+    expect(screen.getByText("角色卡 › 声线")).toBeTruthy();
+    fireEvent.click(goButtons[0]!);
+    // 切到文风页签并收起面板。
+    await screen.findByLabelText("预设名称");
+    expect(screen.queryByRole("button", { name: "收起" })).toBeNull();
+  });
+
+  it("待确认合计拿不到时不显示横幅，也不打扰原功能", async () => {
+    request.mockImplementation(async (path) => {
+      if (path.includes("/pending-review")) throw new Error("接口不可用");
+      return { preset: createStylePreset(), revision: "r1", source: "preset", guideText: "" };
+    });
+    render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
+    await waitFor(() => expect(request.mock.calls.some(([path]) => path.includes("/pending-review"))).toBe(true));
+    expect(screen.queryByRole("button", { name: /待确认/ })).toBeNull();
     expect(screen.getByText("技能列表")).toBeTruthy();
   });
 });

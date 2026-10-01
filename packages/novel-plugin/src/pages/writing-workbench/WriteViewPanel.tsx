@@ -2,11 +2,22 @@
  * WriteViewPanel — 写作视图（ActivityBar ✍️ 的主面板）
  *
  * 一屏回答三个问题：现在能不能写、缺什么、下一步点哪。
- * 数据只来自 write.preflight；文案只来自 preflight 的 explanation，不按 code 自造。
+ * 写前状态只来自 write.preflight；文案只来自 preflight 的 explanation，不按 code 自造。
+ *
+ * 章节循环（W1）：面板顶部是「写 → 改 → 收尾」步骤条，当前步由 chapter-loop-state
+ * 从写前预检、结算新鲜度与文风金库推出，不另存。写 = 写前准备 + 写下一章；
+ * 改 / 收尾针对最近写完的那一章。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, Compass, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
 import type { ViewId } from "./ide/use-panel-manager";
+
+import { fetchJson, invalidateApiPaths, useApi } from "@/hooks/use-api";
+import { resolveChapterLoop, settlementLabel, type ChapterLoopStep, type LastWrittenChapter, type LoopFreshnessChapter } from "./chapter-loop-state";
+import { freshnessPath } from "./ide/StaleSettlementList";
+import { ChapterRevisions, vaultPath, type VaultSummary } from "./ide/StyleVaultPanel";
+import { reviewChapterParagraphs, type ParagraphSelfReviewIssue, type ParagraphSelfReviewResult } from "../../engine/compliance/paragraph-self-review";
+import { dispatchLocateInEditor } from "./audit-issue-actions";
 
 import type { BeatBudgetItem } from "../../handlers/beat-budget";
 import { BeatBudgetEditor } from "./BeatBudgetEditor";
@@ -33,6 +44,7 @@ import {
   type PendingEvent,
 } from "./narrative-pending-events";
 import { CreativeCompassPanel } from "./CreativeCompassPanel";
+import { useNewBookGuideCompleted } from "./new-book-guide-state";
 
 /** @deprecated 请从 writing-progress-event 导入；此处保留兼容旧 import。 */
 export { WRITING_PROGRESS_EVENT } from "./writing-progress-event";
@@ -43,7 +55,7 @@ export interface WriteViewPanelProps {
   readonly callTool?: (tool: string, input: Record<string, unknown>) => Promise<unknown>;
   /** 切到别的侧栏视图（一键修的 view 类动作）。 */
   readonly onSwitchView?: (view: ViewId) => void;
-  /** 打开写作设置并定位到指定分区（如 Writing Skills）。 */
+  /** 打开写作设置并定位到指定分区（如写作技能）。 */
   readonly onOpenSettings?: (section?: SettingsSectionId) => void;
   /** 打开角色与设定完整面板并定位到指定分类（如 outline）。 */
   readonly onOpenLorePanel?: (category?: string) => void;
@@ -73,6 +85,13 @@ export interface WriteViewPanelProps {
    * 无需手动点刷新，也不引入常驻轮询。
    */
   readonly visible?: boolean;
+  /**
+   * 资源树里是否已有章节（与作品总览同一判据）。有章节的书不再显示建书十一问，
+   * 起书引导卡改为「补全本章焦点」。
+   */
+  readonly hasChapters?: boolean;
+  /** 打开作品总览里的建书十一问（起书引导卡「先回答建书十一问」）。 */
+  readonly onOpenNewBookGuide?: () => void;
 }
 
 const LIGHT_STYLE: Record<WriteViewModel["light"], { bar: string; text: string; icon: typeof CheckCircle2 }> = {
@@ -100,6 +119,8 @@ export function WriteViewPanel({
   chapterWordTarget = 0,
   onJumpToChapter,
   visible,
+  hasChapters = false,
+  onOpenNewBookGuide,
 }: WriteViewPanelProps) {
   const [raw, setRaw] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
@@ -126,7 +147,12 @@ export function WriteViewPanel({
   const [beatOpen, setBeatOpen] = useState(false);
   const compassRef = useRef<HTMLDivElement>(null);
 
-  const model = useMemo(() => buildWriteViewModel(raw), [raw]);
+  const guideCompleted = useNewBookGuideCompleted(bookId);
+  const newBookGuidePending = !hasChapters && !guideCompleted;
+  const model = useMemo(
+    () => buildWriteViewModel(raw, { newBookGuidePending }),
+    [raw, newBookGuidePending],
+  );
   const volumeModel = useMemo<VolumeCockpitModel>(
     () => buildVolumeCockpitModel(volumeRaw, model.chapterNumber),
     [volumeRaw, model.chapterNumber],
@@ -197,7 +223,8 @@ export function WriteViewPanel({
     void runPreflight();
     void loadProposals();
     void loadVolume();
-  }, [loadProposals, loadVolume, runPreflight]);
+    if (bookId) invalidateApiPaths([freshnessPath(bookId), vaultPath(bookId)]);
+  }, [bookId, loadProposals, loadVolume, runPreflight]);
 
   useWritingProgressRefresh(bookId, refreshAll);
 
@@ -239,7 +266,7 @@ export function WriteViewPanel({
       compassRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       const goal = compassRef.current?.querySelector<HTMLTextAreaElement>("[data-testid='creative-compass-goal']");
       goal?.focus();
-      setFixNote("请在上方创作罗盘填写本章目标；保存后会注入写章上下文。");
+      setFixNote("请在上方创作罗盘填写本章目标；保存后写章会按它推进。");
       return;
     }
     if (plan.kind === "lore-panel") {
@@ -266,6 +293,20 @@ export function WriteViewPanel({
     }
   }, [formalChapterCount, model.chapterNumber, onOpenLorePanel, onOpenSettings, onSendToNarrator, onSwitchView]);
 
+  /** 起书引导卡的按钮：没答十一问 → 打开作品总览的十一问；答过 → 定位创作罗盘。 */
+  const handleOnboardingAction = useCallback(() => {
+    if (model.onboarding?.kind === "answer-guide") {
+      setFixNote(null);
+      if (!onOpenNewBookGuide) {
+        setFixNote("当前环境无法切换到作品总览，请点活动栏「资源管理器」，关掉已打开的标签后回答建书十一问。");
+        return;
+      }
+      onOpenNewBookGuide();
+      return;
+    }
+    void handleFix("open-focus");
+  }, [handleFix, model.onboarding?.kind, onOpenNewBookGuide]);
+
   const handleProposal = useCallback(async (event: PendingEvent, action: "approve" | "reject") => {
     if (!bookId || !event.id) return;
     setProposalBusyId(event.id);
@@ -287,9 +328,59 @@ export function WriteViewPanel({
   const gate = canStartWriting({ model, directiveDraft, acceptFocusDefault });
   const effectiveDirective = directiveDraft.trim() || model.resolvedDirective || "";
 
+  // ── 章节循环：写 → 改 → 收尾 ──
+  const { data: freshnessData } = useApi<{ readonly chapters?: readonly LoopFreshnessChapter[] }>(bookId ? freshnessPath(bookId) : null);
+  const { data: vaultData } = useApi<VaultSummary>(bookId ? vaultPath(bookId) : null);
+  const pendingByChapter = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const event of proposals) {
+      if (typeof event.chapterNumber === "number") counts.set(event.chapterNumber, (counts.get(event.chapterNumber) ?? 0) + 1);
+    }
+    return counts;
+  }, [proposals]);
+  const loop = useMemo(() => resolveChapterLoop({
+    nextChapter: model.chapterNumber,
+    nextAlreadyWritten: model.alreadyWritten,
+    freshness: freshnessData?.chapters,
+    vault: vaultData?.chapters,
+    pendingByChapter,
+  }), [freshnessData, vaultData, model.chapterNumber, model.alreadyWritten, pendingByChapter]);
+  const [pickedStep, setPickedStep] = useState<ChapterLoopStep | null>(null);
+  // 由状态推出的默认步变了（收尾完成、换了章或换了书），作者之前手动选的步不再适用。
+  useEffect(() => {
+    setPickedStep(null);
+  }, [bookId, loop.defaultStep, loop.lastWritten?.chapterNumber]);
+  const activeStep = pickedStep ?? loop.defaultStep;
+  const lastWritten = loop.lastWritten;
+
+  const [settleBusy, setSettleBusy] = useState(false);
+  const [settleNote, setSettleNote] = useState<{ readonly tone: "ok" | "error"; readonly text: string } | null>(null);
+  /** 收尾：经 Runtime 默认模型结算本章；没有模型时如实显示服务端给的原因，不用规则冒充。 */
+  const settleChapter = useCallback(async (chapterNumber: number, force = false) => {
+    if (!bookId) return;
+    setSettleBusy(true);
+    setSettleNote(null);
+    try {
+      const result = await fetchJson<{ summary?: string }>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/chapters/${chapterNumber}/resettle`,
+        force
+          ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force: true }) }
+          : { method: "POST" },
+      );
+      setSettleNote({ tone: "ok", text: result.summary ?? `第 ${chapterNumber} 章已结算。` });
+      invalidateApiPaths([freshnessPath(bookId), `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`]);
+      void loadProposals();
+    } catch (err) {
+      setSettleNote({ tone: "error", text: err instanceof Error && err.message ? err.message : "结算失败。" });
+    } finally {
+      setSettleBusy(false);
+    }
+  }, [bookId, loadProposals]);
+
+  // 本章提议按最近写完的那一章分组（刚写完时预检已推荐下一章，用推荐章会把本章提议算成「前面遗留」）。
   const proposalGroups = useMemo(
-    () => groupProposalsByChapter(proposals, model.chapterNumber),
-    [proposals, model.chapterNumber],
+    () => groupProposalsByChapter(proposals, lastWritten?.chapterNumber ?? model.chapterNumber),
+    [proposals, lastWritten?.chapterNumber, model.chapterNumber],
   );
 
   const start = useCallback((mode: "blueprint" | "chapter") => {
@@ -322,9 +413,100 @@ export function WriteViewPanel({
     );
   }
 
+  // 收尾一步可用时，本章提议放进收尾；还没有写完的章时（提议来自更早的章），留在写这一步。
+  const proposalsInClose = Boolean(lastWritten);
+  const proposalsSection = (proposalGroups.current.length > 0 || proposalGroups.earlier.length > 0 || proposalError) ? (
+    <ProposalsSection
+      groups={proposalGroups}
+      error={proposalError}
+      busyId={proposalBusyId}
+      earlierOpen={earlierOpen}
+      onToggleEarlier={() => setEarlierOpen((open) => !open)}
+      onDecide={(event, action) => void handleProposal(event, action)}
+    />
+  ) : null;
+
   return (
     <div className="flex h-full flex-col gap-3 p-3" data-testid="write-view-panel">
+      <ChapterLoopBar steps={loop.steps} active={activeStep} onSelect={setPickedStep} />
+
+      {activeStep === "revise" && lastWritten ? (
+        <>
+          <ReviseStep chapter={lastWritten} onOpenChapter={onJumpToChapter} />
+          <SelfReviewSection bookId={bookId} chapterNumber={lastWritten.chapterNumber} onJumpToChapter={onJumpToChapter} onSendToNarrator={onSendToNarrator} />
+        </>
+      ) : null}
+
+      {activeStep === "close" && lastWritten ? (
+        <>
+          <CloseStep
+            chapter={lastWritten}
+            busy={settleBusy}
+            note={settleNote}
+            onSettle={(force) => void settleChapter(lastWritten.chapterNumber, force)}
+          />
+          {proposalsSection}
+          {lastWritten.hasAiDraft && (lastWritten.authorRatio ?? 0) > 0 ? (
+            <section className="rounded-md border border-border bg-card/40 px-2 py-1.5" data-testid="chapter-loop-revisions">
+              <p className="text-2xs font-medium text-foreground">把改得好的段落存为范文</p>
+              <p className="mt-0.5 text-2xs text-muted-foreground">勾选你改过的段落，采纳后写下一章时优先作为示例。</p>
+              <ChapterRevisions
+                bookId={bookId}
+                chapterNumber={lastWritten.chapterNumber}
+                onAdopted={() => invalidateApiPaths([vaultPath(bookId)])}
+              />
+            </section>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setPickedStep("write")}
+            className="rounded border border-border px-2 py-1.5 text-2xs hover:bg-accent"
+            data-testid="chapter-loop-next"
+          >
+            {lastWritten.chapterNumber < model.chapterNumber ? `开始写第 ${model.chapterNumber} 章` : "回到写作"}
+          </button>
+        </>
+      ) : null}
+
+      {activeStep === "write" ? (
+      <>
+      {/*
+        起书引导卡：新书缺本章焦点与大纲时，用它替换红色报错。
+        文案属于引导而非诊断，由 write-view-state 按状态（十一问是否答过）给出；
+        真有其它阻断时 onboarding 为空，下面照常显示报错就绪条。
+      */}
+      {model.onboarding && (
+        <section className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2" data-testid="write-onboarding">
+          <div className="flex items-start gap-2">
+            <Compass className="mt-0.5 size-4 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-foreground" data-testid="write-onboarding-title">{model.onboarding.title}</p>
+              <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{model.onboarding.description}</p>
+              <button
+                type="button"
+                onClick={handleOnboardingAction}
+                className="mt-1.5 rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90"
+                data-testid="write-onboarding-action"
+              >
+                {model.onboarding.actionLabel}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={refreshAll}
+              disabled={loading}
+              className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+              title="重新检查就绪与本章提议"
+              data-testid="write-refresh"
+            >
+              {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* 就绪条 */}
+      {!model.onboarding && (
       <section className={`rounded-md border px-3 py-2 ${light.bar}`} data-testid="write-ready-bar">
         <div className="flex items-start gap-2">
           <LightIcon className={`mt-0.5 size-4 shrink-0 ${light.text}`} />
@@ -348,6 +530,7 @@ export function WriteViewPanel({
           </button>
         </div>
       </section>
+      )}
 
       {error && (
         <p className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-2xs text-red-600 dark:text-red-400">{error}</p>
@@ -372,12 +555,14 @@ export function WriteViewPanel({
       {/* 检查项清单 */}
       {model.checks.length > 0 && (
         <ul className="flex flex-col gap-1 overflow-y-auto" data-testid="write-checks">
-          {model.checks.map((check) => {
+          {model.checks.map((check, index) => {
             const icon = CHECK_ICON[check.state];
-            const open = expanded === check.code;
+            // 同一 code 可能出现多条（如多条设定/现状不一致），键与展开状态都带序号。
+            const checkKey = `${check.code}:${index}`;
+            const open = expanded === checkKey;
             const hasDetail = Boolean(check.explanation || check.message);
             return (
-              <li key={check.code} className="rounded border border-border/60 bg-card/40">
+              <li key={checkKey} className="rounded border border-border/60 bg-card/40">
                 <div className="flex items-center gap-2 px-2 py-1.5">
                   <span className={`w-3 text-center text-xs font-bold ${icon.cls}`}>{icon.glyph}</span>
                   <span className="flex-1 truncate text-2xs text-foreground">{check.label}</span>
@@ -395,7 +580,7 @@ export function WriteViewPanel({
                   {hasDetail && (
                     <button
                       type="button"
-                      onClick={() => setExpanded(open ? null : check.code)}
+                      onClick={() => setExpanded(open ? null : checkKey)}
                       className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
                       aria-label="展开说明"
                     >
@@ -425,74 +610,10 @@ export function WriteViewPanel({
       {fixNote && <p className="text-2xs text-muted-foreground">{fixNote}</p>}
 
       {/*
-        本章提议：写作 → 叙事记忆 的回路终点。
-        章后结算会从正文提出事实与事件，作者必须能在写作路径上就地确认，
-        而不是写完再想起去叙事记忆面板翻队列。审批走与该面板同一条通道
-        （narrative-pending-events），批准语义与错误文案不会漂移。
+        本章提议：写作 → 叙事记忆 的回路终点。有写完的章时放在「收尾」一步；
+        还没有写完的章（提议来自更早的章）时留在这里，作者照样能就地确认。
       */}
-      {(proposalGroups.current.length > 0 || proposalGroups.earlier.length > 0 || proposalError) && (
-        <section className="rounded-md border border-border bg-card/40 px-2 py-1.5" data-testid="write-proposals">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-2xs font-medium text-foreground">
-              本章提议 {proposalGroups.current.length > 0 ? `(${proposalGroups.current.length})` : ""}
-            </span>
-            {proposalGroups.highRiskCount > 0 && (
-              <span className="text-2xs text-amber-600 dark:text-amber-400">
-                高风险 {proposalGroups.highRiskCount}
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 text-2xs text-muted-foreground">
-            章后结算从正文提出的事实与事件。确认后写入动态事实；不处理也不阻断写作。
-          </p>
-
-          {proposalError && (
-            <p className="mt-1 rounded border border-red-500/40 bg-red-500/10 px-1.5 py-1 text-2xs text-red-600 dark:text-red-400">
-              {proposalError}
-            </p>
-          )}
-
-          <ul className="mt-1.5 flex flex-col gap-1">
-            {proposalGroups.current.map((event, index) => (
-              <ProposalRow
-                key={event.id ?? `current-${index}`}
-                event={event}
-                busy={proposalBusyId === event.id}
-                disabled={proposalBusyId !== null}
-                onApprove={() => void handleProposal(event, "approve")}
-                onReject={() => void handleProposal(event, "reject")}
-              />
-            ))}
-          </ul>
-
-          {proposalGroups.earlier.length > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => setEarlierOpen((open) => !open)}
-                className="mt-1.5 text-2xs text-muted-foreground hover:text-foreground"
-                data-testid="write-proposals-earlier-toggle"
-              >
-                {earlierOpen ? "收起" : `另有 ${proposalGroups.earlier.length} 条前面章节遗留`}
-              </button>
-              {earlierOpen && (
-                <ul className="mt-1 flex flex-col gap-1">
-                  {proposalGroups.earlier.map((event, index) => (
-                    <ProposalRow
-                      key={event.id ?? `earlier-${index}`}
-                      event={event}
-                      busy={proposalBusyId === event.id}
-                      disabled={proposalBusyId !== null}
-                      onApprove={() => void handleProposal(event, "approve")}
-                      onReject={() => void handleProposal(event, "reject")}
-                    />
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-        </section>
-      )}
+      {!proposalsInClose ? proposalsSection : null}
 
       {/*
         完整套路市场不挂在这里。
@@ -595,7 +716,363 @@ export function WriteViewPanel({
           </div>
         )}
       </div>
+      </>
+      ) : null}
     </div>
+  );
+}
+
+function percent(ratio: number): string {
+  return `${Math.round(ratio * 100)}%`;
+}
+
+/** 步骤条：写 → 改 → 收尾。没有写完的章时，改与收尾不可点。 */
+function ChapterLoopBar({ steps, active, onSelect }: {
+  readonly steps: ReturnType<typeof resolveChapterLoop>["steps"];
+  readonly active: ChapterLoopStep;
+  readonly onSelect: (step: ChapterLoopStep) => void;
+}) {
+  return (
+    <div role="tablist" aria-label="本章进度" className="flex items-stretch gap-1 rounded-md border border-border bg-muted/30 p-0.5" data-testid="chapter-loop-bar">
+      {steps.map((item, index) => {
+        const selected = item.id === active;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            disabled={!item.available}
+            onClick={() => onSelect(item.id)}
+            className={`relative flex flex-1 flex-col items-center rounded px-1 py-1 text-2xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              selected ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid={`chapter-loop-step-${item.id}`}
+          >
+            <span>{index + 1} · {item.label}</span>
+            {item.available && item.chapterNumber > 0 ? <span className="text-2xs text-muted-foreground">第 {item.chapterNumber} 章</span> : null}
+            {item.attention ? (
+              <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-500" aria-label="有待处理" data-testid={`chapter-loop-attention-${item.id}`} />
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 改：打开刚写完的章，说明作者改动占比与可用的改稿操作。 */
+function ReviseStep({ chapter, onOpenChapter }: {
+  readonly chapter: LastWrittenChapter;
+  readonly onOpenChapter?: (chapterNumber: number) => void;
+}) {
+  return (
+    <section className="flex flex-col gap-2 rounded-md border border-border bg-card/40 px-3 py-2" data-testid="chapter-loop-revise">
+      <p className="text-xs font-medium text-foreground">
+        改第 {chapter.chapterNumber} 章{chapter.title ? ` · ${chapter.title}` : ""}
+      </p>
+      <p className="text-2xs leading-relaxed text-muted-foreground" data-testid="chapter-loop-author-ratio">
+        {chapter.hasAiDraft
+          ? `这一章是 AI 写的，你目前改动了 ${percent(chapter.authorRatio ?? 0)}。这个比例只反映你改了多少，不代表任何检测工具的判断。`
+          : "这一章没有 AI 原稿记录（可能是你自己写的，或写于保留原稿之前）。"}
+      </p>
+      <ul className="list-disc space-y-0.5 pl-4 text-2xs leading-relaxed text-muted-foreground">
+        <li>选中一段文字，可以续写、润色、改写、扩写、精简或人味化。</li>
+        <li>正文里带虚线的人名，按住 Ctrl（Mac 上是 ⌘）点击可以看资料卡。</li>
+        <li>改完保存后到「收尾」结算本章，记忆和人物关系才会更新。</li>
+      </ul>
+      <button
+        type="button"
+        onClick={() => onOpenChapter?.(chapter.chapterNumber)}
+        disabled={!onOpenChapter}
+        className="rounded bg-primary px-2 py-1.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+        data-testid="chapter-loop-open-chapter"
+      >
+        打开第 {chapter.chapterNumber} 章正文
+      </button>
+    </section>
+  );
+}
+
+/**
+ * 把自审命中交给叙述者做整章人文化：逐条生成定点候选（≤10% 改动），
+ * 不带编辑器坐标，候选回到正文按原文定位由作者逐条确认。
+ */
+export function buildHumanizeMessage(chapterNumber: number, issues: readonly ParagraphSelfReviewIssue[]): string {
+  const lines = [
+    `第 ${chapterNumber} 章的表达检查发现了 ${issues.length} 处规则命中的写法问题。请逐条生成「人文化」候选，用 chapter.propose_selection 提交（每条问题一条候选）。`,
+    "",
+    "要求：",
+    "- 只改被命中的句子，改动不超过原句的 10%；情节、对白、设定一律不动。",
+    "- from/to 是编辑器坐标你拿不到：不要编造坐标，直接省略 from/to，编辑器会按候选原文在正文里定位。sourceText 必须是正文里的原文，candidateText 是改写后的句子。",
+    "- requestId 自行生成，每条候选一个稳定编号。",
+    "- 可选的人文化手法（按需选择，不必全用）：矛盾的情绪、小身体细节、无关的随机念头、不完美的对话、环境作用于身体、注意到无关事物、刻意的节奏断裂。",
+    "- 不要改正文；作者会在编辑器里逐条确认。",
+    "",
+    "问题清单：",
+  ];
+  issues.slice(0, 20).forEach((issue, index) => {
+    lines.push(`${index + 1}. 第 ${issue.paragraph} 段「${issue.evidence}」：${issue.reason}${issue.suggestion ? `。参考方向：${issue.suggestion}` : ""}`);
+  });
+  if (issues.length > 20) lines.push(`（另有 ${issues.length - 20} 条未列出，先处理上面这些。）`);
+  return lines.join("\n");
+}
+
+/**
+ * 表达自审（改这一步）：客户端复用去套话规则引擎只读定位命中，
+ * 不改写正文、不出结论；「定位」打开章节后把原句送进编辑器搜索。
+ */
+function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNarrator }: {
+  readonly bookId: string;
+  readonly chapterNumber: number;
+  readonly onJumpToChapter?: (chapterNumber: number) => void;
+  readonly onSendToNarrator?: (message: string) => Promise<void> | void;
+}) {
+  const [report, setReport] = useState<ParagraphSelfReviewResult | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [handoffNote, setHandoffNote] = useState<string | null>(null);
+  const [handoffBusy, setHandoffBusy] = useState(false);
+
+  const run = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await fetchJson<{ content?: string }>(
+        `/api/books/${encodeURIComponent(bookId)}/chapters/${chapterNumber}`,
+      );
+      setReport(reviewChapterParagraphs(data?.content ?? ""));
+    } catch (err) {
+      setReport(null);
+      setLoadError(err instanceof Error && err.message ? err.message : "读取章节正文失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [bookId, chapterNumber]);
+
+  useEffect(() => {
+    void run();
+  }, [run]);
+
+  const locate = (quote: string) => {
+    onJumpToChapter?.(chapterNumber);
+    // 章节 tab 可能刚打开，给编辑器挂载与正文加载留出时间；定位失败时搜索栏已带原句。
+    window.setTimeout(() => dispatchLocateInEditor(quote), 300);
+  };
+
+  const handoffToNarrator = useCallback(async () => {
+    if (!report || report.issues.length === 0) return;
+    if (!onSendToNarrator) {
+      setHandoffNote("当前视图没有可用的叙述者，无法执行人文化。");
+      return;
+    }
+    setHandoffBusy(true);
+    setHandoffNote(null);
+    try {
+      await onSendToNarrator(buildHumanizeMessage(chapterNumber, report.issues));
+      setHandoffNote(`已把 ${report.issues.length} 处表达问题交给叙述者；候选逐条产回正文后，在章节编辑器里对照确认。`);
+    } catch (err) {
+      setHandoffNote(err instanceof Error && err.message ? err.message : "交给叙述者失败");
+    } finally {
+      setHandoffBusy(false);
+    }
+  }, [chapterNumber, onSendToNarrator, report]);
+
+  return (
+    <section className="rounded-md border border-border bg-card/40 px-3 py-2" data-testid="chapter-loop-self-review">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-2xs font-medium text-foreground">表达自审（只检查，不改正文）</span>
+        <div className="flex items-center gap-2">
+          {report && report.issues.length > 0 ? (
+            <button
+              type="button"
+              className="rounded bg-primary px-2 py-0.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              onClick={() => void handoffToNarrator()}
+              disabled={handoffBusy || loading}
+              data-testid="self-review-humanize"
+            >
+              {handoffBusy ? "交接中…" : "交叙述者人文化"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            onClick={() => void run()}
+            disabled={loading}
+            data-testid="self-review-rerun"
+          >
+            {loading ? "检查中…" : "重新检查"}
+          </button>
+        </div>
+      </div>
+      {loadError ? (
+        <p className="mt-1 text-2xs text-destructive" data-testid="self-review-error">{loadError}</p>
+      ) : null}
+      {handoffNote ? (
+        <p className="mt-1 text-2xs text-muted-foreground" data-testid="self-review-handoff-note">{handoffNote}</p>
+      ) : null}
+      {report ? (
+        <>
+          <p className="mt-1 text-2xs text-muted-foreground" data-testid="self-review-message">{report.message}</p>
+          {report.issues.length > 0 ? (
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {report.issues.slice(0, 8).map((issue, index) => (
+                <li key={`${issue.ruleId}-${issue.start}-${index}`} className="rounded border border-border/60 bg-background/60 px-1.5 py-1 text-2xs" data-testid="self-review-item">
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="text-muted-foreground">第 {issue.paragraph} 段</span>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-primary hover:bg-primary/20"
+                      onClick={() => locate(issue.evidence)}
+                      data-testid="self-review-locate"
+                    >
+                      定位
+                    </button>
+                  </div>
+                  <p className="mt-0.5 line-clamp-2 text-foreground">「{issue.evidence}」</p>
+                  <p className="mt-0.5 text-muted-foreground">{issue.reason}</p>
+                  {issue.suggestion ? (
+                    <p className="mt-0.5 text-muted-foreground">建议：{issue.suggestion}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {report.issues.length > 8 ? (
+            <p className="mt-1 text-2xs text-muted-foreground">
+              另有 {report.issues.length - 8} 条命中未列出；打开章节逐段「人味化」处理。
+            </p>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+/** 收尾：结算本章（经 Runtime 默认模型），结算提出的变化在下方逐条确认。 */
+function CloseStep({ chapter, busy, note, onSettle }: {
+  readonly chapter: LastWrittenChapter;
+  readonly busy: boolean;
+  readonly note: { readonly tone: "ok" | "error"; readonly text: string } | null;
+  readonly onSettle: (force: boolean) => void;
+}) {
+  const settled = chapter.settlement === "fresh";
+  return (
+    <section className="flex flex-col gap-1.5 rounded-md border border-border bg-card/40 px-3 py-2" data-testid="chapter-loop-close">
+      <p className="text-xs font-medium text-foreground">
+        收尾第 {chapter.chapterNumber} 章{chapter.title ? ` · ${chapter.title}` : ""}
+      </p>
+      <p className="text-2xs text-muted-foreground" data-testid="chapter-loop-settlement">
+        记忆：{settlementLabel(chapter.settlement)}
+      </p>
+      <p className="text-2xs leading-relaxed text-muted-foreground">
+        结算会让模型读一遍本章，提出人物状态、关系、伏笔和新设定的变化；你确认后才写进记忆，下一章写作会用到。
+      </p>
+      {!settled ? (
+        <button
+          type="button"
+          onClick={() => onSettle(false)}
+          disabled={busy}
+          className="self-start rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          data-testid="chapter-loop-settle"
+        >
+          {busy ? "结算中…" : chapter.settlement === "stale" ? `重新结算第 ${chapter.chapterNumber} 章` : `结算第 ${chapter.chapterNumber} 章`}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onSettle(true)}
+          disabled={busy}
+          title="正文没改也让模型重新读一遍本章。上次结算漏记了才需要。"
+          className="self-start text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+          data-testid="chapter-loop-force-settle"
+        >
+          {busy ? "结算中…" : "强制重新结算（上次漏记时用）"}
+        </button>
+      )}
+      {note ? (
+        <p
+          className={`rounded px-1.5 py-1 text-2xs ${note.tone === "ok" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"}`}
+          data-testid="chapter-loop-settle-note"
+        >
+          {note.text}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** 章后结算提出的事实与事件，逐条确认或驳回；审批走与叙事记忆面板同一条通道。 */
+function ProposalsSection({ groups, error, busyId, earlierOpen, onToggleEarlier, onDecide }: {
+  readonly groups: ReturnType<typeof groupProposalsByChapter>;
+  readonly error: string | null;
+  readonly busyId: string | null;
+  readonly earlierOpen: boolean;
+  readonly onToggleEarlier: () => void;
+  readonly onDecide: (event: PendingEvent, action: "approve" | "reject") => void;
+}) {
+  return (
+    <section className="rounded-md border border-border bg-card/40 px-2 py-1.5" data-testid="write-proposals">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-2xs font-medium text-foreground">
+          本章提议 {groups.current.length > 0 ? `(${groups.current.length})` : ""}
+        </span>
+        {groups.highRiskCount > 0 && (
+          <span className="text-2xs text-amber-600 dark:text-amber-400">
+            高风险 {groups.highRiskCount}
+          </span>
+        )}
+      </div>
+      <p className="mt-0.5 text-2xs text-muted-foreground">
+        章后结算从正文提出的事实与事件。确认后写入动态事实；不处理也不阻断写作。
+      </p>
+
+      {error && (
+        <p className="mt-1 rounded border border-red-500/40 bg-red-500/10 px-1.5 py-1 text-2xs text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
+
+      <ul className="mt-1.5 flex flex-col gap-1">
+        {groups.current.map((event, index) => (
+          <ProposalRow
+            key={event.id ?? `current-${index}`}
+            event={event}
+            busy={busyId === event.id}
+            disabled={busyId !== null}
+            onApprove={() => onDecide(event, "approve")}
+            onReject={() => onDecide(event, "reject")}
+          />
+        ))}
+      </ul>
+
+      {groups.earlier.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={onToggleEarlier}
+            className="mt-1.5 text-2xs text-muted-foreground hover:text-foreground"
+            data-testid="write-proposals-earlier-toggle"
+          >
+            {earlierOpen ? "收起" : `另有 ${groups.earlier.length} 条前面章节遗留`}
+          </button>
+          {earlierOpen && (
+            <ul className="mt-1 flex flex-col gap-1">
+              {groups.earlier.map((event, index) => (
+                <ProposalRow
+                  key={event.id ?? `earlier-${index}`}
+                  event={event}
+                  busy={busyId === event.id}
+                  disabled={busyId !== null}
+                  onApprove={() => onDecide(event, "approve")}
+                  onReject={() => onDecide(event, "reject")}
+                />
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -635,7 +1112,7 @@ function VolumeCockpit({ volume, chapterNumber, error, onCreateVolume, creating 
           className="mt-1.5 rounded bg-primary/10 px-2 py-0.5 text-2xs text-primary hover:bg-primary/20 disabled:opacity-50"
           data-testid="write-volume-create"
         >
-          {creating ? "处理中" : "用 outline.volume 建卷"}
+          {creating ? "处理中" : "生成卷纲草案"}
         </button>
       </section>
     );

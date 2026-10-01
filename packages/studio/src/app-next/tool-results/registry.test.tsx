@@ -11,6 +11,8 @@ describe("tool-results registry", () => {
     expect(resolveToolResultRendererKey({ toolName: "pipeline.write", result: { data: {} } })).toBe("pipeline");
     // 补了专属卡后，这些工具名也会解析到对应保留键（不再退回 generic）。
     expect(resolveToolResultRendererKey({ toolName: "chapter.audit", result: { data: {} } })).toBe("chapter-audit");
+    expect(resolveToolResultRendererKey({ toolName: "chapter.propose_selection", result: { data: {} } })).toBe("selection-candidate");
+    expect(resolveToolResultRendererKey({ toolName: "custom.tool", result: { renderer: "chapter.selection-candidate" } })).toBe("selection-candidate");
     // narrative.read_line 的 renderer 值是 "narrative.line"，工具名本身仍未登记，按名解析回落 generic。
     expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { data: {} } })).toBe("generic");
     expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
@@ -80,6 +82,33 @@ describe("tool-results registry", () => {
     expect(screen.getByText("驾驶舱快照")).toBeTruthy();
     expect(screen.getByText("暂无风险提示")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "在画布打开" })).toBeNull();
+  });
+
+  it("选区候选卡显示原文与候选，「在正文里审阅」把 artifact 交回工作台", () => {
+    const onOpenArtifact = vi.fn();
+    const artifact = {
+      kind: "selection-candidate",
+      id: "req-1",
+      requestId: "req-1",
+      bookId: "book-1",
+      chapterNumber: 2,
+      from: 3,
+      to: 9,
+      sourceText: "他不禁抬头看向门口。",
+      candidateText: "他抬起头，看向门口。",
+      action: "polish",
+    };
+    render(<>{renderToolResult({
+      toolName: "chapter.propose_selection",
+      result: { renderer: "chapter.selection-candidate", data: { artifact } },
+      onOpenArtifact,
+    })}</>);
+
+    expect(screen.getByTestId("selection-candidate-card-source").textContent).toContain("不禁");
+    expect(screen.getByTestId("selection-candidate-card-text").textContent).toContain("抬起头");
+    expect(screen.getByText(/确认前不会覆盖正文/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("selection-candidate-open"));
+    expect(onOpenArtifact).toHaveBeenCalledWith(artifact);
   });
 
   it("artifact 结果提供在画布打开动作", () => {

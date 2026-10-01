@@ -15,6 +15,7 @@ import { PublishExportCard } from "./PublishExportCard";
 import { PublishReadinessCard } from "./PublishReadinessCard";
 import { QuestionnaireCard } from "./QuestionnaireCard";
 import { SceneSpecCard } from "./SceneSpecCard";
+import { SelectionCandidateCard } from "./SelectionCandidateCard";
 import { WorkflowProgressRenderer } from "./WorkflowProgressCard";
 import { WritePreflightCard } from "./WritePreflightCard";
 import type { ToolResultRenderer, ToolResultRendererContext } from "./types";
@@ -34,6 +35,7 @@ export const RESERVED_TOOL_RESULT_RENDERERS = [
   "publish-readiness",
   "publish-export",
   "scene-spec",
+  "selection-candidate",
   "chapter-audit",
   "memory-read",
   "memory-graph",
@@ -54,6 +56,7 @@ const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number],
   "publish-readiness": PublishReadinessCard,
   "publish-export": PublishExportCard,
   "scene-spec": SceneSpecCard,
+  "selection-candidate": SelectionCandidateCard,
   "chapter-audit": ChapterAuditCard,
   "memory-read": MemoryReadCard,
   // memory.graph 改走树：原来把图数据渲染成三元组文本行，本来是图却画成文字
@@ -87,6 +90,9 @@ const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDE
   "publish-export": "publish-export",
   "scene.spec": "scene-spec",
   "scene-spec": "scene-spec",
+  "chapter.propose_selection": "selection-candidate",
+  "chapter.selection-candidate": "selection-candidate",
+  "selection-candidate": "selection-candidate",
   "chapter.audit": "chapter-audit",
   "chapter-audit": "chapter-audit",
   "narrative-memory.read": "memory-read",

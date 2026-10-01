@@ -15,9 +15,11 @@ import {
 	createEmbeddingSettingsRouter,
 	createFilterRouter,
 	createJingweiRouter,
+	createKnowledgeRouter,
 	createMarketRouter,
 	createNarrativeLineRouter,
 	createNarrativeMemoryRouter,
+	createPendingReviewRouter,
 	createOverviewRouter,
 	createQualityTrendRouter,
 	createWriteReadinessRouter,
@@ -81,7 +83,7 @@ function explainUnavailableModel(
 		return {
 			available: false,
 			code: status.code,
-			message: "Runtime 还没有设置默认模型。",
+			message: "还没有设置默认模型。",
 			suggestedAction: "在设置里配置 AI 供应商并选定默认模型后重试。",
 		};
 	}
@@ -185,6 +187,8 @@ novelDomainRoutes.route(
 );
 // 关系图谱：按实体 id 查第 N 章关系、关系史、焦点人物网络、共同关系人与趋势；数据只读实体索引。
 novelDomainRoutes.route("", asRuntimeRouter(createEntityGraphRouter()));
+// 知情边界：按实体 id 查第 N 章「他知道什么 / 还不知道什么」与现状，数据只读知情账与状态流水。
+novelDomainRoutes.route("", asRuntimeRouter(createKnowledgeRouter()));
 novelDomainRoutes.route(
 	"",
 	asRuntimeRouter(
@@ -274,6 +278,16 @@ novelDomainRoutes.route(
 		createNarrativeStructureRouter({
 			// 伏笔阈值由作者按书设置，存于 book.json。
 			loadBookConfig: (bookId) => productRouterContext.state.loadBookConfig(bookId),
+		}),
+	),
+);
+// 「待确认」聚合（只读）：声线/文风规则/伏笔草稿/待审事件/事实与金库未采纳改稿段一次聚齐。
+// 各审批动作仍走原有入口，本路由只回答「去哪确认」。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createPendingReviewRouter({
+			resolveBookRoot: resolveDomainBookRoot,
 		}),
 	),
 );

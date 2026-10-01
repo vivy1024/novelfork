@@ -72,7 +72,7 @@ describe("product text generation resolver", () => {
 		expect(generation).toEqual({
 			available: false,
 			code: "MODEL_NOT_CONFIGURED",
-			message: "Runtime 还没有设置默认模型。",
+			message: "还没有设置默认模型。",
 			suggestedAction: "在设置里配置 AI 供应商并选定默认模型后重试。",
 		});
 		expect(calls).toEqual([]);
@@ -101,7 +101,7 @@ describe("product text generation resolver", () => {
 			mode: "prompt-preview",
 			reason: "model-unavailable",
 			modelUnavailableCode: "MODEL_NOT_CONFIGURED",
-			explanation: { what: "Runtime 还没有设置默认模型。", next: expect.any(String) },
+			explanation: { what: "还没有设置默认模型。", next: expect.any(String) },
 		});
 	});
 });

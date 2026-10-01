@@ -28,6 +28,8 @@ describe("novel domain product routes", () => {
 		expect(paths).toContain("GET /api/books/:bookId/state");
 		// Collaboration context for external book binding
 		expect(paths).toContain("GET /api/books/:bookId/collaboration-context");
+		// 「待确认」聚合（只读）：声线/文风规则/伏笔/待审事件/事实与改稿段一次聚齐
+		expect(paths).toContain("GET /api/books/:bookId/pending-review");
 		// Compliance panel
 		expect(paths.some((p) => p.includes("/compliance/"))).toBe(true);
 		expect(paths).toContain("POST /api/filter/scan");

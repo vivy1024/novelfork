@@ -15,6 +15,7 @@ import { fetchJson } from "@/hooks/use-api";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { useResourceAutosave } from "./use-resource-autosave";
 import { ResourceViewer } from "./resource-viewers";
+import type { SelectionCandidate } from "./resource-viewers/ChapterEditor";
 import { useNarrativeStructure } from "./useNarrativeStructure";
 import type { MentionEntity } from "./ide/EntityMentionExtension";
 import { summarizeStyleProfile } from "./resource-viewers/style-profile-summary";
@@ -26,6 +27,7 @@ import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 import { JingweiEntryEditor, type JingweiEntrySavePayload } from "./JingweiEntryEditor";
 import { ChapterContextRail } from "./ChapterContextRail";
 import { NewBookGuide, type GuidedSetupOutcome } from "./NewBookGuide";
+import { containsChapterNode, markNewBookGuideCompleted, useNewBookGuideCompleted } from "./new-book-guide-state";
 import { StatusBar } from "./StatusBar";
 import { ChapterToolbar } from "./ChapterToolbar";
 import { QualityCenterPanel } from "./panels/QualityCenterPanel";
@@ -310,9 +312,12 @@ export interface WorkbenchCanvasProps {
   onSendToNarrator?: (message: string) => Promise<void> | void;
   /** 当前打开的本书叙述者会话 id（供「故事推进 › 执行」启动工作流）。 */
   narratorId?: string;
+  /** 叙述者结果卡送回的待审阅选区候选；仅在 chapterNumber 与当前章节一致时显示。 */
+  selectionCandidate?: SelectionCandidate | null;
+  onDismissSelectionCandidate?: () => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate }: WorkbenchCanvasProps) {
   const { resourceKey, content, dirty, saving, saveError, setContent, save: handleSave, setSaveError } = useResourceAutosave(node, bookId, onSave);
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -737,7 +742,10 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
               />
             );
           })() : (
-            <ResourceViewer key={resourceKey} node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} styleProfileSummary={styleProfileSummary} mentionEntities={mentionEntities} onOpenEntity={onOpenEntityDetail} onContentChange={setContent} onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
+            <ResourceViewer key={resourceKey} node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} styleProfileSummary={styleProfileSummary} mentionEntities={mentionEntities} onOpenEntity={onOpenEntityDetail} onContentChange={setContent}
+              selectionCandidate={typeof node.metadata?.chapterNumber === "number" && selectionCandidate?.chapterNumber === node.metadata.chapterNumber ? selectionCandidate : null}
+              onDismissSelectionCandidate={onDismissSelectionCandidate}
+              onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
               const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
               try {
                 const data = await fetchJson<{ text?: string; content?: string }>(
@@ -848,28 +856,16 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
 // DefaultCockpitViewWithGuide — 新书显示引导，已完成引导显示 Cockpit
 // ---------------------------------------------------------------------------
 
-function containsChapterNode(nodes: readonly WorkbenchResourceNode[] | undefined): boolean {
-  return nodes?.some((node) => node.kind === "chapter" || containsChapterNode(node.children)) ?? false;
-}
-
 function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, currentChapter, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; currentChapter?: number; onGuideComplete?: (outcome?: GuidedSetupOutcome) => void; onJumpToChapter?: (chapterNumber: number) => void }) {
-  const storageKey = `novelfork:guide-completed:${bookId}`;
+  // 判据与写作侧栏的起书引导卡共用（new-book-guide-state），两处不会各说各话。
   const hasChapters = containsChapterNode(nodes);
-  const [guideCompleted, setGuideCompleted] = useState(() => {
-    if (hasChapters) return true;
-    try { return localStorage.getItem(storageKey) === "true"; } catch { return false; }
-  });
-
-  useEffect(() => {
-    if (hasChapters) setGuideCompleted(true);
-  }, [hasChapters]);
+  const guideCompleted = useNewBookGuideCompleted(bookId) || hasChapters;
 
   const handleGuideComplete = useCallback((outcome?: GuidedSetupOutcome) => {
-    try { localStorage.setItem(storageKey, "true"); } catch { /* ignore */ }
-    setGuideCompleted(true);
+    markNewBookGuideCompleted(bookId);
     // outcome 带着 Skills 推荐与题材簇，供上层交给叙述者做建书收尾编排。
     onGuideComplete?.(outcome);
-  }, [storageKey, onGuideComplete]);
+  }, [bookId, onGuideComplete]);
 
   return guideCompleted
     ? <DefaultCockpitView bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} />

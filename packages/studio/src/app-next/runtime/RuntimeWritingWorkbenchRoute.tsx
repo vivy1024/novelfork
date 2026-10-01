@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { IdeWorkbench, type WorkbenchOpenRequest } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
 import type {
+  SelectionCandidate,
   WorkbenchCanvasContext,
   WorkbenchResourceNode,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
@@ -177,6 +178,45 @@ export function artifactResourceId(artifact: ToolResultArtifact, bookId: string)
   return null;
 }
 
+const SELECTION_ACTIONS = new Set(["continue", "polish", "rewrite", "expand", "compress"]);
+
+/**
+ * 选区候选 artifact → 编辑器候选。字段由 chapter.propose_selection 工具产出；
+ * 长度上限在工具侧已校验（原文 1 万、候选 2 万字），这里只验形状与归属。
+ */
+export function parseSelectionCandidate(artifact: ToolResultArtifact, bookId: string): SelectionCandidate | null {
+  if (artifact.kind !== "selection-candidate") return null;
+  if (artifact.bookId !== bookId) return null;
+  const { requestId, chapterNumber, from, to, sourceText, candidateText, action } = artifact;
+  const hasFrom = from !== undefined && from !== null;
+  const hasTo = to !== undefined && to !== null;
+  const rangeValid = !hasFrom && !hasTo
+    ? true
+    : hasFrom && hasTo &&
+      typeof from === "number" && Number.isSafeInteger(from) &&
+      typeof to === "number" && Number.isSafeInteger(to) && to > from;
+  if (
+    typeof requestId !== "string" || requestId.length === 0
+    || typeof chapterNumber !== "number" || !Number.isSafeInteger(chapterNumber) || chapterNumber <= 0
+    || !rangeValid
+    || typeof sourceText !== "string" || sourceText.trim() === ""
+    || typeof candidateText !== "string" || candidateText.trim() === ""
+    || typeof action !== "string"
+    || !SELECTION_ACTIONS.has(action)
+  ) return null;
+  return {
+    kind: "selection-candidate",
+    id: typeof artifact.id === "string" && artifact.id ? artifact.id : requestId,
+    requestId,
+    bookId,
+    chapterNumber,
+    ...(hasFrom ? { from: from as number, to: to as number } : {}),
+    sourceText,
+    candidateText,
+    action: action as SelectionCandidate["action"],
+  };
+}
+
 export function findWorkbenchNode(nodes: readonly WorkbenchResourceNode[], id: string): WorkbenchResourceNode | null {
   for (const node of nodes) {
     if (node.id === id) return node;
@@ -223,6 +263,7 @@ export function RuntimeWritingWorkbenchRoute({
   const [nodes, setNodes] = useState<WorkbenchResourceNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<WorkbenchResourceNode | null>(null);
   const [openRequest, setOpenRequest] = useState<WorkbenchOpenRequest | null>(null);
+  const [selectionCandidate, setSelectionCandidate] = useState<SelectionCandidate | null>(null);
   const [narrators, setNarrators] = useState<Awaited<ReturnType<RuntimeProductClient["listNarrators"]>>>([]);
   const [activeNarratorId, setActiveNarratorId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -367,9 +408,15 @@ export function RuntimeWritingWorkbenchRoute({
   }, [probeWorkspaceChange]);
 
   // 叙述者结果卡「在画布打开」：打开对应章节。刚写完的章可能还没进资源树，先静默重载再找。
+  // 选区候选额外把候选对象带进工作台，候选章打开的编辑器会出现对照与采用入口。
   const handleOpenArtifact = useCallback(async (artifact: ToolResultArtifact) => {
     const bookAtStart = currentBookIdRef.current;
-    const id = artifactResourceId(artifact, bookAtStart);
+    const candidate = parseSelectionCandidate(artifact, bookAtStart);
+    if (artifact.kind === "selection-candidate" && !candidate) {
+      setOpenNotice("这条选区候选来自别的书或数据不完整，没法送回编辑器；请在对话里查看候选正文。");
+      return;
+    }
+    const id = candidate ? `chapter:${candidate.chapterNumber}` : artifactResourceId(artifact, bookAtStart);
     if (!id) {
       setOpenNotice(`「${artifact.title ?? artifact.id}」不是本书的章节，工作台暂时打不开这类结果。`);
       return;
@@ -383,6 +430,7 @@ export function RuntimeWritingWorkbenchRoute({
     }
     setSelectedNode(node);
     setOpenRequest((previous) => ({ bookId: bookAtStart, node, seq: (previous?.seq ?? 0) + 1 }));
+    if (candidate) setSelectionCandidate(candidate);
   }, [reload]);
 
   useEffect(() => {
@@ -394,6 +442,11 @@ export function RuntimeWritingWorkbenchRoute({
     window.addEventListener(WRITING_PROGRESS_EVENT, handler);
     return () => window.removeEventListener(WRITING_PROGRESS_EVENT, handler);
   }, [bookId, reload]);
+
+  // 换书丢弃未审阅的选区候选，避免漏带到另一本书的同章号章节。
+  useEffect(() => {
+    setSelectionCandidate(null);
+  }, [bookId]);
 
   const handleSave = useCallback(async (node: WorkbenchResourceNode, content: string) => {
     if (!node.capabilities.edit) throw new Error("此 Runtime 资源不可编辑");
@@ -516,6 +569,8 @@ export function RuntimeWritingWorkbenchRoute({
           nodes={nodes}
           selectedNode={selectedNode}
           openRequest={openRequest}
+          selectionCandidate={selectionCandidate}
+          onDismissSelectionCandidate={() => setSelectionCandidate(null)}
           onOpen={setSelectedNode}
           onDeselectNode={() => setSelectedNode(null)}
           onSave={handleSave}

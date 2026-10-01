@@ -22,6 +22,30 @@ import { LOCATE_IN_EDITOR_EVENT } from "../audit-issue-actions";
 // ---------------------------------------------------------------------------
 
 type AiAction = "continue" | "polish" | "rewrite" | "expand" | "naturalize" | "compress";
+export type SelectionAction = Exclude<AiAction, "naturalize">;
+
+/** from/to 是 TipTap 文档坐标；请求与结果用浏览器生成的 requestId 配对。 */
+export interface SelectionRequest {
+  readonly requestId: string;
+  readonly bookId: string;
+  readonly chapterNumber: number;
+  readonly from: number;
+  readonly to: number;
+  readonly sourceText: string;
+  readonly action: SelectionAction;
+}
+
+/**
+ * 叙述者产出的选区改写候选。from/to 可省略：整章人文化等场景里叙述者不知道
+ * 编辑器文档坐标，编辑器应用时按 sourceText 逐字在正文里定位（唯一出现才应用）。
+ */
+export interface SelectionCandidate extends Omit<SelectionRequest, "from" | "to"> {
+  readonly kind: "selection-candidate";
+  readonly id: string;
+  readonly candidateText: string;
+  readonly from?: number;
+  readonly to?: number;
+}
 
 const AI_ACTION_LABELS: Record<AiAction, string> = {
   continue: "续写",
@@ -87,18 +111,16 @@ async function callDeslop(selectedText: string): Promise<DeslopResponse["result"
 
 /** 把选段任务组装成叙述者指令，由 Runtime 的 Agent Loop 与权限确认执行。 */
 export function buildSelectionInstruction(
-  action: Exclude<AiAction, "naturalize">,
-  selectedText: string,
-  chapterNumber: number | undefined,
+  request: SelectionRequest,
   manualFlags: readonly DeslopManualFlag[] = [],
   styleProfileSummary?: string,
 ): string {
   const lines = [
-    `请${NARRATOR_TASK_LABELS[action]}。`,
-    chapterNumber ? `目标章节：第 ${chapterNumber} 章。` : "",
+    `请${NARRATOR_TASK_LABELS[request.action]}。`,
+    `目标章节：第 ${request.chapterNumber} 章。`,
     "",
     "选中原文：",
-    selectedText,
+    request.sourceText,
   ];
   if (styleProfileSummary?.trim()) {
     lines.push("", "全书文风基准：", styleProfileSummary.trim());
@@ -109,7 +131,12 @@ export function buildSelectionInstruction(
       lines.push(`- 「${flag.excerpt}」：${flag.reason}。${flag.instruction}`);
     }
   }
-  lines.push("", "改完请把结果给我确认，不要直接覆盖正文。");
+  lines.push(
+    "",
+    "请调用 chapter.propose_selection，把下列字段原样传入工具，并将生成的候选正文作为 candidateText 传入。from/to 是编辑器文档坐标；不要换算成 Markdown 字符偏移。",
+    JSON.stringify(request),
+    "工具只返回候选，不要直接修改章节正文。作者会在正文中审阅并决定是否应用。",
+  );
   return lines.filter((line) => line !== undefined).join("\n");
 }
 
@@ -129,7 +156,7 @@ interface AIBubbleMenuProps {
   editor: Editor;
   bookId: string;
   chapterNumber?: number;
-  onSendToNarrator?: (message: string) => Promise<void> | void;
+  onSendToNarrator?: (message: string, request?: SelectionRequest) => Promise<void> | void;
   styleProfileSummary?: string;
 }
 
@@ -168,14 +195,20 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator, stylePr
         setPendingError("当前视图没有可用的叙述者，无法执行该操作。");
         return;
       }
-      await onSendToNarrator(buildSelectionInstruction(action as Exclude<AiAction, "naturalize">, selectedText, chapterNumber, [], styleProfileSummary));
+      if (!chapterNumber) {
+        setPendingError("当前章节缺少章号，无法生成可核对的候选。");
+        return;
+      }
+      // 走到这里 action 已不可能是 naturalize（本地规则分支已早退，TS 不能依 Set.has 窄化，显式断言）。
+      const request: SelectionRequest = { requestId: crypto.randomUUID(), bookId, chapterNumber, from, to, sourceText: selectedText, action: action as SelectionAction };
+      await onSendToNarrator(buildSelectionInstruction(request, [], styleProfileSummary), request);
       setHandedOff(action);
     } catch (cause) {
       setPendingError(cause instanceof Error ? cause.message : "操作失败");
     } finally {
       setLoading(null);
     }
-  }, [editor, chapterNumber, onSendToNarrator, styleProfileSummary]);
+  }, [editor, bookId, chapterNumber, onSendToNarrator, styleProfileSummary]);
 
   const applyPending = useCallback(() => {
     if (!pending) return;
@@ -196,10 +229,15 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator, stylePr
   /** 把规则没动的语义项连同原文一起交给叙述者。 */
   const handOffManualFlags = useCallback(async () => {
     if (!pending || !onSendToNarrator) return;
-    await onSendToNarrator(buildSelectionInstruction("polish", pending.sourceText, chapterNumber, pending.manualFlags, styleProfileSummary));
+    if (!chapterNumber || editor.state.doc.textBetween(pending.from, pending.to, " ") !== pending.sourceText) {
+      setPendingError("选区原文已变化，请重新选择后生成候选。");
+      return;
+    }
+    const request: SelectionRequest = { requestId: crypto.randomUUID(), bookId, chapterNumber, from: pending.from, to: pending.to, sourceText: pending.sourceText, action: "polish" };
+    await onSendToNarrator(buildSelectionInstruction(request, pending.manualFlags, styleProfileSummary), request);
     setHandedOff("naturalize");
     setPending(null);
-  }, [pending, onSendToNarrator, chapterNumber, styleProfileSummary]);
+  }, [pending, editor, bookId, onSendToNarrator, chapterNumber, styleProfileSummary]);
 
   return (
     <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
@@ -277,6 +315,122 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator, stylePr
   );
 }
 
+/**
+ * 叙述者送回的选区改写候选：原文对照 + 作者确认后才落进正文。
+ * 原文显示的是候选生成时随请求带回的快照；采用时再与文档现状逐字核对，
+ * 防止作者中途又改过原文而应用过期候选。
+ */
+/** 全文按原文定位候选锚点；只在唯一出现时才允许应用。 */
+function locateCandidateRange(doc: { descendants: (visit: (node: { isTextblock: boolean; textContent: string }, pos: number) => boolean | void) => void }, text: string): { from: number; to: number } | "not-found" | "multiple" {
+  const hits: { from: number; to: number }[] = [];
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return false;
+    let index = node.textContent.indexOf(text);
+    while (index !== -1) {
+      const from = pos + 1 + index;
+      hits.push({ from, to: from + text.length });
+      index = node.textContent.indexOf(text, index + 1);
+    }
+    return false;
+  });
+  if (hits.length === 0) return "not-found";
+  return hits.length === 1 ? hits[0]! : "multiple";
+}
+
+function SelectionCandidatePanel({ editor, candidate, chapterNumber, onDismiss }: {
+  editor: Editor;
+  candidate: SelectionCandidate;
+  chapterNumber?: number;
+  onDismiss?: () => void;
+}) {
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const chapterMismatch = typeof chapterNumber === "number" && candidate.chapterNumber !== chapterNumber;
+  const byCoordinates = typeof candidate.from === "number" && typeof candidate.to === "number" && candidate.to > candidate.from;
+
+  const apply = () => {
+    if (chapterMismatch) return;
+    let range: { from: number; to: number };
+    if (byCoordinates) {
+      if (editor.state.doc.textBetween(candidate.from!, candidate.to!, " ") !== candidate.sourceText) {
+        setApplyError("选区原文已变化，候选已过期；请重新划词生成候选。");
+        return;
+      }
+      range = { from: candidate.from!, to: candidate.to! };
+    } else {
+      const located = locateCandidateRange(editor.state.doc, candidate.sourceText);
+      if (located === "not-found") {
+        setApplyError("正文里找不到这段原文，候选已过期；请重新生成候选。");
+        return;
+      }
+      if (located === "multiple") {
+        setApplyError("这段原文在正文里出现多次，没法确定位置；请划词选中它，再让叙述者生成定点候选。");
+        return;
+      }
+      range = located;
+    }
+    if (candidate.action === "continue") {
+      editor.chain().focus().insertContentAt(range.to, candidate.candidateText).run();
+    } else {
+      editor.chain().focus().deleteRange({ from: range.from, to: range.to }).insertContentAt(range.from, candidate.candidateText).run();
+    }
+    onDismiss?.();
+  };
+
+  return (
+    <div className="border-b border-border bg-card/60 px-3 py-2" data-testid="selection-candidate-panel">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium">
+          {AI_ACTION_LABELS[candidate.action]}候选 · 第 {candidate.chapterNumber} 章
+        </span>
+        <span className="text-2xs text-muted-foreground" data-testid="selection-candidate-mode">
+          {byCoordinates ? "确认前不会覆盖正文" : "按原文定位 · 确认前不会覆盖正文"}
+        </span>
+      </div>
+      <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="min-w-0">
+          <div className="mb-0.5 text-2xs text-muted-foreground">原文</div>
+          <div className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded bg-muted/50 p-2 text-xs" data-testid="selection-candidate-source">
+            {candidate.sourceText}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="mb-0.5 text-2xs text-muted-foreground">
+            候选（{candidate.action === "continue" ? "接在原文之后" : "替换原文"}）
+          </div>
+          <div className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded bg-primary/10 p-2 text-xs" data-testid="selection-candidate-text">
+            {candidate.candidateText}
+          </div>
+        </div>
+      </div>
+      {chapterMismatch ? (
+        <p className="mt-1 text-2xs text-amber-600 dark:text-amber-400" data-testid="selection-candidate-mismatch">
+          这个候选属于第 {candidate.chapterNumber} 章，当前打开的是第 {chapterNumber ?? "?"} 章；请打开对应章节再应用。
+        </p>
+      ) : null}
+      {applyError ? <p className="mt-1 text-2xs text-destructive" data-testid="selection-candidate-error">{applyError}</p> : null}
+      <div className="mt-1.5 flex justify-end gap-2">
+        <button
+          type="button"
+          className="rounded border border-border px-2 py-1 text-xs hover:bg-accent"
+          onClick={() => onDismiss?.()}
+          data-testid="selection-candidate-dismiss"
+        >
+          放弃
+        </button>
+        <button
+          type="button"
+          className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+          disabled={chapterMismatch}
+          onClick={apply}
+          data-testid="selection-candidate-apply"
+        >
+          应用候选
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -310,7 +464,10 @@ interface ChapterEditorProps {
    * 语义类选段动作（续写/润色/改写/扩写/精简）的执行通道。
    * 缺省时这些按钮会明确提示「没有可用叙述者」，而不是静默无反应。
    */
-  onSendToNarrator?: (message: string) => Promise<void> | void;
+  onSendToNarrator?: (message: string, request?: SelectionRequest) => Promise<void> | void;
+  /** 叙述者结果卡送回的待审阅候选；正文由作者决定是否应用。 */
+  selectionCandidate?: SelectionCandidate | null;
+  onDismissSelectionCandidate?: () => void;
   /** 正文语言，决定长度按中文字符或英文单词统计。 */
   language?: LengthLanguage;
   /** 全书文风基准摘要（由宿主从 style/profile 读取透传），注入划词 AI prompt。 */
@@ -331,6 +488,8 @@ export function ChapterEditor({
   bookId,
   chapterNumber,
   onSendToNarrator,
+  selectionCandidate,
+  onDismissSelectionCandidate,
   language = "zh",
   styleProfileSummary,
   mentionEntities,
@@ -484,6 +643,16 @@ export function ChapterEditor({
           styleProfileSummary={styleProfileSummary}
         />
       )}
+
+      {/* 叙述者送回的选区改写候选：作者在正文里对照后决定应用或放弃 */}
+      {!readonly && selectionCandidate ? (
+        <SelectionCandidatePanel
+          editor={editor}
+          candidate={selectionCandidate}
+          chapterNumber={chapterNumber}
+          onDismiss={onDismissSelectionCandidate}
+        />
+      ) : null}
 
       {/* Editor content with minimap */}
       <div className="flex-1 flex min-h-0">

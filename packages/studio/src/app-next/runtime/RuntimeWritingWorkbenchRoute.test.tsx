@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
     onSendToNarrator?: (message: string) => Promise<void> | void;
     runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
     onSave?: (node: WorkbenchResourceNode, content: string) => Promise<void>;
+    selectionCandidate?: { requestId: string; chapterNumber: number } | null;
+    onDismissSelectionCandidate?: () => void;
   }>,
 }));
 
@@ -42,7 +44,7 @@ vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide", () => ({
   },
 }));
 
-import { artifactResourceId, mapRuntimeWorkspaceToWorkbenchNodes, RuntimeWritingWorkbenchRoute } from "./RuntimeWritingWorkbenchRoute";
+import { artifactResourceId, mapRuntimeWorkspaceToWorkbenchNodes, parseSelectionCandidate, RuntimeWritingWorkbenchRoute } from "./RuntimeWritingWorkbenchRoute";
 
 const narrator: RuntimeNarratorSummary = {
   id: "narrator-1",
@@ -453,6 +455,64 @@ describe("RuntimeWritingWorkbenchRoute", () => {
       expect(artifactResourceId({ kind: "chapter", id: "chapter:3", resourceRef: { kind: "chapter", chapterNumber: 3, bookId: "book-2" } }, "book-1")).toBeNull();
       expect(artifactResourceId({ kind: "chapter", id: "chapter:3", metadata: { bookId: "book-2" } }, "book-1")).toBeNull();
       expect(artifactResourceId({ kind: "report", id: "r-1" }, "book-1")).toBeNull();
+    });
+
+    it("选区候选解析：验 kind、归属书与字段形状", () => {
+      const artifact = {
+        kind: "selection-candidate",
+        id: "req-1",
+        requestId: "req-1",
+        bookId: "book-1",
+        chapterNumber: 4,
+        from: 10,
+        to: 20,
+        sourceText: "原文",
+        candidateText: "候选",
+        action: "rewrite",
+      };
+      expect(parseSelectionCandidate(artifact, "book-1")).toMatchObject({ kind: "selection-candidate", chapterNumber: 4, action: "rewrite" });
+      expect(parseSelectionCandidate(artifact, "book-2")).toBeNull();
+      expect(parseSelectionCandidate({ ...artifact, kind: "chapter" }, "book-1")).toBeNull();
+      expect(parseSelectionCandidate({ ...artifact, from: 20 }, "book-1")).toBeNull();
+      expect(parseSelectionCandidate({ ...artifact, action: "naturalize" }, "book-1")).toBeNull();
+      expect(parseSelectionCandidate({ ...artifact, sourceText: "  " }, "book-1")).toBeNull();
+      // from/to 可同时省略（编辑器按原文定位）；只给一半会被拒
+      const { from: _from, to: _to, ...withoutRange } = artifact;
+      expect(parseSelectionCandidate(withoutRange, "book-1")).toMatchObject({ chapterNumber: 4, action: "rewrite" });
+      expect(parseSelectionCandidate(withoutRange, "book-1")).not.toHaveProperty("from");
+      expect(parseSelectionCandidate({ ...artifact, to: undefined }, "book-1")).toBeNull();
+    });
+
+    it("点「在正文里审阅」：打开候选章并把候选带进工作台，放弃后清空", async () => {
+      const client = { getWorkspace: vi.fn(async () => workspaceWith([1, 2])), listNarrators: vi.fn(async () => [narrator]) };
+      renderRoute(client);
+      await screen.findByTestId("runtime-narrator-panel-mount-mock");
+      await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({
+        kind: "selection-candidate",
+        id: "req-1",
+        requestId: "req-1",
+        bookId: "book-1",
+        chapterNumber: 2,
+        from: 10,
+        to: 20,
+        sourceText: "他不禁抬头",
+        candidateText: "他抬起头",
+        action: "polish",
+      }));
+      await waitFor(() => expect(mocks.workbenchProps.at(-1)?.selectedNode?.id).toBe("chapter:2"));
+      expect(mocks.workbenchProps.at(-1)?.selectionCandidate).toMatchObject({ requestId: "req-1", chapterNumber: 2 });
+
+      await act(async () => mocks.workbenchProps.at(-1)!.onDismissSelectionCandidate!());
+      await waitFor(() => expect(mocks.workbenchProps.at(-1)?.selectionCandidate ?? null).toBeNull());
+    });
+
+    it("别的书或数据不完整的选区候选：给一句说明，不打开章节", async () => {
+      const client = { getWorkspace: vi.fn(async () => workspaceWith([1, 2])), listNarrators: vi.fn(async () => [narrator]) };
+      renderRoute(client);
+      await screen.findByTestId("runtime-narrator-panel-mount-mock");
+      await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({ kind: "selection-candidate", id: "x", bookId: "book-2" }));
+      expect(screen.getByTestId("workbench-open-notice").textContent).toContain("没法送回编辑器");
+      expect(mocks.workbenchProps.at(-1)?.selectionCandidate ?? null).toBeNull();
     });
 
     it("点「在画布打开」打开对应章节", async () => {

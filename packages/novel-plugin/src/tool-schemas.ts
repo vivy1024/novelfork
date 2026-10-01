@@ -281,6 +281,20 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "chapterNumber"],
     additionalProperties: false,
   },
+  "chapter.propose_selection": {
+    type: "object",
+    properties: {
+      requestId: stringSchema("写作台选区请求编号，原样传回；不能自行生成。整章人文化等没有划词请求的场景，自行生成一个稳定编号。"),
+      chapterNumber: numberSchema("写作台选中的章节序号。"),
+      from: numberSchema("写作台提供的选区起点；有则与 to 一起原样传回。不知道编辑器坐标时不传，编辑器会按候选原文在正文里定位。"),
+      to: numberSchema("写作台提供的选区终点；与 from 同时提供或同时省略。"),
+      sourceText: stringSchema("写作台给出的选中原文。from/to 缺省时编辑器按它在正文里定位，必须是正文里的原文，不能是概括。"),
+      candidateText: stringSchema("供作者审阅的候选正文；本工具不会写入章节。"),
+      action: enumSchema(["continue", "polish", "rewrite", "expand", "compress"], "选区操作类型。"),
+    },
+    required: ["requestId", "chapterNumber", "sourceText", "candidateText", "action"],
+    additionalProperties: false,
+  },
   "rewrite.apply": {
     type: "object",
     properties: {
