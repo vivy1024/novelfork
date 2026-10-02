@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime-private",
   "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "cc1069c74b2d132e787ba799a47f445552f6c8d5",
-  "tree": "dc731b2aa56cc4b3ddc396257666929af919e768",
+  "commit": "42c8648fc2f01d79cd2048398aea13889c5f446f",
+  "tree": "adaa3ed1a616fd6d98e8acc953010d60c7a5be5f",
   "branch": "novelfork/integration-v0.7.10",
   "localBranch": "novelfork/upgrade-0.7.10",
   "version": "0.7.12",
-  "importedAt": "2026-10-02T14:33:37.000Z",
+  "importedAt": "2026-10-02T14:54:41.000Z",
   "trackedFileCount": 4579,
   "importMethod": "git-archive",
   "provenance": {
@@ -131,6 +131,13 @@
         "subject": "fix(host): 权限弹窗 leader 退位递补 + 嵌入插件宿主接上失效通知",
         "status": "local",
         "note": "审计发现：① 弹窗宿主只在 mount 选举一次，leader 卸载后其余宿主不会再显示权限请求，改模块级有序挂载表 + useSyncExternalStore 按挂载序递补（附继任测试）；② EmbeddedPluginUiHost import 了 handlePluginUiNotification 却没接 onNotification（biome noUnusedImports 红 + 嵌入面缓存失效通知静默丢失），按 App.tsx 同款接线。与合并提交一起待推送"
+      },
+      {
+        "commit": "42c8648fc2f01d79cd2048398aea13889c5f446f",
+        "parent": "cc1069c74b2d132e787ba799a47f445552f6c8d5",
+        "subject": "fix(test): 继任弹窗测试闭包里 root 的 TS 收窄",
+        "status": "local",
+        "note": "tsgo 在物化树上对 afterEach 闭包捕获 root 报 TS18048，改为先取局部常量再 act。与合并提交一起待推送"
       }
     ]
   }
