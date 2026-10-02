@@ -25,7 +25,7 @@ import {
   type PendingReviewKind,
   type PendingReviewSummary,
   type PendingReviewTarget,
-} from "../../routes/pending-review.js";
+} from "../../routes/pending-review-contract.js";
 
 export type PendingReviewFetcher = (bookId: string) => Promise<PendingReviewSummary>;
 
