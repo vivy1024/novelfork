@@ -178,7 +178,15 @@ export async function loadNarrativeMemoryConfig(
   const stored = book.narrativeMemory;
   if (!isPlainObject(stored)) return { ...DEFAULT_NARRATIVE_MEMORY_CONFIG };
 
-  return deepMergeConfig(DEFAULT_NARRATIVE_MEMORY_CONFIG, stored as NarrativeMemoryConfigPatch);
+  // 口径迁移（T4.7）：估算尺由英文 len/4 改 CJK 感知后，恰好落在旧默认值 8000
+  // 上的存量（保存过自定义配置的书固化的是旧默认）按等容量映射到新默认 24000；
+  // 作者显式调过的其他值保持原样（无论新旧尺他们都是刻意的，由作者在「写作可见」里看效果后再调）。
+  const merged = deepMergeConfig(DEFAULT_NARRATIVE_MEMORY_CONFIG, stored as NarrativeMemoryConfigPatch);
+  const storedMax = (stored as { retrieval?: { maxTokens?: unknown } }).retrieval?.maxTokens;
+  if (storedMax === 8000 && merged.retrieval.maxTokens === 8000) {
+    merged.retrieval = { ...merged.retrieval, maxTokens: 24000 };
+  }
+  return merged;
 }
 
 /**

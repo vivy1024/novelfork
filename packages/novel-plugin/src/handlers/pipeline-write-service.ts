@@ -854,18 +854,20 @@ async function executePipelineWriteUnlocked(
       } catch (err) {
         logger?.warn(`[pipeline.write] Failed to build NarrativeContextPackage, falling back to legacy context: ${err instanceof Error ? err.message : String(err)}`);
       }
-      // T4.7：硬核保护资料降档到顶仍超预算时停下报错，不许静默降级继续写。
-      // 不能放进上面的 throw——那里的 catch 会把溢出折叠成 legacy 回退，正是要消灭的静默路径。
-      const hardOverflow = narrativeContext ? findHardOverflowWarning(narrativeContext.diagnostics.warnings) : null;
-      if (hardOverflow && narrativeContext) {
-        logger?.warn(`[pipeline.write] ${hardOverflow}`);
-        return {
-          ok: false,
-          code: "memory-budget-overflow",
-          error: hardOverflowExplanation(hardOverflow),
-          summary: "写作资料超出保护预算，本章未写。",
-        };
-      }
+    }
+
+    // T4.7：硬核保护资料降档到顶仍超预算时停下报错，不许静默降级继续写。
+    // 对最终 narrativeContext 统一判定（含调用方传入的包）；上面 build 的 catch 不能
+    // 承担此判定——溢出若被它折叠成 legacy 回退，正是要消灭的静默路径。
+    const hardOverflow = narrativeContext ? findHardOverflowWarning(narrativeContext.diagnostics.warnings) : null;
+    if (hardOverflow && narrativeContext) {
+      logger?.warn(`[pipeline.write] ${hardOverflow}`);
+      return {
+        ok: false,
+        code: "memory-budget-overflow",
+        error: hardOverflowExplanation(hardOverflow, "pipeline-write"),
+        summary: "写作资料超出保护预算，本章未写。",
+      };
     }
 
     // P0-2: 加载控制文档（全书长视野意图 + 近 1-3 章焦点），注入写作上下文。

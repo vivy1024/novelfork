@@ -167,7 +167,7 @@ function buildToolOrchestrationSop(): string {
    - book-not-found：停止并报告绑定/书籍不可读，不得猜路径或换 bookId。
 4. preflight.ok=true 后，用 resolvedDirective（或用户确认的一句目标）调用 scene.spec；sceneSpec 必须由当前 Runtime Agent 显式提交。
 5. scene.spec.ok=true 后才调用 pipeline.write。scene-spec-required/invalid、empty-scenes、incomplete-scene：修正蓝图后重调；不要拿自然语言正文代替 sceneSpec。
-6. pipeline.write 返回 beat-budget-invalid：回 scene.spec 重排预算；返回 context-not-ready：回 write.preflight 的 blocker 路由；返回 writing-skill-compliance-failed：按逐条 warnings 定点改稿后重跑，不要删掉技能约束。
+6. pipeline.write 返回 beat-budget-invalid：回 scene.spec 重排预算；返回 context-not-ready：回 write.preflight 的 blocker 路由；返回 writing-skill-compliance-failed：按逐条 warnings 定点改稿后重跑，不要删掉技能约束；返回 memory-budget-overflow：受保护资料超出召回预算被停步——看「写作可见」报告确认占用后请作者调大本书 recall 预算或确认精简受保护内容，禁止自行削减硬状态/知情/伏笔，禁止盲目重试。
 7. 正文保存成功后由 pipeline.write 自动发起 memory.settle_chapter；若只结算失败，正文不丢，直接重试 memory.settle_chapter，不要重复写章。
 8. 写后按需要调用 chapter.audit、skills.check_compliance、publish.check；它们是审查/报告工具，不是写前硬门，也不能把未通过报告伪装成已通过。
 

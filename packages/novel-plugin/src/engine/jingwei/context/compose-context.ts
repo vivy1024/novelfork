@@ -39,7 +39,8 @@ export function composeJingweiContext(
   options: ComposeJingweiContextOptions,
 ): BuildJingweiLegacyContextResult {
   const formatted = sortByContextPriority(items).map(formatJingweiContextItem);
-  const budgeted = applyTokenBudget(formatted, options.tokenBudget ?? 8000);
+  // T4.7 口径：默认与叙事记忆全局预算同尺（等容于旧英文尺 8000）
+  const budgeted = applyTokenBudget(formatted, options.tokenBudget ?? 24000);
 
   return {
     items: budgeted.items,

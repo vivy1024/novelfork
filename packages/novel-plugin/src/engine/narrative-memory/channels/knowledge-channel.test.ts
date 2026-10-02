@@ -200,10 +200,11 @@ describe("knowledge channel 预算与裁剪", () => {
       reason: "test",
       estimatedTokens: tokens,
     });
-    // 通道默认预算 1000：三张 500 token 的卫星卡走「先降级再丢卡」策略，全量被降格后注入仍在预算内
-    const budget = packNarrativeContext([fat("k1", 500), fat("k2", 500), fat("k3", 500)]);
-    expect(budget.channelBudgets.knowledge).toBe(1000);
-    expect(budget.injectedTokensByChannel.knowledge).toBeLessThanOrEqual(1000);
+    // 通道默认预算 3000（T4.7 新尺）：三张 1200 token 的卫星卡超预算，
+    // 走「先降级再丢卡」策略，注入仍在预算内、至少一张被处理。
+    const budget = packNarrativeContext([fat("k1", 1200), fat("k2", 1200), fat("k3", 1200)]);
+    expect(budget.channelBudgets.knowledge).toBe(3000);
+    expect(budget.injectedTokensByChannel.knowledge).toBeLessThanOrEqual(3000);
     expect(budget.degradedCards.length + budget.droppedCards.length).toBeGreaterThanOrEqual(1);
   });
 });

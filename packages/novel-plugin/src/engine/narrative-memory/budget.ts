@@ -5,18 +5,21 @@ import type { NarrativeContextCard, NarrativeContextChannel } from "./types.js";
 
 const DETAIL_LEVELS: readonly JingweiBudgetDetailLevel[] = ["full", "normal", "summary", "brief"];
 
+// 口径说明（T4.7）：预算表按 CJK 感知估算尺定标，各通道数值为旧英文尺 ×3，
+// 保住原表约 4k/3k/2k… 中文字的真实容量；总和 65100 > 全局默认 24000，
+// 常规写作走 scaleBudgets 比例缩放（hard 份额 ≈4400 ≈ 旧尺 4000）。
 export const DEFAULT_NARRATIVE_CHANNEL_BUDGETS: Readonly<Record<NarrativeContextChannel, number>> = {
-  hard: 4000,
-  state: 4000,
-  timeline: 3000,
-  hooks: 2000,
-  facts: 2000,
-  style: 1000,
-  semantic: 2000,
-  relationship: 1000,
-  "character-kernel": 1500,
-  "recent-summary": 1200,
-  knowledge: 1000,
+  hard: 12000,
+  state: 12000,
+  timeline: 9000,
+  hooks: 6000,
+  facts: 6000,
+  style: 3000,
+  semantic: 6000,
+  relationship: 3000,
+  "character-kernel": 4500,
+  "recent-summary": 3600,
+  knowledge: 3000,
 };
 
 export type NarrativeBudgetPolicy = Readonly<{

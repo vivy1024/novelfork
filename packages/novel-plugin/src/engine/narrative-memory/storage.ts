@@ -902,8 +902,30 @@ export function upsertNarrativeContextVector(storage: StorageDatabase, vector: N
   return parsed;
 }
 
-export function getLatestNarrativeRetrievalLog(storage: StorageDatabase, bookId: string): NarrativeRetrievalLogRecord | undefined {
+export function getLatestNarrativeRetrievalLog(
+  storage: StorageDatabase,
+  bookId: string,
+  purposes?: readonly NarrativeRetrievalPurpose[],
+): NarrativeRetrievalLogRecord | undefined {
   ensureNarrativeMemorySchema(storage);
+  if (purposes && purposes.length > 0) {
+    const placeholders = purposes.map(() => "?").join(", ");
+    const row = storage.sqlite.prepare<NarrativeRetrievalLogRow>(`
+      SELECT
+        id,
+        book_id AS bookId,
+        chapter_number AS chapterNumber,
+        purpose,
+        total_tokens AS totalTokens,
+        diagnostics_json AS diagnosticsJson,
+        created_at AS createdAt
+      FROM narrative_retrieval_log
+      WHERE book_id = ? AND purpose IN (${placeholders})
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `).get(bookId, ...purposes);
+    return row ? retrievalLogRowToRecord(row) : undefined;
+  }
   const row = storage.sqlite.prepare<NarrativeRetrievalLogRow>(`
     SELECT
       id,

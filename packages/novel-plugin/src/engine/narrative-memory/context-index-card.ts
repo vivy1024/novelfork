@@ -11,8 +11,13 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { getLatestNarrativeRetrievalLog } from "./storage.js";
 
-/** 日志里复述卡号用的前缀长度。 */
+/** 日志里复述卡号用的前缀长度：取 id 末段（生产 id 形如 `narrative-retrieval:<bookId>:<uuid>`）。 */
 const LOG_ID_PREFIX = 8;
+
+function logTagOf(logId: string): string {
+  const tail = logId.includes(":") ? (logId.split(":").pop() ?? logId) : logId;
+  return tail.slice(0, LOG_ID_PREFIX);
+}
 
 const RECALL_CHANNELS: readonly { readonly need: string; readonly channels: readonly string[] }[] = [
   { need: "范文 / 声线 / 文风边界", channels: ["style"] },
@@ -31,12 +36,13 @@ export interface ContextIndexCardSummary {
   readonly purpose: string;
 }
 
-/** 读取最近一条写作召回日志并折算成卡片要素；没有写作历史返回 null。 */
+/** 读取最近一条「写作向」召回日志（write_chapter/revise）并折算成卡片要素；没有写作历史返回 null。 */
 export function summarizeContextIndexCard(
   storage: StorageDatabase,
   bookId: string,
 ): ContextIndexCardSummary | null {
-  const log = getLatestNarrativeRetrievalLog(storage, bookId);
+  // outline/audit 召回也落同一张日志表，但它们不是「写作注入」，混进来会把重取指向带偏。
+  const log = getLatestNarrativeRetrievalLog(storage, bookId, ["write_chapter", "revise"]);
   if (!log) return null;
   const diagnostics = log.diagnostics;
   const injected = diagnostics.injectedTokensByChannel ?? {};
@@ -60,7 +66,7 @@ export function summarizeContextIndexCard(
 /** 渲染成注入给模型的卡片文本。 */
 export function renderContextIndexCard(summary: ContextIndexCardSummary): string {
   const chapter = summary.chapterNumber ? `第 ${summary.chapterNumber} 章` : "未标章";
-  const logTag = summary.logId.slice(0, LOG_ID_PREFIX);
+  const logTag = logTagOf(summary.logId);
   const channels = Object.entries(summary.tokensByChannel)
     .map(([channel, tokens]) => `${channel} ${tokens}`)
     .join(" / ");

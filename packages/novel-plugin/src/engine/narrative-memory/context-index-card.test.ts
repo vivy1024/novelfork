@@ -61,7 +61,7 @@ describe("buildContextIndexCard", () => {
     const storage = await createStorage();
     try {
       insert(storage, {
-        id: "log-abcdef123456",
+        id: "narrative-retrieval:book-1:abcdef123456",
         chapterNumber: 45,
         diagnostics: {
           channelStats: [
@@ -81,7 +81,8 @@ describe("buildContextIndexCard", () => {
       const card = buildContextIndexCard(storage, "book-1");
       expect(card).not.toBeNull();
       expect(card).toContain("第 45 章");
-      expect(card).toContain("log-abcd");
+      // 生产 id 形如 narrative-retrieval:<bookId>:<uuid>：卡片取末段前 8 位作标签
+      expect(card).toContain("abcdef12");
       expect(card).toContain("hard 1500");
       expect(card).toContain("style 800");
       // knowledge 注入为 0：不该列进卡片

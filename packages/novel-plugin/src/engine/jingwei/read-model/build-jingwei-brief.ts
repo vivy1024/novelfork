@@ -221,7 +221,7 @@ export async function buildJingweiBrief(input: BuildJingweiBriefInput): Promise<
   const selected = applyMutexGroups(selectCoreCandidates(candidates));
   const cascaded = expandCascade(selected, entries, sectionById);
   const withCascade = cascaded.length > 0 ? [...selected, ...cascaded] : selected;
-  const budget = input.tokenBudget ?? 4000;
+  const budget = input.tokenBudget ?? 12000;  // T4.7 口径：默认等容于旧英文尺 4000
 
   // Recall with Budget: 按层分配初始详细度，超预算逐条降级(L2→L1→L0)再丢弃
   const candidateById = new Map(withCascade.map((c) => [c.id, c]));

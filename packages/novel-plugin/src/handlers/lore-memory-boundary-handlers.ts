@@ -164,8 +164,11 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
 
   // T4.7：写作向召回的保护预算溢出，改「静默降级继续」为「显式报错」。
   // 一般浏览用途不拦，保留 ok:true + warnings（研究类调用不该被预算卡死）。
+  // 显式圈定 channels 且未要 hard 时，hard 不在本次范围（预算额度也被分到圈定通道），
+  // 此时 hard 的零预算告警是数学必然而不是保护违约，不拦。
+  const hardScopeExcluded = Array.isArray(input.channels) && !input.channels.includes("hard");
   const hardOverflow = findHardOverflowWarning(result.diagnostics.warnings);
-  if (hardOverflow && (input.purpose === "write" || input.purpose === "revise")) {
+  if (hardOverflow && !hardScopeExcluded && (input.purpose === "write" || input.purpose === "revise")) {
     return {
       ok: false,
       error: "memory-budget-overflow",
