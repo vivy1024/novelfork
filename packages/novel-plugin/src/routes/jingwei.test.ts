@@ -110,6 +110,53 @@ describe("Jingwei canonical entry routes", () => {
   });
 });
 
+describe("Jingwei dissection staging 清单（T4.2）", () => {
+  it("列待审草案：类型过滤、total 全量计数、limit 截断", async () => {
+    const now = new Date("2026-08-02T00:00:00.000Z");
+    const seeds = [
+      { kind: "character" as const, category: "characters", title: "李安平" },
+      { kind: "character" as const, category: "characters", title: "陈默" },
+      { kind: "location" as const, category: "locations", title: "中都" },
+    ];
+    for (const [index, seed] of seeds.entries()) {
+      insertDissectionStaging(storage, {
+        bookId: "book-1",
+        kind: seed.kind,
+        category: seed.category,
+        proposedTitle: seed.title,
+        sourceRefs: [{ chapterNumber: index + 1, excerpt: `证据 ${seed.title}` }],
+        classificationReason: "拆书抽出",
+        contentMd: "",
+        now: () => now,
+      });
+    }
+
+    const allResponse = await request("/staging");
+    expect(allResponse.status).toBe(200);
+    const allBody = await allResponse.json() as { ok: boolean; count: number; total: number; items: Array<{ kind: string; title: string; reason: string; sourceRefs: Array<{ chapterNumber: number }> }> };
+    expect(allBody.ok).toBe(true);
+    expect(allBody.count).toBe(3);
+    expect(allBody.total).toBe(3);
+    expect(allBody.items[0]).toMatchObject({ kind: "character", title: "李安平" });
+    expect(allBody.items[0]!.sourceRefs[0]!.chapterNumber).toBe(1);
+
+    const characterResponse = await request("/staging?kind=character");
+    const characterBody = await characterResponse.json() as { total: number; items: unknown[] };
+    expect(characterBody.total).toBe(2);
+
+    const limitResponse = await request("/staging?limit=2");
+    const limitBody = await limitResponse.json() as { count: number; total: number };
+    expect(limitBody).toMatchObject({ count: 2, total: 3 });
+  });
+
+  it("空暂存区返回空清单（200，不是 404）", async () => {
+    const response = await request("/staging");
+    expect(response.status).toBe(200);
+    const body = await response.json() as { items: unknown[]; total: number };
+    expect(body).toMatchObject({ items: [], total: 0 });
+  });
+});
+
 describe("Jingwei markdown import", () => {
   it("按 category 创建 section 并写入真实 sectionId", async () => {
     const response = await request("/import", {

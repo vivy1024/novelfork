@@ -18,6 +18,7 @@ import {
   Search,
   Shield,
   Sparkles,
+  Sprout,
   Upload,
   UserPlus,
   UserRound,
@@ -32,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/hooks/use-api";
 import { fetchCharacterKernels, type CharacterKernelSummary } from "../character-kernel-client";
+import { DissectDraftPanel } from "../DissectDraftPanel";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { CATEGORY_META, normalizeCategory, type JingweiCategory } from "../../../engine/jingwei/unified-categories";
 import { workspaceForCategory } from "../lore-workspace-split";
@@ -61,7 +63,7 @@ export interface CharactersAndLoreSidebarPanelProps {
   onChanged?: () => void;
 }
 
-type MainTab = "characters" | "world";
+type MainTab = "characters" | "world" | "draft";
 type WorldCategoryFilter = JingweiCategory | "all";
 
 const WORLD_CREATE_CATEGORY_META = CATEGORY_META.filter(
@@ -96,6 +98,28 @@ export function CharactersAndLoreSidebarPanel({
   // 这个角色册面板就是作者查「这个角色现在是谁」的地方——顺带把内核贴上来，不必再翻叙事记忆面板。
   const [kernelsByCharacterId, setKernelsByCharacterId] = useState<ReadonlyMap<string, CharacterKernelSummary>>(new Map());
   const kernelGenerationRef = useRef(0);
+  // 拆书草案计数：只在「作品基础」侧面提示「拆了没处理过的新草案还有几条」。
+  const [draftCount, setDraftCount] = useState(0);
+  const draftGenerationRef = useRef(0);
+  const loadDraftCount = useCallback(async () => {
+    if (!bookId) return;
+    const generation = ++draftGenerationRef.current;
+    try {
+      const data = await fetchJson<{ total?: number; count?: number }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/staging?limit=1`,
+      );
+      if (generation === draftGenerationRef.current) setDraftCount(data.total ?? data.count ?? 0);
+    } catch {
+      if (generation === draftGenerationRef.current) setDraftCount(0);
+    }
+  }, [bookId]);
+
+  useEffect(() => {
+    void loadDraftCount();
+    return () => { draftGenerationRef.current += 1; };
+  }, [loadDraftCount]);
+  useWritingProgressRefresh(bookId, loadDraftCount);
+
   const loadKernels = useCallback(() => {
     if (!bookId) return;
     const generation = ++kernelGenerationRef.current;
@@ -346,6 +370,19 @@ export function CharactersAndLoreSidebarPanel({
           <BookOpen className="size-3.5" />
           <span>世界录 ({worldList.length})</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("draft")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-t-md text-xs font-semibold border-b-2 transition-colors ${
+            activeTab === "draft"
+              ? "border-primary text-primary bg-background shadow-xs"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+          title="拆书抽出的角色、地点与伏笔候选；确认后才写入设定"
+        >
+          <Sprout className="size-3.5" />
+          <span>草案 ({draftCount})</span>
+        </button>
       </div>
 
       {activeTab === "world" && worldCategoryOptions.length > 0 && (
@@ -396,7 +433,12 @@ export function CharactersAndLoreSidebarPanel({
         </div>
       </div>
 
-      {/* 卡片流展示区 */}
+      {/* 卡片流展示区：草案 tab 时替换为拆书草案确认面板，不动卡片流逻辑 */}
+      {activeTab === "draft" ? (
+        <div className="flex-1 min-h-0">
+          <DissectDraftPanel bookId={bookId} onChanged={loadDraftCount} />
+        </div>
+      ) : (
       <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
         {filteredList.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground space-y-1.5">
@@ -423,6 +465,7 @@ export function CharactersAndLoreSidebarPanel({
           ))
         )}
       </div>
+      )}
     </div>
   );
 }

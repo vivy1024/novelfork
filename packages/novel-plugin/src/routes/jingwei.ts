@@ -1112,6 +1112,45 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     return c.json({ ok: true, groups, ungrouped: mergeResult.ungrouped });
   });
 
+  /** 拆书草案清单：作者在「作品基础」决定哪些 promote（升正式条目）、哪些 reject。 */
+  app.get("/api/books/:bookId/jingwei/staging", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const url = new URL(c.req.url);
+    const requestedStatus = url.searchParams.get("status");
+    const status = requestedStatus === "accepted" || requestedStatus === "rejected" || requestedStatus === "needs-review"
+      ? requestedStatus
+      : "needs-review";
+    const kind = url.searchParams.get("kind");
+    const limit = Math.min(Number(url.searchParams.get("limit")) || 200, 500);
+    const { listDissectionStaging } = await import("../engine/jingwei/dissection-staging.js");
+    const all = listDissectionStaging(storage, bookId);
+    const filtered = kind ? all.filter((item) => item.kind === kind) : all;
+    const items = filtered.slice(0, limit);
+    return c.json({
+      ok: true,
+      count: items.length,
+      total: filtered.length,
+      kind: kind ?? null,
+      status: "needs-review",
+      items: items.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        title: item.proposedTitle,
+        category: item.category,
+        status: item.status,
+        reason: item.classificationReason,
+        sourceRefs: item.sourceRefs,
+        duplicateCandidates: item.duplicateCandidates,
+        participatesInAi: item.participatesInAi,
+        confidence: item.confidence,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      })),
+    });
+  });
+
   app.post("/api/books/:bookId/jingwei/staging/:stagingId/decision", async (c) => {
     const bookId = c.req.param("bookId");
     const stagingId = c.req.param("stagingId");
