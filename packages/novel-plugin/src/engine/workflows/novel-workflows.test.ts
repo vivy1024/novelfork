@@ -93,10 +93,23 @@ describe.skipIf(!existsSync(runtimeServicePath))("内置配方与 Runtime 项目
 
     // 只替换未使用的基础设施：真实文件扫描、frontmatter 解析和名称查找不做 mock。
     // 一旦项目扫描误走数据库路径就直接失败，绝不打开用户 Runtime 数据库。
+    // 例外：上游 v0.7.12 的 applyProjectRoutineSkillOverrides 会按项目查
+    // projects.chapterSettings（例程屏蔽名单），与技能按名读取无关——给一条
+    // 返回空记录的只读通道，其余访问照扔纪律错误；绝不打开真实数据库文件。
     vi.doMock(runtimePath("db/index.ts"), () => ({
-      db: new Proxy({}, { get() { throw new Error("技能引用测试禁止访问 Runtime 数据库"); } }),
+      db: new Proxy(
+        { query: { projects: { findFirst: async () => undefined } } },
+        {
+          get(target, prop) {
+            if (prop in target) return (target as Record<string | symbol, unknown>)[prop];
+            throw new Error("技能引用测试禁止访问 Runtime 数据库");
+          },
+        },
+      ),
     }));
-    vi.doMock(runtimePath("db/schema.ts"), () => ({}));
+    vi.doMock(runtimePath("db/schema.ts"), () => ({
+      projects: { gitPath: "gitPath", chapterSettings: "chapterSettings" },
+    }));
     vi.doMock(runtimePath("lib/logger.ts"), () => ({ logger: { warn: vi.fn() } }));
     vi.doMock(runtimePath("lib/errors.ts"), () => ({
       AppError: Error, NotFoundError: Error, ValidationError: Error,

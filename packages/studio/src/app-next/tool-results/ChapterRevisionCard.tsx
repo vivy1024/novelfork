@@ -5,6 +5,7 @@ import { FileDiff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchJson } from "@/hooks/use-api";
 
+import { buildBookApiPath } from "../backend-contract";
 import { ToolResultSurface } from "./ToolResultSurface";
 import { getNumber, getString, getToolResultArtifact, type ToolResultRenderer, type ToolResultRendererContext } from "./types";
 
@@ -39,7 +40,7 @@ export const ChapterRevisionCard: ToolResultRenderer = (context: ToolResultRende
     setBusy(true);
     setNote(null);
     try {
-      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/chapters/${chapterNumber}/revision-apply`, {
+      await fetchJson(buildBookApiPath(bookId, "chapters", chapterNumber, "revision-apply"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ originalHash, content: newText }),

@@ -5,6 +5,8 @@ import { BookOpenCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchJson } from "@/hooks/use-api";
 
+import { buildBookApiPath } from "../backend-contract";
+
 import { ToolResultSurface } from "./ToolResultSurface";
 import { asRecord, getString, getToolResultArtifact, type ToolResultRenderer, type ToolResultRendererContext } from "./types";
 
@@ -40,7 +42,7 @@ export const LoreProposalCard: ToolResultRenderer = (context: ToolResultRenderer
     setBusy(true);
     setNote(null);
     try {
-      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
+      await fetchJson(buildBookApiPath(bookId, "jingwei", "entries", entryId), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fieldsPatch }),
