@@ -292,7 +292,7 @@ describe("narrative memory observability router", () => {
 
       const defaults = await app.request("http://localhost/api/books/book-1/narrative-memory/config");
       expect(defaults.status).toBe(200);
-      expect(await defaults.json()).toMatchObject({ config: { settlement: { enabled: true }, retrieval: { maxTokens: 8000, channels: { facts: true } } } });
+      expect(await defaults.json()).toMatchObject({ config: { settlement: { enabled: true }, retrieval: { maxTokens: 24000, channels: { facts: true } } } });
 
       const saved = await app.request("http://localhost/api/books/book-1/narrative-memory/config", {
         method: "PUT",
