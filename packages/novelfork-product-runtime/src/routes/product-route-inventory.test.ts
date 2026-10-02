@@ -73,7 +73,9 @@ describe("NovelFork product route inventory", () => {
 	});
 
 	test("keeps book narrator history and creation on the trusted product gateway", () => {
-		expect(inventory(bookNarratorGatewayRoutes)).toEqual(["GET /", "POST /"].sort());
+		expect(inventory(bookNarratorGatewayRoutes)).toEqual(
+			["GET /", "POST /", "POST /ensure-workflow-team"].sort(),
+		);
 	});
 
 	test("exposes book-scoped writing configuration endpoints on trusted domain routes", () => {

@@ -56,9 +56,16 @@ function executionLine(step: WorkflowStepState, recipeStep: { modelOverride?: st
   if (step.executorKind === "subagent") {
     const model = recipeStep?.modelOverride ? `，model=${recipeStep.modelOverride}` : "";
     const parallel = recipeStep?.parallelSubagents?.length
-      ? `；并行子代理：${recipeStep.parallelSubagents.map((agent) => agent.name).join("、")}（各自 task(run_in_background=true)，汇总后一次提交）`
+      ? `；并行子代理：${recipeStep.parallelSubagents.map((agent) => agent.name).join("、")}（团队里各自 team_dispatch，或各自 task(run_in_background=true)，汇总后一次提交）`
       : "";
-    return `执行方式：委派子代理——调用 task(subagent_type=${step.agentId ?? "未指定"}${model})，把工序目标写进 prompt；拿到结果后由你提交${parallel}。若该子代理不存在，调用 workflow_report_blocker。`;
+    return (
+      `执行方式：委派工人执行（产物必须由你本人提交，工人不得直写权威源）——` +
+      `优先用团队编排工具（plugin__com_whisent_narrator-team__ 前缀）：① team_status 读现有编排，合并后 team_setup 写回（勿盲覆盖既有配置）；` +
+      `② team_dispatch 把本工序目标派给标题前缀「工作流工人·」的对应工人（角色 ${step.agentId ?? "未指定"}${model}）；` +
+      `③ team_report / team_status 收集结果。` +
+      `没有团队工具时用 task(subagent_type=${step.agentId ?? "未指定"}) 委派 Runtime 子代理，把工序目标写进 prompt。` +
+      `若对应工人不存在既无法委派，调用 workflow_report_blocker。${parallel}`
+    );
   }
   if (step.executorKind === "domain-tool") return "执行方式：只调用本工序列出的工具完成，不要自行发挥。";
   return `执行方式：由你本人完成${step.agentId ? `（建议角色：${step.agentId}）` : ""}。`;

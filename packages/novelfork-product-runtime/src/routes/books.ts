@@ -1,4 +1,5 @@
-import { ValidationError } from "@vivy1024/narrafork-runtime-bridge";
+import { NotFoundError, ValidationError } from "@vivy1024/narrafork-runtime-bridge";
+import { planWorkflowTeam, readWorkflowRecipes } from "@vivy1024/novelfork-novel-plugin/engine";
 import {
 	handleProjectWritingSkillDelete,
 	handleProjectWritingSkillUpdate,
@@ -16,6 +17,7 @@ import {
 	type ProductBookInput,
 } from "../services/book-provision";
 import type { BoundNarratorActor } from "../services/narrator-access";
+import { resolveDomainBookRoot } from "./domain";
 import { getProductBootstrapContract } from "../services/product-contract";
 
 const guidedSetupAnswerSchema = z
@@ -501,4 +503,55 @@ bookNarratorGatewayRoutes.post("/", async (c) => {
 		parsed.data.title,
 	);
 	return c.json(narrator, 201);
+});
+
+const ensureWorkflowTeamSchema = z
+	.object({
+		recipeId: z.string().trim().min(1).max(120).optional(),
+	})
+	.strict();
+
+/**
+ * 组建/核对本书的工作流工人团队（narrator-team 编排的工人侧）。
+ *
+ * 委派工序由「工作流工人·<角色>」标题的产品叙述者承接：这里按配方幂等
+ * 建/复用它们（同标题复用，不重复建）。领导者叙述者拿到名单后经插件
+ * team.setup 收编；闸门仍只认运行叙述者的 submit，权威写入不旁路。
+ */
+bookNarratorGatewayRoutes.post("/ensure-workflow-team", async (c) => {
+	const parsed = ensureWorkflowTeamSchema.safeParse(await c.req.json().catch(() => ({})));
+	if (!parsed.success) throw new ValidationError(parsed.error.message);
+	const bookId = requiredParam(c, "bookId");
+	const recipes = await readWorkflowRecipes(resolveDomainBookRoot(bookId));
+	const recipe = parsed.data.recipeId
+		? recipes.find(
+			(item) => item.id === parsed.data.recipeId || item.commandId === parsed.data.recipeId,
+		)
+		: recipes[0];
+	if (!recipe) throw new NotFoundError("WorkflowRecipe", parsed.data.recipeId ?? "(第一本)");
+	const plan = planWorkflowTeam(recipe);
+	const existing = await novelForkProductBookService.listBookNarrators(bookId, actor(c));
+	const byTitle = new Map(existing.map((narrator) => [narrator.title, narrator]));
+	const members = [] as Array<{
+		roleKey: string;
+		title: string;
+		narratorId: string;
+		created: boolean;
+		stepIds: readonly string[];
+		model?: string;
+	}>;
+	for (const member of plan.members) {
+		const hit = byTitle.get(member.title);
+		if (hit) {
+			members.push({ ...member, narratorId: hit.id, created: false });
+			continue;
+		}
+		const narrator = await novelForkProductBookService.createBookNarrator(
+			bookId,
+			actor(c),
+			member.title,
+		);
+		members.push({ ...member, narratorId: narrator.id, created: true });
+	}
+	return c.json({ recipeId: recipe.id, recipeName: recipe.name, members });
 });
