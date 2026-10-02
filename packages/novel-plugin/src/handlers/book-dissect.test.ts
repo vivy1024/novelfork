@@ -7,7 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { ensureDissectionStagingSchema } from "../engine/jingwei/dissection-staging.js";
-import { extractDissectDraftFromTexts, handleBookDissect } from "./book-dissect.js";
+import {
+  extractDissectDraftFromTexts,
+  handleBatchedBookDissect,
+  handleBookDissect,
+  type BatchedDissectDraft,
+} from "./book-dissect.js";
 
 // 不 mock core：handleBookDissect 全链路都接受显式 storage，
 // mock 会跨测试文件泄漏（污染其他文件的 getStorageDatabase）。
@@ -279,4 +284,70 @@ describe("handleBookDissect", () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((row) => row.status === "needs-review" && row.participates_in_ai === 0)).toBe(true);
   });
+});
+
+describe("handleBatchedBookDissect", () => {
+  it("≤200 章时等价单次拆解（batched=false）", async () => {
+    const bookRoot = await createBook([
+      { number: 1, content: "韩立冷声道：「日后自有分晓。」他来到药园。" },
+    ]);
+    const result = await handleBatchedBookDissect({
+      bookId: "book-1",
+      bookRoot,
+      storage: activeStorage,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.batched).toBe(false);
+    expect((result.draft as { batched?: boolean }).batched).not.toBe(true);
+    expect((result.draft as { chapterSummaries: unknown[] }).chapterSummaries).toHaveLength(1);
+  });
+
+  it("201 章自动分 2 批：summary 反映分批、每批草稿落盘、staging 覆盖到第 201 章", async () => {
+    const chapters = [];
+    for (let n = 1; n <= 201; n += 1) {
+      chapters.push({
+        number: n,
+        content: `第${n}章正文：韩立来到药园，淡淡道：「将来再议。」他不知小瓶另有秘密。`,
+      });
+    }
+    const bookRoot = await createBook(chapters);
+    const result = await handleBatchedBookDissect({
+      bookId: "book-1",
+      bookRoot,
+      apply: true,
+      settle: false,
+      storage: activeStorage,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.batched).toBe(true);
+
+    const draft = result.draft as BatchedDissectDraft;
+    expect(draft.totalChapters).toBe(201);
+    expect(draft.batchCount).toBe(2);
+    expect(draft.coveredRange).toEqual({ from: 1, to: 201 });
+    expect(draft.batches).toHaveLength(2);
+    expect(draft.batches[0]).toMatchObject({ fromChapter: 1, toChapter: 200, ok: true });
+    expect(draft.batches[1]).toMatchObject({ fromChapter: 201, toChapter: 201, ok: true });
+    expect(result.summary).toContain("共 201 章");
+    expect(result.summary).toContain("2 批");
+    expect(result.summary).toContain("覆盖 1–201");
+
+    // apply=true 时内部快照被命名为批文件；批快照带批范围
+    const batch1 = JSON.parse(await readFile(join(bookRoot, "story", "dissect_draft_batch_1-200.json"), "utf8")) as { range: { from: number; to: number } };
+    expect(batch1.range).toEqual({ from: 1, to: 200 });
+    const batch2 = JSON.parse(await readFile(join(bookRoot, "story", "dissect_draft_batch_201-201.json"), "utf8")) as { range: { from: number; to: number } };
+    expect(batch2.range).toEqual({ from: 201, to: 201 });
+    // 单批遗留 story/dissect_draft.json 不应残留（已被改名成批文件，避免误导成全书草稿）
+    await expect(readFile(join(bookRoot, "story", "dissect_draft.json"), "utf8")).rejects.toThrow();
+
+    // 两批 staging 合起来应覆盖到第 201 章（旧行为超过 200 章时整块拆解没跑）
+    const rows = activeStorage!.sqlite.prepare(
+      `SELECT fields_json FROM dissection_staging WHERE book_id = ? AND kind = 'chapter-summaries'`,
+    ).all("book-1") as Array<{ fields_json: string }>;
+    const numbers = rows
+      .map((row) => (JSON.parse(row.fields_json) as { chapterNumber?: unknown }).chapterNumber)
+      .filter((value): value is number => typeof value === "number");
+    expect(numbers.length).toBe(201);
+    expect(Math.max(...numbers)).toBe(201);
+  }, 120_000);
 });

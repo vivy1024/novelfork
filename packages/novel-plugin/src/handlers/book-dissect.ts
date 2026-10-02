@@ -3,7 +3,7 @@
  * 默认只出草案；apply=true 时写入 dissection_staging，确认前不进正式经纬。
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
@@ -588,5 +588,217 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
         : "仅草案未落盘",
       preflight.ok ? "写前检查就绪" : `写前检查未就绪：${preflight.blockers.map((item) => item.code).join(",") || "unknown"}`,
     ].join("；"),
+  };
+}
+
+/** 单次 handleBookDissect 的章数上限；超过时由 handleBatchedBookDissect 自动分批。 */
+export const DISSECT_BATCH_LIMIT = 200;
+
+export interface BatchedDissectBatchReport {
+  readonly index: number;
+  readonly fromChapter: number;
+  readonly toChapter: number;
+  readonly ok: boolean;
+  readonly error?: string;
+  readonly characters: number;
+  readonly locations: number;
+  readonly hooks: number;
+  readonly chapterSummaries: number;
+  readonly staged: number;
+  readonly settled: boolean;
+  readonly settlementSummary?: string;
+  readonly draftFile: string | null;
+  readonly summary: string;
+}
+
+/** import 整本旧稿时的分批拆解汇总草稿：总章数、批数、覆盖范围、每批统计与批快照文件。 */
+export interface BatchedDissectDraft {
+  readonly batched: true;
+  readonly totalChapters: number;
+  readonly batchCount: number;
+  readonly coveredRange: { readonly from: number; readonly to: number };
+  /** 各批抽取到的事件级章摘要总数（knowledge.detailedSummaries；扁平 draft.chapterSummaries 只留批末 8 条采样）。 */
+  readonly chapterSummaries: number;
+  readonly characters: readonly string[];
+  readonly locations: readonly string[];
+  readonly hooks: readonly string[];
+  readonly batches: readonly BatchedDissectBatchReport[];
+}
+
+export interface BatchedBookDissectResult {
+  readonly ok: boolean;
+  /** false：范围 ≤200 章，等价于单次 handleBookDissect（draft 为原扁平草案）。 */
+  readonly batched: boolean;
+  readonly summary: string;
+  readonly settlementSummary?: string;
+  readonly draft: DissectDraft | BatchedDissectDraft;
+  readonly writtenFiles: readonly string[];
+  readonly preflight?: BookDissectResult["preflight"];
+  readonly settled: boolean;
+  readonly error?: string;
+}
+
+/**
+ * 范围自适应的拆书入口：≤200 章直接走 handleBookDissect；超出时按 ≤200 章一批分批调用，
+ * 每批草稿固定落盘 story/dissect_draft_batch_<from>-<to>.json（apply=true 时复用内部快照改名，
+ * 未落盘时这里自建批快照），最后汇总成一个 BatchedDissectDraft。
+ * 无模型时保持原语义：每批只产规则级草稿。
+ */
+export async function handleBatchedBookDissect(input: BookDissectInput): Promise<BatchedBookDissectResult> {
+  const range = await resolveRange(input.bookRoot, input.fromChapter, input.toChapter);
+  const totalChapters = range.to - range.from + 1;
+  if (totalChapters <= DISSECT_BATCH_LIMIT) {
+    const single = await handleBookDissect({ ...input, fromChapter: range.from, toChapter: range.to });
+    return {
+      ok: single.ok,
+      batched: false,
+      summary: single.summary,
+      ...(single.settlementSummary ? { settlementSummary: single.settlementSummary } : {}),
+      draft: single.draft,
+      writtenFiles: single.writtenFiles,
+      ...(single.preflight ? { preflight: single.preflight } : {}),
+      settled: single.settled,
+      ...(single.error ? { error: single.error } : {}),
+    };
+  }
+
+  const purposeOrInvalid = resolveDissectPurpose(input.purpose);
+  const purposeLabel = purposeOrInvalid === "invalid" ? "写后续" : dissectPurposeProfile(purposeOrInvalid).label;
+
+  const batchRanges: Array<{ from: number; to: number }> = [];
+  for (let from = range.from; from <= range.to; from += DISSECT_BATCH_LIMIT) {
+    batchRanges.push({ from, to: Math.min(from + DISSECT_BATCH_LIMIT - 1, range.to) });
+  }
+
+  const storyDir = join(input.bookRoot, "story");
+  const reports: BatchedDissectBatchReport[] = [];
+  const writtenFiles: string[] = [];
+  const allCharacters: string[] = [];
+  const allLocations: string[] = [];
+  const allHooks: string[] = [];
+  let chapterSummariesTotal = 0;
+  let settledChapters = 0;
+  let stagedTotal = 0;
+  let rejectedTotal = 0;
+  const failedBatches: string[] = [];
+  let preflight: BookDissectResult["preflight"];
+
+  for (let index = 0; index < batchRanges.length; index += 1) {
+    const batch = batchRanges[index]!;
+    const result = await handleBookDissect({
+      ...input,
+      fromChapter: batch.from,
+      toChapter: batch.to,
+    });
+
+    // knowledge.detailedSummaries 是全量章摘要；扁平 draft.chapterSummaries 只有批末 8 条采样。
+    const detailedSummaryCount = result.knowledge?.detailedSummaries.length ?? result.draft.chapterSummaries.length;
+    if (result.ok) {
+      preflight = result.preflight ?? preflight;
+      allCharacters.push(...result.draft.characters);
+      allLocations.push(...result.draft.locations);
+      allHooks.push(...result.draft.hooks);
+      chapterSummariesTotal += detailedSummaryCount;
+      if (result.settled) settledChapters += batch.to - batch.from + 1;
+      stagedTotal += result.staging?.length ?? 0;
+      rejectedTotal += result.rejectedCandidates?.length ?? 0;
+    } else {
+      failedBatches.push(`${batch.from}-${batch.to}`);
+    }
+
+    // 批快照落盘：内部写出的 story/dissect_draft.json 改名成批文件；没落盘（apply=false）则自建精简快照。
+    const batchFileName = `dissect_draft_batch_${batch.from}-${batch.to}.json`;
+    let draftFile: string | null = null;
+    if (result.ok) {
+      try {
+        await rename(join(storyDir, "dissect_draft.json"), join(storyDir, batchFileName));
+        draftFile = `story/${batchFileName}`;
+      } catch {
+        try {
+          await mkdir(storyDir, { recursive: true });
+          await writeFile(
+            join(storyDir, batchFileName),
+            `${JSON.stringify({
+              bookId: result.bookId,
+              batchIndex: index,
+              batchCount: batchRanges.length,
+              range: { from: batch.from, to: batch.to },
+              ...(result.purpose ? { purpose: result.purpose } : {}),
+              ...(result.purposeLabel ? { purposeLabel: result.purposeLabel } : {}),
+              createdAt: new Date().toISOString(),
+              note: "分批拆书批快照；权威候选在 dissection_staging",
+              draft: result.draft,
+              ...(result.knowledge ? { knowledge: result.knowledge } : {}),
+            }, null, 2)}\n`,
+            "utf8",
+          );
+          draftFile = `story/${batchFileName}`;
+        } catch {
+          draftFile = null;
+        }
+      }
+    }
+    if (draftFile) writtenFiles.push(draftFile);
+    for (const file of result.writtenFiles) {
+      if (file !== "story/dissect_draft.json（快照）") writtenFiles.push(`批 ${batch.from}-${batch.to}：${file}`);
+    }
+
+    reports.push({
+      index,
+      fromChapter: batch.from,
+      toChapter: batch.to,
+      ok: result.ok,
+      ...(result.error ? { error: result.error } : {}),
+      characters: result.draft.characters.length,
+      locations: result.draft.locations.length,
+      hooks: result.draft.hooks.length,
+      chapterSummaries: detailedSummaryCount,
+      staged: result.staging?.length ?? 0,
+      settled: result.settled,
+      ...(result.settlementSummary ? { settlementSummary: result.settlementSummary } : {}),
+      draftFile,
+      summary: result.summary,
+    });
+  }
+
+  const characters = uniqueStrings(allCharacters, 120);
+  const locations = uniqueStrings(allLocations, 120);
+  const hooks = uniqueStrings(allHooks, 120);
+  const settledCount = reports.filter((report) => report.settled).length;
+  const settlementSummary = reports.some((report) => report.settlementSummary)
+    ? reports.map((report) => `批 ${report.fromChapter}-${report.toChapter}：${report.settlementSummary ?? "未结算"}`).join("；")
+    : undefined;
+
+  const draft: BatchedDissectDraft = {
+    batched: true,
+    totalChapters,
+    batchCount: batchRanges.length,
+    coveredRange: { from: range.from, to: range.to },
+    chapterSummaries: chapterSummariesTotal,
+    characters,
+    locations,
+    hooks,
+    batches: reports,
+  };
+
+  const summary = [
+    `按「${purposeLabel}」分批拆解：共 ${totalChapters} 章，${batchRanges.length} 批，覆盖 ${range.from}–${range.to}`,
+    `角色 ${characters.length} / 地点 ${locations.length} / 钩子 ${hooks.length}（跨批去重） / 章摘要 ${chapterSummariesTotal} 条`,
+    settledCount > 0 ? `动态记忆已结算 ${settledCount}/${batchRanges.length} 批（约 ${settledChapters} 章）` : "动态记忆未结算",
+    input.apply ? `实体已写入经纬草稿 ${stagedTotal} 条（待确认）；拒绝 ${rejectedTotal} 条脏候选` : "仅草案未落盘",
+    failedBatches.length > 0 ? `失败批：${failedBatches.join("、")}（正文已导入，可对失败范围重跑 book.dissect）` : "",
+    `每批草稿见 story/dissect_draft_batch_*.json`,
+  ].filter(Boolean).join("；");
+
+  return {
+    ok: failedBatches.length < batchRanges.length,
+    batched: true,
+    summary,
+    ...(settlementSummary ? { settlementSummary } : {}),
+    draft,
+    writtenFiles,
+    ...(preflight ? { preflight } : {}),
+    settled: settledCount > 0,
+    ...(failedBatches.length === batchRanges.length ? { error: "all-batches-failed" } : {}),
   };
 }

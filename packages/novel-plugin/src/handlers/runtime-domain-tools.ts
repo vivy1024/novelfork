@@ -417,6 +417,33 @@ async function proposeLoreUpdate(
   );
 }
 
+/**
+ * 整份导入原文快照：写章节前一次性落到 story/import-source/（之后不再改），
+ * 章节索引的 imported 条目用 importSource 指到它；重名自动追加短后缀。
+ */
+async function saveImportSourceSnapshot(
+  storyDir: string,
+  sourceName: string,
+  content: string,
+  isoNow: string,
+): Promise<string> {
+  const snapshotDir = join(storyDir, "import-source");
+  await mkdir(snapshotDir, { recursive: true });
+  const safeTimestamp = isoNow.replace(/[:.]/g, "-");
+  const baseName = (sourceName.replace(/\\/g, "/").split("/").pop() ?? "").replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "_").trim();
+  const stem = baseName.replace(/\.txt$/i, "") || "导入文本";
+  for (let suffix = 0; ; suffix += 1) {
+    const fileName = `${safeTimestamp}-${stem}${suffix > 0 ? `-${suffix}` : ""}.txt`;
+    try {
+      await writeFile(join(snapshotDir, fileName), content, { encoding: "utf8", flag: "wx" });
+      return `story/import-source/${fileName}`;
+    } catch (error) {
+      if ((error as { code?: string })?.code === "EEXIST") continue;
+      throw error;
+    }
+  }
+}
+
 async function importChapters(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
@@ -442,9 +469,11 @@ async function importChapters(
     const storyDir = join(binding.root, "story");
     await mkdir(chaptersDir, { recursive: true });
     await mkdir(storyDir, { recursive: true });
+    const now = new Date().toISOString();
+    // 原文快照先于章节落盘：快照失败就整体失败，避免章节写了却找不到原稿。
+    const importSource = await saveImportSourceSnapshot(storyDir, sourceName, content, now);
     const existing = await readChapterIndex(binding);
     const startNumber = existing.reduce((max, entry) => Math.max(max, Number(entry.number) || 0), 0) + 1;
-    const now = new Date().toISOString();
     let totalWords = 0;
     const imported: ChapterIndexRecord[] = [];
     for (let index = 0; index < chapters.length; index += 1) {
@@ -464,6 +493,7 @@ async function importChapters(
         fileName,
         wordCount: chapter.content.length,
         status: "imported",
+        importSource,
         createdAt: now,
         updatedAt: now,
         auditIssues: [],
@@ -517,9 +547,10 @@ async function importChapters(
     let writtenFiles: readonly string[] = [];
 
     if (autoSettle || extractBrief) {
-      const { handleBookDissect } = await import("./book-dissect.js");
+      const { handleBatchedBookDissect } = await import("./book-dissect.js");
       const { createRuntimeChapterEventExtractor } = await import("../engine/narrative-memory/chapter-event-extractor.js");
-      const dissected = await handleBookDissect({
+      // 整本导入超过单次 dissect 上限（200 章）时自动分批：≤200 章等价单次调用。
+      const dissected = await handleBatchedBookDissect({
         bookId: binding.bookId,
         bookRoot: binding.root,
         fromChapter: firstChapter,
@@ -543,6 +574,7 @@ async function importChapters(
         `已从「${sourceName}」导入 ${chapters.length} 章（共 ${totalWords} 字）`,
         autoSettle ? (settlementSummary ?? "已尝试 settle") : "未 settle",
         extractBrief ? (dissectSummary ?? "已抽取草案") : "未抽取草案",
+        `原文快照 ${importSource}`,
       ].join("；"),
       {
         bookId: binding.bookId,
@@ -551,6 +583,7 @@ async function importChapters(
         firstChapter,
         nextChapter: lastChapter + 1,
         lastChapter,
+        importSource,
         styleProfileWritten: true,
         autoSettle,
         extractBrief,
@@ -558,7 +591,7 @@ async function importChapters(
         settlementSummary,
         dissectSummary,
         dissectDraft,
-        writtenFiles,
+        writtenFiles: [importSource, ...writtenFiles],
         preflight,
         nextActions: [
           "write.preflight",
