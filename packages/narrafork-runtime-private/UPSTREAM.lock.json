@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime-private",
   "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "3d564db7a9c6aae1f6fa39e03785b191712f82f1",
-  "tree": "fc6899f52440343ad56c8cb2f76e02f22ad621da",
+  "commit": "cc1069c74b2d132e787ba799a47f445552f6c8d5",
+  "tree": "dc731b2aa56cc4b3ddc396257666929af919e768",
   "branch": "novelfork/integration-v0.7.10",
   "localBranch": "novelfork/upgrade-0.7.10",
   "version": "0.7.12",
-  "importedAt": "2026-10-02T09:36:15.000Z",
-  "trackedFileCount": 4578,
+  "importedAt": "2026-10-02T14:33:37.000Z",
+  "trackedFileCount": 4579,
   "importMethod": "git-archive",
   "provenance": {
     "note": "2026-09-28 在宿主库 packages/.narrafork-runtime-fork-staging 的 worktree 分支 novelfork/upgrade-0.7.10 上合并上游 v0.7.10，合并提交 bc6347b9，其后本地提交见 forkCommitsAfterMerge。均尚未推送：计划推到 fork 远端新分支 novelfork/integration-v0.7.10（旧分支 novelfork/integration-v0.6.6 保留作存档）。推送前 pnpm runtime:sync 只能从本机取到该提交：先执行 GIT_DIR=packages/.narrafork-runtime-sync git fetch <宿主库路径> +refs/heads/novelfork/upgrade-0.7.10:refs/heads/novelfork/upgrade-0.7.10。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。上一版物化目录备份在 .runtime-backup-v0.7.10-02bd382b-20261002/（不含 node_modules）。2026-10-02 又在同一 worktree 合入上游 v0.7.12（第二次合并 3d564db7，见 mergesAfterImport），文件头部版本号随之上移。在物化树里跑 Runtime 测试套件要两个环境准备：NARRAFORK_MIGRATIONS_DIR=runtime-migrations（drizzle/ 是本机 drizzle-kit 生成物、不入库也不物化，缺了会在 tests/setup.ts 报无名字的 ENOENT）；tsgo 过 vscode-extension 需先在该目录内 bun install（它有自己的 bun.lock 与 node_modules）。",
@@ -124,6 +124,13 @@
         "subject": "fix(tests): reference-tool-rpc 夹具与示例插件重新对齐",
         "status": "local",
         "note": "上游 4b776900 把 examples/plugins/tool-command 升到 1.0.1、夹具停在 1.0.0：镜像一致性测试失败、hello 版本握手被拒。夹具 index.js 对齐示例、夹具 manifest 只升 version。纯上游基线同样存在该失败。与合并提交一起待推送"
+      },
+      {
+        "commit": "cc1069c74b2d132e787ba799a47f445552f6c8d5",
+        "parent": "3d564db7a9c6aae1f6fa39e03785b191712f82f1",
+        "subject": "fix(host): 权限弹窗 leader 退位递补 + 嵌入插件宿主接上失效通知",
+        "status": "local",
+        "note": "审计发现：① 弹窗宿主只在 mount 选举一次，leader 卸载后其余宿主不会再显示权限请求，改模块级有序挂载表 + useSyncExternalStore 按挂载序递补（附继任测试）；② EmbeddedPluginUiHost import 了 handlePluginUiNotification 却没接 onNotification（biome noUnusedImports 红 + 嵌入面缓存失效通知静默丢失），按 App.tsx 同款接线。与合并提交一起待推送"
       }
     ]
   }
