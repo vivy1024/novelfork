@@ -2,28 +2,42 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime-private",
   "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "9b1678765c39c5c1966b50ecdded5fb93d72ffe7",
-  "tree": "a296c061ad1bead97e8339c698357cb45cde6211",
+  "commit": "3d564db7a9c6aae1f6fa39e03785b191712f82f1",
+  "tree": "fc6899f52440343ad56c8cb2f76e02f22ad621da",
   "branch": "novelfork/integration-v0.7.10",
   "localBranch": "novelfork/upgrade-0.7.10",
-  "version": "0.7.10",
-  "importedAt": "2026-09-29T07:40:00.000Z",
-  "trackedFileCount": 4547,
+  "version": "0.7.12",
+  "importedAt": "2026-10-02T09:36:15.000Z",
+  "trackedFileCount": 4578,
   "importMethod": "git-archive",
   "provenance": {
-    "note": "2026-09-28 在宿主库 packages/.narrafork-runtime-fork-staging 的 worktree 分支 novelfork/upgrade-0.7.10 上合并上游 v0.7.10，合并提交 bc6347b9，其后本地提交见 forkCommitsAfterMerge。均尚未推送：计划推到 fork 远端新分支 novelfork/integration-v0.7.10（旧分支 novelfork/integration-v0.6.6 保留作存档）。推送前 pnpm runtime:sync 只能从本机取到该提交：先执行 GIT_DIR=packages/.narrafork-runtime-sync git fetch <宿主库路径> +refs/heads/novelfork/upgrade-0.7.10:refs/heads/novelfork/upgrade-0.7.10。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。上一版物化目录备份在 .runtime-backup-v0.6.6-20260928/（不含 node_modules）。",
+    "note": "2026-09-28 在宿主库 packages/.narrafork-runtime-fork-staging 的 worktree 分支 novelfork/upgrade-0.7.10 上合并上游 v0.7.10，合并提交 bc6347b9，其后本地提交见 forkCommitsAfterMerge。均尚未推送：计划推到 fork 远端新分支 novelfork/integration-v0.7.10（旧分支 novelfork/integration-v0.6.6 保留作存档）。推送前 pnpm runtime:sync 只能从本机取到该提交：先执行 GIT_DIR=packages/.narrafork-runtime-sync git fetch <宿主库路径> +refs/heads/novelfork/upgrade-0.7.10:refs/heads/novelfork/upgrade-0.7.10。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。上一版物化目录备份在 .runtime-backup-v0.7.10-02bd382b-20261002/（不含 node_modules）。2026-10-02 又在同一 worktree 合入上游 v0.7.12（第二次合并 3d564db7，见 mergesAfterImport），文件头部版本号随之上移。在物化树里跑 Runtime 测试套件要两个环境准备：NARRAFORK_MIGRATIONS_DIR=runtime-migrations（drizzle/ 是本机 drizzle-kit 生成物、不入库也不物化，缺了会在 tests/setup.ts 报无名字的 ENOENT）；tsgo 过 vscode-extension 需先在该目录内 bun install（它有自己的 bun.lock 与 node_modules）。",
     "forkBase": {
       "commit": "006bf8291456d5140055d037c9adceb1475593cd",
       "subject": "feat(host): 嵌入宿主接受宿主的明暗方案（colorScheme）",
       "note": "合并前的 fork 头：远端 novelfork/integration-v0.6.6 的 dda73094 之上加一个本地提交（主题功能用的 colorScheme 参数），该提交同样未推送"
     },
     "upstream": {
-      "commit": "24f2436ab01a8785b93a55616d9216276df4cce6",
-      "subject": "release: v0.7.10",
+      "commit": "3ac2d0df7816fa0a50d2a225fd236b846a57b16d",
+      "subject": "fix(model,codex,subagent): 指纹/turn-state 与子模型继承、续跑修正",
       "ref": "upstream/main",
-      "note": "上游 v0.7.9 / v0.7.10 没有打 tag，按 upstream/main 的发布提交合并"
+      "note": "2026-10-02 时 upstream/main 头（v0.7.12 之后）；v0.7.11 / v0.7.12 未打 tag，按 upstream/main 合并。此前基线为 v0.7.10 的 24f2436a"
     },
-    "mergeBase": "751ad11b99bd77ab906473150dabc2623a04ef3b",
+    "mergeBase": "24f2436ab01a8785b93a55616d9216276df4cce6",
+    "mergesAfterImport": [
+      {
+        "commit": "3d564db7a9c6aae1f6fa39e03785b191712f82f1",
+        "parent": "02bd382b5a108926d6861a8c19f66835f982cc3a",
+        "range": "24f2436a..3ac2d0df",
+        "subject": "merge: 合入上游 v0.7.12（30 提交，1 处冲突）",
+        "status": "local",
+        "conflictsResolved": [
+          "frontend/components/narrator/vlist/render-registry.tsx — fork 的 detailSlot/runtimeRenderer 与上游 onPermissionFormHeight 同点新增，按并集解"
+        ],
+        "migrations": "无新增 SQLite 迁移与 runtime-migrations 变化（上游 JSON 列空串修复走 data-backfills），embedded-migrations 未重生成",
+        "verification": "合并触及的 63 个测试文件与纯上游基线（upstream/main@3ac2d0df + db:generate 单文件 schema）对照：revert-planner-local-access 两树同 2 fail（PLAN_STALE）；paging.test.ts 的 EBUSY 为 bun:sqlite 1.3.13/Windows close 句柄待 GC（NARRAFORK_DEFER_WINDOWS_TEMP_CLEANUP=1 可消，基线同现）；TlsSection 为 bun mock 批次顺序污染（候选树单跑全绿）；export yields event loop 为 Bun/Windows timer 相位差异（上游假设 Node 语序）。无合并独有失败。已知上游不稳：revert 系列文件在 bun 1.3.13/Windows 全量长跑下偶发 stack overflow panic 或挂起（基线两次崩同一区域），全量套件本机需分块跑"
+      }
+    ],
     "conflictsResolved": [
       "server/services/narrator-session.ts — 上游把 Agent 循环主体移到 server/services/agent-runtime/orchestrator.ts；产品叙述者判断抽到新文件 server/services/product-narrator-tools.ts，会话与 orchestrator 共用。buildSystemPrompt 保留 narratorId 参数与 runtimeToolNames；项目级例程覆盖改用上游三态常驻模式；被拒工具重跑路径在上游重构后重新接入产品工具过滤",
       "server/services/agent-runtime/orchestrator.ts — 无文本冲突，重新接入产品工具可见性同步与按权限模式过滤；删除 fork 旧有的 permissionMode getter（读的是同一个快照，与上游写法等价）",
@@ -82,6 +96,34 @@
         "subject": "feat(host): 产品宿主可调用 Runtime 的服务端文本生成",
         "status": "local",
         "note": "新增 RuntimeProductHostServices（product-host/text-generation.ts）：产品 HTTP 路由按当前用户调用 Runtime 配置的默认 / 摘要模型做无工具补全，用量经 trackApiRequest 记到该用户（kind=external）。与合并提交一起待推送"
+      },
+      {
+        "commit": "eb8c02b4bad9cc48137a51ee748f5b0ba163da85",
+        "parent": "9b1678765c39c5c1966b50ecdded5fb93d72ffe7",
+        "subject": "feat(host): 嵌入宿主接上插件 runtime 与全局授权弹窗",
+        "status": "local",
+        "note": "新增 EmbeddedPluginUiHost（每个嵌入宿主各自包 PluginUiRuntimeProvider，createAppPluginHostLocal 挂 queryClient，不传 getContext 走 fallback）与 EmbeddedPluginPermissionRequestHost（模块级 leader 选举，防多嵌入宿主对同一权限事件重复弹窗）；RuntimeFrontendHostProviders 的 QueryClientProvider children 改由两者挂载。宿主测试补齐 jsdom 环境（memoryStorage、TestResizeObserver、TestMutationObserver）与 i18n / plugins registry mock。与合并提交一起待推送"
+      },
+      {
+        "commit": "db3d703f4eade54e54016640cceba02b40c4eedd",
+        "parent": "eb8c02b4bad9cc48137a51ee748f5b0ba163da85",
+        "subject": "fix(host): 通用页面宿主测试的路由参数对齐 0.7.10 路由名",
+        "status": "local",
+        "note": "EmbeddedRuntimePage.test.tsx 的内联路由写 /knowledge/$id 与 /narrators/$id，0.7.10 路由树已更名 $entryId / $narratorId，tsgo 报 6 条（合并后未跑全量类型检查的遗留）；随该文件归一 CRLF→LF。与合并提交一起待推送"
+      },
+      {
+        "commit": "88fc6ceaf692b2297bfc8e8e38d72de6afb903ea",
+        "parent": "db3d703f4eade54e54016640cceba02b40c4eedd",
+        "subject": "fix(host): 补齐 embedded-licenses 的环境模块声明",
+        "status": "local",
+        "note": "上游 0.7.10 引入 licenses 清单但该生成产物没有 ambient module 声明（同类产物都有），新鲜物化树 tsgo 报 TS2307；按 fork 约定补进 server/types/novelfork-generated-modules.d.ts。vscode-extension 的缺 vscode 类型属环境问题：该目录有自己的 bun.lock 与工具链，物化后需在其内单独 bun install。与合并提交一起待推送"
+      },
+      {
+        "commit": "02bd382b5a108926d6861a8c19f66835f982cc3a",
+        "parent": "88fc6ceaf692b2297bfc8e8e38d72de6afb903ea",
+        "subject": "fix(tests): reference-tool-rpc 夹具与示例插件重新对齐",
+        "status": "local",
+        "note": "上游 4b776900 把 examples/plugins/tool-command 升到 1.0.1、夹具停在 1.0.0：镜像一致性测试失败、hello 版本握手被拒。夹具 index.js 对齐示例、夹具 manifest 只升 version。纯上游基线同样存在该失败。与合并提交一起待推送"
       }
     ]
   }
