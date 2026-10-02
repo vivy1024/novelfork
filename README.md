@@ -238,7 +238,7 @@ pnpm compile:all      # 七平台交叉编译 + 聚合 SHA256
 写后：叙事记忆自动结算沉淀 → skills.check_compliance 技能合规校验 → 新设定 lore.write 待作者确认
 ```
 
-核心领域工具包括：`lore.*`、`memory.*`、`write.preflight`、`scene.spec`、`pipeline.write`、`chapter.*`、`rewrite.apply`、`writing-skills.*`、`hooks.manage`、`outline.volume`、`arc.character`、`book.dissect`、`publish.check`（投稿风险自检）等（以当前 `novel-plugin` 实现为准）。
+核心领域工具包括：`lore.*`、`memory.*`、`write.preflight`、`scene.spec`、`pipeline.write`、`chapter.*`、`rewrite.apply`、`skills.*`、`hooks.manage`、`outline.volume`、`arc.character`、`book.dissect`、`publish.check`（投稿风险自检）等（以当前 `novel-plugin` 实现为准）。
 
 ---
 
