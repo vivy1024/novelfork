@@ -35,6 +35,48 @@ function teamRecipe(): NovelWorkflowRecipe {
   } as unknown as NovelWorkflowRecipe;
 }
 
+describe("WorkflowTimelinePanel 团队编排启用横幅", () => {
+  function stubFetchWithTeamStatus(teamState: { runtimeState: string | null }) {
+    const calls: { url: string; method: string }[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({ url, method });
+      const json = (payload: unknown, status = 200) =>
+        new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } });
+      if (url.endsWith("/api/plugins/bundled/narrator-team/status")) {
+        return json({ pluginId: "com.whisent.narrator-team", bundledVersion: "0.1.49", installed: true, runtimeState: teamState.runtimeState });
+      }
+      if (url.endsWith("/api/plugins/bundled/narrator-team/install") && method === "POST") {
+        return json({ pluginId: "com.whisent.narrator-team", status: "installed", runtimeState: "active" }, 201);
+      }
+      if (url.endsWith("/workflow-recipes")) return json({ recipes: [teamRecipe()] });
+      if (url.includes("/workflow-runs") && method === "GET") return json({ active: null, recent: [] });
+      return json({ summary: `unhandled ${method} ${url}` }, 404);
+    });
+    return calls;
+  }
+
+  it("插件已激活时不显示启用横幅", async () => {
+    stubFetchWithTeamStatus({ runtimeState: "active" });
+    render(<WorkflowTimelinePanel bookId="book-team" currentChapter={1} />);
+    await screen.findByTestId("workflow-ensure-team");
+    await waitFor(() => expect(screen.queryByTestId("workflow-team-plugin-banner")).toBeNull());
+  });
+
+  it("插件未激活时展示横幅，点一键启用走内置包安装接口", async () => {
+    const calls = stubFetchWithTeamStatus({ runtimeState: "inactive" });
+    render(<WorkflowTimelinePanel bookId="book-team" currentChapter={1} />);
+    const button = await screen.findByTestId("workflow-enable-team-plugin");
+    expect(screen.getByTestId("workflow-team-plugin-banner").textContent).toContain("一键启用");
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.queryByTestId("workflow-team-plugin-banner")).toBeNull());
+    await screen.findByTestId("workflow-team-notice");
+    const install = calls.find((call) => call.url.endsWith("/api/plugins/bundled/narrator-team/install"));
+    expect(install?.method).toBe("POST");
+  });
+});
+
 describe("WorkflowTimelinePanel 组建工人团队", () => {
   it("按当前方案调 ensure-workflow-team 并展示工人名单", async () => {
     const calls: { url: string; method: string; body?: unknown }[] = [];

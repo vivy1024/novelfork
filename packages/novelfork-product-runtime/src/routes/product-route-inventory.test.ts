@@ -6,6 +6,7 @@ import {
 	bookWorkspaceRoutes,
 	novelForkProductBooksRoutes,
 } from "./books";
+import { bundledPluginRoutes } from "./bundled-plugins";
 import { novelForkProductBookService } from "../services/book-provision";
 import {
 	getProductBootstrapCapabilities,
@@ -75,6 +76,12 @@ describe("NovelFork product route inventory", () => {
 	test("keeps book narrator history and creation on the trusted product gateway", () => {
 		expect(inventory(bookNarratorGatewayRoutes)).toEqual(
 			["GET /", "POST /", "POST /ensure-workflow-team"].sort(),
+		);
+	});
+
+	test("exposes the bundled narrator-team install path for one-click team enablement", () => {
+		expect(inventory(bundledPluginRoutes)).toEqual(
+			["GET /narrator-team/status", "POST /narrator-team/install"].sort(),
 		);
 	});
 

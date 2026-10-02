@@ -262,6 +262,17 @@ export type {
 } from "../../narrafork-runtime-private/server/services/skill-service";
 
 /**
+ * 插件管理器单例（懒加载）：它的模块图上挂着 app.ts 的早期求值，
+ * 若从桥顶层静态导入，Runtime 还没完成产品集成注册就先求值，启动即锁死
+ * （registerRuntimeProductIntegration 触发 locked 报错）。
+ * 因此只提供运行时按需 import 的取函数，调用时 Runtime 早已启动完毕。
+ */
+export async function getPluginManager(): Promise<typeof import("../../narrafork-runtime-private/server/services/plugin-manager").pluginManager> {
+	const mod = await import("../../narrafork-runtime-private/server/services/plugin-manager");
+	return mod.pluginManager;
+}
+
+/**
  * Lazy-load project teardown. A static re-export would evaluate
  * chapter/git services during product bootstrap and lock product-host
  * before main.ts can register the NovelFork integration.

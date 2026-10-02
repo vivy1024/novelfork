@@ -28,6 +28,7 @@ import {
 	novelRuntimeBindingRoutes,
 } from "./http";
 import { adminUserCleanupRoutes } from "./routes/admin-user-cleanup";
+import { bundledPluginRoutes } from "./routes/bundled-plugins";
 import {
 	canAccessBoundNarratorFromUserId,
 	canAccessBoundPermissionFromUserId,
@@ -115,6 +116,7 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 		app.route("/api/books/:bookId", bookRuntimeCapabilitiesRoutes);
 		app.route("/api/books/:bookId/workspace", bookWorkspaceRoutes);
 		app.route("/api/books/:bookId/narrators", bookNarratorGatewayRoutes);
+		app.route("/api/plugins/bundled", bundledPluginRoutes);
 		app.route("", novelDomainRoutes);
 	},
 	mountRuntimeBindingRoutes(app: Hono): void {

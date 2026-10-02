@@ -314,6 +314,7 @@ export function WorkflowTimelinePanel({
   // 打回意见按工序分开记：并行时可能同时有几道工序等你确认。
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [teamNotice, setTeamNotice] = useState<string | null>(null);
+  const [teamPlugin, setTeamPlugin] = useState<{ status: "unknown" | "inactive" | "active" | "installing"; version?: string }>({ status: "unknown" });
   const [showRunGraph, setShowRunGraph] = useState(false);
   const [showEditor, setShowEditor] = useState(true);
   // 画布上有未保存的修改时锁住方案切换与刷新，免得修改被丢掉。
@@ -345,6 +346,18 @@ export function WorkflowTimelinePanel({
       const fetched = Array.isArray(data.recipes) ? data.recipes : [];
       setRecipes(fetched);
       setActiveRecipeId((prev) => (fetched.some((r) => r.id === prev) ? prev : fetched[0]?.id ?? ""));
+
+      // 团队编排插件状态：决定要不要展示「一键启用」横幅（查不到不打扰）。
+      fetch("/api/plugins/bundled/narrator-team/status", { signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((status: { installed?: boolean; runtimeState?: string | null; bundledVersion?: string } | null) => {
+          if (signal?.aborted || !status) return;
+          setTeamPlugin({
+            status: status.runtimeState === "active" ? "active" : "inactive",
+            ...(status.bundledVersion ? { version: status.bundledVersion } : {}),
+          });
+        })
+        .catch(() => { /* 查询失败保持 unknown，不显示横幅 */ });
 
       const runsUrl = narratorId ? `${base}/workflow-runs?narratorId=${encodeURIComponent(narratorId)}` : `${base}/workflow-runs`;
       const runs = await fetch(runsUrl, { signal }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as
@@ -446,6 +459,26 @@ export function WorkflowTimelinePanel({
       } catch (err) {
         setActionError(`运行已启动，但给叙述者发开工提示失败：${err instanceof Error ? err.message : String(err)}。可在对话里手动提醒它。`);
       }
+    }
+  };
+
+  /** 一键启用团队编排：走产品内置包安装 narrator-team（作者在本地就能装，不依赖外网）。 */
+  const handleEnableTeamPlugin = async () => {
+    setTeamPlugin((prev) => ({ ...prev, status: "installing" }));
+    setActionError(null);
+    setTeamNotice(null);
+    try {
+      const res = await fetch("/api/plugins/bundled/narrator-team/install", { method: "POST" });
+      const body = (await res.json().catch(() => null)) as { summary?: string; status?: string } | null;
+      setTeamPlugin((prev) => ({ ...prev, status: res.ok ? "active" : "inactive" }));
+      if (!res.ok) {
+        setActionError(`启用团队编排失败：${body?.summary ?? `HTTP ${res.status}`}`);
+        return;
+      }
+      setTeamNotice("团队编排已启用（内置 narrator-team）。现在组建工人团队，领导的叙述者会按简报把工人收编进来、把委派工序派下去。");
+    } catch (err) {
+      setTeamPlugin((prev) => ({ ...prev, status: "inactive" }));
+      setActionError(`启用团队编排失败：${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -575,6 +608,30 @@ export function WorkflowTimelinePanel({
           </button>
         </div>
       </div>
+
+      {teamPlugin.status === "inactive" || teamPlugin.status === "installing" ? (
+        <div className="flex items-center gap-3 rounded-lg border border-sky-400/60 bg-sky-50 p-3 text-xs text-sky-800 dark:bg-sky-950/20 dark:text-sky-200" data-testid="workflow-team-plugin-banner">
+          <Users className="size-4 shrink-0" />
+          <span className="flex-1">
+            团队编排还没启用。委派工序（起草、对抗审查）需要 narrator-team 插件把活儿派给工人叙述者；现在未启用时会退回老式子代理。
+          </span>
+          {teamPlugin.status === "inactive" ? (
+            <button
+              type="button"
+              onClick={() => void handleEnableTeamPlugin()}
+              className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 font-medium text-white hover:bg-sky-700"
+              data-testid="workflow-enable-team-plugin"
+            >
+              一键启用{teamPlugin.version ? `（内置 v${teamPlugin.version}）` : ""}
+            </button>
+          ) : (
+            <span className="flex shrink-0 items-center gap-1.5">
+              <Loader2 className="size-3.5 animate-spin" />
+              正在启用…
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {teamNotice ? (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-400/60 bg-emerald-50 p-3 text-xs text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300" data-testid="workflow-team-notice">

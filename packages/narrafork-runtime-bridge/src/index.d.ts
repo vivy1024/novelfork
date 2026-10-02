@@ -307,6 +307,7 @@ export const settings: {
 export const logger: any;
 export const hookService: any;
 export const skillService: any;
+export function getPluginManager(): Promise<any>;
 export const FOLLOW_DEFAULT_MODEL: any;
 export const createHookSchema: any;
 export const createProjectSkillSchema: any;
