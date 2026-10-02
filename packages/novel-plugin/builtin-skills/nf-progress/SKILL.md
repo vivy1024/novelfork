@@ -25,7 +25,7 @@ tags:
 3. 调 `hooks.manage`（action=check_due，chapterNumber 取下一章章号）：列出到期、临近到期的伏笔。
 4. 按需补充：
    - 本书有进行中的工作流运行时，`workflow.get_current_step` 看停在哪道工序；
-   - 作者关心剧情线时，`narrative.read_line` 看剧情线的 warnings。
+   - 作者关心剧情线时，`memory.read_line` 看剧情线的 warnings。
 5. 按下面的格式汇总。
 
 ## 输出格式

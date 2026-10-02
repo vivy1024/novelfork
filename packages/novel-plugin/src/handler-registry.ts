@@ -22,9 +22,9 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "cockpit.snapshot", serviceKey: "cockpit", method: "getSnapshot" },
 
   // Narrative tools
-  { toolName: "narrative.read_line", serviceKey: "narrative", method: "readLine" },
-  { toolName: "narrative.propose_change", serviceKey: "narrative", method: "proposeChange" },
-  { toolName: "narrative.approve_change", serviceKey: "narrative", method: "applyChange" },
+  { toolName: "memory.read_line", serviceKey: "narrative", method: "readLine" },
+  { toolName: "memory.propose_change", serviceKey: "narrative", method: "proposeChange" },
+  { toolName: "memory.approve_change", serviceKey: "narrative", method: "applyChange" },
 
   // Direct handlers (already implemented in novel-plugin)
   { toolName: "chapter.read", serviceKey: "direct", method: "handleChapterRead" },
@@ -53,11 +53,11 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "hooks.manage", serviceKey: "inline", method: "manageHooks" },
 
   // Writing Skills tools
-  { toolName: "writing-skills.read", serviceKey: "direct", method: "handleWritingSkillsRead" },
-  { toolName: "writing-skills.write", serviceKey: "direct", method: "handleWritingSkillsWrite" },
-  { toolName: "writing-skills.recommend", serviceKey: "direct", method: "handleWritingSkillsRecommend" },
-  { toolName: "writing-skills.check_compliance", serviceKey: "direct", method: "handleWritingSkillsCheckCompliance" },
-  { toolName: "writing-skills.import_legacy", serviceKey: "direct", method: "handleWritingSkillsImportLegacy" },
+  { toolName: "skills.read", serviceKey: "direct", method: "handleWritingSkillsRead" },
+  { toolName: "skills.write", serviceKey: "direct", method: "handleWritingSkillsWrite" },
+  { toolName: "skills.recommend", serviceKey: "direct", method: "handleWritingSkillsRecommend" },
+  { toolName: "skills.check_compliance", serviceKey: "direct", method: "handleWritingSkillsCheckCompliance" },
+  { toolName: "skills.import_legacy", serviceKey: "direct", method: "handleWritingSkillsImportLegacy" },
 
   // Scene spec (direct handler)
   { toolName: "scene.spec", serviceKey: "direct", method: "handleSceneSpec" },

@@ -68,7 +68,7 @@ function WarningIcon({ severity }: { severity: WarningTone }) {
   return <Info className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />;
 }
 
-/** narrative.read_line 快照卡：叙事线是由权威源计算得出的只读视图，重点看结构规模与告警。 */
+/** memory.read_line 快照卡：叙事线是由权威源计算得出的只读视图，重点看结构规模与告警。 */
 export const NarrativeLineCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const { result, onOpenArtifact } = context;
   const data = asRecord(getToolResultData(result));

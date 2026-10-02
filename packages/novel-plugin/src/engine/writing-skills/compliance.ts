@@ -1,7 +1,7 @@
 /**
  * Writing Skills 声明式合规检查的**唯一**判定实现。
  *
- * 单一权威源纪律：出口硬拦（`writing-skills.check_compliance` →
+ * 单一权威源纪律：出口硬拦（`skills.check_compliance` →
  * `writing-skill-compliance-failed`）与写前/审修阶段下发的「硬性约束摘要」
  * 必须读同一份 `ParsedWritingSkill.checks`，并复用这里的 `describeCheck` /
  * `evaluateCheck`。禁止在提示词里另写一套「技能要求」表述：那样一旦分叉，
@@ -189,7 +189,7 @@ export function renderWritingSkillConstraintDigest(
   });
   const head = `已启用 Writing Skills 的可机器校验条目共 ${digest.items.length} 条${
     digest.blockingCount > 0 ? `，其中 ${digest.blockingCount} 条为硬性` : ""
-  }。这些条目在章节保存前会被逐条校验（writing-skills.check_compliance），请在写作/修稿时直接满足：`;
+  }。这些条目在章节保存前会被逐条校验（skills.check_compliance），请在写作/修稿时直接满足：`;
   return `${head}\n${lines.join("\n")}`;
 }
 

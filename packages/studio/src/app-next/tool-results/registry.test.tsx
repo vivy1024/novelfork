@@ -13,9 +13,9 @@ describe("tool-results registry", () => {
     expect(resolveToolResultRendererKey({ toolName: "chapter.audit", result: { data: {} } })).toBe("chapter-audit");
     expect(resolveToolResultRendererKey({ toolName: "chapter.propose_selection", result: { data: {} } })).toBe("selection-candidate");
     expect(resolveToolResultRendererKey({ toolName: "custom.tool", result: { renderer: "chapter.selection-candidate" } })).toBe("selection-candidate");
-    // narrative.read_line 的 renderer 值是 "narrative.line"，工具名本身仍未登记，按名解析回落 generic。
-    expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { data: {} } })).toBe("generic");
-    expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
+    // memory.read_line 的 renderer 值是 "narrative.line"，工具名本身仍未登记，按名解析回落 generic。
+    expect(resolveToolResultRendererKey({ toolName: "memory.read_line", result: { data: {} } })).toBe("generic");
+    expect(resolveToolResultRendererKey({ toolName: "memory.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
   });
 
   it("result.renderer 优先于 toolName 且不会按前缀误匹配", () => {

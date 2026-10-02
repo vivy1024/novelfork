@@ -104,9 +104,9 @@ export const NOVEL_TOOL_NAMES: readonly string[] = Object.keys(NOVEL_TOOL_SCHEMA
 /** Tool descriptions for manifest (brief summaries) */
 const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "cockpit.snapshot": "获取驾驶舱快照（进度、伏笔、章节概览）",
-  "narrative.read_line": "读取叙事线",
-  "narrative.propose_change": "提议叙事线变更",
-  "narrative.approve_change": "审批叙事线变更（批准或驳回）",
+  "memory.read_line": "读取叙事线",
+  "memory.propose_change": "提议叙事线变更",
+  "memory.approve_change": "审批叙事线变更（批准或驳回）",
   "lore.read": "Lore 静态设定读取（brief/category/search）",
   "lore.write": "Lore 静态设定写入（含 canon/rules 门禁）",
   "jingwei.audit": "经纬 / Lore 读取门禁审计",
@@ -131,11 +131,11 @@ const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "scene.spec": "场景蓝图校验",
   "character.check_consistency": "检查角色一致性",
   "hooks.manage": "管理伏笔",
-  "writing-skills.read": "读取 Writing Skills",
-  "writing-skills.write": "设置 Writing Skills",
-  "writing-skills.recommend": "推荐 Writing Skills",
-  "writing-skills.check_compliance": "检查 Writing Skills 合规",
-  "writing-skills.import_legacy": "导入旧 Preset/Beat 为 Writing Skills",
+  "skills.read": "读取 Writing Skills",
+  "skills.write": "设置 Writing Skills",
+  "skills.recommend": "推荐 Writing Skills",
+  "skills.check_compliance": "检查 Writing Skills 合规",
+  "skills.import_legacy": "导入旧 Preset/Beat 为 Writing Skills",
   "resource.manage": "资源管理",
 };
 

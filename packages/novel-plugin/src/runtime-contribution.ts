@@ -82,7 +82,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 你的知识来源分三层，各管一件事，不得混用：
 - 经纬（Jingwei，静态设定）：这本书"是什么"——角色人设、世界观、力量体系、势力门派、卷纲大纲、伏笔。权威源在经纬数据库，用 lore.read 查询、lore.write 录入/更新；写前必查相关设定，改设定必须经作者确认。
 - 叙事记忆（Narrative Memory，动态事实）：这本书"发生了什么"——时间线、事实、事件、角色状态、近章进展。用 memory.* 查询；写前查近章与相关事实，写后由 pipeline.write 自动发起 memory.settle_chapter 结算（历史空洞用 memory.settle_range 回填）；高风险/待确认事件不得冒充已确认事实。
-- 写作技能（Writing Skills，通用方法论）：怎么写好——文风、节奏、钩子、去 AI 味、平台规则。启用即物化在 .novelfork/skills/<slug>/SKILL.md，由本会话的 Skill 工具加载；写前先读相关技能，写后由 writing-skills.check_compliance 按技能规则校验。
+- 写作技能（Writing Skills，通用方法论）：怎么写好——文风、节奏、钩子、去 AI 味、平台规则。启用即物化在 .novelfork/skills/<slug>/SKILL.md，由本会话的 Skill 工具加载；写前先读相关技能，写后由 skills.check_compliance 按技能规则校验。
 - 书籍层 / 规则层必须分开：本书立项、大纲、当前聚焦属于 Book Design；强制约束与禁忌属于书籍规则。文风只走本书导入或拆书，不跨书注入口吻。
 - 边界：经纬只写静态设定，动态事实只进叙事记忆；方法论是"怎么写"，设定是"是什么"，两者不互相充当。
 
@@ -122,14 +122,14 @@ type CustomReadyRuntimeToolName =
   | "chapter.write"
   | "chapter.list"
   | "chapter.discard_range"
-  | "narrative.read_line"
-  | "narrative.propose_change"
-  | "narrative.approve_change"
-  | "writing-skills.read"
-  | "writing-skills.write"
-  | "writing-skills.recommend"
-  | "writing-skills.check_compliance"
-  | "writing-skills.import_legacy"
+  | "memory.read_line"
+  | "memory.propose_change"
+  | "memory.approve_change"
+  | "skills.read"
+  | "skills.write"
+  | "skills.recommend"
+  | "skills.check_compliance"
+  | "skills.import_legacy"
   | "resource.manage"
   | "scene.spec"
   | "chapter.audit"
@@ -249,7 +249,7 @@ function createBoundNovelState(
 /**
  * 剥掉 preview 里所有层级的宿主字段。
  *
- * narrative.propose_change 的结果需要能被模型原样回传给 narrative.approve_change。
+ * memory.propose_change 的结果需要能被模型原样回传给 memory.approve_change。
  * 但服务端归一化会给 preview 本身以及每个 node/edge 都写上 bookId，而
  * containsHostControlledField 是递归检查的 —— 原样回传会被 forged-host-field
  * 拒绝，审批闭环就断在这里。书籍身份始终由可信绑定解析，模型不需要看到它。
@@ -289,7 +289,7 @@ function containsHostControlledField(value: unknown): boolean {
  * 只有声明了 properties 的对象才收紧为 additionalProperties: false。
  * 自由载荷对象（cockpitSnapshot、loreBrief、memoryContext、memory.update 的 patch 等）
  * 本身没有字段清单，收紧后会把工具自己返回、原样回传的真实数据全部判非法 ——
- * narrative.approve_change 的 preview 已经踩过这个坑。
+ * memory.approve_change 的 preview 已经踩过这个坑。
  */
 export function toRuntimeInputSchema(schema: unknown): PortableJsonSchema {
   const sanitize = (value: unknown): PortableJsonValue => {
@@ -562,7 +562,7 @@ async function executeReadyToolImpl(
         data: { bookId: binding.bookId, chapters: items },
       });
     }
-    if (matchesToolName(tool.name, "narrative.read_line")) {
+    if (matchesToolName(tool.name, "memory.read_line")) {
       const service = createNarrativeLineService({ state: createBoundNovelState(binding) });
       const snapshot = await service.getSnapshot({
         bookId: binding.bookId,
@@ -570,7 +570,7 @@ async function executeReadyToolImpl(
       });
       return toRuntimeToolResult({ ok: true, summary: "已读取叙事线快照。", data: snapshot });
     }
-    if (matchesToolName(tool.name, "narrative.propose_change")) {
+    if (matchesToolName(tool.name, "memory.propose_change")) {
       if (typeof injectedInput.summary !== "string" || !injectedInput.summary.trim()) {
         return fail("invalid-input", "summary 必须是非空字符串。");
       }
@@ -590,14 +590,14 @@ async function executeReadyToolImpl(
         data: toModelSafePreview(preview),
       });
     }
-    if (matchesToolName(tool.name, "narrative.approve_change")) {
+    if (matchesToolName(tool.name, "memory.approve_change")) {
       const decision = injectedInput.decision === "approved" || injectedInput.decision === "rejected"
         ? injectedInput.decision
         : null;
       if (!decision) return fail("invalid-input", "decision 必须是 approved 或 rejected。");
       const rawPreview = injectedInput.preview;
       if (!rawPreview || typeof rawPreview !== "object" || Array.isArray(rawPreview)) {
-        return fail("invalid-input", "preview 必须是 narrative.propose_change 返回的对象。");
+        return fail("invalid-input", "preview 必须是 memory.propose_change 返回的对象。");
       }
       const previewRecord = rawPreview as Record<string, unknown>;
       if (typeof previewRecord.summary !== "string" || !previewRecord.summary.trim()) {
@@ -629,7 +629,7 @@ async function executeReadyToolImpl(
         data: { ...result, preview: toModelSafePreview(result.preview) },
       });
     }
-    if (matchesToolName(tool.name, "writing-skills.read")) {
+    if (matchesToolName(tool.name, "skills.read")) {
       return toRuntimeToolResult(await handleWritingSkillsRead({
         bookId: binding.bookId,
         ...(injectedInput.scope === "available" || injectedInput.scope === "enabled"
@@ -637,7 +637,7 @@ async function executeReadyToolImpl(
           : {}),
       }, { bookRoot: binding.root }));
     }
-    if (matchesToolName(tool.name, "writing-skills.write")) {
+    if (matchesToolName(tool.name, "skills.write")) {
       return toRuntimeToolResult(await handleWritingSkillsWrite({
         bookId: binding.bookId,
         ...(Array.isArray(injectedInput.addSkillIds)
@@ -651,13 +651,13 @@ async function executeReadyToolImpl(
           : {}),
       }, { bookRoot: binding.root }));
     }
-    if (matchesToolName(tool.name, "writing-skills.recommend")) {
+    if (matchesToolName(tool.name, "skills.recommend")) {
       return toRuntimeToolResult(await handleWritingSkillsRecommend({
         bookId: binding.bookId,
         ...(typeof injectedInput.maxCount === "number" ? { maxCount: injectedInput.maxCount } : {}),
       }, { bookRoot: binding.root }));
     }
-    if (matchesToolName(tool.name, "writing-skills.check_compliance")) {
+    if (matchesToolName(tool.name, "skills.check_compliance")) {
       return toRuntimeToolResult(await handleWritingSkillsCheckCompliance({
         bookId: binding.bookId,
         content: typeof injectedInput.content === "string" ? injectedInput.content : "",
@@ -665,7 +665,7 @@ async function executeReadyToolImpl(
         ...(context.loadedSkills ? { loadedSkills: context.loadedSkills } : {}),
       }, { bookRoot: binding.root }));
     }
-    if (matchesToolName(tool.name, "writing-skills.import_legacy")) {
+    if (matchesToolName(tool.name, "skills.import_legacy")) {
       return toRuntimeToolResult(await handleWritingSkillsImportLegacy({
         bookId: binding.bookId,
       }, { bookRoot: binding.root }));

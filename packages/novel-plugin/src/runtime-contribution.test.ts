@@ -146,10 +146,10 @@ describe("novel Runtime contribution", () => {
       "outline.volume",
       "arc.character",
       "publish.check",
-      "writing-skills.read",
-      "writing-skills.write",
-      "writing-skills.check_compliance",
-      "writing-skills.import_legacy",
+      "skills.read",
+      "skills.write",
+      "skills.check_compliance",
+      "skills.import_legacy",
     ]));
     expect(NOVEL_READY_RUNTIME_TOOL_NAMES).not.toEqual(expect.arrayContaining([
       "presets.read",
@@ -168,14 +168,14 @@ describe("novel Runtime contribution", () => {
 
   it("publishes only the Writing Skills Runtime contract", () => {
     const definitions = new Map((NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((entry) => [entry.definition.name, entry.definition]));
-    const skillToolNames = [...definitions.keys()].filter((name) => name.startsWith("writing-skills.")).sort();
+    const skillToolNames = [...definitions.keys()].filter((name) => name.startsWith("skills.")).sort();
 
     expect(skillToolNames).toEqual([
-      "writing-skills.check_compliance",
-      "writing-skills.import_legacy",
-      "writing-skills.read",
-      "writing-skills.recommend",
-      "writing-skills.write",
+      "skills.check_compliance",
+      "skills.import_legacy",
+      "skills.read",
+      "skills.recommend",
+      "skills.write",
     ]);
     expect(definitions.has("presets.read")).toBe(false);
     expect(definitions.has("presets.write")).toBe(false);
@@ -183,10 +183,10 @@ describe("novel Runtime contribution", () => {
     expect(definitions.has("beat.read")).toBe(false);
     expect(definitions.has("beat.write")).toBe(false);
 
-    const readSchema = definitions.get("writing-skills.read")?.inputSchema as Record<string, unknown>;
-    const writeSchema = definitions.get("writing-skills.write")?.inputSchema as Record<string, unknown>;
-    const complianceSchema = definitions.get("writing-skills.check_compliance")?.inputSchema as Record<string, unknown>;
-    const importSchema = definitions.get("writing-skills.import_legacy")?.inputSchema as Record<string, unknown>;
+    const readSchema = definitions.get("skills.read")?.inputSchema as Record<string, unknown>;
+    const writeSchema = definitions.get("skills.write")?.inputSchema as Record<string, unknown>;
+    const complianceSchema = definitions.get("skills.check_compliance")?.inputSchema as Record<string, unknown>;
+    const importSchema = definitions.get("skills.import_legacy")?.inputSchema as Record<string, unknown>;
     expect((readSchema.properties as Record<string, unknown>).scope).toBeDefined();
     const writeProperties = writeSchema.properties as Record<string, unknown>;
     expect(writeProperties.addSkillIds).toBeDefined();
@@ -198,17 +198,17 @@ describe("novel Runtime contribution", () => {
     expect(complianceSchema.required).toEqual(["content"]);
     expect(importSchema.properties).toEqual({});
     expect(importSchema.required).toEqual([]);
-    expect(definitions.get("writing-skills.import_legacy")?.risk).toBe("confirmed-write");
+    expect(definitions.get("skills.import_legacy")?.risk).toBe("confirmed-write");
 
     // 推荐是只读建议：不得声明写风险，也不得声明未在 Studio 注册的 renderer
     // （DoD：renderer 必须已注册，或显式走 generic —— 不声明即走 generic）。
-    const recommend = definitions.get("writing-skills.recommend");
+    const recommend = definitions.get("skills.recommend");
     const recommendSchema = recommend?.inputSchema as Record<string, unknown>;
     expect(recommend?.risk).toBe("read");
     expect((recommendSchema.properties as Record<string, unknown>).maxCount).toBeDefined();
     expect(recommendSchema.required).toEqual([]);
     // DoD：renderer 要么已在 Studio 注册，要么显式走 generic。这里选后者。
-    const recommendCatalogEntry = NOVEL_RUNTIME_TOOL_CATALOG.find((tool) => tool.name === "writing-skills.recommend");
+    const recommendCatalogEntry = NOVEL_RUNTIME_TOOL_CATALOG.find((tool) => tool.name === "skills.recommend");
     expect(recommendCatalogEntry?.renderer).toBe("generic");
   });
 
@@ -422,15 +422,15 @@ describe("novel Runtime contribution", () => {
       data: { bookId: "trusted", chapters: [{ number: 1, title: "第一章" }] },
     });
 
-    const snapshot = await tool("narrative.read_line").handler({}, trustedContext);
+    const snapshot = await tool("memory.read_line").handler({}, trustedContext);
     expect(snapshot).toMatchObject({ ok: true, data: { bookId: "trusted" } });
 
-    const proposal = await tool("narrative.propose_change").handler(
+    const proposal = await tool("memory.propose_change").handler(
       { summary: "推进主角进入山门" },
       trustedContext,
     );
     expect(proposal).toMatchObject({ ok: true, data: { summary: "推进主角进入山门" } });
-    // preview 必须能原样回传给 narrative.approve_change，所以不能带宿主字段。
+    // preview 必须能原样回传给 memory.approve_change，所以不能带宿主字段。
     expect(JSON.stringify(proposal)).not.toContain("bookId");
   });
 
@@ -439,7 +439,7 @@ describe("novel Runtime contribution", () => {
     const trustedContext = context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot });
     const storePath = join(trusted.bookRoot, "story", "narrative_line.json");
 
-    const proposal = await tool("narrative.propose_change").handler(
+    const proposal = await tool("memory.propose_change").handler(
       {
         summary: "新增伏笔节点",
         nodes: [{ id: "node-hook", type: "foreshadow", title: "青铜铃异响" }],
@@ -451,13 +451,13 @@ describe("novel Runtime contribution", () => {
     await expect(readFile(storePath, "utf8")).rejects.toThrow();
 
     // 缺少 decision 时必须拒绝，而不是默认写入。
-    expect(await tool("narrative.approve_change").handler(
+    expect(await tool("memory.approve_change").handler(
       { preview: proposal.data },
       trustedContext,
     )).toMatchObject({ ok: false, error: "invalid-input" });
     await expect(readFile(storePath, "utf8")).rejects.toThrow();
 
-    const rejected = await tool("narrative.approve_change").handler(
+    const rejected = await tool("memory.approve_change").handler(
       { preview: proposal.data, decision: "rejected", reason: "与主线冲突" },
       trustedContext,
     );
@@ -469,7 +469,7 @@ describe("novel Runtime contribution", () => {
     expect(afterReject.nodes.map((node) => node.id)).not.toContain("node-hook");
     expect(afterReject.appliedMutations[0]?.decision).toBe("rejected");
 
-    const approved = await tool("narrative.approve_change").handler(
+    const approved = await tool("memory.approve_change").handler(
       { preview: proposal.data, decision: "approved" },
       trustedContext,
     );
@@ -597,7 +597,7 @@ describe("novel Runtime contribution", () => {
       expect(await readFile(join(trusted.bookRoot, "chapters", "卷01", "0001-test.md"), "utf8")).toContain("青铜铃骤然响起。");
 
       // 内部调模型的 rewrite.segment / style.import / outline.suggest_next 已下线，
-      // 由当前 Runtime Agent 自行生成结果后直接 rewrite.apply / writing-skills.write 落盘。
+      // 由当前 Runtime Agent 自行生成结果后直接 rewrite.apply / skills.write 落盘。
       expect(NOVEL_READY_RUNTIME_TOOL_NAMES).not.toEqual(expect.arrayContaining([
         "rewrite.segment",
         "style.import",

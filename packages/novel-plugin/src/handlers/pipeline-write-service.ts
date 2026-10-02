@@ -445,7 +445,7 @@ function nonEmpty(value: string | undefined): string | undefined {
  * 由 Runtime 的 Skill 机制交给正在调用工具的 agent 自主选择读取。
  *
  * 管线只传结构化的「硬性约束摘要」（scene.spec 已把它并入 sceneSpec.constraints），
- * 摘要与出口 `writing-skills.check_compliance` 读同一份 checks，保证不出现
+ * 摘要与出口 `skills.check_compliance` 读同一份 checks，保证不出现
  * 「按摘要写却被出口拦」的分叉。
  */
 

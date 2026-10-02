@@ -169,7 +169,7 @@ function buildToolOrchestrationSop(): string {
 5. scene.spec.ok=true 后才调用 pipeline.write。scene-spec-required/invalid、empty-scenes、incomplete-scene：修正蓝图后重调；不要拿自然语言正文代替 sceneSpec。
 6. pipeline.write 返回 beat-budget-invalid：回 scene.spec 重排预算；返回 context-not-ready：回 write.preflight 的 blocker 路由；返回 writing-skill-compliance-failed：按逐条 warnings 定点改稿后重跑，不要删掉技能约束。
 7. 正文保存成功后由 pipeline.write 自动发起 memory.settle_chapter；若只结算失败，正文不丢，直接重试 memory.settle_chapter，不要重复写章。
-8. 写后按需要调用 chapter.audit、writing-skills.check_compliance、publish.check；它们是审查/报告工具，不是写前硬门，也不能把未通过报告伪装成已通过。
+8. 写后按需要调用 chapter.audit、skills.check_compliance、publish.check；它们是审查/报告工具，不是写前硬门，也不能把未通过报告伪装成已通过。
 
 ### 2. 数据权威源速判
 
@@ -179,8 +179,8 @@ function buildToolOrchestrationSop(): string {
 - 动态剧情事实、时间线、状态变化、事件和关系余波：memory.read / memory.graph / memory.events；不要写进 Lore canon。
 - 伏笔的埋设、推进、兑现、到期检查：hooks.manage；不要用 cockpit.snapshot 代替伏笔变更。
 - 卷纲：outline.volume；角色成长弧：arc.character；角色连续性审查：character.check_consistency；角色声线：character.voice.read 查看，character.voice.draft 出待审草稿（确认只由作者在角色卡完成）。
-- Writing Skills：writing-skills.read 查看，writing-skills.recommend 推荐，writing-skills.write 落库，writing-skills.check_compliance 验收。
-- Narrative Line 图谱：narrative.read_line 查看，narrative.propose_change 先出草案，narrative.approve_change 才正式写入。
+- Writing Skills：skills.read 查看，skills.recommend 推荐，skills.write 落库，skills.check_compliance 验收。
+- Narrative Line 图谱：memory.read_line 查看，memory.propose_change 先出草案，memory.approve_change 才正式写入。
 - 正式章节结果的列出/归档/删除：resource.manage；范围废稿连同章域记忆清理：chapter.discard_range。两者不能混用。
 
 ### 3. 每个注册工具的调用卡
@@ -191,9 +191,9 @@ function buildToolOrchestrationSop(): string {
 - 工具：memory.settle_chapter；何时：pipeline.write 保存后的章后结算，或结算失败重试；前置：正文已落盘且章号明确；失败回退：只重试本工具，正文已保存，不重复 pipeline.write；chapter-not-persisted 时先保存正文。
 - 工具：chapter.discard_range；何时：用户明确把一段试写章作废并清掉章域记忆；前置：显式范围、确认策略和 confirm=true；失败回退：不做部分猜删，先用 resource.manage/memory.list 盘点并报告；不可用时保留原稿。
 - 工具：AskUserQuestion；何时：目标、视角、冲突或取舍确实不明确，需要用户选择；前置：先说明缺少哪个决策；失败回退：保留问题并停在等待用户回答，不擅自替用户定方向；指令完整时跳过。
-- 工具：narrative.read_line；何时：查看叙事线节点、边和 warnings；前置：明确要检查的故事线；失败回退：用 memory.graph/memory.read 查看动态事件，不能直接提出修改。
-- 工具：narrative.propose_change；何时：需要新增/删除/调整叙事线时先出差异草案；前置：先 narrative.read_line，变更原因和目标节点明确；失败回退：保留正式叙事线，修正草案或重新读取，不直接写入。
-- 工具：narrative.approve_change；何时：对 narrative.propose_change 的预览作批准或驳回；前置：对应草案、用户明确结论；失败回退：驳回则保留原线，需改动时重新 propose，不重复提交旧草案。
+- 工具：memory.read_line；何时：查看叙事线节点、边和 warnings；前置：明确要检查的故事线；失败回退：用 memory.graph/memory.read 查看动态事件，不能直接提出修改。
+- 工具：memory.propose_change；何时：需要新增/删除/调整叙事线时先出差异草案；前置：先 memory.read_line，变更原因和目标节点明确；失败回退：保留正式叙事线，修正草案或重新读取，不直接写入。
+- 工具：memory.approve_change；何时：对 memory.propose_change 的预览作批准或驳回；前置：对应草案、用户明确结论；失败回退：驳回则保留原线，需改动时重新 propose，不重复提交旧草案。
 - 工具：chapter.read；何时：读取指定章正文、元数据、状态，任何定点改写/审计前；前置：有效章节序号；失败回退：用 chapter.list 找真实章号，仍不存在则报告，不创建任意文件。
 - 工具：chapter.write；何时：受控覆盖已有章节正文；前置：chapter.read 已核对目标、变更范围和用户批准；失败回退：保留原文，改用 rewrite.apply 做更小范围修订或回到审计报告，不整章盲重写。
 - 工具：chapter.list；何时：只需要章节序号、标题、字数、状态；前置：无额外前置；失败回退：用 cockpit.snapshot 获取概览，不能把目录缺失解释成记忆缺失。
@@ -215,11 +215,11 @@ function buildToolOrchestrationSop(): string {
 - 工具：character.voice.read；何时：写重要对白前核对角色怎么说话、作者询问声线、或草稿前取 expectedVersion；前置：entryId 或精确角色名；失败回退：重名时改用 entryId，找不到角色时报告并建议先建卡，不臆造声线。
 - 工具：character.voice.draft；何时：作者要求整理或补全某角色声线；前置：先 character.voice.read 取 expectedVersion，可附该角色本人的对白样本；失败回退：版本冲突（409）时重新读取再调用，模型不可用或依据不足时如实转述 warnings 的 explanation；产物只是待审草稿，由作者在角色卡逐项确认，不替作者确认、不把待审项当设定。
 - 工具：hooks.manage；何时：埋设、推进、兑现、到期检查或列出伏笔；前置：list/check_due 先读，写入必须有 hook 目标、章节和具体证据；失败回退：重新 list 防重复，不确定时只报告/不变更；查询伏笔状态不能用 cockpit.snapshot 代替。
-- 工具：writing-skills.read；何时：查看当前启用技能正文或可用 catalog；前置：明确 scope=enabled/available；失败回退：先 scope=available 再报告目录缺失，不自行复制一份技能文本。
-- 工具：writing-skills.write；何时：启用/停用/创建/更新项目 .novelfork/skills 文件；前置：先 read，目标 slug 和冲突策略明确，写入遵守 Runtime 确认；失败回退：冲突不覆盖，保留旧文件并请用户选择；技能生效源以项目目录扫描为准。
-- 工具：writing-skills.recommend；何时：根据建书题材、基调、平台、复杂度推荐技能；前置：书籍配置可读；只读推荐后必须由用户确认并转 writing-skills.write；失败回退：返回候选不足，不臆造启用状态。
-- 工具：writing-skills.check_compliance；何时：保存前或审修后按已启用技能 checks 检查正文；前置：正文和当前技能约束可读；失败回退：按返回的 rule/explanation 定点 rewrite/pipeline 修复，不能删技能、伪造引用或跳过硬性违规。
-- 工具：writing-skills.import_legacy；何时：用户明确要求把旧 user_template Preset/Beat 迁移为项目技能；前置：显式扫描、冲突文件清单和迁移确认；失败回退：不覆盖冲突，保留旧数据并报告需人工合并。
+- 工具：skills.read；何时：查看当前启用技能正文或可用 catalog；前置：明确 scope=enabled/available；失败回退：先 scope=available 再报告目录缺失，不自行复制一份技能文本。
+- 工具：skills.write；何时：启用/停用/创建/更新项目 .novelfork/skills 文件；前置：先 read，目标 slug 和冲突策略明确，写入遵守 Runtime 确认；失败回退：冲突不覆盖，保留旧文件并请用户选择；技能生效源以项目目录扫描为准。
+- 工具：skills.recommend；何时：根据建书题材、基调、平台、复杂度推荐技能；前置：书籍配置可读；只读推荐后必须由用户确认并转 skills.write；失败回退：返回候选不足，不臆造启用状态。
+- 工具：skills.check_compliance；何时：保存前或审修后按已启用技能 checks 检查正文；前置：正文和当前技能约束可读；失败回退：按返回的 rule/explanation 定点 rewrite/pipeline 修复，不能删技能、伪造引用或跳过硬性违规。
+- 工具：skills.import_legacy；何时：用户明确要求把旧 user_template Preset/Beat 迁移为项目技能；前置：显式扫描、冲突文件清单和迁移确认；失败回退：不覆盖冲突，保留旧数据并报告需人工合并。
 - 工具：pipeline.write；何时：用户明确要求生成正式章节，且 write.preflight 和 scene.spec 均通过；前置：有效 sceneSpec、正文输入、预算与可信书籍；失败回退：按具体 error 回到对应前置工具，禁止盲目重试或绕过 compliance/context/beat-budget 硬门。
 - 工具：lore.read；何时：读静态人物、地点、势力、规则、物品、术语和作者备注；前置：选择 brief/category/search 范围；失败回退：缩小/改写搜索条件，动态剧情改用 memory.read，不用旧文件猜 canon。
 - 工具：lore.write；何时：创建/更新/退役静态设定；前置：先读目标，canon/rules 必须 reason + source/evidence，delete 仅非 canon；失败回退：静态冲突先报告，动态事实转 memory.events/lore.relate/lore.progress，不能硬删或降级 canon。

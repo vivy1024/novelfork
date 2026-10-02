@@ -52,7 +52,7 @@ const memoryFilterSchema = {
 };
 
 const acknowledgedSkillsSchema = arraySchema(
-  "兼容字段：可记录模型希望采用的相关技能名称。不参与任何门禁——技能是否生效由章节保存前对成品的合规校验判定（writing-skills.check_compliance），不由此字段判定。",
+  "兼容字段：可记录模型希望采用的相关技能名称。不参与任何门禁——技能是否生效由章节保存前对成品的合规校验判定（skills.check_compliance），不由此字段判定。",
   {
     type: "object",
     properties: {
@@ -192,7 +192,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "fromChapter", "toChapter", "confirm"],
     additionalProperties: false,
   },
-  "narrative.read_line": {
+  "memory.read_line": {
     type: "object",
     properties: {
       bookId: stringSchema("当前书籍 ID。"),
@@ -201,7 +201,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
-  "narrative.propose_change": {
+  "memory.propose_change": {
     type: "object",
     properties: {
       bookId: stringSchema("当前书籍 ID。"),
@@ -215,7 +215,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "summary"],
     additionalProperties: false,
   },
-  "narrative.approve_change": {
+  "memory.approve_change": {
     type: "object",
     properties: {
       bookId: stringSchema("当前书籍 ID。"),
@@ -223,7 +223,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       // 声明成自由形态对象反而会让真实 preview 的所有字段都被拒。
       preview: {
         type: "object",
-        description: "narrative.propose_change 返回的预览对象，原样回传。",
+        description: "memory.propose_change 返回的预览对象，原样回传。",
         properties: {
           id: stringSchema("预览 ID。"),
           summary: stringSchema("变更摘要。"),
@@ -544,7 +544,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "action"],
     additionalProperties: false,
   },
-  "writing-skills.read": {
+  "skills.read": {
     type: "object",
     properties: {
       scope: enumSchema(["enabled", "available"], "enabled=当前项目 `.novelfork/skills/` 中生效的 Writing Skills（含正文）；available=全部可用 Writing Skills（含项目目录标记）。默认 available。"),
@@ -552,7 +552,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: [],
     additionalProperties: false,
   },
-  "writing-skills.write": {
+  "skills.write": {
     type: "object",
     properties: {
       addSkillIds: arraySchema("将指定 catalog Writing Skill 物化到当前项目 `.novelfork/skills/`；不影响其它已存在的项目 Skill。", { type: "string" }),
@@ -562,7 +562,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: [],
     additionalProperties: false,
   },
-  "writing-skills.recommend": {
+  "skills.recommend": {
     type: "object",
     properties: {
       maxCount: numberSchema("最多返回几条推荐；缺省 6（启用的 Skill 正文每章注入 style 通道，过多会挤占记忆预算）。"),
@@ -570,7 +570,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: [],
     additionalProperties: false,
   },
-  "writing-skills.check_compliance": {
+  "skills.check_compliance": {
     type: "object",
     properties: {
       content: stringSchema("要检查的章节内容文本。"),
@@ -579,7 +579,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["content"],
     additionalProperties: false,
   },
-  "writing-skills.import_legacy": {
+  "skills.import_legacy": {
     type: "object",
     properties: {},
     required: [],

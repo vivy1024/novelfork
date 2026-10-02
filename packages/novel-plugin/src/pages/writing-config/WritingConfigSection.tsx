@@ -25,8 +25,8 @@ const OPTIONAL_TOOLS: readonly ToolItem[] = [
   { id: "cockpit.snapshot", label: "快照" },
   { id: "hooks.manage", label: "伏笔" },
   { id: "character.check_consistency", label: "角色一致性" },
-  { id: "writing-skills.check_compliance", label: "合规检查" },
-  { id: "narrative.read_line", label: "叙事线" },
+  { id: "skills.check_compliance", label: "合规检查" },
+  { id: "memory.read_line", label: "叙事线" },
 ];
 
 const ROLE_DEFAULTS: readonly string[] = [
@@ -35,7 +35,7 @@ const ROLE_DEFAULTS: readonly string[] = [
   "chapter.read",
   "cockpit.snapshot",
   "hooks.manage",
-  "writing-skills.check_compliance",
+  "skills.check_compliance",
 ];
 
 function toolStorageKey(sessionId: string): string {

@@ -235,7 +235,7 @@ pnpm compile:all      # 七平台交叉编译 + 聚合 SHA256
         ↓
 写作：Runtime Agent 显式提交 scene.spec 蓝图（工具校验）→ 生成正文提交 pipeline.write（校验+落盘+结算）
         ↓
-写后：叙事记忆自动结算沉淀 → writing-skills.check_compliance 技能合规校验 → 新设定 lore.write 待作者确认
+写后：叙事记忆自动结算沉淀 → skills.check_compliance 技能合规校验 → 新设定 lore.write 待作者确认
 ```
 
 核心领域工具包括：`lore.*`、`memory.*`、`write.preflight`、`scene.spec`、`pipeline.write`、`chapter.*`、`rewrite.apply`、`writing-skills.*`、`hooks.manage`、`outline.volume`、`arc.character`、`book.dissect`、`publish.check`（投稿风险自检）等（以当前 `novel-plugin` 实现为准）。

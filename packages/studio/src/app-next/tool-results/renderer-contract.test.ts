@@ -39,7 +39,7 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "market.sample_public_chapters",
   "market.scan",
   // narrative.mutationPreview（propose_change / approve_change）暂无专属差异预览卡，
-  // NarrativeLineCard 只覆盖 narrative.read_line 的只读快照，故此项仍显式走 generic。
+  // NarrativeLineCard 只覆盖 memory.read_line 的只读快照，故此项仍显式走 generic。
   "narrative.mutationPreview",
   "narrative-memory.admin",
   "pipeline.import_chapters",
@@ -49,7 +49,7 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "writing-skills.compliance",
   "writing-skills.import",
   "writing-skills.list",
-  // writing-skills.recommend 直接把 renderer 声明成 "generic"：推荐结果是扁平的
+  // skills.recommend 直接把 renderer 声明成 "generic"：推荐结果是扁平的
   // name/kind/reason 列表，generic 卡足够；作者真正的交互发生在随后的
   // AskUserQuestion（由 Runtime 原生渲染）。
   "generic",

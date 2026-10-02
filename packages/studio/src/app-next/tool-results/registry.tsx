@@ -77,7 +77,7 @@ const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDE
   questionnaire: "questionnaire",
   guided: "guided",
   narrative: "narrative",
-  // narrative.read_line 声明 renderer="narrative.line"，同样此前未登记。
+  // memory.read_line 声明 renderer="narrative.line"，同样此前未登记。
   "narrative.line": "narrative",
   workflow: "workflow",
   pipeline: "pipeline",

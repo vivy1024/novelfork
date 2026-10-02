@@ -87,7 +87,7 @@ export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = linearRecipeTo
       enabled: true,
       agentId: "writer",
       executionMode: "subagent",
-      tools: ["writing-skills.check_compliance"],
+      tools: ["skills.check_compliance"],
       onFailure: "stop",
     },
     {

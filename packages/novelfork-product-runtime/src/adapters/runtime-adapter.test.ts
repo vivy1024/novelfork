@@ -37,9 +37,9 @@ const CANONICAL_READY_TOOL_NAMES = [
   "memory.settle_range",
   "memory.settle_chapter",
   "chapter.discard_range",
-  "narrative.read_line",
-  "narrative.propose_change",
-  "narrative.approve_change",
+  "memory.read_line",
+  "memory.propose_change",
+  "memory.approve_change",
   "chapter.read",
   "chapter.write",
   "chapter.list",
@@ -61,11 +61,11 @@ const CANONICAL_READY_TOOL_NAMES = [
   "character.voice.read",
   "character.voice.draft",
   "hooks.manage",
-  "writing-skills.read",
-  "writing-skills.write",
-  "writing-skills.recommend",
-  "writing-skills.check_compliance",
-  "writing-skills.import_legacy",
+  "skills.read",
+  "skills.write",
+  "skills.recommend",
+  "skills.check_compliance",
+  "skills.import_legacy",
   "pipeline.write",
   "lore.read",
   "lore.write",
@@ -213,7 +213,7 @@ describe("NovelRuntimeAdapter", () => {
 		expect(
 			definitions.find((tool) => tool.name === toRuntimeToolName("memory.events"))?.metadata?.runtimeRisk,
 		).toBe("draft-write");
-		expect(definitions.find((tool) => tool.name === toRuntimeToolName("writing-skills.write"))?.metadata?.runtimeRisk).toBe(
+		expect(definitions.find((tool) => tool.name === toRuntimeToolName("skills.write"))?.metadata?.runtimeRisk).toBe(
 			"confirmed-write",
 		);
 		for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write", "style.distill_adopt"]) {
@@ -242,7 +242,7 @@ describe("NovelRuntimeAdapter", () => {
 		expect(loreWrite?.parameters.safeParse({ title: "设定", tags: [{ key: "灵觉" }] }).success).toBe(false);
 		expect(chapterImport?.parameters.safeParse({ filePath: "C:/secret.txt" }).success).toBe(false);
 		// Writing Skills 只接受对项目文件的增删/刷新；模型不能塞入任意规则正文或未知字段。
-		const writingSkillsWrite = definitions.find((tool) => tool.name === toRuntimeToolName("writing-skills.write"));
+		const writingSkillsWrite = definitions.find((tool) => tool.name === toRuntimeToolName("skills.write"));
 		expect(writingSkillsWrite?.parameters.safeParse({
 			addSkillIds: ["writing-skill-opening-hooks"],
 		}).success).toBe(true);
@@ -369,12 +369,12 @@ RUNTIME_WRITING_SKILL_MARKER
 			data: { bookId: "book-a", chapters: [{ number: 1, title: "第一章" }] },
 		});
 
-		const lineResult = await adapter.execute("narrative.read_line", {}, "narrator-a");
+		const lineResult = await adapter.execute("memory.read_line", {}, "narrator-a");
 		expect(lineResult.isError).toBe(false);
 		expect(JSON.parse(lineResult.output)).toMatchObject({ ok: true, data: { bookId: "book-a" } });
 
 		const proposalResult = await adapter.execute(
-			"narrative.propose_change",
+			"memory.propose_change",
 			{ summary: "推进主角进入山门" },
 			"narrator-a",
 		);
@@ -383,11 +383,11 @@ RUNTIME_WRITING_SKILL_MARKER
 			ok: true,
 			data: { summary: "推进主角进入山门" },
 		});
-		// preview 必须能原样回传给 narrative.approve_change，所以不含宿主 bookId。
+		// preview 必须能原样回传给 memory.approve_change，所以不含宿主 bookId。
 		expect(proposalResult.output).not.toContain("bookId");
 
 		const approvalResult = await adapter.execute(
-			"narrative.approve_change",
+			"memory.approve_change",
 			{
 				preview: (JSON.parse(proposalResult.output) as { data: unknown }).data,
 				decision: "rejected",
@@ -485,7 +485,7 @@ RUNTIME_WRITING_SKILL_MARKER
 
 			// Writing Skills 的内容权威源是 SKILL.md 文件；这里只验证可信绑定下的
 			// 书籍级启用读写闭环，不再有第二套 Preset/Beat 存储。
-			const skillsAvailable = await adapter.execute("writing-skills.read", {}, "narrator-a");
+			const skillsAvailable = await adapter.execute("skills.read", {}, "narrator-a");
 			expect(skillsAvailable.isError).toBe(false);
 			const availablePayload = JSON.parse(skillsAvailable.output) as {
 				data?: { skills?: Array<{ id: string; slug: string; mode?: string }> };
@@ -495,7 +495,7 @@ RUNTIME_WRITING_SKILL_MARKER
 			if (!selectableSkill) throw new Error("No selectable Writing Skill in catalog");
 
 			const skillsWriteResult = await adapter.execute(
-				"writing-skills.write",
+				"skills.write",
 				{ addSkillIds: [selectableSkill.id] },
 				"narrator-a",
 			);
@@ -506,7 +506,7 @@ RUNTIME_WRITING_SKILL_MARKER
 			});
 
 			const skillsEnabledResult = await adapter.execute(
-				"writing-skills.read",
+				"skills.read",
 				{ scope: "enabled" },
 				"narrator-a",
 			);

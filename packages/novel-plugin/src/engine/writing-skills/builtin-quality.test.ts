@@ -85,7 +85,7 @@ function loadBuiltinFiles(): BuiltinSkillFile[] {
   });
 }
 
-/** 从正文与描述里抽出像工具名的引用：`chapter.read`、`writing-skills.check_compliance` 等。 */
+/** 从正文与描述里抽出像工具名的引用：`chapter.read`、`skills.check_compliance` 等。 */
 function referencedToolNames(text: string): string[] {
   const namespaces = new Set(NOVEL_TOOL_NAMES.map((name) => name.split(".")[0]!));
   const found = new Set<string>();

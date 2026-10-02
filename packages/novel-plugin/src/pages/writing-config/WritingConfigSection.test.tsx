@@ -52,13 +52,13 @@ describe("WritingConfigSection", () => {
     expect(html).not.toContain("节拍模板");
   });
 
-  it("Optional tools 使用 writing-skills.check_compliance", async () => {
+  it("Optional tools 使用 skills.check_compliance", async () => {
     const { fireEvent, render, screen } = await import("@testing-library/react");
     const { WritingConfigSection } = await import("./WritingConfigSection");
     render(<WritingConfigSection sessionId="session-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "辅助工具" }));
-    expect(screen.getByText("writing-skills.check_compliance")).toBeTruthy();
+    expect(screen.getByText("skills.check_compliance")).toBeTruthy();
     expect(screen.queryByText("presets.check_compliance")).toBeNull();
   });
 

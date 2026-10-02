@@ -142,7 +142,7 @@ export interface WritePreflightResult {
   readonly missingRelevantSkills: readonly string[];
   /**
    * 已启用技能的硬性约束摘要（结构化条目，不含技能正文）。
-   * 与出口 `writing-skills.check_compliance` 同源，可直接下发给 scene.spec / 修稿。
+   * 与出口 `skills.check_compliance` 同源，可直接下发给 scene.spec / 修稿。
    */
   readonly writingSkillConstraints: WritingSkillConstraintDigest;
   /** 兼容旧字段：纯文本 warnings */
@@ -545,7 +545,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
    * 之所以不在这里硬拦：
    * - agent 自称的「已读」（原文引用 / acknowledgedSkills）是弱证据，交一段原文并不等于照做；
    * - loadedSkills 是 Runtime 实测的强证据，但「读过」同样不等于「写得合规」；
-   * - 真正可判定的是成品：章节保存前 writing-skills.check_compliance 会按技能声明的
+   * - 真正可判定的是成品：章节保存前 skills.check_compliance 会按技能声明的
    *   checks 逐条校验，硬性违规以 writing-skill-compliance-failed 拒绝保存。
    * 因此入口给清单 + 给可机器校验的约束条目，出口负责把关。
    */

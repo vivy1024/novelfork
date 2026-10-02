@@ -9,10 +9,10 @@ import { buildOnboardingRequestMessage } from "./onboarding-request";
 describe("buildOnboardingRequestMessage", () => {
   it("包含四步编排与正确的工具名", () => {
     const message = buildOnboardingRequestMessage();
-    expect(message).toContain("writing-skills.recommend");
-    expect(message).toContain("writing-skills.read");
+    expect(message).toContain("skills.recommend");
+    expect(message).toContain("skills.read");
     expect(message).toContain("AskUserQuestion");
-    expect(message).toContain("writing-skills.write");
+    expect(message).toContain("skills.write");
     expect(message).toContain("lore.write");
     // 落经纬必须先进 needs-review，作者确认后才升 canon
     expect(message).toContain("layer=dynamic");
@@ -44,7 +44,7 @@ describe("buildOnboardingRequestMessage", () => {
 
   it("没有推荐时也能生成可执行请求，不出现空清单段落", () => {
     const message = buildOnboardingRequestMessage({ recommendedWritingSkills: [] });
-    expect(message).toContain("writing-skills.recommend");
+    expect(message).toContain("skills.recommend");
     expect(message).not.toContain("预选了这些写作技能");
   });
 

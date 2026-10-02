@@ -6,8 +6,8 @@ import { renderToolResult, resolveToolResultRendererKey } from "./registry";
 afterEach(() => cleanup());
 
 describe("renderer key 错配修正", () => {
-  it("narrative.read_line 声明的 renderer 命中 NarrativeLineCard", () => {
-    expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
+  it("memory.read_line 声明的 renderer 命中 NarrativeLineCard", () => {
+    expect(resolveToolResultRendererKey({ toolName: "memory.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
   });
 
   it("scene.spec / chapter.audit / memory.* 各自命中专属卡", () => {
@@ -19,14 +19,14 @@ describe("renderer key 错配修正", () => {
   });
 
   it("narrative.mutationPreview 仍显式走 generic（无差异预览卡）", () => {
-    expect(resolveToolResultRendererKey({ toolName: "narrative.propose_change", result: { renderer: "narrative.mutationPreview" } })).toBe("generic");
+    expect(resolveToolResultRendererKey({ toolName: "memory.propose_change", result: { renderer: "narrative.mutationPreview" } })).toBe("generic");
   });
 });
 
-describe("narrative.read_line 叙事线卡", () => {
+describe("memory.read_line 叙事线卡", () => {
   it("展示结构规模、未回收伏笔与告警", () => {
     render(<>{renderToolResult({
-      toolName: "narrative.read_line",
+      toolName: "memory.read_line",
       result: {
         renderer: "narrative.line",
         data: {

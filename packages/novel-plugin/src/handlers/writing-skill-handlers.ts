@@ -39,7 +39,7 @@ import type {
 export interface TrustedWritingSkillOptions {
   readonly bookRoot: string;
   readonly home?: string;
-  /** 仅 `writing-skills.import_legacy` 使用；普通 Skills 读取和写作不依赖数据库。 */
+  /** 仅 `skills.import_legacy` 使用；普通 Skills 读取和写作不依赖数据库。 */
   readonly storage?: StorageDatabase;
   readonly now?: () => Date;
 }
@@ -393,7 +393,7 @@ export async function handleProjectWritingSkillDelete(
  *
  * 只读：答案取自 book.json（建书十一问由 applyGuidedSetup 写入），
  * 不修改项目 Skill 文件。添加或移除必须由作者确认后走
- * `writing-skills.write`，保留 Runtime 的权限确认。
+ * `skills.write`，保留 Runtime 的权限确认。
  */
 export async function handleWritingSkillsRecommend(
   input: WritingSkillsRecommendInput,
@@ -427,7 +427,7 @@ export async function handleWritingSkillsRecommend(
     return {
       ok: true,
       summary: recommended.length > 0
-        ? `按本书设定推荐 ${recommended.length} 个 Writing Skills${recommendation.matchedGenreCluster ? `（题材簇：${recommendation.matchedGenreCluster}）` : ""}。这只是建议，需你确认后再用 writing-skills.write 添加到项目目录。`
+        ? `按本书设定推荐 ${recommended.length} 个 Writing Skills${recommendation.matchedGenreCluster ? `（题材簇：${recommendation.matchedGenreCluster}）` : ""}。这只是建议，需你确认后再用 skills.write 添加到项目目录。`
         : "没有匹配到值得推荐的 Writing Skills；可在写作设置里手动挑选。",
       data: {
         bookId,

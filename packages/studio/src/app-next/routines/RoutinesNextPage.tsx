@@ -130,7 +130,7 @@ const NOVEL_TOOL_CANDIDATES: readonly string[] = [
 	"memory.list",
 	"cockpit.snapshot",
 	"chapter.audit",
-	"writing-skills.read",
+	"skills.read",
 	"hooks.manage",
 	"character.check_consistency",
 ];

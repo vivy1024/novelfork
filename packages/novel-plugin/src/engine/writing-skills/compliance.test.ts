@@ -2,7 +2,7 @@
  * Writing Skills 硬性约束摘要的契约测试。
  *
  * 这里最关键的一条是「同源」：传给 scene.spec 的约束摘要，必须和出口
- * `writing-skills.check_compliance` 拒绝保存时用的判据是同一份。两者一旦分叉，
+ * `skills.check_compliance` 拒绝保存时用的判据是同一份。两者一旦分叉，
  * 就会出现「入口按 A 提示、出口按 B 拒绝」，作者永远修不对。
  */
 
