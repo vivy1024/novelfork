@@ -110,7 +110,10 @@ describe("NovelFork trusted narrator binding gateway", () => {
 			body: JSON.stringify({ expectedRevision: revision, preset }),
 		});
 		expect(saved.status).toBe(200);
-		expect(JSON.parse(await readFile(join(externalBookRoot, "story", "style_preset.json"), "utf8"))).toEqual(preset);
+		const written = JSON.parse(await readFile(join(externalBookRoot, "story", "style_preset.json"), "utf8")) as Record<string, unknown>;
+		expect(written).toMatchObject(preset);
+		// schema 落盘时补默认键；以后新增默认键也要覆盖此习惯（不覆盖则视为功能退化）
+		expect(written.customConstraints).toEqual([]);
 		const layers = await (await app.request(`/api/books/${bookId}/writing-layers`)).json() as { styleGuideText: string };
 		expect(layers.styleGuideText).toContain(preset.generalRules[0]);
 		const stale = await app.request(presetPath, {
