@@ -16,6 +16,8 @@ import { ENTITY_MENTION_REFRESH, EntityMentionExtension, type MentionEntity } fr
 import { SearchBar } from "../ide/SearchBar";
 import { EditorMinimap } from "./EditorMinimap";
 import { LOCATE_IN_EDITOR_EVENT } from "../audit-issue-actions";
+import { composeCustomConstraintsSection } from "../../../engine/writing-layers/style-preset-custom-constraints";
+import { fetchCustomConstraints } from "../style-custom-constraints";
 
 // ---------------------------------------------------------------------------
 // BubbleMenu AI actions
@@ -114,6 +116,7 @@ export function buildSelectionInstruction(
   request: SelectionRequest,
   manualFlags: readonly DeslopManualFlag[] = [],
   styleProfileSummary?: string,
+  customConstraints?: readonly string[],
 ): string {
   const lines = [
     `请${NARRATOR_TASK_LABELS[request.action]}。`,
@@ -131,6 +134,9 @@ export function buildSelectionInstruction(
       lines.push(`- 「${flag.excerpt}」：${flag.reason}。${flag.instruction}`);
     }
   }
+  // 作者硬约束先于工具说明注入；没有约束时不添任何行，输出与现状逐字一致。
+  const hardConstraints = composeCustomConstraintsSection(customConstraints);
+  if (hardConstraints.length > 0) lines.push("", ...hardConstraints);
   lines.push(
     "",
     "请调用 chapter.propose_selection，把下列字段原样传入工具，并将生成的候选正文作为 candidateText 传入。from/to 是编辑器文档坐标；不要换算成 Markdown 字符偏移。",
@@ -165,6 +171,16 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator, stylePr
   const [pending, setPending] = useState<PendingInlineEdit | null>(null);
   const [pendingError, setPendingError] = useState<string | null>(null);
   const [handedOff, setHandedOff] = useState<AiAction | null>(null);
+
+  /** 作者硬约束随叙述者指令注入；读取失败按未注入继续，结果显示处会说明。 */
+  const loadCustomConstraints = useCallback(async (): Promise<readonly string[]> => {
+    try {
+      return await fetchCustomConstraints(bookId);
+    } catch {
+      setPendingError("读取文风预设的硬约束失败，本次未注入。");
+      return [];
+    }
+  }, [bookId]);
 
   const handleAction = useCallback(async (action: AiAction) => {
     const { from, to } = editor.state.selection;
@@ -201,14 +217,15 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator, stylePr
       }
       // 走到这里 action 已不可能是 naturalize（本地规则分支已早退，TS 不能依 Set.has 窄化，显式断言）。
       const request: SelectionRequest = { requestId: crypto.randomUUID(), bookId, chapterNumber, from, to, sourceText: selectedText, action: action as SelectionAction };
-      await onSendToNarrator(buildSelectionInstruction(request, [], styleProfileSummary), request);
+      const customConstraints = await loadCustomConstraints();
+      await onSendToNarrator(buildSelectionInstruction(request, [], styleProfileSummary, customConstraints), request);
       setHandedOff(action);
     } catch (cause) {
       setPendingError(cause instanceof Error ? cause.message : "操作失败");
     } finally {
       setLoading(null);
     }
-  }, [editor, bookId, chapterNumber, onSendToNarrator, styleProfileSummary]);
+  }, [editor, bookId, chapterNumber, onSendToNarrator, styleProfileSummary, loadCustomConstraints]);
 
   const applyPending = useCallback(() => {
     if (!pending) return;
@@ -234,10 +251,11 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator, stylePr
       return;
     }
     const request: SelectionRequest = { requestId: crypto.randomUUID(), bookId, chapterNumber, from: pending.from, to: pending.to, sourceText: pending.sourceText, action: "polish" };
-    await onSendToNarrator(buildSelectionInstruction(request, pending.manualFlags, styleProfileSummary), request);
+    const customConstraints = await loadCustomConstraints();
+    await onSendToNarrator(buildSelectionInstruction(request, pending.manualFlags, styleProfileSummary, customConstraints), request);
     setHandedOff("naturalize");
     setPending(null);
-  }, [pending, editor, bookId, onSendToNarrator, chapterNumber, styleProfileSummary]);
+  }, [pending, editor, bookId, onSendToNarrator, chapterNumber, styleProfileSummary, loadCustomConstraints]);
 
   return (
     <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
@@ -286,6 +304,7 @@ function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator, stylePr
           <div className="space-y-1 px-1 py-0.5">
             <div className="text-2xs font-medium">已把{AI_ACTION_LABELS[handedOff]}任务交给叙述者</div>
             <div className="text-2xs text-muted-foreground">在对话面板查看结果，确认后再回写正文。</div>
+            {pendingError ? <div className="text-2xs text-destructive">{pendingError}</div> : null}
             <div className="flex justify-end">
               <BubbleButton onClick={() => setHandedOff(null)}>知道了</BubbleButton>
             </div>

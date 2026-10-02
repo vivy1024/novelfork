@@ -68,4 +68,37 @@ describe("buildSelectionInstruction 划词 AI prompt 组装", () => {
     expect(promptWithEmpty).toBe(promptWithout);
     expect(promptWithEmpty).not.toContain("全书文风基准：");
   });
+
+  it("附带作者硬约束时注入「本书硬约束」段，位于文风基准之后、工具说明之前", () => {
+    const prompt = buildSelectionInstruction(
+      request({ action: "polish" }), [], "短句为主", ["对话必须口语化", "章节结尾留钩子"],
+    );
+
+    expect(prompt).toContain("本书硬约束（作者设定，必须逐条遵守");
+    expect(prompt).toContain("- 对话必须口语化");
+    expect(prompt).toContain("- 章节结尾留钩子");
+
+    const lines = prompt.split("\n");
+    const styleHeaderIndex = lines.indexOf("全书文风基准：");
+    const constraintsTitleIndex = lines.findIndex((line) => line.startsWith("本书硬约束"));
+    const firstItemIndex = lines.indexOf("- 对话必须口语化");
+    const toolPromptIndex = lines.findIndex((line) => line.startsWith("请调用 chapter.propose_selection"));
+
+    expect(constraintsTitleIndex).toBeGreaterThan(styleHeaderIndex);
+    expect(firstItemIndex).toBe(constraintsTitleIndex + 1);
+    expect(toolPromptIndex).toBeGreaterThan(lines.indexOf("- 章节结尾留钩子"));
+  });
+
+  it("硬约束未传、为空或全部空白时输出与现状逐字一致", () => {
+    const baseline = buildSelectionInstruction(request());
+    expect(buildSelectionInstruction(request(), [], undefined, undefined)).toBe(baseline);
+    expect(buildSelectionInstruction(request(), [], undefined, [])).toBe(baseline);
+    expect(buildSelectionInstruction(request(), [], undefined, ["  ", ""])).toBe(baseline);
+    expect(baseline).not.toContain("本书硬约束");
+
+    // 文风基准与 manualFlags 同在场时，缺省硬约束也不添任何行
+    const styled = buildSelectionInstruction(request({ action: "rewrite" }), [{ rule: "r", excerpt: "突然", reason: "生硬", instruction: "换动作" }], "短句为主");
+    expect(buildSelectionInstruction(request({ action: "rewrite" }), [{ rule: "r", excerpt: "突然", reason: "生硬", instruction: "换动作" }], "短句为主", [])).toBe(styled);
+    expect(styled).not.toContain("本书硬约束");
+  });
 });

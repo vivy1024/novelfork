@@ -249,7 +249,7 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 | 角色/关系/世界「当前设定」 | 经纬对应分类（`layer=dynamic` 可变） | 拆书 JSON 仅调试快照 |
 | 章后事实与事件流 | Narrative Memory（`narrative_fact` / `narrative_event`） | 无文件权威源 |
 | 角色弧 beats | `jingwei_character_arc` | 无 |
-| 文风 | 每书一份 `story/style_preset.json`：通用写法、带证据及审核状态的来源规则/范文、本书声音与原则、统计指纹。指南由已确认且可迁移的规则派生；本书设定仍归经纬 | 旧 `story/style_profile.json` 仅在没有新预设时只读兼容，首次显式保存后不再生效；导入正文不得覆盖文风。自动蒸馏与按场景范文检索见 T2.2 / T2.4 |
+| 文风 | 每书一份 `story/style_preset.json`：通用写法、带证据及审核状态的来源规则/范文、本书声音与原则、统计指纹、作者硬约束（`customConstraints`）。指南由已确认且可迁移的规则派生；本书设定仍归经纬 | 旧 `story/style_profile.json` 仅在没有新预设时只读兼容，首次显式保存后不再生效；导入正文不得覆盖文风。自动蒸馏与按场景范文检索见 T2.2 / T2.4；硬约束不进合成指南，只随人文化润色与划词 AI 的叙述者指令注入 |
 | 诊断结果（preflight / publish / audit） | 不落盘，一次性返回 | 无 |
 
 配套规则：

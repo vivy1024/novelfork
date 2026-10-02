@@ -17,7 +17,9 @@ import { resolveChapterLoop, settlementLabel, type ChapterLoopStep, type LastWri
 import { freshnessPath } from "./ide/StaleSettlementList";
 import { ChapterRevisions, vaultPath, type VaultSummary } from "./ide/StyleVaultPanel";
 import { reviewChapterParagraphs, type ParagraphSelfReviewIssue, type ParagraphSelfReviewResult } from "../../engine/compliance/paragraph-self-review";
+import { composeCustomConstraintsSection } from "../../engine/writing-layers/style-preset-custom-constraints";
 import { dispatchLocateInEditor } from "./audit-issue-actions";
+import { fetchCustomConstraints } from "./style-custom-constraints";
 
 import type { BeatBudgetItem } from "../../handlers/beat-budget";
 import { BeatBudgetEditor } from "./BeatBudgetEditor";
@@ -798,7 +800,11 @@ function ReviseStep({ chapter, onOpenChapter }: {
  * 把自审命中交给叙述者做整章人文化：逐条生成定点候选（≤10% 改动），
  * 不带编辑器坐标，候选回到正文按原文定位由作者逐条确认。
  */
-export function buildHumanizeMessage(chapterNumber: number, issues: readonly ParagraphSelfReviewIssue[]): string {
+export function buildHumanizeMessage(
+  chapterNumber: number,
+  issues: readonly ParagraphSelfReviewIssue[],
+  customConstraints?: readonly string[],
+): string {
   const lines = [
     `第 ${chapterNumber} 章的表达检查发现了 ${issues.length} 处规则命中的写法问题。请逐条生成「人文化」候选，用 chapter.propose_selection 提交（每条问题一条候选）。`,
     "",
@@ -806,11 +812,15 @@ export function buildHumanizeMessage(chapterNumber: number, issues: readonly Par
     "- 只改被命中的句子，改动不超过原句的 10%；情节、对白、设定一律不动。",
     "- from/to 是编辑器坐标你拿不到：不要编造坐标，直接省略 from/to，编辑器会按候选原文在正文里定位。sourceText 必须是正文里的原文，candidateText 是改写后的句子。",
     "- requestId 自行生成，每条候选一个稳定编号。",
+  ];
+  // 作者硬约束先于人文化手法说明；没有约束时输出与此前逐字一致。
+  lines.push(...composeCustomConstraintsSection(customConstraints));
+  lines.push(
     "- 可选的人文化手法（按需选择，不必全用）：矛盾的情绪、小身体细节、无关的随机念头、不完美的对话、环境作用于身体、注意到无关事物、刻意的节奏断裂。",
     "- 不要改正文；作者会在编辑器里逐条确认。",
     "",
     "问题清单：",
-  ];
+  );
   issues.slice(0, 20).forEach((issue, index) => {
     lines.push(`${index + 1}. 第 ${issue.paragraph} 段「${issue.evidence}」：${issue.reason}${issue.suggestion ? `。参考方向：${issue.suggestion}` : ""}`);
   });
@@ -868,15 +878,23 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
     }
     setHandoffBusy(true);
     setHandoffNote(null);
+    // 作者硬约束随指令注入；读取失败按未注入继续，但在交接说明里讲清楚。
+    let customConstraints: readonly string[] = [];
+    let constraintsMissed = false;
     try {
-      await onSendToNarrator(buildHumanizeMessage(chapterNumber, report.issues));
-      setHandoffNote(`已把 ${report.issues.length} 处表达问题交给叙述者；候选逐条产回正文后，在章节编辑器里对照确认。`);
+      customConstraints = await fetchCustomConstraints(bookId);
+    } catch {
+      constraintsMissed = true;
+    }
+    try {
+      await onSendToNarrator(buildHumanizeMessage(chapterNumber, report.issues, customConstraints));
+      setHandoffNote(`已把 ${report.issues.length} 处表达问题交给叙述者${constraintsMissed ? "；读取文风预设的硬约束失败，本次未注入" : ""}；候选逐条产回正文后，在章节编辑器里对照确认。`);
     } catch (err) {
       setHandoffNote(err instanceof Error && err.message ? err.message : "交给叙述者失败");
     } finally {
       setHandoffBusy(false);
     }
-  }, [chapterNumber, onSendToNarrator, report]);
+  }, [bookId, chapterNumber, onSendToNarrator, report]);
 
   return (
     <section className="rounded-md border border-border bg-card/40 px-3 py-2" data-testid="chapter-loop-self-review">

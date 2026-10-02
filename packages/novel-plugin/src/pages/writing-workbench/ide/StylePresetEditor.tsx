@@ -6,12 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 import { composeStyleGuide, createStylePreset, type StylePreset } from "../../../engine/writing-layers/style-preset";
+import {
+  CUSTOM_CONSTRAINT_MAX_ITEM_CHARS,
+  CUSTOM_CONSTRAINT_MAX_ITEMS,
+  extractCustomConstraints,
+  prepareCustomConstraints,
+} from "../../../engine/writing-layers/style-preset-custom-constraints";
 
 type SourceRule = StylePreset["sources"][number]["rules"][number];
 type SourceSample = StylePreset["sources"][number]["samples"][number];
 
+/** 服务端启用硬约束字段后，预设对象多一个 customConstraints 数组；未启用时不出现该键。 */
+export type StylePresetWithCustomConstraints = StylePreset & { customConstraints?: unknown };
+
 export interface StylePresetResponse {
-  preset: StylePreset | null;
+  preset: StylePresetWithCustomConstraints | null;
   revision: string | null;
   source: "preset" | "legacy" | "none";
   guideText: string;
@@ -24,6 +33,7 @@ interface Draft {
   narrativeVoice: string;
   principles: string;
   sources: StylePreset["sources"];
+  customConstraints: string[];
 }
 
 interface EditorState {
@@ -47,7 +57,7 @@ const SCENE_LABELS: Record<SourceSample["sceneType"], string> = {
   dialogue: "对话", action: "动作", description: "描写", interiority: "内心", transition: "转场", general: "通用",
 };
 
-function toDraft(preset: StylePreset | null): Draft {
+function toDraft(preset: StylePresetWithCustomConstraints | null): Draft {
   const value = preset ?? createStylePreset();
   return {
     name: value.name,
@@ -56,6 +66,7 @@ function toDraft(preset: StylePreset | null): Draft {
     narrativeVoice: value.bookVoice.narrativeVoice,
     principles: value.bookVoice.principles.join("\n"),
     sources: value.sources,
+    customConstraints: [...(extractCustomConstraints(preset)?.constraints ?? [])],
   };
 }
 
@@ -63,11 +74,14 @@ function lines(text: string): string[] {
   return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-function toPreset(draft: Draft, stored: StylePreset | null): StylePreset {
+/** 字段启用时随正文一起保存；未启用时不带这个键，保存行为与此前一致。 */
+function toPreset(draft: Draft, stored: StylePresetWithCustomConstraints | null): StylePresetWithCustomConstraints {
   const preset = stored ?? createStylePreset();
-  return { ...preset, name: draft.name.trim(), generalRules: lines(draft.generalRules), sources: draft.sources,
+  const next: StylePresetWithCustomConstraints = { ...preset, name: draft.name.trim(), generalRules: lines(draft.generalRules), sources: draft.sources,
     bookVoice: { ...preset.bookVoice, tone: draft.tone.trim(), narrativeVoice: draft.narrativeVoice.trim(),
       principles: lines(draft.principles) } };
+  if (extractCustomConstraints(stored)) next.customConstraints = prepareCustomConstraints(draft.customConstraints).constraints;
+  return next;
 }
 
 function isDirty(state: EditorState): boolean {
@@ -88,6 +102,8 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
   const mounted = useRef(false);
   const lastRefreshKey = useRef(refreshKey);
   const [reloadKey, setReloadKey] = useState(0);
+  const [constraintInput, setConstraintInput] = useState("");
+  const [constraintsNote, setConstraintsNote] = useState<string | null>(null);
   const path = `/api/books/${encodeURIComponent(bookId)}/style/preset`;
 
   useEffect(() => {
@@ -134,6 +150,9 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
   const guideText = dirty && state.draft
     ? composeStyleGuide(toPreset(state.draft, state.response?.preset ?? null))
     : state.response?.guideText;
+  // 服务端未启用 customConstraints 字段时硬约束分区整体隐藏（半成品不露出）。
+  const constraintsExtraction = extractCustomConstraints(state.response?.preset ?? null);
+  const constraintsSupported = constraintsExtraction !== null;
 
   function updateDraft(patch: Partial<Draft>) {
     setState((current) => ({ ...current, draft: current.draft ? { ...current.draft, ...patch } : null, notice: null }));
@@ -147,6 +166,24 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
         ...entry, status: entry.status === "confirmed" ? "needs-review" : "confirmed",
       }),
     }) });
+  }
+
+  function addConstraint() {
+    if (!state.draft || !constraintInput.trim()) return;
+    if (state.draft.customConstraints.length >= CUSTOM_CONSTRAINT_MAX_ITEMS) {
+      setConstraintsNote(`硬约束最多 ${CUSTOM_CONSTRAINT_MAX_ITEMS} 条，这条没有加入。`);
+      return;
+    }
+    const prepared = prepareCustomConstraints([...state.draft.customConstraints, constraintInput]);
+    updateDraft({ customConstraints: prepared.constraints });
+    setConstraintInput("");
+    setConstraintsNote(prepared.clampedItems > 0 ? `这条超过 ${CUSTOM_CONSTRAINT_MAX_ITEM_CHARS} 字，已按 ${CUSTOM_CONSTRAINT_MAX_ITEM_CHARS} 字收短。` : null);
+  }
+
+  function removeConstraint(index: number) {
+    if (!state.draft) return;
+    updateDraft({ customConstraints: state.draft.customConstraints.filter((_, i) => i !== index) });
+    setConstraintsNote(null);
   }
 
   async function save() {
@@ -218,6 +255,30 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
           <label className="block space-y-1"><span>本书创作原则（每行一条）</span>
             <Textarea aria-label="本书创作原则（每行一条）" value={state.draft.principles} onChange={(event) => updateDraft({ principles: event.target.value })} className="resize-y text-xs" />
           </label>
+          {constraintsSupported && <div className="space-y-1" data-testid="custom-constraints">
+            <span>硬约束（{state.draft.customConstraints.length}/{CUSTOM_CONSTRAINT_MAX_ITEMS}，每条 {CUSTOM_CONSTRAINT_MAX_ITEM_CHARS} 字）</span>
+            <p className="text-2xs text-muted-foreground">作者手写的硬性要求，随「交叙述者人文化」和划词 AI 指令一起注入，优先于人文化手法说明；不进入章节写作指南。</p>
+            <ul className="space-y-1">
+              {state.draft.customConstraints.map((item, index) => (
+                <li key={`${index}-${item}`} className="flex items-start justify-between gap-2 rounded bg-muted/30 px-2 py-1" data-testid="custom-constraint-item">
+                  <span className="min-w-0 break-words text-xs">{item}</span>
+                  <Button size="xs" variant="ghost" aria-label={`删除硬约束：${item}`} onClick={() => removeConstraint(index)}>删除</Button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center gap-1">
+              <Input aria-label="新增硬约束" value={constraintInput} placeholder="例如：对话必须口语化"
+                onChange={(event) => { setConstraintInput(event.target.value); setConstraintsNote(null); }}
+                onKeyDown={(event) => { if (event.key === "Enter") addConstraint(); }}
+                className="text-xs" />
+              <Button size="xs" disabled={!constraintInput.trim() || state.draft.customConstraints.length >= CUSTOM_CONSTRAINT_MAX_ITEMS}
+                onClick={addConstraint}>添加</Button>
+            </div>
+            {constraintsExtraction && (constraintsExtraction.clampedItems > 0 || constraintsExtraction.truncatedItems > 0) ? (
+              <p role="status" className="text-2xs text-muted-foreground">载入的硬约束超出上限，已自动收短到每条 {CUSTOM_CONSTRAINT_MAX_ITEM_CHARS} 字、保留前 {CUSTOM_CONSTRAINT_MAX_ITEMS} 条；保存后生效。</p>
+            ) : null}
+            {constraintsNote ? <p role="status" className="text-2xs text-muted-foreground">{constraintsNote}</p> : null}
+          </div>}
         </fieldset>
         {state.draft.sources.length > 0 && <div className="space-y-2">
           <p className="font-medium">来源包</p>

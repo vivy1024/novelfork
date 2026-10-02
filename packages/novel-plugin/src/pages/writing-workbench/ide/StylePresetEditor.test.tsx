@@ -26,6 +26,11 @@ function response(preset: StylePreset | null = fixture(), revision: string | nul
   return { preset, revision, source, guideText: preset ? composeStyleGuide(preset) : "" };
 }
 
+/** 带服务端已启用 customConstraints 字段的预设（返回体含该键即视为启用）。 */
+function fixtureWithConstraints(): StylePreset & { customConstraints: string[] } {
+  return { ...fixture(), customConstraints: ["对话必须口语化", "章节结尾留钩子"] };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -210,5 +215,83 @@ describe("本书文风预设编辑", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("已有新版本");
     expect(screen.getByDisplayValue("本地修改")).toBeTruthy();
     expect((screen.getByRole("button", { name: "保存文风预设" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("服务端未启用硬约束字段时分区隐藏，保存体与现状一致", async () => {
+    // 主线已启用 schema 字段（旧文件 GET 出来后恒含该键），这条验证能力探测的另一支：
+    // 响应里没有该键时分区隐藏、保存也不带该键。
+    const withoutKey = fixture() as StylePreset & { customConstraints?: unknown };
+    delete withoutKey.customConstraints;
+    request.mockResolvedValueOnce(response(withoutKey));
+    request.mockImplementationOnce(async (_path, init) => response(JSON.parse(String(init?.body)).preset, "r2"));
+    render(<StylePresetEditor bookId="book-a" />);
+    await screen.findByLabelText("预设名称");
+    expect(screen.queryByTestId("custom-constraints")).toBeNull();
+    edit("基调", "微暖");
+    fireEvent.click(screen.getByRole("button", { name: "保存文风预设" }));
+    await screen.findByText("文风预设已保存。");
+    expect(Object.hasOwn(savedBody().preset as unknown as Record<string, unknown>, "customConstraints")).toBe(false);
+    expect(savedBody().preset.bookVoice.tone).toBe("微暖");
+  });
+
+  it("启用硬约束字段后展示、增删，保存随预设带上字段", async () => {
+    request.mockReset();
+    request.mockResolvedValueOnce(response(fixtureWithConstraints(), "r1"));
+    request.mockImplementationOnce(async (_path, init) => response(JSON.parse(String(init?.body)).preset as StylePreset, "r2"));
+    render(<StylePresetEditor bookId="book-a" />);
+    await screen.findByTestId("custom-constraints");
+    expect(screen.getAllByTestId("custom-constraint-item")).toHaveLength(2);
+
+    edit("新增硬约束", "  不许使用破折号  ");
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    expect(screen.getAllByTestId("custom-constraint-item")).toHaveLength(3);
+    expect(screen.getByText("不许使用破折号")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "删除硬约束：对话必须口语化" }));
+    expect(screen.getAllByTestId("custom-constraint-item")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "保存文风预设" }));
+    await screen.findByText("文风预设已保存。");
+    expect(savedBody().expectedRevision).toBe("r1");
+    expect((savedBody().preset as unknown as { customConstraints: string[] }).customConstraints)
+      .toEqual(["章节结尾留钩子", "不许使用破折号"]);
+    // 硬约束不进入合成指南
+    expect(screen.getByLabelText("合成指南内容").textContent).not.toContain("不许使用破折号");
+  });
+
+  it("硬约束单条超 200 字在加入时收短并提示", async () => {
+    request.mockReset();
+    request.mockResolvedValueOnce(response({ ...fixture(), customConstraints: [] } as StylePreset & { customConstraints: string[] }, "r1"));
+    render(<StylePresetEditor bookId="book-a" />);
+    await screen.findByTestId("custom-constraints");
+    edit("新增硬约束", "一".repeat(260));
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    expect((await screen.findByRole("status")).textContent).toContain("已按 200 字收短");
+    const items = screen.getAllByTestId("custom-constraint-item");
+    expect(items).toHaveLength(1);
+    expect(items[0]!.textContent).toContain("一".repeat(200));
+    expect(items[0]!.textContent).not.toContain("一".repeat(201));
+  });
+
+  it("硬约束满 30 条拒绝新增并提示，载入超限自动截断并说明", async () => {
+    request.mockReset();
+    const full = Array.from({ length: 30 }, (_, index) => `约束${index + 1}`);
+    request.mockResolvedValueOnce(response({ ...fixture(), customConstraints: full } as StylePreset & { customConstraints: string[] }, "r1"));
+    render(<StylePresetEditor bookId="book-a" />);
+    await screen.findByTestId("custom-constraints");
+    expect(screen.getAllByTestId("custom-constraint-item")).toHaveLength(30);
+    expect((screen.getByRole("button", { name: "添加" }) as HTMLButtonElement).disabled).toBe(true);
+    edit("新增硬约束", "第 31 条");
+    fireEvent.keyDown(screen.getByLabelText("新增硬约束"), { key: "Enter" });
+    expect((await screen.findByRole("status")).textContent).toContain("硬约束最多 30 条");
+    expect(screen.getAllByTestId("custom-constraint-item")).toHaveLength(30);
+
+    cleanup();
+    const over = Array.from({ length: 33 }, (_, index) => `第${index + 1}条`);
+    request.mockResolvedValueOnce(response({ ...fixture(), customConstraints: over } as StylePreset & { customConstraints: string[] }, "r9"));
+    render(<StylePresetEditor bookId="book-a" />);
+    await screen.findByTestId("custom-constraints");
+    expect(screen.getAllByTestId("custom-constraint-item")).toHaveLength(30);
+    expect(screen.getByText(/载入的硬约束超出上限/)).toBeTruthy();
   });
 });

@@ -407,6 +407,59 @@ describe("WriteViewPanel 章节循环（写 → 改 → 收尾）", () => {
     expect(buildHumanizeMessage(11, issues)).toContain("2. 第 2 段");
   });
 
+  it("交接时注入文风预设里的作者硬约束，段落在人文化手法说明之前", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel, buildHumanizeMessage } = await import("./WriteViewPanel");
+    const { reviewChapterParagraphs } = await import("../../engine/compliance/paragraph-self-review");
+    apiMocks.data.set(FRESHNESS, { chapters: [{ chapterNumber: 11, title: "旧站", status: "unsettled" }] });
+    apiMocks.data.set(VAULT, { chapters: [{ chapterNumber: 11, title: "旧站", hasAiDraft: true, share: { authorRatio: 0 } }] });
+    const content = "他不禁抬头。\r\n\r\n她感到紧张。";
+    apiMocks.fetchJson
+      .mockResolvedValueOnce({ content })
+      .mockResolvedValueOnce({ preset: { customConstraints: ["对话必须口语化", " 不许用破折号 "] }, revision: "r1", source: "preset", guideText: "" });
+    const onSendToNarrator = vi.fn(async () => undefined);
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} onSendToNarrator={onSendToNarrator} />);
+
+    await waitFor(() => expect(screen.getByTestId("self-review-message").textContent).toContain("已定位"));
+    fireEvent.click(screen.getByTestId("self-review-humanize"));
+    await waitFor(() => expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("已把"));
+    expect(apiMocks.fetchJson).toHaveBeenCalledWith(`/api/books/${BOOK_ID}/style/preset`);
+
+    const message = onSendToNarrator.mock.calls[0]![0] as string;
+    expect(message).toContain("本书硬约束（作者设定，必须逐条遵守");
+    expect(message).toContain("- 对话必须口语化");
+    expect(message).toContain("- 不许用破折号");
+    expect(screen.getByTestId("self-review-handoff-note").textContent).not.toContain("未注入");
+    const lines = message.split("\n");
+    expect(lines.findIndex((line) => line.startsWith("本书硬约束")))
+      .toBeLessThan(lines.findIndex((line) => line.startsWith("- 可选的人文化手法")));
+
+    // 组装层：未传或传空数组与现状逐字一致，有效条目才注入
+    const issues = reviewChapterParagraphs(content).issues;
+    expect(buildHumanizeMessage(11, issues, undefined)).toBe(buildHumanizeMessage(11, issues));
+    expect(buildHumanizeMessage(11, issues, [])).toBe(buildHumanizeMessage(11, issues));
+    expect(buildHumanizeMessage(11, issues)).not.toContain("本书硬约束");
+    expect(buildHumanizeMessage(11, issues, ["对白只用短句"])).toContain("- 对白只用短句");
+  });
+
+  it("硬约束读取失败：仍完成交接，消息不带硬约束，说明里如实交代", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    apiMocks.data.set(FRESHNESS, { chapters: [{ chapterNumber: 11, title: "旧站", status: "unsettled" }] });
+    apiMocks.data.set(VAULT, { chapters: [{ chapterNumber: 11, title: "旧站", hasAiDraft: true, share: { authorRatio: 0 } }] });
+    apiMocks.fetchJson
+      .mockResolvedValueOnce({ content: "他不禁抬头。\r\n\r\n她感到紧张。" })
+      .mockRejectedValueOnce(new Error("文风预设损坏"));
+    const onSendToNarrator = vi.fn(async () => undefined);
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} onSendToNarrator={onSendToNarrator} />);
+
+    await waitFor(() => expect(screen.getByTestId("self-review-message").textContent).toContain("已定位"));
+    fireEvent.click(screen.getByTestId("self-review-humanize"));
+    await waitFor(() => expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("已把"));
+    expect((onSendToNarrator.mock.calls[0]![0] as string)).not.toContain("本书硬约束");
+    expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("未注入");
+  });
+
   it("作者改过但还没结算：默认停在「收尾」，结算经重新结算接口，结果与改稿段可见", async () => {
     const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
     const { WriteViewPanel } = await import("./WriteViewPanel");

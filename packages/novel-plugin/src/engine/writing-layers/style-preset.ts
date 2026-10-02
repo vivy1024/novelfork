@@ -37,6 +37,8 @@ export const StylePresetSchema = z.object({
     narrativeVoice: z.string().trim().max(4_000),
     principles: z.array(text).max(50),
   }).strict(),
+  /** 作者硬约束：随「交叙述者人文化」与划词人文化注入，逐项优先于手法说明；不进合成指南。 */
+  customConstraints: z.array(z.string().trim().min(1).max(200)).max(30).default([]),
   fingerprint: StyleFingerprintSchema.nullable(),
 }).strict().superRefine((preset, ctx) => {
   const ids = new Set<string>();
@@ -61,6 +63,7 @@ export function createStylePreset(fingerprint: StyleFingerprint | null = null): 
     generalRules: [],
     sources: [],
     bookVoice: { tone: "", narrativeVoice: "", principles: [] },
+    customConstraints: [],
     fingerprint,
   };
 }
