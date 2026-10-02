@@ -28,6 +28,7 @@ import {
 } from "@vivy1024/novelfork-novel-plugin";
 import { z } from "zod/v4";
 import {
+	contextIndexCardExtension,
 	explainWorkflowDenial,
 	findActiveWorkflowRun,
 	isToolVisibleDuringRun,
@@ -338,6 +339,8 @@ export class NovelRuntimeHostAdapter {
 		// 每趟对话开始时 Runtime 都会重新调用这里，工序推进后下一趟即按新工序生效。
 		const run = findActiveWorkflowRun(narratorId, boundBookId(context));
 		const workflowExtension = run ? workflowPromptExtension(run) : null;
+		// 资料索引卡（T4.7）：会话压缩折叠历史时它随本趟重建，模型随时可以按卡重取原文。
+		const indexCardExtension = contextIndexCardExtension(boundBookId(context));
 		const visibleTools = run
 			? resolved.tools.filter((tool) => isToolVisibleDuringRun(
 				run,
@@ -350,6 +353,10 @@ export class NovelRuntimeHostAdapter {
 		// Runtime later validates the final provider-facing name with
 		// /^[A-Za-z0-9_-]{1,64}$/, so the product boundary must expose wire names
 		// here rather than letting dotted catalog names disappear at the last step.
+		const appendedExtensions = [
+			...(indexCardExtension ? [{ ...indexCardExtension, content: this.toModelFacingText(indexCardExtension.content) }] : []),
+			...(workflowExtension ? [{ ...workflowExtension, content: this.toModelFacingText(workflowExtension.content) }] : []),
+		];
 		return {
 			...resolved,
 			tools: visibleTools.map((tool) => ({
@@ -359,8 +366,8 @@ export class NovelRuntimeHostAdapter {
 					name: this.toWireToolName(tool.definition.name),
 				},
 			})),
-			promptExtensions: workflowExtension
-				? [...basePromptExtensions, { ...workflowExtension, content: this.toModelFacingText(workflowExtension.content) }]
+			promptExtensions: appendedExtensions.length > 0
+				? [...basePromptExtensions, ...appendedExtensions]
 				: basePromptExtensions,
 		};
 	}

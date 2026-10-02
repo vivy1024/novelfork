@@ -13,6 +13,7 @@
 
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import {
+	buildContextIndexCard,
 	buildWorkflowRunBrief,
 	findApprovedProseMismatch,
 	getActiveWorkflowRunForNarrator,
@@ -120,4 +121,21 @@ export function explainWorkflowDenial(
 export function workflowPromptExtension(run: WorkflowRunRecord): { id: string; content: string } | null {
 	const brief = buildWorkflowRunBrief(run);
 	return brief ? { id: WORKFLOW_PROMPT_EXTENSION_ID, content: brief } : null;
+}
+
+export const CONTEXT_INDEX_CARD_EXTENSION_ID = "novelfork.context-index-card";
+
+/**
+ * 资料索引卡（T4.7）：随每趟 resolveContribution 重建注入，会话压缩动不了它。
+ * 没有写作历史或存储不可用时为 null（不注入）。权威原文永远在库，卡片只钉
+ * 「上次注入用了什么、按哪个通道重取」这几百 token 的指针。
+ */
+export function contextIndexCardExtension(bookId: string | undefined): { id: string; content: string } | null {
+	if (!bookId) return null;
+	try {
+		const content = buildContextIndexCard(getStorageDatabase(), bookId);
+		return content ? { id: CONTEXT_INDEX_CARD_EXTENSION_ID, content } : null;
+	} catch {
+		return null;
+	}
 }

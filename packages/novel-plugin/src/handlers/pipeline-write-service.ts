@@ -24,6 +24,7 @@ import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
 import type { WritingSkillAcknowledgement } from "./writing-skill-acknowledgement.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { findHardOverflowWarning, hardOverflowExplanation } from "../engine/narrative-memory/overflow-guard.js";
 import { createSiliconFlowEmbeddingProvider } from "../engine/narrative-memory/embedding-provider.js";
 import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
@@ -202,6 +203,7 @@ export interface PipelineWriteError {
     | "fact-check-failed"
     | "volume-range-violation"
     | "chapter-conflict"
+    | "memory-budget-overflow"
     | "book-locked";
   readonly error: string;
   readonly summary?: string;
@@ -824,7 +826,8 @@ async function executePipelineWriteUnlocked(
           sceneSpec,
           sceneText: sceneSpec.scenes.map((scene) => [scene.location, scene.conflict, scene.outcome, ...scene.characters].join(" ")).join("\n"),
           entities: sceneSpec.scenes.flatMap((scene) => [...scene.characters, scene.location, ...scene.hooks_used, ...scene.hooks_planted]),
-          maxTokens: memoryConfig?.retrieval.maxTokens ?? 16_000,
+          // 估算口径已 CJK 感知（budget 注释）：旧 16_000 英文口径 ≈ 新 24_000 真实容量。
+          maxTokens: memoryConfig?.retrieval.maxTokens ?? 24_000,
           previousChapterTail,
           runtimeSnapshot,
           enabledChannels: memoryConfig?.retrieval.channels,
@@ -850,6 +853,18 @@ async function executePipelineWriteUnlocked(
         });
       } catch (err) {
         logger?.warn(`[pipeline.write] Failed to build NarrativeContextPackage, falling back to legacy context: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      // T4.7：硬核保护资料降档到顶仍超预算时停下报错，不许静默降级继续写。
+      // 不能放进上面的 throw——那里的 catch 会把溢出折叠成 legacy 回退，正是要消灭的静默路径。
+      const hardOverflow = narrativeContext ? findHardOverflowWarning(narrativeContext.diagnostics.warnings) : null;
+      if (hardOverflow && narrativeContext) {
+        logger?.warn(`[pipeline.write] ${hardOverflow}`);
+        return {
+          ok: false,
+          code: "memory-budget-overflow",
+          error: hardOverflowExplanation(hardOverflow),
+          summary: "写作资料超出保护预算，本章未写。",
+        };
       }
     }
 

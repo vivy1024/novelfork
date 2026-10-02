@@ -32,7 +32,7 @@ vi.mock("@vivy1024/novelfork-core", () => ({
   },
   emptyChapterStateProjection: (overrides: Record<string, unknown> = {}) => ({ ...emptyProjection, ...overrides }),
   loadChapterStateProjection: () => emptyProjection,
-  parseBookRules: (raw: string) => ({ rules: {}, body: raw.trim() }),
+  parseBookRules: (raw: string) => ({ rules: { prohibitions: [] }, body: raw.trim() }),
 }));
 
 const tempDirs: string[] = [];
@@ -47,6 +47,70 @@ async function createStorage(): Promise<StorageDatabase> {
   storage.sqlite.prepare(`INSERT INTO book (id, name, created_at, updated_at) VALUES ('book-2', '另一本书', 0, 0)`).run();
   ensureNarrativeMemorySchema(storage);
   return storage;
+}
+
+/** hard 通道 / jingwei 仓储需要的表结构（按真实迁移建出的最终 schema 照抄）。 */
+function initJingweiSchema(storage: StorageDatabase): void {
+  storage.sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS "story_jingwei_section" (
+      "id" TEXT PRIMARY KEY NOT NULL,
+      "book_id" TEXT NOT NULL,
+      "key" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "description" TEXT NOT NULL DEFAULT '',
+      "icon" TEXT,
+      "order" INTEGER NOT NULL DEFAULT 0,
+      "enabled" INTEGER NOT NULL DEFAULT 1,
+      "show_in_sidebar" INTEGER NOT NULL DEFAULT 1,
+      "participates_in_ai" INTEGER NOT NULL DEFAULT 1,
+      "default_visibility" TEXT NOT NULL DEFAULT 'tracked',
+      "fields_json" TEXT NOT NULL DEFAULT '[]',
+      "builtin_kind" TEXT,
+      "source_template" TEXT,
+      "created_at" INTEGER NOT NULL,
+      "updated_at" INTEGER NOT NULL,
+      "deleted_at" INTEGER,
+      FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS "story_jingwei_entry" (
+      "id" TEXT PRIMARY KEY NOT NULL,
+      "book_id" TEXT NOT NULL,
+      "section_id" TEXT NOT NULL,
+      "title" TEXT NOT NULL,
+      "content_md" TEXT NOT NULL DEFAULT '',
+      "tags_json" TEXT NOT NULL DEFAULT '[]',
+      "aliases_json" TEXT NOT NULL DEFAULT '[]',
+      "custom_fields_json" TEXT NOT NULL DEFAULT '{}',
+      "related_chapter_numbers_json" TEXT NOT NULL DEFAULT '[]',
+      "related_entry_ids_json" TEXT NOT NULL DEFAULT '[]',
+      "visibility_rule_json" TEXT NOT NULL DEFAULT '{"type":"tracked"}',
+      "participates_in_ai" INTEGER NOT NULL DEFAULT 1,
+      "token_budget" INTEGER,
+      "created_at" INTEGER NOT NULL,
+      "updated_at" INTEGER NOT NULL,
+      "deleted_at" INTEGER,
+      "parent_id" TEXT,
+      "category" TEXT NOT NULL DEFAULT 'setting',
+      "fields_json" TEXT NOT NULL DEFAULT '{}',
+      "sort_order" INTEGER NOT NULL DEFAULT 0,
+      "lifecycle" TEXT NOT NULL DEFAULT 'active',
+      "priority_tier" TEXT DEFAULT 'auto',
+      "summary_md" TEXT,
+      "layer" TEXT NOT NULL DEFAULT 'dynamic',
+      "importance" INTEGER NOT NULL DEFAULT 40,
+      "summary_l0" TEXT,
+      "source" TEXT NOT NULL DEFAULT 'user',
+      "revision_history" TEXT NOT NULL DEFAULT '[]',
+      "conflict_status" TEXT NOT NULL DEFAULT 'none',
+      "conflict_detail" TEXT,
+      "status" TEXT DEFAULT 'confirmed',
+      "version" INTEGER DEFAULT 1,
+      "entry_key" TEXT NOT NULL DEFAULT '',
+      "source_refs_json" TEXT NOT NULL DEFAULT '[]',
+      FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE,
+      FOREIGN KEY ("section_id") REFERENCES "story_jingwei_section"("id") ON DELETE CASCADE
+    );
+  `);
 }
 
 async function createBookRoot(narrativeMemory: Record<string, unknown>): Promise<string> {
@@ -487,5 +551,52 @@ describe("lore-memory-boundary handlers", () => {
     const pending = listPendingNarrativeEvents(activeStorage!, { bookId: "book-1" });
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({ eventType: "hook_planted", subject: "小瓶", status: "pending", source: "manual" });
+  });
+
+  it("写作向召回的保护预算溢出时显式报错而不是静默降级（T4.7）", async () => {
+    const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
+    // hard 通道要读 jingwei 表；本测试套件的存储只建了叙事表，补上与仓储一致的建表。
+    initJingweiSchema(activeStorage!);
+    // 硬规则卡走 hard 通道且不可整卡丢弃；一份巨型 book_rules.md 让
+    // 它降到 brief 也塞不进缩小后的 hard 预算（maxTokens 500 下 hard 份额 ~88 token）。
+    const bookRoot = await createBookRoot({ retrieval: { maxTokens: 500 } });
+    await mkdir(join(bookRoot, "story"), { recursive: true });
+    await writeFile(join(bookRoot, "story", "book_rules.md"), "这是一份写作硬规则。".repeat(120), "utf8");
+
+    const result = await handleMemoryRead({
+      bookId: "book-1",
+      purpose: "write",
+      chapterNumber: 12,
+      entities: ["韩立"],
+      bookRoot,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("memory-budget-overflow");
+    expect(result.summary).toContain("写作资料超出保护预算");
+    expect(result.summary).toContain("不许被静默裁掉");
+    expect(result.summary).toContain("retrieval.maxTokens");
+  });
+
+  it("同样的溢出下，非写作用途保留 ok:true + warnings（研究类不被预算卡死）", async () => {
+    const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
+    initJingweiSchema(activeStorage!);
+    const bookRoot = await createBookRoot({ retrieval: { maxTokens: 500 } });
+    await mkdir(join(bookRoot, "story"), { recursive: true });
+    await writeFile(join(bookRoot, "story", "book_rules.md"), "这是一份写作硬规则。".repeat(120), "utf8");
+
+    const result = await handleMemoryRead({
+      bookId: "book-1",
+      purpose: "audit",
+      chapterNumber: 12,
+      entities: ["韩立"],
+      bookRoot,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const warnings = result.data.warnings as string[];
+    expect(warnings.some((warning) => warning.includes("hard channel exceeds budget"))).toBe(true);
   });
 });

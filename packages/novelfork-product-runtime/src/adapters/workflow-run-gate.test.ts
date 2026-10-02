@@ -14,8 +14,10 @@ import {
 	getActiveWorkflowRunForNarrator,
 	saveWorkflowRecipes,
 	startWorkflowRun,
+	insertRetrievalLog,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import { NovelRuntimeAdapter, type NovelRuntimeBindingResolver } from "./runtime-adapter";
+import { contextIndexCardExtension, CONTEXT_INDEX_CARD_EXTENSION_ID } from "./workflow-run-gate";
 
 class MemoryResolver implements NovelRuntimeBindingResolver {
 	context: RuntimeResolveContext | null = null;
@@ -169,6 +171,50 @@ describe("创作工作流对叙述者的约束", () => {
 		const result = await adapter.execute("memory_bulk_delete", { kind: "fact", filter: { ids: ["x"] }, reason: "清理测试" }, "narrator-a");
 		expect(parse(result.output).error).toBe("workflow-step-disallowed");
 	});
+
+
+describe("资料索引卡扩展（T4.7）", () => {
+	function seedLog() {
+		insertRetrievalLog(getStorageDatabase(), {
+			id: "card-log-00000001",
+			bookId: "book-a",
+			chapterNumber: 7,
+			purpose: "write_chapter",
+			totalTokens: 4200,
+			diagnostics: {
+				totalMs: 9,
+				totalEstimatedTokens: 4200,
+				channelStats: [
+					{ channel: "hard", status: "ok", latencyMs: 4, candidateCount: 3, returnedCount: 3, estimatedTokens: 1500 },
+					{ channel: "style", status: "ok", latencyMs: 2, candidateCount: 6, returnedCount: 4, estimatedTokens: 700 },
+				],
+				injectedTokensByChannel: { hard: 1500, style: 700 },
+				droppedCardIds: [],
+				degradedCards: [],
+				warnings: [],
+			},
+		});
+	}
+
+	test("没有写作历史时不注入", () => {
+		expect(contextIndexCardExtension("book-a")).toBeNull();
+	});
+
+	test("bookId 缺失时不注入", () => {
+		seedLog();
+		expect(contextIndexCardExtension(undefined)).toBeNull();
+	});
+
+	test("有写作历史时生成随趟重建的索引卡", () => {
+		seedLog();
+		const extension = contextIndexCardExtension("book-a");
+		expect(extension?.id).toBe(CONTEXT_INDEX_CARD_EXTENSION_ID);
+		expect(extension?.content).toContain("第 7 章");
+		expect(extension?.content).toContain("hard 1500");
+		expect(extension?.content).toContain("memory_read");
+		expect(extension?.content).toContain("别凭摘要猜");
+	});
+});
 
 	test("别的叙述者的运行不影响本叙述者", async () => {
 		await startRun("narrator-b");

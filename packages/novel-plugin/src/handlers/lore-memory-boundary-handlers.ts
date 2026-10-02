@@ -6,6 +6,7 @@ import {
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { findHardOverflowWarning, hardOverflowExplanation } from "../engine/narrative-memory/overflow-guard.js";
 import { createSiliconFlowEmbeddingProvider, loadEntityVectorsFromStore, similarityFromVectors } from "../engine/narrative-memory/embedding-provider.js";
 import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
@@ -160,6 +161,17 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
     ...(memoryConfig?.retrieval.writeProfile ? { writeProfileCaps: memoryConfig.retrieval.writeProfile } : {}),
   });
+
+  // T4.7：写作向召回的保护预算溢出，改「静默降级继续」为「显式报错」。
+  // 一般浏览用途不拦，保留 ok:true + warnings（研究类调用不该被预算卡死）。
+  const hardOverflow = findHardOverflowWarning(result.diagnostics.warnings);
+  if (hardOverflow && (input.purpose === "write" || input.purpose === "revise")) {
+    return {
+      ok: false,
+      error: "memory-budget-overflow",
+      summary: hardOverflowExplanation(hardOverflow),
+    };
+  }
 
   const profile = result.writeProfile as {
     coreCharacters?: { items?: unknown[]; cap?: number };

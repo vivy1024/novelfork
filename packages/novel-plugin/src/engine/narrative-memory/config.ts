@@ -37,7 +37,8 @@ const DEFAULT_RETRIEVAL_CHANNELS_CONFIG = {
 };
 
 const DEFAULT_RETRIEVAL_CONFIG = {
-  maxTokens: 8000,
+  // 估算口径已 CJK 感知（token-budget.ts 注释）：旧 8000 英文口径 ≈ 新 24000 真实容量。
+  maxTokens: 24000,
   channels: DEFAULT_RETRIEVAL_CHANNELS_CONFIG,
   waveEnabled: false,
   semanticEnabled: false,
