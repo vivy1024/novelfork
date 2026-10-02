@@ -1,6 +1,24 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
+// 自检与后台 worker 子进程必须在所有产品设置之前分流：
+// - 上面的延迟 import 链（product 集成、bridge 的 db/settings）一旦先求值，
+//   会以父进程为名去开 Runtime 数据库、取实例锁并打印 JSON 日志——
+//   既与父进程抢锁（实测本地插件激活即被隔离），也把 JSON 日志淋到 STDOUT、
+//   污染 worker 的 Content-Length RPC 帧。
+// - Runtime 的 server/index.ts 自带这些 flag 的分流（在 ./main 之前）；
+//   产品 root 入口也必须遵守同一个契约。
+const WORKER_FLAGS = [
+  "--db-integrity-worker",
+  "--watcher-worker",
+  "--plugin-runtime-worker",
+] as const;
+
+if (WORKER_FLAGS.some((flag) => process.argv.includes(flag))) {
+  // 事件循环在 stdio/网络处理器存活期间保持，worker 任务结束后进程自然退出。
+  await import("./packages/narrafork-runtime-private/server/index.ts");
+} else {
+
 // Root main.ts is the stable NovelFork executable entry. Configure product-owned
 // paths before the complete NarraFork Runtime backend evaluates. The product
 // keeps its NovelFork domain database, Runtime database, lock, and settings
@@ -90,4 +108,6 @@ if (
   } else if (launchPlan.kind === "browser") {
     console.log(`[desktop-window] Opened NovelFork in the system browser at ${studioUrl}`);
   }
+}
+
 }

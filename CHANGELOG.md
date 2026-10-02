@@ -80,6 +80,7 @@ NovelFork 目前仍处于**初始开发与工程验证阶段**，尚未达到正
 - Runtime 升级到 0.7.10（21 张新表迁移，Agent 循环重构并入），再追平 0.7.12（30 提交含子代理接管、JSON 列默认值修复）；每次合入与纯上游基线对照回归测试全过。
 - 三书房主题（绿格稿纸 / 书函藏青 / 夜更烛光，各含明暗），嵌入的 Runtime 编辑器配色跟随；EXE 随 Runtime 0.7.10 用 Bun 1.4.2 编译并带 Worker，React 统一钉 19.2.5 修复全新安装的双 React 崩溃。
 - 嵌入宿主两层补件：叙述者面板里打开章节改在写作台呈现；插件 runtime 与授权弹窗宿主（leader 按挂载序递补）挂载，嵌入面板实测内置 narrator-team 面板可开。
+- 单文件 EXE 修后台 worker 分流：产品 root 入口此前总会在 Runtime 的分流 flag 判定前跑完产品设置——延迟 import 链以父进程名义开数据库、抢实例锁、把 JSON 日志淋到 STDOUT 污染 worker 的 Content-Length RPC——本地插件激活后立刻被隔离（quarantine）。现在三个 worker flag（数据完整性 / 文件监听 / 插件运行时）在任何产品设置之前分流；EXE 里一键启用 narrator-team 实测 active、runtimeGeneration 1、0 崩。
 
 ### 人味链：文风、声线、注入、金库、写法记忆
 
