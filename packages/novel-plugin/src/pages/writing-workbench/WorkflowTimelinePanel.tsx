@@ -588,8 +588,14 @@ export function WorkflowTimelinePanel({
           <button
             type="button"
             onClick={() => void handleEnsureTeam()}
-            disabled={busy || isLoading || !selectedRecipe}
-            title="按当前方案为本书建/复用工作流工人叙述者（标题前缀「工作流工人·」）；委派工序由叙述者把它们收编进团队后执行"
+            disabled={busy || isLoading || !selectedRecipe || editorDirty || (selectedRecipe?.revision ?? 0) === 0}
+            title={
+              editorDirty
+                ? "画布上有未保存的修改，先保存或放弃再组建"
+                : (selectedRecipe && (selectedRecipe.revision ?? 0) === 0)
+                  ? "方案还没保存（第 0 版），先保存再组建团队"
+                  : "按当前方案为本书建/复用工作流工人叙述者（标题前缀「工作流工人·」）；委派工序由叙述者把它们收编进团队后执行"
+            }
             className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
             data-testid="workflow-ensure-team"
           >

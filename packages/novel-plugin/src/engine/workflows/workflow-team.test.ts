@@ -131,8 +131,9 @@ describe("委派工序简报", () => {
     expect(brief).toContain("team_setup");
     expect(brief).toContain("team_dispatch");
     expect(brief).toContain(WORKFLOW_WORKER_TITLE_PREFIX);
-    // 无团队工具时的 legacy 回退
-    expect(brief).toContain("task(subagent_type=writer)");
+    // 无团队工具时降级回退到 Runtime 通用子代理，并明示能力降级
+    expect(brief).toContain('task(subagent_type="general")');
+    expect(brief).toContain("能力降级");
     // 权威写入不旁路：工人不得直写
     expect(brief).toContain("工人不得直写权威源");
   });

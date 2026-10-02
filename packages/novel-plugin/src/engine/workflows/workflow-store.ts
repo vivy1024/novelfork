@@ -497,7 +497,29 @@ export async function readWorkflowRecipes(
     );
   }
 
-  return validateWorkflowRecipes(parsed);
+  return validateWorkflowRecipes(parsed).map((recipe) => mergeBuiltinLegacyView(recipe));
+}
+
+/**
+ * 内置兼容视图（T5.2）：磁盘里同 id 的内置配方若缺少后来才出现的字段
+ * （目前是委派标记 executionMode；T5.2 之前的存量配方全都缺），读取时按
+ * 内置权威定义的对应字段补齐——只改「返回视图」，磁盘内容不动，作者下次
+ * 保存才固化新值。自定义字段与节点一律不动；同 id 且同 stepId 才合并。
+ */
+function mergeBuiltinLegacyView(recipe: NovelWorkflowRecipe): NovelWorkflowRecipe {
+  const builtin = NOVEL_BUILTIN_WORKFLOWS.find((item) => item.id === recipe.id);
+  if (!builtin) return recipe;
+  const builtinSteps = new Map(builtin.nodes.filter((node) => node.type === "step").map((node) => [node.id, node]));
+  let changed = false;
+  const nodes = recipe.nodes.map((node) => {
+    if (node.type !== "step") return node;
+    const ref = builtinSteps.get(node.id);
+    if (!ref) return node;
+    if (node.executionMode || !ref.executionMode) return node;
+    changed = true;
+    return { ...node, executionMode: ref.executionMode };
+  });
+  return changed ? { ...recipe, nodes } : recipe;
 }
 
 async function writeRecipesFile(bookRoot: string, recipes: readonly NovelWorkflowRecipe[]): Promise<void> {

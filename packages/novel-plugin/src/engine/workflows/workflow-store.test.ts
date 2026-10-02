@@ -107,6 +107,52 @@ describe("workflow-store：图结构方案的读写", () => {
     expect(error.explanation?.action).toContain("草稿");
   });
 
+  it("T5.2 兼容视图：同 id 旧配方缺 executionMode 时按内置定义补齐（磁盘不动）", async () => {
+    const legacy = JSON.parse(JSON.stringify(FANQIE_XUANHUAN_SERIAL_RECIPE)) as WorkflowGraphRecipe;
+    legacy.nodes = legacy.nodes.map((node) => {
+      if (node.type !== "step") return node;
+      const rest = { ...node } as Record<string, unknown>;
+      delete rest.executionMode;
+      return rest as typeof node;
+    });
+    await mkdir(join(bookRoot, "story"), { recursive: true });
+    await writeFile(filePath(), JSON.stringify([legacy], null, 2), "utf8");
+
+    const recipes = await readWorkflowRecipes(bookRoot);
+    const read = recipes.find((recipe) => recipe.id === FANQIE_XUANHUAN_SERIAL_RECIPE.id);
+    const subagentStepIds = read!.nodes
+      .filter((node) => node.type === "step" && node.executionMode === "subagent")
+      .map((node) => node.id)
+      .sort();
+    expect(subagentStepIds.length).toBeGreaterThanOrEqual(2);
+
+    // 磁盘上的文件没有被视图合并改动：只有作者显式保存时才固化新值。
+    const raw = JSON.parse(await readFile(filePath(), "utf8")) as WorkflowGraphRecipe[];
+    expect(raw[0]!.nodes.filter((node) => node.type === "step" && node.executionMode).length).toBe(0);
+  });
+
+  it("T5.2 兼容视图：配方自己已声明 executionMode 时不被内置覆盖", async () => {
+    const custom = JSON.parse(JSON.stringify(FANQIE_XUANHUAN_SERIAL_RECIPE)) as WorkflowGraphRecipe;
+    custom.nodes = custom.nodes.map((node) => {
+      if (node.type !== "step") return node;
+      return { ...node, executionMode: "autonomous" as const };
+    });
+    await mkdir(join(bookRoot, "story"), { recursive: true });
+    await writeFile(filePath(), JSON.stringify([custom], null, 2), "utf8");
+
+    const recipes = await readWorkflowRecipes(bookRoot);
+    const read = recipes.find((recipe) => recipe.id === FANQIE_XUANHUAN_SERIAL_RECIPE.id);
+    expect(read!.nodes.filter((node) => node.type === "step" && node.executionMode === "autonomous").length)
+      .toBe(read!.nodes.filter((node) => node.type === "step").length);
+  });
+
+  it("T5.2 兼容视图：自定义配方不带委派标记时不受影响", async () => {
+    await saveWorkflowRecipe(bookRoot, draft(), { expectedRevision: 0 });
+    const recipes = await readWorkflowRecipes(bookRoot);
+    const custom = recipes.find((recipe) => recipe.id === "my-flow");
+    expect(custom!.nodes.every((node) => node.type !== "step" || !node.executionMode)).toBe(true);
+  });
+
   it("删除要核对版本；最后一个方案不能删", async () => {
     await saveWorkflowRecipe(bookRoot, draft(), { expectedRevision: 0 });
     await expectStoreError(deleteWorkflowRecipe(bookRoot, "my-flow", { expectedRevision: 0 }), "revision-conflict", 409);

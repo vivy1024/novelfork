@@ -98,7 +98,7 @@ export function explainWorkflowDenial(
 		return {
 			what: `${canonicalName} 被拦下：「${step.label}」要求委派子代理完成`,
 			why: "方案把这道工序交给了指定子代理，由你直接写入等于跳过了它",
-			action: `用 task 委派 ${step.agentId ?? "指定子代理"}，拿到结果后用 workflow_submit_step_output 提交`,
+			action: `优先用团队编排：team_status 看编排后用 team_dispatch 派给「工作流工人·」工人；没有团队工具时改用 task(general) 委派通用子代理（能力降级），拿到结果后用 workflow_submit_step_output 提交`,
 		};
 	}
 	if (!direct.some((step) => step.tools.includes(canonicalName))) {

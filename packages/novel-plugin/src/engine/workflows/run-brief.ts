@@ -61,10 +61,11 @@ function executionLine(step: WorkflowStepState, recipeStep: { modelOverride?: st
     return (
       `执行方式：委派工人执行（产物必须由你本人提交，工人不得直写权威源）——` +
       `优先用团队编排工具（plugin__com_whisent_narrator-team__ 前缀）：① team_status 读现有编排，合并后 team_setup 写回（勿盲覆盖既有配置）；` +
-      `② team_dispatch 把本工序目标派给标题前缀「工作流工人·」的对应工人（角色 ${step.agentId ?? "未指定"}${model}）；` +
+      `② team_dispatch 把本工序目标派给标题前缀「工作流工人·」的对应工人（角色 ${step.agentId ?? "writer"}${model}）；` +
       `③ team_report / team_status 收集结果。` +
-      `没有团队工具时用 task(subagent_type=${step.agentId ?? "未指定"}) 委派 Runtime 子代理，把工序目标写进 prompt。` +
-      `若对应工人不存在既无法委派，调用 workflow_report_blocker。${parallel}`
+      `没有团队工具时回退：用 task(subagent_type="general") 派 Runtime 通用子代理并把工序目标写进 prompt；` +
+      `注意这是能力降级——通用子代理没有该角色的专门技能与工人绑定（团队里的「工作流工人·」叙述者才带书级工具），请优先在画布一键启用 narrator-team 后重试。` +
+      `若既无团队工具也无可用子代理，调用 workflow_report_blocker。${parallel}`
     );
   }
   if (step.executorKind === "domain-tool") return "执行方式：只调用本工序列出的工具完成，不要自行发挥。";
