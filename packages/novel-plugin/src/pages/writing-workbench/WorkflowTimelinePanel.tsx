@@ -14,6 +14,7 @@ import {
   RotateCcw,
   ShieldCheck,
   SkipForward,
+  Users,
   Workflow,
   XCircle,
 } from "lucide-react";
@@ -108,6 +109,19 @@ export function buildWorkflowKickoffMessage(recipeName: string, chapterNumber: n
 }
 
 class WorkflowRequestError extends Error {}
+
+interface EnsureWorkflowTeamResponse {
+  readonly recipeId: string;
+  readonly recipeName: string;
+  readonly members: readonly {
+    readonly roleKey: string;
+    readonly title: string;
+    readonly narratorId: string;
+    readonly created: boolean;
+    readonly stepIds: readonly string[];
+    readonly model?: string;
+  }[];
+}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -299,6 +313,7 @@ export function WorkflowTimelinePanel({
   const [recent, setRecent] = useState<readonly RunSummaryView[]>([]);
   // 打回意见按工序分开记：并行时可能同时有几道工序等你确认。
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [teamNotice, setTeamNotice] = useState<string | null>(null);
   const [showRunGraph, setShowRunGraph] = useState(false);
   const [showEditor, setShowEditor] = useState(true);
   // 画布上有未保存的修改时锁住方案切换与刷新，免得修改被丢掉。
@@ -424,12 +439,39 @@ export function WorkflowTimelinePanel({
       chapterNumber,
       narratorId,
     }));
+
     if (started && onSendToNarrator) {
       try {
         await onSendToNarrator(buildWorkflowKickoffMessage(selectedRecipe.name, chapterNumber));
       } catch (err) {
         setActionError(`运行已启动，但给叙述者发开工提示失败：${err instanceof Error ? err.message : String(err)}。可在对话里手动提醒它。`);
       }
+    }
+  };
+
+  /** 按当前方案幂等建/复用本书的工作流工人叙述者（narrator-team 编排的工人侧）。 */
+  const handleEnsureTeam = async () => {
+    if (!selectedRecipe) return;
+    setBusy(true);
+    setActionError(null);
+    setTeamNotice(null);
+    try {
+      const res = await postJson<EnsureWorkflowTeamResponse>(`${base}/narrators/ensure-workflow-team`, {
+        recipeId: selectedRecipe.id,
+      });
+      if (res.members.length === 0) {
+        setTeamNotice(`方案「${res.recipeName}」没有委派工序，无需组建工人团队。`);
+      } else {
+        const created = res.members.filter((member) => member.created).length;
+        const reused = res.members.length - created;
+        setTeamNotice(
+          `工人团队就绪：${res.members.map((member) => member.title).join("、")}（新建 ${created}，复用 ${reused}）。领导的叙述者会按工序简报把它们收编进团队并派活。`,
+        );
+      }
+    } catch (err) {
+      setActionError(`组建工人团队失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -512,6 +554,17 @@ export function WorkflowTimelinePanel({
           </button>
           <button
             type="button"
+            onClick={() => void handleEnsureTeam()}
+            disabled={busy || isLoading || !selectedRecipe}
+            title="按当前方案为本书建/复用工作流工人叙述者（标题前缀「工作流工人·」）；委派工序由叙述者把它们收编进团队后执行"
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
+            data-testid="workflow-ensure-team"
+          >
+            <Users className="size-3.5" />
+            组建工人团队
+          </button>
+          <button
+            type="button"
             onClick={() => void handleStart()}
             disabled={busy || isLoading || !canRunSelected || !narratorId || !chapterValid || runIsActive}
             title={selectedRecipe && !canRunSelected ? "草稿不能运行：在下方画布上确认结构并发布后再启动" : undefined}
@@ -522,6 +575,13 @@ export function WorkflowTimelinePanel({
           </button>
         </div>
       </div>
+
+      {teamNotice ? (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-400/60 bg-emerald-50 p-3 text-xs text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300" data-testid="workflow-team-notice">
+          <CheckCircle2 className="size-4 shrink-0" />
+          <span>{teamNotice}</span>
+        </div>
+      ) : null}
 
       {!narratorId ? (
         <div className="flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-300" data-testid="workflow-no-narrator">
