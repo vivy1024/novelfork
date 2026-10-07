@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -125,5 +125,44 @@ describe("文风自动蒸馏路由", () => {
     });
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toMatchObject({ code: "STYLE_PRESET_CONFLICT", explanation: { what: expect.any(String) } });
+  });
+
+  it("后台批次顶层失败（updateJob 自身失败）时落日志，留下任务 id 与错误，不再静默吞掉", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nf-style-distill-route-"));
+    roots.push(root);
+    const bookRoot = join(root, "book-a");
+    await mkdir(bookRoot, { recursive: true });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const generateText = vi.fn(async () => {
+        // 故障注入：后台运行到模型阶段时任务文件已丢，随后写批次结果的 updateJob 必然失败。
+        const dir = join(bookRoot, "story", "style-distillations");
+        for (const file of await readdir(dir)) {
+          if (file.endsWith(".json")) await rm(join(dir, file), { force: true });
+        }
+        return { text: JSON.stringify({ rules: [] }) };
+      });
+      const router = createStyleDistillationsRouter({
+        state: { bookDir: () => bookRoot }, root, getSessionLlm: async () => undefined,
+      } as unknown as RouterContext, { resolveBookRoot: () => bookRoot, resolveTextGenerator: async () => generateText });
+
+      const createdResponse = await router.request("/api/books/book-a/style/distillations/jobs", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sourceName: "旧稿", text: "第一章 雨夜\n她停在门前，听见雨声。" }),
+      });
+      expect(createdResponse.status).toBe(201);
+      const created = await createdResponse.json() as { job: { jobId: string } };
+
+      let logged = "";
+      for (let attempt = 0; attempt < 100 && !logged; attempt += 1) {
+        logged = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+        if (!logged) await new Promise((done) => setTimeout(done, 10));
+      }
+      expect(logged).toContain("[style-distillations]");
+      expect(logged).toContain(created.job.jobId);
+      expect(logged).toContain("蒸馏任务不存在或尚未保存");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

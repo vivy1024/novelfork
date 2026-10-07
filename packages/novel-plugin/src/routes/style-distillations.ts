@@ -175,7 +175,13 @@ export function createStyleDistillationsRouter(
 
   /** 后台跑批次：请求先返回 running，前端轮询任务文件看进度；失败原因写进批次。 */
   function runInBackground(bookRoot: string, jobId: string, generateText: RuntimeTextGenerator, retryFailed: boolean): void {
-    void runStyleDistillationBatches({ bookRoot, jobId, generateText, retryFailed }).catch(() => undefined);
+    void runStyleDistillationBatches({ bookRoot, jobId, generateText, retryFailed }).catch((error: unknown) => {
+      // 顶层不能静默：单批失败已写进批次记录，但跑到这里的错误（如 updateJob 自身落盘失败）
+      // 不会让任何批次留痕，任务会停在 running 悬案。按本包 logger 口径（见 narrative-memory
+      // 路由的 [narrative-memory] console.error）留下任务 id 与错误，供排查恢复。
+      const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      console.error(`[style-distillations] 后台批次执行失败（任务 ${jobId}）：${detail}`);
+    });
   }
 
   app.post("/api/books/:bookId/style/distillations/preview", async (c) => {

@@ -1,9 +1,10 @@
-import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { countChapterLength, type LengthCountingMode } from "@vivy1024/novelfork-core";
 
 import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
+import { writeFileAtomic } from "./atomic-write.js";
 import { parseChapterFileName, type ParsedChapterFile } from "./chapter-file-name.js";
 
 // 文件名约定在不依赖 node:fs 的 chapter-file-name.ts，前端显示名也从那里解析。
@@ -124,9 +125,10 @@ export async function readChapterIndex(bookRoot: string): Promise<ChapterIndexRe
 }
 
 export async function writeChapterIndex(bookRoot: string, entries: readonly ChapterIndexRecord[]): Promise<void> {
+  // 索引原子替换：中途失败时保留上一版完整 index.json，不留半截文件。
   const chaptersRoot = join(bookRoot, CHAPTERS_DIRECTORY);
   await mkdir(chaptersRoot, { recursive: true });
-  await writeFile(join(chaptersRoot, CHAPTER_INDEX_FILE), `${JSON.stringify(entries, null, 2)}\n`, "utf8");
+  await writeFileAtomic(join(chaptersRoot, CHAPTER_INDEX_FILE), `${JSON.stringify(entries, null, 2)}\n`);
 }
 
 export function isChapterIndexRecord(value: unknown): value is ChapterIndexRecord {

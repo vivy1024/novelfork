@@ -18,7 +18,7 @@ import {
 	preserveLatestWritingInjection,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import { NovelRuntimeAdapter, type NovelRuntimeBindingResolver } from "./runtime-adapter";
-import { contextIndexCardExtension, CONTEXT_INDEX_CARD_EXTENSION_ID, writingInjectionPreserveExtension, WRITING_INJECTION_PRESERVE_EXTENSION_ID } from "./workflow-run-gate";
+import { contextIndexCardExtension, CONTEXT_INDEX_CARD_EXTENSION_ID, explainWorkflowDenial, writingInjectionPreserveExtension, WRITING_INJECTION_PRESERVE_EXTENSION_ID } from "./workflow-run-gate";
 
 class MemoryResolver implements NovelRuntimeBindingResolver {
 	context: RuntimeResolveContext | null = null;
@@ -271,5 +271,29 @@ describe("写作注入保留件扩展（T4.7 尾巴）", () => {
 		const prompts = await adapter.promptExtensions("narrator-a");
 		expect(prompts.some((prompt) => prompt.includes("写作注入保留件"))).toBe(true);
 		expect(prompts.some((prompt) => prompt.includes("境界=金丹"))).toBe(true);
+	});
+});
+
+describe("正文一致性校验的 fail-closed 闸门", () => {
+	test("存储不可用导致无法校验已批准正文时，写入被拦下并说明原因，而不是静默放行", async () => {
+		await startRun();
+		const storage = getStorageDatabase();
+		const submitted = await adapter.execute(
+			"workflow_submit_step_output",
+			{ runRevision: 0, kind: "prose", payload: { title: "开篇", content: "作者批准的正文。" } },
+			"narrator-a",
+		);
+		expect(submitted.isError).toBe(false);
+		const run = getActiveWorkflowRunForNarrator(storage, "narrator-a")!;
+		expect(approveWorkflowStep({ storage, runId: run.id, stepId: "draft", expectedRevision: run.state.revision }).ok).toBe(true);
+		const advanced = getActiveWorkflowRunForNarrator(storage, "narrator-a")!;
+
+		// 故障注入：关掉产品库，一致性校验读不到已批准正文（getStorageDatabase 直接抛错）。
+		closeStorageDatabase();
+		const denial = explainWorkflowDenial(advanced, "chapter.write", "confirmed-write", { chapterNumber: 1, content: "作者批准的正文。" });
+		expect(denial).not.toBeNull();
+		expect(denial!.what).toContain("无法校验");
+		expect(denial!.why).toContain("工作流存储");
+		expect(denial!.action).toContain("重试");
 	});
 });

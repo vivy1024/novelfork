@@ -5,12 +5,13 @@
  * 保存相对于 chapters/ 的 fileName，candidate/draft 不进入文件存储。
  */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { LengthCountingMode } from "@vivy1024/novelfork-core";
 
 import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
+import { writeFileAtomic } from "./atomic-write.js";
 import type {
   CreateWritingResourceInput,
   ListWritingResourcesFilter,
@@ -150,7 +151,8 @@ export function createWritingResourceFileStore(
         await unlink(chapterPath(bookId, previous.fileName)).catch(() => undefined);
       }
       await mkdir(dirname(chapterPath(bookId, fileName)), { recursive: true });
-      await writeFile(chapterPath(bookId, fileName), content, "utf-8");
+      // 正文原子替换后再写索引；正文与索引各自 tmp+fsync+rename，两个文件层面不追求事务。
+      await writeFileAtomic(chapterPath(bookId, fileName), content);
       const now = new Date(input.updatedAt ?? Date.now()).toISOString();
       const fileModifiedAt = await observedModifiedAt(chapterPath(bookId, fileName));
       const record: ChapterIndexRecord = {
@@ -182,7 +184,7 @@ export function createWritingResourceFileStore(
       let content = input.content;
       if (content !== undefined) {
         await mkdir(dirname(oldPath), { recursive: true });
-        await writeFile(oldPath, content, "utf-8");
+        await writeFileAtomic(oldPath, content);
       }
       if (input.title !== undefined) {
         const oldVolume = normalizeChapterRelativePath(dirname(entry.fileName));

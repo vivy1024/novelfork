@@ -123,7 +123,14 @@ export class IdRemapper {
     if (value && typeof value === "object") {
       const result: Record<string, unknown> = {};
       for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-        result[this.remapReference(key)] = this.remapJsonValue(item);
+        // 恶意 JSON 列可能带 "__proto__" 等键：直接赋值会去改原型或静默丢键。
+        // defineProperty 始终把键落成自有可枚举属性，导入的列内容不变形、原型不污染。
+        Object.defineProperty(result, this.remapReference(key), {
+          value: this.remapJsonValue(item),
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       }
       return result;
     }

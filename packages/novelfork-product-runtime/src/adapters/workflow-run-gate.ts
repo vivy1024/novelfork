@@ -115,7 +115,15 @@ export function explainWorkflowDenial(
 	try {
 		return findApprovedProseMismatch(getStorageDatabase(), run, canonicalName, input);
 	} catch {
-		return null;
+		// 设计：这里与上方 findActiveWorkflowRun 的读侧 catch→null 相反，必须 fail-closed。
+		// 读侧放行只是多露几个工具，写侧这一关却是「落盘正文必须与作者批准的版本一致」的
+		// 唯一校验；存储不可用时静默 return null，等于把已批准正文换成未审内容也能落盘。
+		// 因此一致性校验做不了时按闸门政策拦下本次写入，说明原因，待存储恢复后重试。
+		return {
+			what: `${canonicalName} 被拦下：无法校验写入正文与作者批准的版本是否一致`,
+			why: "一致性校验要读取工作流存储中的已批准正文；存储当前不可用，放行可能把未经作者确认的内容写进书里",
+			action: "稍后重试；若反复失败，重启产品、确认运行状态后重新执行本工序",
+		};
 	}
 }
 
