@@ -78,6 +78,29 @@ describe("NovelFork product migrations", () => {
 		expect(runNovelForkProductMigrations(storage).applied).toEqual([]);
 	});
 
+	test("accepts legacy untrimmed LF raw hashes recorded by early embedded builds", () => {
+		const storage = createStorage();
+		const sql = readFileSync(join(import.meta.dir, "migrations", "0000_high_sage.sql"), "utf8");
+		const legacyLfHash = createHash("sha256")
+			.update(sql.replace(/\r\n/g, "\n"))
+			.digest("hex");
+		storage.sqlite.exec(`
+			CREATE TABLE novelfork_product_migrations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				hash TEXT NOT NULL UNIQUE,
+				name TEXT NOT NULL UNIQUE,
+				created_at INTEGER NOT NULL
+			);
+		`);
+		storage.sqlite
+			.prepare(
+				`INSERT INTO novelfork_product_migrations (hash, name, created_at) VALUES (?, ?, ?)`,
+			)
+			.run(legacyLfHash, "0000_high_sage.sql", Date.now());
+
+		expect(runNovelForkProductMigrations(storage).applied).toEqual([]);
+	});
+
 	test("uses embedded migration data when the source SQL directory is unavailable", () => {
 		const embedded = embeddedProductMigrationSqlFiles as {
 			name: string;
