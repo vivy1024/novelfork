@@ -919,6 +919,19 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "fieldKey", "newValue", "reason"],
     additionalProperties: false,
   },
+  "storyline.propose": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      name: stringSchema("剧情线名字（必填，如 主线·寻找失踪的哥哥 / 感情线·薛行之与苏晚）。"),
+      kind: enumSchema(["main", "sub", "romance", "faction", "mystery", "character-arc", "other"], "剧情线类别（可选，默认 other）。"),
+      goal: stringSchema("这条线要走向哪（一句话目标，可选）。"),
+      relatedEntryTitles: arraySchema("与这条线强相关的经纬条目标题（角色/势力等，可选）。能解析成条目的会挂上主关联；解析不出的名字在结果里列出，不会建实体。", { type: "string" }),
+      evidenceNote: stringSchema("归纳依据一句话（可选，如 28 条关系事件里 17 条绕薛行之与方工），只进结果说明，不落库。"),
+    },
+    required: ["bookId", "name"],
+    additionalProperties: false,
+  },
   "market.ranks": {
     type: "object",
     properties: {},

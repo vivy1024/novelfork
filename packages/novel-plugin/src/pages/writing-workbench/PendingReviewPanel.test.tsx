@@ -150,6 +150,29 @@ describe("待确认聚合面板", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("剧情线草稿没有专属入口：行内就地确认/驳回，处理后刷新列表", async () => {
+    const storylineSummary = summaryWith({
+      total: 1,
+      groups: [{
+        kind: "storyline",
+        label: "剧情线",
+        count: 1,
+        items: [{ id: "storyline:s1", kind: "storyline", typeLabel: "剧情线", location: "主线", summary: "剧情线草稿「寻找失踪的哥哥」", resolveAt: "本面板就地确认或驳回", target: { kind: "storyline", storylineId: "s1" } }],
+      }],
+    });
+    const reviewStorylineFn = vi.fn(async () => {});
+    const fetchSummary = vi.fn()
+      .mockResolvedValueOnce(storylineSummary)
+      .mockResolvedValueOnce(summaryWith({ explanation: "全部确认完。" }));
+    render(<PendingReviewPanel bookId="book-1" fetchSummary={fetchSummary} reviewStorylineFn={reviewStorylineFn} />);
+    const confirmButton = await screen.findByRole("button", { name: "确认" });
+    expect(screen.getByRole("button", { name: "驳回" })).toBeTruthy();
+    expect(screen.getByText("剧情线草稿「寻找失踪的哥哥」")).toBeTruthy();
+    fireEvent.click(confirmButton);
+    await vi.waitFor(() => expect(reviewStorylineFn).toHaveBeenCalledWith("s1", "confirmed"));
+    await vi.waitFor(() => expect(fetchSummary).toHaveBeenCalledTimes(2));
+  });
+
   it("部分分组有损坏告警时显示 warning，计数照常", async () => {
     const data = summaryWith({
       total: 1,

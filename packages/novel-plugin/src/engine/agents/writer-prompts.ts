@@ -225,6 +225,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：lore.write；何时：创建/更新/退役静态设定；前置：先读目标，canon/rules 必须 reason + source/evidence，delete 仅非 canon；失败回退：静态冲突先报告，动态事实转 memory.events/lore.relate/lore.progress，不能硬删或降级 canon。
 - 工具：lore.relate；何时：关系首次建立或关系状态发生变化；前置：主体/客体稳定、关系变化有章节证据，写入 dynamic + needs-review；失败回退：先 lore.read 查现状，避免重复 upsert；没有关系变化就不写。
 - 工具：lore.progress；何时：推进 dynamic 条目的真实字段（冲突、时间线、伏笔等）并留台账；前置：先读并命中真实 fieldKey，提供章号和依据；失败回退：canon/reference 被拒时转 lore.write，经作者确认；伏笔标准埋设/兑现优先回 hooks.manage。
+- 工具：storyline.propose；何时：作者要求归纳剧情线，或书籍缺少剧情线需从已结算事件归纳时，逐条提交剧情线草稿；前置：先用 memory.events / memory.list 读已结算事件，relatedEntryTitles 按经纬标题给；失败回退：解析不出的名字按结果清单如实转述，不建实体；草稿一律 needs-review，确认/驳回只由作者在「故事推进 › 待确认」面板完成，你不得代作者确认。
 - 工具：memory.read；何时：写作、修订、审计、诊断前召回动态 ContextCards 和 token budget；前置：明确章节/任务范围；失败回退：缩小范围或改用 memory.graph/events，禁止把静态 Lore 当动态记忆。
 - 工具：memory.graph；何时：查看关系图、时间线、角色弧、伏笔网络、矛盾地图和事件链；前置：需要图谱问题且书籍绑定有效；失败回退：用 memory.read/memory.events 获取具体事实，不向图谱工具写入。
 - 工具：memory.events；何时：创建、列出、批准或拒绝 Pending NarrativeEvents；前置：事件来源、章节和证据明确，approve 需作者结论；失败回退：保持 pending 并报告，不能把 pending 自动写 Lore canon。

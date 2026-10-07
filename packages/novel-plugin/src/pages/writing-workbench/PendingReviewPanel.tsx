@@ -28,15 +28,25 @@ import {
 } from "../../routes/pending-review-contract.js";
 
 export type PendingReviewFetcher = (bookId: string) => Promise<PendingReviewSummary>;
+export type PendingReviewStorylineReviewer = (storylineId: string, decision: "confirmed" | "rejected") => Promise<void>;
 
 async function fetchPendingReviewSummary(bookId: string): Promise<PendingReviewSummary> {
   return fetchJson<PendingReviewSummary>(`/api/books/${encodeURIComponent(bookId)}/pending-review`);
+}
+
+async function defaultReviewStoryline(bookId: string, storylineId: string, decision: "confirmed" | "rejected"): Promise<void> {
+  await fetchJson(
+    `/api/books/${encodeURIComponent(bookId)}/narrative-memory/storylines/${encodeURIComponent(storylineId)}/review`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) },
+  );
 }
 
 export interface PendingReviewPanelProps {
   bookId: string;
   /** 测试或宿主替换取数通道；默认走产品 HTTP。 */
   fetchSummary?: PendingReviewFetcher;
+  /** 测试或宿主替换剧情线审核通道；默认走产品 HTTP。 */
+  reviewStorylineFn?: PendingReviewStorylineReviewer;
   /** 打开经纬条目（角色卡对声线确认、伏笔草稿对条目确认都在条目上）。 */
   onOpenJingweiEntry?: (entryId: string) => void;
   /** 声线确认专用入口；缺省回落到 onOpenJingweiEntry。 */
@@ -94,7 +104,50 @@ function resolveAction(item: PendingReviewItem, props: PendingReviewPanelProps):
   }
 }
 
-function PendingReviewRow({ item, panelProps }: { item: PendingReviewItem; panelProps: PendingReviewPanelProps }) {
+function PendingReviewRow({
+  item,
+  panelProps,
+  onReviewStoryline,
+  busy,
+}: {
+  item: PendingReviewItem;
+  panelProps: PendingReviewPanelProps;
+  onReviewStoryline: (storylineId: string, decision: "confirmed" | "rejected") => void;
+  busy: boolean;
+}) {
+  if (item.target.kind === "storyline") {
+    return (
+      <li className="flex items-start gap-1.5 rounded-md border border-border/70 bg-card/60 px-2 py-1.5">
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge variant="secondary" className="text-2xs">{item.typeLabel}</Badge>
+            <span className="text-2xs text-muted-foreground">{item.location}</span>
+          </div>
+          <p className="break-words text-2xs leading-relaxed text-foreground">{item.summary}</p>
+        </div>
+        <div className="mt-0.5 flex shrink-0 gap-1">
+          <Button
+            size="xs"
+            variant="outline"
+            className="text-2xs"
+            disabled={busy}
+            onClick={() => onReviewStoryline((item.target as { storylineId: string }).storylineId, "confirmed")}
+          >
+            确认
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            className="text-2xs"
+            disabled={busy}
+            onClick={() => onReviewStoryline((item.target as { storylineId: string }).storylineId, "rejected")}
+          >
+            驳回
+          </Button>
+        </div>
+      </li>
+    );
+  }
   const action = resolveAction(item, panelProps);
   return (
     <li className="flex items-start gap-1.5 rounded-md border border-border/70 bg-card/60 px-2 py-1.5">
@@ -151,6 +204,24 @@ export function PendingReviewPanel(props: PendingReviewPanelProps) {
   }, [bookId, fetchSummary]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // 剧情线草稿没有专属宿主页：就地确认/驳回，走叙事记忆的 review 接口。
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const reviewFn = props.reviewStorylineFn;
+  const reviewStoryline = useCallback(async (storylineId: string, decision: "confirmed" | "rejected") => {
+    if (reviewBusy) return;
+    setReviewBusy(true);
+    setError(null);
+    try {
+      if (reviewFn) await reviewFn(storylineId, decision);
+      else await defaultReviewStoryline(bookId, storylineId, decision);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "剧情线审核失败");
+    } finally {
+      setReviewBusy(false);
+    }
+  }, [bookId, load, reviewBusy, reviewFn]);
 
   // 预设保存/采纳后倒计数刷新，作者刚确认完的项应立刻从列表消失。
   useEffect(() => {
@@ -230,7 +301,13 @@ export function PendingReviewPanel(props: PendingReviewPanelProps) {
             </div>
             <ul className="space-y-1">
               {group.items.map((item) => (
-                <PendingReviewRow key={item.id} item={item} panelProps={props} />
+                <PendingReviewRow
+                  key={item.id}
+                  item={item}
+                  panelProps={props}
+                  onReviewStoryline={reviewStoryline}
+                  busy={reviewBusy}
+                />
               ))}
             </ul>
           </div>

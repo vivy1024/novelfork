@@ -30,7 +30,7 @@ const CanonicalTreesPanel = lazy(() =>
 
 /**
  * 故事推进的视图（IA 重构）：
- *  - next      下一章（默认，主视觉）：一屏回答「下一章写什么」——焦点 + 建议 + 情节板 + 伏笔账本
+ *  - next      下一章（默认，主视觉）：全书走势（左，每章一行）+ 一屏回答「下一章写什么」（右：焦点 + 建议 + 伏笔账本）
  *  - board     推进：章 × 剧情线网格 + 下一章焦点 + 伏笔债务
  *  - tree      故事树（参考）：章节 / 因果 / 脉络 / 发展历程；世界观与人物关系在「作品基础」
  *
@@ -46,6 +46,8 @@ const CanonicalTreesPanel = lazy(() =>
  */
 export type StoryProgressionView = "next" | "board" | "tree";
 
+type CanonicalTreeKind = import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind;
+
 export interface StoryProgressionViewDef {
   readonly id: StoryProgressionView;
   readonly label: string;
@@ -54,7 +56,7 @@ export interface StoryProgressionViewDef {
 }
 
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
-  { id: "next", label: "下一章", description: "一屏回答「下一章写什么」：焦点 + 建议 + 情节板 + 伏笔账本", icon: Swords },
+  { id: "next", label: "下一章", description: "全书走势 + 一屏回答「下一章写什么」：焦点 + 建议 + 伏笔账本", icon: Swords },
   { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
   { id: "tree", label: "故事树", description: "章节 / 因果 / 脉络 / 发展历程（世界观与人物关系在「作品基础」）", icon: FolderTree },
 ] as const;
@@ -124,8 +126,11 @@ export function StoryProgressionCanvas({
 }: StoryProgressionCanvasProps) {
   const [view, setView] = useState<StoryProgressionView>(() => normalizeStoryProgressionView(initialView));
   const [fullscreen, setFullscreen] = useState(false);
+  // 「下一章」页的因果树入口：切页签的同时指到 causal 子树。外部 initialView 变更时归位。
+  const [treeKindOverride, setTreeKindOverride] = useState<CanonicalTreeKind | undefined>(undefined);
   useEffect(() => {
     setView(normalizeStoryProgressionView(initialView));
+    setTreeKindOverride(undefined);
   }, [initialView]);
 
   // Esc 退出全景
@@ -230,6 +235,8 @@ export function StoryProgressionCanvas({
                 {...(currentChapter !== undefined ? { currentChapter } : {})}
                 {...(onOpenChapter ? { onOpenChapter } : {})}
                 {...(onSendToNarrator ? { onSendToNarrator } : {})}
+                onOpenBoardProgress={() => setView("board")}
+                onOpenCausalTree={() => { setTreeKindOverride("causal"); setView("tree"); }}
               />
             </Suspense>
           </div>
@@ -250,7 +257,7 @@ export function StoryProgressionCanvas({
               <CanonicalTreesPanel
                 bookId={bookId}
                 kinds={PROGRESSION_TREE_KINDS}
-                initialKind={resolveInitialTreeKind(initialView)}
+                initialKind={treeKindOverride ?? resolveInitialTreeKind(initialView)}
                 {...(onOpenEntityDetail
                   ? { onOpenEntry: (entryId: string, label: string) => openEntityDetail(label, entryId) }
                   : {})}

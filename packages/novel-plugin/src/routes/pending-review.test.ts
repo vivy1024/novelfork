@@ -127,14 +127,14 @@ const summaryOf = async (response: Response): Promise<PendingReviewSummary> => a
 const groupOf = (summary: PendingReviewSummary, kind: string) => summary.groups.find((group) => group.kind === kind)!;
 
 describe("待确认聚合路由", () => {
-  it("空结果：六类计数为 0，explanation 说明口径与入口", async () => {
+  it("空结果：七类计数为 0，explanation 说明口径与入口", async () => {
     const { storage, bookRoot } = await createFixture();
     const server = app(storage, bookRoot);
     const response = await server.request("/api/books/book-1/pending-review");
     expect(response.status).toBe(200);
     const summary = await summaryOf(response);
     expect(summary.total).toBe(0);
-    expect(summary.groups.map((group) => group.kind)).toEqual(["voice", "styleRule", "foreshadow", "event", "fact", "revision"]);
+    expect(summary.groups.map((group) => group.kind)).toEqual(["voice", "styleRule", "foreshadow", "event", "fact", "revision", "storyline"]);
     for (const group of summary.groups) {
       expect(group.count).toBe(0);
       expect(group.items).toEqual([]);
@@ -144,7 +144,7 @@ describe("待确认聚合路由", () => {
     expect(summary.explanation).toContain("文风金库");
   });
 
-  it("聚合六类来源，计数、位置与一句话摘要齐全", async () => {
+  it("聚合七类来源，计数、位置与一句话摘要齐全", async () => {
     const { storage, bookRoot } = await createFixture();
 
     // 声线：角色卡有 voice，一个待审字段、九个待补充。
@@ -308,5 +308,30 @@ describe("待确认聚合路由", () => {
     const body = await response.json() as { code?: string; explanation?: Record<string, string> };
     expect(body.code).toBe("INVALID_BOOK_ID");
     expect(Object.keys(body.explanation ?? {}).sort()).toEqual(["suggestedAction", "whatHappened", "whyItMatters"].sort());
+  });
+
+  it("剧情线草稿：待审的出现且就地处理，已确认或已驳回的不出现", async () => {
+    const { storage, bookRoot } = await createFixture();
+    const { createStoryline } = await import("../engine/narrative-memory/scene-store.js");
+    const draft = createStoryline(storage, {
+      bookId: "book-1", name: "归纳·感情线", kind: "romance", goal: "两人从对立到和解",
+      layer: "dynamic", status: "needs-review", source: "inferred",
+    });
+    createStoryline(storage, {
+      bookId: "book-1", name: "作者手建·主线", kind: "main",
+      layer: "canon", status: "confirmed", source: "manual",
+    });
+
+    const server = app(storage, bookRoot);
+    const response = await server.request("/api/books/book-1/pending-review");
+    expect(response.status).toBe(200);
+    const summary = await summaryOf(response);
+    const group = groupOf(summary, "storyline");
+    expect(group.count).toBe(1);
+    expect(group.items[0]).toMatchObject({
+      kind: "storyline",
+      target: { kind: "storyline", storylineId: draft.data!.id },
+    });
+    expect(group.items[0].summary).toContain("归纳·感情线");
   });
 });

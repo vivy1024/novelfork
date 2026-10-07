@@ -50,8 +50,21 @@ vi.mock("./CanonicalTreesPanel", () => ({
 }));
 
 vi.mock("./NextChapterPanel", () => ({
-  NextChapterPanel: ({ bookId, currentChapter }: { bookId: string; currentChapter?: number }) => (
-    <div data-testid="mock-next-chapter" data-book={bookId} data-chapter={String(currentChapter ?? "")} />
+  NextChapterPanel: ({
+    bookId,
+    currentChapter,
+    onOpenBoardProgress,
+    onOpenCausalTree,
+  }: {
+    bookId: string;
+    currentChapter?: number;
+    onOpenBoardProgress?: () => void;
+    onOpenCausalTree?: () => void;
+  }) => (
+    <div data-testid="mock-next-chapter" data-book={bookId} data-chapter={String(currentChapter ?? "")}>
+      <button type="button" onClick={() => onOpenBoardProgress?.()}>看推进板</button>
+      <button type="button" onClick={() => onOpenCausalTree?.()}>看因果树</button>
+    </div>
   ),
 }));
 
@@ -138,6 +151,28 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     fireEvent.click(screen.getByText("退出全景"));
     await waitFor(() => {
       expect(screen.getByTestId("story-progression-canvas").getAttribute("data-fullscreen")).toBe("false");
+    });
+  });
+
+  it("「下一章」页的视图入口：推进板切到 board，因果树切到 tree 的 causal 子树", async () => {
+    render(<StoryProgressionCanvas bookId="book-1" />);
+    await waitFor(() => expect(screen.getByTestId("mock-next-chapter")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "看推进板" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("mock-progress-board")).toBeTruthy();
+      expect(screen.getByRole("tab", { name: /推进/ }).getAttribute("aria-selected")).toBe("true");
+    });
+
+    // 回到「下一章」再从因果树入口进：树应定位到 causal 子树
+    fireEvent.click(screen.getByRole("tab", { name: /下一章/ }));
+    await waitFor(() => screen.getByTestId("mock-next-chapter"));
+    fireEvent.click(screen.getByRole("button", { name: "看因果树" }));
+    await waitFor(() => {
+      const tree = screen.getByTestId("mock-network");
+      expect(tree).toBeTruthy();
+      expect(tree.getAttribute("data-kind")).toBe("causal");
+      expect(screen.getByRole("tab", { name: /故事树/ }).getAttribute("aria-selected")).toBe("true");
     });
   });
 

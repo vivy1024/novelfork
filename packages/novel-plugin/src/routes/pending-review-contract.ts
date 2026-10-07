@@ -6,7 +6,7 @@
  * 路由实现顶层引用 node:fs 等，会把浏览器包在模块求值期打崩。
  */
 
-export const PENDING_REVIEW_KINDS = ["voice", "styleRule", "foreshadow", "event", "fact", "revision"] as const;
+export const PENDING_REVIEW_KINDS = ["voice", "styleRule", "foreshadow", "event", "fact", "revision", "storyline"] as const;
 export type PendingReviewKind = (typeof PENDING_REVIEW_KINDS)[number];
 
 export const PENDING_REVIEW_LABELS: Record<PendingReviewKind, string> = {
@@ -16,6 +16,7 @@ export const PENDING_REVIEW_LABELS: Record<PendingReviewKind, string> = {
   event: "叙事事件",
   fact: "事实",
   revision: "改稿",
+  storyline: "剧情线",
 };
 
 /** 「去处理」跳转目标：面板按 kind 选宿主注入的回调，不重写审批。 */
@@ -23,7 +24,9 @@ export type PendingReviewTarget =
   | { readonly kind: "jingwei-entry"; readonly entryId: string }
   | { readonly kind: "style-panel" }
   | { readonly kind: "events" }
-  | { readonly kind: "vault"; readonly chapterNumber: number };
+  | { readonly kind: "vault"; readonly chapterNumber: number }
+  // 剧情线草稿没有专属宿主页：面板就地确认/驳回，走剧情线 review 接口。
+  | { readonly kind: "storyline"; readonly storylineId: string };
 
 export interface PendingReviewItem {
   readonly id: string;

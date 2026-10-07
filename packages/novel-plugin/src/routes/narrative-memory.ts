@@ -43,6 +43,8 @@ import {
   unmountSceneFromStoryline,
   isSceneFunction,
   isStorylineKind,
+  getStoryline,
+  reviewStoryline,
   SCENE_FUNCTIONS,
   STORYLINE_KINDS,
 } from "../engine/narrative-memory/scene-store.js";
@@ -1088,6 +1090,24 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       status: "confirmed",
       source: "manual",
     });
+    return c.json(result, result.ok ? 200 : 400);
+  });
+
+  /** 剧情线草稿审核（storyline.propose 的产物）：只允许 needs-review → confirmed / rejected。 */
+  app.post(`${base}/storylines/:storylineId/review`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const storylineIdValue = c.req.param("storylineId");
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const decision = body?.decision;
+    if (decision !== "confirmed" && decision !== "rejected") {
+      return invalidQuery(c, "decision 必填：confirmed 或 rejected。");
+    }
+    const existing = getStoryline(storage(), storylineIdValue);
+    // 归属校验和事件一致：不属于这本书的对象一律 404，不泄露存在性。
+    if (!existing || existing.bookId !== bookId) {
+      return c.json({ error: "storyline-not-found", summary: "这本书里没有这条剧情线，可能已被删除。" }, 404);
+    }
+    const result = reviewStoryline(storage(), storylineIdValue, decision);
     return c.json(result, result.ok ? 200 : 400);
   });
 

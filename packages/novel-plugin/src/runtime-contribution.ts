@@ -104,6 +104,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 - 学习文风：style.distill_preview 确认切章范围 → style.distill_start 生成来源包（模型分批抽取，剩余或失败批次带 jobId 再调用继续）→ 把待审条目连同证据交给作者逐条确认 → 只对作者明确确认的条目 id 调用 style.distill_adopt（带 expectedVersion）。不得替作者确认，冲突时重新读取后再问。
 - 角色声线：character.voice.read 查看某角色的声线与当前注入写对白的约束（只含已确认项）→ 作者要求整理时用 character.voice.draft（带 expectedVersion）从角色卡与该角色对白生成待审草稿 → 把待审项连同依据交给作者，由作者在角色卡「声线」区块逐项确认。你不能确认声线，不得把待审或待补充项当成设定写进对白；依据不足的项如实说「待补充」，不要替角色编口癖。
 - 中盘防跑偏：outline.volume 维护卷纲（当前卷目标会进 preflight 与 scene.spec）；arc.character 查角色弧停滞或回退。
+- 归纳剧情线：作者要求归纳剧情线，或故事推进提示「还没有剧情线」时：先用 memory.events / memory.list 读已结算事件，归纳出 3–6 条剧情线，逐条调用 storyline.propose 提交草稿（needs-review）。你只能提交草稿并如实列出解析不出的人名；确认或驳回由作者在「故事推进 › 待确认」面板逐项完成，你不得替作者确认自己的草稿。
 - 终局储备：outline.volume 的 endgameReserve 记底牌（宿敌/真相/金手指上限，逐卷解锁）与升级台阶（不越级）。返回的 overdraft 报「底牌提前动用」「越级/到顶」时必须如实转述并建议改纲，不得替作者打光底牌。
 - 投稿前：publish.check 做投稿风险自检（敏感词线索/AI 味线索/格式/连续性）并返回可定位证据与规则来源。结果只供人工复核；pipeline.write 保存前的轻检只提醒，不会因平台口径阻断正文保存。
 
@@ -136,6 +137,7 @@ type CustomReadyRuntimeToolName =
   | "chapter.propose_selection"
   | "chapter.propose_revision"
   | "lore.propose_update"
+  | "storyline.propose"
   | "rewrite.apply"
   | "pipeline.import_chapters"
   | "book.dissect"

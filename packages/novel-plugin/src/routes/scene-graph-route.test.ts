@@ -306,3 +306,58 @@ describe("改主剧情线（因果画布拖动场景换泳道）", () => {
     }
   });
 });
+
+describe("POST storylines/:storylineId/review", () => {
+  async function createDraft(storage: StorageDatabase, bookId: string): Promise<string> {
+    const { createStoryline } = await import("../engine/narrative-memory/scene-store.js");
+    const result = createStoryline(storage, {
+      bookId, name: "归纳草稿·主线", kind: "main",
+      layer: "dynamic", status: "needs-review", source: "inferred",
+    });
+    return result.data!.id;
+  }
+
+  it("待审草稿可确认、可驳回；confirmed 线不再被改写", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      const id = await createDraft(storage, "book-1");
+
+      const confirmed = await postJson(app, `${BASE}/storylines/${id}/review`, { decision: "confirmed" });
+      expect(confirmed.status).toBe(200);
+      expect(confirmed.body.data).toMatchObject({ status: "confirmed" });
+
+      // 已确认的线不能再走 review 门
+      expect((await postJson(app, `${BASE}/storylines/${id}/review`, { decision: "rejected" })).status).toBe(400);
+
+      const other = await createDraft(storage, "book-1");
+      const rejected = await postJson(app, `${BASE}/storylines/${other}/review`, { decision: "rejected" });
+      expect(rejected.status).toBe(200);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("跨书的剧情线一律 404，不泄露对象存在性", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      const id = await createDraft(storage, "book-2");
+      const res = await postJson(app, `${BASE}/storylines/${id}/review`, { decision: "confirmed" });
+      expect(res.status).toBe(404);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("decision 非法被拒", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      const id = await createDraft(storage, "book-1");
+      expect((await postJson(app, `${BASE}/storylines/${id}/review`, { decision: "maybe" })).status).toBe(400);
+    } finally {
+      storage.close();
+    }
+  });
+});

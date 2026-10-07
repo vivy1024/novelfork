@@ -1,10 +1,10 @@
 /**
  * 「待确认」聚合查询（只读）。
  *
- * 有六类「需要作者确认才生效」的产物散在不同入口，作者不知道去哪确认。
- * 本路由把这六类一次聚齐：计数 + 每类前 N 条摘要。
- * 数据全部从现有权威源派生（经纬条目、narrative_event、style_preset.json、
- * style-vault 目录），不新建表、不落盘；审批动作仍走各自的原有入口。
+ * 有七类「需要作者确认才生效」的产物散在不同入口，作者不知道去哪确认。
+ * 本路由把这七类一次聚齐：计数 + 每类前 N 条摘要。
+ * 数据全部从现有权威源派生（经纬条目、narrative_event、narrative_storyline、
+ * style_preset.json、style-vault 目录），不新建表、不落盘；审批动作仍走各自的原有入口。
  *
  * 口径：
  * - 角色声线：经纬角色条目已生成过 fields.voice，且还有「待审」或「待补充」字段；
@@ -13,7 +13,8 @@
  * - 叙事事件（本章提议）：待审 narrative_event 里章号最新的一批——与写作视图
  *   「收尾」步的「本章提议」同一语义；
  * - 事实/关系草案：其余待审 narrative_event（更早章的遗留）;
- * - 改稿段：style-vault 里作者改过、但尚未「采纳为范文」的 AI 原稿对照段。
+ * - 改稿段：style-vault 里作者改过、但尚未「采纳为范文」的 AI 原稿对照段；
+ * - 剧情线草稿：narrative_storyline 里 status=needs-review 的线（storyline.propose 归纳）。
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -39,6 +40,7 @@ import {
 } from "../engine/writing-layers/style-vault.js";
 import { CHAPTERS_DIRECTORY, readChapterIndex } from "../engine/writing-resource/chapter-layout.js";
 import { listPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import { listStorylines } from "../engine/narrative-memory/scene-store.js";
 import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
 
 import {
@@ -266,6 +268,23 @@ async function collectRevisionItems(
   return items;
 }
 
+/** 剧情线草稿：storyline.propose 归纳出的待审线；确认/驳回就地在面板走 review 接口。 */
+function collectStorylineItems(storage: StorageDatabase, bookId: string): PendingReviewItem[] {
+  return listStorylines(storage, bookId)
+    .filter((line) => line.status === "needs-review")
+    // 后提的草稿排前面——叙述者一次归纳提一批，先看最新的主张。
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((line) => ({
+      id: `storyline:${line.id}`,
+      kind: "storyline" as const,
+      typeLabel: PENDING_REVIEW_LABELS.storyline,
+      location: line.kind === "main" ? "主线" : line.kind === "other" ? "未分类" : `类别 ${line.kind}`,
+      summary: `剧情线草稿「${line.name}」${line.goal ? `：${clip(line.goal, 60)}` : ""}，确认后进入故事推进。`,
+      resolveAt: "本面板就地确认或驳回",
+      target: { kind: "storyline" as const, storylineId: line.id },
+    }));
+}
+
 // ---------------------------------------------------------------------------
 // 聚合
 // ---------------------------------------------------------------------------
@@ -288,6 +307,7 @@ export async function collectPendingReview(
   const foreshadowItems = collectForeshadowItems(entries);
   const { current: eventItems, earlier: factItems } = collectNarrativeEventItems(options.storage, options.bookId);
   const revisionItems = bookRoot ? await collectRevisionItems(bookRoot, preset, warnings) : [];
+  const storylineItems = options.storage ? collectStorylineItems(options.storage, options.bookId) : [];
 
   const groups: PendingReviewGroup[] = (
     [
@@ -297,6 +317,7 @@ export async function collectPendingReview(
       ["event", eventItems],
       ["fact", factItems],
       ["revision", revisionItems],
+      ["storyline", storylineItems],
     ] as Array<[PendingReviewKind, PendingReviewItem[]]>
   ).map(([kind, items]) => ({
     kind,
@@ -309,13 +330,13 @@ export async function collectPendingReview(
   const explanation = total > 0
     ? [
         "这些产物要作者确认后才生效：声线规则（确认前先不进对白约束）、文风规则（确认前不进写作指南）、",
-        "伏笔草稿与待审事件（确认前不进写作上下文）、改稿段（采纳后才成为范文）。",
-        "逐项去「去处理」列出的原有入口决定，本面板不做就地审批。",
+        "伏笔草稿与待审事件（确认前不进写作上下文）、改稿段（采纳后才成为范文）、剧情线草稿（确认后才进故事推进）。",
+        "逐项去「去处理」列出的原有入口决定；剧情线草稿没有专属页面，在本面板就地确认。",
       ].join("")
     : [
-        "六类待确认来源都查过了，当前没有待处理项。",
+        "七类待确认来源都查过了，当前没有待处理项。",
         "来源包括：角色声线（角色卡）、文风蒸馏规则（文风自动蒸馏/技能文风）、伏笔草稿（章后结算）、",
-        "待审叙事事件（写作视图收尾/章后事实）与文风金库未采纳的改稿段。",
+        "待审叙事事件（写作视图收尾/章后事实）、文风金库未采纳的改稿段与剧情线草稿（storyline.propose）。",
         "以后机器生成的草稿会先在这里排队，确认入口不变。",
       ].join("");
 

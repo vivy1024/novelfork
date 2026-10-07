@@ -312,6 +312,49 @@ export function getStoryline(storage: StorageDatabase, id: string): NarrativeSto
   return row ? toStoryline(row) : undefined;
 }
 
+/** 按书名找同书、同名、仍待审的剧情线草稿（storyline.propose 的幂等键）。 */
+export function findPendingStorylineByName(
+  storage: StorageDatabase,
+  bookId: string,
+  name: string,
+): NarrativeStoryline | undefined {
+  ensureNarrativeMemorySchema(storage);
+  const row = storage.sqlite
+    .prepare<StorylineRow>(
+      "SELECT * FROM narrative_storyline WHERE book_id = ? AND name = ? AND status = 'needs-review' ORDER BY created_at",
+    )
+    .get(bookId, name.trim());
+  return row ? toStoryline(row) : undefined;
+}
+
+/**
+ * 剧情线草稿审核：只允许从 needs-review 走向 confirmed / rejected，
+ * 已确认或已驳回的线不能再被改写状态（作者删了就该删，不是驳回复活）。
+ */
+export function reviewStoryline(
+  storage: StorageDatabase,
+  id: string,
+  decision: "confirmed" | "rejected",
+): SceneStoreResult<NarrativeStoryline> {
+  ensureNarrativeMemorySchema(storage);
+  const existing = getStoryline(storage, id);
+  if (!existing) return fail("storyline-not-found", "这本书里没有这条剧情线，可能已被删除。");
+  if (existing.status !== "needs-review") {
+    return fail("storyline-not-pending", `剧情线「${existing.name}」当前状态是 ${existing.status}，不在待审中。`);
+  }
+  storage.sqlite
+    .prepare("UPDATE narrative_storyline SET status = ?, updated_at = ? WHERE id = ?")
+    .run(decision, Date.now(), id);
+  const updated = getStoryline(storage, id);
+  return {
+    ok: true,
+    summary: decision === "confirmed"
+      ? `剧情线「${existing.name}」已确认，进入故事推进。`
+      : `剧情线草稿「${existing.name}」已驳回。`,
+    ...(updated ? { data: updated } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 场景
 // ---------------------------------------------------------------------------

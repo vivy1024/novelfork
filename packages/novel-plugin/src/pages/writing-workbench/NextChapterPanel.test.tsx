@@ -25,12 +25,24 @@ function structurePayload() {
       { id: "m2", sceneId: "s2", storylineId: "rom", role: "primary", createdAt: "" },
     ],
     foreshadows: [
-      { id: "f1", entryId: "f1", title: "锈剑来历", status: "planted", plantedChapter: 1, chaptersPending: 11, urgency: "overdue", reason: "已悬置 11 章" },
-      { id: "f2", entryId: "f2", title: "幕后主使", status: "planted", plantedChapter: 10, chaptersPending: 2, urgency: "watch", reason: "已悬置 2 章" },
+      { id: "f1", entryId: "f1", title: "锈剑来历", status: "planted", plantedChapter: 1, chaptersPending: 11, urgency: "overdue", reason: "已悬置 11 章，作者曾承诺在拍卖会回收" },
+      { id: "f2", entryId: "f2", title: "幕后主使", status: "planted", plantedChapter: 3, chaptersPending: 9, urgency: "overdue", reason: "已悬置 9 章" },
+      { id: "f3", entryId: "f3", title: "丹方的下半页", status: "planted", plantedChapter: 5, chaptersPending: 7, urgency: "watch", reason: "已悬置 7 章" },
+      { id: "f4", entryId: "f4", title: "不重要的支线悬念", status: "planted", plantedChapter: 9, chaptersPending: 3, urgency: "watch", reason: "已悬置 3 章" },
     ],
     foreshadowThresholds: { watchChapters: 5, overdueChapters: 12 },
     entities: [],
     explanation: "",
+  };
+}
+
+function timelinePayload() {
+  return {
+    settledThrough: 12,
+    chapters: [
+      { number: 11, title: "识破暗算", chars: 2300, summary: "林晚识破拍卖会的暗算", summaryStale: false, eventCount: 2, plantedHooks: 0, recoveredHooks: 1, cast: [{ name: "林晚" }], moreCast: 0 },
+      { number: 12, title: "旧站", chars: 2400, summary: "旧站夜谈", summaryStale: true, eventCount: 1, plantedHooks: 1, recoveredHooks: 0, cast: [{ name: "林晚" }], moreCast: 0 },
+    ],
   };
 }
 
@@ -43,17 +55,23 @@ function installFetch() {
     if (url.includes("/narrative-structure")) {
       return reply({ ok: true, ...structurePayload(), bookId: "book-1" });
     }
+    if (url.includes("/narrative-memory/chapter-timeline")) {
+      return reply(timelinePayload());
+    }
     if (url.includes("category=current-focus")) {
       return reply({ entries: [{ fields: { goal: "让主线退一档", why: "拍卖前压住张力" } }] });
     }
     if (url.includes("category=foreshadowing")) {
-      return reply({ entries: [{ id: "f1", fields: { status: "planted", plantedChapter: 1 } }, { id: "f2", fields: { status: "planted", plantedChapter: 10 } }] });
+      return reply({ entries: ["f1", "f2", "f3", "f4"].map((id) => ({ id, fields: { status: "planted" } })) });
     }
     if (url.includes("/jingwei/entries/f1") && init?.method === "PUT") {
       return reply({ entry: { id: "f1" } });
     }
     if (url.endsWith("/jingwei/entries") && init?.method === "POST") {
       return reply({ entry: { id: "new-x" } });
+    }
+    if (url.includes("/narrative-memory/list")) {
+      return reply({ entries: [] });
     }
     return reply({ ok: true });
   });
@@ -68,27 +86,46 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("下一章整合页", () => {
-  it("渲染焦点、建议、情节板与伏笔账本；建议含焦点点名线与停滞线", async () => {
+describe("下一章默认页（全书走势 + 下一章双栏）", () => {
+  it("双栏：左栏全书走势、右栏下一章（焦点 + 建议 + 伏笔账本）", async () => {
     installFetch();
     render(<NextChapterPanel bookId={BOOK.id} />);
 
     await waitFor(() => expect(screen.getByTestId("next-focus-goal").textContent).toContain("让主线退一档"));
+    // 左栏走势行
+    await waitFor(() => expect(screen.getByTestId("chapter-timeline-row-11").textContent).toContain("识破拍卖会的暗算"));
+    expect(screen.getByTestId("chapter-timeline-row-12").textContent).toContain("以正文为准");
+    // 右栏建议
     expect(screen.getByTestId("next-suggestion-line").textContent).toContain("第 13 章");
     expect(screen.getByTestId("next-suggestion-line").textContent).toContain("主线「夺回师门」");
     expect(screen.getByTestId("next-suggestion-line").textContent).toContain("感情线「与沈遥」（已 10 章未推进）");
-    // 情节板：两条剧情线的行 + 建议列
-    const table = screen.getByTestId("next-board-table");
-    expect(table.textContent).toContain("夺回师门");
-    expect(table.textContent).toContain("与沈遥");
-    expect(table.textContent).toContain("第 13 章（建议）");
-    expect(table.textContent).toContain("守门人试炼");
-    // 伏笔账本四段
-    expect(screen.getByTestId("next-hook-overdue-f1").textContent).toContain("锈剑来历");
-    expect(screen.getByTestId("next-hook-watch-f2").textContent).toContain("幕后主使");
   });
 
-  it("「把建议发给叙述者」把后的章号与两条建议合成消息", async () => {
+  it("伏笔账本：文字标签 + 色点 + 标题，按紧迫度排序，默认只展开最急 3 条", async () => {
+    installFetch();
+    render(<NextChapterPanel bookId={BOOK.id} />);
+
+    await waitFor(() => screen.getByTestId("next-hook-item-f1"));
+
+    const rendered = screen.getByTestId("next-hook-list").textContent ?? "";
+    // 排序：超期按悬置章数降序 f1(11) → f2(9) → 临近 f3(7)；第 4 条 f4 收起
+    expect(rendered.indexOf("锈剑来历")).toBeLessThan(rendered.indexOf("幕后主使"));
+    expect(rendered.indexOf("幕后主使")).toBeLessThan(rendered.indexOf("丹方的下半页"));
+    expect(rendered.indexOf("不重要的支线悬念")).toBe(-1);
+    // 标签是文字 + 色点，没有 urgency 态的彩色块
+    const item = screen.getByTestId("next-hook-item-f1");
+    expect(screen.getByTestId("next-hook-dot-f1")).toBeTruthy();
+    expect(item.className).not.toMatch(/bg-red|bg-amber|bg-emerald/);
+    expect(item.textContent).toContain("超期");
+    expect(item.textContent).toContain("已悬置 11 章");
+
+    // 「展开其余」后第 4 条出现
+    fireEvent.click(screen.getByTestId("next-hook-toggle-rest"));
+    expect(screen.getByTestId("next-hook-item-f4").textContent).toContain("不重要的支线悬念");
+    expect(screen.getByTestId("next-hook-item-f4").textContent).toContain("临近");
+  });
+
+  it("「把建议发给叙述者」把章号与两条建议合成消息", async () => {
     installFetch();
     const onSendToNarrator = vi.fn(async () => undefined);
     render(<NextChapterPanel bookId={BOOK.id} onSendToNarrator={onSendToNarrator} />);
@@ -155,21 +192,69 @@ describe("下一章整合页", () => {
     await waitFor(() => expect(screen.getByTestId("next-hook-note").textContent).toContain("待你确认后开始倒计时"));
   });
 
-  it("没有剧情线：引导建线，按钮与建议不出现", async () => {
+  it("有剧情线：给推进板 / 因果树入口，点击透传意图", async () => {
+    installFetch();
+    const onOpenBoardProgress = vi.fn();
+    const onOpenCausalTree = vi.fn();
+    render(<NextChapterPanel bookId={BOOK.id} onOpenBoardProgress={onOpenBoardProgress} onOpenCausalTree={onOpenCausalTree} />);
+
+    await waitFor(() => screen.getByTestId("next-view-links"));
+    expect(screen.queryByTestId("next-storyline-empty")).toBeNull();
+    fireEvent.click(screen.getByTestId("next-link-board"));
+    expect(onOpenBoardProgress).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId("next-link-causal"));
+    expect(onOpenCausalTree).toHaveBeenCalledTimes(1);
+  });
+
+  it("剧情线为 0：引导卡取代空建议，按钮把「归纳剧情线」意图发给叙述者，且不给视图死链", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     const emptyFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       calls.push({ url, init });
       const reply = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
-      if (url.includes("/narrative-structure")) return reply({ ok: true, ...structurePayload(), storylines: [], mounts: [], bookId: "book-1" });
+      if (url.includes("/narrative-structure")) return reply({ ok: true, ...structurePayload(), storylines: [], mounts: [], foreshadows: [], bookId: "book-1" });
+      if (url.includes("/narrative-memory/chapter-timeline")) return reply(timelinePayload());
       if (url.includes("category=current-focus")) return reply({ entries: [] });
       if (url.includes("category=foreshadowing")) return reply({ entries: [] });
       return reply({ ok: true });
     });
     vi.stubGlobal("fetch", emptyFetch);
+    const onSendToNarrator = vi.fn(async () => undefined);
+    render(<NextChapterPanel bookId={BOOK.id} onSendToNarrator={onSendToNarrator} />);
+
+    await waitFor(() => expect(screen.getByTestId("next-storyline-empty").textContent).toContain("这本书还没有剧情线"));
+    // 引导文案说清它会干什么：读已结算事件 → 归纳草稿 → 在待确认里逐条定
+    expect(screen.getByTestId("next-storyline-empty").textContent).toContain("归纳剧情线草稿");
+    expect(screen.getByTestId("next-storyline-empty").textContent).toContain("待确认");
+    // 空壳建议 / 死链均不出现
+    expect(screen.queryByTestId("next-suggestion-line")).toBeNull();
+    expect(screen.queryByTestId("next-send-suggestion")).toBeNull();
+    expect(screen.queryByTestId("next-link-board")).toBeNull();
+    expect(screen.queryByTestId("next-link-causal")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("next-storyline-induce"));
+    await waitFor(() => expect(onSendToNarrator).toHaveBeenCalledTimes(1));
+    const message = onSendToNarrator.mock.calls[0]![0] as string;
+    expect(message).toContain("已结算");
+    expect(message).toContain("归纳剧情线");
+    expect(message).toContain("needs-review");
+    expect(message).toContain("待确认");
+  });
+
+  it("剧情线为 0 且没接叙述者通道：按钮置灰并说明，不假装能发", async () => {
+    const emptyFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : "x";
+      const reply = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+      if (url.includes("/narrative-structure")) return reply({ ok: true, ...structurePayload(), storylines: [], mounts: [], foreshadows: [], bookId: "book-1" });
+      if (url.includes("/narrative-memory/chapter-timeline")) return reply(timelinePayload());
+      if (url.includes("category=")) return reply({ entries: [] });
+      return reply({ ok: true });
+    });
+    vi.stubGlobal("fetch", emptyFetch);
     render(<NextChapterPanel bookId={BOOK.id} />);
 
-    await waitFor(() => expect(screen.getByTestId("next-suggestion-empty").textContent).toContain("还没有剧情线"));
-    expect(screen.queryByTestId("next-send-suggestion")).toBeNull();
+    await waitFor(() => screen.getByTestId("next-storyline-induce"));
+    expect((screen.getByTestId("next-storyline-induce") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("next-storyline-empty").textContent).toContain("没接叙述者通道");
   });
 });

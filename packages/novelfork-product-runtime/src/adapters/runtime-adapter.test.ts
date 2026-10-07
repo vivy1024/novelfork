@@ -47,6 +47,7 @@ const CANONICAL_READY_TOOL_NAMES = [
   "chapter.propose_selection",
   "chapter.propose_revision",
   "lore.propose_update",
+  "storyline.propose",
   "rewrite.apply",
   "pipeline.import_chapters",
   "book.dissect",

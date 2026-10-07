@@ -34,6 +34,7 @@ import { executeWorkflowRunTool } from "./workflow-run-tools.js";
 import { executeStyleDistillationTool } from "./style-distill-tools.js";
 import { executeCharacterVoiceTool } from "./character-voice-tools.js";
 import { proposeSelectionCandidate } from "./selection-candidate-tools.js";
+import { handleStorylinePropose } from "./storyline-tools.js";
 import {
   DEFAULT_VOLUME_DIRECTORY,
   chapterRelativePath,
@@ -1067,6 +1068,21 @@ export async function executeRuntimeDomainTool(
       return proposeChapterRevision(input, binding);
     case "lore_propose_update":
       return proposeLoreUpdate(input, binding);
+    case "storyline_propose":
+    case "storyline.propose": {
+      const result = await handleStorylinePropose({
+        bookId: binding.bookId,
+        name: typeof input.name === "string" ? input.name : "",
+        ...(typeof input.kind === "string" ? { kind: input.kind } : {}),
+        ...(typeof input.goal === "string" ? { goal: input.goal } : {}),
+        ...(Array.isArray(input.relatedEntryTitles)
+          ? { relatedEntryTitles: input.relatedEntryTitles.filter((v): v is string => typeof v === "string") }
+          : {}),
+        ...(typeof input.evidenceNote === "string" ? { evidenceNote: input.evidenceNote } : {}),
+      });
+      if (!result.ok) return fail(result.error ?? "storyline-propose-failed", result.summary);
+      return ok(result.summary, result.data);
+    }
     case "rewrite_apply":
     case "rewrite.apply":
       return rewriteApply(input, binding);

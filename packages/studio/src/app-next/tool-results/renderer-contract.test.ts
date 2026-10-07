@@ -43,6 +43,8 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "narrative.mutationPreview",
   "narrative-memory.admin",
   "pipeline.import_chapters",
+  // storyline.propose 的结果是草稿提交回执（草稿进「待确认」面板确认），登记处不值得做专属卡。
+  "storyline.proposal",
   "resource.manage",
   "tool.rewrite-apply",
   // Writing Skills 迁移后的四个工具暫走 generic；H-3 提供专属卡后从这里删除。
