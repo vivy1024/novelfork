@@ -216,7 +216,7 @@ NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-
 4. 验证：`bun run typecheck`（注意 runtime 用 tsgo、bridge 用 tsc，tsc 更严格会暴露 tsgo 漏报的上游缺陷）；权限/agent 工具测试套件；失败项须在**纯上游同版本基线** worktree 复跑对比，确认是否为上游自身缺陷或 Windows 环境既有问题。
 5. 推送 fork 分支 → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（`commit`/`tree`/`branch` 与 provenance：接缝基线、上游提交、合并基点、冲突处理、物化后偏离）→ `pnpm runtime:sync` 导出到 `packages/narrafork-runtime-private/` 并 `bun install`（只改两版之间变化的文件；不要再手工 `git archive` 覆盖，否则同步脚本记录的状态会与目录不一致）→ typecheck + 冒烟测试 → 全工作区 `pnpm run typecheck` → 用隔离实例做真实启动验证。
 6. 已知基线：上游 v0.6.6（`751ad11b`，注意 0.6.6 发布过两次，`13e9c88d` 被 `78d739d1` 回滚后由 `751ad11b` 重发），fork 分支头 `dda73094`（2026-09-26，由 `f779ff11` 快进合入 Runtime PR #1）。接缝基线提交 `5ab50ffe`（上游 v0.6.5 + 产品定制）。
-   - 2026-09-28 本地已合并上游 v0.7.10（`24f2436a`，无 tag）：宿主库分支 `novelfork/upgrade-0.7.10` 的 `bc6347b9`，物化目录已同步到它。**尚未推送**，计划推到 fork 远端新分支 `novelfork/integration-v0.7.10`；推送前 `pnpm runtime:sync` 只能从本机宿主库取到该提交（做法见 `UPSTREAM.lock.json` 的 `provenance.note`）。推送后把本文件里的分支名统一改为 v0.7.10。
+   - 2026-09-28 本地已合并上游 v0.7.10（`24f2436a`，无 tag）：宿主库分支 `novelfork/upgrade-0.7.10` 的 `bc6347b9`，物化目录已同步到它。`pnpm runtime:sync` 只能从本机宿主库取到该提交（做法见 `UPSTREAM.lock.json` 的 `provenance.note`）。**私有血统分支不推公开**（含上游开源前未消毒历史）；随 v0.0.4 发行的 MPL 源码提供改为公开仓 `NarraFork/novelfork-runtime`（公开 v0.7.12 原树 + fork delta 树级重建）。下一版本窗口按 `docs/design/Runtime-0.8.3-升级评估.md` 切公开线升级（树级移植，真实冲突 10 处）。
    - 0.7.x 起 Agent 循环主体在 `server/services/agent-runtime/orchestrator.ts`，fork 的产品叙述者判断收在 `server/services/product-narrator-tools.ts`；上游不跟踪 SQLite `drizzle/`，纯上游基线跑数据库测试前要把同一套迁移复制进基线 worktree。
 
 ### 已知环境噪声（不要当成缺陷追查）

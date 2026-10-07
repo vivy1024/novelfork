@@ -4,10 +4,13 @@ NovelFork 许可证说明
 
 2. 本仓库不包含 NarraFork Runtime。
    packages/narrafork-runtime-private/ 被 Git 忽略，仅 UPSTREAM.lock.json 作为来源元数据被跟踪。
-   Runtime 源码位于私有仓库 NarraFork/novelfork-runtime-private，不属于本仓库，不适用本仓库的 MIT 许可证。
 
 3. Releases 中发布的可执行文件内含 NarraFork Runtime。
-   其中 Runtime 部分的使用与再分发受 NarraFork 的授权条款约束；本仓库的 MIT 许可证不授予对 Runtime 的任何权利。
+   Runtime（≥ 0.7.12）以 Mozilla Public License 2.0（MPL-2.0）提供；按 MPL §3.2，可执行文件对应的
+   Runtime 源码（上游公开树 + NovelFork 定制部分）公开于：
+   https://github.com/NarraFork/novelfork-runtime
+   其中 main 跟随上游公开线，source/v<产品版本> 分支承载各发行版对应的完整源码快照。
+   Runtime 部分文件级的修改按 MPL-2.0 继续提供；本仓库的 MIT 许可证不授予对 Runtime 的任何权利。
 
 ---
 
@@ -17,9 +20,13 @@ NovelFork License Notice
 
 2. This repository does not contain the NarraFork Runtime.
    packages/narrafork-runtime-private/ is ignored by Git; only UPSTREAM.lock.json is tracked as provenance metadata.
-   The Runtime source lives in the private repository NarraFork/novelfork-runtime-private, is not part of this
-   repository, and is not covered by this repository's MIT License.
 
 3. The executables published in Releases bundle the NarraFork Runtime.
-   Use and redistribution of the Runtime portion are governed by NarraFork's own terms; this repository's MIT License
+   The Runtime (≥ 0.7.12) is provided under the Mozilla Public License 2.0 (MPL-2.0). Per MPL §3.2, the
+   corresponding source for the bundled Runtime (the public upstream tree plus NovelFork's modifications)
+   is available at:
+   https://github.com/NarraFork/novelfork-runtime
+   Its main branch tracks upstream; source/v<product-version> branches carry the full source snapshot
+   corresponding to each release.
+   File-level modifications to the Runtime remain available under MPL-2.0; this repository's MIT License
    grants no rights to the Runtime.

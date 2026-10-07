@@ -105,7 +105,7 @@ if (violations.length > 50) console.error(`  ……另有 ${violations.length - 
 console.error(
   [
     "",
-    "为什么要拦：本仓库公开，Runtime 源码只能存在于私有 fork NarraFork/novelfork-runtime-private；",
+    "为什么要拦：本仓库公开；Runtime 源码的公开提供渠道是 NarraFork/novelfork-runtime（MPL-2.0），不经过本仓库；",
     "文件一旦进入公开历史，之后删除也无法收回。",
     mode === "range"
       ? "怎么办：不要合并或推送这些提交。改写这段未公开的提交把文件去掉（例如交互式变基），再重新检查；已经推送的请立即联系维护者。"
