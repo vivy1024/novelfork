@@ -329,7 +329,7 @@ describe("EntityDetailDrawer", () => {
     render(<EntityDetailDrawer bookId="book-1" entity="张三" onClose={() => {}} />);
     fireEvent.mouseDown(await screen.findByRole("tab", { name: "关系" }));
     const explanation = await screen.findByTestId("entity-relations-explanation");
-    expect(explanation.textContent).toContain("经纬里没有标题或别名正好是「张三」的条目");
+    expect(explanation.textContent).toContain("设定里没有标题或别名正好是「张三」的条目");
     expect(misses.some((item) => item.url.includes("/entity-graph/relations"))).toBe(false);
   });
 

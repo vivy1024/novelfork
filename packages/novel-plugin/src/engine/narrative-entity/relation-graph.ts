@@ -647,14 +647,14 @@ export function explainGraphEmpty(reason: GraphEmptyReason, context: { entityCou
     case "index-empty":
       return {
         whatHappened: "这本书的实体索引还是空的。",
-        whyItMatters: "关系图只认经纬里的角色 / 地点 / 势力 / 道具条目；没有索引，就无法确认「薛小爷」和「薛行之」是同一个人，也就连不出关系。",
-        suggestedAction: "先在经纬里建立角色条目，再结算章节（结算后会自动重建索引）；已有条目和结算记录的话，点「重建索引」立即重建。",
+        whyItMatters: "关系图只认作品基础里的角色 / 地点 / 势力 / 道具条目；没有索引，就无法确认「薛小爷」和「薛行之」是同一个人，也就连不出关系。",
+        suggestedAction: "先在作品基础里建立角色条目，再结算章节（结算后会自动重建索引）；已有条目和结算记录的话，点「重建索引」立即重建。",
       };
     case "no-relations":
       return {
         whatHappened: `已索引 ${context.entityCount ?? 0} 个实体，但还没有一条关系边。`,
-        whyItMatters: "关系边来自章后结算里的关系类事实，而且关系双方都要能归到经纬条目；只写进描述里的人名不会连边。",
-        suggestedAction: "结算写到人物关系变化的章节；结算里出现的人物还没有经纬条目时，先建条目再点「重建索引」。",
+        whyItMatters: "关系边来自章后结算里的关系类事实，而且关系双方都要能归到条目；只写进描述里的人名不会连边。",
+        suggestedAction: "结算写到人物关系变化的章节；结算里出现的人物还没有条目时，先建条目再点「重建索引」。",
       };
     case "no-relations-at-chapter":
       return {
@@ -665,8 +665,8 @@ export function explainGraphEmpty(reason: GraphEmptyReason, context: { entityCou
     case "entity-not-found":
       return {
         whatHappened: `实体索引里找不到${context.name ? `「${context.name}」` : "这个实体"}。`,
-        whyItMatters: "只有经纬里的角色 / 地点 / 势力 / 道具条目会进入实体索引；条目刚建立或刚改名时，要重建后才有身份。",
-        suggestedAction: "确认它在经纬里是角色 / 地点 / 势力 / 道具条目，且没有与另一条目同名，然后点「重建索引」。",
+        whyItMatters: "只有作品基础里的角色 / 地点 / 势力 / 道具条目会进入实体索引；条目刚建立或刚改名时，要重建后才有身份。",
+        suggestedAction: "确认它在作品基础里是角色 / 地点 / 势力 / 道具条目，且没有与另一条目同名，然后点「重建索引」。",
       };
     case "focus-isolated":
       return {

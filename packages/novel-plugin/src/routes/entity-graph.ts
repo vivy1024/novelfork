@@ -152,7 +152,7 @@ export function createEntityGraphRouter(options: EntityGraphRouterOptions = {}):
     if (chapter === "invalid") return invalid(c, "chapter 必须是正整数。");
     const entityParam = c.req.query("entity")?.trim();
     const entryId = c.req.query("entryId")?.trim();
-    if (!entityParam && !entryId) return invalid(c, "需要 entity（实体 id）或 entryId（经纬条目 id）。");
+    if (!entityParam && !entryId) return invalid(c, "需要 entity（实体 id）或 entryId（条目 id）。");
     if (data.schemaMissing) return c.json({ ...emptyBody(data, "schema-missing"), stats: stats(data) });
     if (data.entities.length === 0) return c.json({ ...emptyBody(data, "index-empty"), stats: stats(data) });
     const entity = entityParam

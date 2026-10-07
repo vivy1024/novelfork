@@ -361,11 +361,11 @@ function FindingCard({
             onClick={() => {
               setEntryError(null);
               if (!onOpenJingweiEntry(finding.jingweiEntryId!)) {
-                setEntryError(`经纬条目不存在或尚未载入：${finding.jingweiEntryId}`);
+                setEntryError(`条目不存在或尚未载入：${finding.jingweiEntryId}`);
               }
             }}
           >
-            看经纬条目
+            看条目
           </ActionButton>
         )}
         {canCorrect && (

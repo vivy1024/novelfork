@@ -154,7 +154,7 @@ function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNod
           </Button>
         </div>
         <Textarea
-          aria-label="经纬资料原始编辑"
+          aria-label="设定资料原始编辑"
           value={content}
           rows={20}
           onChange={(e) => onContentChange?.(e.currentTarget.value)}
@@ -173,7 +173,7 @@ function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNod
       </div>
       {sections.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-          <p className="text-sm">暂无经纬内容</p>
+          <p className="text-sm">暂无设定内容</p>
         </div>
       ) : (
         sections.map((section, i) => (
@@ -227,7 +227,7 @@ function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNod
 
 function renderJingweiFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   return (
-    <ViewerShell node={node} label="经纬资料">
+    <ViewerShell node={node} label="设定资料">
       <JingweiCardView node={node} onContentChange={options.onContentChange} />
     </ViewerShell>
   );
@@ -834,7 +834,7 @@ function JingweiCardViewer({ node }: { node: WorkbenchResourceNode }) {
 }
 
 function renderJingweiCard(node: WorkbenchResourceNode) {
-  const label = node.kind === "jingwei-section" ? "经纬分区" : "经纬条目";
+  const label = node.kind === "jingwei-section" ? "设定分区" : "条目";
   return (
     <ViewerShell node={node} label={label}>
       <JingweiCardViewer node={node} />
@@ -846,7 +846,7 @@ function renderReadonlySummary(node: WorkbenchResourceNode, options: ResourceVie
   if (node.kind === "narrative-line" || node.kind === "storyline") {
     return renderNarrativeLine(node, options);
   }
-  const label = "经纬资料";
+  const label = "设定资料";
   const content = node.content ?? JSON.stringify(node.metadata?.snapshot ?? node.metadata?.section ?? node.metadata?.entry ?? node.metadata ?? {}, null, 2);
   return (
     <ViewerShell node={node} label={label}>
@@ -905,10 +905,10 @@ function renderToolResult(node: WorkbenchResourceNode) {
 export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDefinition> = {
   chapter: { kind: "chapter", label: "章节", render: renderChapterEditor },
   story: { kind: "story", label: "Story 文件", render: renderTextFile },
-  jingwei: { kind: "jingwei", label: "经纬资料", render: renderJingweiFile },
+  jingwei: { kind: "jingwei", label: "设定资料", render: renderJingweiFile },
   storyline: { kind: "storyline", label: "叙事线", render: renderReadonlySummary },
-  "jingwei-section": { kind: "jingwei-section", label: "经纬分区", render: renderJingweiCard },
-  "jingwei-entry": { kind: "jingwei-entry", label: "经纬条目", render: renderJingweiCard },
+  "jingwei-section": { kind: "jingwei-section", label: "设定分区", render: renderJingweiCard },
+  "jingwei-entry": { kind: "jingwei-entry", label: "条目", render: renderJingweiCard },
   "narrative-line": { kind: "narrative-line", label: "叙事线", render: renderReadonlySummary },
   "narrative-memory-entry": { kind: "narrative-memory-entry", label: "叙事记忆详情", render: renderNarrativeMemoryEntry },
   "tool-result": { kind: "tool-result", label: "工具结果", render: renderToolResult },

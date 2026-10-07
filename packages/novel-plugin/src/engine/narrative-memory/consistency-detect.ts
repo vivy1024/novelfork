@@ -115,7 +115,7 @@ export async function detectRealmDrift(storage: StorageDatabase, input: Consiste
         memoryPredicate: fact.predicate,
         ...(chapter !== undefined ? { memoryChapter: chapter } : {}),
         explanation: {
-          whatHappened: `经纬里 ${entry.title} 的${fact.predicate}写着「${realm}」，${chapterText}结算出的叙事记忆写着「${fact.object}」，两边对不上。`,
+          whatHappened: `设定里 ${entry.title} 的${fact.predicate}写着「${realm}」，${chapterText}结算出的叙事记忆写着「${fact.object}」，两边对不上。`,
           whyItMatters: "续写时写手读的是叙事记忆的现状。设定与现状分岔后，同一个人物的实力会在不同章节忽高忽低，读者会当成崩设定。",
           suggestedAction: `确认哪一边是对的：正文没写过跌落就把这条记忆纠正为「${realm}」；如果正文真的写了变化，就去经纬把 ${entry.title} 的设定改成「${fact.object}」。抽错人物时可直接作废这条记忆。`,
         },
@@ -165,7 +165,7 @@ export async function detectOrphanLocation(storage: StorageDatabase, input: Cons
       memoryPredicate: fact.predicate,
       ...(chapter !== undefined ? { memoryChapter: chapter } : {}),
       explanation: {
-        whatHappened: `${chapterText}结算出「${fact.subject} ${fact.predicate} ${fact.object}」，但经纬里的 ${fact.object} 已标记为废弃/销毁。`,
+        whatHappened: `${chapterText}结算出「${fact.subject} ${fact.predicate} ${fact.object}」，但设定里的 ${fact.object} 已标记为废弃/销毁。`,
         whyItMatters: "人物当前位置停在一个按设定已经不存在的地方。续写会继续在这个地点安排场景，时间线和地理关系会一起错下去。",
         suggestedAction: `核对正文：如果人物早已离开，把这条位置纠正为实际所在地；如果这个地点其实还在，就去经纬改掉 ${fact.object} 的废弃状态。地点抽错时直接作废这条记忆。`,
       },

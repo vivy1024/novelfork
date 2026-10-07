@@ -105,7 +105,7 @@ export function EntityRelationsTab({ bookId, entryId, resolving, entityName, cur
     return (
       <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground" data-testid="entity-relations-loading">
         <Loader2 className="size-4 animate-spin" />
-        <span className="text-xs">正在找对应的经纬条目…</span>
+        <span className="text-xs">正在找对应的条目…</span>
       </div>
     );
   }
@@ -114,9 +114,9 @@ export function EntityRelationsTab({ bookId, entryId, resolving, entityName, cur
     return (
       <Explanation
         explanation={{
-          whatHappened: `经纬里没有标题或别名正好是「${entityName}」的条目。`,
-          whyItMatters: "关系按实体 ID 读取，实体身份来自经纬条目；没有条目就无法确认这些关系属于谁，按名字猜会把同名、别名混在一起。",
-          suggestedAction: "在经纬里为 TA 建角色（或地点 / 势力 / 道具）条目，或给已有条目加上这个别名，然后在「设定图谱 › 人物关系」点「重建索引」。",
+          whatHappened: `设定里没有标题或别名正好是「${entityName}」的条目。`,
+          whyItMatters: "关系按实体 ID 读取，实体身份来自条目；没有条目就无法确认这些关系属于谁，按名字猜会把同名、别名混在一起。",
+          suggestedAction: "在作品基础里为 TA 建角色（或地点 / 势力 / 道具）条目，或给已有条目加上这个别名，然后在「设定图谱 › 人物关系」点「重建索引」。",
         }}
       />
     );
@@ -155,7 +155,7 @@ export function EntityRelationsTab({ bookId, entryId, resolving, entityName, cur
     return (
       <div className="rounded-lg border border-dashed border-border/80 bg-muted/10 p-4 text-center text-xs text-muted-foreground" data-testid="entity-relations-none">
         <p className="font-medium">{currentChapter !== undefined ? `截至第 ${currentChapter} 章` : "目前"}还没有 TA 的关系记录。</p>
-        <p className="mt-1 text-2xs">关系来自章后结算里的关系类事实，双方都要有经纬条目；只是同场出现不算关系。</p>
+        <p className="mt-1 text-2xs">关系来自章后结算里的关系类事实，双方都要有条目；只是同场出现不算关系。</p>
       </div>
     );
   }

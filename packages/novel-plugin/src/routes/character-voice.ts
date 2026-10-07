@@ -115,7 +115,7 @@ function readVoice(entry: StoryJingweiEntryRecord): CharacterVoice {
       throw new VoiceRouteError(422, error.code, error.message, explain(
         `角色「${entry.title}」的声线数据格式损坏：${error.message}`,
         "损坏的声线既不能安全注入写作，也不能被新草稿直接覆盖，否则会丢掉原有内容。",
-        "在经纬条目的「历史」里恢复到上一个正常版本后再生成或编辑声线。",
+        "在条目的「历史」里恢复到上一个正常版本后再生成或编辑声线。",
       ));
     }
     throw error;
@@ -164,7 +164,7 @@ async function loadCharacterEntry(storage: StorageDatabase, bookId: string, entr
   }
   const entry = await createStoryJingweiEntryRepository(storage).getById(bookId, entryId);
   if (!entry) {
-    throw new VoiceRouteError(404, "JINGWEI_ENTRY_NOT_FOUND", `找不到经纬条目：${entryId}`, explain(
+    throw new VoiceRouteError(404, "JINGWEI_ENTRY_NOT_FOUND", `找不到条目：${entryId}`, explain(
       "这张角色卡已被删除或不属于这本书。", "声线只能挂在本书现存的角色条目上。", "刷新经纬列表后重新打开角色卡。",
     ));
   }
@@ -465,7 +465,7 @@ export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOp
           changedBy: "character-voice",
           updatedAt: now(),
         });
-        if (!updated) throw new VoiceRouteError(404, "JINGWEI_ENTRY_NOT_FOUND", `找不到经纬条目：${entryId}`, explain(
+        if (!updated) throw new VoiceRouteError(404, "JINGWEI_ENTRY_NOT_FOUND", `找不到条目：${entryId}`, explain(
           "写入时角色卡已被删除。", "条目不存在时草稿无处存放。", "刷新经纬列表后重新打开角色卡。",
         ));
         saved = updated;
@@ -510,7 +510,7 @@ export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOp
         changedBy: "user",
         updatedAt: now(),
       });
-      if (!updated) throw new VoiceRouteError(404, "JINGWEI_ENTRY_NOT_FOUND", `找不到经纬条目：${entryId}`, explain(
+      if (!updated) throw new VoiceRouteError(404, "JINGWEI_ENTRY_NOT_FOUND", `找不到条目：${entryId}`, explain(
         "写入时角色卡已被删除。", "条目不存在时声线无处存放。", "刷新经纬列表后重新打开角色卡。",
       ));
       return c.json(serializeVoiceResponse(updated, next));

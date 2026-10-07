@@ -28,9 +28,9 @@ type ExplanationTemplate = DiagnosticExplanation & { readonly kind: ExplainedDia
 const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
   "missing-directive": {
     kind: "persistent",
-    whatHappened: "本次没有拿到可用的本章目标：既没有用户一句指示，经纬里也没有可用的本章焦点或大纲。",
+    whatHappened: "本次没有拿到可用的本章目标：既没有用户一句指示，设定里也没有可用的本章焦点或大纲。",
     whyItMatters: "没有明确目标时，模型只能靠猜或用写作理论填字数，写出来的章节大概率跑偏且难修。",
-    suggestedAction: "给一句本章要发生什么（至少 8 个字），或先在经纬写好本章焦点/大纲后再做写前检查。",
+    suggestedAction: "给一句本章要发生什么（至少 8 个字），或先在作品基础里写好本章焦点/大纲后再做写前检查。",
   },
   "empty-recent-progress": {
     kind: "persistent",
@@ -60,13 +60,13 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
     kind: "advisory",
     whatHappened: "有到期或临近到期的伏笔尚未处理。",
     whyItMatters: "长期悬置的伏笔会让读者感到承诺未兑现；越拖越难自然回收。",
-    suggestedAction: "在本章安排推进或兑现，或在经纬伏笔里更新其状态与期限。",
+    suggestedAction: "在本章安排推进或兑现，或在伏笔条目里更新其状态与期限。",
   },
   "volume-focus-missing": {
     kind: "advisory",
-    whatHappened: "经纬大纲里没有设置卷纲。",
+    whatHappened: "大纲里没有设置卷纲。",
     whyItMatters: "缺少本卷目标时，中盘容易失去方向，章节各自为战。",
-    suggestedAction: "先生成卷纲草案，确认后再写入经纬。",
+    suggestedAction: "先生成卷纲草案，确认后再写入。",
   },
   "volume-range-drift": {
     kind: "advisory",
@@ -88,13 +88,13 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
   },
   "focus-default-only": {
     kind: "advisory",
-    whatHappened: "本次没有用户指示，已用经纬里的本章焦点生成了默认目标。",
+    whatHappened: "本次没有用户指示，已用设定里的本章焦点生成了默认目标。",
     whyItMatters: "默认目标可能与你当下的意图不同，写完再改成本更高。",
     suggestedAction: "确认这个默认目标，或补一句自己的指示。",
   },
   "empty-chapter-summary": {
     kind: "advisory",
-    whatHappened: "经纬里还没有章节摘要。",
+    whatHappened: "设定里还没有章节摘要。",
     whyItMatters: "写前只能依赖叙事记忆事件，前情颗粒度更粗。",
     suggestedAction: "拆书入库或做一次章后结算，把章摘要补齐。",
   },

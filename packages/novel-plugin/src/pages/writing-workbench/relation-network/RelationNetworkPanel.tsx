@@ -372,7 +372,7 @@ function RelationNetworkInner({ bookId, onOpenEntry, onOpenEntity, onOpenChapter
         </span>
         {network.status === "loading" ? <Loader2 className="size-3 animate-spin" /> : null}
         <div className="ml-auto flex items-center gap-1">
-          <Button size="xs" variant="ghost" className="h-6 gap-1 px-1.5 text-2xs" disabled={rebuild.busy} title="按经纬条目与章后事实整本重建实体索引" onClick={() => void rebuild.rebuild()} data-testid="relation-network-rebuild">
+          <Button size="xs" variant="ghost" className="h-6 gap-1 px-1.5 text-2xs" disabled={rebuild.busy} title="按条目与章后事实整本重建实体索引" onClick={() => void rebuild.rebuild()} data-testid="relation-network-rebuild">
             {rebuild.busy ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
             重建索引
           </Button>
@@ -522,7 +522,7 @@ function NodeInspector({ node, edges, nameOf, onFocus, onSelectEdge, onOpenEntry
         ) : null}
         {onOpenEntry && node.entryId ? (
           <Button size="xs" variant="ghost" className="h-6 gap-1 px-1.5 text-2xs" onClick={() => onOpenEntry(node.entryId!, node.name)} data-testid="relation-node-open-entry">
-            <ExternalLink className="size-3" /> 经纬条目
+            <ExternalLink className="size-3" /> 条目
           </Button>
         ) : null}
       </div>

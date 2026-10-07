@@ -120,6 +120,32 @@ function sourceBadgeVariant(src: string): "default" | "secondary" | "outline" {
   return "outline";
 }
 
+// 档案式阅读模式的属性徽标文案（状态术语统一用「待确认」）。
+const ENTRY_STATUS_LABELS: Record<string, string> = {
+  confirmed: "已确认",
+  draft: "未确认",
+  "needs-review": "待确认",
+};
+
+const ENTRY_LAYER_LABELS: Record<string, string> = {
+  canon: "权威设定",
+  dynamic: "随剧情推进",
+  reference: "参考",
+};
+
+const ENTRY_PRIORITY_LABELS: Record<JingweiPriorityTier, string> = {
+  auto: "自动",
+  core: "核心",
+  relevant: "相关",
+  reference: "参考",
+};
+
+const ENTRY_VISIBILITY_LABELS: Record<string, string> = {
+  global: "全局",
+  tracked: "章节窗口",
+  nested: "随父条目",
+};
+
 function parseStringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
   if (typeof value !== "string") return [];
@@ -229,7 +255,7 @@ function JingweiEntryEditorForm({
   entry,
   bookId,
   sectionLabel,
-  sourceLabel = "经纬资料",
+  sourceLabel = "设定资料",
   onSave,
   onDelete,
   relatedEntries,
@@ -262,6 +288,9 @@ function JingweiEntryEditorForm({
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"details" | "relations" | "history">("details");
   const [previewMode, setPreviewMode] = useState(false);
+  // 档案式阅读为默认形态；needs-review 草案打开即编辑，便于作者先改再确认。
+  const [isEditing, setIsEditing] = useState(entry.status === "needs-review");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [revisionRecords, setRevisionRecords] = useState<RevisionRecord[]>([]);
   const [revisionLoading, setRevisionLoading] = useState(false);
   const [revisionError, setRevisionError] = useState<string | null>(null);
@@ -278,6 +307,11 @@ function JingweiEntryEditorForm({
   const [revertingRevisionId, setRevertingRevisionId] = useState<string | null>(null);
 
   const schemaFields = (getCategorySchema(category)?.fields ?? []).filter((field) => field.key !== "name");
+  // 阅读模式只列出有值的字段，空字段整行隐藏。
+  const filledSchemaFields = isJingweiEntry
+    ? schemaFields.filter((field) => fieldValueToInput(fields[field.key], field).trim() !== "")
+    : [];
+  const categoryLabel = getCategorySchema(category)?.name;
   const dirty = title !== savedTitle || content !== savedContent || priorityTier !== savedPriorityTier
     || layer !== savedLayer || visibility !== savedVisibility || status !== savedStatus
     || category !== savedCategory || aliases.join("\u0000") !== savedAliases.join("\u0000")
@@ -298,7 +332,7 @@ function JingweiEntryEditorForm({
         history: { depth: 100 },
       }),
       Placeholder.configure({
-        placeholder: "在此编辑经纬资料内容…",
+        placeholder: "在此编辑条目内容…",
       }),
       Markdown.configure({
         html: false,
@@ -307,7 +341,7 @@ function JingweiEntryEditorForm({
       }),
     ],
     content: content || "",
-    editable: !previewMode,
+    editable: isEditing && !previewMode,
     onUpdate: ({ editor: ed }) => {
       if (isExternalUpdate.current) return;
       const md = ed.storage.markdown.getMarkdown() as string;
@@ -315,12 +349,12 @@ function JingweiEntryEditorForm({
     },
   });
 
-  // Sync preview mode → editable
+  // Sync edit/preview mode → editable
   useEffect(() => {
     if (editor) {
-      editor.setEditable(!previewMode);
+      editor.setEditable(isEditing && !previewMode);
     }
-  }, [editor, previewMode]);
+  }, [editor, previewMode, isEditing]);
 
   // Sync external content changes (e.g. entry prop change)
   useEffect(() => {
@@ -360,6 +394,8 @@ function JingweiEntryEditorForm({
     setRelationAdding(false);
     setRelationSearchResults([]);
     setPreviewMode(false);
+    setIsEditing(entry.status === "needs-review");
+    setConfirmDiscard(false);
     setConfirmDelete(false);
     setError(null);
     setActiveTab("details");
@@ -459,6 +495,13 @@ function JingweiEntryEditorForm({
       setSavedRelatedEntryIds(relatedEntryIds);
       setFields(nextFields);
       setSavedFields(nextFields);
+      // 保存成功回到档案式阅读态。
+      setIsEditing(false);
+      setConfirmDiscard(false);
+      setPreviewMode(false);
+      setRelationAdding(false);
+      setRelationSearch("");
+      setRelationSearchResults([]);
       await loadRevisions();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "保存失败");
@@ -479,6 +522,42 @@ function JingweiEntryEditorForm({
       setDeleting(false);
       setConfirmDelete(false);
     }
+  }
+
+  function resetToSaved() {
+    setTitle(savedTitle);
+    setContent(savedContent);
+    setPriorityTier(savedPriorityTier);
+    setLayer(savedLayer);
+    setVisibility(savedVisibility);
+    setStatus(savedStatus);
+    setCategory(savedCategory);
+    setAliases(savedAliases);
+    setRelatedEntryIds(savedRelatedEntryIds);
+    setFields(savedFields);
+    setAliasInput("");
+    setRelationAdding(false);
+    setRelationSearch("");
+    setRelationSearchResults([]);
+  }
+
+  function handleStartEdit() {
+    setConfirmDiscard(false);
+    setConfirmDelete(false);
+    setError(null);
+    setIsEditing(true);
+  }
+
+  // 取消编辑：无改动直接回到阅读态；有未保存改动时先走一次内联确认（与删除的两段确认同例）。
+  function handleCancelEdit() {
+    if (dirty && !confirmDiscard) {
+      setConfirmDiscard(true);
+      return;
+    }
+    resetToSaved();
+    setConfirmDiscard(false);
+    setPreviewMode(false);
+    setIsEditing(false);
   }
 
   async function handleRevert(revision: RevisionRecord) {
@@ -526,12 +605,40 @@ function JingweiEntryEditorForm({
       <header className="resource-viewer__header flex items-center gap-2 mb-3">
         <p className="text-xs text-muted-foreground">{sourceLabel}</p>
         {sectionLabel && <Badge variant="secondary" className="text-2xs">{sectionLabel}</Badge>}
-        {entry.updatedAt && (
-          <span className="text-2xs text-muted-foreground ml-auto">
-            更新于 {new Date(entry.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-          </span>
-        )}
+        {isEditing && <Badge className="text-2xs">编辑中</Badge>}
+        <div className="ml-auto flex items-center gap-1.5">
+          {entry.updatedAt && (
+            <span className="text-2xs text-muted-foreground whitespace-nowrap">
+              更新于 {new Date(entry.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          {!isEditing && (
+            <Button size="xs" variant="outline" onClick={handleStartEdit} title="编辑此条目">
+              <Pencil className="size-3 mr-1" />编辑
+            </Button>
+          )}
+          {!isEditing && onDelete && (
+            confirmDelete ? (
+              <span className="flex items-center gap-1">
+                <span className="text-xs text-destructive">确认删除？</span>
+                <Button size="xs" variant="destructive" disabled={deleting} onClick={handleDelete}>
+                  {deleting ? <Loader2 className="size-3 animate-spin" /> : "确认"}
+                </Button>
+                <Button size="xs" variant="ghost" onClick={() => setConfirmDelete(false)}>取消</Button>
+              </span>
+            ) : (
+              <Button size="xs" variant="ghost" onClick={() => setConfirmDelete(true)} title="删除此条目">
+                <Trash2 className="size-3.5" />
+              </Button>
+            )
+          )}
+        </div>
       </header>
+      {error && !isEditing && (
+        <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+          {error}
+        </div>
+      )}
       {conflictStatus === "pending" && (
         <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300" role="alert">
           <strong>存在协同修改冲突。</strong>{conflictDetail ? ` ${conflictDetail}` : " 请确认当前内容是否应保留。"}
@@ -560,7 +667,7 @@ function JingweiEntryEditorForm({
       {/* ─── Tab: 关联 ──────────────────────────────────────────────── */}
       {activeTab === "relations" && (
         <div className="py-4 px-1 space-y-3">
-          {isJingweiEntry && (
+          {isJingweiEntry && isEditing && (
             <div className="flex items-center gap-2">
               <Button size="xs" variant="outline" onClick={() => setRelationAdding((v) => !v)}>
                 <Link2 className="size-3 mr-1" />{relationAdding ? "取消" : "添加关联"}
@@ -568,7 +675,7 @@ function JingweiEntryEditorForm({
               <span className="text-2xs text-muted-foreground">关联写回条目字段，AI 注入上下文时会一并带上关联条目</span>
             </div>
           )}
-          {isJingweiEntry && relationAdding && (
+          {isJingweiEntry && isEditing && relationAdding && (
             <div className="space-y-1 rounded-md border border-border p-2">
               <Input
                 value={relationSearch}
@@ -613,7 +720,7 @@ function JingweiEntryEditorForm({
                     <Link2 className="size-3 opacity-60" />
                     {re.title}
                   </button>
-                  {isJingweiEntry && (
+                  {isJingweiEntry && isEditing && (
                     <button
                       type="button"
                       onClick={() => setRelatedEntryIds((prev) => prev.filter((id) => id !== re.id))}
@@ -683,8 +790,62 @@ function JingweiEntryEditorForm({
         </div>
       )}
 
-      {/* ─── Tab: 详情 ──────────────────────────────────────────────── */}
-      {activeTab === "details" && (
+      {/* ─── Tab: 详情（档案式阅读） ────────────────────────────────── */}
+      {activeTab === "details" && !isEditing && (
+        <div className="space-y-4 py-1" data-testid="jingwei-entry-reading">
+          <div className="space-y-1.5">
+            <h2 className="text-base font-semibold leading-snug">{title.trim() || "未命名条目"}</h2>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {categoryLabel && <Badge variant="secondary" className="text-2xs">{categoryLabel}</Badge>}
+              {status === "needs-review" ? (
+                <Badge variant="outline" className="text-2xs border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">待确认</Badge>
+              ) : (
+                <Badge variant="outline" className="text-2xs">{ENTRY_STATUS_LABELS[status] ?? status}</Badge>
+              )}
+              {ENTRY_LAYER_LABELS[layer] && (
+                <Badge variant="outline" className="text-2xs text-muted-foreground">层级·{ENTRY_LAYER_LABELS[layer]}</Badge>
+              )}
+              <Badge variant="outline" className="text-2xs text-muted-foreground">优先级·{ENTRY_PRIORITY_LABELS[priorityTier]}</Badge>
+              {isJingweiEntry && ENTRY_VISIBILITY_LABELS[visibility] ? (
+                <Badge variant="outline" className="text-2xs text-muted-foreground">可见性·{ENTRY_VISIBILITY_LABELS[visibility]}</Badge>
+              ) : null}
+            </div>
+            {aliases.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-2xs text-muted-foreground">别名：</span>
+                {aliases.map((alias, index) => (
+                  <Badge key={`${alias}-${index}`} variant="secondary" className="text-2xs">{alias}</Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {filledSchemaFields.length > 0 && (
+            <dl className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5" data-testid="jingwei-entry-fields-reading">
+              {filledSchemaFields.map((field) => (
+                <div key={field.key} className="flex gap-3">
+                  <dt className="w-20 shrink-0 pt-0.5 text-xs text-muted-foreground">{field.label}</dt>
+                  <dd className="min-w-0 flex-1 whitespace-pre-line text-sm">{fieldValueToInput(fields[field.key], field)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {content.trim() ? (
+            <div
+              className="prose prose-sm dark:prose-invert max-w-none rounded-md border border-border/60 bg-background/60 px-3 py-2.5"
+              data-testid="jingwei-entry-content-reading"
+            >
+              <EditorContent editor={editor} className="jingwei-entry-editor__tiptap" />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">暂无正文内容</p>
+          )}
+        </div>
+      )}
+
+      {/* ─── Tab: 详情（编辑表单） ──────────────────────────────────── */}
+      {activeTab === "details" && isEditing && (
         <div className="space-y-3">
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">标题</label>
@@ -852,6 +1013,16 @@ function JingweiEntryEditorForm({
             </Button>
 
             {dirty && <Badge className="text-2xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
+
+            {confirmDiscard ? (
+              <span className="flex items-center gap-1">
+                <span className="text-xs text-muted-foreground">放弃未保存的修改？</span>
+                <Button size="xs" variant="destructive" onClick={handleCancelEdit}>放弃</Button>
+                <Button size="xs" variant="ghost" onClick={() => setConfirmDiscard(false)}>继续编辑</Button>
+              </span>
+            ) : (
+              <Button size="xs" variant="ghost" onClick={handleCancelEdit}>取消</Button>
+            )}
 
             <span className="flex-1" />
 

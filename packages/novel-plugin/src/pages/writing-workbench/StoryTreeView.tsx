@@ -302,7 +302,7 @@ export function StoryTreeView({
         data-testid="story-tree-empty"
       >
         <FolderTree className="size-6 text-muted-foreground/60" />
-        <p className="text-xs font-medium">经纬里还没有条目</p>
+        <p className="text-xs font-medium">作品基础里还没有条目</p>
         <p className="max-w-xs text-2xs leading-relaxed text-muted-foreground">
           树的层级来自叙事分类，条目来自经纬。先建立角色、地点、设定等条目，或对已有正文跑一次拆书。
         </p>

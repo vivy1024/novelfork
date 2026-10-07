@@ -67,7 +67,7 @@ function ImportPanel({ bookId, onClose, onImported }: { bookId: string; onClose:
           body: JSON.stringify({ entries }),
         },
       );
-      setResult(`成功导入 ${data.imported} 条经纬条目`);
+      setResult(`成功导入 ${data.imported} 条条目`);
       setTimeout(onImported, 500);
     } catch {
       setResult("导入失败");

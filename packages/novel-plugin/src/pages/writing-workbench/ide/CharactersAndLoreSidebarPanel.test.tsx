@@ -313,6 +313,24 @@ describe("cardReadableText", () => {
   });
 });
 
+describe("CharactersAndLoreSidebarPanel 页头模具与空态模板", () => {
+  it("页头给出设计板口径：这本书的骨头——人物、设定、待确认的草案，并带计数状态", () => {
+    renderPanel([characterNode("薛行之"), entryNode("青云宗", "factions")], []);
+
+    expect(screen.getByTestId("sidebar-page-head-title").textContent).toBe("作品基础");
+    expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("这本书的骨头：人物、设定、待确认的草案");
+    expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("角色 1 · 设定 1");
+  });
+
+  it("还没有角色时套空态模板：还没有 X，做主按钮即可 Z", () => {
+    renderPanel([], []);
+
+    expect(screen.getByText("还没有角色卡。")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("lore-empty-create"));
+    expect(screen.getByText("新建角色卡")).toBeTruthy();
+  });
+});
+
 describe("CharactersAndLoreSidebarPanel 点击打开", () => {
   it("点击角色卡时以该节点为参数调用 onOpen（由上层 openTab 打开主区 Tab）", () => {
     const node = characterNode("薛行之");

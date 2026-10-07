@@ -106,13 +106,13 @@ export function EntityKnowledgeTab({ bookId, entryId, resolving, entityName, cur
       return (
         <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground" data-testid="knowledge-loading">
           <Loader2 className="size-4 animate-spin" />
-          <span className="text-xs">正在找对应的经纬条目…</span>
+          <span className="text-xs">正在找对应的条目…</span>
         </div>
       );
     }
     return (
       <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10" data-testid="knowledge-no-entry">
-        没有找到这个角色对应的经纬条目——知情账按实体记，先在经纬里建条目再结算章节。
+        没有找到这个角色对应的条目——知情账按实体记，先在作品基础里建条目再结算章节。
       </div>
     );
   }

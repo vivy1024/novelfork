@@ -393,7 +393,7 @@ async function proposeLoreUpdate(
   const storage = getStorageDatabase();
   const repo = createStoryJingweiEntryRepository(storage);
   const entry = await repo.getById(binding.bookId, entryId);
-  if (!entry) return fail("entry-not-found", `找不到经纬条目 ${entryId}；候选没有改设定。`);
+  if (!entry) return fail("entry-not-found", `找不到条目 ${entryId}；候选没有改设定。`);
   const currentFields: Record<string, unknown> = (entry.fields && typeof entry.fields === "object"
     ? entry.fields
     : {}) as Record<string, unknown>;

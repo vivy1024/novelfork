@@ -281,8 +281,8 @@ export function CanonicalTreesPanel({
         setState({
           status: "error",
           message: cause instanceof ApiRequestError
-            ? `经纬条目读取失败（HTTP ${cause.status ?? "?"}）。`
-            : "经纬条目读取失败，请刷新后重试。",
+            ? `条目读取失败（HTTP ${cause.status ?? "?"}）。`
+            : "条目读取失败，请刷新后重试。",
         });
         return;
       }
@@ -427,7 +427,7 @@ export function CanonicalTreesPanel({
     <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="canonical-trees-panel">
       {state.status === "ready" && state.degraded && !networkView ? (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-2xs text-amber-700 dark:text-amber-300" data-testid="canonical-trees-degraded">
-          部分数据没读到（动态记忆或经纬条目）：发展历程、章节脉络可能缺事件，章节树可能缺摘要；结构部分照常可用。
+          部分数据没读到（动态记忆或条目）：发展历程、章节脉络可能缺事件，章节树可能缺摘要；结构部分照常可用。
         </p>
       ) : null}
 

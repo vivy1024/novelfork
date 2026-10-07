@@ -81,7 +81,7 @@ async function resolveCharacterEntryId(
     .filter((entry) => [entry.title, ...entry.aliases].some((label) => label.trim().toLowerCase() === key));
   if (candidates.length === 1) return { entryId: candidates[0]!.id };
   if (candidates.length === 0) {
-    return fail("character-voice-character-not-found", `本书经纬里没有名为「${name}」的角色。`, {
+    return fail("character-voice-character-not-found", `本书设定里没有名为「${name}」的角色。`, {
       explanation: explanation(
         `角色分类里找不到标题或别名为「${name}」的条目。`,
         "声线只能挂在已有角色卡上，不会为不存在的角色新建条目。",

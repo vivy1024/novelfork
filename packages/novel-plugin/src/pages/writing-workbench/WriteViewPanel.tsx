@@ -9,8 +9,10 @@
  * 改 / 收尾针对最近写完的那一章。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Compass, Loader2, RefreshCw, Sparkles, Workflow, XCircle } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Compass, Loader2, PenLine, RefreshCw, Sparkles, Workflow, XCircle } from "lucide-react";
 import type { ViewId } from "./ide/use-panel-manager";
+
+import { SidebarPageHead } from "./ide/SidebarPageHead";
 
 import { fetchJson, invalidateApiPaths, useApi } from "@/hooks/use-api";
 import { resolveChapterLoop, settlementLabel, type ChapterLoopStep, type LastWrittenChapter, type LoopFreshnessChapter } from "./chapter-loop-state";
@@ -371,6 +373,8 @@ export function WriteViewPanel({
   }, [bookId, loop.defaultStep, loop.lastWritten?.chapterNumber]);
   const activeStep = pickedStep ?? loop.defaultStep;
   const lastWritten = loop.lastWritten;
+  const activeStepLabel = loop.steps.find((item) => item.id === activeStep)?.label;
+  const headStatus = model.chapterNumber > 0 && activeStepLabel ? `第 ${model.chapterNumber} 章 · ${activeStepLabel}` : undefined;
 
   const [settleBusy, setSettleBusy] = useState(false);
   const [settleNote, setSettleNote] = useState<{ readonly tone: "ok" | "error"; readonly text: string } | null>(null);
@@ -425,9 +429,15 @@ export function WriteViewPanel({
 
   if (!bookId) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-        <span className="text-2xl">✍️</span>
-        <p className="text-xs text-muted-foreground">先打开一本书，再回到写作视图。</p>
+      <div className="flex h-full flex-col" data-testid="write-view-panel">
+        <SidebarPageHead icon={PenLine} title="写作" purpose="一章的三步：写 → 改 → 收尾" />
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+          <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <BookOpen className="size-5" strokeWidth={1.8} />
+          </span>
+          <p className="text-xs font-medium text-foreground">还没有打开的作品。</p>
+          <p className="text-2xs text-muted-foreground">在左侧「资源」里选一本书，即可回到写作视图。</p>
+        </div>
       </div>
     );
   }
@@ -447,6 +457,7 @@ export function WriteViewPanel({
 
   return (
     <div className="flex h-full flex-col gap-3 p-3" data-testid="write-view-panel">
+      <SidebarPageHead icon={PenLine} title="写作" purpose="一章的三步：写 → 改 → 收尾" status={headStatus} />
       <ChapterLoopBar steps={loop.steps} active={activeStep} onSelect={setPickedStep} />
 
       {activeStep === "revise" && lastWritten ? (
@@ -908,7 +919,7 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
   const handoffToNarrator = useCallback(async () => {
     if (!report || report.issues.length === 0) return;
     if (!onSendToNarrator) {
-      setHandoffNote("当前视图没有可用的叙述者，无法执行人文化。");
+      setHandoffNote("当前视图没有可用的叙述者，无法执行语感体检。");
       return;
     }
     setHandoffBusy(true);
@@ -944,7 +955,7 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
               disabled={handoffBusy || loading}
               data-testid="self-review-humanize"
             >
-              {handoffBusy ? "交接中…" : "交叙述者人文化"}
+              {handoffBusy ? "交接中…" : "交叙述者做语感体检"}
             </button>
           ) : null}
           <button

@@ -36,7 +36,7 @@ function getSectionInfo(title: string) {
     if (title.includes(key)) return info;
   }
   return {
-    description: "在此添加经纬条目，AI 写作时会参考这些资料保持一致性和连续性。",
+    description: "在此添加条目，AI 写作时会参考这些资料保持一致性和连续性。",
     examples: ["条目 1", "条目 2", "条目 3"],
   };
 }

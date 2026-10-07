@@ -98,9 +98,9 @@ describe("ResourceViewer", () => {
       />,
     );
 
-    expect(screen.getByText("经纬资料")).toBeTruthy();
+    expect(screen.getByText("设定资料")).toBeTruthy();
     expect(screen.queryByLabelText("文本文件正文")).toBeNull();
-    expect(screen.getByText("暂无经纬内容")).toBeTruthy();
+    expect(screen.getByText("暂无设定内容")).toBeTruthy();
   });
 
   it("较大的 Markdown 文件默认懒加载预览，避免首次建立大编辑器文档", () => {
@@ -135,7 +135,7 @@ describe("ResourceViewer", () => {
       />,
     );
 
-    expect(screen.getByText("经纬条目")).toBeTruthy();
+    expect(screen.getByText("条目")).toBeTruthy();
     expect(screen.getByText("主角，灵潮亲和。")).toBeTruthy();
     expect(screen.queryByLabelText("只读内容")).toBeNull();
     cleanup();

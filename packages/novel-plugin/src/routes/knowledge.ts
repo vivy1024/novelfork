@@ -64,7 +64,7 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions = {}): Hon
     if (chapter === "invalid") return invalid(c, "chapter 必须是正整数。");
     const entityId = c.req.query("entityId")?.trim();
     const entryId = c.req.query("entryId")?.trim();
-    if (!entityId && !entryId) return invalid(c, "需要 entityId（实体 id）或 entryId（经纬条目 id）。");
+    if (!entityId && !entryId) return invalid(c, "需要 entityId（实体 id）或 entryId（条目 id）。");
 
     try {
       const storage = options.storage ?? getStorageDatabase();

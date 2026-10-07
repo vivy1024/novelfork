@@ -77,18 +77,18 @@ async function saveChapterAndHydrate(resource: ResourceDomainClient, bookId: str
 
 async function saveJingweiAndHydrate(resource: ResourceDomainClient, bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
   const fileName = fileNameFromNode(node, "jingwei-file:") ?? fileNameFromNode(node, "truth-file:");
-  if (!fileName) throw new Error("经纬资料缺少文件名，无法保存");
-  await assertContractSave(await resource.saveJingweiFile(bookId, fileName, { content }), "经纬资料保存失败");
+  if (!fileName) throw new Error("设定资料缺少文件名，无法保存");
+  await assertContractSave(await resource.saveJingweiFile(bookId, fileName, { content }), "设定资料保存失败");
   return hydrateAfterSave(resource, bookId, node);
 }
 
 async function saveJingweiEntryAndHydrate(resource: ResourceDomainClient, bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
   const entryId = jingweiEntryIdFromNode(node);
-  if (!entryId) throw new Error("经纬条目缺少 entryId，无法保存");
+  if (!entryId) throw new Error("条目缺少 entryId，无法保存");
   const sectionId = metadataString(node, "sectionId");
   const payload = { title: node.title, contentMd: content, ...(sectionId ? { sectionId } : {}) };
   const result = await resource.saveJingweiEntry(bookId, entryId, payload);
-  await assertContractSave(result, "经纬条目保存失败");
+  await assertContractSave(result, "条目保存失败");
   const data = result.ok ? result.data as { readonly entry?: Record<string, unknown> } : {};
   const entry = data.entry ?? {};
   return {

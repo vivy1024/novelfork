@@ -14,10 +14,11 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, FilePlus2, FileText, ListTree, Map as MapIcon, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, FilePlus2, FileText, ListTree, Map as MapIcon, Route, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateApiPaths, useApi } from "@/hooks/use-api";
+import { SidebarPageHead } from "./SidebarPageHead";
 import { StaleSettlementList, freshnessPath, useStaleSettlementCount } from "./StaleSettlementList";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { NarrativeMemorySummary } from "../NarrativeMemoryPanel";
@@ -457,22 +458,13 @@ export function StorylineAndPlanningSidebarPanel({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="storyline-and-planning-panel">
-      {/* 推进驾驶舱：所有 tab 共享的位置锚定与下一步引导 */}
-      <StorylineCockpit
-        currentChapter={currentChapter}
-        targetChapters={bookTargetChapters}
-        next={next}
-        onActivate={handleNextActivate}
-      />
-
-      {/* 顶部子标签切换导航（带常亮高亮） */}
-      <div className="shrink-0 border-b border-border bg-muted/20 p-2 space-y-2">
-        <div className="flex items-center justify-between px-0.5">
-          <div className="flex items-center gap-1.5 text-2xs font-semibold text-foreground">
-            <Sparkles className="size-3.5 text-primary" />
-            <span>故事推进</span>
-          </div>
-          {/* 原「故事画布」子页签点开只剩一段说明文字，改为一个明确的按钮：打开画布并落在「下一章」。 */}
+      {/* 页头模具（设计板 sd-head）：侧栏自己的口径——维护位置、下一步与章节/大纲/章后事实 */}
+      <SidebarPageHead
+        icon={Route}
+        title="故事推进"
+        purpose="盯住位置与下一步；章节、大纲、章后事实在这里维护"
+        status={currentChapter > 0 ? `第 ${currentChapter} 章` : undefined}
+        action={
           <Button
             size="xs"
             variant="outline"
@@ -484,7 +476,19 @@ export function StorylineAndPlanningSidebarPanel({
             <MapIcon className="size-3.5 text-primary" />
             打开故事画布
           </Button>
-        </div>
+        }
+      />
+
+      {/* 推进驾驶舱：所有 tab 共享的位置锚定与下一步引导 */}
+      <StorylineCockpit
+        currentChapter={currentChapter}
+        targetChapters={bookTargetChapters}
+        next={next}
+        onActivate={handleNextActivate}
+      />
+
+      {/* 顶部子标签切换导航（带常亮高亮） */}
+      <div className="shrink-0 border-b border-border bg-muted/20 p-2 space-y-2">
 
         {/* 2 个核心功能 Tab 切换（带明确的高亮状态） */}
         <div className="grid grid-cols-2 gap-1.5">

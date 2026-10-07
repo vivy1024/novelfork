@@ -177,6 +177,15 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(onOpen).toHaveBeenCalledWith(outline);
   });
 
+  it("页头模具：标题、侧栏自己的用途句与当前状态；「打开故事画布」留在页头右侧", () => {
+    renderPanel();
+
+    expect(screen.getByTestId("sidebar-page-head-title").textContent).toBe("故事推进");
+    expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("盯住位置与下一步");
+    expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("第 12 章");
+    expect(screen.getByRole("button", { name: "打开故事画布" })).toBeTruthy();
+  });
+
   it("章节树显示「正文 › 卷01 › 第 1 章 雨夜」，不露文件名；点开交出的仍是原节点", () => {
     const onOpen = vi.fn();
     const chapterFile: WorkbenchResourceNode = {

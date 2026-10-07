@@ -187,7 +187,7 @@ export function handleLoreProgress(input: LoreProgressInput): LoreProgressResult
       `).get(bookId, String(input.title ?? "").trim()) as EntryRow | undefined;
 
   if (!entry) {
-    return { ok: false, error: "entry-not-found", summary: `经纬条目不存在：${input.entryId ?? input.title ?? "(空)"}。` };
+    return { ok: false, error: "entry-not-found", summary: `条目不存在：${input.entryId ?? input.title ?? "(空)"}。` };
   }
 
   const category = String(entry.category ?? "");

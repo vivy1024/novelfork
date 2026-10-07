@@ -82,7 +82,7 @@ describe("章后结算的新伏笔草稿", () => {
       expect(draft).toMatchObject({ title: "小瓶", status: "needs-review", layer: "dynamic", participatesInAi: 0 });
       expect(JSON.parse(draft.fieldsJson)).toMatchObject({ status: "已埋设", plantedChapter: 3 });
       expect(JSON.parse(draft.sourceRefsJson)).toEqual([{ chapterNumber: 3, excerpt: plantedContent }]);
-      expect(result.warnings.join("\n")).toContain("待审的经纬伏笔草稿");
+      expect(result.warnings.join("\n")).toContain("待确认的伏笔草稿");
 
       // 事件挂上草稿条目；作者确认前草稿不进伏笔阶段派生
       const event = storage.sqlite.prepare<{ subjectEntryId: string | null }>(

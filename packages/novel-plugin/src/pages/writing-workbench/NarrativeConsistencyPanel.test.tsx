@@ -267,7 +267,7 @@ describe("NarrativeConsistencyPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: /看第 95 章/u }));
     expect(onJumpToChapter).toHaveBeenCalledWith(95);
 
-    fireEvent.click(screen.getByRole("button", { name: "看经纬条目" }));
+    fireEvent.click(screen.getByRole("button", { name: "看条目" }));
     expect(onOpenJingweiEntry).toHaveBeenCalledWith("entry-zhangsan");
   });
 
@@ -278,8 +278,8 @@ describe("NarrativeConsistencyPanel", () => {
 
     render(<NarrativeConsistencyPanel bookId="book-1" onOpenJingweiEntry={() => false} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "看经纬条目" }));
-    expect(screen.getByText(/经纬条目不存在或尚未载入/u)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "看条目" }));
+    expect(screen.getByText(/条目不存在或尚未载入/u)).toBeTruthy();
   });
 
   it("does not offer a correct action when the backend gives no jingwei value to align to", async () => {

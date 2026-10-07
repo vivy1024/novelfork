@@ -257,7 +257,7 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
           </label>
           {constraintsSupported && <div className="space-y-1" data-testid="custom-constraints">
             <span>硬约束（{state.draft.customConstraints.length}/{CUSTOM_CONSTRAINT_MAX_ITEMS}，每条 {CUSTOM_CONSTRAINT_MAX_ITEM_CHARS} 字）</span>
-            <p className="text-2xs text-muted-foreground">作者手写的硬性要求，随「交叙述者人文化」和划词 AI 指令一起注入，优先于人文化手法说明；不进入章节写作指南。</p>
+            <p className="text-2xs text-muted-foreground">作者手写的硬性要求，随「交叙述者做语感体检」和划词 AI 指令一起注入，优先于语感体检的手法说明；不进入章节写作指南。</p>
             <ul className="space-y-1">
               {state.draft.customConstraints.map((item, index) => (
                 <li key={`${index}-${item}`} className="flex items-start justify-between gap-2 rounded bg-muted/30 px-2 py-1" data-testid="custom-constraint-item">

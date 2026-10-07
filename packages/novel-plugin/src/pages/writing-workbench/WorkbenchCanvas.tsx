@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { Save, FileText, AlertCircle, BookOpen, Loader2, GitCompare, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { useResourceAutosave } from "./use-resource-autosave";
@@ -108,9 +108,9 @@ function toOpenResourceTab(node: WorkbenchResourceNode, dirty: boolean): OpenRes
 const resourceTypeLabels: Partial<Record<WorkbenchResourceKind, string>> = {
   chapter: "章节",
   story: "大纲与设定",
-  jingwei: "经纬资料",
-  "jingwei-section": "经纬分区",
-  "jingwei-entry": "经纬条目",
+  jingwei: "设定资料",
+  "jingwei-section": "设定分区",
+  "jingwei-entry": "条目",
   "narrative-line": "叙事线",
   storyline: "叙事线",
   "tool-result": "工具结果",
@@ -446,8 +446,13 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
       return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} currentChapter={resolveCurrentChapter(nodes)} onGuideComplete={onGuideComplete} onJumpToChapter={onJumpToChapter} />;
     }
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        <p>请先选择或创建一本作品</p>
+      // 空态模板（设计板 emptybox）：还没有 X。做 Y 即可 Z。
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center" data-testid="canvas-empty-state">
+        <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <BookOpen className="size-5" strokeWidth={1.8} />
+        </span>
+        <p className="text-sm font-medium text-foreground">还没有打开的作品。</p>
+        <p className="text-xs text-muted-foreground">在左侧「资源」里选一本书，作品总览和章节就会显示在这里。</p>
       </div>
     );
   }

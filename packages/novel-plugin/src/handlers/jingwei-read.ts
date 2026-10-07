@@ -116,8 +116,8 @@ function buildSectionStats(items: readonly JingweiReadableItem[]) {
 function legacySummary(result: { items: readonly JingweiReadableItem[]; estimatedTokens: number; droppedEntryIds: readonly string[] }) {
   const itemCount = result.items.length;
   return result.droppedEntryIds.length > 0
-    ? `已读取 ${itemCount} 条经纬条目（${result.estimatedTokens} tokens），${result.droppedEntryIds.length} 条因预算限制被省略。`
-    : `已读取 ${itemCount} 条经纬条目（${result.estimatedTokens} tokens）。`;
+    ? `已读取 ${itemCount} 条条目（${result.estimatedTokens} tokens），${result.droppedEntryIds.length} 条因预算限制被省略。`
+    : `已读取 ${itemCount} 条条目（${result.estimatedTokens} tokens）。`;
 }
 
 export async function handleJingweiReadBrief(input: JingweiReadBriefInput, _booksDir?: string): Promise<JingweiReadBriefResponse> {
@@ -164,8 +164,8 @@ export async function handleJingweiSearch(input: JingweiSearchInput, _booksDir?:
     return {
       ok: true,
       summary: result.droppedEntryIds.length > 0
-        ? `搜索到 ${result.returnedCount} 条相关经纬条目，${result.droppedEntryIds.length} 条内容因预算限制被省略。`
-        : `搜索到 ${result.returnedCount} 条相关经纬条目。`,
+        ? `搜索到 ${result.returnedCount} 条相关条目，${result.droppedEntryIds.length} 条内容因预算限制被省略。`
+        : `搜索到 ${result.returnedCount} 条相关条目。`,
       data: result,
     };
   } catch (error) {
@@ -201,8 +201,8 @@ export async function handleJingweiReadContext(
 
     const legacyItems = result.coreBrief.map(toLegacyContextItem);
     const summary = result.droppedEntryIds.length > 0
-      ? `已读取 ${legacyItems.length} 条经纬条目（${result.estimatedTokens} tokens），${result.droppedEntryIds.length} 条因预算限制被省略。`
-      : `已读取 ${legacyItems.length} 条经纬条目（${result.estimatedTokens} tokens）。`;
+      ? `已读取 ${legacyItems.length} 条条目（${result.estimatedTokens} tokens），${result.droppedEntryIds.length} 条因预算限制被省略。`
+      : `已读取 ${legacyItems.length} 条条目（${result.estimatedTokens} tokens）。`;
 
     if (mode === "full") {
       return {

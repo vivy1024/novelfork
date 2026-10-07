@@ -115,7 +115,7 @@ function ensureChapterSummarySection(storage: StorageDatabase, bookId: string, n
       LIMIT 1
     `).get(bookId);
     if (concurrent?.id) return concurrent.id;
-    throw new Error("无法创建 chapter-summaries 经纬分区。");
+    throw new Error("无法创建 chapter-summaries 分区。");
   }
   return sectionId;
 }
@@ -841,7 +841,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
         try {
           const drafts = stageForeshadowDrafts(storage, input.bookId, eventResults, entityDictionary);
           if (drafts.length > 0) {
-            warnings.push(`本章发现 ${drafts.length} 条经纬里还没有的新伏笔：${drafts.map((draft) => `「${draft.title}」`).join("、")}。已写成待审的经纬伏笔草稿，确认后才会参与伏笔追踪与写作注入；不是伏笔就在经纬里删掉。`);
+            warnings.push(`本章发现 ${drafts.length} 条设定里还没有的新伏笔：${drafts.map((draft) => `「${draft.title}」`).join("、")}。已写成待确认的伏笔草稿，确认后才会参与伏笔追踪与写作注入；不是伏笔就在作品基础里删掉。`);
           }
         } catch (error) {
           warnings.push(`新伏笔草稿写入失败（不影响结算主体）：${error instanceof Error ? error.message : String(error)}`);
@@ -889,7 +889,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   try {
     const entityIndex = rebuildNarrativeEntityIndex(storage, input.bookId);
     if (entityIndex.ok && entityIndex.duplicateEntryIds.length > 0) {
-      warnings.push(`经纬里有 ${entityIndex.duplicateEntryIds.length} 个条目与其他条目同名（去掉括号注释后），没有进入实体索引，关系图里不会出现。建议合并重复条目或改成可区分的名字。`);
+      warnings.push(`作品基础里有 ${entityIndex.duplicateEntryIds.length} 个条目与其他条目同名（去掉括号注释后），没有进入实体索引，关系图里不会出现。建议合并重复条目或改成可区分的名字。`);
     }
   } catch (error) {
     warnings.push(`实体索引未更新（不影响结算）：${error instanceof Error ? error.message : String(error)}`);

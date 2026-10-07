@@ -235,7 +235,8 @@ describe("WorkbenchCanvas", () => {
   it("未选择资源时显示占位状态", () => {
     render(<WorkbenchCanvas node={null} onSave={vi.fn()} />);
 
-    expect(screen.getByText("请先选择或创建一本作品")).toBeTruthy();
+    expect(screen.getByText("还没有打开的作品。")).toBeTruthy();
+    expect(screen.getByTestId("canvas-empty-state").textContent).toContain("在左侧「资源」里选一本书");
   });
 
   it("章后事实中央面板渲染，轻量跳转经 onOpenResourceNode 打开发展历程画布", async () => {

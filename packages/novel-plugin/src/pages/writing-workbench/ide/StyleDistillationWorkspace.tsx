@@ -694,7 +694,7 @@ function BookStyleDistillationWorkspace({
         <div className="flex flex-wrap items-center gap-2">
           <Sparkles className="size-5 text-primary" />
           <h1 className="text-xl font-semibold">文风自动蒸馏</h1>
-          <Badge variant="outline">T2.2</Badge>
+          <Badge variant="outline">蒸馏</Badge>
         </div>
         <p className="max-w-3xl text-sm text-muted-foreground">
           从作者指定的参考文本中提取写法规则、范文和统计指纹。所有来源内容先进入审阅区，确认后再写入本书文风预设。

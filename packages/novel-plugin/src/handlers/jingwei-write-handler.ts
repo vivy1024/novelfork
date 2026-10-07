@@ -453,7 +453,7 @@ export async function handleJingweiWrite(
       }
 
       await entryRepo.softDelete(bookId, targetId, new Date());
-      return { ok: true, summary: `已删除经纬条目「${title || targetId}」。`, data: { action: "deleted", entryId: targetId, bookId } };
+      return { ok: true, summary: `已删除条目「${title || targetId}」。`, data: { action: "deleted", entryId: targetId, bookId } };
     } catch (error) {
       return { ok: false, error: "delete-failed", summary: `删除失败：${error instanceof Error ? error.message : String(error)}` };
     }
@@ -509,7 +509,7 @@ export async function handleJingweiWrite(
 
       return {
         ok: true,
-        summary: `已退役经纬条目「${row.title}」（layer=${existingLayer} 保留；已退出 AI：participates_in_ai=0 + archived）。`,
+        summary: `已退役条目「${row.title}」（layer=${existingLayer} 保留；已退出 AI：participates_in_ai=0 + archived）。`,
         data: {
           action: "retired",
           entryId: row.id,
@@ -628,7 +628,7 @@ export async function handleJingweiWrite(
       );
       return {
         ok: true,
-        summary: `${promoted.action === "updated" ? "已更新" : "已创建"}经纬条目「${staging.proposedTitle}」（${category}，layer=${layer}，staging 已 accepted）。`,
+        summary: `${promoted.action === "updated" ? "已更新" : "已创建"}条目「${staging.proposedTitle}」（${category}，layer=${layer}，staging 已 accepted）。`,
         data: { action: promoted.action, entryId: promoted.entryId, bookId, category, title: staging.proposedTitle, layer },
       };
     } catch (error) {
@@ -734,11 +734,11 @@ export async function handleJingweiWrite(
         revisionReason: input.reason,
         updatedAt: now,
       });
-      if (!updated) throw new Error(`经纬条目不存在：${entryId}`);
+      if (!updated) throw new Error(`条目不存在：${entryId}`);
 
       return {
         ok: true,
-        summary: `已更新经纬条目「${title}」（${category}，layer=${layer}）。`,
+        summary: `已更新条目「${title}」（${category}，layer=${layer}）。`,
         data: { action: "updated", entryId, bookId, category, title, layer },
       };
     } else {
@@ -777,7 +777,7 @@ export async function handleJingweiWrite(
 
       return {
         ok: true,
-        summary: `已创建经纬条目「${title}」（${category}，layer=${layer}）。`,
+        summary: `已创建条目「${title}」（${category}，layer=${layer}）。`,
         data: { action: "created", entryId, bookId, category, title, layer },
       };
     }

@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BookOpen,
   Eye,
   Network,
   Search,
@@ -22,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/hooks/use-api";
+import { SidebarPageHead } from "./SidebarPageHead";
 import { fetchCharacterKernels, type CharacterKernelSummary } from "../character-kernel-client";
 import { DissectDraftPanel } from "../DissectDraftPanel";
 import { useNarrativeStructure } from "../useNarrativeStructure";
@@ -276,6 +278,14 @@ export function CharactersAndLoreSidebarPanel({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="characters-and-lore-panel">
+      {/* 页头模具（设计板 sd-head）：这本书的骨头——人物、设定、待确认的草案 */}
+      <SidebarPageHead
+        icon={BookOpen}
+        title="作品基础"
+        purpose="这本书的骨头：人物、设定、待确认的草案"
+        status={`角色 ${charactersList.length} · 设定 ${worldList.length} · 待确认 ${draftCount}`}
+      />
+
       {/* 顶部工具条：导入、AI 注入预览、设定图谱；窄侧栏下整体换行，「新角色」始终靠右 */}
       <div className="shrink-0 flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5 bg-muted/20">
         <div className="contents">
@@ -458,14 +468,26 @@ export function CharactersAndLoreSidebarPanel({
       ) : (
       <div className="flex-1 min-h-0 overflow-y-auto p-2">
         {cards.list.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground space-y-1.5">
-            <UserRound className="size-8 opacity-25" />
-            <p className="text-xs font-medium">
-              {searchQuery ? "没有找到匹配的条目" : activeTab === "characters" ? "暂无角色卡" : "暂无世界设定"}
+          // 空态模板（设计板 emptybox）：还没有 X。做 Y 即可 Z。+ 一个主按钮
+          <div className="flex flex-col items-center justify-center gap-1.5 py-12 text-center space-y-1.5">
+            <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <UserRound className="size-5" strokeWidth={1.8} />
+            </span>
+            <p className="text-xs font-medium text-foreground">
+              {searchQuery ? "没有找到匹配的条目" : activeTab === "characters" ? "还没有角色卡。" : "还没有世界设定。"}
             </p>
-            <p className="text-2xs text-muted-foreground/80 max-w-xs">
-              {activeTab === "characters" ? "点击右上角「新角色」或「导入」快速建立人物册" : "点击右上角「新设定」添加世界观与规则"}
+            <p className="text-2xs text-muted-foreground max-w-xs">
+              {searchQuery
+                ? "换个关键词，或清空搜索后重试。"
+                : activeTab === "characters"
+                  ? "点「新角色」即可建立第一张人物卡；也可以从「导入」批量建。"
+                  : "点「新设定」即可添加第一条世界观与规则。"}
             </p>
+            {!searchQuery && (
+              <Button size="sm" className="mt-1" onClick={() => setCreatingChar(true)} data-testid="lore-empty-create">
+                {activeTab === "characters" ? "新角色" : "新设定"}
+              </Button>
+            )}
           </div>
         ) : (
           // 侧栏拉宽时自动排成多列；每列等宽、每张卡等高

@@ -278,7 +278,7 @@ export function buildWorldviewTree(input: BuildStoryTreeInput): CanonicalForest 
       kind: "worldview",
       root: emptyRoot("worldview", "世界观"),
       truncated: false,
-      emptyReason: "经纬里还没有条目。先建立角色、地点、设定，或对已有正文跑一次拆书。",
+      emptyReason: "作品基础里还没有条目。先建立角色、地点、设定，或对已有正文跑一次拆书。",
     };
   }
   const converted = canonicalFromStoryNode(tree.root);

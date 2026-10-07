@@ -496,7 +496,7 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
         linkRate,
         summary: `实体 ${result.entities} 个，事件参与者 ${result.participants} 条，关系边 ${result.relations} 条，状态流水 ${result.stateChanges} 条，知情账 ${result.knowledge} 条；`
           + (linkRate === null ? "没有可归并的称呼。" : `称呼归并率 ${linkRate}%（${result.resolvedMentions}/${result.totalMentions}）。`)
-          + (result.unresolvedSamples.length > 0 ? ` 未归并的称呼如：${result.unresolvedSamples.slice(0, 5).join("、")}——若是重要角色或地点，请先在经纬里建条目。` : ""),
+          + (result.unresolvedSamples.length > 0 ? ` 未归并的称呼如：${result.unresolvedSamples.slice(0, 5).join("、")}——若是重要角色或地点，请先在作品基础里建条目。` : ""),
       });
     } catch (error) {
       return c.json({ error: "entity-index-rebuild-failed", detail: error instanceof Error ? error.message : String(error) }, 500);

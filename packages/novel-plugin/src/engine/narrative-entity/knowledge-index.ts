@@ -184,14 +184,14 @@ export function explainKnowledgeEmpty(reason: KnowledgeEmptyReason, context: { c
     case "entity-not-found":
       return {
         whatHappened: `实体索引里找不到${context.name ? `「${context.name}」` : "这个实体"}。`,
-        whyItMatters: "只有经纬里的角色 / 地点 / 势力 / 道具条目会进入实体索引；条目刚建立或刚改名时，要重建后才有身份。",
-        suggestedAction: "确认它在经纬里是角色 / 地点 / 势力 / 道具条目，且没有与另一条目同名，然后点「重建索引」。",
+        whyItMatters: "只有作品基础里的角色 / 地点 / 势力 / 道具条目会进入实体索引；条目刚建立或刚改名时，要重建后才有身份。",
+        suggestedAction: "确认它在作品基础里是角色 / 地点 / 势力 / 道具条目，且没有与另一条目同名，然后点「重建索引」。",
       };
     case "no-knowledge":
       return {
         whatHappened: `${context.name ? `「${context.name}」` : "这个实体"}${context.chapter ? `截至第 ${context.chapter} 章` : "目前"}还没有知情记录。`,
         whyItMatters: "知情记录来自已确认记忆事实里能归并到实体的 subject / object；没在事实里出现过的角色自然没有「他知道」的账。",
-        suggestedAction: "结算他出场、涉事的章节；事实里的人名要能在经纬里找到对应条目，归并不到实体的事实不会算他知道。",
+        suggestedAction: "结算他出场、涉事的章节；事实里的人名要能在作品基础里找到对应条目，归并不到实体的事实不会算他知道。",
       };
   }
 }

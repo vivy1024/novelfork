@@ -377,7 +377,7 @@ describe("WriteViewPanel 章节循环（写 → 改 → 收尾）", () => {
     dispatchSpy.mockRestore();
   });
 
-  it("自审有命中时可以把问题清单交给叙述者做人文化，消息带逐条要求", async () => {
+  it("自审有命中时可以把问题清单交给叙述者做语感体检，消息带逐条要求", async () => {
     const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
     const { WriteViewPanel, buildHumanizeMessage } = await import("./WriteViewPanel");
     const { reviewChapterParagraphs } = await import("../../engine/compliance/paragraph-self-review");
@@ -389,6 +389,7 @@ describe("WriteViewPanel 章节循环（写 → 改 → 收尾）", () => {
     render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} onSendToNarrator={onSendToNarrator} />);
 
     await waitFor(() => expect(screen.getByTestId("self-review-message").textContent).toContain("已定位"));
+    expect(screen.getByTestId("self-review-humanize").textContent).toBe("交叙述者做语感体检");
     fireEvent.click(screen.getByTestId("self-review-humanize"));
     await waitFor(() => expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("已把"));
     expect(onSendToNarrator).toHaveBeenCalledTimes(1);
@@ -591,5 +592,30 @@ describe("WriteViewPanel「伏笔到期」一键修落点", () => {
 
     fireEvent.click(await waitFor(() => screen.getByTestId("write-fix-hooks-overdue")));
     expect(await screen.findByText(/打开故事画布/)).toBeTruthy();
+  });
+});
+
+describe("WriteViewPanel 页头模具与空态模板", () => {
+  it("页头给出用途句与当前状态（第 N 章 · 当前步）", async () => {
+    const { render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} />);
+
+    await waitFor(() => expect(screen.getByTestId("write-headline")).toBeTruthy());
+    expect(screen.getByTestId("sidebar-page-head-title").textContent).toBe("写作");
+    expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("一章的三步：写 → 改 → 收尾");
+    expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("第 12 章 · 写");
+  });
+
+  it("没有打开的书时套空态模板：还没有 X，做 Y 即可 Z", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+
+    render(<WriteViewPanel />);
+
+    expect(screen.getByTestId("write-view-panel").textContent).toContain("还没有打开的作品。");
+    expect(screen.getByTestId("write-view-panel").textContent).toContain("在左侧「资源」里选一本书");
+    expect(screen.queryByText("✍️")).toBeNull();
   });
 });

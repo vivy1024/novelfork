@@ -579,7 +579,7 @@ export class WriterAgent extends BaseAgent {
 
     // Phase 2b: Reflector — merge observations into jingwei files
     this.logInfo(resolvedLang, {
-      zh: "阶段 2b：把观察结果回写到经纬资料",
+      zh: "阶段 2b：把观察结果回写到设定资料",
       en: "Phase 2b: reflecting observations into jingwei files",
     });
     const settlerSystem = buildSettlerSystemPrompt(
