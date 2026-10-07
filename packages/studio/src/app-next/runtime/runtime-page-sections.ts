@@ -1,6 +1,7 @@
 /** Runtime 原页在 Studio 里的入口：每个入口管 Runtime 的一段路径（Studio 地址是 `/next` + Runtime 路径）。 */
 export const RUNTIME_PAGE_SECTIONS = {
   search: "/search",
+  routines: "/routines",
   knowledge: "/knowledge",
   "scheduled-tasks": "/scheduled-tasks",
   learn: "/learn",

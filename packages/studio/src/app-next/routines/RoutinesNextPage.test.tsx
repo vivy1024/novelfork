@@ -1,57 +1,18 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const hostMocks = vi.hoisted(() => ({
+  hostProps: [] as Array<{
+    path: string;
+    isEmbeddedPath: (pathname: string) => boolean;
+    onPathChange?: (path: string) => void;
+    onNavigateOutside?: (path: string) => void;
+  }>,
+}));
+
 const runtimeMocks = vi.hoisted(() => ({
-  account: {
-    get: vi.fn(),
-  },
-  routines: {
-    listGlobal: vi.fn(),
-    toggleGlobal: vi.fn(),
-    getGlobalPrompt: vi.fn(),
-    putGlobalPrompt: vi.fn(),
-  },
-  skills: {
-    listGlobal: vi.fn(),
-    getGlobal: vi.fn(),
-    createGlobal: vi.fn(),
-    updateGlobal: vi.fn(),
-    deleteGlobal: vi.fn(),
-    toggleGlobal: vi.fn(),
-  },
-  subagents: {
-    list: vi.fn(),
-    get: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  },
-  hooks: {
-    listGlobal: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  },
-  mcp: {
-    list: vi.fn(),
-    create: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(),
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-    test: vi.fn(),
-    import: vi.fn(),
-    tools: vi.fn(),
-  },
-  settings: {
-    get: vi.fn(),
-    patch: vi.fn(),
-  },
-  preferences: {
-    get: vi.fn(),
-    put: vi.fn(),
-    patch: vi.fn(),
-  },
+  subagents: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  mcp: { list: vi.fn() },
 }));
 
 const productMocks = vi.hoisted(() => ({
@@ -59,11 +20,11 @@ const productMocks = vi.hoisted(() => ({
   toggleBookRoutine: vi.fn(),
   listBookSkills: vi.fn(),
   getBookSkill: vi.fn(),
-  listBookMcpOverrides: vi.fn(),
-  putBookMcpOverride: vi.fn(),
   createBookSkill: vi.fn(),
   updateBookSkill: vi.fn(),
   deleteBookSkill: vi.fn(),
+  listBookMcpOverrides: vi.fn(),
+  putBookMcpOverride: vi.fn(),
   listBookHooks: vi.fn(),
   createBookHook: vi.fn(),
   updateBookHook: vi.fn(),
@@ -74,18 +35,19 @@ const productMocks = vi.hoisted(() => ({
 
 const cacheMocks = vi.hoisted(() => ({ invalidateNarratorCommands: vi.fn() }));
 
+vi.mock("@vivy1024/narrafork-runtime-bridge/frontend/runtime-page", () => ({
+  EmbeddedRuntimePageHost: (props: (typeof hostMocks.hostProps)[number]) => {
+    hostMocks.hostProps.push(props);
+    return <div data-testid="runtime-page-host-mock" data-path={props.path} />;
+  },
+}));
+
 vi.mock("../runtime-admin", async () => {
   const actual = await vi.importActual<typeof import("../runtime-admin")>("../runtime-admin");
   return {
     ...actual,
-    createAccountProfileClient: () => runtimeMocks.account,
-    createRoutinesClient: () => runtimeMocks.routines,
-    createSkillsClient: () => runtimeMocks.skills,
     createCustomSubagentsClient: () => runtimeMocks.subagents,
-    createHooksClient: () => runtimeMocks.hooks,
     createMcpClient: () => runtimeMocks.mcp,
-    createSettingsClient: () => runtimeMocks.settings,
-    createUserPreferencesClient: () => runtimeMocks.preferences,
   };
 });
 
@@ -98,101 +60,88 @@ vi.mock("../runtime/narrator-command-cache", () => ({
   invalidateNarratorCommands: cacheMocks.invalidateNarratorCommands,
 }));
 
+// 写作配置来自小说插件；这里换成桩组件，只验证宿主把它挂进「本书设置」并传入书籍标识。
+vi.mock("../plugin-ui/register-plugins", () => ({
+  getPluginUISections: (mountPoint: string) =>
+    mountPoint === "routines"
+      ? [{ id: "novel-writing-config", label: "写作配置", icon: "PenLine", mountPoint: "routines", requiresBook: true, order: 100, componentKey: "novel-writing-config" }]
+      : [],
+}));
+vi.mock("../plugin-ui/section-registry", () => ({
+  getPluginSection: (key: string) =>
+    key === "novel-writing-config"
+      ? ({ bookId }: { bookId?: string }) => <div data-testid="writing-config-stub">写作配置：{bookId}</div>
+      : undefined,
+}));
+
 vi.mock("@/components/ui/simple-select", () => ({
   SimpleSelect: ({
     value,
     onValueChange,
     options,
     disabled,
-    className,
     "aria-label": ariaLabel,
   }: {
     value: string;
     onValueChange: (value: string) => void;
     options: Array<{ value: string; label: string; disabled?: boolean }>;
     disabled?: boolean;
-    className?: string;
     "aria-label"?: string;
   }) => (
-    <select
-      aria-label={ariaLabel}
-      value={value}
-      disabled={disabled}
-      className={className}
-      onChange={(event) => onValueChange(event.currentTarget.value)}
-    >
+    <select aria-label={ariaLabel} value={value} disabled={disabled} onChange={(event) => onValueChange(event.currentTarget.value)}>
       {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>
+        <option key={option.value} value={option.value} disabled={option.disabled}>
+          {option.label}
+        </option>
       ))}
     </select>
   ),
 }));
 
-import { RoutinesNextPage } from "./RoutinesNextPage";
+import { RoutinesNextPage, type RoutinesNextPageProps } from "./RoutinesNextPage";
 
-const globalRoutines = [
-  {
-    id: "write-next",
-    type: "command",
-    category: "Writing",
-    name: "Write Next",
-    descriptionEn: "Write the next chapter",
-    descriptionZh: "续写下一章",
-    enabled: true,
-  },
-  {
-    id: "review",
-    type: "skill",
-    category: "Writing",
-    name: "Review",
-    descriptionEn: "Review a draft",
-    descriptionZh: "审阅草稿",
-    enabled: false,
-  },
+const books = [
+  { id: "book-1", title: "长夜" },
+  { id: "book-2", title: "旧站台" },
+] as const;
+
+const bookRoutines = [
   {
     id: "terminal",
     type: "tool",
-    category: "Tools",
+    category: "tools",
     name: "Terminal",
     descriptionEn: "Persistent terminal",
     descriptionZh: "持久终端",
-    enabled: true,
+    enabled: false,
+    override: "global",
+    globalEnabled: false,
+    mode: "auto",
+    modeOverride: "global",
+    globalMode: "auto",
   },
-] as const;
-
-const bookRoutines = globalRoutines.map((routine) => ({
-  ...routine,
-  override: routine.id === "review" ? "enabled" : "global",
-  enabled: routine.id === "review" ? true : routine.enabled,
-  globalEnabled: routine.enabled,
-})) as const;
-
-const globalSkills = [
-  { name: "reviewer", description: "Review prose", location: "C:/Users/Test/.novelfork/skills/reviewer/SKILL.md", files: ["SKILL.md"], disabled: false },
-] as const;
-
-const bookSkills = [
-  { name: "book-style", description: "Book prose rules", location: "book", files: ["SKILL.md"], disabled: false },
-] as const;
-
-const subagents = [
   {
-    name: "critic",
-    description: "Critiques chapters",
-    toolAccess: "custom",
-    customTools: ["Read", "Grep"],
-    defaultModel: "codex:gpt-5",
-    prompt: "Review the chapter carefully.",
+    id: "browser",
+    type: "tool",
+    category: "tools",
+    name: "Browser",
+    descriptionEn: "Browser",
+    descriptionZh: "浏览器",
+    enabled: true,
+    override: "enabled",
+    globalEnabled: false,
+    mode: "resident",
+    modeOverride: "resident",
+    globalMode: "manual",
   },
 ] as const;
 
-const globalHook = {
-  id: "global-hook",
-  projectId: null,
+const bookHook = {
+  id: "book-hook",
   event: "PostToolUse",
-  matcher: "Write",
+  matcher: "novel_write_chapter",
   type: "command",
-  command: "bun scripts/audit.ts",
+  command: "bun scripts/book-audit.ts",
   url: null,
   headers: null,
   proxyMode: null,
@@ -206,133 +155,62 @@ const globalHook = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 } as const;
 
-const bookHook = {
-  ...globalHook,
-  id: "book-hook",
-  matcher: "novel_write_chapter",
-  command: "bun scripts/book-audit.ts",
-} as const;
-
 const mcpServer = {
   id: "memory-server",
   name: "Memory",
   transport: "stdio",
-  command: "npx",
-  args: ["-y", "@modelcontextprotocol/server-memory"],
   enabled: true,
   defaultBehavior: "readOnly",
   status: "connected",
   tools: [{ name: "recall", description: "Recall memory" }],
-  toolPermissions: [],
 } as const;
 
-let preferenceState: Record<string, unknown>;
-let settingsState: Record<string, unknown>;
+const subagents = [
+  {
+    name: "critic",
+    description: "Critiques chapters",
+    toolAccess: "custom",
+    customTools: ["Read", "Grep"],
+    defaultModel: "",
+    prompt: "Review the chapter carefully.",
+  },
+  {
+    name: "helper",
+    description: "General helper",
+    toolAccess: "general",
+    customTools: [],
+    defaultModel: "",
+    prompt: "Help.",
+  },
+] as const;
 
 beforeEach(() => {
   vi.clearAllMocks();
-
-  preferenceState = {
-    commands: [
-      { name: "draft-review", prompt: "Review the current draft", description: "Review draft" },
-      {
-        name: "routine-review",
-        prompt: "Run routine review",
-        description: `Routine command ${"[routine:"}review]`,
-      },
-    ],
-  };
-  settingsState = {
-    agent: {
-      commandWhitelist: [{ pattern: "^git status$", enabled: true }],
-      commandBlacklist: [{ pattern: "rm\\s+-rf", denyPrompt: "拒绝危险删除", enabled: true }],
-      webFetchPolicy: { allowAll: false, whitelist: [], blacklist: [] },
-      planReflectionAutoApprove: false,
-      defaultSystemPrompt: "Default system rules",
-    },
-  };
-
-  runtimeMocks.account.get.mockResolvedValue({ role: "admin" });
-  runtimeMocks.routines.listGlobal.mockResolvedValue({ routines: globalRoutines });
-  runtimeMocks.routines.toggleGlobal.mockResolvedValue({ ok: true });
-  runtimeMocks.routines.getGlobalPrompt.mockResolvedValue({
-    content: "# Global rules",
-    filePath: "D:/Workspace/NovelFork/CLAUDE.md",
-    candidates: [
-      { path: "D:/Workspace/NovelFork/AGENT.md", exists: false },
-      { path: "D:/Workspace/NovelFork/CLAUDE.md", exists: true },
-    ],
-  });
-  runtimeMocks.routines.putGlobalPrompt.mockResolvedValue({ ok: true, filePath: "D:/Workspace/NovelFork/CLAUDE.md" });
-
-  runtimeMocks.skills.listGlobal.mockResolvedValue(globalSkills);
-  runtimeMocks.skills.getGlobal.mockResolvedValue({ ...globalSkills[0], content: "Review carefully" });
-  runtimeMocks.skills.createGlobal.mockResolvedValue({ ...globalSkills[0], content: "New content" });
-  runtimeMocks.skills.updateGlobal.mockResolvedValue({ ...globalSkills[0], content: "Updated" });
-  runtimeMocks.skills.deleteGlobal.mockResolvedValue({ ok: true });
-  runtimeMocks.skills.toggleGlobal.mockResolvedValue(globalSkills[0]);
+  hostMocks.hostProps.length = 0;
 
   runtimeMocks.subagents.list.mockResolvedValue(subagents);
-  runtimeMocks.subagents.create.mockResolvedValue(subagents[0]);
-  runtimeMocks.subagents.update.mockResolvedValue(subagents[0]);
-  runtimeMocks.subagents.delete.mockResolvedValue({ ok: true });
-
-  runtimeMocks.hooks.listGlobal.mockResolvedValue([globalHook]);
-  runtimeMocks.hooks.create.mockResolvedValue(globalHook);
-  runtimeMocks.hooks.update.mockResolvedValue(globalHook);
-  runtimeMocks.hooks.delete.mockResolvedValue({ ok: true });
-
+  runtimeMocks.subagents.update.mockImplementation(async (_name: string, input: unknown) => input);
   runtimeMocks.mcp.list.mockResolvedValue({ servers: [mcpServer] });
-  runtimeMocks.mcp.tools.mockResolvedValue({
-    tools: [{ name: "recall", description: "Recall memory", serverName: "Memory", serverId: "memory-server", source: "external" }],
-  });
-  runtimeMocks.mcp.create.mockResolvedValue(mcpServer);
-  runtimeMocks.mcp.patch.mockResolvedValue(mcpServer);
-  runtimeMocks.mcp.delete.mockResolvedValue({ ok: true });
-  runtimeMocks.mcp.connect.mockResolvedValue(mcpServer);
-  runtimeMocks.mcp.disconnect.mockResolvedValue({ ok: true });
-  runtimeMocks.mcp.test.mockResolvedValue({ ok: true, tools: mcpServer.tools });
-  runtimeMocks.mcp.import.mockResolvedValue({ added: 1, skipped: 0 });
-
-  runtimeMocks.preferences.get.mockImplementation(async () => preferenceState);
-  runtimeMocks.preferences.patch.mockImplementation(async (patch: Record<string, unknown>) => {
-    preferenceState = { ...preferenceState, ...patch };
-    return preferenceState;
-  });
-  runtimeMocks.preferences.put.mockImplementation(async (patch: Record<string, unknown>) => {
-    preferenceState = { ...preferenceState, ...patch };
-    return preferenceState;
-  });
-
-  runtimeMocks.settings.get.mockImplementation(async () => settingsState);
-  runtimeMocks.settings.patch.mockImplementation(async (patch: { agent?: Record<string, unknown> }) => {
-    settingsState = {
-      ...settingsState,
-      agent: { ...(settingsState.agent as Record<string, unknown>), ...(patch.agent ?? {}) },
-    };
-    return settingsState;
-  });
 
   productMocks.listBookRoutines.mockResolvedValue({ routines: bookRoutines });
   productMocks.toggleBookRoutine.mockResolvedValue({ ok: true });
-  productMocks.listBookSkills.mockResolvedValue(bookSkills);
-  productMocks.getBookSkill.mockResolvedValue({ ...bookSkills[0], content: "Use this style" });
+  productMocks.listBookSkills.mockResolvedValue([{ name: "book-style", description: "Book prose rules", location: "book", files: ["SKILL.md"], disabled: false }]);
+  productMocks.getBookSkill.mockResolvedValue({ name: "book-style", description: "Book prose rules", content: "Use this style" });
+  productMocks.createBookSkill.mockResolvedValue({ name: "continuity", description: "Track continuity", content: "Check facts" });
+  productMocks.deleteBookSkill.mockResolvedValue({ ok: true });
   productMocks.listBookMcpOverrides.mockResolvedValue({
-    serverOverrides: [{
-      serverId: "memory-server",
-      defaultBehavior: "ask",
-      toolPermissions: [{ toolName: "recall", behavior: "readOnly" }],
-    }],
+    serverOverrides: [{ serverId: "memory-server", defaultBehavior: "ask", toolPermissions: [{ toolName: "recall", behavior: "readOnly" }] }],
   });
   productMocks.putBookMcpOverride.mockResolvedValue({ serverOverrides: [] });
-  productMocks.createBookSkill.mockResolvedValue({ ...bookSkills[0], content: "Created" });
-  productMocks.updateBookSkill.mockResolvedValue({ ...bookSkills[0], content: "Updated" });
-  productMocks.deleteBookSkill.mockResolvedValue({ ok: true });
   productMocks.listBookHooks.mockResolvedValue([bookHook]);
   productMocks.createBookHook.mockResolvedValue(bookHook);
   productMocks.updateBookHook.mockResolvedValue(bookHook);
   productMocks.deleteBookHook.mockResolvedValue({ ok: true });
-  productMocks.listBookRules.mockResolvedValue({ content: null, filePath: null, candidates: [] });
+  productMocks.listBookRules.mockResolvedValue({
+    content: null,
+    filePath: null,
+    candidates: [{ path: "AGENT.md", exists: false }, { path: "CLAUDE.md", exists: false }],
+  });
   productMocks.putBookRules.mockResolvedValue({ ok: true, filePath: "AGENT.md" });
   cacheMocks.invalidateNarratorCommands.mockResolvedValue(undefined);
 });
@@ -341,331 +219,236 @@ afterEach(() => {
   cleanup();
 });
 
-function routineTabs() {
-  return screen.getByRole("tablist", { name: "套路分区" });
+function renderPage(overrides: Partial<RoutinesNextPageProps> = {}) {
+  const props: RoutinesNextPageProps = {
+    route: { kind: "routines" },
+    onNavigate: vi.fn(),
+    onNavigateRuntimePath: vi.fn(),
+    books,
+    selectedBook: books[0],
+    onSelectBook: vi.fn(),
+    ...overrides,
+  };
+  const view = render(<RoutinesNextPage {...props} />);
+  return { ...view, props, rerenderWith: (next: Partial<RoutinesNextPageProps>) => view.rerender(<RoutinesNextPage {...props} {...next} />) };
 }
 
-function openTab(name: string) {
-  fireEvent.click(within(routineTabs()).getByRole("tab", { name }));
+function pageTab(name: string) {
+  return within(screen.getByRole("tablist", { name: "套路页签" })).getByRole("tab", { name });
 }
 
-describe("RoutinesNextPage Runtime integration", () => {
-  it("starts on optional tools and uses only global routines when no book is selected", async () => {
-    render(<RoutinesNextPage />);
+function openBookSection(name: string) {
+  fireEvent.click(within(screen.getByRole("tablist", { name: "本书设置分区" })).getByRole("tab", { name }));
+}
 
-    await waitFor(() => expect(runtimeMocks.routines.listGlobal).toHaveBeenCalled());
+describe("套路页：通用部分嵌入 Runtime 原页", () => {
+  it("默认打开 Runtime 原生套路页，Studio 不再有自己的通用分区", async () => {
+    renderPage();
+
+    expect((await screen.findByTestId("runtime-page-host-mock")).getAttribute("data-path")).toBe("/routines");
+    expect(pageTab("通用套路").getAttribute("aria-selected")).toBe("true");
+    const { isEmbeddedPath } = hostMocks.hostProps.at(-1)!;
+    expect(isEmbeddedPath("/routines/tool-permissions")).toBe(true);
+    expect(isEmbeddedPath("/narrators/n-1")).toBe(false);
+    // 旧复制品的分区（自定义命令、工具权限、全局技能……）不再由 Studio 渲染
+    expect(screen.queryByRole("tablist", { name: "套路分区" })).toBeNull();
+    expect(screen.queryByText("自定义命令")).toBeNull();
+  });
+
+  it("原页内跳转同步进 Studio 地址，跳出范围的链接交给外壳", async () => {
+    const { props } = renderPage({ route: { kind: "routines", path: "/routines/tool-permissions" } });
+
+    expect((await screen.findByTestId("runtime-page-host-mock")).getAttribute("data-path")).toBe("/routines/tool-permissions");
+    const host = hostMocks.hostProps.at(-1)!;
+    host.onPathChange?.("/routines");
+    expect(props.onNavigate).toHaveBeenCalledWith({ kind: "routines", path: "/routines" });
+    host.onNavigateOutside?.("/settings/agent");
+    expect(props.onNavigateRuntimePath).toHaveBeenCalledWith("/settings/agent");
+  });
+
+  it("切到 NovelFork 面板时原页只是藏起来，切回去回到原来的子页", async () => {
+    const view = renderPage({ route: { kind: "routines", path: "/routines/tool-permissions" } });
+    await screen.findByTestId("runtime-page-host-mock");
+
+    fireEvent.click(pageTab("本书设置"));
+    expect(view.props.onNavigate).toHaveBeenLastCalledWith({ kind: "routines", panel: "book" });
+
+    view.rerenderWith({ route: { kind: "routines", panel: "book" } });
+    expect(screen.getByTestId("routines-runtime-page").hidden).toBe(true);
+    expect(screen.getByTestId("runtime-page-host-mock").getAttribute("data-path")).toBe("/routines/tool-permissions");
+    expect(pageTab("本书设置").getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.click(pageTab("通用套路"));
+    expect(view.props.onNavigate).toHaveBeenLastCalledWith({ kind: "routines", path: "/routines/tool-permissions" });
+  });
+
+  it("直接打开 NovelFork 面板时不加载 Runtime 原页", () => {
+    renderPage({ route: { kind: "routines", panel: "subagent-tools" } });
+    expect(screen.queryByTestId("runtime-page-host-mock")).toBeNull();
+  });
+});
+
+describe("套路页：本书设置", () => {
+  it("没有作品时说明先建书", () => {
+    renderPage({ route: { kind: "routines", panel: "book" }, books: [], selectedBook: null });
+    expect(screen.getByText("还没有作品")).toBeTruthy();
     expect(productMocks.listBookRoutines).not.toHaveBeenCalled();
-    expect(screen.getByText("未选择作品")).toBeTruthy();
-    expect(screen.queryByText(/project-123/)).toBeNull();
-    expect(await screen.findByText("Terminal")).toBeTruthy();
-    expect(within(routineTabs()).getByRole("tab", { name: "可选工具" }).getAttribute("aria-selected")).toBe("true");
   });
 
-  it("keeps global routine changes read-only for non-admin users", async () => {
-    runtimeMocks.account.get.mockResolvedValueOnce({ role: "user" });
-    render(<RoutinesNextPage />);
+  it("写作配置排在最前，按选中的书挂载；换书交给外壳", () => {
+    const { props } = renderPage({ route: { kind: "routines", panel: "book" } });
 
-    const terminalSwitch = await screen.findByRole("switch", { name: "切换全局状态：Terminal" });
-    await waitFor(() => expect(terminalSwitch).toHaveProperty("disabled", true));
-    expect(screen.getByText("全局套路需要管理员权限")).toBeTruthy();
-
-    fireEvent.click(terminalSwitch);
-    expect(runtimeMocks.routines.toggleGlobal).not.toHaveBeenCalled();
+    expect(screen.getByTestId("writing-config-stub").textContent).toBe("写作配置：book-1");
+    fireEvent.change(screen.getByLabelText("选择作品"), { target: { value: "book-2" } });
+    expect(props.onSelectBook).toHaveBeenCalledWith("book-2");
   });
 
-  it("manages built-in routines and optional tools through book-scoped product methods", async () => {
-    render(<RoutinesNextPage bookId="book/a" bookTitle="长夜" />);
+  it("可选工具按书覆盖：显示全局的自动档，按书写常驻 / 手动 / 跟随全局", async () => {
+    renderPage({ route: { kind: "routines", panel: "book" } });
+    openBookSection("可选工具");
 
-    await waitFor(() => expect(productMocks.listBookRoutines).toHaveBeenCalledWith("book/a"));
-    openTab("内置套路");
-    const reviewSwitch = await screen.findByRole("switch", { name: "切换全局状态：Review" });
-    await waitFor(() => expect(reviewSwitch).toHaveProperty("disabled", false));
-    fireEvent.click(reviewSwitch);
-    await waitFor(() => expect(runtimeMocks.routines.toggleGlobal).toHaveBeenCalledWith("review", true));
+    await waitFor(() => expect(productMocks.listBookRoutines).toHaveBeenCalledWith("book-1"));
+    expect(await screen.findByText("全局：自动")).toBeTruthy();
+    const terminal = screen.getByRole("group", { name: "本书覆盖：Terminal" });
+    expect(within(terminal).getByRole("button", { name: "跟随全局" }).getAttribute("aria-pressed")).toBe("true");
 
-    fireEvent.click(screen.getByRole("button", { name: "禁用作品套路：Review" }));
-    await waitFor(() => expect(productMocks.toggleBookRoutine).toHaveBeenCalledWith("book/a", "review", "disable"));
+    fireEvent.click(within(terminal).getByRole("button", { name: "常驻" }));
+    await waitFor(() => expect(productMocks.toggleBookRoutine).toHaveBeenCalledWith("book-1", "terminal", "enable"));
     expect(cacheMocks.invalidateNarratorCommands).toHaveBeenCalled();
 
-    openTab("可选工具");
-    expect(await screen.findByText("Terminal")).toBeTruthy();
-    expect(screen.queryByText("Review")).toBeNull();
+    const browser = screen.getByRole("group", { name: "本书覆盖：Browser" });
+    expect(within(browser).getByRole("button", { name: "常驻" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(browser).getByRole("button", { name: "跟随全局" }));
+    await waitFor(() => expect(productMocks.toggleBookRoutine).toHaveBeenCalledWith("book-1", "browser", "reset"));
   });
 
-  it("creates, edits, and deletes user commands while preserving routine-managed commands", async () => {
-    render(<RoutinesNextPage />);
-    openTab("自定义命令");
+  it("本书技能走书籍网关，不带 Runtime 项目标识", async () => {
+    renderPage({ route: { kind: "routines", panel: "book" } });
+    openBookSection("技能");
 
-    expect(await screen.findByText("/draft-review")).toBeTruthy();
-    expect(screen.getByText("/routine-review")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "添加命令" }));
-    const createDialog = screen.getByRole("dialog");
-    fireEvent.change(within(createDialog).getByLabelText("名称"), { target: { value: "planner" } });
-    fireEvent.change(within(createDialog).getByLabelText("提示模板"), { target: { value: "Plan the next arc" } });
-    fireEvent.click(within(createDialog).getByRole("button", { name: "创建命令" }));
-
-    await waitFor(() => expect(runtimeMocks.preferences.patch).toHaveBeenCalledWith({
-      commands: [
-        expect.objectContaining({ name: "routine-review" }),
-        expect.objectContaining({ name: "draft-review" }),
-        expect.objectContaining({ name: "planner", prompt: "Plan the next arc" }),
-      ],
-    }));
-    expect(cacheMocks.invalidateNarratorCommands).toHaveBeenCalled();
-
-    const draftCard = screen.getByText("/draft-review").closest("[data-slot=card]");
-    fireEvent.click(within(draftCard as HTMLElement).getByRole("button", { name: "编辑" }));
-    const editDialog = screen.getByRole("dialog");
-    fireEvent.change(within(editDialog).getByLabelText("提示模板"), { target: { value: "Review and rewrite the draft" } });
-    fireEvent.click(within(editDialog).getByRole("button", { name: "保存修改" }));
-    await waitFor(() => expect(runtimeMocks.preferences.patch).toHaveBeenLastCalledWith({
-      commands: expect.arrayContaining([expect.objectContaining({ name: "draft-review", prompt: "Review and rewrite the draft" })]),
-    }));
-
-    const plannerCard = await screen.findByText("/planner");
-    fireEvent.click(within(plannerCard.closest("[data-slot=card]") as HTMLElement).getByRole("button", { name: "删除" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "删除" }));
-    await waitFor(() => expect(runtimeMocks.preferences.patch).toHaveBeenLastCalledWith({
-      commands: expect.not.arrayContaining([expect.objectContaining({ name: "planner" })]),
-    }));
-  });
-
-  it("saves real Bash, WebFetch, and plan reflection settings", async () => {
-    render(<RoutinesNextPage />);
-    openTab("工具权限");
-
-    expect(await screen.findByText("Bash 命令白名单")).toBeTruthy();
-    fireEvent.click(screen.getByRole("switch", { name: "计划反思自动批准" }));
-    fireEvent.click(screen.getByRole("switch", { name: "WebFetch 允许所有 URL" }));
-    fireEvent.click(screen.getByRole("button", { name: "保存权限设置" }));
-
-    await waitFor(() => expect(runtimeMocks.settings.patch).toHaveBeenCalledWith({
-      agent: {
-        commandWhitelist: [{ pattern: "^git status$", enabled: true }],
-        commandBlacklist: [{ pattern: "rm\\s+-rf", denyPrompt: "拒绝危险删除", enabled: true }],
-        webFetchPolicy: { allowAll: true, whitelist: [], blacklist: [] },
-        planReflectionAutoApprove: true,
-      },
-    }));
-  });
-
-  it("labels global skills by source directory and keeps relocated product paths in full", async () => {
-    const relocatedLocation = "F:\\NovelForkData\\skills\\relocated\\SKILL.md";
-    runtimeMocks.skills.listGlobal.mockResolvedValue([
-      { name: "claude-skill", description: "Claude skill", location: "C:\\Users\\Test\\.claude\\skills\\claude-skill\\SKILL.md", files: ["SKILL.md"], disabled: false },
-      { name: "relocated", description: "NOVELFORK_HOME skill", location: relocatedLocation, files: ["SKILL.md"], disabled: false },
-    ]);
-    render(<RoutinesNextPage />);
-    openTab("全局技能");
-
-    await waitFor(() => expect(screen.getByText("relocated")).toBeTruthy());
-    // Windows 反斜杠路径也能识别出 .claude 来源
-    expect(screen.getByText(".claude")).toBeTruthy();
-    expect(screen.getByText(relocatedLocation)).toBeTruthy();
-  });
-
-  it("uses book-scoped skill CRUD without exposing a Runtime project id", async () => {
-    render(<RoutinesNextPage bookId="book-123" bookTitle="长夜" />);
-    openTab("作品技能");
-
-    await waitFor(() => expect(productMocks.listBookSkills).toHaveBeenCalledWith("book-123"));
-    expect(screen.getByText("book-style")).toBeTruthy();
-    expect(screen.getByText("作品")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "创建技能" }));
+    expect(await screen.findByText("book-style")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "创建技能" })[0]!);
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("名称"), { target: { value: "continuity" } });
     fireEvent.change(within(dialog).getByLabelText("描述"), { target: { value: "Track continuity" } });
     fireEvent.change(within(dialog).getByLabelText("内容"), { target: { value: "Check facts" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
 
-    await waitFor(() => expect(productMocks.createBookSkill).toHaveBeenCalledWith("book-123", {
-      name: "continuity",
-      description: "Track continuity",
-      content: "Check facts",
-    }));
+    await waitFor(() =>
+      expect(productMocks.createBookSkill).toHaveBeenCalledWith("book-1", {
+        name: "continuity",
+        description: "Track continuity",
+        content: "Check facts",
+      }),
+    );
     expect(cacheMocks.invalidateNarratorCommands).toHaveBeenCalled();
   });
 
-  it("edits default system prompt and repository-root instructions independently", async () => {
-    render(<RoutinesNextPage />);
-    openTab("规则与提示词");
+  it("本书规则写到服务端给出的候选文件", async () => {
+    renderPage({ route: { kind: "routines", panel: "book" } });
+    openBookSection("规则");
 
-    expect(await screen.findByText("D:/Workspace/NovelFork/CLAUDE.md · 已存在")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("默认系统提示词 Markdown"), { target: { value: "Updated default" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存默认提示词" }));
-    await waitFor(() => expect(runtimeMocks.settings.patch).toHaveBeenCalledWith({ agent: { defaultSystemPrompt: "Updated default" } }));
-
-    fireEvent.change(screen.getByLabelText("仓库根目录提示词 Markdown"), { target: { value: "# Updated repository instructions" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存仓库提示词" }));
-    await waitFor(() => expect(runtimeMocks.routines.putGlobalPrompt).toHaveBeenCalledWith(
-      "# Updated repository instructions",
-      "D:/Workspace/NovelFork/CLAUDE.md",
-    ));
-    fireEvent.click(screen.getByRole("button", { name: "恢复继承" }));
-    await waitFor(() => expect(runtimeMocks.settings.patch).toHaveBeenLastCalledWith({ agent: { defaultSystemPrompt: null } }));
+    const editor = await screen.findByLabelText("本书规则 Markdown");
+    fireEvent.change(editor, { target: { value: "# 本书规则\n不写现代词。" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存本书规则" }));
+    await waitFor(() => expect(productMocks.putBookRules).toHaveBeenCalledWith("book-1", "# 本书规则\n不写现代词。", "AGENT.md"));
+    expect(await screen.findByText("已保存")).toBeTruthy();
   });
 
-  it("clears MCP inheritance overrides and edits per-tool permission", async () => {
-    render(<RoutinesNextPage />);
-    openTab("MCP");
+  it("MCP 权限覆盖：选继承时发送 null 删除本书覆盖", async () => {
+    renderPage({ route: { kind: "routines", panel: "book" } });
+    openBookSection("MCP 权限");
 
-    expect((await screen.findAllByText("Memory")).length).toBeGreaterThan(0);
-    fireEvent.change(screen.getByLabelText("工具权限：Memory/recall"), { target: { value: "deny" } });
-    await waitFor(() => expect(runtimeMocks.mcp.patch).toHaveBeenCalledWith("memory-server", {
-      toolPermissionPatch: { toolName: "recall", behavior: "deny" },
-    }));
+    await waitFor(() => expect(productMocks.listBookMcpOverrides).toHaveBeenCalledWith("book-1"));
+    const serverSelect = await screen.findByLabelText("本书服务器权限：Memory");
+    expect((serverSelect as HTMLSelectElement).value).toBe("ask");
+    fireEvent.change(serverSelect, { target: { value: "inherit" } });
+    await waitFor(() => expect(productMocks.putBookMcpOverride).toHaveBeenCalledWith("book-1", "memory-server", { defaultBehavior: null }));
 
-    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("默认工具行为"), { target: { value: "inherit" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "保存修改" }));
-    await waitFor(() => expect(runtimeMocks.mcp.patch).toHaveBeenCalledWith(
-      "memory-server",
-      expect.objectContaining({ defaultBehavior: null }),
-    ));
+    fireEvent.change(screen.getByLabelText("本书工具权限：Memory/recall"), { target: { value: "deny" } });
+    await waitFor(() =>
+      expect(productMocks.putBookMcpOverride).toHaveBeenCalledWith("book-1", "memory-server", {
+        toolPermissionPatch: { toolName: "recall", behavior: "deny" },
+      }),
+    );
   });
 
-  it("writes and clears book MCP server and per-tool overrides through the trusted book gateway", async () => {
-    render(<RoutinesNextPage bookId="book-mcp" bookTitle="长夜" />);
-    openTab("MCP");
+  it("本书钩子：切换、创建都只发书籍标识", async () => {
+    renderPage({ route: { kind: "routines", panel: "book" } });
+    openBookSection("钩子");
 
-    await waitFor(() => expect(productMocks.listBookMcpOverrides).toHaveBeenCalledWith("book-mcp"));
-    expect(screen.getByText("作品权限覆盖 · 长夜")).toBeTruthy();
+    expect(await screen.findByText("novel_write_chapter")).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: "启用钩子：book-hook" }));
+    await waitFor(() => expect(productMocks.updateBookHook).toHaveBeenCalledWith("book-1", "book-hook", { enabled: false }));
 
-    fireEvent.change(screen.getByLabelText("作品服务器权限：Memory"), { target: { value: "inherit" } });
-    await waitFor(() => expect(productMocks.putBookMcpOverride).toHaveBeenCalledWith(
-      "book-mcp",
-      "memory-server",
-      { defaultBehavior: null },
-    ));
-
-    fireEvent.change(screen.getByLabelText("作品工具权限：Memory/recall"), { target: { value: "inherit" } });
-    await waitFor(() => expect(productMocks.putBookMcpOverride).toHaveBeenCalledWith(
-      "book-mcp",
-      "memory-server",
-      { toolPermissionPatch: { toolName: "recall", behavior: null } },
-    ));
-  });
-
-  it("uses book Hook gateway by default for a selected book and never sends projectId", async () => {
-    render(<RoutinesNextPage bookId="book-hooks" bookTitle="长夜" />);
-    openTab("Hooks");
-
-    await waitFor(() => expect(productMocks.listBookHooks).toHaveBeenCalledWith("book-hooks"));
-    expect(screen.getByText("novel_write_chapter")).toBeTruthy();
-    expect(screen.queryByText(/project-/)).toBeNull();
-
-    fireEvent.click(screen.getByRole("switch", { name: "切换钩子：book-hook" }));
-    await waitFor(() => expect(productMocks.updateBookHook).toHaveBeenCalledWith("book-hooks", "book-hook", { enabled: false }));
-
-    fireEvent.click(screen.getByRole("button", { name: "创建 Hook" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建钩子" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("命令"), { target: { value: "bun scripts/after-write.ts" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
-    await waitFor(() => expect(productMocks.createBookHook).toHaveBeenCalledWith(
-      "book-hooks",
-      expect.not.objectContaining({ projectId: expect.anything() }),
-    ));
+    await waitFor(() =>
+      expect(productMocks.createBookHook).toHaveBeenCalledWith(
+        "book-1",
+        expect.objectContaining({ type: "command", command: "bun scripts/after-write.ts" }),
+      ),
+    );
+    expect(productMocks.createBookHook.mock.calls[0]![1]).not.toHaveProperty("projectId");
   });
 
-  it("resets book-scoped Hook editing when the selected book disappears", async () => {
-    const view = render(<RoutinesNextPage bookId="book-hooks" bookTitle="长夜" />);
-    openTab("Hooks");
+  it("钩子编辑：Attention 事件改用原因枚举，裸主机名补全协议", async () => {
+    productMocks.listBookHooks.mockResolvedValue([]);
+    renderPage({ route: { kind: "routines", panel: "book" } });
+    openBookSection("钩子");
 
-    await waitFor(() => expect(productMocks.listBookHooks).toHaveBeenCalledWith("book-hooks"));
-    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
-    expect(screen.getByRole("dialog")).toBeTruthy();
-
-    view.rerender(<RoutinesNextPage />);
-    await waitFor(() => expect(runtimeMocks.hooks.listGlobal).toHaveBeenCalled());
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText("novel_write_chapter")).toBeNull();
-    expect(screen.getByText("PostToolUse")).toBeTruthy();
-  });
-
-  it("reports Hook administrator failures honestly", async () => {
-    const forbidden = Object.assign(new Error("Admin access required"), { status: 403 });
-    runtimeMocks.hooks.listGlobal.mockRejectedValueOnce(forbidden);
-
-    render(<RoutinesNextPage />);
-    openTab("Hooks");
-
-    await waitFor(() => expect(screen.getByText(/403 禁止访问 — 钩子管理需要 Runtime 管理员权限/)).toBeTruthy());
-  });
-
-  it("switches the Hook matcher to the Attention reason enum and clears stale values", async () => {
-    runtimeMocks.hooks.listGlobal.mockResolvedValue([]);
-
-    render(<RoutinesNextPage />);
-    openTab("Hooks");
-
-    fireEvent.click(await screen.findByRole("button", { name: "创建 Hook" }));
+    fireEvent.click(await screen.findByRole("button", { name: "创建钩子" }));
     const dialog = screen.getByRole("dialog");
-
-    // 工具事件下 matcher 是自由文本。
     fireEvent.change(within(dialog).getByLabelText("匹配器"), { target: { value: "Write" } });
-    // 命令为空时「创建」按钮是 disabled 的，先给一个目标。
-    fireEvent.change(within(dialog).getByLabelText("命令"), {
-      target: { value: "bun scripts/notify.ts" },
-    });
-
-    // 切到 Attention：matcher 语义变为 reason 枚举，旧工具名必须被丢弃。
-    // 该文件把 SimpleSelect mock 成原生 <select>，因此用 change 而非 pointerDown。
-    fireEvent.change(within(dialog).getByLabelText("钩子事件"), {
-      target: { value: "Attention" },
-    });
-
+    fireEvent.change(within(dialog).getByLabelText("钩子事件"), { target: { value: "Attention" } });
     await waitFor(() => expect(within(dialog).queryByLabelText("匹配器")).toBeNull());
-    const reasonSelect = within(dialog).getByLabelText("钩子关注原因");
-    fireEvent.change(reasonSelect, { target: { value: "waiting_permission" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
-
-    await waitFor(() =>
-      expect(runtimeMocks.hooks.create).toHaveBeenCalledWith(
-        expect.objectContaining({ event: "Attention", matcher: "waiting_permission" }),
-      ),
-    );
-  });
-
-  it("normalizes a bare Host Hook URL before submitting to the Runtime", async () => {
-    runtimeMocks.hooks.listGlobal.mockResolvedValue([]);
-
-    render(<RoutinesNextPage />);
-    openTab("Hooks");
-
-    fireEvent.click(await screen.findByRole("button", { name: "创建 Hook" }));
-    const dialog = screen.getByRole("dialog");
-
-    fireEvent.change(within(dialog).getByLabelText("钩子类型"), {
-      target: { value: "http" },
-    });
-    fireEvent.change(await within(dialog).findByLabelText("URL"), {
-      target: { value: "example.com/hook" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
-
-    // Runtime 的 zod 校验是 z.string().url()，未补全协议的裸主机名会被 400。
-    await waitFor(() =>
-      expect(runtimeMocks.hooks.create).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "http", url: "https://example.com/hook" }),
-      ),
-    );
-  });
-
-  it("shows the incoming Hook payload reference for the selected event", async () => {
-    runtimeMocks.hooks.listGlobal.mockResolvedValue([]);
-
-    render(<RoutinesNextPage />);
-    openTab("Hooks");
-
-    fireEvent.click(await screen.findByRole("button", { name: "创建 Hook" }));
-    const dialog = screen.getByRole("dialog");
-
+    fireEvent.change(within(dialog).getByLabelText("钩子关注原因"), { target: { value: "waiting_permission" } });
+    fireEvent.change(within(dialog).getByLabelText("钩子类型"), { target: { value: "http" } });
+    fireEvent.change(await within(dialog).findByLabelText("URL"), { target: { value: "example.com/hook" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /查看传入字段与示例/ }));
-    expect(within(dialog).getByText("工具名称")).toBeTruthy();
     expect(within(dialog).getByText(/通用字段（所有事件）/)).toBeTruthy();
-    expect(within(dialog).getByText(/"tool_name": "Bash"/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+
+    await waitFor(() =>
+      expect(productMocks.createBookHook).toHaveBeenCalledWith(
+        "book-1",
+        expect.objectContaining({ event: "Attention", matcher: "waiting_permission", type: "http", url: "https://example.com/hook" }),
+      ),
+    );
+  });
+
+  it("钩子接口 403 时如实说明需要管理员", async () => {
+    productMocks.listBookHooks.mockRejectedValueOnce(Object.assign(new Error("Admin access required"), { status: 403 }));
+    renderPage({ route: { kind: "routines", panel: "book" } });
+    openBookSection("钩子");
+
+    expect(await screen.findByText(/403 禁止访问 — 钩子管理需要 Runtime 管理员权限/)).toBeTruthy();
+  });
+});
+
+describe("套路页：子代理小说工具", () => {
+  it("给自定义工具列表的子代理加小说工具，原样保留其余字段与通用工具", async () => {
+    renderPage({ route: { kind: "routines", panel: "subagent-tools" } });
+
+    const tools = await screen.findByRole("group", { name: "小说工具：critic" });
+    expect(screen.getByText("通用工具（在原页勾选）：Read、Grep")).toBeTruthy();
+    fireEvent.click(within(tools).getByRole("button", { name: "读章节" }));
+
+    await waitFor(() =>
+      expect(runtimeMocks.subagents.update).toHaveBeenCalledWith("critic", {
+        ...subagents[0],
+        customTools: ["Read", "Grep", "chapter.read"],
+      }),
+    );
+    await waitFor(() => expect(within(tools).getByRole("button", { name: "读章节" }).getAttribute("aria-pressed")).toBe("true"));
+  });
+
+  it("不是工具列表模式的子代理只给说明，不能单独加工具", async () => {
+    renderPage({ route: { kind: "routines", panel: "subagent-tools" } });
+
+    expect(await screen.findByText(/工具访问是「General（可写）」/)).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "小说工具：helper" })).toBeNull();
   });
 });

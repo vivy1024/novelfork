@@ -19,7 +19,7 @@ import {
   type ResourceDomainClient,
 } from "./backend-contract";
 import { type StudioNextRoute } from "./entry";
-// 套路页暂留 Studio 版：它带按书覆盖（套路、技能、MCP、规则、Hooks）与写作配置分区，Runtime 原页没有。
+// 套路页：通用部分嵌 Runtime 原页；按书覆盖、写作配置与子代理小说工具是 NovelFork 自己的面板。
 const RoutinesNextPage = lazy(() =>
   import("./routines/RoutinesNextPage").then((m) => ({
     default: m.RoutinesNextPage,
@@ -110,8 +110,9 @@ import {
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { RuntimePageMount } from "./runtime/RuntimePageMount";
 import { runtimePageSectionOf, type RuntimePageSection } from "./runtime/runtime-page-sections";
+import { runtimePageRoute } from "./shell/shell-route";
 
-const RUNTIME_PAGE_LABELS: Record<RuntimePageSection, string> = {
+const RUNTIME_PAGE_LABELS: Record<Exclude<RuntimePageSection, "routines">, string> = {
   search: "搜索",
   knowledge: "知识库",
   "scheduled-tasks": "定时任务",
@@ -564,6 +565,7 @@ function RouteMountPoint({
   onCreateRuntimeBook,
   reloadRuntimeShell,
   selectedBook,
+  onSelectBook,
   onNavigateRuntimePath,
 }: {
   readonly route: ShellRoute;
@@ -581,6 +583,8 @@ function RouteMountPoint({
   readonly onCreateRuntimeBook: (title: string) => Promise<string>;
   readonly reloadRuntimeShell: () => Promise<void>;
   readonly selectedBook: ShellBookItem | null;
+  /** 套路页「本书设置」换书。 */
+  readonly onSelectBook: (bookId: string) => void;
   /** 嵌入的 Runtime 原页要去自己范围以外的 Runtime 路径。 */
   readonly onNavigateRuntimePath: (path: string) => void;
 }) {
@@ -704,8 +708,12 @@ function RouteMountPoint({
         <LazyErrorBoundary fallbackLabel="套路页">
           <Suspense fallback={<LazyFallback />}>
             <RoutinesNextPage
-              bookId={selectedBook?.id}
-              bookTitle={selectedBook?.title}
+              route={route}
+              onNavigate={onNavigate}
+              onNavigateRuntimePath={onNavigateRuntimePath}
+              books={books}
+              selectedBook={selectedBook}
+              onSelectBook={onSelectBook}
             />
           </Suspense>
         </LazyErrorBoundary>
@@ -849,7 +857,7 @@ export function StudioNextApp(_props: StudioNextAppProps) {
   const navigateRuntimePath = useCallback(
     (path: string) => {
       const section = runtimePageSectionOf(path.split(/[?#]/u, 1)[0] ?? path);
-      if (section) navigate({ kind: section, path });
+      if (section) navigate(runtimePageRoute(section, path));
       else void routerNavigate({ href: path });
     },
     [navigate, routerNavigate],
@@ -983,6 +991,7 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         onCreateRuntimeBook={createRuntimeBook}
         reloadRuntimeShell={reloadRuntimeShell}
         selectedBook={selectedBook}
+        onSelectBook={setSelectedBookId}
         onNavigateRuntimePath={navigateRuntimePath}
       />
       <FirstRunDialog

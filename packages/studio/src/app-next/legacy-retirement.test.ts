@@ -69,6 +69,11 @@ const retiredFrontendPaths = [
   "src/components/WorktreeCard.tsx",
   "src/components/WorldDimensions.tsx",
   "src/components/tool-components.ts",
+  // T1.7：套路页通用部分改为嵌入 Runtime 原页，Studio 复制品下线
+  "src/app-next/routines/CommandsSection.tsx",
+  "src/app-next/routines/ToolPermissionsSection.tsx",
+  "src/app-next/routines/MCPServerPanel.tsx",
+  "src/app-next/routines/RulesSection.tsx",
 ] as const;
 
 function readStudioTsconfig(): { exclude?: string[] } {
@@ -103,6 +108,18 @@ describe("legacy source retirement", () => {
     expect(scripts["build:server"]).toBeUndefined();
     expect(scripts.compile).toBeUndefined();
     expect(scripts.build).toBe("vite build");
+  });
+
+  it("套路页的通用部分只嵌 Runtime 原页，不再在 Studio 里实现全局套路的读写", () => {
+    const routinesDir = join(process.cwd(), "src", "app-next", "routines");
+    const page = readFileSync(join(routinesDir, "RoutinesNextPage.tsx"), "utf-8");
+    expect(page).toContain('section="routines"');
+    // 全局命令、工具权限、全局技能、全局提示词与全局钩子的客户端只该出现在 Runtime 原页里
+    const globalClients = /create(?:UserPreferences|Settings|Skills|Hooks|Routines)Client|listGlobal|putGlobalPrompt/;
+    const offenders = ["RoutinesNextPage.tsx", "BookRoutineSettingsPanel.tsx", "SubagentNovelToolsPanel.tsx", "routines-shared.tsx"]
+      .concat(["BookHooksPanel.tsx", "BookMcpOverridesPanel.tsx", "BookRoutineOverridesPanel.tsx", "BookRulesPanel.tsx", "BookSkillsPanel.tsx"].map((file) => join("book", file)))
+      .filter((file) => globalClients.test(readFileSync(join(routinesDir, file), "utf-8")));
+    expect(offenders).toEqual([]);
   });
 
   it("preserves the Runtime product contract and workspace routes", () => {

@@ -63,8 +63,9 @@ const scheduledTasksRoute = createRoute({
   path: "/scheduled-tasks",
 });
 
-// 嵌入的 Runtime 原页在本入口内的子路径（知识条目、定时任务详情……），见 shell-route 的 RuntimePageRoute。
-const runtimePageSubRoutes = ["search", "knowledge", "scheduled-tasks", "learn"].map((section) =>
+// 嵌入的 Runtime 原页在本入口内的子路径（知识条目、定时任务详情、套路页的工具权限……），见 shell-route 的
+// RuntimePageRoute；套路页的 NovelFork 面板（/next/routines/novelfork/…）也落在这里，由 shell-route 区分。
+const runtimePageSubRoutes = ["search", "routines", "knowledge", "scheduled-tasks", "learn"].map((section) =>
   createRoute({
     getParentRoute: () => nextRoute,
     path: `/${section}/$`,
@@ -149,8 +150,7 @@ const nativeSettingsSectionRoute = createRoute({
   },
 });
 
-// Runtime 原页的路径整页打开时（新标签页、没经过嵌入路由的链接）转到对应的产品入口；
-// 套路页暂为 Studio 版，一并转过去。
+// Runtime 原页的路径整页打开时（新标签页、没经过嵌入路由的链接）转到对应的产品入口。
 const nativeRuntimePageRoutes = ["search", "knowledge", "scheduled-tasks", "learn", "routines"].flatMap((section) =>
   [`/${section}`, `/${section}/$`].map((path) =>
     createRoute({
