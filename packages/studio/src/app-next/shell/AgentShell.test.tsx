@@ -13,6 +13,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function visibleText(element: HTMLElement): string {
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove());
+  return clone.textContent ?? "";
+}
+
 describe("AgentShell", () => {
   it("renders global shell navigation and marks active book", () => {
     render(
@@ -27,7 +33,7 @@ describe("AgentShell", () => {
     );
 
     expect(screen.getByTestId("agent-shell")).toBeTruthy();
-    expect(screen.getByTestId("shell-sidebar").className).toContain("w-12");
+    expect(screen.getByTestId("shell-sidebar").className).toContain("w-16");
     expect(screen.getByRole("button", { name: "第一本书" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByText("画布挂载点")).toBeTruthy();
   });
@@ -44,8 +50,59 @@ describe("AgentShell", () => {
       </AgentShell>,
     );
 
-    expect(screen.getByTestId("shell-sidebar").className).toContain("w-12");
+    expect(screen.getByTestId("shell-sidebar").className).toContain("w-16");
     expect(screen.getByRole("button", { name: "展开侧栏" })).toBeTruthy();
+  });
+
+  it("labels every collapsed rail entry with visible text that matches its accessible name", () => {
+    const onNavigate = vi.fn<(route: ShellRoute) => void>();
+    const onLogout = vi.fn();
+    render(
+      <AgentShell
+        route={{ kind: "book", bookId: "b1" }}
+        books={books}
+        sessions={[...sessions, ...standaloneSessions]}
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+      >
+        <div>画布挂载点</div>
+      </AgentShell>,
+    );
+
+    const sidebar = screen.getByTestId("shell-sidebar");
+    expect(sidebar.getAttribute("data-collapsed")).toBe("true");
+    const expected = ["展开侧栏", "我的作品", "第一本书", "会话", "独立叙述者", "搜索", "套路", "知识库", "定时任务", "学习", "市场", "设置", "退出登录"];
+    const railButtons = within(sidebar).getAllByRole("button");
+    expect(railButtons.map((button) => button.getAttribute("aria-label"))).toEqual(expected);
+    for (const button of railButtons) {
+      // 图标与首字徽记只作装饰（aria-hidden），按钮上能读到的文字就是无障碍名
+      expect(visibleText(button)).toBe(button.getAttribute("aria-label"));
+    }
+    expect(within(sidebar).getByRole("button", { name: "第一本书" }).getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(within(sidebar).getByRole("button", { name: "我的作品" }));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: "books" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "知识库" }));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: "knowledge" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "退出登录" }));
+    expect(onLogout).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(sidebar).getByRole("button", { name: "会话" }));
+    expect(screen.getByRole("dialog", { name: "会话工作区" })).toBeTruthy();
+  });
+
+  it("keeps the expand toggle working and restores the full sidebar", () => {
+    render(
+      <AgentShell route={{ kind: "book", bookId: "b1" }} books={books} sessions={sessions} onNavigate={vi.fn()}>
+        <div>画布挂载点</div>
+      </AgentShell>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "展开侧栏" }));
+    const sidebar = screen.getByTestId("shell-sidebar");
+    expect(sidebar.className).toContain("w-[250px]");
+    expect(sidebar.getAttribute("data-collapsed")).toBe("false");
+    expect(within(sidebar).getByRole("button", { name: "折叠侧栏" })).toBeTruthy();
+    expect(sidebar.textContent).toContain("叙事线（书籍）");
   });
 
   it("keeps the expanded shell rail on non-workbench routes", () => {

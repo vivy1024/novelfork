@@ -34,6 +34,19 @@ describe("Agent Shell route parsing", () => {
     expect(toShellPath({ kind: "learn" })).toBe("/next/learn");
   });
 
+  it("套路页：通用部分是 Runtime 原页的子路径，NovelFork 面板单独占 /novelfork/ 一段", () => {
+    expect(parseShellRoute("/next/routines/tool-permissions")).toEqual({ kind: "routines", path: "/routines/tool-permissions" });
+    expect(parseShellRoute("/next/routines/novelfork/book")).toEqual({ kind: "routines", panel: "book" });
+    expect(parseShellRoute("/next/routines/novelfork/subagent-tools?x=1")).toEqual({ kind: "routines", panel: "subagent-tools" });
+    // 未知面板回到套路页通用部分，不把它当成 Runtime 路径交给原页
+    expect(parseShellRoute("/next/routines/novelfork/unknown")).toEqual({ kind: "routines" });
+    expect(toShellPath({ kind: "routines", panel: "book" })).toBe("/next/routines/novelfork/book");
+    expect(toShellPath({ kind: "routines", path: "/routines/tool-permissions" })).toBe("/next/routines/tool-permissions");
+    for (const href of ["/next/routines", "/next/routines/tool-permissions", "/next/routines/novelfork/book", "/next/routines/novelfork/subagent-tools"]) {
+      expect(toShellPath(parseShellRoute(href))).toBe(href);
+    }
+  });
+
   it("falls back to the shell home for unknown routes", () => {
     expect(parseShellRoute("/next/dashboard")).toEqual({ kind: "home" });
     expect(parseShellRoute("/other/path")).toEqual({ kind: "home" });

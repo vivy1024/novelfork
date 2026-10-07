@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Wrench, GitFork } from "lucide-react";
-import type { WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
+import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Wrench, GitFork, Target, ScanSearch, ShieldCheck, Settings2, type LucideIcon } from "lucide-react";
+import type { ToolGroupIcon, WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
 import { JingweiEmptyState } from "./JingweiEmptyState";
 import { getResourceContextMenuItems } from "./ide/context-menu-registry";
 
@@ -23,9 +23,36 @@ export interface WorkbenchResourceTreeProps {
   onAction?: (action: ResourceTreeAction) => void;
   cutNodeIds?: readonly string[];
   sortStorageKey?: string;
+  /**
+   * 是否显示顶部「搜索 / 排序」。默认显示（文件树）；固定清单（如分析工具）传 false，
+   * 此时不排序，节点保持传入顺序（分组按写作时机排好，按名称排会打乱）。
+   */
+  toolbar?: boolean;
+  /** 树的无障碍名称；同一侧栏有多棵树时用来区分。 */
+  ariaLabel?: string;
 }
 
-function NodeIcon({ kind }: { kind: WorkbenchResourceKind }) {
+/** 分析工具分组图标：节点只带名字（见 ToolGroupIcon），这里映射到 lucide 组件。 */
+const TOOL_GROUP_ICONS: Record<ToolGroupIcon, LucideIcon> = {
+  target: Target,
+  "scan-search": ScanSearch,
+  "shield-check": ShieldCheck,
+  settings: Settings2,
+};
+
+function toolGroupIcon(node: WorkbenchResourceNode): LucideIcon | null {
+  const name = node.metadata?.icon;
+  return typeof name === "string" && Object.prototype.hasOwnProperty.call(TOOL_GROUP_ICONS, name)
+    ? TOOL_GROUP_ICONS[name as ToolGroupIcon]
+    : null;
+}
+
+function NodeIcon({ node }: { node: WorkbenchResourceNode }) {
+  const kind: WorkbenchResourceKind = node.kind;
+  if (kind === "tool-group") {
+    const GroupIcon = toolGroupIcon(node);
+    if (GroupIcon) return <GroupIcon className="size-4 text-indigo-400" data-icon={String(node.metadata?.icon)} />;
+  }
   switch (kind) {
     case "book": return <BookOpen className="size-4 text-primary" />;
     case "group": return <FolderOpen className="size-4 text-muted-foreground" />;
@@ -312,7 +339,7 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
           defaultValue={inlineEdit!.value}
           placeholder="输入新名称"
           depth={depth}
-          icon={<NodeIcon kind={node.kind} />}
+          icon={<NodeIcon node={node} />}
           onSubmit={(newName) => onAction?.({ type: "rename", node, newName })}
           onCancel={() => onAction?.({ type: "rename", node, newName: "" })}
         />
@@ -357,11 +384,11 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
           onContextMenu={handleContext}
         >
           {hasChildren ? (
-            <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} className="shrink-0 text-muted-foreground">
+            <button type="button" aria-label={`${effectiveExpanded ? "收起" : "展开"}${node.title}`} aria-expanded={effectiveExpanded} onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} className="shrink-0 text-muted-foreground">
               {effectiveExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
             </button>
           ) : <span className="w-3.5 shrink-0" />}
-          <NodeIcon kind={node.kind} />
+          <NodeIcon node={node} />
           <span className="truncate text-sm font-medium text-muted-foreground">{node.title}</span>
           {canCreate && (
             <button type="button" title={`新建${node.title}条目`}
@@ -411,7 +438,7 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
             {effectiveExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           </button>
         ) : <span className="w-3.5 shrink-0" />}
-        <NodeIcon kind={node.kind} />
+        <NodeIcon node={node} />
         <span className="truncate text-sm">{node.title}</span>
         <CapabilityBadges node={node} />
       </Button>
@@ -424,7 +451,7 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
   );
 }
 
-export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, onAction, cutNodeIds = [], sortStorageKey = "novelfork:resource-tree-sort" }: WorkbenchResourceTreeProps) {
+export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, onAction, cutNodeIds = [], sortStorageKey = "novelfork:resource-tree-sort", toolbar = true, ariaLabel = "写作资源树" }: WorkbenchResourceTreeProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<ResourceTreeSortMode>(() => {
@@ -433,7 +460,10 @@ export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, on
   });
   const [draggedNode, setDraggedNode] = useState<WorkbenchResourceNode | null>(null);
   const [inlineEdit, setInlineEdit] = useState<InlineEditState | null>(null);
-  const visibleNodes = useMemo(() => filterNodesByQuery(sortNodes(nodes, sortMode), searchQuery), [nodes, searchQuery, sortMode]);
+  const visibleNodes = useMemo(
+    () => (toolbar ? filterNodesByQuery(sortNodes(nodes, sortMode), searchQuery) : [...nodes]),
+    [nodes, searchQuery, sortMode, toolbar],
+  );
   const forceExpanded = searchQuery.trim().length > 0;
   useEffect(() => {
     const saved = typeof globalThis.localStorage?.getItem === "function" ? globalThis.localStorage.getItem(sortStorageKey) : null;
@@ -477,27 +507,27 @@ export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, on
   }, [onAction]);
 
   return (
-    <nav aria-label="写作资源树" className="space-y-1 relative">
-      <div className="flex gap-1 px-2 pb-1">
+    <nav aria-label={ariaLabel} className="space-y-1 relative">
+      {toolbar ? <div className="flex gap-1 px-2 pb-1">
         <input
           aria-label="搜索文件树"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.currentTarget.value)}
           onKeyDown={(event) => { if (event.key === "Escape") setSearchQuery(""); }}
-          placeholder="搜索文件..."
+          placeholder="搜索文件…"
           className="h-7 min-w-0 flex-1 rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
         />
         <select
           aria-label="文件树排序"
           value={sortMode}
           onChange={(event) => changeSortMode(event.currentTarget.value as ResourceTreeSortMode)}
-          className="h-7 rounded border border-border bg-background px-1 text-2xs outline-none"
+          className="h-7 rounded border border-border bg-background px-1 text-2xs text-foreground outline-none focus:border-primary"
         >
           <option value="name">名称</option>
           <option value="type">类型</option>
           <option value="modified">时间</option>
         </select>
-      </div>
+      </div> : null}
       {visibleNodes.map((node) => (
         <TreeNode key={node.id} node={node} depth={0} selectedNodeId={selectedNodeId} onOpen={onOpen} onContextMenu={onAction ? handleContextMenu : undefined} onAction={handleAction} draggedNode={draggedNode} onDragNode={setDraggedNode} cutNodeIds={cutNodeIds} forceExpanded={forceExpanded} inlineEdit={inlineEdit} />
       ))}

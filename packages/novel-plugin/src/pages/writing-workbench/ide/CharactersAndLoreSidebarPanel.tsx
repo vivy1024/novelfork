@@ -1,45 +1,43 @@
 /**
- * 角色与设定（Characters & Lore）侧栏面板 —— 酒馆（SillyTavern）风格卡片流。
+ * 作品基础侧栏面板：角色册 / 世界录 / 草案三个 tab，下面是条目卡片。
  *
- * 彻底颠覆传统的文件夹树结构：
- * 1. 【角色册 (Characters)】：以角色为第一公民的卡片流，直观展示图标徽章、姓名、门派/阵营、当前最新时态（位置/伤势）；
- * 2. 【世界录 (World Lore)】：门派势力、力量体系、法则规则、地理场景等设定词条卡；
- * 3. 顶部支持实时搜索、分类过滤与「新建角色 / 导入酒馆预设与角色卡」。
+ * 卡面纪律（docs/design/novelfork-frontend-final-board.html 屏 4）：每张卡只放
+ * 1. 名称；2. 唯一一个角标（角色取「角色定位」，设定取分类）；3. 一行状态；4. 关键进度
+ * （角色：声线确认数、最近出场章、久未出场标「冷」）。
+ * 只用已有的结构化数据，缺哪项就不显示哪项；正文碎句、别名、长标签、条目正文一律不上卡面，点开详情才看。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BookOpen,
   Eye,
-  HeartHandshake,
-  MapPin,
   Network,
-  Plus,
   Search,
-  Shield,
-  Sparkles,
-  Sprout,
+  Snowflake,
   Upload,
   UserPlus,
   UserRound,
-  Users,
-  Wand2,
   X,
-  Zap,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/hooks/use-api";
 import { fetchCharacterKernels, type CharacterKernelSummary } from "../character-kernel-client";
 import { DissectDraftPanel } from "../DissectDraftPanel";
+import { useNarrativeStructure } from "../useNarrativeStructure";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { CATEGORY_META, normalizeCategory, type JingweiCategory } from "../../../engine/jingwei/unified-categories";
+import type { NarrativeEntityInfo } from "../../../engine/narrative-taxonomy/narrative-structure";
+import {
+  CHARACTER_VOICE_FIELD_KEYS,
+  parseCharacterVoice,
+  type CharacterVoiceFieldStatus,
+} from "../../../engine/writing-layers/character-voice";
 import { workspaceForCategory } from "../lore-workspace-split";
 import { type ResourceTreeAction } from "../WorkbenchResourceTree";
 import { createLoreTreesNode, type WorkbenchResourceNode } from "../useWorkbenchResources";
 
+/** `/narrative-memory/facts` 当前台账里的一条事实；只声明卡面用到的字段。 */
 export interface EntityFactLite {
   id?: string;
   subject: string;
@@ -48,8 +46,14 @@ export interface EntityFactLite {
   category?: string;
   evidenceText?: string;
   sourceId?: string;
-  /** 事实来源章节（narrative-memory facts API 返回），用于「最后出场」推算。 */
+  /** 事实来源章节；结算产生的事实可作为「出场」证据。 */
   sourceChapter?: number;
+  /** 结算回填的经纬条目 id（实体身份链），比按名字匹配可靠。 */
+  subjectEntryId?: string;
+  validFromChapter?: number;
+  validUntilChapter?: number | null;
+  /** event=章后结算 / 事件归约；manual=作者手填（不算出场证据）。 */
+  sourceType?: string;
 }
 
 export interface CharactersAndLoreSidebarPanelProps {
@@ -142,9 +146,19 @@ export function CharactersAndLoreSidebarPanel({
   }, [loadKernels]);
   useWritingProgressRefresh(bookId, loadKernels);
 
-  const showKernel = useCallback((characterId: string): CharacterKernelSummary | undefined => {
-    return kernelsByCharacterId.get(characterId);
-  }, [kernelsByCharacterId]);
+  // 叙事结构快照：实体索引里的首末出场章（结算写入的本章出场名单 + 事件章号），以及全书当前章。
+  const { state: structureState, reload: reloadStructure } = useNarrativeStructure(bookId || undefined);
+  useWritingProgressRefresh(bookId, reloadStructure);
+  const structure = structureState.status === "ready" ? structureState.data : null;
+  const entityByEntryId = useMemo(() => {
+    const map = new Map<string, NarrativeEntityInfo>();
+    for (const entity of structure?.entities ?? []) {
+      if (entity.entryId) map.set(entity.entryId, entity);
+    }
+    return map;
+  }, [structure]);
+  // 「冷」要和当前章比：上层传了就用上层的，否则用叙事结构里已定稿的最大章号。
+  const effectiveCurrentChapter = currentChapter ?? (structure && structure.currentChapter > 0 ? structure.currentChapter : undefined);
 
   // 递归提取全部实体叶子节点
   const allEntries = useMemo(() => {
@@ -161,27 +175,21 @@ export function CharactersAndLoreSidebarPanel({
     return list;
   }, [nodes]);
 
-  const factsBySubject = useMemo(() => {
-    const map = new Map<string, EntityFactLite[]>();
+  const factIndex = useMemo(() => {
+    const byEntryId = new Map<string, EntityFactLite[]>();
+    const bySubject = new Map<string, EntityFactLite[]>();
     for (const fact of facts) {
-      const subject = fact.subject.trim();
-      if (!subject) continue;
-      // 时态有效性过滤（如果传入了当前章节）
+      // 上层传了当前章时，只看在该章仍然有效的事实
       if (currentChapter !== undefined && Number.isFinite(currentChapter)) {
-        // 如果 fact 携带了时态信息，则过滤不在当前章节区间的事实
-        // @ts-expect-error validFromChapter/validUntilChapter may exist on fact
         const from = typeof fact.validFromChapter === "number" ? fact.validFromChapter : 0;
-        // @ts-expect-error validFromChapter/validUntilChapter may exist on fact
         const until = typeof fact.validUntilChapter === "number" ? fact.validUntilChapter : null;
-        if (from > currentChapter || (until !== null && until <= currentChapter)) {
-          continue;
-        }
+        if (from > currentChapter || (until !== null && until <= currentChapter)) continue;
       }
-      const bucket = map.get(subject);
-      if (bucket) bucket.push(fact);
-      else map.set(subject, [fact]);
+      if (fact.subjectEntryId) pushTo(byEntryId, fact.subjectEntryId, fact);
+      const subject = fact.subject.trim();
+      if (subject) pushTo(bySubject, subject, fact);
     }
-    return map;
+    return { byEntryId, bySubject };
   }, [facts, currentChapter]);
 
   // 只把静态设定送进作品基础；动态推进条目归故事推进，不在这里混合展示。
@@ -218,6 +226,30 @@ export function CharactersAndLoreSidebarPanel({
     });
   }, [activeTab, charactersList, worldList, worldCategoryFilter, searchQuery]);
 
+  // 每张卡的卡面只在这里推导一次；同一 tab 里只要有一张卡有某一行，所有卡都留出这一行，保证等高。
+  const cards = useMemo(() => {
+    const isCharacter = activeTab === "characters";
+    const list = filteredList.map((node) => {
+      const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : undefined;
+      return {
+        node,
+        face: deriveLoreCardFace({
+          node,
+          isCharacter,
+          facts: factsForNode(node, entryId, factIndex),
+          kernel: isCharacter ? kernelsByCharacterId.get(node.title.trim()) : undefined,
+          entity: entryId ? entityByEntryId.get(entryId) : undefined,
+          currentChapter: effectiveCurrentChapter,
+        }),
+      };
+    });
+    return {
+      list,
+      showStatusRow: list.some((card) => card.face.status !== undefined),
+      showProgressRow: list.some((card) => card.face.voice !== undefined || card.face.lastChapter !== undefined),
+    };
+  }, [activeTab, filteredList, factIndex, kernelsByCharacterId, entityByEntryId, effectiveCurrentChapter]);
+
   // 新建角色/条目
   const handleCreateEntry = async () => {
     if (!newCharName.trim() || creatingBusy) return;
@@ -244,9 +276,9 @@ export function CharactersAndLoreSidebarPanel({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="characters-and-lore-panel">
-      {/* 顶部轻量工具条：导入设定 + AI 注入预览 */}
-      <div className="shrink-0 flex items-center justify-between border-b border-border px-2 py-1.5 bg-muted/20">
-        <div className="flex items-center gap-1">
+      {/* 顶部工具条：导入、AI 注入预览、设定图谱；窄侧栏下整体换行，「新角色」始终靠右 */}
+      <div className="shrink-0 flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5 bg-muted/20">
+        <div className="contents">
           <Button
             size="xs"
             variant={showImport ? "secondary" : "outline"}
@@ -281,7 +313,7 @@ export function CharactersAndLoreSidebarPanel({
         <Button
           size="xs"
           variant="ghost"
-          className="h-6 px-1.5 gap-1 text-primary hover:text-primary/90 font-medium"
+          className="ml-auto h-6 px-1.5 gap-1 text-primary hover:text-primary/90 font-medium"
           onClick={() => setCreatingChar(true)}
         >
           <UserPlus className="size-3" />
@@ -344,45 +376,29 @@ export function CharactersAndLoreSidebarPanel({
         </div>
       )}
 
-      {/* 主视图 Tab：【角色册】 vs 【世界录】 */}
-      <div className="shrink-0 flex items-center border-b border-border px-2 pt-1.5 gap-1 bg-muted/10">
-        <button
-          type="button"
-          onClick={() => setActiveTab("characters")}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-t-md text-xs font-semibold border-b-2 transition-colors ${
-            activeTab === "characters"
-              ? "border-primary text-primary bg-background shadow-xs"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Users className="size-3.5" />
-          <span>角色册 ({charactersList.length})</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("world")}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-t-md text-xs font-semibold border-b-2 transition-colors ${
-            activeTab === "world"
-              ? "border-primary text-primary bg-background shadow-xs"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <BookOpen className="size-3.5" />
-          <span>世界录 ({worldList.length})</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("draft")}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-t-md text-xs font-semibold border-b-2 transition-colors ${
-            activeTab === "draft"
-              ? "border-primary text-primary bg-background shadow-xs"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-          title="拆书抽出的角色、地点与伏笔候选；确认后才写入设定"
-        >
-          <Sprout className="size-3.5" />
-          <span>草案 ({draftCount})</span>
-        </button>
+      {/* 主视图 Tab：角色册 / 世界录 / 草案。窄侧栏下不折行，放不下时横向滚动 */}
+      <div className="shrink-0 flex items-center gap-0.5 overflow-x-auto border-b border-border px-2 pt-1.5 bg-muted/10">
+        {([
+          { id: "characters", label: "角色册", count: charactersList.length, title: undefined },
+          { id: "world", label: "世界录", count: worldList.length, title: undefined },
+          { id: "draft", label: "草案", count: draftCount, title: "拆书抽出的角色、地点与伏笔候选；确认后才写入设定" },
+        ] as const).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            aria-pressed={activeTab === tab.id}
+            title={tab.title}
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t-md border-b-2 px-2 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              activeTab === tab.id
+                ? "border-primary bg-background text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab.label}
+            <span className={`tabular-nums font-normal ${activeTab === tab.id ? "text-primary/80" : "text-muted-foreground"}`}>{tab.count}</span>
+          </button>
+        ))}
       </div>
 
       {activeTab === "world" && worldCategoryOptions.length > 0 && (
@@ -422,7 +438,8 @@ export function CharactersAndLoreSidebarPanel({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={activeTab === "characters" ? "搜索角色名、性格、口癖..." : "搜索世界设定、门派、体系..."}
+            placeholder={activeTab === "characters" ? "搜索角色名、性格、口癖…" : "搜索世界设定、门派、体系…"}
+            aria-label={activeTab === "characters" ? "搜索角色" : "搜索世界设定"}
             className="w-full bg-transparent text-2xs outline-none placeholder:text-muted-foreground/60"
           />
           {searchQuery && (
@@ -439,8 +456,8 @@ export function CharactersAndLoreSidebarPanel({
           <DissectDraftPanel bookId={bookId} onChanged={loadDraftCount} />
         </div>
       ) : (
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
-        {filteredList.length === 0 ? (
+      <div className="flex-1 min-h-0 overflow-y-auto p-2">
+        {cards.list.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground space-y-1.5">
             <UserRound className="size-8 opacity-25" />
             <p className="text-xs font-medium">
@@ -451,18 +468,22 @@ export function CharactersAndLoreSidebarPanel({
             </p>
           </div>
         ) : (
-          filteredList.map((entry) => (
-            <CharacterOrLoreCard
-              key={entry.id}
-              node={entry}
-              activeTab={activeTab}
-              facts={factsForNode(entry, factsBySubject)}
-              isSelected={selectedNodeId === entry.id}
-              kernel={activeTab === "characters" ? showKernel(entry.title) : undefined}
-              currentChapter={currentChapter}
-              onClick={() => onOpen(entry)}
-            />
-          ))
+          // 侧栏拉宽时自动排成多列；每列等宽、每张卡等高
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-1.5" data-testid="lore-card-grid">
+            {cards.list.map(({ node, face }) => (
+              <li key={node.id} className="min-w-0">
+                <LoreCard
+                  node={node}
+                  face={face}
+                  isCharacter={activeTab === "characters"}
+                  isSelected={selectedNodeId === node.id}
+                  showStatusRow={cards.showStatusRow}
+                  showProgressRow={cards.showProgressRow}
+                  onClick={() => onOpen(node)}
+                />
+              </li>
+            ))}
+          </ul>
         )}
       </div>
       )}
@@ -470,179 +491,287 @@ export function CharactersAndLoreSidebarPanel({
   );
 }
 
-const TEMPORAL_PREDICATE_PRIORITY = new Map([
-  ["位置", 0],
-  ["所在", 0],
-  ["所在地", 0],
-  ["地点", 0],
-  ["伤势", 0],
-  ["伤情", 0],
-  ["境界", 0],
+// ─── 卡面推导：只用结构化数据，缺哪项就不给哪项 ─────────────────────────────
+
+/** 久未出场的阈值（章）：与改版前卡面「N 章未出场」的口径一致。 */
+const COLD_CHAPTER_GAP = 15;
+/** 状态值超过这个长度就不是「状态」而是一句话，留给详情页。 */
+const STATUS_VALUE_MAX_CHARS = 24;
+/** 角标只放短词（主角 / 反派 / 师尊）；写成一句话的定位不上卡面。 */
+const BADGE_MAX_CHARS = 6;
+const PREDICATE_LABEL_MAX_CHARS = 6;
+
+/** 状态类谓词的先后：当前状态 → 位置 → 伤势 → 境界；数字越小越靠前。 */
+const STATUS_PREDICATE_RANK = new Map<string, number>([
   ["状态", 0],
   ["当前状态", 0],
   ["处境", 0],
+  ["位置", 1],
+  ["所在", 1],
+  ["所在地", 1],
+  ["地点", 1],
+  ["伤势", 2],
+  ["伤情", 2],
+  ["境界", 3],
 ]);
+/** 结算归约出的状态 / 位置槽位；谓词不在上表时排在最后。 */
+const STATUS_FACT_CATEGORIES = new Set(["character_state", "location"]);
+/** 这些来源不代表角色在那一章出场（作者手填、设定导入）。 */
+const NON_APPEARANCE_SOURCE_TYPES = new Set(["manual", "jingwei", "import", "runtime-state"]);
 
+const BRACKET_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ["（", "）"], ["(", ")"], ["【", "】"], ["[", "]"], ["「", "」"], ["『", "』"], ["《", "》"], ["“", "”"], ["‘", "’"],
+];
+
+export interface LoreCardFace {
+  /** 唯一角标：角色的「角色定位」，设定的分类名。 */
+  readonly badge?: string;
+  /** 一行状态。 */
+  readonly status?: { readonly label: string; readonly value: string };
+  /** 声线逐项状态，按字段定义顺序。 */
+  readonly voice?: { readonly confirmed: number; readonly total: number; readonly statuses: readonly CharacterVoiceFieldStatus[] };
+  readonly lastChapter?: number;
+  /** 距当前章的未出场章数；只在达到阈值时给。 */
+  readonly coldGap?: number;
+}
+
+function pushTo<T>(map: Map<string, T[]>, key: string, value: T): void {
+  const bucket = map.get(key);
+  if (bucket) bucket.push(value);
+  else map.set(key, [value]);
+}
+
+function nodeAliases(node: WorkbenchResourceNode): string[] {
+  return Array.isArray(node.metadata?.aliases)
+    ? node.metadata.aliases.filter((alias): alias is string => typeof alias === "string" && alias.trim().length > 0)
+    : [];
+}
+
+/** 实体身份链命中的事实，加上按标题与别名命中的事实（去重）。 */
 function factsForNode(
   node: WorkbenchResourceNode,
-  factsBySubject: ReadonlyMap<string, readonly EntityFactLite[]>,
+  entryId: string | undefined,
+  index: { readonly byEntryId: ReadonlyMap<string, readonly EntityFactLite[]>; readonly bySubject: ReadonlyMap<string, readonly EntityFactLite[]> },
 ): readonly EntityFactLite[] {
-  const title = node.title.trim();
-  const titleFacts = factsBySubject.get(title);
-  if (titleFacts && titleFacts.length > 0) return selectTemporalFacts(titleFacts);
+  const seen = new Set<EntityFactLite>();
+  const add = (list: readonly EntityFactLite[] | undefined) => {
+    for (const fact of list ?? []) seen.add(fact);
+  };
+  if (entryId) add(index.byEntryId.get(entryId));
+  add(index.bySubject.get(node.title.trim()));
+  for (const alias of nodeAliases(node)) add(index.bySubject.get(alias.trim()));
+  return [...seen];
+}
 
-  const aliases = Array.isArray(node.metadata?.aliases)
-    ? node.metadata.aliases.filter((alias): alias is string => typeof alias === "string")
-    : [];
-  for (const alias of aliases) {
-    const aliasFacts = factsBySubject.get(alias.trim());
-    if (aliasFacts && aliasFacts.length > 0) return selectTemporalFacts(aliasFacts);
+function bracketsBalanced(text: string): boolean {
+  for (const [open, close] of BRACKET_PAIRS) {
+    let depth = 0;
+    for (const char of text) {
+      if (char === open) depth += 1;
+      else if (char === close) depth -= 1;
+      if (depth < 0) return false;
+    }
+    if (depth !== 0) return false;
   }
-  return [];
+  return true;
 }
 
-function selectTemporalFacts(facts: readonly EntityFactLite[]): readonly EntityFactLite[] {
-  return [...facts]
-    .sort((a, b) => (TEMPORAL_PREDICATE_PRIORITY.get(a.predicate.trim()) ?? 1) - (TEMPORAL_PREDICATE_PRIORITY.get(b.predicate.trim()) ?? 1))
-    .slice(0, 3);
+/**
+ * 能独立读懂的一行短文本才上卡面；从正文截下来的半句（括号不配对、以标点或省略号起止、
+ * 一格里塞了几句话）和超长文本返回 null，留给详情页。
+ */
+export function cardReadableText(raw: unknown, maxChars: number): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.replace(/\s+/gu, " ").trim().replace(/[。.]$/u, "");
+  if (!text) return null;
+  if (Array.from(text).length > maxChars) return null;
+  if (/[。！？；!?;]/u.test(text)) return null;
+  if (/^[，、。；：,.;:！？!?）)\]】」』》”’…—\-·]/u.test(text)) return null;
+  if (/(?:[，、,：:；;（(【[「『《“‘—\-]|…|\.\.)$/u.test(text)) return null;
+  if (!bracketsBalanced(text)) return null;
+  return text;
 }
 
-/** 酒馆式单张角色/设定卡片 */
-function CharacterOrLoreCard({
+function factChapter(fact: EntityFactLite): number {
+  return fact.validFromChapter ?? fact.sourceChapter ?? 0;
+}
+
+function statusFromFacts(facts: readonly EntityFactLite[]): LoreCardFace["status"] {
+  let best: { rank: number; chapter: number; label: string; value: string } | null = null;
+  for (const fact of facts) {
+    const predicate = fact.predicate.trim();
+    const rank = STATUS_PREDICATE_RANK.get(predicate)
+      ?? (fact.category && STATUS_FACT_CATEGORIES.has(fact.category) ? STATUS_PREDICATE_RANK.size : undefined);
+    if (rank === undefined) continue;
+    const value = cardReadableText(fact.object, STATUS_VALUE_MAX_CHARS);
+    if (!value) continue;
+    const label = cardReadableText(predicate, PREDICATE_LABEL_MAX_CHARS) ?? (fact.category === "location" ? "位置" : "状态");
+    const chapter = factChapter(fact);
+    if (!best || rank < best.rank || (rank === best.rank && chapter > best.chapter)) {
+      best = { rank, chapter, label, value };
+    }
+  }
+  return best ? { label: best.label, value: best.value } : undefined;
+}
+
+function kernelText(kernel: CharacterKernelSummary | undefined, key: string): string | null {
+  const value = kernel?.fields[key];
+  return typeof value === "string" ? cardReadableText(value, STATUS_VALUE_MAX_CHARS) : null;
+}
+
+/** 声线权威源是角色条目 fields.voice；没有声线记录或数据损坏时不显示进度。 */
+function voiceProgress(fields: unknown): LoreCardFace["voice"] {
+  if (!fields || typeof fields !== "object") return undefined;
+  const raw = (fields as Record<string, unknown>).voice;
+  if (raw === undefined || raw === null) return undefined;
+  try {
+    const voice = parseCharacterVoice(raw);
+    const statuses = CHARACTER_VOICE_FIELD_KEYS.map((key) => voice.fields[key].status);
+    return { confirmed: statuses.filter((status) => status === "confirmed").length, total: statuses.length, statuses };
+  } catch {
+    return undefined;
+  }
+}
+
+function lastAppearance(entity: NarrativeEntityInfo | undefined, facts: readonly EntityFactLite[]): number | undefined {
+  let last = entity?.lastChapter ?? 0;
+  for (const fact of facts) {
+    if (fact.sourceType && NON_APPEARANCE_SOURCE_TYPES.has(fact.sourceType)) continue;
+    if (typeof fact.sourceChapter === "number" && fact.sourceChapter > last) last = fact.sourceChapter;
+  }
+  return last > 0 ? last : undefined;
+}
+
+export function deriveLoreCardFace(input: {
+  readonly node: WorkbenchResourceNode;
+  readonly isCharacter: boolean;
+  readonly facts: readonly EntityFactLite[];
+  readonly kernel?: CharacterKernelSummary;
+  readonly entity?: NarrativeEntityInfo;
+  readonly currentChapter?: number;
+}): LoreCardFace {
+  const { node, isCharacter, facts, kernel, entity, currentChapter } = input;
+  const fields = node.metadata?.fields && typeof node.metadata.fields === "object"
+    ? node.metadata.fields as Record<string, unknown>
+    : undefined;
+
+  const badge = isCharacter
+    ? cardReadableText(fields?.roleType, BADGE_MAX_CHARS) ?? undefined
+    : CATEGORY_META.find((meta) => meta.id === entryCategory(node))?.name;
+
+  let status = statusFromFacts(facts);
+  if (!status && isCharacter) {
+    const summary = kernelText(kernel, "stateSummary");
+    const mood = kernelText(kernel, "emotionalCenter");
+    if (summary) status = { label: "状态", value: summary };
+    else if (mood) status = { label: "心境", value: mood };
+  }
+  if (!status && !isCharacter) {
+    // 设定条目自己的状态字段；只认中文短语，内部状态码（confirmed 之类）不上界面
+    const raw = cardReadableText(fields?.state, STATUS_VALUE_MAX_CHARS) ?? cardReadableText(fields?.status, STATUS_VALUE_MAX_CHARS);
+    if (raw && /\p{Script=Han}/u.test(raw)) status = { label: "状态", value: raw };
+  }
+
+  const lastChapter = lastAppearance(entity, facts);
+  const gap = isCharacter && lastChapter !== undefined && currentChapter !== undefined ? currentChapter - lastChapter : undefined;
+
+  return {
+    ...(badge ? { badge } : {}),
+    ...(status ? { status } : {}),
+    ...(isCharacter ? { voice: voiceProgress(fields) } : {}),
+    ...(lastChapter !== undefined ? { lastChapter } : {}),
+    ...(gap !== undefined && gap >= COLD_CHAPTER_GAP ? { coldGap: gap } : {}),
+  };
+}
+
+const VOICE_STATUS_LABEL: Record<CharacterVoiceFieldStatus, string> = {
+  confirmed: "已确认",
+  "needs-review": "待审",
+  missing: "待补充",
+};
+
+function voiceTitle(voice: NonNullable<LoreCardFace["voice"]>): string {
+  const count = (status: CharacterVoiceFieldStatus) => voice.statuses.filter((item) => item === status).length;
+  return `声线 ${voice.total} 项：${VOICE_STATUS_LABEL.confirmed} ${count("confirmed")}，${VOICE_STATUS_LABEL["needs-review"]} ${count("needs-review")}，${VOICE_STATUS_LABEL.missing} ${count("missing")}`;
+}
+
+/** 作品基础的单张卡：名称 / 唯一角标 / 一行状态 / 关键进度，行高固定。 */
+function LoreCard({
   node,
-  activeTab,
-  facts,
+  face,
+  isCharacter,
   isSelected,
-  kernel,
-  currentChapter,
+  showStatusRow,
+  showProgressRow,
   onClick,
 }: {
   node: WorkbenchResourceNode;
-  activeTab: MainTab;
-  facts: readonly EntityFactLite[];
+  face: LoreCardFace;
+  /** 角色说「出场」，地点、势力、道具说「出现」。 */
+  isCharacter: boolean;
   isSelected: boolean;
-  /** 结算沉淀的"当前是谁"摘要；仅 characters tab 有值。 */
-  kernel?: CharacterKernelSummary;
-  currentChapter?: number;
+  showStatusRow: boolean;
+  showProgressRow: boolean;
   onClick: () => void;
 }) {
-  const meta = node.metadata ?? {};
-  const category = entryCategory(node);
-  const categoryMeta = CATEGORY_META.find((item) => item.id === category);
-  const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
-  const preview = String(node.content?.slice(0, 120) || meta.summary || "暂无描述");
-
-  const isCharacter = activeTab === "characters";
-
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className={`group relative rounded-lg border p-2.5 transition-all cursor-pointer shadow-xs ${
+      aria-current={isSelected ? "true" : undefined}
+      data-testid="lore-card"
+      className={`flex w-full min-w-0 flex-col gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         isSelected
-          ? "border-primary bg-primary/5 ring-1 ring-primary/40"
-          : "border-border/80 bg-card hover:border-border hover:shadow-sm"
+          ? "border-primary/60 bg-primary/5"
+          : "border-border/70 bg-card hover:border-border hover:bg-muted/40"
       }`}
     >
-      <div className="flex items-start gap-2.5">
-        {/* 角色图标徽章 */}
-        <div
-          className={`flex size-9 shrink-0 items-center justify-center rounded-lg border text-xs font-semibold shadow-2xs ${
-            isCharacter
-              ? "bg-primary/10 border-primary/20 text-primary"
-              : "bg-muted border-border/80 text-muted-foreground"
-          }`}
-        >
-          {isCharacter ? <UserRound className="size-4.5" /> : <BookOpen className="size-4" />}
-        </div>
+      <span className="flex h-5 min-w-0 items-center gap-1.5">
+        <span className={`min-w-0 flex-1 truncate text-xs font-semibold ${isSelected ? "text-primary" : "text-foreground"}`} title={node.title}>
+          {node.title}
+        </span>
+        {face.badge && (
+          <span className="shrink-0 rounded-sm bg-secondary px-1 text-2xs leading-4 text-secondary-foreground" data-testid="lore-card-badge">
+            {face.badge}
+          </span>
+        )}
+      </span>
 
-        {/* 核心信息与时态标签 */}
-        <div className="flex-1 min-w-0 space-y-1">
-          <div className="flex items-center justify-between gap-1">
-            <span className="font-semibold text-xs text-foreground truncate group-hover:text-primary transition-colors">
-              {node.title}
+      {showStatusRow && (
+        <span className="flex h-4 min-w-0 items-center gap-1 text-2xs" data-testid={face.status ? "lore-card-status" : undefined}>
+          {face.status && (
+            <>
+              <span className="shrink-0 text-muted-foreground">{face.status.label}</span>
+              <span className="min-w-0 truncate text-foreground/85" title={`${face.status.label}：${face.status.value}`}>{face.status.value}</span>
+            </>
+          )}
+        </span>
+      )}
+
+      {showProgressRow && (
+        <span className="flex h-4 min-w-0 items-center justify-between gap-2 text-2xs text-muted-foreground">
+          {face.voice ? (
+            <span className="min-w-0 truncate tabular-nums" title={voiceTitle(face.voice)} data-testid="lore-card-voice">
+              声线 <span className={face.voice.confirmed > 0 ? "text-foreground/85" : undefined}>{face.voice.confirmed}/{face.voice.total}</span>
             </span>
-            <div className="flex items-center gap-1 shrink-0">
-              {!isCharacter && categoryMeta && (
-                <Badge variant="secondary" className="text-2xs px-1 h-3.5">
-                  {categoryMeta.name}
-                </Badge>
-              )}
-            </div>
-          </div>
-
-          {/* 别名标签 */}
-          {aliases.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {aliases.slice(0, 2).map((alias, i) => (
-                <span key={i} className="text-2xs rounded bg-muted/70 px-1 py-0.2 text-muted-foreground">
-                  {alias}
-                </span>
-              ))}
-              {aliases.length > 2 && (
-                <span className="text-2xs text-muted-foreground">+{aliases.length - 2}</span>
-              )}
-            </div>
-          )}
-
-          {isCharacter && kernel && (
-            <div className="rounded-md bg-primary/[0.04] border border-primary/20 px-1.5 py-1 space-y-0.5" data-testid="character-kernel-summary">
-              {(typeof kernel.fields["motivation"] === "string" && kernel.fields["motivation"]) && (
-                <p className="text-2xs text-foreground/90 leading-snug">
-                  <span className="text-primary font-medium">动机</span> {kernel.fields["motivation"]}
-                </p>
-              )}
-              {(typeof kernel.fields["emotionalCenter"] === "string" && kernel.fields["emotionalCenter"]) && (
-                <p className="text-2xs text-muted-foreground leading-snug">
-                  <span className="text-primary/70 font-medium">心境</span> {kernel.fields["emotionalCenter"]}
-                </p>
-              )}
-              <p className="text-2xs text-muted-foreground">
-                内核更新于第 {kernel.updatedChapter} 章
-              </p>
-            </div>
-          )}
-
-          {isCharacter && currentChapter !== undefined && (
-            <p className="text-2xs text-muted-foreground" data-testid="character-last-appearance">
-              {(() => {
-                const lastCh = kernel?.updatedChapter
-                  ?? (facts.length > 0 ? Math.max(...facts.map((f) => f.sourceChapter ?? 0)) : undefined);
-                if (!lastCh || lastCh <= 0) return null;
-                const gap = currentChapter - lastCh;
-                return (
-                  <>
-                    最后出场 第{lastCh}章
-                    {gap >= 15 && (
-                      <Badge variant="destructive" className="ml-1 text-2xs px-1 py-0">⚠️ {gap}章未出场</Badge>
-                    )}
-                  </>
-                );
-              })()}
-            </p>
-          )}
-
-          {facts.length > 0 && (
-            <div className="flex flex-wrap gap-1" data-testid="character-temporal-facts">
-              {facts.map((fact, index) => (
-                <Badge
-                  key={`${fact.predicate}-${fact.object}-${index}`}
-                  variant="outline"
-                  className="max-w-full truncate border-primary/30 bg-primary/5 px-1 text-2xs font-normal text-primary"
-                  data-testid="character-temporal-fact"
+          ) : <span />}
+          {face.lastChapter !== undefined && (
+            <span className="flex shrink-0 items-center gap-1 tabular-nums" data-testid="lore-card-last-chapter">
+              {face.coldGap !== undefined && (
+                <span
+                  className="inline-flex items-center gap-0.5 rounded-sm bg-destructive/10 px-1 leading-4 text-destructive"
+                  title={`已经 ${face.coldGap} 章没有出场`}
+                  data-testid="lore-card-cold"
                 >
-                  {fact.predicate}: {fact.object}
-                </Badge>
-              ))}
-            </div>
+                  <Snowflake className="size-2.5" aria-hidden="true" />冷<span className="sr-only">，已经 {face.coldGap} 章没有出场</span>
+                </span>
+              )}
+              {isCharacter ? "最近出场" : "最近出现"} 第 {face.lastChapter} 章
+            </span>
           )}
-
-          {/* 经典人设简述 */}
-          <p className="text-2xs text-muted-foreground line-clamp-2 leading-relaxed">
-            {preview}
-          </p>
-        </div>
-      </div>
-    </div>
+        </span>
+      )}
+    </button>
   );
 }
 

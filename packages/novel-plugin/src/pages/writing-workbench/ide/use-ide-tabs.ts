@@ -7,30 +7,40 @@ export type TabKind = "chapter" | "jingwei-entry" | "memory-entry" | "file" | "s
 /** ActivityBar 视图 —— 每个视图是独立工作区，各自维护一组 Tab。 */
 /**
  * 写作视图和没有编辑器内容的侧栏也作为合法归属值参与切换。
- * TabView 只允许当前 ActivityBar 的七个 ViewId；旧名称仅在读取旧持久化数据时处理。
+ * TabView 只允许当前 ActivityBar 的六个 ViewId；旧名称仅在读取旧持久化数据时处理。
  */
 export type TabView = ViewId;
 
 const TAB_VIEWS: readonly TabView[] = [
   "write",
-  "explorer",
+  "resources",
   "characters-lore",
   "storyline",
   "skills-style",
-  "tools",
   "search",
 ];
 
-function isLegacyPersistedView(value: unknown): value is "jingwei" | "narrative-memory" {
-  return value === "jingwei" || value === "narrative-memory";
+/**
+ * 已废弃视图名 → 现视图。
+ * - `jingwei` / `narrative-memory`：早期经纬与叙事记忆视图；
+ * - `explorer`（资源管理器）/ `tools`（分析工具）：同一棵资源树的两组节点，已合并为「资源」。
+ */
+const LEGACY_VIEW_TARGETS: Readonly<Record<string, TabView>> = {
+  jingwei: "characters-lore",
+  "narrative-memory": "storyline",
+  explorer: "resources",
+  tools: "resources",
+};
+
+function isLegacyPersistedView(value: unknown): boolean {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(LEGACY_VIEW_TARGETS, value);
 }
 
 /** 只在 localStorage 迁移边界把旧数据归一为当前 ViewId；运行时不会产生旧 ViewId。 */
 export function normalizePersistedTabView(value: unknown): TabView {
-  if (value === "jingwei") return "characters-lore";
-  if (value === "narrative-memory") return "storyline";
-  if (typeof value !== "string") return "explorer";
-  return TAB_VIEWS.includes(value as TabView) ? (value as TabView) : "explorer";
+  if (typeof value !== "string") return "resources";
+  if (isLegacyPersistedView(value)) return LEGACY_VIEW_TARGETS[value]!;
+  return TAB_VIEWS.includes(value as TabView) ? (value as TabView) : "resources";
 }
 
 const LEGACY_JINGWEI_PANEL_PREFIX = "jingwei-panel-entry";
@@ -81,16 +91,25 @@ interface IdeTabsState {
 
 const EMPTY_ACTIVE: Record<TabView, string | null> = {
   write: null,
-  explorer: null,
+  resources: null,
   "characters-lore": null,
   storyline: null,
   "skills-style": null,
-  tools: null,
   search: null,
 };
 
+/**
+ * 带归属书的状态。保存 effect 只落盘「为当前书加载出来的」状态：首次提交时 reducer 里还是初始
+ * 空状态（换书时是上一本书的状态），写下去会清空刚迁移好的标签（StrictMode 开发态双跑 effect，
+ * 第二次加载就读到空的），换书时还会把上一本书的标签串进新书。
+ */
+interface OwnedIdeTabsState extends IdeTabsState {
+  /** 这份状态是为哪本书加载的；初始空状态为 null，不落盘。 */
+  readonly ownerBookId: string | null;
+}
+
 type IdeTabsAction =
-  | { type: "LOAD"; state: IdeTabsState }
+  | { type: "LOAD"; state: IdeTabsState; ownerBookId: string | null }
   | { type: "OPEN"; nodeId: string; title: string; kind: TabKind; view: TabView }
   | { type: "CLOSE"; tabId: string }
   | { type: "CLOSE_OTHERS"; tabId: string; view: TabView }
@@ -119,10 +138,15 @@ function pickActiveAfterClose(prevTabs: TabState[], nextTabs: TabState[], view: 
   return viewTabs[Math.min(idx, viewTabs.length - 1)].id;
 }
 
-function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsState {
+/** 外层 reducer：LOAD 记下归属书，其余动作沿用归属（内层各分支会新建对象，不一定带上额外字段）。 */
+function ownedIdeTabsReducer(state: OwnedIdeTabsState, action: IdeTabsAction): OwnedIdeTabsState {
+  if (action.type === "LOAD") return { ...action.state, ownerBookId: action.ownerBookId };
+  const next = ideTabsReducer(state, action);
+  return next === state ? state : { ...next, ownerBookId: state.ownerBookId };
+}
+
+function ideTabsReducer(state: IdeTabsState, action: Exclude<IdeTabsAction, { type: "LOAD" }>): IdeTabsState {
   switch (action.type) {
-    case "LOAD":
-      return action.state;
 
     case "OPEN": {
       const existing = state.tabs.find((t) => t.nodeId === action.nodeId);
@@ -291,12 +315,15 @@ export function loadState(bookId: string): IdeTabsState {
         view: normalizePersistedTabView(tab.view),
       });
     }
-    // 旧视图键先折叠到现视图，再按现视图校验激活项
+    // 旧视图键先折叠到现视图（资源管理器与分析工具会折叠到同一个「资源」），
+    // 每个现视图取第一个仍指向本视图现存 tab 的激活项；都失效时下面回退到该视图第一个 tab。
     const persistedActive = parsed.activeByView ?? {};
     const migratedActive: Record<string, string | null> = {};
     for (const [view, tabId] of Object.entries(persistedActive)) {
       const target = normalizePersistedTabView(view);
-      if (!migratedActive[target]) migratedActive[target] = migrateLegacyTabId(tabId);
+      const candidate = migrateLegacyTabId(tabId);
+      if (migratedActive[target] || !candidate) continue;
+      if (tabs.some((t) => t.id === candidate && t.view === target)) migratedActive[target] = candidate;
     }
     const activeByView: Record<TabView, string | null> = { ...EMPTY_ACTIVE, ...migratedActive };
     // 校验每个视图的激活 tab 仍存在
@@ -326,12 +353,12 @@ export function saveState(bookId: string, state: IdeTabsState): void {
 // --- Hook ---
 
 export function useIdeTabs(bookId: string | undefined, activeView: TabView): UseIdeTabsReturn {
-  const [state, dispatch] = useReducer(ideTabsReducer, { tabs: [], activeByView: { ...EMPTY_ACTIVE } });
+  const [state, dispatch] = useReducer(ownedIdeTabsReducer, { tabs: [], activeByView: { ...EMPTY_ACTIVE }, ownerBookId: null });
   const isLoadingRef = useRef(false);
 
   useEffect(() => {
     if (!bookId) {
-      dispatch({ type: "LOAD", state: { tabs: [], activeByView: { ...EMPTY_ACTIVE } } });
+      dispatch({ type: "LOAD", state: { tabs: [], activeByView: { ...EMPTY_ACTIVE } }, ownerBookId: null });
       return;
     }
     // 迁移过旧视图名时必须立刻回写，否则内存里迁移了、磁盘上仍是废弃视图，
@@ -339,13 +366,13 @@ export function useIdeTabs(bookId: string | undefined, activeView: TabView): Use
     const needsRewrite = hasLegacyPersistedView(bookId);
     const loaded = loadState(bookId);
     isLoadingRef.current = !needsRewrite;
-    dispatch({ type: "LOAD", state: loaded });
+    dispatch({ type: "LOAD", state: loaded, ownerBookId: bookId });
     if (needsRewrite) saveState(bookId, loaded);
     else requestAnimationFrame(() => { isLoadingRef.current = false; });
   }, [bookId]);
 
   useEffect(() => {
-    if (!bookId || isLoadingRef.current) return;
+    if (!bookId || state.ownerBookId !== bookId || isLoadingRef.current) return;
     saveState(bookId, state);
   }, [bookId, state]);
 

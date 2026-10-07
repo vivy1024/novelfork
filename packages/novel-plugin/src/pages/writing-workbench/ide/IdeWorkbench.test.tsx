@@ -34,7 +34,7 @@ vi.mock("allotment", async () => {
 vi.mock("./use-panel-manager", async () => {
   const React = await import("react");
   return {
-    usePanelManager: (initial = "explorer") => {
+    usePanelManager: (initial = "resources") => {
       const [activeView, setActiveView] = React.useState(initial);
       const hostRef = React.useRef<HTMLDivElement>(null);
       return {
@@ -132,6 +132,7 @@ vi.mock("../useWorkbenchResources", () => ({
   createMemoryCenterNode: () => null,
   createStoryProgressionNode: () => null,
   createLoreTreesNode: () => null,
+  createWorkflowNode: () => null,
 }));
 vi.mock("../lore-workspace-split", () => ({
   groupEntriesByCategory: () => [],
@@ -140,7 +141,7 @@ vi.mock("../lore-workspace-split", () => ({
 vi.mock("../../../engine/jingwei/unified-categories", () => ({ CATEGORY_META: [], normalizeCategory: (value: string) => value }));
 vi.mock("@/components/ui/toast", () => ({ toast: vi.fn() }));
 
-import { IdeWorkbench, loadedFileKey, type IdeWorkbenchProps } from "./IdeWorkbench";
+import { IdeWorkbench, ResourcesSidebarPanel, loadedFileKey, type IdeWorkbenchProps } from "./IdeWorkbench";
 
 function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
@@ -214,7 +215,7 @@ describe("IdeWorkbench 窄屏覆盖层", () => {
     expect(screen.getByTestId("ide-chat-overlay")).not.toBeNull();
     expect(screen.getByTestId("chat-slot")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "资源管理器" }));
+    fireEvent.click(screen.getByRole("button", { name: "资源" }));
     expect(workbench.getAttribute("data-sidebar-visible")).toBe("true");
     expect(workbench.getAttribute("data-chat-visible")).toBe("false");
     expect(screen.queryByTestId("ide-chat-overlay")).toBeNull();
@@ -251,6 +252,41 @@ describe("IdeWorkbench 宿主打开请求", () => {
     vi.restoreAllMocks();
   });
 
+  it("活动栏每项都有可见文字；空态说明用途与第一步，侧栏收起时给出展开按钮", async () => {
+    stubHostWidth(1440);
+    renderWorkbench();
+
+    const workbench = await screen.findByTestId("ide-workbench");
+    await waitFor(() => expect(workbench.getAttribute("data-sidebar-visible")).toBe("true"));
+    const storyline = screen.getByRole("button", { name: "故事推进" });
+    expect(storyline.textContent).toBe("故事推进");
+
+    fireEvent.click(storyline);
+    const empty = await screen.findByTestId("view-empty-state");
+    expect(empty.textContent).toContain("回答「下一章写什么」");
+    expect(empty.textContent).toContain("故事画布");
+    expect(screen.queryByRole("button", { name: "展开左侧栏" })).toBeNull();
+
+    fireEvent.click(storyline);
+    expect(workbench.getAttribute("data-sidebar-visible")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "展开左侧栏" }));
+    expect(workbench.getAttribute("data-sidebar-visible")).toBe("true");
+  });
+
+  it("资源管理器与分析工具合并为一个「资源」入口，旧入口不再出现", async () => {
+    stubHostWidth(1440);
+    renderWorkbench();
+
+    const workbench = await screen.findByTestId("ide-workbench");
+    const rail = workbench.querySelector("[data-nf-surface='rail']") as HTMLElement;
+    const labels = [...rail.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"));
+    expect(labels).toEqual(["写作", "资源", "搜索", "作品基础", "故事推进", "技能文风", "AI 对话", "写作设置"]);
+    expect(screen.queryByRole("button", { name: "资源管理器" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "分析工具" })).toBeNull();
+    // 初始就在「资源」视图
+    expect(screen.getByRole("button", { name: "资源" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("每个 openRequest.seq 只打开一次，别的书的请求忽略", () => {
     const onOpen = vi.fn();
     const chapter = { id: "chapter:7", kind: "chapter", title: "第7章 夜雪", capabilities: { open: true, edit: true } } as const;
@@ -281,7 +317,7 @@ describe("IdeWorkbench 保存归属与缓存", () => {
   function setupTabs(nodes: WorkbenchResourceNode[], activeTabId: string) {
     const setDirty = vi.fn();
     saveHarness.tabs = {
-      tabs: nodes.map((node) => ({ id: node.id, nodeId: node.id, title: node.title, dirty: true, kind: "chapter", view: "explorer" })),
+      tabs: nodes.map((node) => ({ id: node.id, nodeId: node.id, title: node.title, dirty: true, kind: "chapter", view: "resources" })),
       activeTabId, setDirty, openTab: vi.fn(), activateTab: vi.fn(), closeTab: vi.fn(), closeOthers: vi.fn(),
       closeAll: vi.fn(), closeSaved: vi.fn(), closeRight: vi.fn(), togglePin: vi.fn(), reorderTabs: vi.fn(), hasDirtyTabs: () => true,
     };
@@ -433,9 +469,9 @@ describe("IdeWorkbench 保存归属与缓存", () => {
       else saveHarness.commands!.setShowSettings(true);
     });
     expect(saveHarness.confirm).toHaveBeenCalledTimes(1);
-    expect(saveHarness.editorTabs!.activeView).toBe("explorer");
+    expect(saveHarness.editorTabs!.activeView).toBe("resources");
     await act(async () => { decide(false); });
-    expect(saveHarness.editorTabs!.activeView).toBe("explorer");
+    expect(saveHarness.editorTabs!.activeView).toBe("resources");
   });
 
   it.each(["工作区", "写作设置", "快捷键关闭"])("真实标签在保存中收到新输入，取消%s后保留草稿并可重试失败保存", async (entry) => {
@@ -570,5 +606,45 @@ describe("IdeWorkbench 保存归属与缓存", () => {
     await expect(guard()).resolves.toBe(false);
     await act(async () => { decide(true); await expect(leaving).resolves.toBe(false); });
     expect(saveHarness.confirm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ResourcesSidebarPanel", () => {
+  afterEach(() => cleanup());
+
+  it("同时呈现作品总览入口、文件与分析工具两个分区；分区可收起而不卸载内容", () => {
+    const onShowOverview = vi.fn();
+    render(
+      <ResourcesSidebarPanel
+        overviewActive={false}
+        onShowOverview={onShowOverview}
+        files={<div data-testid="files-tree">文件树</div>}
+        tools={<div data-testid="tools-tree">分析工具树</div>}
+      />,
+    );
+
+    const files = screen.getByRole("region", { name: "文件" });
+    const tools = screen.getByRole("region", { name: "分析工具" });
+    expect(files.contains(screen.getByTestId("files-tree"))).toBe(true);
+    expect(tools.contains(screen.getByTestId("tools-tree"))).toBe(true);
+
+    const overview = screen.getByRole("button", { name: "作品总览" });
+    expect(overview.getAttribute("aria-current")).toBeNull();
+    fireEvent.click(overview);
+    expect(onShowOverview).toHaveBeenCalledTimes(1);
+
+    const toolsToggle = screen.getByRole("button", { name: "分析工具" });
+    expect(toolsToggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(toolsToggle);
+    expect(toolsToggle.getAttribute("aria-expanded")).toBe("false");
+    // 收起只隐藏：树还在（保留展开状态与搜索词）
+    expect(screen.getByTestId("tools-tree").closest("[hidden]")).not.toBeNull();
+    fireEvent.click(toolsToggle);
+    expect(screen.getByTestId("tools-tree").closest("[hidden]")).toBeNull();
+  });
+
+  it("中央正显示作品总览时高亮入口", () => {
+    render(<ResourcesSidebarPanel overviewActive onShowOverview={vi.fn()} files={null} tools={null} />);
+    expect(screen.getByRole("button", { name: "作品总览" }).getAttribute("aria-current")).toBe("page");
   });
 });

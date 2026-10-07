@@ -521,3 +521,75 @@ describe("WriteViewPanel 章节循环（写 → 改 → 收尾）", () => {
     expect(screen.queryByTestId("chapter-loop-attention-close")).toBeNull();
   });
 });
+
+describe("WriteViewPanel 工作流入口（原故事画布「执行」页迁到写作）", () => {
+  const FRESHNESS = "narrative-memory/settlement-freshness";
+  const VAULT = "style/vault";
+
+  it("写这一步里有「工作流：按工序写这一章」，点击交给宿主在中央打开", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    const onOpenWorkflow = vi.fn();
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => ({ ...preflightWith({}), chapterNumber: 1, recentChapters: [] })} onOpenWorkflow={onOpenWorkflow} />);
+
+    await waitFor(() => expect(screen.getByTestId("chapter-loop-step-write").getAttribute("aria-selected")).toBe("true"));
+    const entry = screen.getByTestId("write-open-workflow");
+    expect(entry.textContent).toContain("工作流：按工序写这一章");
+    // 不暴露内部术语
+    expect(entry.textContent).not.toMatch(/workflow|执行页|recipe/i);
+    fireEvent.click(entry);
+    expect(onOpenWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it("改、收尾两步也能找到工作流入口（工序停下等确认时作者可能在任何一步）", async () => {
+    const { render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    apiMocks.data.set(FRESHNESS, { chapters: [{ chapterNumber: 11, title: "旧站", status: "unsettled" }] });
+    apiMocks.data.set(VAULT, { chapters: [{ chapterNumber: 11, title: "旧站", hasAiDraft: true, share: { authorRatio: 0 } }] });
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} onOpenWorkflow={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTestId("chapter-loop-revise")).toBeTruthy());
+    expect(screen.getByTestId("write-open-workflow")).toBeTruthy();
+  });
+
+  it("宿主没接工作流入口时不显示按钮，不留点了没反应的死入口", async () => {
+    const { render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => ({ ...preflightWith({}), chapterNumber: 1, recentChapters: [] })} />);
+
+    await waitFor(() => expect(screen.getByTestId("chapter-loop-step-write").getAttribute("aria-selected")).toBe("true"));
+    expect(screen.queryByTestId("write-open-workflow")).toBeNull();
+  });
+});
+
+describe("WriteViewPanel「伏笔到期」一键修落点", () => {
+  const HOOKS_OVERDUE = { code: "hooks-overdue", message: "有 2 个伏笔已超期。", kind: "advisory" };
+
+  it("打开故事画布（伏笔账本在「下一章」页），不再切到已没有账本的故事推进侧栏", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    const onOpenStoryCanvas = vi.fn();
+    const onSwitchView = vi.fn();
+    render(
+      <WriteViewPanel
+        bookId={BOOK_ID}
+        callTool={async () => preflightWith({ warningItems: [HOOKS_OVERDUE] })}
+        onOpenStoryCanvas={onOpenStoryCanvas}
+        onSwitchView={onSwitchView}
+      />,
+    );
+
+    fireEvent.click(await waitFor(() => screen.getByTestId("write-fix-hooks-overdue")));
+    expect(onOpenStoryCanvas).toHaveBeenCalledTimes(1);
+    expect(onSwitchView).not.toHaveBeenCalled();
+  });
+
+  it("宿主没接故事画布入口时给出可见说明", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({ warningItems: [HOOKS_OVERDUE] })} />);
+
+    fireEvent.click(await waitFor(() => screen.getByTestId("write-fix-hooks-overdue")));
+    expect(await screen.findByText(/打开故事画布/)).toBeTruthy();
+  });
+});

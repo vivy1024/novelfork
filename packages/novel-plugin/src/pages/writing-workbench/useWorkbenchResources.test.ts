@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { normalizeCapability } from "@/app-next/backend-contract/capability-status";
 import type { ContractResourceNode } from "@/app-next/backend-contract/resource-tree-adapter";
-import { buildWorkbenchResourceTree, createMemoryCenterNode, createToolSectionNodes, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
+import { buildWorkbenchResourceTree, createMemoryCenterNode, createToolSectionNodes, createWorkflowNode, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
 
 const current = (id: string) => normalizeCapability({ id, status: "current" });
 const unsupported = (id: string) => normalizeCapability({ id, status: "unsupported" });
@@ -98,6 +98,21 @@ describe("buildWorkbenchResourceTree", () => {
     });
   });
 
+  it("分析工具分组按写作时机排序，标题只用文字，图标用 lucide 名（不用 emoji）", () => {
+    const section = createToolSectionNodes();
+    expect(section.title).toBe("分析工具");
+    expect(section.children?.map((group) => [group.id, group.title, group.metadata?.icon])).toEqual([
+      ["tool-group:pre-writing", "写前筹备", "target"],
+      ["tool-group:in-writing", "写中质检", "scan-search"],
+      ["tool-group:pre-publish", "发布前风控", "shield-check"],
+      ["tool-group:runtime", "运行与协同", "settings"],
+    ]);
+    const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
+    for (const node of flattenWorkbenchResourceTree([section]).values()) {
+      expect(node.title).not.toMatch(emoji);
+    }
+  });
+
   it("createMemoryCenterNode 创建合法且只读的章后事实中央面板合成节点", () => {
     const node = createMemoryCenterNode("book-42");
 
@@ -118,6 +133,33 @@ describe("buildWorkbenchResourceTree", () => {
         bookId: "book-42",
       },
     });
+  });
+
+  it("createWorkflowNode 创建写作视图的工作流中央标签节点（同一本书共用一个 tab）", () => {
+    const node = createWorkflowNode("book-42");
+
+    expect(node).toEqual({
+      id: "workflow:book-42",
+      kind: "file",
+      title: "工作流",
+      capabilities: {
+        open: true,
+        readonly: true,
+        unsupported: false,
+        edit: false,
+        delete: false,
+        apply: false,
+      },
+      metadata: {
+        isWorkflowRun: true,
+        bookId: "book-42",
+      },
+    });
+  });
+
+  it("分析工具里没有伏笔看板节点（伏笔只在故事画布「下一章」的伏笔账本）", () => {
+    const ids = [...flattenWorkbenchResourceTree([createToolSectionNodes()]).keys()];
+    expect(ids).not.toContain("tool:foreshadowing");
   });
 
   it("loadWorkbenchResourcesFromContract 通过 resource contract adapter 加载真实资源树", async () => {

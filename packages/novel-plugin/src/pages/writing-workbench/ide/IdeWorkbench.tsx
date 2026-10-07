@@ -4,19 +4,20 @@
  * 三栏布局：ActivityBar + Sidebar + Editor(含 Tabs) + ChatPanel
  * 参考 VS Code：ActivityBar 图标切换 Sidebar 内容，底部只有全局操作。
  */
-import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import {
-  Files, Scroll, Wrench, Settings, X,
-  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, PenLine, Brain,
-  BookOpen, Route,
+  FolderTree, Settings, X,
+  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, ChevronDown, MessageSquare, PenLine,
+  BookOpen, Route, LayoutDashboard, TriangleAlert,
+  type LucideIcon,
 } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
 import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
-import { createLoreTreesNode, createMemoryCenterNode, createStoryProgressionNode, createToolSectionNodes } from "../useWorkbenchResources";
+import { createLoreTreesNode, createMemoryCenterNode, createStoryProgressionNode, createToolSectionNodes, createWorkflowNode } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
 import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
@@ -78,6 +79,7 @@ export function buildTargetChapterFields(
 
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind（导出仅供测试核对映射表） */export function toTabKind(node: WorkbenchResourceNode): TabKind {
   if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "story-map";
+  if (node.metadata?.isWorkflowRun) return "tool";
   if (node.metadata?.isNarrativeMemoryEntry) return "memory-entry";
   if (node.metadata?.isFile && !node.metadata?.isChapter) return "file";
   switch (node.kind) {
@@ -98,15 +100,18 @@ export function buildTargetChapterFields(
 
 /** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区；导出仅供测试核对映射表） */
 export function toTabView(node: WorkbenchResourceNode): TabView {
-  if (node.kind === "tool" || node.kind === "tool-group") return "tools";
-  // 设定图谱是作品基础的中央视图（从作品基础侧栏打开），不能落到资源管理器：
-  // 否则打开时活动栏会跳到资源管理器，作者找不回作品基础。
+  // 工作流（按工序写这一章）的入口在写作侧栏，标签归写作视图。
+  if (node.metadata?.isWorkflowRun) return "write";
+  // 分析工具与文件树同属「资源」视图（同一侧栏的两个分区）。
+  if (node.kind === "tool" || node.kind === "tool-group") return "resources";
+  // 设定图谱是作品基础的中央视图（从作品基础侧栏打开），不能落到资源：
+  // 否则打开时活动栏会跳到资源，作者找不回作品基础。
   if (node.metadata?.isLoreTrees) return "characters-lore";
   // 故事推进大屏画布与叙事记忆条目归入故事推进工作区。
-  if (node.metadata?.isNarrativeMemoryEntry) return "storyline";
+  if (node.metadata?.isNarrativeMemoryEntry || node.metadata?.isMemoryCenter) return "storyline";
   if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "storyline";
   if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "characters-lore";
-  return "explorer";
+  return "resources";
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
@@ -196,51 +201,16 @@ export interface IdeWorkbenchProps {
 
 // ── ViewContainer 定义（VS Code 风格：每个 Sidebar 视图的元数据） ──
 
-const SIDEBAR_VIEWS: { id: SidebarView; icon: typeof Files; label: string; title: string }[] = [
+const SIDEBAR_VIEWS: { id: SidebarView; icon: LucideIcon; label: string; title: string }[] = [
   { id: "write", icon: PenLine, label: "写作", title: "写作" },
-  { id: "explorer", icon: Files, label: "资源管理器", title: "资源管理器" },
+  // 资源 = 书里的文件 + 分析工具（原「资源管理器」「分析工具」两个入口，本是同一棵资源树的两组节点）。
+  { id: "resources", icon: FolderTree, label: "资源", title: "文件与分析工具" },
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
   // 作者语言入口：作品基础统一角色册与世界录，故事推进统一章节/语境/演进。
   { id: "characters-lore", icon: BookOpen, label: "作品基础", title: "角色册与世界录" },
   { id: "storyline", icon: Route, label: "故事推进", title: "章节、语境与故事演进" },
   { id: "skills-style", icon: Sparkles, label: "技能文风", title: "写作技能与文风" },
-  { id: "tools", icon: Wrench, label: "分析工具", title: "分析与质量工具" },
 ];
-
-// ── 过滤逻辑 ──
-
-const CHAPTER_GROUP_IDS = new Set(["group:chapters", "group:archived"]);
-const JINGWEI_KINDS = new Set(["jingwei", "jingwei-section", "jingwei-entry"]);
-const TOOL_KINDS = new Set(["tool", "tool-group"]);
-
-/** 递归收集匹配 predicate 的节点（保留匹配的子树结构） */
-function collectNodes(nodes: readonly WorkbenchResourceNode[], predicate: (n: WorkbenchResourceNode) => boolean): WorkbenchResourceNode[] {
-  const result: WorkbenchResourceNode[] = [];
-  for (const node of nodes) {
-    const filteredChildren = node.children ? collectNodes(node.children, predicate) : [];
-    if (predicate(node) || filteredChildren.length > 0) {
-      result.push(filteredChildren.length > 0 ? { ...node, children: filteredChildren } : node);
-    }
-  }
-  return result;
-}
-
-function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarView): WorkbenchResourceNode[] {
-  switch (view) {
-    case "explorer":
-      // 资源管理器显示全部内容（和 VS Code Explorer 一样）
-      return [...children];
-    case "characters-lore":
-      return collectNodes(children, n => JINGWEI_KINDS.has(n.kind));
-    case "tools":
-      return collectNodes(children, n => TOOL_KINDS.has(n.kind));
-    case "write":
-    case "search":
-    case "storyline":
-    case "skills-style":
-      return [];
-  }
-}
 
 function filePathOf(node: WorkbenchResourceNode): string {
   return String(node.metadata?.filePath ?? node.path ?? "").replace(/\\/g, "/");
@@ -378,7 +348,7 @@ export function IdeWorkbench({
 
   // --- 命令式面板管理(纯 DOM 操作,学 VS Code CompositePart) ---
   const overlayPanes = idePanesUseOverlay(layoutMode);
-  const { activeView, showPanel: revealPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("explorer", overlayPanes ? "overlay" : "split");
+  const { activeView, showPanel: revealPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("resources", overlayPanes ? "overlay" : "split");
   // handleOpen 需要在不重建 callback 链的前提下读取当前视图（它被 handleOpenJingweiEntry/
   // handleJumpToChapter/handleResourceAction 等层层引用，activeView 进依赖会全链路重建）。
   const activeViewRef = useRef(activeView);
@@ -585,7 +555,7 @@ export function IdeWorkbench({
   // auxiliary panels, but never replace the visible directory tree.
   const fileTree = useBookFileTree(bookId, Boolean(bookId));
   const refreshFileTree = fileTree.refresh;
-  const explorerNodes = fileTree.nodes;
+  const resourceFileNodes = fileTree.nodes;
 
   useWritingProgressRefresh(bookId, () => {
     void loadLoreSections();
@@ -623,7 +593,7 @@ export function IdeWorkbench({
     return Number.isFinite(target) && target > 0 ? target : undefined;
   }, [bookRoot]);
 
-  // 工具面板节点（资源管理器"工具"视图 + Tab 解析都需要）
+  // 分析工具节点（「资源」侧栏的分析工具分区 + Tab 解析都需要）
   const toolNodes = useMemo(() => {
     const root = createToolSectionNodes();
     return root.children ?? [];
@@ -637,6 +607,8 @@ export function IdeWorkbench({
   const storyProgressionNode = useMemo(() => (bookId ? createStoryProgressionNode(bookId) : null), [bookId]);
   // 「设定图谱」合成节点：不在资源树里，登记进 resourceMap，Tab 才解析得到（含刷新后恢复的 Tab），否则画布停在书籍总览。
   const loreTreesNode = useMemo(() => (bookId ? createLoreTreesNode(bookId) : null), [bookId]);
+  // 「工作流」合成节点（写作视图的中央标签）：同理登记进 resourceMap，刷新后恢复的标签才不会空白。
+  const workflowNode = useMemo(() => (bookId ? createWorkflowNode(bookId) : null), [bookId]);
 
   const resourceMap = useMemo(() => {
     const map = new Map<string, WorkbenchResourceNode>();
@@ -651,8 +623,9 @@ export function IdeWorkbench({
     if (memoryCenterNode) map.set(memoryCenterNode.id, memoryCenterNode);
     if (storyProgressionNode) map.set(storyProgressionNode.id, storyProgressionNode);
     if (loreTreesNode) map.set(loreTreesNode.id, loreTreesNode);
+    if (workflowNode) map.set(workflowNode.id, workflowNode);
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, memoryCenterNode, storyProgressionNode, loreTreesNode]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, memoryCenterNode, storyProgressionNode, loreTreesNode, workflowNode]);
 
   // 文件树节点点击后加载的内容缓存；key 带 bookId，避免跨书复用同名资源。
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -802,7 +775,7 @@ export function IdeWorkbench({
     // 否则跨视图点击（写作页/搜索/故事推进里点角色卡、章节、伏笔等）tab 隐身，
     // 主区看起来"没有反应"。
     const revealTab = (kind: TabKind, view: TabView) => {
-      // 标签标题用作者语言：章节显示「第 N 章 标题」，资源管理器里仍是真实文件名。
+      // 标签标题用作者语言：章节显示「第 N 章 标题」，「资源」的文件树里仍是真实文件名。
       ideTabsRef.current.openTab(node.id, resourceDisplayTitle(node), kind, view);
       if (view !== activeViewRef.current) showPanel(view);
       if (idePanesUseOverlay(layoutModeRef.current)) {
@@ -816,7 +789,7 @@ export function IdeWorkbench({
     if (node.metadata?.isFile && bookId && typeof node.metadata.filePath === "string") {
       const filePath = node.metadata.filePath;
       if (isImageFilePath(filePath)) {
-        revealTab("file", "explorer");
+        revealTab("file", "resources");
         onOpen(node);
         return;
       }
@@ -834,17 +807,17 @@ export function IdeWorkbench({
           // 性能保护:超过 500KB 的文件截断显示,避免 TipTap 卡死
           const MAX_CHARS = 500_000;
           if (content.length > MAX_CHARS) {
-            content = content.slice(0, MAX_CHARS) + `\n\n---\n⚠️ 文件过大(${(content.length / 1000).toFixed(0)}K 字符),仅显示前 ${MAX_CHARS / 1000}K。请使用外部编辑器打开完整文件。`;
+            content = content.slice(0, MAX_CHARS) + `\n\n---\n注意：文件过大（${(content.length / 1000).toFixed(0)}K 字符），仅显示前 ${MAX_CHARS / 1000}K。请使用外部编辑器打开完整文件。`;
           }
           const loaded: WorkbenchResourceNode = { ...node, content };
           const cacheKey = loadedFileKey(bookId, node.id);
           setLoadedFiles(prev => new Map(prev).set(cacheKey, loaded));
-          revealTab("file", "explorer");
+          revealTab("file", "resources");
           onOpen(loaded);
         })
         .catch(() => {
           if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
-          revealTab("file", "explorer");
+          revealTab("file", "resources");
           onOpen(node);
         })
         .finally(() => fileReadControllersRef.current.delete(controller));
@@ -902,7 +875,7 @@ export function IdeWorkbench({
     setEntityDetailEntity(entity);
   }, []);
 
-  // 伏笔看板"目标章节"跳转：按章节号在资源/文件树中找到章节节点并打开
+  // 按章节号跳转（下一章页、推进板、章后事实等的来源章）：在资源/文件树中找到章节节点并打开
   const handleJumpToChapter = useCallback((chapterNumber: number) => {
     // 章节节点来源有二：资源树（metadata.chapterNumber）与文件树（chapters/NNNN_*.md）
     const findChapterNode = (ns: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
@@ -1173,16 +1146,16 @@ export function IdeWorkbench({
   }, [showPanel, jingweiSections, onOpen, setShowSettings]);
 
   /**
-   * 写作视图起书引导卡 →「先回答建书十一问」。
+   * 回到作品总览：「资源」侧栏顶部的「作品总览」，以及写作视图起书引导卡的「先回答建书十一问」。
    *
-   * 十一问长在作品总览画布上：资源管理器视图、且没有激活标签时才显示。这里切到
-   * 资源管理器并让它的标签暂时不激活（标签保留，作者的未保存内容不受影响）。
+   * 作品总览（新书时是十一问）长在「资源」视图没有激活标签时的中央画布上。这里切到
+   * 「资源」并让它的标签暂时不激活（标签保留，作者的未保存内容不受影响）。
    * 窄屏下侧栏是浮层，会盖住画布，所以顺手收起。
    */
-  const handleOpenNewBookGuide = useCallback(() => {
+  const handleShowBookOverview = useCallback(() => {
     setShowSettings(false);
-    ideTabsRef.current.deactivateView?.("explorer");
-    showPanel("explorer");
+    ideTabsRef.current.deactivateView?.("resources");
+    showPanel("resources");
     if (idePanesUseOverlay(layoutModeRef.current)) {
       setSidebarVisible(false);
       setChatVisible(false);
@@ -1528,7 +1501,7 @@ export function IdeWorkbench({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeNode, handleResourceAction]);
 
-  // 作品总览（新书时是建书十一问）：资源管理器视图没有激活标签时显示。
+  // 作品总览（新书时是建书十一问）：「资源」视图没有激活标签时显示。
   const bookOverviewCanvas = (
     <WorkbenchCanvas
       node={null}
@@ -1567,9 +1540,9 @@ export function IdeWorkbench({
         data-sidebar-visible={sidebarVisible ? "true" : "false"}
         data-chat-visible={chatVisible ? "true" : "false"}
       >
-      {/* ── ActivityBar（VS Code 规范：48px 宽，48px 项高，左侧 2px 强调条，背景加重区分） ── */}
-      <div className="flex h-full w-12 shrink-0 flex-col justify-between items-center border-r border-border bg-secondary" data-nf-surface="rail">
-        <div className="flex flex-col items-center gap-1 pt-2">
+      {/* ── ActivityBar：64px 宽，每项「图标＋文字」，不用悬停也能认出每个入口；左侧 2px 强调条标当前项 ── */}
+      <div className="flex h-full w-16 shrink-0 flex-col justify-between items-center border-r border-border bg-secondary" data-nf-surface="rail">
+        <div className="flex flex-col items-center gap-0.5 pt-2">
           {SIDEBAR_VIEWS.map(v => (
             <ActivityBarItem
               key={v.id}
@@ -1580,7 +1553,7 @@ export function IdeWorkbench({
             />
           ))}
         </div>
-        <div className="flex flex-col items-center gap-1 pb-2">
+        <div className="flex flex-col items-center gap-0.5 pb-2">
           <ActivityBarItem
             icon={MessageSquare}
             label="AI 对话"
@@ -1610,7 +1583,7 @@ export function IdeWorkbench({
               {/* Sidebar 标题 */}
               <div className="flex h-[35px] shrink-0 items-center border-b border-border px-2">
                 <span className="text-2xs font-semibold text-foreground uppercase tracking-wide pl-3">
-                    {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源管理器"}
+                    {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源"}
                 </span>
               </div>
               {/* PanelManager 宿主:面板容器由 JS 创建,React 通过 portal 往里渲染 */}
@@ -1629,19 +1602,28 @@ export function IdeWorkbench({
                   onJumpToChapter={handleJumpToChapter}
                   visible={activeView === "write" && sidebarVisible && !showSettings}
                   hasChapters={bookHasChapters}
-                  onOpenNewBookGuide={handleOpenNewBookGuide}
+                  onOpenNewBookGuide={handleShowBookOverview}
+                  {...(workflowNode ? { onOpenWorkflow: () => handleOpen(workflowNode) } : {})}
+                  {...(bookId ? { onOpenStoryCanvas: () => handleOpen(createStoryProgressionNode(bookId, "next")) } : {})}
                 />,
                 getContainer("write")!
               )}
-              {panelsReady && getContainer("explorer") && createPortal(
-                explorerNodes.length > 0
-                  ? <WorkbenchResourceTree nodes={explorerNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
-                  : fileTree.loading
-                    ? <div className="flex h-full items-center justify-center"><span role="status" aria-live="polite" className="text-xs text-muted-foreground">正在扫描文件…</span></div>
-                    : fileTree.error
-                      ? <div className="flex h-full items-center justify-center px-4 text-center"><span role="alert" className="break-words text-xs text-destructive">{fileTree.error}</span></div>
-                      : <div className="flex h-full items-center justify-center"><span className="text-xs text-muted-foreground">暂无文件</span></div>,
-                getContainer("explorer")!
+              {/* 资源：作品总览入口 + 文件树 + 分析工具（原「资源管理器」「分析工具」两个入口合并） */}
+              {panelsReady && getContainer("resources") && createPortal(
+                <ResourcesSidebarPanel
+                  overviewActive={activeView === "resources" && !ideTabs.activeTabId && !showSettings}
+                  onShowOverview={handleShowBookOverview}
+                  files={resourceFileNodes.length > 0
+                    // 排序偏好沿用原资源管理器的存储键，作者选过的排序不丢。
+                    ? <WorkbenchResourceTree nodes={resourceFileNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
+                    : fileTree.loading
+                      ? <div className="flex items-center justify-center px-4 py-6"><span role="status" aria-live="polite" className="text-xs text-muted-foreground">正在扫描文件…</span></div>
+                      : fileTree.error
+                        ? <div className="flex items-center justify-center px-4 py-6 text-center"><span role="alert" className="break-words text-xs text-destructive">{fileTree.error}</span></div>
+                        : <div className="flex items-center justify-center px-4 py-6"><span className="text-xs text-muted-foreground">暂无文件</span></div>}
+                  tools={<WorkbenchResourceTree nodes={toolNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} toolbar={false} ariaLabel="分析工具" />}
+                />,
+                getContainer("resources")!
               )}
               {/* 角色与设定：彻底统一经纬设定与角色当前时态 */}
               {panelsReady && getContainer("characters-lore") && createPortal(
@@ -1660,7 +1642,7 @@ export function IdeWorkbench({
                     </div>,
                 getContainer("characters-lore")!
               )}
-               {/* 故事推进：汇聚大纲、伏笔、时间线、关系图与待审队列 */}
+               {/* 故事推进：章节与大纲、章后事实，顶部打开故事画布（下一章 / 推进 / 故事树） */}
               {panelsReady && getContainer("storyline") && createPortal(
                 bookId
                   ? <StorylineAndPlanningSidebarPanel
@@ -1693,10 +1675,6 @@ export function IdeWorkbench({
                       <span className="text-xs text-muted-foreground">先打开一本书，再查看技能与文风。</span>
                     </div>,
                 getContainer("skills-style")!
-              )}
-              {panelsReady && getContainer("tools") && createPortal(
-                <WorkbenchResourceTree nodes={toolNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} />,
-                getContainer("tools")!
               )}
               {panelsReady && getContainer("search") && createPortal(
                 <SearchPanel
@@ -1788,13 +1766,13 @@ export function IdeWorkbench({
                             />
                           </div>
                         ))}
-                        {/* 资源管理器里有标签但都没激活（起书引导卡要看十一问）：标签保持挂载，前面显示作品总览。 */}
-                        {!ideTabs.activeTabId && activeView === "explorer" ? bookOverviewCanvas : null}
+                        {/* 「资源」里有标签但都没激活（点了「作品总览」或起书引导卡要看十一问）：标签保持挂载，前面显示作品总览。 */}
+                        {!ideTabs.activeTabId && activeView === "resources" ? bookOverviewCanvas : null}
                       </>
-                    ) : activeView === "explorer" ? (
+                    ) : activeView === "resources" ? (
                       bookOverviewCanvas
                     ) : (
-                      <ViewEmptyState view={activeView} />
+                      <ViewEmptyState view={activeView} sidebarVisible={sidebarVisible} onShowSidebar={() => handleViewClick(activeView)} />
                     )}
                   </EditorErrorBoundary>
                   </div>
@@ -1903,7 +1881,7 @@ export function IdeWorkbench({
           >
             <div className="flex h-[35px] shrink-0 items-center justify-between border-b border-border px-2">
               <span className="text-2xs font-semibold text-foreground uppercase tracking-wide pl-3">
-                {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源管理器"}
+                {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源"}
               </span>
               <button type="button" className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted/50" aria-label="关闭侧栏" onClick={() => setSidebarVisible(false)}>
                 <X className="size-3.5" />
@@ -1972,7 +1950,7 @@ export function IdeWorkbench({
 // ── ActivityBarItem ──────────────────────────────────────
 
 function ActivityBarItem({ icon: Icon, label, active, onClick }: {
-  icon: typeof Files;
+  icon: LucideIcon;
   label: string;
   active: boolean;
   onClick: () => void;
@@ -1982,16 +1960,72 @@ function ActivityBarItem({ icon: Icon, label, active, onClick }: {
       type="button"
       onClick={onClick}
       aria-label={label}
-      title={label}
-      className={`relative flex h-12 w-12 items-center justify-center rounded-md transition-colors ${
+      aria-pressed={active}
+      className={`relative flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-md transition-colors ${
         active
-          ? "bg-primary/10 text-foreground"
-          : "text-muted-foreground/60 hover:bg-muted/50 hover:text-foreground"
+          ? "bg-primary/10 text-primary"
+          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
       }`}
     >
-      {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-primary" />}
-      <Icon className="size-[22px]" strokeWidth={active ? 2.2 : 1.6} />
+      {active && <span className="absolute left-0 top-2 bottom-2 w-[2px] rounded-r bg-primary" />}
+      <Icon className="size-5" strokeWidth={active ? 2.1 : 1.7} />
+      <span className={`whitespace-nowrap text-2xs leading-none ${active ? "font-semibold" : "font-medium"}`}>{label}</span>
     </button>
+  );
+}
+
+// ── ResourcesSidebarPanel（「资源」侧栏：作品总览入口 + 文件 + 分析工具） ──
+// 文件树与分析工具本是同一棵资源树的两组节点，合成一个视图分两个分区；
+// 作品总览原先只能靠「资源管理器里关掉全部标签」进入，这里给一个常驻入口。
+
+/** 导出仅供测试。 */
+export function ResourcesSidebarPanel({ overviewActive, onShowOverview, files, tools }: {
+  /** 中央正显示作品总览（「资源」视图没有激活标签）。 */
+  overviewActive: boolean;
+  onShowOverview: () => void;
+  files: ReactNode;
+  tools: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col pb-2" data-testid="resources-sidebar">
+      <div className="px-2 py-1.5">
+        <button
+          type="button"
+          onClick={onShowOverview}
+          aria-current={overviewActive ? "page" : undefined}
+          className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
+            overviewActive ? "bg-primary/10 font-medium text-primary" : "text-foreground hover:bg-muted"
+          }`}
+        >
+          <LayoutDashboard className="size-4 shrink-0" strokeWidth={1.8} />
+          <span className="truncate">作品总览</span>
+        </button>
+      </div>
+      <ResourcesSection title="文件">{files}</ResourcesSection>
+      <ResourcesSection title="分析工具">{tools}</ResourcesSection>
+    </div>
+  );
+}
+
+function ResourcesSection({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  const contentId = useId();
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <section aria-label={title} className="border-t border-border/60">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-7 w-full items-center gap-1 px-2 text-2xs font-semibold tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Chevron className="size-3.5 shrink-0" />
+        <span>{title}</span>
+      </button>
+      {/* 收起只隐藏不卸载：保留树里的展开状态与搜索词。 */}
+      <div id={contentId} hidden={!open} className="pb-1">{children}</div>
+    </section>
   );
 }
 
@@ -2132,7 +2166,7 @@ const KIND_LABEL: Record<string, string> = {
   chapter: "章节",
   "jingwei-entry": "作品设定",
   jingwei: "作品基础",
-  tool: "工具",
+  tool: "分析工具",
   "tool-result": "工具",
   book: "书籍",
 };
@@ -2172,11 +2206,10 @@ function breadcrumbSegments(bookTitle: string | undefined, node: WorkbenchResour
 
 const VIEW_LABEL: Record<SidebarView, string> = {
   write: "写作",
-  explorer: "资源管理器",
+  resources: "资源",
   "characters-lore": "作品基础",
   storyline: "故事推进",
   "skills-style": "技能与文风",
-  tools: "分析工具",
   search: "搜索",
 };
 
@@ -2216,24 +2249,71 @@ function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: 
 }
 
 // ── ViewEmptyState（无激活 Tab 时的编辑区空态） ──
+// 空态模板：这里是什么 + 第一步点哪；侧栏收起时给一个展开按钮，免得「看左侧」指向一块看不见的地方。
 
-function ViewEmptyState({ view }: { view: SidebarView }) {
-  const meta = view === "characters-lore"
-     ? { icon: "人", title: "作品基础", desc: "从左侧选择角色册或世界录中的分类与条目" }
-    : view === "storyline"
-    ? { icon: "线", title: "故事推进", desc: "从左侧打开章节、大纲、故事演进或章后事实" }
-    : view === "skills-style"
-    ? { icon: "文", title: "技能与文风", desc: "从左侧面板管理写作技能与文风预设" }
-    : view === "search"
-    ? { icon: "搜", title: "搜索", desc: "在搜索面板中输入关键词查找资源" }
-    : view === "write"
-    ? { icon: "写", title: "写作", desc: "从写作面板查看就绪状态并开始写章" }
-    : { icon: "工", title: "工具", desc: "从左侧选择一个工具面板（质量监控、角色弧线、状态总览等）" };
+const VIEW_EMPTY_COPY: Record<SidebarView, { purpose: string; steps: readonly string[] }> = {
+  write: {
+    purpose: "这里显示你正在写的章节。",
+    steps: ["在左侧「写」里点「写第 N 章」，交给叙述者起草", "或在「改」里打开刚写完的一章继续修"],
+  },
+  resources: {
+    purpose: "这里显示作品总览、书里的文件和分析工具的结果。",
+    steps: ["在左侧「文件」里点开任意文件", "或在「分析工具」里选一个工具，结果在这里打开"],
+  },
+  search: {
+    purpose: "在全书里找人名、地名或一句原文。",
+    steps: ["在左侧搜索框输入关键词，点结果直接打开"],
+  },
+  "characters-lore": {
+    purpose: "角色、地点、势力和各类设定都在这里。",
+    steps: ["在左侧「角色册」或「世界录」点开一张卡即可编辑", "「草案」里是拆书抽出、等你确认的条目"],
+  },
+  storyline: {
+    purpose: "回答「下一章写什么」：剧情线、伏笔和章后事实。",
+    steps: ["在左侧点「打开故事画布」，看下一章建议和伏笔账本", "或在「章节与大纲」里打开某一章"],
+  },
+  "skills-style": {
+    purpose: "管理写作技能和本书文风。",
+    steps: ["在左侧打开文风预设、文风金库或某个写作技能"],
+  },
+};
+
+function ViewEmptyState({ view, sidebarVisible, onShowSidebar }: {
+  view: SidebarView;
+  sidebarVisible: boolean;
+  onShowSidebar: () => void;
+}) {
+  const meta = SIDEBAR_VIEWS.find((item) => item.id === view) ?? SIDEBAR_VIEWS[0]!;
+  const copy = VIEW_EMPTY_COPY[view];
+  const Icon = meta.icon;
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 bg-background p-8 text-center">
-      <span className="text-3xl">{meta.icon}</span>
-      <p className="text-sm font-medium text-foreground">{meta.title}</p>
-      <p className="max-w-[280px] text-xs text-muted-foreground">{meta.desc}</p>
+    <div className="flex h-full items-center justify-center bg-background p-8" data-testid="view-empty-state">
+      <div className="flex max-w-sm flex-col items-start gap-3">
+        <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="size-5" strokeWidth={1.8} />
+        </span>
+        <div className="flex flex-col gap-1">
+          <p className="text-base font-semibold text-foreground">{meta.label}</p>
+          <p className="text-sm text-muted-foreground">{copy.purpose}</p>
+        </div>
+        <ol className="flex flex-col gap-1.5 text-sm text-foreground">
+          {copy.steps.map((step, index) => (
+            <li key={step} className="flex gap-2">
+              <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-2xs font-semibold text-muted-foreground">{index + 1}</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+        {!sidebarVisible ? (
+          <button
+            type="button"
+            onClick={onShowSidebar}
+            className="mt-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            展开左侧栏
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -2412,7 +2492,7 @@ class EditorErrorBoundary extends Component<{ children: ReactNode }, EBState> {
     if (this.state.error) {
       return (
         <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center bg-background">
-          <span className="text-2xl">⚠️</span>
+          <TriangleAlert className="size-7 text-destructive" strokeWidth={1.8} aria-hidden="true" />
           <p className="text-sm font-medium text-foreground">面板加载失败</p>
           <p className="text-xs text-muted-foreground max-w-sm">{this.state.error.message}</p>
           <button

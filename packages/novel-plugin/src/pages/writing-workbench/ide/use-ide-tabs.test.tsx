@@ -7,6 +7,7 @@
  * 入口视图 ≠ 归属视图时由 IdeWorkbench.handleOpen 负责切换 ActivityBar。
  */
 import { act, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useIdeTabs } from "./use-ide-tabs";
@@ -40,12 +41,12 @@ describe("useIdeTabs 打开 tab", () => {
   });
 
   it("打开归属其他视图的 tab 时，当前视图看不到（EditorTabs 视图隔离的依据）", () => {
-    // 复刻「故事推进视图点击伏笔账本」：伏笔是 tool 节点，tab 归 tools 工作区。
-    // 状态层如实落地到 tools；可见性由 handleOpen 切换 ActivityBar 保证。
+    // 复刻「故事推进视图里打开一个分析工具」：工具是 tool 节点，tab 归「资源」工作区。
+    // 状态层如实落地到 resources；可见性由 handleOpen 切换 ActivityBar 保证。
     const { result } = renderHook(() => useIdeTabs("book-open2", "storyline"));
 
     act(() => {
-      result.current.openTab("tool:foreshadowing", "伏笔账本", "tool", "tools");
+      result.current.openTab("tool:quality", "质量中心", "tool", "resources");
     });
 
     expect(result.current.tabs).toHaveLength(0);
@@ -99,7 +100,7 @@ describe("useIdeTabs 视图归属修正与暂不激活", () => {
       ],
       activeByView: { explorer: "lore-trees:book-move" },
     }));
-    let view: "explorer" | "characters-lore" = "characters-lore";
+    let view: "resources" | "characters-lore" = "characters-lore";
     const { result, rerender } = renderHook(() => useIdeTabs("book-move", view));
 
     act(() => {
@@ -108,23 +109,23 @@ describe("useIdeTabs 视图归属修正与暂不激活", () => {
 
     expect(result.current.tabs.map((t) => t.id)).toEqual(["lore-trees:book-move"]);
     expect(result.current.activeTabId).toBe("lore-trees:book-move");
-    // 原视图不再指向搬走的 tab
-    view = "explorer";
+    // 原视图（旧资源管理器已迁到「资源」）不再指向搬走的 tab
+    view = "resources";
     rerender();
     expect(result.current.tabs.map((t) => t.id)).toEqual(["file:story/a.md"]);
     expect(result.current.activeTabId).toBe("file:story/a.md");
   });
 
   it("deactivateView 让视图暂时没有激活 tab，标签本身保留", () => {
-    const { result } = renderHook(() => useIdeTabs("book-deactivate", "explorer"));
+    const { result } = renderHook(() => useIdeTabs("book-deactivate", "resources"));
 
     act(() => {
-      result.current.openTab("file:story/a.md", "a.md", "file", "explorer");
+      result.current.openTab("file:story/a.md", "a.md", "file", "resources");
     });
     expect(result.current.activeTabId).toBe("file:story/a.md");
 
     act(() => {
-      result.current.deactivateView("explorer");
+      result.current.deactivateView("resources");
     });
     expect(result.current.activeTabId).toBeNull();
     expect(result.current.tabs.map((t) => t.id)).toEqual(["file:story/a.md"]);
@@ -133,5 +134,76 @@ describe("useIdeTabs 视图归属修正与暂不激活", () => {
       result.current.activateTab("file:story/a.md");
     });
     expect(result.current.activeTabId).toBe("file:story/a.md");
+  });
+
+  it("老用户落盘的资源管理器与分析工具标签合并进「资源」视图：标签都在、激活项保留，并立即回写磁盘", () => {
+    store.set("nf:ide-tabs:book-legacy-merge", JSON.stringify({
+      tabs: [
+        { id: "file:story/a.md", nodeId: "file:story/a.md", title: "a.md", kind: "file", view: "explorer" },
+        { id: "tool:quality", nodeId: "tool:quality", title: "质量中心", kind: "tool", view: "tools", pinned: true },
+        { id: "jingwei-entry:1", nodeId: "jingwei-entry:1", title: "林舟", kind: "jingwei-entry", view: "characters-lore" },
+      ],
+      activeByView: { write: null, explorer: null, "characters-lore": "jingwei-entry:1", tools: "tool:quality", search: null },
+    }));
+    const { result } = renderHook(() => useIdeTabs("book-legacy-merge", "resources"));
+
+    // 固定标签排在前面；两组旧标签都落在「资源」，分析工具的激活项接上
+    expect(result.current.tabs.map((t) => t.id)).toEqual(["tool:quality", "file:story/a.md"]);
+    expect(result.current.activeTabId).toBe("tool:quality");
+
+    const persisted = JSON.parse(store.get("nf:ide-tabs:book-legacy-merge")!);
+    expect(persisted.tabs.map((t: { view: string }) => t.view)).toEqual(["resources", "resources", "characters-lore"]);
+    expect(Object.keys(persisted.activeByView)).not.toContain("explorer");
+    expect(Object.keys(persisted.activeByView)).not.toContain("tools");
+    expect(persisted.activeByView.resources).toBe("tool:quality");
+    expect(persisted.activeByView["characters-lore"]).toBe("jingwei-entry:1");
+  });
+});
+
+describe("useIdeTabs 落盘时机", () => {
+  const legacy = {
+    tabs: [
+      { id: "file:book.json", nodeId: "file:book.json", title: "book.json", kind: "file", view: "explorer" },
+      { id: "tool:quality", nodeId: "tool:quality", title: "质量中心", kind: "tool", view: "tools" },
+    ],
+    activeByView: { write: null, explorer: "file:book.json", tools: "tool:quality", search: null },
+  };
+
+  it("StrictMode 开发态双跑 effect 时，旧视图迁移不会把标签清空（首次提交的初始空状态不能落盘）", () => {
+    store.set("nf:ide-tabs:book-strict", JSON.stringify(legacy));
+    const { result } = renderHook(() => useIdeTabs("book-strict", "resources"), { wrapper: StrictMode });
+
+    expect(result.current.tabs.map((t) => t.id)).toEqual(["file:book.json", "tool:quality"]);
+    expect(result.current.activeTabId).toBe("file:book.json");
+    const persisted = JSON.parse(store.get("nf:ide-tabs:book-strict")!);
+    expect(persisted.tabs.map((t: { id: string; view: string }) => [t.id, t.view])).toEqual([
+      ["file:book.json", "resources"],
+      ["tool:quality", "resources"],
+    ]);
+  });
+
+  it("换到带旧状态的书时，不会把上一本书的标签写进新书", () => {
+    store.set("nf:ide-tabs:book-new", JSON.stringify(legacy));
+    let bookId = "book-old";
+    const { result, rerender } = renderHook(() => useIdeTabs(bookId, "resources"));
+    act(() => {
+      result.current.openTab("file:old.md", "old.md", "file", "resources");
+    });
+
+    const writes: string[] = [];
+    const setItem = vi.spyOn(localStorage, "setItem").mockImplementation((key: string, value: string) => {
+      if (key === "nf:ide-tabs:book-new") writes.push(value);
+      store.set(key, value);
+    });
+    bookId = "book-new";
+    rerender();
+    setItem.mockRestore();
+
+    // 过程中的每一次写入都不能带上一本书的标签
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.some((value) => value.includes("file:old.md"))).toBe(false);
+    expect(result.current.tabs.map((t) => t.id)).toEqual(["file:book.json", "tool:quality"]);
+    const persisted = JSON.parse(store.get("nf:ide-tabs:book-new")!);
+    expect(persisted.tabs.map((t: { id: string }) => t.id)).toEqual(["file:book.json", "tool:quality"]);
   });
 });

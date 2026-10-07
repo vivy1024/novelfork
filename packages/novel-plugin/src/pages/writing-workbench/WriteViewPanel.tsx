@@ -9,7 +9,7 @@
  * 改 / 收尾针对最近写完的那一章。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, Compass, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Compass, Loader2, RefreshCw, Sparkles, Workflow, XCircle } from "lucide-react";
 import type { ViewId } from "./ide/use-panel-manager";
 
 import { fetchJson, invalidateApiPaths, useApi } from "@/hooks/use-api";
@@ -94,6 +94,13 @@ export interface WriteViewPanelProps {
   readonly hasChapters?: boolean;
   /** 打开作品总览里的建书十一问（起书引导卡「先回答建书十一问」）。 */
   readonly onOpenNewBookGuide?: () => void;
+  /**
+   * 在中央打开工作流（按作者装配的工序写这一章）。工作流的唯一入口在这里；
+   * 不传时不显示入口（例如宿主还没绑定书）。
+   */
+  readonly onOpenWorkflow?: () => void;
+  /** 在中央打开故事画布并落在「下一章」（「伏笔到期」一键修的落点：伏笔账本在那里）。 */
+  readonly onOpenStoryCanvas?: () => void;
 }
 
 const LIGHT_STYLE: Record<WriteViewModel["light"], { bar: string; text: string; icon: typeof CheckCircle2 }> = {
@@ -123,6 +130,8 @@ export function WriteViewPanel({
   visible,
   hasChapters = false,
   onOpenNewBookGuide,
+  onOpenWorkflow,
+  onOpenStoryCanvas,
 }: WriteViewPanelProps) {
   const [raw, setRaw] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
@@ -253,7 +262,7 @@ export function WriteViewPanel({
         setFixNote(`当前环境无法切换侧栏视图，请手动打开「${plan.label}」。`);
         return;
       }
-      onSwitchView(plan.view ?? "tools");
+      onSwitchView(plan.view ?? "resources");
       return;
     }
     if (plan.kind === "settings") {
@@ -269,6 +278,14 @@ export function WriteViewPanel({
       const goal = compassRef.current?.querySelector<HTMLTextAreaElement>("[data-testid='creative-compass-goal']");
       goal?.focus();
       setFixNote("请在上方创作罗盘填写本章目标；保存后写章会按它推进。");
+      return;
+    }
+    if (plan.kind === "story-canvas") {
+      if (!onOpenStoryCanvas) {
+        setFixNote(`当前环境无法打开故事画布，请点活动栏「故事推进」，再点「打开故事画布」处理「${plan.label}」。`);
+        return;
+      }
+      onOpenStoryCanvas();
       return;
     }
     if (plan.kind === "lore-panel") {
@@ -293,14 +310,14 @@ export function WriteViewPanel({
     } finally {
       setFixBusy(null);
     }
-  }, [formalChapterCount, model.chapterNumber, onOpenLorePanel, onOpenSettings, onSendToNarrator, onSwitchView]);
+  }, [formalChapterCount, model.chapterNumber, onOpenLorePanel, onOpenSettings, onOpenStoryCanvas, onSendToNarrator, onSwitchView]);
 
   /** 起书引导卡的按钮：没答十一问 → 打开作品总览的十一问；答过 → 定位创作罗盘。 */
   const handleOnboardingAction = useCallback(() => {
     if (model.onboarding?.kind === "answer-guide") {
       setFixNote(null);
       if (!onOpenNewBookGuide) {
-        setFixNote("当前环境无法切换到作品总览，请点活动栏「资源管理器」，关掉已打开的标签后回答建书十一问。");
+        setFixNote("当前环境无法切换到作品总览，请点活动栏「资源」，再点侧栏顶部的「作品总览」回答建书十一问。");
         return;
       }
       onOpenNewBookGuide();
@@ -719,6 +736,24 @@ export function WriteViewPanel({
         )}
       </div>
       </>
+      ) : null}
+
+      {/*
+        工作流：按作者装配的工序图写这一章（原故事画布「执行」页）。写、改、收尾三步都可见：
+        工序停下等作者确认时，作者可能正在任何一步。
+      */}
+      {onOpenWorkflow ? (
+        <button
+          type="button"
+          onClick={onOpenWorkflow}
+          title="按工作流方案把这一章拆成几道工序，叙述者逐道做；需要你确认的工序会停下等你。在中央打开。"
+          className="flex w-full items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-left text-2xs text-foreground transition-colors hover:bg-primary/10"
+          data-testid="write-open-workflow"
+        >
+          <Workflow className="size-3.5 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1 truncate">工作流：按工序写这一章</span>
+          <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+        </button>
       ) : null}
     </div>
   );

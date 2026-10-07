@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookMarked, BookOpen, CalendarClock, ChevronDown, ChevronUp, GripVertical, LogOut, MessageSquareText, PackageMinus, Search, Settings, TrendingUp, Wrench, PanelLeftClose, PanelLeftOpen, PanelRightOpen, Pin, Trash2, X } from "lucide-react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { BookMarked, BookOpen, CalendarClock, ChevronDown, ChevronUp, GripVertical, LogOut, MessageSquareText, PackageMinus, Search, Settings, TrendingUp, Wrench, PanelLeftClose, PanelLeftOpen, PanelRightOpen, Pin, Trash2, X, type LucideIcon } from "lucide-react";
 
 import { getShellNavItems, isShellNavItemActive, recentTabKey, type ShellBookItem, type ShellNavItem, type ShellRecentTabItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
 import { resolveRecentNarrators } from "./NarratorWorkspaceDrawer";
@@ -27,23 +27,78 @@ export interface ShellSidebarProps {
   readonly onCloseMobile?: () => void;
 }
 
+function railIcon(Icon: LucideIcon, active: boolean) {
+  return <Icon aria-hidden="true" className="size-5" strokeWidth={active ? 2.1 : 1.7} />;
+}
+
+/**
+ * 收起态的导航格，与书内活动栏（IdeWorkbench 的 ActivityBarItem）同一套尺寸与选中态：
+ * 56px 方格、图标 size-5、下方一行 text-2xs 文字、当前项 bg-primary/10 加左侧 2px 强调条。
+ * 可见文字就是无障碍名；书名、会话名可能超宽，截断后用悬停提示补全。
+ */
+function ShellRailItem({
+  icon,
+  label,
+  active = false,
+  onClick,
+  truncate = false,
+  indicator,
+  className,
+}: {
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly active?: boolean;
+  readonly onClick?: () => void;
+  readonly truncate?: boolean;
+  readonly indicator?: ReactNode;
+  readonly className?: string;
+}) {
+  const item = (
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      onClick={onClick}
+      className={cn(
+        // 焦点框贴着方格外沿画：收起列内容区是 overflow-hidden，默认 2px 外偏移会被裁掉一截
+        "relative flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-md transition-colors focus-visible:outline-offset-0",
+        active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+        className,
+      )}
+    >
+      {active && <span aria-hidden="true" className="absolute bottom-2 left-0 top-2 w-[2px] rounded-r bg-primary" />}
+      {icon}
+      <span
+        className={cn(
+          "max-w-full text-2xs",
+          truncate ? "truncate px-1 leading-tight" : "whitespace-nowrap leading-none",
+          active ? "font-semibold" : "font-medium",
+        )}
+      >
+        {label}
+      </span>
+      {indicator}
+    </button>
+  );
+  if (!truncate) return item;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{item}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function NavButton({ label, active, onClick, collapsed }: { readonly label: string; readonly active: boolean; readonly onClick: () => void; readonly collapsed?: boolean }) {
   if (collapsed) {
     return (
-      <Tooltip>
-        <TooltipTrigger
-          className={cn(
-            "flex w-full items-center justify-center rounded-md p-1.5 text-xs transition",
-            active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
-          aria-label={label}
-          aria-current={active ? "page" : undefined}
-          onClick={onClick}
-        >
-          <BookCover title={label} size="xs" />
-        </TooltipTrigger>
-        <TooltipContent side="right">{label}</TooltipContent>
-      </Tooltip>
+      <ShellRailItem
+        icon={<BookCover title={label} size="xs" />}
+        label={label}
+        active={active}
+        onClick={onClick}
+        truncate
+      />
     );
   }
 
@@ -95,28 +150,26 @@ function NarratorNavButton({
 
   if (collapsed) {
     return (
-      <Tooltip>
-        <TooltipTrigger
-          className={cn(
-            "relative flex w-full items-center justify-center rounded-md p-1.5 text-xs transition",
-            active ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
-          aria-label={label}
-          aria-current={active ? "page" : undefined}
-          onClick={onClick}
-        >
-          <span className="text-2xs font-bold">{label.charAt(0).toUpperCase()}</span>
-          {(unread || working) && (
-            <span
-              className={cn(
-                "absolute right-0.5 top-0.5 size-1.5 rounded-full",
-                working ? "animate-pulse bg-primary" : "bg-muted-foreground",
-              )}
-            />
-          )}
-        </TooltipTrigger>
-        <TooltipContent side="right">{label}</TooltipContent>
-      </Tooltip>
+      <ShellRailItem
+        icon={
+          <span aria-hidden="true" className="flex size-5 items-center justify-center rounded-full border border-current text-2xs font-bold leading-none">
+            {label.charAt(0).toUpperCase()}
+          </span>
+        }
+        label={label}
+        active={active}
+        onClick={onClick}
+        truncate
+        indicator={(unread || working) ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "absolute right-2 top-2 size-1.5 rounded-full",
+              working ? "animate-pulse bg-primary motion-reduce:animate-none" : "bg-muted-foreground",
+            )}
+          />
+        ) : null}
+      />
     );
   }
 
@@ -282,37 +335,42 @@ export function ShellSidebar({
       <aside
         aria-label="NovelFork 主导航"
         className={cn(
-          "flex h-full shrink-0 flex-col bg-card transition-[width] duration-200",
+          "flex h-full shrink-0 flex-col bg-card transition-[width] duration-200 motion-reduce:transition-none",
           isMobile ? "w-full" : "border-r border-border",
-          !isMobile && (isCollapsed ? "w-12" : "w-[250px]"),
+          !isMobile && (isCollapsed ? "w-16" : "w-[250px]"),
         )}
         data-slot="shell-sidebar"
         data-nf-surface="rail"
+        data-collapsed={isCollapsed ? "true" : "false"}
         data-testid="shell-sidebar"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-2 py-2" role="banner">
-          {!isCollapsed && (
+        {isCollapsed ? (
+          <div className="flex items-center justify-center border-b border-border py-1" role="banner">
+            <ShellRailItem icon={railIcon(PanelLeftOpen, false)} label="展开侧栏" onClick={onToggleCollapse} />
+          </div>
+        ) : (
+          <div className="flex items-center justify-between border-b border-border px-2 py-2" role="banner">
             <div className="min-w-0 px-1">
               <p className="nf-display truncate text-base">NovelFork Studio</p>
               <p className="text-2xs text-muted-foreground">Agent Shell</p>
             </div>
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={isMobile ? onCloseMobile : onToggleCollapse}
-            aria-label={isMobile ? "关闭主导航" : isCollapsed ? "展开侧栏" : "折叠侧栏"}
-          >
-            {isMobile || !isCollapsed ? <PanelLeftClose /> : <PanelLeftOpen />}
-          </Button>
-        </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={isMobile ? onCloseMobile : onToggleCollapse}
+              aria-label={isMobile ? "关闭主导航" : "折叠侧栏"}
+            >
+              <PanelLeftClose />
+            </Button>
+          </div>
+        )}
 
         {/* Content */}
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-1.5 py-3">
+        <div className={cn("flex flex-1 flex-col overflow-y-auto", isCollapsed ? "items-center gap-2 overflow-x-hidden py-2" : "gap-4 px-1.5 py-3")}>
           {/* Books section */}
-          <section className="flex flex-col gap-1" aria-label="叙事线（书籍）" data-tour-id="sidebar-books">
+          <section className={cn("flex flex-col", isCollapsed ? "items-center gap-0.5" : "gap-1")} aria-label="叙事线（书籍）" data-tour-id="sidebar-books">
             {!isCollapsed && (
               <button
                 type="button"
@@ -324,15 +382,12 @@ export function ShellSidebar({
               </button>
             )}
             {isCollapsed && (
-              <Tooltip>
-                <TooltipTrigger
-                  className="flex w-full items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-primary transition-colors"
-                  onClick={() => onNavigate({ kind: "books" })}
-                >
-                  <BookOpen className="size-4" />
-                </TooltipTrigger>
-                <TooltipContent side="right">叙事线（书籍）</TooltipContent>
-              </Tooltip>
+              <ShellRailItem
+                icon={railIcon(BookOpen, route.kind === "books")}
+                label="我的作品"
+                active={route.kind === "books"}
+                onClick={() => onNavigate({ kind: "books" })}
+              />
             )}
             {bookItems.length > 0
               ? bookItems.map((item) => {
@@ -358,7 +413,7 @@ export function ShellSidebar({
           </section>
 
           {/* Narrators section */}
-          <section className="flex flex-col gap-1" aria-label="叙述者" data-tour-id="sidebar-narrators">
+          <section className={cn("flex flex-col", isCollapsed ? "items-center gap-0.5" : "gap-1")} aria-label="叙述者" data-tour-id="sidebar-narrators">
             {!isCollapsed && (
               <div className="flex items-center justify-between px-2">
                 <h2 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
@@ -399,23 +454,15 @@ export function ShellSidebar({
                     className="size-5 text-muted-foreground hover:text-primary"
                     onClick={() => onNavigate({ kind: "sessions", create: true })}
                     title="新建叙述者"
+                    aria-label="新建叙述者"
                   >
                     <span className="text-sm leading-none">+</span>
                   </Button>
                 </div>
               </div>
             )}
-            {isCollapsed && (
-              <Tooltip>
-                <TooltipTrigger
-                  className="flex w-full items-center justify-center rounded-md p-1.5 text-muted-foreground"
-                  onClick={onOpenSessionDrawer}
-                  aria-label="打开会话抽屉"
-                >
-                  <MessageSquareText className="size-4" />
-                </TooltipTrigger>
-                <TooltipContent side="right">打开会话抽屉</TooltipContent>
-              </Tooltip>
+            {isCollapsed && onOpenSessionDrawer && (
+              <ShellRailItem icon={railIcon(MessageSquareText, false)} label="会话" onClick={onOpenSessionDrawer} />
             )}
             {visibleNarratorItems.length > 0
               ? visibleNarratorItems.map((item) => {
@@ -463,27 +510,20 @@ export function ShellSidebar({
         </div>
 
         {/* Bottom nav */}
-        <nav className="flex flex-col gap-0.5 border-t border-border px-1.5 py-2" aria-label="全局入口">
+        <nav className={cn("flex flex-col gap-0.5 border-t border-border py-2", isCollapsed ? "min-h-0 items-center overflow-y-auto overflow-x-hidden" : "px-1.5")} aria-label="全局入口">
           {visibleGlobalItems.map((item) => {
             const Icon = globalNavIcon(item.route.kind);
             const isActive = isShellNavItemActive(item, route);
 
             if (isCollapsed) {
               return (
-                <Tooltip key={item.id}>
-                  <TooltipTrigger
-                    className={cn(
-                      "flex w-full items-center justify-center rounded-md p-1.5 transition-colors",
-                      isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                    aria-label={item.label}
-                    aria-current={isActive ? "page" : undefined}
-                    onClick={() => onNavigate(item.route)}
-                  >
-                    <Icon className="size-4" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
+                <ShellRailItem
+                  key={item.id}
+                  icon={railIcon(Icon, isActive)}
+                  label={item.label}
+                  active={isActive}
+                  onClick={() => onNavigate(item.route)}
+                />
               );
             }
 
@@ -538,7 +578,10 @@ export function ShellSidebar({
               )}
             </div>
           )}
-          {onLogout ? (
+          {onLogout && isCollapsed ? (
+            <ShellRailItem icon={railIcon(LogOut, false)} label="退出登录" onClick={onLogout} className="hover:text-destructive" />
+          ) : null}
+          {onLogout && !isCollapsed ? (
             <Button
               type="button"
               variant="ghost"
@@ -547,7 +590,7 @@ export function ShellSidebar({
               onClick={onLogout}
             >
               <LogOut data-icon="inline-start" />
-              {!isCollapsed ? "退出登录" : null}
+              退出登录
             </Button>
           ) : null}
         </nav>

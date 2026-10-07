@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
@@ -34,5 +34,29 @@ describe("WorkbenchResourceTree", () => {
     const selected = screen.getByRole("button", { name: /第二章/ });
     expect(selected.getAttribute("aria-current")).toBe("true");
     expect(selected.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("toolbar=false 用于固定清单：不显示搜索/排序，节点保持传入顺序，分组显示 lucide 图标", () => {
+    const groupCaps = { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
+    const toolCaps = { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
+    const tools: readonly WorkbenchResourceNode[] = [
+      { id: "tool-group:runtime", kind: "tool-group", title: "运行与协同", metadata: { icon: "settings" }, capabilities: groupCaps,
+        children: [{ id: "tool:runtime", kind: "tool", title: "底层状态总览", capabilities: toolCaps }] },
+      { id: "tool-group:pre-writing", kind: "tool-group", title: "写前筹备", metadata: { icon: "target" }, capabilities: groupCaps,
+        children: [{ id: "tool:arcs", kind: "tool", title: "角色弧线", capabilities: toolCaps }] },
+    ];
+    const onOpen = vi.fn();
+    const { container } = render(<WorkbenchResourceTree nodes={tools} onOpen={onOpen} toolbar={false} ariaLabel="分析工具" />);
+
+    const tree = screen.getByRole("navigation", { name: "分析工具" });
+    expect(screen.queryByLabelText("搜索文件树")).toBeNull();
+    expect(screen.queryByLabelText("文件树排序")).toBeNull();
+    // 按名称排序会把「写前筹备」排到「运行与协同」前面；固定清单保持传入顺序
+    expect(tree.textContent!.indexOf("运行与协同")).toBeLessThan(tree.textContent!.indexOf("写前筹备"));
+    expect(container.querySelector("[data-icon='settings']")).not.toBeNull();
+    expect(container.querySelector("[data-icon='target']")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /角色弧线/ }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "tool:arcs" }));
   });
 });

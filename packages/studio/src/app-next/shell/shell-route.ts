@@ -9,17 +9,44 @@ export type ShellRoute =
   | { readonly kind: "book"; readonly bookId: string }
   | { readonly kind: "sessions"; readonly create?: boolean }
   | RuntimePageRoute
-  | { readonly kind: "routines" }
+  | RoutinesNovelPanelRoute
   | { readonly kind: "settings"; readonly section?: string }
   | { readonly kind: "market" };
 
 /**
- * 嵌入的 Runtime 原页（搜索、知识库、定时任务、学习）。`path` 是 Runtime 路径（含查询串），
+ * 嵌入的 Runtime 原页（搜索、套路、知识库、定时任务、学习）。`path` 是 Runtime 路径（含查询串），
  * 缺省为入口根路径；Studio 地址是 `/next` + 这个路径。
  */
-export interface RuntimePageRoute {
-  readonly kind: RuntimePageSection;
-  readonly path?: string;
+export type RuntimePageRoute = {
+  readonly [Section in RuntimePageSection]: { readonly kind: Section; readonly path?: string };
+}[RuntimePageSection];
+
+/** 套路页里 NovelFork 自己的面板（Runtime 原页没有的小说专属设置）。 */
+export const ROUTINES_NOVEL_PANELS = ["book", "subagent-tools"] as const;
+export type RoutinesNovelPanel = (typeof ROUTINES_NOVEL_PANELS)[number];
+
+/**
+ * 这些面板不在 Runtime 路由树里，地址单独占 `/next/routines/novelfork/…` 一段，
+ * 免得与 Runtime 套路页的子路径（如 `/routines/tool-permissions`）混在一起。
+ */
+export const ROUTINES_NOVEL_PANEL_SEGMENT = "novelfork";
+
+export interface RoutinesNovelPanelRoute {
+  readonly kind: "routines";
+  readonly panel: RoutinesNovelPanel;
+}
+
+/** 某个原页入口的路由；`path` 缺省为入口根路径。 */
+export function runtimePageRoute(section: RuntimePageSection, path?: string): RuntimePageRoute {
+  // section 是入口联合类型，逐个入口展开的对象类型 TypeScript 推不出来，这里一次性收窄。
+  return (path === undefined ? { kind: section } : { kind: section, path }) as RuntimePageRoute;
+}
+
+/** 套路入口：通用部分是 Runtime 原页（带 Runtime 子路径），或 NovelFork 自己的面板。 */
+export type RoutinesRoute = Extract<ShellRoute, { readonly kind: "routines" }>;
+
+function isRoutinesNovelPanel(value: string | undefined): value is RoutinesNovelPanel {
+  return (ROUTINES_NOVEL_PANELS as readonly string[]).includes(value ?? "");
 }
 
 export type ShellRouteKind = ShellRoute["kind"];
@@ -97,16 +124,19 @@ export function parseShellRoute(href = globalThis.location?.pathname ?? STUDIO_N
 
   const [, section, id] = parts;
   if (!section) return { kind: "home" };
+  if (section === "routines" && id === ROUTINES_NOVEL_PANEL_SEGMENT) {
+    const panel = decodeSegment(parts[3] ?? "");
+    return isRoutinesNovelPanel(panel) ? { kind: "routines", panel } : { kind: "routines" };
+  }
   if (isRuntimePageSection(section)) {
     const suffix = href.slice(href.search(/[?#]|$/u));
     const runtimePath = `/${parts.slice(1).join("/")}${suffix}`;
-    return runtimePath === `/${section}` ? { kind: section } : { kind: section, path: runtimePath };
+    return runtimePageRoute(section, runtimePath === `/${section}` ? undefined : runtimePath);
   }
   if (section === "narrators" && id) return { kind: "narrator", sessionId: decodeSegment(id) };
   if (section === "books" && !id) return { kind: "books" };
   if (section === "books" && id) return { kind: "book", bookId: decodeSegment(id) };
   if (section === "sessions") return { kind: "sessions", ...(id === "new" ? { create: true } : {}) };
-  if (section === "routines") return { kind: "routines" };
   if (section === "settings") return { kind: "settings", ...(id ? { section: decodeSegment(id) } : {}) };
   if (section === "market") return { kind: "market" };
   return { kind: "home" };
@@ -123,7 +153,10 @@ export function toShellPath(route: ShellRoute): string {
     case "sessions":
       return route.create ? `${STUDIO_NEXT_BASE_PATH}/sessions/new` : `${STUDIO_NEXT_BASE_PATH}/sessions`;
     case "routines":
-      return `${STUDIO_NEXT_BASE_PATH}/routines`;
+      if ("panel" in route) {
+        return `${STUDIO_NEXT_BASE_PATH}/routines/${ROUTINES_NOVEL_PANEL_SEGMENT}/${encodeSegment(route.panel)}`;
+      }
+      return `${STUDIO_NEXT_BASE_PATH}${route.path ?? "/routines"}`;
     case "search":
     case "knowledge":
     case "scheduled-tasks":

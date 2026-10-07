@@ -26,11 +26,11 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
   return useMemo(
     () => [
       {
-        id: "view.explorer",
-        label: "显示: 资源管理器",
+        id: "view.resources",
+        label: "显示: 资源（文件与分析工具）",
         category: "视图",
         shortcut: "Ctrl+1",
-        execute: () => options.switchView("explorer"),
+        execute: () => options.switchView("resources"),
       },
       {
         id: "view.characters-lore",
@@ -43,6 +43,7 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         id: "view.storyline",
         label: "显示: 故事推进",
         category: "视图",
+        shortcut: "Ctrl+3",
         execute: () => options.switchView("storyline"),
       },
       {
@@ -56,13 +57,6 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         label: "显示: 搜索",
         category: "视图",
         execute: () => options.switchView("search"),
-      },
-      {
-        id: "view.tools",
-        label: "显示: 工具",
-        category: "视图",
-        shortcut: "Ctrl+3",
-        execute: () => options.switchView("tools"),
       },
       {
         id: "view.sidebar.toggle",
@@ -134,7 +128,7 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         id: "tools.health",
         label: "打开: 全书健康",
         category: "工具",
-        execute: () => options.switchView("tools"),
+        execute: () => options.switchView("resources"),
       },
       {
         id: "view.write",

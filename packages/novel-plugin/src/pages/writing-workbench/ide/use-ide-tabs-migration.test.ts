@@ -1,8 +1,9 @@
 /**
  * 新旧侧栏视图合并后的持久化迁移。
  *
- * 旧版本可能已经落盘了 `jingwei` 或 `narrative-memory` 视图的 tab。
- * 如果不迁移，这些 tab 会留在 localStorage 里但没有新视图承载 —— 点不开也关不掉。
+ * 旧版本可能已经落盘了 `jingwei`、`narrative-memory`，或已合并的 `explorer`（资源管理器）、
+ * `tools`（分析工具）视图的 tab。如果不迁移，这些 tab 会留在 localStorage 里但没有新视图承载
+ * —— 点不开也关不掉。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,16 +36,23 @@ describe("normalizePersistedTabView", () => {
     expect(normalizePersistedTabView("narrative-memory")).toBe("storyline");
   });
 
+  it("资源管理器与分析工具合并为「资源」", () => {
+    expect(normalizePersistedTabView("explorer")).toBe("resources");
+    expect(normalizePersistedTabView("tools")).toBe("resources");
+  });
+
   it("保留现存视图", () => {
-    for (const view of ["write", "explorer", "characters-lore", "storyline", "skills-style", "tools", "search"]) {
+    for (const view of ["write", "resources", "characters-lore", "storyline", "skills-style", "search"]) {
       expect(normalizePersistedTabView(view)).toBe(view);
     }
   });
 
-  it("未知或非法值退回 explorer", () => {
-    expect(normalizePersistedTabView("what-is-this")).toBe("explorer");
-    expect(normalizePersistedTabView(undefined)).toBe("explorer");
-    expect(normalizePersistedTabView(42)).toBe("explorer");
+  it("未知或非法值退回 resources", () => {
+    expect(normalizePersistedTabView("what-is-this")).toBe("resources");
+    expect(normalizePersistedTabView(undefined)).toBe("resources");
+    expect(normalizePersistedTabView(42)).toBe("resources");
+    // 不把原型链上的键当成旧视图名
+    expect(normalizePersistedTabView("toString")).toBe("resources");
   });
 });
 
@@ -126,6 +134,34 @@ describe("loadState 迁移", () => {
     expect(loadState(BOOK).tabs).toEqual([]);
   });
 
+  it("资源管理器与分析工具的旧标签都迁进「资源」，激活项优先取资源管理器的", () => {
+    localStorage.setItem(KEY, JSON.stringify({
+      tabs: [
+        { id: "file:story/a.md", nodeId: "file:story/a.md", title: "a.md", kind: "file", view: "explorer" },
+        { id: "tool:arcs", nodeId: "tool:arcs", title: "角色弧线", kind: "tool", view: "tools" },
+      ],
+      activeByView: { explorer: "file:story/a.md", tools: "tool:arcs" },
+    }));
+
+    const state = loadState(BOOK);
+    expect(state.tabs.map((t) => [t.id, t.view])).toEqual([["file:story/a.md", "resources"], ["tool:arcs", "resources"]]);
+    expect(state.activeByView.resources).toBe("file:story/a.md");
+    expect(Object.keys(state.activeByView)).not.toContain("explorer");
+    expect(Object.keys(state.activeByView)).not.toContain("tools");
+  });
+
+  it("资源管理器的激活项已失效时，接上分析工具的激活项，不回退到第一个标签", () => {
+    localStorage.setItem(KEY, JSON.stringify({
+      tabs: [
+        { id: "file:story/a.md", nodeId: "file:story/a.md", title: "a.md", kind: "file", view: "explorer" },
+        { id: "tool:quality", nodeId: "tool:quality", title: "质量中心", kind: "tool", view: "tools" },
+      ],
+      activeByView: { explorer: "file:已删除.md", tools: "tool:quality" },
+    }));
+
+    expect(loadState(BOOK).activeByView.resources).toBe("tool:quality");
+  });
+
   it("迁移结果回写后磁盘上不再残留废弃视图名", () => {
     localStorage.setItem(KEY, JSON.stringify({
       tabs: [{ id: "m1", nodeId: "m1", title: "旧记忆", kind: "file", view: "narrative-memory" }],
@@ -141,5 +177,22 @@ describe("loadState 迁移", () => {
     expect(persisted.activeByView.storyline).toBe("m1");
     // 再次加载已是稳定态
     expect(loadState(BOOK).tabs[0]?.view).toBe("storyline");
+  });
+
+  it("资源管理器 / 分析工具迁移回写后磁盘上只剩「资源」", () => {
+    localStorage.setItem(KEY, JSON.stringify({
+      tabs: [
+        { id: "file:story/a.md", nodeId: "file:story/a.md", title: "a.md", kind: "file", view: "explorer" },
+        { id: "tool:runtime", nodeId: "tool:runtime", title: "底层状态总览", kind: "tool", view: "tools" },
+      ],
+      activeByView: { explorer: null, tools: "tool:runtime" },
+    }));
+
+    saveState(BOOK, loadState(BOOK));
+
+    const persisted = JSON.parse(localStorage.getItem(KEY)!);
+    expect(persisted.tabs.map((t: { view: string }) => t.view)).toEqual(["resources", "resources"]);
+    expect(Object.keys(persisted.activeByView).sort()).toEqual(["characters-lore", "resources", "search", "skills-style", "storyline", "write"]);
+    expect(persisted.activeByView.resources).toBe("tool:runtime");
   });
 });

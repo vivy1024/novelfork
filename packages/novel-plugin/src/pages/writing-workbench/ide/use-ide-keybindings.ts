@@ -8,7 +8,7 @@
  * - Ctrl+J  切换 Chat Panel
  * - Ctrl+\  分屏（预留）
  * - Ctrl+Tab / Ctrl+Shift+Tab  切换 Tab
- * - Ctrl+1/2/3  切换到 资源管理器/角色与设定/分析工具 视图
+ * - Ctrl+1/2/3  切换到 资源/作品基础/故事推进 视图
  */
 import { useEffect } from "react";
 import { tinykeys } from "tinykeys";
@@ -69,7 +69,7 @@ export function useIdeKeybindings(actions: IdeKeybindingActions) {
       // Ctrl+1/2/3 切换 ActivityBar 视图
       "$mod+Digit1": (e) => {
         e.preventDefault();
-        actions.switchView("explorer");
+        actions.switchView("resources");
       },
       "$mod+Digit2": (e) => {
         e.preventDefault();
@@ -77,7 +77,7 @@ export function useIdeKeybindings(actions: IdeKeybindingActions) {
       },
       "$mod+Digit3": (e) => {
         e.preventDefault();
-        actions.switchView("tools");
+        actions.switchView("storyline");
       },
       // 分屏（预留）
       "$mod+Backslash": (e) => {

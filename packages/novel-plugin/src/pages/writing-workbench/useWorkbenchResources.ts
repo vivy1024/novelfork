@@ -111,7 +111,7 @@ export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
 // Tool section — 工具分区节点（供资源树使用）
 // ---------------------------------------------------------------------------
 
-export type ToolPanelId = "quality" | "arcs" | "compliance" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension";
+export type ToolPanelId = "quality" | "arcs" | "compliance" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension";
 
 export interface ToolNodeDef {
   id: string;
@@ -119,16 +119,24 @@ export interface ToolNodeDef {
   toolPanel: ToolPanelId;
 }
 
+/**
+ * 分析工具分组的图标名（界面规范只用 lucide 图标、不用 emoji）。
+ * 资源树节点只带可序列化的名字，名字到 lucide 组件的映射在 WorkbenchResourceTree。
+ */
+export type ToolGroupIcon = "target" | "scan-search" | "shield-check" | "settings";
+
 interface ToolGroupDef {
   id: string;
   title: string;
+  icon: ToolGroupIcon;
   tools: ToolNodeDef[];
 }
 
 const TOOL_GROUPS: ToolGroupDef[] = [
   {
     id: "tool-group:pre-writing",
-    title: "🎯 写前筹备",
+    title: "写前筹备",
+    icon: "target",
     tools: [
       { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
       { id: "tool:tension", title: "张力曲线", toolPanel: "tension" },
@@ -136,14 +144,16 @@ const TOOL_GROUPS: ToolGroupDef[] = [
   },
   {
     id: "tool-group:in-writing",
-    title: "🔍 写中质检",
+    title: "写中质检",
+    icon: "scan-search",
     tools: [
       { id: "tool:quality", title: "质量中心", toolPanel: "quality" },
     ],
   },
   {
     id: "tool-group:pre-publish",
-    title: "🛡️ 发布前风控",
+    title: "发布前风控",
+    icon: "shield-check",
     tools: [
       { id: "tool:compliance", title: "投稿风险自检", toolPanel: "compliance" },
       { id: "tool:governance", title: "叙事治理驾驶舱", toolPanel: "governance" },
@@ -151,7 +161,8 @@ const TOOL_GROUPS: ToolGroupDef[] = [
   },
   {
     id: "tool-group:runtime",
-    title: "⚙️ 运行与协同",
+    title: "运行与协同",
+    icon: "settings",
     tools: [
       { id: "tool:runtime", title: "底层状态总览", toolPanel: "runtime" },
       { id: "tool:collaboration-version", title: "协作与版本", toolPanel: "collaboration-version" },
@@ -159,7 +170,7 @@ const TOOL_GROUPS: ToolGroupDef[] = [
   },
 ];
 
-/** Create the "工具" section with grouped tool panel child nodes */
+/** 「分析工具」分区：按写作时机分组的工具面板节点（资源侧栏的分析工具分区使用其 children）。 */
 export function createToolSectionNodes(): WorkbenchResourceNode {
   const groupCaps: WorkbenchResourceCapabilities = { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
   const toolCaps: WorkbenchResourceCapabilities = { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
@@ -168,6 +179,7 @@ export function createToolSectionNodes(): WorkbenchResourceNode {
     id: group.id,
     kind: "tool-group" as WorkbenchResourceKind,
     title: group.title,
+    metadata: { icon: group.icon },
     capabilities: groupCaps,
     children: group.tools.map((def) => ({
       id: def.id,
@@ -181,7 +193,7 @@ export function createToolSectionNodes(): WorkbenchResourceNode {
   return {
     id: "tool-section",
     kind: "group" as WorkbenchResourceKind,
-    title: "🔧 工具",
+    title: "分析工具",
     capabilities: groupCaps,
     children,
   };
@@ -213,8 +225,9 @@ export function createMemoryCenterNode(bookId: string): WorkbenchResourceNode {
   };
 }
 
-/** 故事推进画布的合法初始视图；旧取值由画布归一化到 tree。 */
+/** 故事推进画布的合法初始视图；默认落在「下一章」，旧取值由画布归一化。 */
 export type StoryProgressionPreferredView =
+  | "next"
   | "tree"
   | "board"
   | "chronicle"
@@ -233,7 +246,7 @@ export type StoryProgressionPreferredView =
  */
 export function createStoryProgressionNode(
   bookId: string,
-  preferredView: StoryProgressionPreferredView = "tree",
+  preferredView: StoryProgressionPreferredView = "next",
 ): WorkbenchResourceNode {
   return {
     id: `story-progression:${bookId}`,
@@ -251,6 +264,32 @@ export function createStoryProgressionNode(
       isStoryProgression: true,
       bookId,
       preferredView,
+    },
+  };
+}
+
+/**
+ * 创建「工作流」合成资源节点（写作视图的中央标签）。
+ *
+ * 工作流回答「这一章按什么工序写」，入口在写作侧栏；同一本书共用一个 tab，
+ * 中央渲染的就是原来故事画布「执行」页的 WorkflowTimelinePanel（复用，不重写）。
+ */
+export function createWorkflowNode(bookId: string): WorkbenchResourceNode {
+  return {
+    id: `workflow:${bookId}`,
+    kind: "file",
+    title: "工作流",
+    capabilities: {
+      open: true,
+      readonly: true,
+      unsupported: false,
+      edit: false,
+      delete: false,
+      apply: false,
+    },
+    metadata: {
+      isWorkflowRun: true,
+      bookId,
     },
   };
 }

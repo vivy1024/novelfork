@@ -13,26 +13,27 @@ import { PanelManager, type PanelId } from "./panel-manager";
  * 面板视图标识。
  *
  * 彻底消除经纬与叙事记忆技术割裂：
+ * - `resources`：资源（书里的文件树 + 分析工具，无标签时中央显示作品总览）
  * - `characters-lore`：角色与设定（人物卡、世界观、门派势力）
- * - `storyline`：故事脉络（大纲、伏笔看板、全景时间线与关系图、章后事实待审）
+ * - `storyline`：故事脉络（章节与大纲、章后事实待审；顶部打开故事画布：下一章 / 推进 / 故事树）
  *
+ * 旧版的 `explorer`（资源管理器）与 `tools`（分析工具）已合并为 `resources`；
+ * 落盘的旧值只在 use-ide-tabs 的读取边界归一，运行时不再出现。
  */
 export type ViewId =
   | "write"
-  | "explorer"
+  | "resources"
   | "characters-lore"
   | "storyline"
   | "skills-style"
-  | "tools"
   | "search";
 
 const VIEW_IDS: ViewId[] = [
   "write",
-  "explorer",
+  "resources",
   "characters-lore",
   "storyline",
   "skills-style",
-  "tools",
   "search",
 ];
 
@@ -45,7 +46,7 @@ export interface UsePanelManagerReturn {
   ready: boolean;
 }
 
-export function usePanelManager(initial: ViewId = "explorer", layoutKey = "split"): UsePanelManagerReturn {
+export function usePanelManager(initial: ViewId = "resources", layoutKey = "split"): UsePanelManagerReturn {
   const hostRef = useRef<HTMLDivElement>(null);
   const managerRef = useRef<PanelManager | null>(null);
   const [activeView, setActiveView] = useState<ViewId>(initial);
