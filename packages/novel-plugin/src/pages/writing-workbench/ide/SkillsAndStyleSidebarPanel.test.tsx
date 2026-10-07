@@ -33,6 +33,14 @@ describe("技能与文风侧栏", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  it("有书时显示页头（设计板 sd-head），面板标题不再依赖宿主公共标题条", async () => {
+    request.mockResolvedValue({ total: 0 } as never);
+    render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
+    const head = await screen.findByTestId("sidebar-page-head");
+    expect(head.textContent).toContain("技能文风");
+    expect(head.textContent).toContain("文风基准在这里维护");
+  });
+
   it("保留统计直方图和提取入口，更新预设版本后保存不自撞冲突", async () => {
     let preset = createStylePreset(fingerprint);
     let revision = "r1";

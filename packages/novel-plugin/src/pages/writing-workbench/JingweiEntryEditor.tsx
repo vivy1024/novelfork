@@ -968,7 +968,7 @@ function JingweiEntryEditorForm({
                     <SelectContent>
                       <SelectItem value="confirmed">已确认</SelectItem>
                       <SelectItem value="draft">未确认</SelectItem>
-                      <SelectItem value="needs-review">需审查</SelectItem>
+                      <SelectItem value="needs-review">待确认</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

@@ -344,8 +344,12 @@ describe("WritingSkillsPanel 的作者入口、已移出内置标记与可选来
       .map((node) => node.getAttribute("data-testid"));
     expect(names).toEqual(["writing-skill-card-nf-progress", "writing-skill-card-nf-review-chapter"]);
     expect(within(entries).getByText("入口 · 看进度")).toBeTruthy();
+    // 纪律：入口技能是推荐≠默认启用，没启用的入口明说「推荐启用」，不撒谎
+    expect(within(entries).getAllByText("推荐启用")).toHaveLength(2);
+    expect(within(entries).queryByText("已启用")).toBeNull();
 
     const toggle = screen.getByTestId("writing-skills-others-toggle");
+    expect(toggle.textContent).toContain("更多技能（2）· 叙述者自己会调用");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("强化章末钩子")).toBeNull();
     fireEvent.click(toggle);

@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { WritingSkillsPanel } from "../WritingSkillsPanel";
+import { SidebarPageHead } from "./SidebarPageHead";
 import { StylePresetEditor } from "./StylePresetEditor";
 import { PendingReviewPanel } from "../PendingReviewPanel";
 import { ApiRequestError, fetchJson, putApi } from "@/hooks/use-api";
@@ -263,6 +264,12 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs">
+      {/* 页头模具（设计板 sd-head）：给叙述者配技能、把这本书的文风基准定下来 */}
+      <SidebarPageHead
+        icon={Sparkles}
+        title="技能文风"
+        purpose="点亮作者入口技能交给叙述者用；文风基准在这里维护"
+      />
       <div className="flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5 bg-muted/20">
         <div className="flex items-center gap-1">
           <button

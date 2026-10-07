@@ -287,6 +287,30 @@ describe("IdeWorkbench 宿主打开请求", () => {
     expect(screen.getByRole("button", { name: "资源" }).getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("接入页头的面板不叠公共标题条；未接入的资源与搜索保留公共标题条", async () => {
+    stubHostWidth(1440);
+    renderWorkbench();
+
+    // 默认在「资源」视图：公共标题条兜底显示
+    await screen.findByTestId("ide-workbench");
+    expect(screen.getByTestId("sidebar-view-title").textContent).toContain("文件与分析工具");
+
+    fireEvent.click(screen.getByRole("button", { name: "写作" }));
+    expect(screen.queryByTestId("sidebar-view-title")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "作品基础" }));
+    expect(screen.queryByTestId("sidebar-view-title")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "故事推进" }));
+    expect(screen.queryByTestId("sidebar-view-title")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "技能文风" }));
+    expect(screen.queryByTestId("sidebar-view-title")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    expect(screen.getByTestId("sidebar-view-title").textContent).toContain("全局搜索");
+  });
+
   it("每个 openRequest.seq 只打开一次，别的书的请求忽略", () => {
     const onOpen = vi.fn();
     const chapter = { id: "chapter:7", kind: "chapter", title: "第7章 夜雪", capabilities: { open: true, edit: true } } as const;

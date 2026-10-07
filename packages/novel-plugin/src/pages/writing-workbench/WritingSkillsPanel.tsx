@@ -7,8 +7,8 @@
  * 项目生效态以当前作品目录 `.novelfork/skills/` 的实际文件为准；面板只对指定
  * catalog Skill 执行文件增删/刷新，不把选择状态写入 book.json。
  *
- * 内置只有 NovelFork 自研技能：声明了 `entry` 的是作者入口，固定排在最前；其余由模型
- * 按任务调用，默认折叠。第三方技能不再内置，面板底部说明可选来源与安装方式。
+ * 内置只有 NovelFork 自研技能：声明了 `entry` 的是作者入口，固定排在最前；其余由叙述者
+ * 按任务调用，默认折进「更多技能」。第三方技能不再内置，面板底部说明可选来源与安装方式。
  */
 
 import { useState, useEffect } from "react";
@@ -624,6 +624,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   }, [filterKind, filterGenre, filterScope, filterSource, query]);
 
   function renderSkillCard(skill: WritingSkillItem) {
+    const enabled = skill.mode === "always" || projectSlugs.includes(skill.slug);
     return (
       <div
         key={skill.id}
@@ -638,6 +639,16 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
                 入口 · {skill.entry}
               </Badge>
             )}
+            {/* 纪律：入口技能是推荐≠默认启用，作者确认才点亮；没启用就明说「推荐启用」，不撒谎。 */}
+            {enabled ? (
+              <Badge variant="outline" className="text-2xs h-4">
+                已启用
+              </Badge>
+            ) : skill.entry ? (
+              <Badge variant="secondary" className="text-2xs h-4">
+                推荐启用
+              </Badge>
+            ) : null}
             <Badge variant="secondary" className="text-2xs h-4">
               {kindLabel(skill.kind)}
             </Badge>
@@ -880,7 +891,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
               className="text-2xs text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
               data-testid="writing-skills-others-toggle"
             >
-              {othersExpanded ? "收起" : "展开"}其余技能 {otherSkills.length}（由模型按任务调用，作者一般不必直接点）
+              {othersExpanded ? "收起" : "展开"}更多技能（{otherSkills.length}）· 叙述者自己会调用，一般不必直接点
             </button>
           )}
           {othersExpanded && (

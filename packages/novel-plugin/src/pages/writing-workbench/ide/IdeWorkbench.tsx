@@ -201,15 +201,16 @@ export interface IdeWorkbenchProps {
 
 // ── ViewContainer 定义（VS Code 风格：每个 Sidebar 视图的元数据） ──
 
-const SIDEBAR_VIEWS: { id: SidebarView; icon: LucideIcon; label: string; title: string }[] = [
-  { id: "write", icon: PenLine, label: "写作", title: "写作" },
+// hasPageHead：面板自带 SidebarPageHead 页头，侧栏顶部不再叠 35px 公共标题条，避免双标题。
+const SIDEBAR_VIEWS: { id: SidebarView; icon: LucideIcon; label: string; title: string; hasPageHead?: boolean }[] = [
+  { id: "write", icon: PenLine, label: "写作", title: "写作", hasPageHead: true },
   // 资源 = 书里的文件 + 分析工具（原「资源管理器」「分析工具」两个入口，本是同一棵资源树的两组节点）。
   { id: "resources", icon: FolderTree, label: "资源", title: "文件与分析工具" },
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
   // 作者语言入口：作品基础统一角色册与世界录，故事推进统一章节/语境/演进。
-  { id: "characters-lore", icon: BookOpen, label: "作品基础", title: "角色册与世界录" },
-  { id: "storyline", icon: Route, label: "故事推进", title: "章节、语境与故事演进" },
-  { id: "skills-style", icon: Sparkles, label: "技能文风", title: "写作技能与文风" },
+  { id: "characters-lore", icon: BookOpen, label: "作品基础", title: "角色册与世界录", hasPageHead: true },
+  { id: "storyline", icon: Route, label: "故事推进", title: "章节、语境与故事演进", hasPageHead: true },
+  { id: "skills-style", icon: Sparkles, label: "技能文风", title: "写作技能与文风", hasPageHead: true },
 ];
 
 function filePathOf(node: WorkbenchResourceNode): string {
@@ -1580,12 +1581,14 @@ export function IdeWorkbench({
           {/* Sidebar — 纯 DOM 面板管理,React 通过 portal 渲染内容 */}
           <Allotment.Pane minSize={150} preferredSize={220} visible={!overlayPanes && sidebarVisible}>
             <div className="flex h-full flex-col border-r border-border bg-card">
-              {/* Sidebar 标题 */}
-              <div className="flex h-[35px] shrink-0 items-center border-b border-border px-2">
-                <span className="text-2xs font-semibold text-foreground uppercase tracking-wide pl-3">
-                    {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源"}
-                </span>
-              </div>
+              {/* Sidebar 标题：只给未接 SidebarPageHead 的面板兜底（资源、搜索）；接了页头的面板自带标题，不再叠加。 */}
+              {!SIDEBAR_VIEWS.find(v => v.id === activeView)?.hasPageHead && (
+                <div className="flex h-[35px] shrink-0 items-center border-b border-border px-2" data-testid="sidebar-view-title">
+                  <span className="text-2xs font-semibold text-foreground uppercase tracking-wide pl-3">
+                      {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源"}
+                  </span>
+                </div>
+              )}
               {/* PanelManager 宿主:面板容器由 JS 创建,React 通过 portal 往里渲染 */}
               <div ref={overlayPanes ? undefined : hostRef} className="flex-1 relative" />
               {/* Portal 渲染各面板内容到 PanelManager 创建的 DOM 容器 */}

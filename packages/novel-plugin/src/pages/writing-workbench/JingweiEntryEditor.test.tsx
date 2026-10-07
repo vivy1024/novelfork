@@ -186,6 +186,22 @@ describe("JingweiEntryEditor 档案式阅读 / 编辑切换", () => {
     expect(onNavigateToEntry).toHaveBeenCalledWith("rd-2");
   });
 
+  it("编辑表单与界面上统一叫「待确认」，不再出现「需审查」", () => {
+    stubEntryApi();
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "rd-3", title: "待确认条目", contentMd: "正文", sectionId: "sec-1", status: "needs-review" }}
+        onSave={vi.fn()}
+      />,
+    );
+
+    // needs-review 打开即编辑；状态选择器当前值与界面文案都叫「待确认」
+    expect(screen.getAllByText("待确认").length).toBeGreaterThan(0);
+    expect(screen.queryByText("需审查")).toBeNull();
+  });
+
   it("点编辑进入表单，保存成功后回到阅读模式", async () => {
     stubEntryApi();
     const onSave = vi.fn(async () => undefined);
