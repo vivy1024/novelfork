@@ -34,6 +34,7 @@ import {
   Loader2,
   MapPin,
   Package,
+  Pencil,
   RefreshCw,
   Save,
   ScrollText,
@@ -42,7 +43,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import type { JingweiEntryData, JingweiEntrySavePayload, RelatedEntryItem } from "./JingweiEntryEditor";
+import { opensInEditMode, type JingweiEntryData, type JingweiEntrySavePayload, type RelatedEntryItem } from "./JingweiEntryEditor";
 import {
   JingweiCanonPanel,
   canonValuesFromEntry,
@@ -387,8 +388,26 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
   const [savingLocal, setSavingLocal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canon, setCanon] = useState<JingweiCanonValues>(() => canonValuesFromEntry(entry));
+  // 档案式阅读为默认形态；未确认条目（needs-review / draft）打开即编辑，与经纬条目详情同规。
+  const [isEditing, setIsEditing] = useState(() => opensInEditMode(entry.status));
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // 编辑基线：取消编辑据此还原，dirty 据此判定；打开即编辑（未确认条目）也从初始快照起步。
+  const [baseline, setBaseline] = useState<{ title: string; contentMd: string; canonJson: string } | null>(
+    () => ({ title: entry.title, contentMd: entry.contentMd ?? "", canonJson: JSON.stringify(canonValuesFromEntry(entry)) }),
+  );
   const presentation = useMemo(() => presentationFor(canon.category), [canon.category]);
   const Icon = presentation.icon;
+
+  // 只在条目 id 变化时重置。editor 用 ref，避免 mock 每次 render 新对象把 effect 打成死循环。
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+
+  const currentContentMd = useCallback((): string => {
+    const ed = editorRef.current;
+    if (!ed) return entry.contentMd ?? "";
+    return (ed.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.() ?? ed.getText();
+    // entry.contentMd 只作编辑器缺失时的兜底，不随每次 render 进依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -397,21 +416,33 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
       Markdown.configure({ html: false, tightLists: true, transformPastedText: true }),
     ],
     content: entry.contentMd ?? "",
+    editable: isEditing,
     editorProps: {
       attributes: { class: "prose prose-sm max-w-none min-h-[220px] px-3 py-2 focus:outline-none" },
     },
   });
-
-  // 只在条目 id 变化时重置。editor 用 ref，避免 mock 每次 render 新对象把 effect 打成死循环。
-  const editorRef = useRef(editor);
   editorRef.current = editor;
+
+  useEffect(() => {
+    editor?.setEditable(isEditing);
+  }, [editor, isEditing]);
+
+  const dirty = isEditing && baseline !== null
+    && (title !== baseline.title
+      || currentContentMd() !== baseline.contentMd
+      || JSON.stringify(canon) !== baseline.canonJson);
+
   useEffect(() => {
     setTitle(entry.title);
     setError(null);
     setCanon(canonValuesFromEntry(entry));
+    setIsEditing(opensInEditMode(entry.status));
+    setConfirmDiscard(false);
+    setBaseline({ title: entry.title, contentMd: entry.contentMd ?? "", canonJson: JSON.stringify(canonValuesFromEntry(entry)) });
     editorRef.current?.commands.setContent(entry.contentMd ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry.id]);
+
   const handleSave = async () => {
     if (!editor || savingLocal) return;
     setSavingLocal(true);
@@ -426,12 +457,39 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
           ?? editor.getText(),
         ...slice,
       });
+      // 保存成功回档案式阅读态。
+      setIsEditing(false);
+      setBaseline(null);
+      setConfirmDiscard(false);
     } catch (cause) {
       setError(cause instanceof Error && cause.message ? cause.message : "保存失败");
     } finally {
       setSavingLocal(false);
     }
   };
+
+  function handleStartEdit() {
+    setBaseline({ title, contentMd: currentContentMd(), canonJson: JSON.stringify(canon) });
+    setConfirmDiscard(false);
+    setError(null);
+    setIsEditing(true);
+  }
+
+  // 取消编辑：无改动直接回阅读态；有未保存改动时先走一次内联确认（与详情页同例）。
+  function handleCancelEdit() {
+    if (dirty && !confirmDiscard) {
+      setConfirmDiscard(true);
+      return;
+    }
+    if (baseline) {
+      setTitle(baseline.title);
+      setCanon(JSON.parse(baseline.canonJson) as JingweiCanonValues);
+      editorRef.current?.commands.setContent(baseline.contentMd);
+    }
+    setBaseline(null);
+    setConfirmDiscard(false);
+    setIsEditing(false);
+  }
 
   const busy = saving || savingLocal;
 
@@ -444,23 +502,48 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
               <Icon className="size-6 text-primary/60" />
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
-              <Input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder={presentation.label === "地点" ? "地点名" : `${presentation.label}名称`}
-                className="h-auto border-none bg-transparent p-0 text-2xl font-bold focus-visible:ring-0"
-                style={{ boxShadow: "none" }}
-              />
+              {isEditing ? (
+                <Input
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder={presentation.label === "地点" ? "地点名" : `${presentation.label}名称`}
+                  className="h-auto border-none bg-transparent p-0 text-2xl font-bold focus-visible:ring-0"
+                  style={{ boxShadow: "none" }}
+                />
+              ) : (
+                <h1 className="p-0 text-2xl font-bold leading-snug" data-testid="world-card-title-reading">
+                  {title.trim() || "未命名条目"}
+                </h1>
+              )}
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-2xs font-normal">{presentation.label}</Badge>
                 {bookId ? null : <Badge variant="outline" className="text-2xs font-normal">未绑定书籍，动态区不可用</Badge>}
+                {isEditing ? <Badge className="text-2xs font-normal">编辑中</Badge> : null}
               </div>
             </div>
           </div>
-          <Button size="sm" className="shrink-0 gap-2" onClick={() => void handleSave()} disabled={!editor || busy}>
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            保存
-          </Button>
+          {isEditing ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {dirty ? <Badge className="text-2xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge> : null}
+              {confirmDiscard ? (
+                <span className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground">放弃未保存的修改？</span>
+                  <Button size="xs" variant="destructive" onClick={handleCancelEdit}>放弃</Button>
+                  <Button size="xs" variant="ghost" onClick={() => setConfirmDiscard(false)}>继续编辑</Button>
+                </span>
+              ) : (
+                <Button size="xs" variant="ghost" onClick={handleCancelEdit}>取消</Button>
+              )}
+              <Button size="sm" className="gap-2" onClick={() => void handleSave()} disabled={!editor || busy || !dirty}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                保存
+              </Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" className="shrink-0" onClick={handleStartEdit} title="编辑此条目">
+              <Pencil className="size-4 mr-1" />编辑
+            </Button>
+          )}
         </div>
         {error ? (
           <p role="alert" className="mt-2 rounded-md border border-destructive/30 bg-destructive/[0.05] px-3 py-1.5 text-xs text-destructive">{error}</p>
@@ -480,6 +563,9 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
             <CardContent>
               <div className="rounded-md border border-border bg-background">
                 <EditorContent editor={editor} />
+                {!isEditing && currentContentMd().trim() === "" ? (
+                  <p className="px-3 pb-3 text-xs text-muted-foreground">暂无正文内容</p>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -489,6 +575,7 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
             bookId={bookId}
             values={canon}
             onChange={setCanon}
+            readOnly={!isEditing}
             hiddenFieldKeys={WORLD_HIDDEN_FIELD_KEYS}
             relatedEntries={relatedEntries}
             onNavigateToEntry={onNavigateToEntry}

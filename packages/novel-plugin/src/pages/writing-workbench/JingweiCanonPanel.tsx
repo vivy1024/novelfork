@@ -221,7 +221,38 @@ export interface JingweiCanonPanelProps {
   readonly onNavigateToEntry?: (entryId: string) => void;
   /** 回滚成功后把完整条目交给父组件（标题/正文也要跟着改）。 */
   readonly onRestored?: (entry: JingweiEntryData) => void;
+  /**
+   * 档案式阅读态：分类/层级/状态等渲染成徽标与标签值，结构化字段只读；
+   * 关联条目芯片仍可跳转，历史可展开看记录但不出回滚按钮。
+   */
+  readonly readOnly?: boolean;
 }
+
+// 阅读态徽标文案（与 JingweiEntryEditor 的档案式阅读同口径；两组件互相 import 会成环，这里各自维护一份短表）。
+const READ_STATUS_LABELS: Record<string, string> = {
+  confirmed: "已确认",
+  draft: "未确认",
+  "needs-review": "待确认",
+};
+
+const READ_LAYER_LABELS: Record<string, string> = {
+  canon: "权威设定",
+  dynamic: "随剧情推进",
+  reference: "参考",
+};
+
+const READ_PRIORITY_LABELS: Record<string, string> = {
+  auto: "自动",
+  core: "核心",
+  relevant: "相关",
+  reference: "参考",
+};
+
+const READ_VISIBILITY_LABELS: Record<string, string> = {
+  global: "全局",
+  tracked: "章节窗口",
+  nested: "随父条目",
+};
 
 export function JingweiCanonPanel({
   entry,
@@ -233,6 +264,7 @@ export function JingweiCanonPanel({
   showAliases = true,
   onNavigateToEntry,
   onRestored,
+  readOnly = false,
 }: JingweiCanonPanelProps) {
   const [aliasInput, setAliasInput] = useState("");
   const [relationSearch, setRelationSearch] = useState("");
@@ -250,6 +282,10 @@ export function JingweiCanonPanel({
     () => (getCategorySchema(values.category)?.fields ?? []).filter((field) => !hiddenFieldKeys.includes(field.key)),
     [hiddenFieldKeys, values.category],
   );
+  // 阅读态只列有值的字段，空字段整行隐藏（与 JingweiEntryEditor 档案式阅读同规）。
+  const filledSchemaFields = readOnly
+    ? schemaFields.filter((field) => fieldValueToInput(values.fields[field.key], field).trim() !== "")
+    : [];
   const relatedIdsKey = values.relatedEntryIds.join("\u0000");
   const relatedEntriesKey = (relatedEntries ?? []).map((item) => `${item.id}\u0000${item.title}`).join("\u0001");
   const relationItems = useMemo(() => {
@@ -344,6 +380,40 @@ export function JingweiCanonPanel({
         <p className="text-xs text-muted-foreground">分类、层级、可见性、关联和历史。卡片视图不再把这些藏掉。</p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {readOnly ? (
+          <div className="space-y-3" data-testid="jingwei-canon-reading">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="secondary" className="text-2xs">{getCategorySchema(values.category)?.name ?? values.category}</Badge>
+              {values.status === "needs-review" ? (
+                <Badge variant="outline" className="text-2xs border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">待确认</Badge>
+              ) : (
+                <Badge variant="outline" className="text-2xs">{READ_STATUS_LABELS[values.status] ?? values.status}</Badge>
+              )}
+              <Badge variant="outline" className="text-2xs text-muted-foreground">层级·{READ_LAYER_LABELS[values.layer] ?? values.layer}</Badge>
+              <Badge variant="outline" className="text-2xs text-muted-foreground">优先级·{READ_PRIORITY_LABELS[values.priorityTier] ?? values.priorityTier}</Badge>
+              <Badge variant="outline" className="text-2xs text-muted-foreground">可见性·{READ_VISIBILITY_LABELS[values.visibility] ?? values.visibility}</Badge>
+            </div>
+            {filledSchemaFields.length > 0 && (
+              <dl className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5" data-testid="jingwei-canon-fields-reading">
+                {filledSchemaFields.map((field) => (
+                  <div key={field.key} className="flex gap-3">
+                    <dt className="w-20 shrink-0 pt-0.5 text-xs text-muted-foreground">{field.label}</dt>
+                    <dd className="min-w-0 flex-1 whitespace-pre-line text-sm">{fieldValueToInput(values.fields[field.key], field)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {showAliases && values.aliases.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-2xs text-muted-foreground">别名：</span>
+                {values.aliases.map((alias, index) => (
+                  <Badge key={`${alias}-${index}`} variant="secondary" className="text-2xs">{alias}</Badge>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+        <>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">分类</label>
@@ -456,15 +526,19 @@ export function JingweiCanonPanel({
           </div>
         </div>
         ) : null}
+        </>
+        )}
 
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium">关联条目</span>
-            <Button size="xs" variant="outline" onClick={() => setRelationAdding((v) => !v)}>
-              <Link2 className="size-3 mr-1" />{relationAdding ? "取消" : "添加关联"}
-            </Button>
+            {!readOnly && (
+              <Button size="xs" variant="outline" onClick={() => setRelationAdding((v) => !v)}>
+                <Link2 className="size-3 mr-1" />{relationAdding ? "取消" : "添加关联"}
+              </Button>
+            )}
           </div>
-          {relationAdding && bookId ? (
+          {!readOnly && relationAdding && bookId ? (
             <div className="space-y-1 rounded-md border border-border p-2">
               <Input
                 value={relationSearch}
@@ -507,14 +581,16 @@ export function JingweiCanonPanel({
                     <Link2 className="size-3 opacity-60" />
                     {item.title}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => patch({ relatedEntryIds: values.relatedEntryIds.filter((id) => id !== item.id) })}
-                    className="text-muted-foreground hover:text-destructive"
-                    aria-label={`移除关联 ${item.title}`}
-                  >
-                    <X className="size-3" />
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => patch({ relatedEntryIds: values.relatedEntryIds.filter((id) => id !== item.id) })}
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={`移除关联 ${item.title}`}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
                 </span>
               ))}
             </div>
@@ -558,16 +634,18 @@ export function JingweiCanonPanel({
                         </div>
                         {revision.reason ? <p className="text-2xs text-muted-foreground mt-0.5">{revision.reason}</p> : null}
                       </div>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        disabled={revertingRevisionId !== null}
-                        onClick={() => void handleRevert(revision)}
-                        title="回滚到此版本"
-                        aria-label={`回滚到 ${new Date(revision.created_at).toLocaleString("zh-CN")}`}
-                      >
-                        {revertingRevisionId === revision.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
-                      </Button>
+                      {!readOnly && (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={revertingRevisionId !== null}
+                          onClick={() => void handleRevert(revision)}
+                          title="回滚到此版本"
+                          aria-label={`回滚到 ${new Date(revision.created_at).toLocaleString("zh-CN")}`}
+                        >
+                          {revertingRevisionId === revision.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>

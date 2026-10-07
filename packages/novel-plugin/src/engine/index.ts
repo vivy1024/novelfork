@@ -218,5 +218,12 @@ export { decideSettlementRisk } from "./narrative-memory/settlement-risk-gate.js
 export type { ChapterSettlementInput, ChapterSettlementResult, NarrativeEventDraft, SettlementRiskDecision } from "./narrative-memory/settlement-risk-gate.js";
 export { buildContextIndexCard, renderContextIndexCard, summarizeContextIndexCard } from "./narrative-memory/context-index-card.js";
 export type { ContextIndexCardSummary } from "./narrative-memory/context-index-card.js";
+export {
+  loadWritingInjectionPreserve,
+  preserveLatestWritingInjection,
+  renderWritingInjectionPreserve,
+  WRITING_INJECTION_PRESERVE_FILE,
+} from "./narrative-memory/writing-injection-preserve.js";
+export type { WritingInjectionPreserveSnapshot } from "./narrative-memory/writing-injection-preserve.js";
 export { getLatestNarrativeRetrievalLog, insertRetrievalLog } from "./narrative-memory/storage.js";
 export { findHardOverflowWarning, hardOverflowExplanation, HARD_OVERFLOW_WARNING_PREFIX } from "./narrative-memory/overflow-guard.js";

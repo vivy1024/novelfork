@@ -33,6 +33,7 @@ import {
 	findActiveWorkflowRun,
 	isToolVisibleDuringRun,
 	workflowPromptExtension,
+	writingInjectionPreserveExtension,
 } from "./workflow-run-gate";
 
 const FORBIDDEN_MODEL_FIELDS = new Set([
@@ -272,6 +273,12 @@ function boundBookId(context: RuntimeResolveContext | null): string | undefined 
 	return typeof binding?.bookId === "string" && binding.bookId.trim() ? binding.bookId : undefined;
 }
 
+/** 可信绑定里的书籍目录；同样只认宿主解析出的 novel.book 绑定。 */
+function boundBookRoot(context: RuntimeResolveContext | null): string | undefined {
+	const binding = context?.resourceBindings["novel.book"] as { root?: unknown } | undefined;
+	return typeof binding?.root === "string" && binding.root.trim() ? binding.root : undefined;
+}
+
 function toRuntimeRisk(risk: string | undefined): RuntimeToolRisk {
 	if (risk === "read" || risk === "draft-write" || risk === "confirmed-write" || risk === "destructive") return risk;
 	// An incomplete or future contribution must not silently become a read tool.
@@ -341,6 +348,8 @@ export class NovelRuntimeHostAdapter {
 		const workflowExtension = run ? workflowPromptExtension(run) : null;
 		// 资料索引卡（T4.7）：会话压缩折叠历史时它随本趟重建，模型随时可以按卡重取原文。
 		const indexCardExtension = contextIndexCardExtension(boundBookId(context));
+		// 写作注入保留件（T4.7 尾巴）：最近一次写作注入的原文快照同通道重建，压缩后案头仍有原件。
+		const preserveExtension = await writingInjectionPreserveExtension(boundBookRoot(context), boundBookId(context));
 		const visibleTools = run
 			? resolved.tools.filter((tool) => isToolVisibleDuringRun(
 				run,
@@ -355,6 +364,7 @@ export class NovelRuntimeHostAdapter {
 		// here rather than letting dotted catalog names disappear at the last step.
 		const appendedExtensions = [
 			...(indexCardExtension ? [{ ...indexCardExtension, content: this.toModelFacingText(indexCardExtension.content) }] : []),
+			...(preserveExtension ? [{ ...preserveExtension, content: this.toModelFacingText(preserveExtension.content) }] : []),
 			...(workflowExtension ? [{ ...workflowExtension, content: this.toModelFacingText(workflowExtension.content) }] : []),
 		];
 		return {

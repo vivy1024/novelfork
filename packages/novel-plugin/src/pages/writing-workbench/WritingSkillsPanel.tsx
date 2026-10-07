@@ -272,9 +272,10 @@ export function WritingSkillsPanelShell({
 
   if (skills.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground py-4" data-testid="writing-skills-empty">
-        还没有写作技能。内置写作技能随产品提供，你也可以在作者技能目录 ~/.novelfork/skills/ 下自建或安装。
-      </p>
+      <div className="text-xs text-muted-foreground py-4 space-y-1" data-testid="writing-skills-empty">
+        <p>{WRITING_SKILLS_EMPTY_HINT}</p>
+        <WritingSkillPathDetails />
+      </div>
     );
   }
 
@@ -336,11 +337,16 @@ export function WritingSkillsPanelShell({
                     已自定义
                   </Badge>
                 )}
-                {enabledSlugs.includes(skill.slug) && (
+                {/* 徽标与主面板同口径：已启用 / 入口技能未启用时明说「推荐启用」（推荐≠默认启用）。 */}
+                {enabledSlugs.includes(skill.slug) ? (
                   <Badge variant="outline" className="text-2xs h-4">
                     已启用
                   </Badge>
-                )}
+                ) : skill.entry ? (
+                  <Badge variant="secondary" className="text-2xs h-4">
+                    推荐启用
+                  </Badge>
+                ) : null}
               </div>
               <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-2">
                 {skill.description}
@@ -361,6 +367,25 @@ export function WritingSkillsPanelShell({
 /** 作者技能目录的说明文字；与 loader 的 authorWritingSkillsDir 保持一致。 */
 const AUTHOR_SKILLS_DIR_HINT = "作者技能目录（默认 ~/.novelfork/skills/；设置了 NOVELFORK_HOME 时为 <NOVELFORK_HOME>/skills/）";
 
+/** 空态引导文案：面向作者用「作者技能目录」，真实路径收进折叠细节。 */
+const WRITING_SKILLS_EMPTY_HINT = "还没有写作技能。内置写作技能随产品提供，你也可以在自己的作者技能目录里自建或安装（每个技能是一个带 SKILL.md 的文件夹）。";
+
+/**
+ * 目录路径与命令行等技术细节。主界面只说「作者技能目录 / 当前作品」，
+ * 真实路径留给需要手动放文件的人，折叠不摆出来。
+ */
+export function WritingSkillPathDetails() {
+  return (
+    <details className="text-2xs text-muted-foreground" data-testid="writing-skills-path-details">
+      <summary className="cursor-pointer select-none">目录路径与技术细节</summary>
+      <div className="mt-1 space-y-1">
+        <p>作品的启用副本在作品目录的 <code>.novelfork/skills/</code>；作者副本与自装技能在{AUTHOR_SKILLS_DIR_HINT}。</p>
+        <p>使用源码仓库时，也可以运行 <code>bun scripts/import-market-skills.ts</code>，从本地检出的参考仓库批量装进作者技能目录。</p>
+      </div>
+    </details>
+  );
+}
+
 /**
  * 可选技能来源说明。第三方技能不随产品内置，这里只列许可明确的仓库并说明安装方式；
  * 产品不做网络下载，未声明许可证或禁止商用的仓库不列出。
@@ -371,8 +396,8 @@ export function OptionalSkillSourcesNote() {
       <summary className="cursor-pointer font-medium text-foreground">可选技能来源（不随产品内置）</summary>
       <div className="mt-2 space-y-2 text-muted-foreground">
         <p>
-          内置只有 NovelFork 自研技能。下面这些第三方仓库许可明确，你可以自行下载，把技能目录（含 SKILL.md）
-          放进{AUTHOR_SKILLS_DIR_HINT}，刷新后就会出现在技能列表里，再按作品启用。
+          内置只有 NovelFork 自研技能。下面这些第三方仓库许可明确，你可以自行下载，把技能目录（含 SKILL.md 的文件夹）
+          放进你的作者技能目录，刷新后就会出现在技能列表里，再按作品启用。
         </p>
         <ul className="space-y-1">
           {OPTIONAL_SKILL_SOURCES.map((source) => (
@@ -390,10 +415,8 @@ export function OptionalSkillSourcesNote() {
             </li>
           ))}
         </ul>
-        <p>
-          使用源码仓库时，也可以运行 <code>bun scripts/import-market-skills.ts</code>，从本地检出的参考仓库装入作者技能目录。
-          未声明许可证或禁止商用的仓库不列出，也不提供安装。
-        </p>
+        <WritingSkillPathDetails />
+        <p>未声明许可证或禁止商用的仓库不列出，也不提供安装。</p>
       </div>
     </details>
   );
@@ -731,9 +754,10 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
 
   if (skills.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground py-4" data-testid="writing-skills-empty">
-        还没有写作技能。内置写作技能随产品提供，你也可以在作者技能目录 ~/.novelfork/skills/ 下自建或安装。
-      </p>
+      <div className="text-xs text-muted-foreground py-4 space-y-1" data-testid="writing-skills-empty">
+        <p>{WRITING_SKILLS_EMPTY_HINT}</p>
+        <WritingSkillPathDetails />
+      </div>
     );
   }
 
@@ -743,12 +767,15 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
         作用域提示：这个面板也被「写作配置」复用，不只出现在书籍设置页。
         技能 catalog/作者覆盖是全局来源，但启用态直接物化到当前项目目录，
         必须就地说明取消勾选会删除项目副本，避免作者误以为是数据库开关。
+        路径术语收进折叠细节，主文案用面向作者的表述。
       */}
-      <p className="text-2xs text-muted-foreground" data-testid="writing-skills-scope-hint">
-        技能库与作者覆盖全局共享；<span className="text-foreground">项目文件只对当前作品生效</span>
-        （当前目录已发现 {projectSlugs.length} 个）。勾选会写入 <code>.novelfork/skills/</code>        ，取消会删除对应项目副本；项目额外技能原地编辑，技能库条目则 fork 到 ~/.novelfork/skills/。
-
-      </p>
+      <div className="text-2xs text-muted-foreground space-y-1" data-testid="writing-skills-scope-hint">
+        <p>
+          技能库与作者覆盖全局共享；<span className="text-foreground">启用态只对当前作品生效（当前目录已发现 {projectSlugs.length} 个）</span>
+          ——勾选会把技能复制到当前作品，取消勾选删除对应副本；项目额外技能原地编辑，技能库条目会存成你的作者副本并覆盖内置版本。
+        </p>
+        <WritingSkillPathDetails />
+      </div>
 
       {/* 搜索：几百个 skill 平铺翻不动，先给关键词 */}
       <div className="flex items-center gap-1.5">

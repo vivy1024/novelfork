@@ -17,6 +17,8 @@ import {
 	buildWorkflowRunBrief,
 	findApprovedProseMismatch,
 	getActiveWorkflowRunForNarrator,
+	loadWritingInjectionPreserve,
+	renderWritingInjectionPreserve,
 	runningSteps,
 	type WorkflowExplanation,
 	type WorkflowRunRecord,
@@ -135,6 +137,28 @@ export function contextIndexCardExtension(bookId: string | undefined): { id: str
 	try {
 		const content = buildContextIndexCard(getStorageDatabase(), bookId);
 		return content ? { id: CONTEXT_INDEX_CARD_EXTENSION_ID, content } : null;
+	} catch {
+		return null;
+	}
+}
+
+export const WRITING_INJECTION_PRESERVE_EXTENSION_ID = "novelfork.writing-injection-preserve";
+
+/**
+ * 写作注入保留件（T4.7 尾巴）：最近一次写作注入的原文快照（memory.read write/revise、
+ * pipeline.write 成功装配时落盘），随每趟 resolveContribution 重建注入，与索引卡同一条
+ * 通道——会话压缩只折叠历史消息，动不了它。没有快照或读失败时为 null（不注入）。
+ */
+export async function writingInjectionPreserveExtension(
+	bookRoot: string | undefined,
+	bookId: string | undefined,
+): Promise<{ id: string; content: string } | null> {
+	if (!bookRoot || !bookId) return null;
+	try {
+		const snapshot = await loadWritingInjectionPreserve(bookRoot, bookId);
+		return snapshot
+			? { id: WRITING_INJECTION_PRESERVE_EXTENSION_ID, content: renderWritingInjectionPreserve(snapshot) }
+			: null;
 	} catch {
 		return null;
 	}

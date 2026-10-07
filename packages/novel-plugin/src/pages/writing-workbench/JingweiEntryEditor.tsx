@@ -120,6 +120,14 @@ function sourceBadgeVariant(src: string): "default" | "secondary" | "outline" {
   return "outline";
 }
 
+/**
+ * 打开即编辑的条目状态判定。needs-review 与 draft 同为「未确认」：两者都不进 Lore 召回
+ * （见 jingwei-read-model 的 includeUnconfirmed 语义），打开时给作者编辑态先改再确认。
+ */
+export function opensInEditMode(status: string | undefined): boolean {
+  return status === "needs-review" || status === "draft";
+}
+
 // 档案式阅读模式的属性徽标文案（状态术语统一用「待确认」）。
 const ENTRY_STATUS_LABELS: Record<string, string> = {
   confirmed: "已确认",
@@ -288,8 +296,8 @@ function JingweiEntryEditorForm({
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"details" | "relations" | "history">("details");
   const [previewMode, setPreviewMode] = useState(false);
-  // 档案式阅读为默认形态；needs-review 草案打开即编辑，便于作者先改再确认。
-  const [isEditing, setIsEditing] = useState(entry.status === "needs-review");
+  // 档案式阅读为默认形态；未确认条目（needs-review / draft）打开即编辑，便于作者先改再确认。
+  const [isEditing, setIsEditing] = useState(opensInEditMode(entry.status));
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [revisionRecords, setRevisionRecords] = useState<RevisionRecord[]>([]);
   const [revisionLoading, setRevisionLoading] = useState(false);
@@ -394,7 +402,7 @@ function JingweiEntryEditorForm({
     setRelationAdding(false);
     setRelationSearchResults([]);
     setPreviewMode(false);
-    setIsEditing(entry.status === "needs-review");
+    setIsEditing(opensInEditMode(entry.status));
     setConfirmDiscard(false);
     setConfirmDelete(false);
     setError(null);

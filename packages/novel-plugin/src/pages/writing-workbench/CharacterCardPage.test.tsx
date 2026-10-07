@@ -14,11 +14,15 @@ vi.mock("@/hooks/use-api", () => ({
   },
 }));
 vi.mock("@tiptap/react", () => ({
-  useEditor: () => ({
-    storage: { markdown: { getMarkdown: () => "角色背景" } },
-    getText: () => "角色背景",
-    commands: { setContent: vi.fn() },
-  }),
+  useEditor: (options?: { content?: string }) => {
+    let content = options?.content ?? "";
+    return {
+      storage: { markdown: { getMarkdown: () => content || "角色背景" } },
+      getText: () => content || "角色背景",
+      commands: { setContent: (next: string) => { content = next; } },
+      setEditable: vi.fn(),
+    };
+  },
   EditorContent: () => null,
 }));
 
@@ -78,6 +82,8 @@ describe("CharacterCardPage", () => {
 
     render(<CharacterCardPage entry={entry} bookId="book-1" saving={false} onSave={vi.fn(async () => undefined)} />);
 
+    // 已确认条目默认档案式阅读，表单先点「编辑」进入
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     expect(screen.getByText("经典台词")).toBeTruthy();
     expect(screen.getByDisplayValue("白起=亦敌亦友")).toBeTruthy();
     await waitFor(() => expect(screen.getByText(/筑基后期/)).toBeTruthy());
@@ -134,6 +140,8 @@ describe("CharacterCardPage", () => {
     });
     const onSave = vi.fn(async () => undefined);
     render(<CharacterCardPage entry={{ ...entry, version: 2 }} bookId="book-1" saving={false} onSave={onSave} />);
+    // 默认阅读态：先进入编辑，再做声线确认与整卡保存
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     await waitFor(() => expect(screen.getByTestId("voice-field-positioning")).toBeTruthy());
     fireEvent.change(screen.getByLabelText("声音定位"), { target: { value: "话少" } });
     fireEvent.click(screen.getByRole("button", { name: "确认声音定位" }));
@@ -163,6 +171,9 @@ describe("CharacterCardPage", () => {
     />);
 
     expect(await screen.findByTestId("jingwei-canon-panel")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    // 无改动保存被禁用；改一个字段后才可保存（与详情页同纪律）
+    fireEvent.change(screen.getByPlaceholderText("主角 / 反派 / 配角"), { target: { value: "主角" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave).toHaveBeenCalledWith("character-1", expect.objectContaining({
@@ -174,9 +185,76 @@ describe("CharacterCardPage", () => {
       relatedEntryIds: ["loc-1"],
       aliases: ["行之"],
       fields: expect.objectContaining({
+        roleType: "主角",
         core_motive: "护住身边的人",
         relationship_summary: "白起=亦敌亦友",
       }),
     }));
+  });
+});
+
+describe("CharacterCardPage 档案式阅读 / 编辑切换", () => {
+  it("已确认条目默认阅读态：标题与内核值是文本，无保存按钮，经纬面板只读", () => {
+    mockJingweiAndMemory(() => ({ groups: [], events: [], facts: [] }));
+    render(<CharacterCardPage entry={{
+      ...entry,
+      status: "confirmed",
+      fields: { ...entry.fields, roleType: "主角", personality: "冷静" },
+    }} bookId="book-1" saving={false} onSave={vi.fn(async () => undefined)} />);
+
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+    expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy();
+    // 标题是阅读式大标题，不是输入框
+    expect(screen.getByTestId("character-card-title-reading").textContent).toBe("薛行之");
+    // 内核值直接以文本展示
+    expect(screen.getByText("护住身边的人")).toBeTruthy();
+    // 基础档案只读标签值，经纬面板进入只读形态
+    expect(screen.getByTestId("character-archive-reading").textContent).toContain("冷静");
+    expect(screen.getByTestId("jingwei-canon-reading")).toBeTruthy();
+    expect(screen.queryByLabelText("分类")).toBeNull();
+  });
+
+  it("draft（未确认）条目打开即编辑态", () => {
+    mockJingweiAndMemory(() => ({ groups: [], events: [], facts: [] }));
+    render(<CharacterCardPage entry={{ ...entry, status: "draft" }} bookId="book-1" saving={false} onSave={vi.fn(async () => undefined)} />);
+
+    expect(screen.getByLabelText("分类")).toBeTruthy();
+    expect(screen.queryByTestId("character-card-title-reading")).toBeNull();
+  });
+
+  it("取消编辑：无改动直接回阅读，有改动需确认放弃且回写原文", async () => {
+    mockJingweiAndMemory(() => ({ groups: [], events: [], facts: [] }));
+    const onSave = vi.fn(async () => undefined);
+    render(<CharacterCardPage entry={{ ...entry, status: "confirmed" }} bookId="book-1" saving={false} onSave={onSave} />);
+
+    // 无改动：取消直接回到阅读态
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy();
+    expect(onSave).not.toHaveBeenCalled();
+
+    // 有改动：取消先出现内联确认，放弃后回阅读态且保留原值
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.change(screen.getByPlaceholderText("角色名"), { target: { value: "改过的名字" } });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByText("放弃未保存的修改？")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "放弃" }));
+    expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy();
+    expect(screen.getByTestId("character-card-title-reading").textContent).toBe("薛行之");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("保存成功后回到阅读态", async () => {
+    mockJingweiAndMemory(() => ({ groups: [], events: [], facts: [] }));
+    const onSave = vi.fn(async () => undefined);
+    render(<CharacterCardPage entry={{ ...entry, status: "confirmed" }} bookId="book-1" saving={false} onSave={onSave} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.change(screen.getByPlaceholderText("角色名"), { target: { value: "新名字" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
+    expect(screen.getByTestId("character-card-title-reading").textContent).toBe("新名字");
   });
 });

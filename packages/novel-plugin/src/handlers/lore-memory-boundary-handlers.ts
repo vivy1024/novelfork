@@ -7,6 +7,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { findHardOverflowWarning, hardOverflowExplanation } from "../engine/narrative-memory/overflow-guard.js";
+import { preserveLatestWritingInjection } from "../engine/narrative-memory/writing-injection-preserve.js";
 import { createSiliconFlowEmbeddingProvider, loadEntityVectorsFromStore, similarityFromVectors } from "../engine/narrative-memory/embedding-provider.js";
 import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
@@ -187,6 +188,16 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
   const profileSummary = profile
     ? ` 七栏 write profile：角色 ${profile.coreCharacters?.items?.length ?? 0}/${characterCap}，伏笔 ${profile.activeHooks?.items?.length ?? 0}/${hookCap}，近章 ${profile.recentSummaries?.items?.length ?? 0}/${summaryCap}。`
     : "";
+  // T4.7 尾巴：写作注入（write/revise）把当次进上下文的原文保留一份快照，会话压缩后模型
+  // 仍能在系统提示里看到原件。写盘失败不阻断召回，但在 warnings 里如实说明。
+  const preserveWarnings: string[] = [];
+  if ((input.purpose === "write" || input.purpose === "revise") && bookRoot) {
+    try {
+      await preserveLatestWritingInjection(bookRoot, result);
+    } catch (cause) {
+      preserveWarnings.push(`写作注入保留件写盘失败（${cause instanceof Error ? cause.message : String(cause)}）；本次召回正常，但会话压缩后需按资料索引卡重取原文。`);
+    }
+  }
   return {
     ok: true,
     summary: `已召回动态叙事记忆：${result.cards.length} 张 ContextCard，约 ${result.diagnostics.totalEstimatedTokens} tokens。${profileSummary}`,
@@ -195,7 +206,7 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
       diagnostics: result.diagnostics,
       sections: result.sections,
       cards: result.cards,
-      warnings: result.diagnostics.warnings,
+      warnings: [...result.diagnostics.warnings, ...preserveWarnings],
       writeProfile: result.writeProfile,
       trimReasons: result.diagnostics.trimReasons ?? [],
     },

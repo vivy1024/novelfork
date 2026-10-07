@@ -25,6 +25,7 @@ import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js"
 import type { WritingSkillAcknowledgement } from "./writing-skill-acknowledgement.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { findHardOverflowWarning, hardOverflowExplanation } from "../engine/narrative-memory/overflow-guard.js";
+import { preserveLatestWritingInjection } from "../engine/narrative-memory/writing-injection-preserve.js";
 import { createSiliconFlowEmbeddingProvider } from "../engine/narrative-memory/embedding-provider.js";
 import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
@@ -868,6 +869,16 @@ async function executePipelineWriteUnlocked(
         error: hardOverflowExplanation(hardOverflow, "pipeline-write"),
         summary: "写作资料超出保护预算，本章未写。",
       };
+    }
+
+    // T4.7 尾巴：通过保护预算的装配原文保留一份快照（会话压缩后模型仍见原件）。
+    // 失败不阻断写作，只告警——原文权威在库，索引卡仍能指路重取。
+    if (narrativeContext && bookDir) {
+      try {
+        await preserveLatestWritingInjection(bookDir, narrativeContext);
+      } catch (err: unknown) {
+        logger?.warn(`[pipeline.write] 写作注入保留件写盘失败：${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     // P0-2: 加载控制文档（全书长视野意图 + 近 1-3 章焦点），注入写作上下文。

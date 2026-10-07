@@ -25,6 +25,7 @@ import { fetchJson } from "@/hooks/use-api";
 import {
   Save,
   Loader2,
+  Pencil,
   User,
   Sparkles,
   Quote,
@@ -43,7 +44,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import type { JingweiEntryData, JingweiEntrySavePayload, RelatedEntryItem } from "./JingweiEntryEditor";
+import { opensInEditMode, type JingweiEntryData, type JingweiEntrySavePayload, type RelatedEntryItem } from "./JingweiEntryEditor";
 import {
   JingweiCanonPanel,
   canonValuesFromEntry,
@@ -554,6 +555,63 @@ function DevelopmentSection({
 
 // ─── Main Component ─────────────────────────────────────────────────────
 
+/** 编辑基线：取消编辑据此还原，dirty 据此判定。 */
+interface CharacterCardBaseline {
+  readonly title: string;
+  readonly tagline: string;
+  readonly roleType: string;
+  readonly realm: string;
+  readonly firstChapter: string;
+  readonly aliasesInput: string;
+  readonly coreMotive: string;
+  readonly coreFear: string;
+  readonly coreObsession: string;
+  readonly coreBelief: string;
+  readonly quotesInput: string;
+  readonly relationshipSummary: string;
+  readonly personality: string;
+  readonly goal: string;
+  readonly canonJson: string;
+  readonly contentMd: string;
+}
+
+function baselineFromEntry(entry: JingweiEntryData): CharacterCardBaseline {
+  const aliases = formatAliases(entry.aliases && entry.aliases.length > 0 ? entry.aliases : readStringArray(entry.fields, "aliases"));
+  const motive = readString(entry.fields, "core_motive");
+  return {
+    title: entry.title,
+    tagline: motive,
+    roleType: readString(entry.fields, "roleType"),
+    realm: readString(entry.fields, "realm"),
+    firstChapter: readString(entry.fields, "firstChapter"),
+    aliasesInput: aliases,
+    coreMotive: motive,
+    coreFear: readString(entry.fields, "core_fear"),
+    coreObsession: readString(entry.fields, "core_obsession"),
+    coreBelief: readString(entry.fields, "core_belief"),
+    quotesInput: readStringArray(entry.fields, "classic_quotes").join("\n"),
+    relationshipSummary: readString(entry.fields, "relationship_summary"),
+    personality: readString(entry.fields, "personality"),
+    goal: readString(entry.fields, "goal"),
+    canonJson: JSON.stringify(canonValuesFromEntry(entry)),
+    contentMd: entry.contentMd ?? "",
+  };
+}
+
+interface CoreItem {
+  readonly key: "coreMotive" | "coreFear" | "coreObsession" | "coreBelief";
+  readonly label: string;
+  readonly icon: typeof Heart;
+  readonly placeholder: string;
+}
+
+const CORE_ITEMS: readonly CoreItem[] = [
+  { key: "coreMotive", label: "核心动机", icon: Heart, placeholder: "这个角色最想要什么？(eg: 复仇 / 守护)" },
+  { key: "coreFear", label: "最深恐惧", icon: Skull, placeholder: "他最害怕失去什么？" },
+  { key: "coreObsession", label: "执念", icon: Anchor, placeholder: "什么让他也无法放下？" },
+  { key: "coreBelief", label: "信奉", icon: Compass, placeholder: "他相信什么？世界观信条" },
+];
+
 export function CharacterCardPage(props: CharacterCardPageProps) {
   const { entry, saving, onSave, relatedEntries, onNavigateToEntry } = props;
 
@@ -590,6 +648,10 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
   const [personality, setPersonality] = useState(() => readString(entry.fields, "personality"));
   const [goal, setGoal] = useState(() => readString(entry.fields, "goal"));
   const [canon, setCanon] = useState<JingweiCanonValues>(() => canonValuesFromEntry(entry));
+  // 档案式阅读为默认形态；未确认条目（needs-review / draft）打开即编辑，与经纬条目详情同规。
+  const [isEditing, setIsEditing] = useState(() => opensInEditMode(entry.status));
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [baseline, setBaseline] = useState<CharacterCardBaseline>(() => baselineFromEntry(entry));
 
   // tipTap 编辑器（详细背景）
   const editor = useEditor({
@@ -603,6 +665,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
       }),
     ],
     content: entry.contentMd ?? "",
+    editable: isEditing,
     editorProps: {
       attributes: {
         class:
@@ -610,6 +673,10 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
       },
     },
   });
+
+  useEffect(() => {
+    editor?.setEditable(isEditing);
+  }, [editor, isEditing]);
 
   // 同步 entry 切换（外部换条目时重置）
   const entryIdRef = useMemo(() => entry.id, []);
@@ -631,6 +698,9 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
     setPersonality(readString(entry.fields, "personality"));
     setGoal(readString(entry.fields, "goal"));
     setCanon(canonValuesFromEntry(entry));
+    setIsEditing(opensInEditMode(entry.status));
+    setConfirmDiscard(false);
+    setBaseline(baselineFromEntry(entry));
     if (editor) {
       editor.commands.setContent(entry.contentMd ?? "");
     }
@@ -644,10 +714,33 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
 
   const aliasesParsed = normalizeAliases(aliasesInput);
 
+  const coreValues: Record<CoreItem["key"], string> = {
+    coreMotive, coreFear, coreObsession, coreBelief,
+  };
+  const setCoreValue: Record<CoreItem["key"], (value: string) => void> = {
+    coreMotive: setCoreMotive, coreFear: setCoreFear, coreObsession: setCoreObsession, coreBelief: setCoreBelief,
+  };
+
+  const currentContentMd = (): string => {
+    if (!editor) return entry.contentMd ?? "";
+    return (editor.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.() ?? editor.getText();
+  };
+
+  const dirty = isEditing
+    && (title !== baseline.title || tagline !== baseline.tagline
+      || roleType !== baseline.roleType || realm !== baseline.realm || firstChapter !== baseline.firstChapter
+      || aliasesInput !== baseline.aliasesInput
+      || coreMotive !== baseline.coreMotive || coreFear !== baseline.coreFear
+      || coreObsession !== baseline.coreObsession || coreBelief !== baseline.coreBelief
+      || quotesInput !== baseline.quotesInput || relationshipSummary !== baseline.relationshipSummary
+      || personality !== baseline.personality || goal !== baseline.goal
+      || JSON.stringify(canon) !== baseline.canonJson
+      || currentContentMd() !== baseline.contentMd);
+
   // ─── 保存 ──────────────────────────────────────────────────
   const handleSave = async () => {
     if (!editor) return;
-    const contentMd = (editor.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.() ?? editor.getText();
+    const contentMd = currentContentMd();
 
     const mergedFields: Record<string, unknown> = {
       ...canon.fields,
@@ -672,11 +765,62 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
       contentMd,
       ...slice,
     });
+    // 保存成功回档案式阅读态。
+    setIsEditing(false);
+    setConfirmDiscard(false);
   };
+
+  function handleStartEdit() {
+    setBaseline({
+      title, tagline, roleType, realm, firstChapter, aliasesInput,
+      coreMotive, coreFear, coreObsession, coreBelief,
+      quotesInput, relationshipSummary, personality, goal,
+      canonJson: JSON.stringify(canon),
+      contentMd: currentContentMd(),
+    });
+    setConfirmDiscard(false);
+    setIsEditing(true);
+  }
+
+  // 取消编辑：无改动直接回阅读态；有未保存改动时先走一次内联确认（与详情页同例）。
+  function handleCancelEdit() {
+    if (dirty && !confirmDiscard) {
+      setConfirmDiscard(true);
+      return;
+    }
+    setTitle(baseline.title);
+    setTagline(baseline.tagline);
+    setRoleType(baseline.roleType);
+    setRealm(baseline.realm);
+    setFirstChapter(baseline.firstChapter);
+    setAliasesInput(baseline.aliasesInput);
+    setCoreMotive(baseline.coreMotive);
+    setCoreFear(baseline.coreFear);
+    setCoreObsession(baseline.coreObsession);
+    setCoreBelief(baseline.coreBelief);
+    setQuotesInput(baseline.quotesInput);
+    setRelationshipSummary(baseline.relationshipSummary);
+    setPersonality(baseline.personality);
+    setGoal(baseline.goal);
+    setCanon(JSON.parse(baseline.canonJson) as JingweiCanonValues);
+    editor?.commands.setContent(baseline.contentMd);
+    setConfirmDiscard(false);
+    setIsEditing(false);
+  }
+
+  const coreFieldsFilled = CORE_ITEMS.some((item) => coreValues[item.key].trim() !== "");
+  const archiveRows = [
+    { label: "角色定位", value: roleType },
+    { label: "修为 / 职级", value: realm },
+    { label: "首次出场", value: firstChapter },
+    { label: "别名", value: aliasesParsed.join(" / ") },
+    { label: "性格特征", value: personality },
+    { label: "人生目标", value: goal },
+  ].filter((row) => row.value.trim() !== "");
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">
-      {/* ─── 1️️⃣ 顶部：角色名 + 一句话动机 + 保存按钮 ─── */}
+      {/* ─── 1️️⃣ 顶部：角色名 + 一句话动机 + 编辑/保存 ─── */}
       <header className="border-b border-border/40 bg-muted/30 px-8 py-6">
         <div className="flex items-start justify-between gap-6">
           <div className="flex-1 min-w-0 space-y-3">
@@ -687,23 +831,36 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
               </div>
 
               <div className="flex-1 min-w-0">
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="角色名"
-                  className="text-3xl font-bold border-none bg-transparent p-0 focus-visible:ring-0 h-auto"
-                  style={{ boxShadow: "none" }}
-                />
-                <Input
-                  value={tagline}
-                  onChange={(e) => {
-                    setTagline(e.target.value);
-                    setCoreMotive(e.target.value); // 同步进内核卡
-                  }}
-                  placeholder="「用一句话概括这个角色的灵魂」"
-                  className="text-lg italic text-muted-foreground border-none bg-transparent p-0 focus-visible:ring-0 h-auto mt-1"
-                  style={{ boxShadow: "none" }}
-                />
+                {isEditing ? (
+                  <>
+                    <Input
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="角色名"
+                      className="text-3xl font-bold border-none bg-transparent p-0 focus-visible:ring-0 h-auto"
+                      style={{ boxShadow: "none" }}
+                    />
+                    <Input
+                      value={tagline}
+                      onChange={(e) => {
+                        setTagline(e.target.value);
+                        setCoreMotive(e.target.value); // 同步进内核卡
+                      }}
+                      placeholder="「用一句话概括这个角色的灵魂」"
+                      className="text-lg italic text-muted-foreground border-none bg-transparent p-0 focus-visible:ring-0 h-auto mt-1"
+                      style={{ boxShadow: "none" }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <h1 className="text-3xl font-bold leading-snug" data-testid="character-card-title-reading">
+                      {title.trim() || "未命名角色"}
+                    </h1>
+                    {tagline.trim() && (
+                      <p className="text-lg italic text-muted-foreground mt-1">「{tagline}」</p>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
@@ -731,24 +888,43 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
                   {aliasesParsed.length > 3 && " …"}
                 </span>
               )}
+              {isEditing ? <Badge className="text-2xs">编辑中</Badge> : null}
             </div>
           </div>
 
-          {/* 保存按钮 */}
-          <div className="flex gap-2 flex-shrink-0">
-            <Button
-              size="sm"
-              className="gap-2"
-              onClick={handleSave}
-              disabled={saving || !editor}
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              保存
-            </Button>
+          {/* 编辑 / 保存 / 取消 */}
+          <div className="flex gap-2 flex-shrink-0 items-center">
+            {isEditing ? (
+              <>
+                {dirty ? <Badge className="text-2xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge> : null}
+                {confirmDiscard ? (
+                  <span className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">放弃未保存的修改？</span>
+                    <Button size="xs" variant="destructive" onClick={handleCancelEdit}>放弃</Button>
+                    <Button size="xs" variant="ghost" onClick={() => setConfirmDiscard(false)}>继续编辑</Button>
+                  </span>
+                ) : (
+                  <Button size="xs" variant="ghost" onClick={handleCancelEdit}>取消</Button>
+                )}
+                <Button
+                  size="sm"
+                  className="gap-2"
+                  onClick={handleSave}
+                  disabled={saving || !editor || !dirty}
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  保存
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleStartEdit} title="编辑此角色">
+                <Pencil className="w-4 h-4 mr-1" />编辑
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -758,6 +934,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
         <div className="max-w-5xl mx-auto px-8 py-6 space-y-6">
 
           {/* ─── 2️⃣ 角色内核四件套（核心卡片） ─── */}
+          {(isEditing || coreFieldsFilled) && (
           <Card className="border-primary/30 bg-primary/[0.03]">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -767,59 +944,33 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                    <Heart className="w-3 h-3" />
-                    核心动机
-                  </label>
-                  <Input
-                    value={coreMotive}
-                    onChange={(e) => setCoreMotive(e.target.value)}
-                    placeholder="这个角色最想要什么？(eg: 复仇 / 守护)"
-                    className="bg-background"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                    <Skull className="w-3 h-3" />
-                    最深恐惧
-                  </label>
-                  <Input
-                    value={coreFear}
-                    onChange={(e) => setCoreFear(e.target.value)}
-                    placeholder="他最害怕失去什么？"
-                    className="bg-background"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                    <Anchor className="w-3 h-3" />
-                    执念
-                  </label>
-                  <Input
-                    value={coreObsession}
-                    onChange={(e) => setCoreObsession(e.target.value)}
-                    placeholder="什么让他也无法放下？"
-                    className="bg-background"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                    <Compass className="w-3 h-3" />
-                    信奉
-                  </label>
-                  <Input
-                    value={coreBelief}
-                    onChange={(e) => setCoreBelief(e.target.value)}
-                    placeholder="他相信什么？世界观信条"
-                    className="bg-background"
-                  />
-                </div>
+                {CORE_ITEMS.map((item) => (
+                  <div key={item.key} className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                      <item.icon className="w-3 h-3" />
+                      {item.label}
+                    </label>
+                    {isEditing ? (
+                      <Input
+                        value={coreValues[item.key]}
+                        onChange={(e) => setCoreValue[item.key](e.target.value)}
+                        placeholder={item.placeholder}
+                        className="bg-background"
+                      />
+                    ) : (
+                      <p className="text-sm rounded-md bg-background/60 border border-border/40 px-2.5 py-1.5 whitespace-pre-line">
+                        {coreValues[item.key]}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
+          )}
 
           {/* ─── 3️⃣ 经典台词 ─── */}
+          {(isEditing || quotes.length > 0) && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -837,14 +988,17 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
                   ))}
                 </div>
               )}
-              <Textarea
-                value={quotesInput}
-                onChange={(e) => setQuotesInput(e.target.value)}
-                placeholder={"每行一句台词\n示例：\n我命由我不由天\n我若成佛，魔奈我何"}
-                className="min-h-[100px] font-mono text-sm"
-              />
+              {isEditing && (
+                <Textarea
+                  value={quotesInput}
+                  onChange={(e) => setQuotesInput(e.target.value)}
+                  placeholder={"每行一句台词\n示例：\n我命由我不由天\n我若成佛，魔奈我何"}
+                  className="min-h-[100px] font-mono text-sm"
+                />
+              )}
             </CardContent>
           </Card>
+          )}
 
           {/* ─── 角色声线：权威源是本条目 fields.voice，由声线接口单独读写 ─── */}
           {props.bookId ? (
@@ -862,6 +1016,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
           <DevelopmentSection bookId={props.bookId} entryId={entry.id} characterName={title} />
 
           {/* ─── 4️⃣ 羁绊 ─── */}
+          {(isEditing || relationshipSummary.trim()) && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -875,16 +1030,20 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
                   <p className="text-sm font-medium">{relationshipSummary}</p>
                 </div>
               )}
-              <Textarea
-                value={relationshipSummary}
-                onChange={(e) => setRelationshipSummary(e.target.value)}
-                placeholder="描述作为核心的人物羁绊（示例：父亲=仇敌 / 白起=亦敌亦友）"
-                className="min-h-[80px]"
-              />
+              {isEditing && (
+                <Textarea
+                  value={relationshipSummary}
+                  onChange={(e) => setRelationshipSummary(e.target.value)}
+                  placeholder="描述作为核心的人物羁绊（示例：父亲=仇敌 / 白起=亦敌亦友）"
+                  className="min-h-[80px]"
+                />
+              )}
             </CardContent>
           </Card>
+          )}
 
-          {/* ─── 5️⃣ 基础信息（表单） ─── */}
+          {/* ─── 5️⃣ 基础档案 ─── */}
+          {isEditing ? (
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -950,6 +1109,26 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
               </div>
             </CardContent>
           </Card>
+          ) : archiveRows.length > 0 ? (
+          <Card data-testid="character-archive-reading">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                基础档案
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-1.5">
+                {archiveRows.map((row) => (
+                  <div key={row.label} className="flex gap-3">
+                    <dt className="w-20 shrink-0 pt-0.5 text-xs text-muted-foreground">{row.label}</dt>
+                    <dd className="min-w-0 flex-1 whitespace-pre-line text-sm">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
+          ) : null}
 
           <JingweiCanonPanel
             entry={entry}
@@ -968,6 +1147,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
             }}
             hiddenFieldKeys={CHARACTER_HIDDEN_FIELD_KEYS}
             showAliases={false}
+            readOnly={!isEditing}
             relatedEntries={relatedEntries}
             onNavigateToEntry={onNavigateToEntry}
             onRestored={(restored) => {
@@ -988,6 +1168,9 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
             <CardContent>
               <div className="rounded-md border border-border bg-background">
                 <EditorContent editor={editor} />
+                {!isEditing && currentContentMd().trim() === "" ? (
+                  <p className="px-3 pb-3 text-xs text-muted-foreground">暂无正文内容</p>
+                ) : null}
               </div>
             </CardContent>
           </Card>

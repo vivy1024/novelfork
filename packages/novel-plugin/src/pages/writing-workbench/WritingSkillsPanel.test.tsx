@@ -147,7 +147,9 @@ describe("WritingSkillsPanel 的作用域文案", () => {
     const hint = await waitFor(() => screen.getByTestId("writing-skills-scope-hint"));
     expect(hint.textContent).toContain("只对当前作品生效");
     expect(hint.textContent).toContain("全局共享");
-    expect(hint.textContent).toContain(".novelfork/skills/");
+    // 路径术语收进折叠细节（主文案不直接摆出 ~/.novelfork 这类内部术语）
+    expect(hint.querySelector('[data-testid="writing-skills-path-details"]')).not.toBeNull();
+    expect(hint.textContent).toContain("作者副本并覆盖内置版本");
     await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("当前目录已发现 2 个"));
   });
 
@@ -387,5 +389,26 @@ describe("WritingSkillsPanel 的作者入口、已移出内置标记与可选来
     expect(note.textContent).not.toContain("zy-zmc");
     const links = [...note.querySelectorAll("a")].map((link) => link.getAttribute("href"));
     expect(links).toContain("https://github.com/worldwonderer/oh-story-claudecode");
+  });
+});
+
+describe("WritingSkillsPanelShell 徽标与主面板同口径", () => {
+  it("已启用标「已启用」，未启用的入口技能标「推荐启用」", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { WritingSkillsPanelShell } = await import("./WritingSkillsPanel");
+    type ShellProps = Parameters<typeof WritingSkillsPanelShell>[0];
+    const skills = [
+      { id: "s-on", slug: "s-on", name: "已启用技能", description: "d", kind: "revision", source: "builtin", editable: false, entry: null },
+      { id: "s-entry", slug: "s-entry", name: "入口技能", description: "d", kind: "revision", source: "builtin", editable: false, entry: "审这一章" },
+      { id: "s-plain", slug: "s-plain", name: "普通技能", description: "d", kind: "pacing", source: "builtin", editable: false, entry: null },
+    ] as unknown as ShellProps["skills"];
+    render(<WritingSkillsPanelShell skills={skills} enabledSlugs={["s-on"]} />);
+
+    expect(screen.getByText("已启用")).toBeTruthy();
+    // 推荐≠默认启用：没启用的入口明说「推荐启用」，普通技能不给任何启用徽标
+    expect(screen.getByText("推荐启用")).toBeTruthy();
+    const plainCard = screen.getByText("普通技能").closest("div")!;
+    expect(plainCard.textContent).not.toContain("已启用");
+    expect(plainCard.textContent).not.toContain("推荐启用");
   });
 });

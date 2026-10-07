@@ -15,9 +15,10 @@ import {
 	saveWorkflowRecipes,
 	startWorkflowRun,
 	insertRetrievalLog,
+	preserveLatestWritingInjection,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import { NovelRuntimeAdapter, type NovelRuntimeBindingResolver } from "./runtime-adapter";
-import { contextIndexCardExtension, CONTEXT_INDEX_CARD_EXTENSION_ID } from "./workflow-run-gate";
+import { contextIndexCardExtension, CONTEXT_INDEX_CARD_EXTENSION_ID, writingInjectionPreserveExtension, WRITING_INJECTION_PRESERVE_EXTENSION_ID } from "./workflow-run-gate";
 
 class MemoryResolver implements NovelRuntimeBindingResolver {
 	context: RuntimeResolveContext | null = null;
@@ -221,5 +222,54 @@ describe("资料索引卡扩展（T4.7）", () => {
 		expect(await adapter.resolveToolNames("narrator-a")).toContain("chapter_write");
 		const result = await adapter.execute("chapter_write", { chapterNumber: 1, content: "x" }, "narrator-a");
 		expect(parse(result.output).error).not.toBe("workflow-step-disallowed");
+	});
+});
+
+describe("写作注入保留件扩展（T4.7 尾巴）", () => {
+	test("没有快照或缺书目时不注入", async () => {
+		expect(await writingInjectionPreserveExtension(bookRoot, "book-a")).toBeNull();
+		expect(await writingInjectionPreserveExtension(undefined, "book-a")).toBeNull();
+		expect(await writingInjectionPreserveExtension(bookRoot, undefined)).toBeNull();
+	});
+
+	test("有快照时保留件随趟重建注入，原文不被会话压缩摘要掉", async () => {
+		await preserveLatestWritingInjection(bookRoot, {
+			bookId: "book-a",
+			chapterNumber: 3,
+			purpose: "write_chapter",
+			cards: [],
+			sections: {
+				hard: "<hard_constraints>\n境界=金丹\n</hard_constraints>",
+				state: "",
+				timeline: "",
+				hooks: "",
+				facts: "",
+				style: "",
+				semantic: "",
+				"character-kernel": "",
+				"recent-summary": "",
+				knowledge: "",
+			},
+			diagnostics: {
+				totalMs: 1,
+				totalEstimatedTokens: 320,
+				channelStats: [],
+				injectedTokensByChannel: {},
+				droppedCardIds: [],
+				degradedCards: [],
+				warnings: [],
+				trimReasons: [],
+			},
+		});
+
+		const extension = await writingInjectionPreserveExtension(bookRoot, "book-a");
+		expect(extension?.id).toBe(WRITING_INJECTION_PRESERVE_EXTENSION_ID);
+		expect(extension?.content).toContain("境界=金丹");
+		expect(extension?.content).toContain("第 3 章");
+
+		// resolveContribution 的系统扩展同样带上保留件（与索引卡同通道，每趟重建）
+		const prompts = await adapter.promptExtensions("narrator-a");
+		expect(prompts.some((prompt) => prompt.includes("写作注入保留件"))).toBe(true);
+		expect(prompts.some((prompt) => prompt.includes("境界=金丹"))).toBe(true);
 	});
 });

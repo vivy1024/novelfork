@@ -274,4 +274,20 @@ describe("JingweiEntryEditor 档案式阅读 / 编辑切换", () => {
     expect(screen.getByLabelText(/赌注/)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "草案条目" })).toBeNull();
   });
+
+  it("draft（未确认）条目同样打开即编辑态", async () => {
+    stubEntryApi();
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "dr-2", title: "未确认条目", contentMd: "草稿正文", sectionId: "sec-1", category: "conflicts", status: "draft", fields: { stakes: "赌注" } }}
+        onSave={vi.fn()}
+      />,
+    );
+
+    // draft 与 needs-review 同为未确认、不进召回：打开即编辑，便于先改再确认
+    expect(await screen.findByTestId("jingwei-entry-fields")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "未确认条目" })).toBeNull();
+  });
 });
