@@ -843,7 +843,7 @@ function ReviseStep({ chapter, onOpenChapter }: {
 }
 
 /**
- * 把自审命中交给叙述者做整章人文化：逐条生成定点候选（≤10% 改动），
+ * 把自审命中交给叙述者做整章语感体检：逐条生成定点候选（≤10% 改动），
  * 不带编辑器坐标，候选回到正文按原文定位由作者逐条确认。
  */
 export function buildHumanizeMessage(
@@ -852,7 +852,7 @@ export function buildHumanizeMessage(
   customConstraints?: readonly string[],
 ): string {
   const lines = [
-    `第 ${chapterNumber} 章的表达检查发现了 ${issues.length} 处规则命中的写法问题。请逐条生成「人文化」候选，用 chapter.propose_selection 提交（每条问题一条候选）。`,
+    `第 ${chapterNumber} 章的表达检查发现了 ${issues.length} 处规则命中的写法问题。请逐条生成「语感体检」候选，用 chapter.propose_selection 提交（每条问题一条候选）。`,
     "",
     "要求：",
     "- 只改被命中的句子，改动不超过原句的 10%；情节、对白、设定一律不动。",
@@ -875,6 +875,32 @@ export function buildHumanizeMessage(
 }
 
 /**
+ * 人文化之后的一档：通篇润色。不限于规则命中的句子、幅度不再限 10%，
+ * 但仍是逐处定点候选、作者逐条确认；情节、对白与设定不动，不整章重写。
+ */
+export function buildPolishMessage(
+  chapterNumber: number,
+  customConstraints?: readonly string[],
+): string {
+  const lines = [
+    `请对第 ${chapterNumber} 章做一遍通篇语言润色：先用 chapter_read 读这一章正文，通读之后逐处打磨，每处用 chapter.propose_selection 提交一条候选（action 用 "polish"），按正文先后顺序交。`,
+    "",
+    "要求：",
+    "- 打磨范围：错别字与病句、重复用词与搭配不当、句式与节奏、段落衔接、标点规范、叙述视角与称呼的一致性。",
+    "- 情节、对白内容、人物与设定、章节结构一律不动；不增删内容，不大段重写，不整章重写。",
+  ];
+  // 作者硬约束先于润色机制说明；没有约束时输出与未注入逐字一致。
+  lines.push(...composeCustomConstraintsSection(customConstraints));
+  lines.push(
+    "- from/to 是编辑器坐标你拿不到：不要编造坐标，直接省略 from/to，编辑器会按候选原文在正文里定位。sourceText 必须是正文里的原文（一句话或一个需要整体疏通的自然段），candidateText 是润色后的对应文字。",
+    "- sourceText 在正文里必须只出现一次，重复出现会导致定位失败；没有把握唯一定位时就缩小到一句。",
+    "- requestId 自行生成，每条候选一个稳定编号。",
+    "- 不要改正文；作者会在编辑器里逐条确认。",
+  );
+  return lines.join("\n");
+}
+
+/**
  * 表达自审（改这一步）：客户端复用去套话规则引擎只读定位命中，
  * 不改写正文、不出结论；「定位」打开章节后把原句送进编辑器搜索。
  */
@@ -888,7 +914,7 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [handoffNote, setHandoffNote] = useState<string | null>(null);
-  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffBusy, setHandoffBusy] = useState<"humanize" | "polish" | null>(null);
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -916,13 +942,17 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
     window.setTimeout(() => dispatchLocateInEditor(quote), 300);
   };
 
-  const handoffToNarrator = useCallback(async () => {
-    if (!report || report.issues.length === 0) return;
+  const handoffToNarrator = useCallback(async (kind: "humanize" | "polish") => {
+    if (!report) return;
+    if (kind === "humanize" && report.issues.length === 0) return;
+    if (kind === "polish" && report.status === "empty-input") return;
     if (!onSendToNarrator) {
-      setHandoffNote("当前视图没有可用的叙述者，无法执行语感体检。");
+      setHandoffNote(kind === "humanize"
+        ? "当前视图没有可用的叙述者，无法执行语感体检。"
+        : "当前视图没有可用的叙述者，无法执行通篇润色。");
       return;
     }
-    setHandoffBusy(true);
+    setHandoffBusy(kind);
     setHandoffNote(null);
     // 作者硬约束随指令注入；读取失败按未注入继续，但在交接说明里讲清楚。
     let customConstraints: readonly string[] = [];
@@ -933,12 +963,16 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
       constraintsMissed = true;
     }
     try {
-      await onSendToNarrator(buildHumanizeMessage(chapterNumber, report.issues, customConstraints));
-      setHandoffNote(`已把 ${report.issues.length} 处表达问题交给叙述者${constraintsMissed ? "；读取文风预设的硬约束失败，本次未注入" : ""}；候选逐条产回正文后，在章节编辑器里对照确认。`);
+      await onSendToNarrator(kind === "humanize"
+        ? buildHumanizeMessage(chapterNumber, report.issues, customConstraints)
+        : buildPolishMessage(chapterNumber, customConstraints));
+      setHandoffNote(kind === "humanize"
+        ? `已把 ${report.issues.length} 处表达问题交给叙述者${constraintsMissed ? "；读取文风预设的硬约束失败，本次未注入" : ""}；候选逐条产回正文后，在章节编辑器里对照确认。`
+        : `已把第 ${chapterNumber} 章的通篇润色交给叙述者${constraintsMissed ? "；读取文风预设的硬约束失败，本次未注入" : ""}；候选逐条产回正文后，在章节编辑器里对照确认。`);
     } catch (err) {
       setHandoffNote(err instanceof Error && err.message ? err.message : "交给叙述者失败");
     } finally {
-      setHandoffBusy(false);
+      setHandoffBusy(null);
     }
   }, [bookId, chapterNumber, onSendToNarrator, report]);
 
@@ -946,16 +980,28 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
     <section className="rounded-md border border-border bg-card/40 px-3 py-2" data-testid="chapter-loop-self-review">
       <div className="flex items-center justify-between gap-2">
         <span className="text-2xs font-medium text-foreground">表达自审（只检查，不改正文）</span>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {report && report.issues.length > 0 ? (
             <button
               type="button"
               className="rounded bg-primary px-2 py-0.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              onClick={() => void handoffToNarrator()}
-              disabled={handoffBusy || loading}
+              onClick={() => void handoffToNarrator("humanize")}
+              disabled={handoffBusy !== null || loading}
               data-testid="self-review-humanize"
             >
-              {handoffBusy ? "交接中…" : "交叙述者做语感体检"}
+              {handoffBusy === "humanize" ? "交接中…" : "交叙述者做语感体检"}
+            </button>
+          ) : null}
+          {report && report.status !== "empty-input" ? (
+            <button
+              type="button"
+              className="rounded border border-primary/40 px-2 py-0.5 text-2xs text-primary hover:bg-primary/10 disabled:opacity-50"
+              onClick={() => void handoffToNarrator("polish")}
+              disabled={handoffBusy !== null || loading}
+              title="不限于检查命中的句子，逐处打磨全章语言；候选仍逐条确认，不改正文"
+              data-testid="self-review-polish"
+            >
+              {handoffBusy === "polish" ? "交接中…" : "交叙述者通篇润色"}
             </button>
           ) : null}
           <button

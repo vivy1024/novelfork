@@ -461,6 +461,89 @@ describe("WriteViewPanel 章节循环（写 → 改 → 收尾）", () => {
     expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("未注入");
   });
 
+  it("硬约束读取失败：仍完成交接，消息不带硬约束，说明里如实交代（通篇润色档同样约定）", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    apiMocks.data.set(FRESHNESS, { chapters: [{ chapterNumber: 11, title: "旧站", status: "unsettled" }] });
+    apiMocks.data.set(VAULT, { chapters: [{ chapterNumber: 11, title: "旧站", hasAiDraft: true, share: { authorRatio: 0 } }] });
+    apiMocks.fetchJson
+      .mockResolvedValueOnce({ content: "林舟推开铁门，走了出去。\r\n\r\n站台上空无一人，雨已经停了。" })
+      .mockRejectedValueOnce(new Error("文风预设损坏"));
+    const onSendToNarrator = vi.fn(async () => undefined);
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} onSendToNarrator={onSendToNarrator} />);
+
+    await waitFor(() => expect(screen.getByTestId("self-review-polish")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("self-review-polish"));
+    await waitFor(() => expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("通篇润色交给叙述者"));
+    expect((onSendToNarrator.mock.calls[0]![0] as string)).not.toContain("本书硬约束");
+    expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("未注入");
+  });
+
+  it("通篇润色档：检查无命中也可交叙述者，指令要求通读后逐处定点候选、不整章重写", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel, buildPolishMessage } = await import("./WriteViewPanel");
+    apiMocks.data.set(FRESHNESS, { chapters: [{ chapterNumber: 11, title: "旧站", status: "unsettled" }] });
+    apiMocks.data.set(VAULT, { chapters: [{ chapterNumber: 11, title: "旧站", hasAiDraft: true, share: { authorRatio: 0 } }] });
+    apiMocks.fetchJson
+      .mockResolvedValueOnce({ content: "林舟推开铁门，走了出去。\r\n\r\n站台上空无一人，雨已经停了。" })
+      .mockResolvedValueOnce({ preset: { customConstraints: ["对白必须口语化"] }, revision: "r1", source: "preset", guideText: "" });
+    const onSendToNarrator = vi.fn(async () => undefined);
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} onSendToNarrator={onSendToNarrator} />);
+
+    // 「像人写的」时没有语感体检档，通篇润色档仍在（它是人文化之后的收尾档）
+    await waitFor(() => expect(screen.getByTestId("self-review-message").textContent).toContain("未发现"));
+    expect(screen.queryByTestId("self-review-humanize")).toBeNull();
+    expect(screen.getByTestId("self-review-polish").textContent).toBe("交叙述者通篇润色");
+
+    fireEvent.click(screen.getByTestId("self-review-polish"));
+    await waitFor(() => expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("已把第 11 章的通篇润色交给叙述者"));
+    expect(onSendToNarrator).toHaveBeenCalledTimes(1);
+
+    const message = onSendToNarrator.mock.calls[0]![0] as string;
+    expect(message).toContain("第 11 章做一遍通篇语言润色");
+    expect(message).toContain("chapter_read");
+    expect(message).toContain("chapter.propose_selection");
+    expect(message).toContain("不整章重写");
+    expect(message).toContain("省略 from/to");
+    expect(message).toContain("本书硬约束");
+    expect(message).toContain("- 对白必须口语化");
+
+    // 组装层：未传或传空数组与现状逐字一致，硬约束排在润色机制（from/to）说明之前
+    expect(buildPolishMessage(11, undefined)).toBe(buildPolishMessage(11));
+    expect(buildPolishMessage(11, [])).toBe(buildPolishMessage(11));
+    expect(buildPolishMessage(11)).not.toContain("本书硬约束");
+    const withConstraints = buildPolishMessage(11, ["少用叹号"]);
+    expect(withConstraints).toContain("- 少用叹号");
+    const lines = withConstraints.split("\n");
+    expect(lines.findIndex((line) => line.startsWith("本书硬约束")))
+      .toBeLessThan(lines.findIndex((line) => line.startsWith("- from/to")));
+  });
+
+  it("通篇润色档：无可用叙述者时给出可见说明，空章不显示入口", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    apiMocks.data.set(FRESHNESS, { chapters: [{ chapterNumber: 11, title: "旧站", status: "unsettled" }] });
+    apiMocks.data.set(VAULT, { chapters: [{ chapterNumber: 11, title: "旧站", hasAiDraft: true, share: { authorRatio: 0 } }] });
+    apiMocks.fetchJson.mockResolvedValueOnce({ content: "林舟推开铁门，走了出去。" });
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} />);
+
+    fireEvent.click(await waitFor(() => screen.getByTestId("self-review-polish")));
+    await waitFor(() => expect(screen.getByTestId("self-review-handoff-note").textContent).toContain("当前视图没有可用的叙述者，无法执行通篇润色。"));
+  });
+
+  it("通篇润色档：章节没有正文时不显示入口", async () => {
+    const { render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    apiMocks.data.set(FRESHNESS, { chapters: [{ chapterNumber: 11, title: "旧站", status: "unsettled" }] });
+    apiMocks.data.set(VAULT, { chapters: [{ chapterNumber: 11, title: "旧站", hasAiDraft: true, share: { authorRatio: 0 } }] });
+    apiMocks.fetchJson.mockResolvedValueOnce({ content: "" });
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={async () => preflightWith({})} onSendToNarrator={vi.fn(async () => undefined)} />);
+
+    await waitFor(() => expect(screen.getByTestId("self-review-message").textContent).toContain("暂无正文"));
+    expect(screen.queryByTestId("self-review-polish")).toBeNull();
+    expect(screen.queryByTestId("self-review-humanize")).toBeNull();
+  });
+
   it("作者改过但还没结算：默认停在「收尾」，结算经重新结算接口，结果与改稿段可见", async () => {
     const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
     const { WriteViewPanel } = await import("./WriteViewPanel");
