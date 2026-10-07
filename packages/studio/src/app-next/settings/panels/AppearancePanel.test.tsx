@@ -1,13 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../runtime-admin", () => ({
-  createUserPreferencesClient: () => ({
-    get: () => Promise.resolve({ language: "zh", terminalTheme: "auto" }),
-    patch: (patch: object) => Promise.resolve({ language: "zh", terminalTheme: "auto", ...patch }),
-  }),
-}));
-
 import { AppearancePanel } from "./AppearancePanel";
 
 beforeEach(() => {
@@ -40,5 +33,15 @@ describe("AppearancePanel 书房主题", () => {
     expect(document.documentElement.dataset.nfStyle).toBe("shuhan");
     expect(screen.getByTestId("style-theme-shuhan").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("style-theme-gaozhi").getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("只保留产品外观设置，通用显示偏好交给 Runtime 原页", async () => {
+    render(<AppearancePanel />);
+
+    expect(await screen.findByRole("radiogroup", { name: "书房主题" })).toBeTruthy();
+    expect(screen.queryByText("自动换行")).toBeNull();
+    expect(screen.queryByText("界面语言")).toBeNull();
+    expect(screen.queryByText("终端字号")).toBeNull();
+    expect(screen.queryByText("Enter 键行为")).toBeNull();
   });
 });

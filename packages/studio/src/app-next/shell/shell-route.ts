@@ -10,7 +10,7 @@ export type ShellRoute =
   | { readonly kind: "sessions"; readonly create?: boolean }
   | RuntimePageRoute
   | RoutinesNovelPanelRoute
-  | { readonly kind: "settings"; readonly section?: string }
+  | SettingsNovelPanelRoute
   | { readonly kind: "market" };
 
 /**
@@ -36,6 +36,47 @@ export interface RoutinesNovelPanelRoute {
   readonly panel: RoutinesNovelPanel;
 }
 
+/**
+ * 设置页里 NovelFork 自己的面板（Runtime 原页没有的小说专属或产品级设置）：
+ * embedding 向量模型、appearance 书房主题与明暗、users 用户管理（带删除兜底）、about 产品版本。
+ */
+export const SETTINGS_NOVEL_PANELS = ["embedding", "appearance", "users", "about"] as const;
+export type SettingsNovelPanel = (typeof SETTINGS_NOVEL_PANELS)[number];
+
+/** 与套路页同理：产品面板地址单独占 `/next/settings/novelfork/…`，免得撞 Runtime 设置子路径。 */
+export const SETTINGS_NOVEL_PANEL_SEGMENT = "novelfork";
+
+export interface SettingsNovelPanelRoute {
+  readonly kind: "settings";
+  readonly panel: SettingsNovelPanel;
+}
+
+/**
+ * v0.0.4 起 Embedding 就是独立子页（Runtime 没有同名路径），旧地址继续直达产品面板；
+ * appearance / users / about 的旧地址让给 Runtime 原页的同名子页，
+ * 产品面板经「设置」页签或 `/next/settings/novelfork/<panel>` 到达。
+ */
+export const LEGACY_SETTINGS_PANEL_IDS: Readonly<Record<string, SettingsNovelPanel>> = {
+  embedding: "embedding",
+};
+
+/**
+ * 旧版设置子页地址（`/next/settings/<section>`）到 Runtime 设置路径的映射；
+ * 没列在表里的段与 Runtime 设置子路径同名，直接直通。
+ */
+export const LEGACY_SETTINGS_SECTION_PATHS: Readonly<Record<string, string>> = {
+  agents: "/settings/agent",
+  "agent-hardening": "/settings/agent",
+  "custom-subagents": "/settings/agent",
+  mcp: "/settings/agent",
+  skills: "/settings/agent",
+  data: "/settings/storage",
+  resources: "/settings/runtime",
+  monitoring: "/settings/runtime",
+  history: "/settings/models",
+  config: "/settings/models",
+};
+
 /** 某个原页入口的路由；`path` 缺省为入口根路径。 */
 export function runtimePageRoute(section: RuntimePageSection, path?: string): RuntimePageRoute {
   // section 是入口联合类型，逐个入口展开的对象类型 TypeScript 推不出来，这里一次性收窄。
@@ -45,8 +86,15 @@ export function runtimePageRoute(section: RuntimePageSection, path?: string): Ru
 /** 套路入口：通用部分是 Runtime 原页（带 Runtime 子路径），或 NovelFork 自己的面板。 */
 export type RoutinesRoute = Extract<ShellRoute, { readonly kind: "routines" }>;
 
+/** 设置入口：通用部分是 Runtime 原页（带 Runtime 子路径），或 NovelFork 自己的面板。 */
+export type SettingsRoute = Extract<ShellRoute, { readonly kind: "settings" }>;
+
 function isRoutinesNovelPanel(value: string | undefined): value is RoutinesNovelPanel {
   return (ROUTINES_NOVEL_PANELS as readonly string[]).includes(value ?? "");
+}
+
+function isSettingsNovelPanel(value: string | undefined): value is SettingsNovelPanel {
+  return (SETTINGS_NOVEL_PANELS as readonly string[]).includes(value ?? "");
 }
 
 export type ShellRouteKind = ShellRoute["kind"];
@@ -128,6 +176,24 @@ export function parseShellRoute(href = globalThis.location?.pathname ?? STUDIO_N
     const panel = decodeSegment(parts[3] ?? "");
     return isRoutinesNovelPanel(panel) ? { kind: "routines", panel } : { kind: "routines" };
   }
+  if (section === "settings") {
+    if (id === SETTINGS_NOVEL_PANEL_SEGMENT) {
+      const panel = decodeSegment(parts[3] ?? "");
+      return isSettingsNovelPanel(panel) ? { kind: "settings", panel } : { kind: "settings" };
+    }
+    const decodedId = id ? decodeSegment(id) : undefined;
+    // 没有 Runtime 同名子页的 NovelFork 面板旧地址（仅 Embedding）仍直达对应面板。
+    const legacyPanel = decodedId ? LEGACY_SETTINGS_PANEL_IDS[decodedId] : undefined;
+    if (legacyPanel !== undefined) return { kind: "settings", panel: legacyPanel };
+    const legacyPath = decodedId ? LEGACY_SETTINGS_SECTION_PATHS[decodedId] : undefined;
+    if (legacyPath !== undefined) {
+      const suffix = href.slice(href.search(/[?#]|$/u));
+      return runtimePageRoute("settings", `${legacyPath}${suffix}`);
+    }
+    const suffix = href.slice(href.search(/[?#]|$/u));
+    const runtimePath = `/${parts.slice(1).join("/")}${suffix}`;
+    return runtimePageRoute("settings", runtimePath === "/settings" ? undefined : runtimePath);
+  }
   if (isRuntimePageSection(section)) {
     const suffix = href.slice(href.search(/[?#]|$/u));
     const runtimePath = `/${parts.slice(1).join("/")}${suffix}`;
@@ -137,7 +203,6 @@ export function parseShellRoute(href = globalThis.location?.pathname ?? STUDIO_N
   if (section === "books" && !id) return { kind: "books" };
   if (section === "books" && id) return { kind: "book", bookId: decodeSegment(id) };
   if (section === "sessions") return { kind: "sessions", ...(id === "new" ? { create: true } : {}) };
-  if (section === "settings") return { kind: "settings", ...(id ? { section: decodeSegment(id) } : {}) };
   if (section === "market") return { kind: "market" };
   return { kind: "home" };
 }
@@ -157,15 +222,16 @@ export function toShellPath(route: ShellRoute): string {
         return `${STUDIO_NEXT_BASE_PATH}/routines/${ROUTINES_NOVEL_PANEL_SEGMENT}/${encodeSegment(route.panel)}`;
       }
       return `${STUDIO_NEXT_BASE_PATH}${route.path ?? "/routines"}`;
+    case "settings":
+      if ("panel" in route) {
+        return `${STUDIO_NEXT_BASE_PATH}/settings/${SETTINGS_NOVEL_PANEL_SEGMENT}/${encodeSegment(route.panel)}`;
+      }
+      return `${STUDIO_NEXT_BASE_PATH}${route.path ?? "/settings"}`;
     case "search":
     case "knowledge":
     case "scheduled-tasks":
     case "learn":
       return `${STUDIO_NEXT_BASE_PATH}${route.path ?? `/${route.kind}`}`;
-    case "settings":
-      return route.section
-        ? `${STUDIO_NEXT_BASE_PATH}/settings/${encodeSegment(route.section)}`
-        : `${STUDIO_NEXT_BASE_PATH}/settings`;
     case "market":
       return `${STUDIO_NEXT_BASE_PATH}/market`;
     case "home":

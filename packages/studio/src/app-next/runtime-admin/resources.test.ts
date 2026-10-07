@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createAccountProfileClient,
   createCustomSubagentsClient,
   createHooksClient,
   createMcpClient,
-  createNotificationSoundsClient,
-  createSkillsClient,
   createUserPreferencesClient,
 } from "./index";
 
@@ -88,64 +85,7 @@ describe("MCP client", () => {
   });
 });
 
-describe("skills client", () => {
-  it("covers global and project CRUD, toggle, file read, and query encoding", async () => {
-    const fetchMock = createFetchMock();
-    const client = createSkillsClient({ fetchImpl: fetchMock as unknown as typeof fetch });
-    const input = { name: "review", description: "Review code", content: "Instructions" };
-
-    await client.listGlobal();
-    await client.getGlobal("review / 中文");
-    await client.createGlobal(input);
-    await client.updateGlobal("old/name", input);
-    await client.deleteGlobal("old/name");
-    await client.toggleGlobal("old/name", false);
-    await client.listProject("project / 中文");
-    await client.getProject("project / 中文", "skill/name");
-    await client.createProject("project / 中文", input);
-    await client.updateProject("project / 中文", "skill/name", input);
-    await client.deleteProject("project / 中文", "skill/name");
-    await client.readProjectFile("project / 中文", "skill/name", "refs/a b.md");
-
-    expectRequest(fetchMock, 0, { path: "/api/skills/global" });
-    expectRequest(fetchMock, 1, { path: "/api/skills/global/review%20%2F%20%E4%B8%AD%E6%96%87" });
-    expectRequest(fetchMock, 2, { path: "/api/skills/global", method: "POST", body: input });
-    expectRequest(fetchMock, 3, {
-      path: "/api/skills/global/old%2Fname",
-      method: "PUT",
-      body: input,
-    });
-    expectRequest(fetchMock, 4, { path: "/api/skills/global/old%2Fname", method: "DELETE" });
-    expectRequest(fetchMock, 5, {
-      path: "/api/skills/global/old%2Fname/toggle",
-      method: "POST",
-      body: { enabled: false },
-    });
-    expectRequest(fetchMock, 6, { path: "/api/skills?projectId=project+%2F+%E4%B8%AD%E6%96%87" });
-    expectRequest(fetchMock, 7, {
-      path: "/api/skills/skill%2Fname?projectId=project+%2F+%E4%B8%AD%E6%96%87",
-    });
-    expectRequest(fetchMock, 8, {
-      path: "/api/skills?projectId=project+%2F+%E4%B8%AD%E6%96%87",
-      method: "POST",
-      body: input,
-    });
-    expectRequest(fetchMock, 9, {
-      path: "/api/skills/skill%2Fname?projectId=project+%2F+%E4%B8%AD%E6%96%87",
-      method: "PUT",
-      body: input,
-    });
-    expectRequest(fetchMock, 10, {
-      path: "/api/skills/skill%2Fname?projectId=project+%2F+%E4%B8%AD%E6%96%87",
-      method: "DELETE",
-    });
-    expectRequest(fetchMock, 11, {
-      path: "/api/skills/skill%2Fname/files/refs/a%20b.md?projectId=project+%2F+%E4%B8%AD%E6%96%87",
-    });
-  });
-});
-
-describe("preferences, profile, and notification sound clients", () => {
+describe("preferences client", () => {
   it("uses explicit appearance and notification preference patches", async () => {
     const fetchMock = createFetchMock();
     const client = createUserPreferencesClient({
@@ -175,46 +115,6 @@ describe("preferences, profile, and notification sound clients", () => {
     });
   });
 
-  it("exposes account profile data while restricting patches to Git identity", async () => {
-    const fetchMock = createFetchMock();
-    const client = createAccountProfileClient({
-      fetchImpl: fetchMock as unknown as typeof fetch,
-    });
-
-    await client.get();
-    await client.patch({ gitUsername: "Novel Author", gitEmail: "author@example.com" });
-
-    expectRequest(fetchMock, 0, { path: "/api/auth/me" });
-    expectRequest(fetchMock, 1, {
-      path: "/api/auth/me",
-      method: "PATCH",
-      body: { gitUsername: "Novel Author", gitEmail: "author@example.com" },
-    });
-  });
-
-  it("uploads FormData through fetchJson and encodes notification sound deletion IDs", async () => {
-    const fetchMock = createFetchMock();
-    const client = createNotificationSoundsClient({
-      fetchImpl: fetchMock as unknown as typeof fetch,
-    });
-    const file = new File(["audio"], "alert tone.mp3", { type: "audio/mpeg" });
-
-    await client.upload(file);
-    await client.delete("sound/a b");
-
-    const [uploadPath, uploadInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(uploadPath).toBe("/api/notification-sounds");
-    expect(uploadInit.method).toBe("POST");
-    expect(uploadInit.body).toBeInstanceOf(FormData);
-    const uploadedFile = (uploadInit.body as FormData).get("file");
-    expect(uploadedFile).toBeInstanceOf(File);
-    expect((uploadedFile as File).name).toBe("alert tone.mp3");
-
-    expectRequest(fetchMock, 1, {
-      path: "/api/notification-sounds/sound%2Fa%20b",
-      method: "DELETE",
-    });
-  });
 });
 
 describe("custom subagents and hooks clients", () => {

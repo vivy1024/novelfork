@@ -25,6 +25,12 @@ const RoutinesNextPage = lazy(() =>
     default: m.RoutinesNextPage,
   })),
 );
+// 设置页：通用部分嵌 Runtime 原页；外观、Embedding、用户与关于是 NovelFork 自己的面板。
+const SettingsNextPage = lazy(() =>
+  import("./settings/SettingsNextPage").then((m) => ({
+    default: m.SettingsNextPage,
+  })),
+);
 const SessionCenterPage = lazy(() =>
   import("./sessions/SessionCenterPage").then((m) => ({
     default: m.SessionCenterPage,
@@ -50,22 +56,9 @@ const RuntimeWritingWorkbenchRouteLazy = lazy(() =>
     default: m.RuntimeWritingWorkbenchRoute,
   })),
 );
-import { SettingsLayout } from "./components/layouts";
 import { BookCover } from "../components/BookCover";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-const RuntimeProviderSettingsHost = lazy(() =>
-  import("@vivy1024/narrafork-runtime-bridge/frontend/provider-settings").then((module) => ({
-    default: module.EmbeddedProviderSettingsHost,
-  })),
-);
-import { createAccountProfileClient } from "./runtime-admin";
-import { SettingsSectionContent } from "./settings/SettingsSectionContent";
-import {
-  isSettingsSectionId,
-  resolveSettingsSectionId,
-  SETTINGS_SECTIONS,
-} from "./settings/sections";
 import {
   AgentShell,
   recentTabKey,
@@ -107,12 +100,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { RuntimePageMount } from "./runtime/RuntimePageMount";
 import { runtimePageSectionOf, type RuntimePageSection } from "./runtime/runtime-page-sections";
 import { runtimePageRoute } from "./shell/shell-route";
 
-const RUNTIME_PAGE_LABELS: Record<Exclude<RuntimePageSection, "routines">, string> = {
+const RUNTIME_PAGE_LABELS: Record<Exclude<RuntimePageSection, "routines" | "settings">, string> = {
   search: "搜索",
   knowledge: "知识库",
   "scheduled-tasks": "定时任务",
@@ -474,81 +466,6 @@ function contractErrorMessage(
   return result.code ? `${fallback}：${result.code}` : fallback;
 }
 
-const settingsAccountClient = createAccountProfileClient();
-
-function SettingsRouteLive({
-  section,
-  onNavigate,
-}: {
-  readonly section?: string;
-  readonly onNavigate: (route: ShellRoute) => void;
-}) {
-  // 嵌入的 Runtime 设置页跟随 Studio 的明暗开关。
-  const colorScheme = useColorScheme();
-  const requestedSection = resolveSettingsSectionId(section);
-  const [role, setRole] = useState<"admin" | "user" | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void settingsAccountClient.get().then(
-      (profile) => {
-        if (active) setRole(profile.role);
-      },
-      () => {
-        if (active) setRole("user");
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const visibleSections = useMemo(
-    () =>
-      SETTINGS_SECTIONS.filter((item) => !item.adminOnly || role === "admin"),
-    [role],
-  );
-  const activeSectionId = visibleSections.some(
-    (item) => item.id === requestedSection,
-  )
-    ? requestedSection
-    : "profile";
-  const setActiveSectionId = (nextSection: string) => {
-    const resolved =
-      visibleSections.some((item) => item.id === nextSection) &&
-      isSettingsSectionId(nextSection)
-        ? nextSection
-        : "profile";
-    onNavigate({ kind: "settings", section: resolved });
-  };
-
-  useEffect(() => {
-    if (role && requestedSection !== activeSectionId) {
-      onNavigate({ kind: "settings", section: activeSectionId });
-    }
-  }, [activeSectionId, onNavigate, requestedSection, role]);
-
-  return (
-    <SettingsLayout
-      title="设置"
-      sections={visibleSections}
-      activeSectionId={activeSectionId}
-      onSectionChange={setActiveSectionId}
-      mobileDetailOpen={section !== undefined}
-      onMobileBack={() => onNavigate({ kind: "settings" })}
-    >
-      {activeSectionId === "providers" ? (
-        <RuntimeProviderSettingsHost colorScheme={colorScheme} />
-      ) : (
-        <SettingsSectionContent
-          sectionId={activeSectionId}
-          onSectionChange={setActiveSectionId}
-        />
-      )}
-    </SettingsLayout>
-  );
-}
-
 function RouteMountPoint({
   route,
   onCanvasContextChange,
@@ -744,7 +661,15 @@ function RouteMountPoint({
       );
     case "settings":
       return (
-        <SettingsRouteLive section={route.section} onNavigate={onNavigate} />
+        <LazyErrorBoundary fallbackLabel="设置页">
+          <Suspense fallback={<LazyFallback />}>
+            <SettingsNextPage
+              route={route}
+              onNavigate={onNavigate}
+              onNavigateRuntimePath={onNavigateRuntimePath}
+            />
+          </Suspense>
+        </LazyErrorBoundary>
       );
     case "home":
       return (

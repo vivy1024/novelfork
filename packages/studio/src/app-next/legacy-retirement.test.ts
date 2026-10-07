@@ -74,6 +74,44 @@ const retiredFrontendPaths = [
   "src/app-next/routines/ToolPermissionsSection.tsx",
   "src/app-next/routines/MCPServerPanel.tsx",
   "src/app-next/routines/RulesSection.tsx",
+  // T1.7：设置页通用部分改为嵌入 Runtime 原页，Studio 复制品与死代码下线
+  "src/app-next/settings/SettingsSectionContent.tsx",
+  "src/app-next/settings/sections.ts",
+  "src/app-next/settings/panels/ProfilePanel.tsx",
+  "src/app-next/settings/panels/SecurityPanel.tsx",
+  "src/app-next/settings/panels/RuntimeControlPanel.tsx",
+  "src/app-next/settings/panels/AgentSettingsPanel.tsx",
+  "src/app-next/settings/panels/NotificationSettingsPanel.tsx",
+  "src/app-next/settings/panels/GatewayPanel.tsx",
+  "src/app-next/settings/panels/SearchSettingsPanel.tsx",
+  "src/app-next/settings/panels/ProxySettingsPanel.tsx",
+  "src/app-next/settings/panels/ChaptersContainersPanel.tsx",
+  "src/app-next/settings/panels/AuthenticationPanel.tsx",
+  "src/app-next/settings/panels/TerminalsPanel.tsx",
+  "src/app-next/settings/panels/TerminalEmbed.tsx",
+  "src/app-next/settings/panels/DevicesPanel.tsx",
+  "src/app-next/settings/panels/StorageDiagnosticsPanel.tsx",
+  "src/app-next/settings/panels/DependencyStatusPanel.tsx",
+  "src/app-next/settings/panels/RuntimeEnvironmentPanel.tsx",
+  "src/app-next/settings/panels/UsagePanel.tsx",
+  "src/app-next/settings/panels/DataPanel.tsx",
+  "src/app-next/settings/panels/MonitoringPanel.tsx",
+  "src/app-next/settings/panels/AgentRuntimeHardeningPanel.tsx",
+  // 这些 Runtime 管理客户端只被上面的复制面板使用，随面板一起下线（用户与 Embedding 等保留项的客户端仍在）
+  "src/app-next/runtime-admin/authentication.ts",
+  "src/app-next/runtime-admin/chapter-containers.ts",
+  "src/app-next/runtime-admin/devices.ts",
+  "src/app-next/runtime-admin/gateway.ts",
+  "src/app-next/runtime-admin/notification-sounds.ts",
+  "src/app-next/runtime-admin/provider-models.ts",
+  "src/app-next/runtime-admin/platform-providers.ts",
+  "src/app-next/runtime-admin/proxy-overrides.ts",
+  "src/app-next/runtime-admin/runtime-maintenance.ts",
+  "src/app-next/runtime-admin/search-settings.ts",
+  "src/app-next/runtime-admin/storage.ts",
+  "src/app-next/runtime-admin/terminals.ts",
+  "src/app-next/runtime-admin/usage-history.ts",
+  "src/app-next/runtime-admin/account-profile.ts",
 ] as const;
 
 function readStudioTsconfig(): { exclude?: string[] } {
@@ -119,6 +157,18 @@ describe("legacy source retirement", () => {
     const offenders = ["RoutinesNextPage.tsx", "BookRoutineSettingsPanel.tsx", "SubagentNovelToolsPanel.tsx", "routines-shared.tsx"]
       .concat(["BookHooksPanel.tsx", "BookMcpOverridesPanel.tsx", "BookRoutineOverridesPanel.tsx", "BookRulesPanel.tsx", "BookSkillsPanel.tsx"].map((file) => join("book", file)))
       .filter((file) => globalClients.test(readFileSync(join(routinesDir, file), "utf-8")));
+    expect(offenders).toEqual([]);
+  });
+
+  it("设置页的通用部分只嵌 Runtime 原页，不再在 Studio 里实现通用设置的读写", () => {
+    const settingsDir = join(process.cwd(), "src", "app-next", "settings");
+    const page = readFileSync(join(settingsDir, "SettingsNextPage.tsx"), "utf-8");
+    expect(page).toContain('section="settings"');
+    // 个人资料、供应商、模型、AI 代理、搜索、代理、容器、服务器、认证、终端、设备、存储、使用历史
+    // 与它们的管理客户端只该出现在 Runtime 原页里；SetupWizardPanel 写初始模型与监听地址是产品向导，豁免。
+    const generalClients = /create(?:AccountProfile|Authentication|Gateway|NotificationSounds|SearchSettings|ProxyOverrides|ChapterContainerSettings|TerminalsAdmin|Devices|Storage|UsageHistory|RuntimeMaintenance|ProviderModels|PlatformProviders|Skills)Client/;
+    const offenders = ["SettingsNextPage.tsx", "panels/AppearancePanel.tsx", "panels/EmbeddingSettingsPanel.tsx", "panels/UsersPanel.tsx", "panels/AboutPanel.tsx", "panels/SetupWizardPanel.tsx"]
+      .filter((file) => generalClients.test(readFileSync(join(settingsDir, file), "utf-8")));
     expect(offenders).toEqual([]);
   });
 

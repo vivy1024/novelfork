@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import type { Locale } from "@vivy1024/novelfork-core/i18n";
 import { BookCover } from "@/components/BookCover";
 import { useStyleTheme } from "@/hooks/use-style-theme";
 import { useTheme, type Theme } from "@/hooks/use-theme";
@@ -14,24 +11,6 @@ import { STYLE_THEMES } from "@/styles/style-themes";
 import { cn } from "@/lib/utils";
 import { SettingsGroup, SettingsPage, SettingsSwitchRow } from "../components/SettingsPage";
 import { useLocalBooleanPreference, useNarratorMessageRendererMode, useScreenWakeLock } from "../local-preferences";
-import { publishRuntimeLocale } from "../../runtime/locale";
-import {
-  createUserPreferencesClient,
-  type RuntimeUserPreferences,
-  type UserPreferencesPatch,
-} from "../../runtime-admin";
-
-const preferencesClient = createUserPreferencesClient();
-
-const TERMINAL_THEME_OPTIONS = [
-  { value: "auto", label: "跟随界面" },
-  { value: "tokyoNight", label: "Tokyo Night" },
-  { value: "tokyoNightLight", label: "Tokyo Night Light" },
-  { value: "catppuccin", label: "Catppuccin Mocha" },
-  { value: "dracula", label: "Dracula" },
-  { value: "nord", label: "Nord" },
-  { value: "solarized", label: "Solarized Dark" },
-] as const;
 
 function SwitchRow({ label, description, checked, disabled, onChange }: {
   readonly label: string;
@@ -51,12 +30,11 @@ function SwitchRow({ label, description, checked, disabled, onChange }: {
   );
 }
 
+/**
+ * NovelFork 产品外观：书房主题、明暗与外壳级显示偏好。
+ * 通用显示偏好（换行、终端、语言、输入行为等）在 Runtime 原页「通用设置 › 外观与界面」。
+ */
 export function AppearancePanel() {
-  const [preferences, setPreferences] = useState<RuntimeUserPreferences | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [savingField, setSavingField] = useState<string | null>(null);
-  const [localFontSize, setLocalFontSize] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const { theme, setTheme } = useTheme();
   const { styleTheme, setStyleTheme } = useStyleTheme();
   const [oledMode, setOledMode] = useLocalBooleanPreference("narrafork_oled");
@@ -71,56 +49,11 @@ export function AppearancePanel() {
     document.documentElement.dataset.advancedAnimation = String(advancedAnimation);
   }, [advancedAnimation, oledMode]);
 
-  useEffect(() => {
-    let active = true;
-    preferencesClient.get()
-      .then((data) => {
-        if (active) setPreferences(data);
-      })
-      .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : String(reason));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
-  }, []);
-
-  async function savePreference<K extends keyof UserPreferencesPatch>(key: K, value: UserPreferencesPatch[K]) {
-    if (!preferences) return;
-    const previous = preferences;
-    setPreferences({ ...preferences, [key]: value });
-    setSavingField(String(key));
-    setError(null);
-    try {
-      const updated = await preferencesClient.patch({ [key]: value } as UserPreferencesPatch);
-      setPreferences(updated);
-      if (key === "language") publishRuntimeLocale(updated.language);
-    } catch (reason) {
-      setPreferences(previous);
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setSavingField(null);
-    }
-  }
-
   function toggleFullscreen(value: boolean) {
     setFullscreen(value);
     if (value) void document.documentElement.requestFullscreen?.().catch(() => undefined);
     else if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => undefined);
   }
-
-  const terminalThemeOptions = useMemo(() => {
-    if (!preferences || TERMINAL_THEME_OPTIONS.some((option) => option.value === preferences.terminalTheme)) {
-      return [...TERMINAL_THEME_OPTIONS];
-    }
-    return [
-      { value: preferences.terminalTheme, label: `${preferences.terminalTheme}（当前历史值）` },
-      ...TERMINAL_THEME_OPTIONS,
-    ];
-  }, [preferences]);
-
-  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">正在读取显示偏好…</p>;
 
   const themes: Array<{ value: Theme; label: string; icon: typeof Sun }> = [
     { value: "light", label: "浅色", icon: Sun },
@@ -131,15 +64,8 @@ export function AppearancePanel() {
   return (
     <SettingsPage
       title="外观与界面"
-      description="管理主题、排版、终端和输入行为等界面偏好。"
+      description="书房主题与明暗是 NovelFork 产品外观，嵌入的 Runtime 界面一同切换；其余通用显示偏好在「通用设置 › 外观与界面」。"
     >
-      {error ? (
-        <Alert>
-          <AlertTitle>偏好保存失败</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-
       <SettingsGroup title="书房主题" description="整套界面的配色、字体与纹样，叙述者面板等 Runtime 界面一同切换；每套主题都有浅色与深色。只影响当前设备。">
         <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="书房主题">
           {STYLE_THEMES.map((option) => {
@@ -211,87 +137,6 @@ export function AppearancePanel() {
           />
         </Field>
       </SettingsGroup>
-
-      {preferences ? (
-        <>
-          <SettingsGroup title="自动换行" description="控制 Markdown、代码和差异视图中的长行展示。">
-            <SwitchRow label="Markdown 自动换行" description="长段落在阅读区域内自动换行。" checked={preferences.wordWrapMarkdown} onChange={(value) => void savePreference("wordWrapMarkdown", value)} />
-            <SwitchRow label="代码自动换行" description="代码块超出宽度时自动折行。" checked={preferences.wordWrapCode} onChange={(value) => void savePreference("wordWrapCode", value)} />
-            <SwitchRow label="Diff 自动换行" description="差异视图中的长行自动折行。" checked={preferences.wordWrapDiff} onChange={(value) => void savePreference("wordWrapDiff", value)} />
-          </SettingsGroup>
-
-          <SettingsGroup title="最近标签" description="控制子代理会话是否显示在最近访问列表中。">
-            <SwitchRow label="将子代理加入最近标签" description="子代理会话也显示在最近访问列表中。" checked={preferences.addSubagentToRecentTabs ?? true} onChange={(value) => void savePreference("addSubagentToRecentTabs", value)} />
-          </SettingsGroup>
-
-          <SettingsGroup title="终端" description="选择终端主题并调整 8–32 像素字号。">
-            <Field orientation="responsive">
-              <FieldLabel>终端主题</FieldLabel>
-              <SimpleSelect
-                aria-label="终端主题"
-                value={preferences.terminalTheme}
-                onValueChange={(value) => void savePreference("terminalTheme", value)}
-                options={terminalThemeOptions}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="terminal-font-size">终端字号</FieldLabel>
-              <Input
-                id="terminal-font-size"
-                aria-label="终端字号"
-                type="range"
-                min={8}
-                max={32}
-                step={1}
-                value={localFontSize ?? preferences.terminalFontSize}
-                onChange={(event) => setLocalFontSize(Number(event.currentTarget.value))}
-                onPointerUp={(event) => {
-                  const value = Number(event.currentTarget.value);
-                  setLocalFontSize(null);
-                  void savePreference("terminalFontSize", value);
-                }}
-                onKeyUp={(event) => {
-                  const value = Number(event.currentTarget.value);
-                  setLocalFontSize(null);
-                  void savePreference("terminalFontSize", value);
-                }}
-              />
-              <FieldDescription>当前 {localFontSize ?? preferences.terminalFontSize}px</FieldDescription>
-            </Field>
-          </SettingsGroup>
-
-          <SettingsGroup title="语言" description="选择 NovelFork 的界面语言。">
-            <Field orientation="responsive">
-              <FieldLabel>界面语言</FieldLabel>
-              <SimpleSelect
-                aria-label="界面语言"
-                value={preferences.language}
-                onValueChange={(value) => void savePreference("language", value as Locale)}
-                options={[
-                  { value: "zh-CN", label: "简体中文" },
-                  { value: "en", label: "English" },
-                ]}
-              />
-            </Field>
-          </SettingsGroup>
-
-          <SettingsGroup title="输入" description="Shift+Enter 始终插入换行；下列选项控制 Enter 与 Ctrl/Cmd+Enter。">
-            <Field orientation="responsive">
-              <div>
-                <FieldLabel>Enter 键行为</FieldLabel>
-                <FieldDescription>选择在当前轮次、当前工具调用后发送，或立即中断。</FieldDescription>
-              </div>
-              <SimpleSelect aria-label="Enter 键行为" value={preferences.enterQueueMode ?? "turn"} onValueChange={(value) => void savePreference("enterQueueMode", value as "turn" | "tool" | "interrupt")} options={[{ value: "turn", label: "当前轮次后" }, { value: "tool", label: "当前工具后" }, { value: "interrupt", label: "立即中断" }]} />
-            </Field>
-            <Field orientation="responsive">
-              <FieldLabel>Ctrl+Enter 键行为</FieldLabel>
-              <SimpleSelect aria-label="Ctrl+Enter 键行为" value={preferences.ctrlEnterQueueMode ?? "tool"} onValueChange={(value) => void savePreference("ctrlEnterQueueMode", value as "turn" | "tool" | "interrupt")} options={[{ value: "turn", label: "当前轮次后" }, { value: "tool", label: "当前工具后" }, { value: "interrupt", label: "立即中断" }]} />
-            </Field>
-          </SettingsGroup>
-        </>
-      ) : null}
-
-      {savingField ? <p className="text-xs text-muted-foreground">正在保存 {savingField}…</p> : null}
     </SettingsPage>
   );
 }

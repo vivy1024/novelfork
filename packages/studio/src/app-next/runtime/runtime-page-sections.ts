@@ -5,6 +5,7 @@ export const RUNTIME_PAGE_SECTIONS = {
   knowledge: "/knowledge",
   "scheduled-tasks": "/scheduled-tasks",
   learn: "/learn",
+  settings: "/settings",
 } as const;
 
 export type RuntimePageSection = keyof typeof RUNTIME_PAGE_SECTIONS;

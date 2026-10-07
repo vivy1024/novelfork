@@ -63,9 +63,10 @@ const scheduledTasksRoute = createRoute({
   path: "/scheduled-tasks",
 });
 
-// 嵌入的 Runtime 原页在本入口内的子路径（知识条目、定时任务详情、套路页的工具权限……），见 shell-route 的
-// RuntimePageRoute；套路页的 NovelFork 面板（/next/routines/novelfork/…）也落在这里，由 shell-route 区分。
-const runtimePageSubRoutes = ["search", "routines", "knowledge", "scheduled-tasks", "learn"].map((section) =>
+// 嵌入的 Runtime 原页在本入口内的子路径（知识条目、定时任务详情、套路页的工具权限、设置的二级页……），
+// 见 shell-route 的 RuntimePageRoute；套路页与设置页的 NovelFork 面板（/next/<入口>/novelfork/…）也落在这里，
+// 由 shell-route 区分。
+const runtimePageSubRoutes = ["search", "routines", "knowledge", "scheduled-tasks", "learn", "settings"].map((section) =>
   createRoute({
     getParentRoute: () => nextRoute,
     path: `/${section}/$`,
@@ -150,6 +151,15 @@ const nativeSettingsSectionRoute = createRoute({
   },
 });
 
+// Runtime 设置的二级路径（如 /settings/plugins/<id>）整页打开时转到产品入口的对应地址。
+const nativeSettingsDeepRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/$",
+  beforeLoad: ({ location }) => {
+    throw redirect({ href: `${STUDIO_NEXT_BASE_PATH}${location.href}`, replace: true });
+  },
+});
+
 // Runtime 原页的路径整页打开时（新标签页、没经过嵌入路由的链接）转到对应的产品入口。
 const nativeRuntimePageRoutes = ["search", "knowledge", "scheduled-tasks", "learn", "routines"].flatMap((section) =>
   [`/${section}`, `/${section}/$`].map((path) =>
@@ -196,6 +206,7 @@ const routeTree = rootRoute.addChildren([
   nativeChapterRoute,
   nativeSettingsRoute,
   nativeSettingsSectionRoute,
+  nativeSettingsDeepRoute,
   ...nativeRuntimePageRoutes,
   catchAllRoute,
 ]);

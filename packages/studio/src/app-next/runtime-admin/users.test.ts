@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDevicesClient } from "./devices";
 import { createUsersClient } from "./users";
 
 function jsonResponse(body: unknown) {
@@ -64,51 +63,35 @@ describe("users client", () => {
       method: "DELETE",
     });
   });
-});
 
-describe("devices client", () => {
-  it("covers list, create, token rotation, deletion, and real file transfer contracts", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({}));
-    const client = createDevicesClient({ fetchImpl: fetchMock as unknown as typeof fetch });
-    const createInput = {
-      name: "Windows workstation",
-      description: "Writing PC",
-      connectionMode: "reverse" as const,
-      scope: "global" as const,
-    };
-    const transferInput = {
-      direction: "download" as const,
-      remotePath: "/books/chapter.md",
-      localPath: "D:/backups/chapter.md",
-      recursive: false,
-    };
+  it("falls back to the product force-delete when the Runtime delete fails with a 500", async () => {
+    const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method === "DELETE" && !path.includes("/force")) {
+        return new Response(JSON.stringify({ error: "fk constraint" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return jsonResponse({ ok: true });
+    });
+    const client = createUsersClient({ fetchImpl: fetchMock as unknown as typeof fetch });
 
-    await client.listDevices();
-    await client.createDevice(createInput);
-    await client.updateDevice("device/a b", { name: "Updated workstation", description: null });
-    await client.rotateToken("device/a b");
-    await client.transferFiles("device/a b", transferInput);
-    await client.deleteDevice("device/a b");
+    await client.deleteUser("user/with-data");
 
-    expectRequest(fetchMock, 0, { path: "/api/devices" });
-    expectRequest(fetchMock, 1, { path: "/api/devices", method: "POST", body: createInput });
-    expectRequest(fetchMock, 2, {
-      path: "/api/devices/device%2Fa%20b",
-      method: "PATCH",
-      body: { name: "Updated workstation", description: null },
-    });
-    expectRequest(fetchMock, 3, {
-      path: "/api/devices/device%2Fa%20b/rotate-token",
-      method: "POST",
-    });
-    expectRequest(fetchMock, 4, {
-      path: "/api/devices/device%2Fa%20b/transfers",
-      method: "POST",
-      body: transferInput,
-    });
-    expectRequest(fetchMock, 5, {
-      path: "/api/devices/device%2Fa%20b",
-      method: "DELETE",
-    });
+    expectRequest(fetchMock, 0, { path: "/api/admin/users/user%2Fwith-data", method: "DELETE" });
+    expectRequest(fetchMock, 1, { path: "/api/product/admin/users/user%2Fwith-data/force", method: "DELETE" });
+  });
+
+  it("does not fall back when the Runtime delete fails with a non-500 error", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const client = createUsersClient({ fetchImpl: fetchMock as unknown as typeof fetch });
+
+    await expect(client.deleteUser("user/no-data")).rejects.toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -40,6 +40,17 @@ describe("RuntimePageMount", () => {
     expect(isEmbeddedPath("/settings/agent")).toBe(false);
   });
 
+  it("设置页按 /settings 限定范围：供应商等子页在范围内，套路链接交给外壳", async () => {
+    render(<RuntimePageMount section="settings" onPathChange={vi.fn()} onNavigateOutside={vi.fn()} />);
+    expect((await screen.findByTestId("runtime-page-host-mock")).getAttribute("data-path")).toBe("/settings");
+    const { isEmbeddedPath } = mocks.hostProps.at(-1)!;
+    expect(isEmbeddedPath("/settings")).toBe(true);
+    expect(isEmbeddedPath("/settings/providers")).toBe(true);
+    expect(isEmbeddedPath("/settings/plugins/some.plugin")).toBe(true);
+    expect(isEmbeddedPath("/routines")).toBe(false);
+    expect(isEmbeddedPath("/settings-old")).toBe(false);
+  });
+
   it("带子路径时原样交给 Runtime", async () => {
     render(<RuntimePageMount section="scheduled-tasks" path="/scheduled-tasks/t-1" onPathChange={vi.fn()} onNavigateOutside={vi.fn()} />);
     expect((await screen.findByTestId("runtime-page-host-mock")).getAttribute("data-path")).toBe("/scheduled-tasks/t-1");
@@ -54,6 +65,7 @@ describe("runtimePageSectionOf", () => {
     expect(runtimePageSectionOf("/routines/tool-permissions")).toBe("routines");
     expect(runtimePageSectionOf("/routines-archive")).toBeNull();
     expect(runtimePageSectionOf("/narrators/n-1")).toBeNull();
-    expect(runtimePageSectionOf("/settings/profile")).toBeNull();
+    expect(runtimePageSectionOf("/settings")).toBe("settings");
+    expect(runtimePageSectionOf("/settings/profile")).toBe("settings");
   });
 });
