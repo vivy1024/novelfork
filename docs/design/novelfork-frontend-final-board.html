@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovelFork · 前端预设图 v2.1（对齐现实版）</title>
+<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+  :root{
+    --bg:#faf9f6; --surface:#ffffff; --surface-2:#f7f6f2; --surface-3:#f1f0eb;
+    --border:#e6e5e0; --border-2:#d9d8d2;
+    --ink:#1e1e1b; --ink-2:#6a6963; --ink-3:#a8a7a0;
+    --accent:#0f766e; --accent-deep:#0b5a54; --accent-soft:#e5f3f0; --accent-line:#c3e2dc;
+    --warn:#b45309; --warn-soft:#fdf2e0; --warn-line:#eed9b8;
+    --ok:#15803d; --ok-soft:#e9f6ec;
+    --danger:#b91c1c; --danger-soft:#fdecec;
+    --radius:10px;
+    --fs-2xs:11px; --fs-xs:12px; --fs-sm:13px; --fs-base:14px; --fs-md:15.5px; --fs-lg:20px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; font-size:var(--fs-base); line-height:1.6; padding:40px 30px 90px;}
+  .board{max-width:1520px; margin:0 auto;}
+  /* lucide 图标统一规格 */
+  svg.lucide{width:14px; height:14px; stroke-width:1.75; flex:none;}
+  .abar svg.lucide{width:17px;height:17px;}
+  .tile{width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;flex:none;}
+  .tile svg.lucide{width:15px;height:15px;}
+  .tile.lg{width:52px;height:52px;border-radius:13px;} .tile.lg svg.lucide{width:24px;height:24px;stroke-width:1.5;}
+  .tile.warn{background:var(--warn-soft);color:var(--warn);}
+  .tile.plain{background:var(--surface-3);color:var(--ink-2);}
+
+  .board-head{border:1px solid var(--border); background:var(--surface); border-radius:var(--radius); padding:22px 26px; margin-bottom:30px;}
+  .board-head h1{font-size:var(--fs-lg);}
+  .board-head .meta{font-size:var(--fs-sm); color:var(--ink-2); margin-top:6px; max-width:1100px;}
+  .legend{display:flex; gap:18px; flex-wrap:wrap; margin-top:13px; font-size:var(--fs-xs); color:var(--ink-2);}
+  .legend .lg-i{display:inline-flex; align-items:center; gap:6px;}
+  .d{width:9px;height:9px;border-radius:3px;display:inline-block;flex:none;}
+  .d-plug{background:var(--ok);} .d-studio{background:var(--warn);} .d-up{background:var(--danger);} .d-fork{background:#94a3b8;}
+  .verdict{margin-top:12px; border-top:1px dashed var(--border-2); padding-top:10px; font-size:var(--fs-xs); color:var(--ink-2); max-width:1200px; line-height:1.75;}
+  .verdict b{color:var(--danger);}
+
+  .screen{margin-bottom:56px;}
+  .screen-head{display:flex; align-items:baseline; gap:13px; margin-bottom:10px; flex-wrap:wrap;}
+  .screen-head .idx{min-width:26px;height:26px;border-radius:7px;background:var(--accent);color:#fff;font-size:var(--fs-xs);display:inline-flex;align-items:center;justify-content:center;font-weight:600;padding:0 7px;}
+  .screen-head h2{font-size:var(--fs-md);}
+  .screen-head .q{font-size:var(--fs-sm); color:var(--ink-2);}
+  details.evid{max-width:1440px; margin:0 0 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); font-size:10.5px; color:var(--ink-3);}
+  details.evid summary{cursor:pointer; padding:7px 12px; display:flex; align-items:center; gap:6px; color:var(--ink-2); font-size:11px; user-select:none;}
+  details.evid summary svg.lucide{width:11px;height:11px;}
+  details.evid .ev-b{padding:4px 14px 10px; font-family:ui-monospace,Consolas,monospace; line-height:1.85;}
+  details.evid .ev-b b{color:var(--ink-2);}
+  .frame{width:1440px; height:900px; border:1px solid var(--border-2); border-radius:14px; overflow:hidden; background:var(--surface); box-shadow:0 2px 12px rgba(30,28,20,.05);}
+  .frame.tall{height:auto;}
+
+  /* 书内工作区三栏（照 IdeWorkbench 真实结构） */
+  .app{display:flex; height:100%;}
+  .abar{width:64px; flex:none; background:var(--surface-2); border-right:1px solid var(--border); display:flex; flex-direction:column; align-items:center; padding-top:10px; gap:3px;}
+  .abar .ab{width:52px; border-radius:9px; padding:7px 0 6px; text-align:center; font-size:10.5px; color:var(--ink-2); cursor:pointer; line-height:1.35; display:flex; flex-direction:column; align-items:center; gap:3px;}
+  .abar .ab:hover{background:var(--surface-3);}
+  .abar .ab.on{background:var(--accent-soft); color:var(--accent-deep); font-weight:600;}
+  .abar .sp{flex:1;}
+  .side{width:258px; flex:none; border-right:1px solid var(--border); background:var(--surface-2); display:flex; flex-direction:column; font-size:var(--fs-sm);}
+  .sd-head{padding:14px 15px 11px; border-bottom:1px solid var(--border); display:flex; gap:10px;}
+  .sd-head .t{font-weight:600; font-size:var(--fs-base); display:flex; align-items:center; gap:7px;}
+  .sd-head .sub{font-size:var(--fs-2xs); color:var(--ink-3); margin-top:2px; line-height:1.5;}
+  .side-scroll{flex:1; overflow:auto; padding:10px;}
+  .sec-t{font-size:10.5px; color:var(--ink-3); letter-spacing:.06em; padding:8px 4px 5px; display:flex; align-items:center; gap:6px;}
+  .main{flex:1; min-width:0; display:flex; flex-direction:column; background:var(--surface);}
+  .page-head{display:flex; align-items:center; gap:10px; padding:13px 22px; border-bottom:1px solid var(--border); flex:none; font-size:var(--fs-sm);}
+  .page-head .sp{flex:1;}
+  .btn{display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border-2); background:var(--surface); color:var(--ink-2); border-radius:8px; padding:7px 13px; font-size:var(--fs-sm); cursor:pointer; white-space:nowrap;}
+  .btn svg.lucide{width:13px;height:13px;}
+  .btn:hover{border-color:var(--accent-line); color:var(--accent-deep);}
+  .btn-primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
+  .btn-primary:hover{background:var(--accent-deep); color:#fff;}
+  .btn-xs{padding:3px 9px; font-size:var(--fs-xs); border-radius:6px;}
+  .btn-xs svg.lucide{width:11px;height:11px;}
+  .tabs{display:flex; gap:2px; padding:8px 22px 0; border-bottom:1px solid var(--border); flex:none; font-size:var(--fs-sm);}
+  .tabs span{padding:7px 12px; border-radius:8px 8px 0 0; color:var(--ink-2); cursor:pointer; display:inline-flex; align-items:center; gap:6px;}
+  .tabs span.on{color:var(--accent-deep); font-weight:600; background:var(--accent-soft);}
+  .tabs span .td{font-size:var(--fs-2xs); color:var(--ink-3); font-weight:400;}
+  .content{flex:1; overflow:auto; padding:20px 24px;}
+  .badge{display:inline-flex; align-items:center; gap:4px; font-size:var(--fs-2xs); border-radius:9px; padding:1px 8px; line-height:16px; border:1px solid;}
+  .badge svg.lucide{width:10px;height:10px;}
+  .b-ok{background:var(--ok-soft); color:var(--ok); border-color:#cde8d4;}
+  .b-warn{background:var(--warn-soft); color:var(--warn); border-color:var(--warn-line);}
+  .b-accent{background:var(--accent-soft); color:var(--accent-deep); border-color:var(--accent-line);}
+  .b-gray{background:var(--surface-3); color:var(--ink-2); border-color:var(--border);}
+  .b-danger{background:var(--danger-soft); color:var(--danger); border-color:#f3cccc;}
+  .cap{font-size:var(--fs-xs); color:var(--ink-3); margin-top:9px; max-width:1440px; line-height:1.7;}
+  .alt-note{font-size:var(--fs-xs); color:var(--ink-2); background:var(--surface-2); border:1px dashed var(--border-2); border-radius:8px; padding:9px 13px; margin-top:14px; line-height:1.75;}
+  .kv{font-size:var(--fs-xs); color:var(--ink-2); line-height:1.8;}
+  .kv b{color:var(--ink);}
+  table.flat{width:100%; border-collapse:collapse; font-size:var(--fs-sm);}
+  table.flat th{text-align:left; color:var(--ink-3); font-size:var(--fs-xs); font-weight:400; padding:9px 10px; border-bottom:1px solid var(--border-2);}
+  table.flat td{padding:10px; border-bottom:1px solid var(--border); vertical-align:top;}
+  .lvc{display:inline-flex; align-items:center; gap:5px; font-size:10.5px; border-radius:5px; padding:1px 7px; line-height:16px; border:1px solid; white-space:nowrap;}
+  .lv-plug{background:var(--ok-soft); color:var(--ok); border-color:#cde8d4;}
+  .lv-studio{background:var(--warn-soft); color:var(--warn); border-color:var(--warn-line);}
+  .lv-up{background:var(--danger-soft); color:var(--danger); border-color:#f3cccc;}
+  .lv-fork{background:#eef1f4; color:#64748b; border-color:#d5dbe2;}
+  /* 上游占位 */
+  .upstream{border:2px dashed #eac4c4; border-radius:10px; background:#fdf8f8; padding:13px; position:relative;}
+  .upstream .up-cap{display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--danger); margin-bottom:9px;}
+  .up-row{background:#f7eded; border-radius:6px; margin-bottom:6px; padding:8px 10px; font-size:var(--fs-xs); color:#95847f;}
+  /* 空态 */
+  .emptybox{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; gap:12px;}
+  .emptybox .e-t{font-size:var(--fs-base); font-weight:600;}
+  .emptybox .e-s{font-size:var(--fs-xs); color:var(--ink-2); max-width:340px; line-height:1.75;}
+  /* 卡片 */
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:8px; font-size:var(--fs-xs);}
+  .card .c-t{display:flex; align-items:center; gap:7px; font-weight:600; font-size:var(--fs-sm);}
+  .card .c-t .sp{flex:1;}
+  .card .c-b{color:var(--ink-2); margin-top:4px; line-height:1.65;}
+  .card.doing{border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent);}
+  .stepno{width:18px;height:18px;border-radius:50%;background:var(--surface-3);color:var(--ink-2);font-size:10.5px;display:inline-flex;align-items:center;justify-content:center;flex:none;}
+  .doing .stepno{background:var(--accent); color:#fff;}
+  .voice-dots{display:inline-flex; gap:3px;}
+  .voice-dots i{width:6px;height:6px;border-radius:50%;background:var(--border-2);}
+  .voice-dots i.f{background:var(--accent);}
+  .link{color:var(--accent-deep); cursor:pointer; font-size:var(--fs-xs); white-space:nowrap;}
+  .sel{padding:4px 8px; border:1px solid var(--border); border-radius:7px; font-size:var(--fs-xs); color:var(--ink-2); background:var(--surface); display:inline-flex; align-items:center; gap:5px;}
+  .sel svg.lucide{width:11px;height:11px;}
+  .entries{display:grid; grid-template-columns:repeat(4,1fr); gap:10px;}
+  .entry{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:13px 14px; cursor:pointer;}
+  .entry:hover{border-color:var(--accent-line);}
+  .entry h4{font-size:var(--fs-sm); margin:9px 0 3px;}
+  .entry p{font-size:var(--fs-xs); color:var(--ink-2); line-height:1.6;}
+  .spec-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  .spec-card{border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); padding:16px 18px;}
+  .spec-card h4{font-size:var(--fs-sm); margin-bottom:10px; display:flex; align-items:center; gap:8px;}
+  .spec-card .demo{border:1px dashed var(--border-2); border-radius:8px; background:var(--surface-2); padding:12px 14px; margin-top:8px;}
+  .sw{display:flex; gap:10px; flex-wrap:wrap;}
+  .sw .swatch{width:88px; font-size:var(--fs-2xs); color:var(--ink-2); text-align:center;}
+  .sw .swatch i{display:block; height:34px; border-radius:7px; border:1px solid var(--border-2); margin-bottom:4px;}
+  .type-row{display:flex; align-items:baseline; gap:12px; padding:3px 0; border-bottom:1px dashed var(--border);}
+  .type-row .tk{width:130px; font-size:11px; color:var(--ink-3);}
+</style>
+</head>
+<body>
+<div class="board">
+
+<div class="board-head">
+  <h1>NovelFork · 前端预设图 v2.1（对齐现实版）</h1>
+  <div class="meta">2026-10-03 · 依据：对运行中产品的前端取证（全部带源码行号，折叠在 dusty 色块"证据与出处"里）＋ 长篇工坊纪律 ＋ Plottr/OpenWrite 参照。每个元素挂层标，画不出来源的东西不进图；图标统一 lucide（14px 网格 · 1.75 笔画），emoji 不进界面。</div>
+  <div class="legend">
+    <span class="lg-i"><span class="d d-plug"></span>novel-plugin 可改 · 书内工作区（活动栏/侧栏/中央画布/编辑器）</span>
+    <span class="lg-i"><span class="d d-studio"></span>studio 可改 · 外壳路由/全局侧栏/书架/结果卡</span>
+    <span class="lg-i"><span class="d d-up"></span>上游注入点 · 叙述者与 Runtime 原页内部不可动</span>
+    <span class="lg-i"><span class="d d-fork"></span>fork 成本 · 本版图纸不画</span>
+  </div>
+  <div class="verdict"><b>版本史</b>：v1.0 幻想（画了目的地没画地图，把发明当铁律，三步改四步）→ v2.0 真实但像需求表（emoji 当图标、证据喧宾夺主）→ <b>v2.1</b>：真实不动，把"像产品"补回来——lucide 图标系统、icon tile 模具、证据折叠。v1.0 只有两样被保留：空态模板与页头模具，因为只有这两样不违反任何现实。</div>
+</div>
+
+<!-- ============ s0 真实架构 ============ -->
+<div class="screen" id="s0">
+  <div class="screen-head"><div class="idx">0</div><h2>现状架构 · 四层真实结构（取证版）</h2><div class="q">先立住"现在是什么"，再谈改成什么</div></div>
+  <details class="evid"><summary><i data-lucide="paperclip"></i>证据与出处（5 条硬约束 · file:line）</summary><div class="ev-b">
+    <b>L0</b> packages/studio/vite.config.ts:159-163 — Studio 产物直接进 Runtime dist/frontend，单进程伺服<br>
+    <b>L1</b> studio app-next：router.ts:177-201（/next 路由树）、shell/AgentShell.tsx:101-164 ＋ shell/shell-route.ts:144-166（全局侧栏，进书自动折叠 :115）<br>
+    <b>L2</b> novel-plugin：studio RuntimeWritingWorkbenchRoute.tsx:567-604 渲染 IdeWorkbench 并注入 chatSlot → novel-plugin IdeWorkbench.tsx:199-208（SIDEBAR_VIEWS 七个）<br>
+    <b>L3</b> 上游：RuntimeNarratorPanelMount.tsx:57-131 → narrafork-runtime-private/frontend/.../EmbeddedNarratorDockHost.tsx:83-120 → NarratorDock.tsx:31（上游 Mantine 面板）<br>
+    <b>硬约束</b>：①面板内部=上游整树绝不复制（bridge 契约注释原话）；②挂载点被架构测试钉死（product-capability-matrix.test.ts:95-115）；③IdeWorkbench 改它过自家契约测试；④嵌入的 Runtime 原页内部动不了；⑤URL 契约——上游原生路径一律 redirect 进 /next，e2e 钉住。
+  </div></details>
+  <div class="frame tall">
+    <div style="padding:22px 26px;">
+      <table class="flat">
+        <tr><th style="width:15%;">层</th><th style="width:31%;">管什么</th><th style="width:19%;">归属</th><th>对我们意味着什么</th></tr>
+        <tr><td><b>L0 宿主进程</b></td><td>唯一 HTTP/WS 进程，前后端同源（:4567）</td><td><span class="lvc lv-up"><span class="d d-up"></span>上游</span></td><td>不碰；Studio 构建产物直接伺服</td></tr>
+        <tr><td><b>L1 Studio 外壳</b></td><td>登录门、书架/书/叙述者中心/设置外壳、全局侧栏（搜索·套路·知识库·定时任务·学习·市场·设置）</td><td><span class="lvc lv-studio"><span class="d d-studio"></span>studio</span></td><td>侧栏进书自动折叠——书内不该再造一条全局栏（v1.0 单栏设想作废）</td></tr>
+        <tr><td><b>L2 书内工作区</b></td><td>活动栏 + 侧栏面板 + 中央 WorkbenchCanvas（tab/分屏）+ 编辑器</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td><b>重做主战场</b>：导航、树、空态、页头、卡片全在这层，自家码带自家契约测试</td></tr>
+        <tr><td><b>L3 上游嵌入</b></td><td>叙述者面板；搜索/知识库/定时任务/学习整页；providers 设置面板</td><td><span class="lvc lv-up"><span class="d d-up"></span>上游</span></td><td>只有 4 个注入点（结果卡渲染 / 文件拦截 / 配色 / 外壳尺寸）；重画面板内部 = fork 成本</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ s1 导航真相 ============ -->
+<div class="screen" id="s1">
+  <div class="screen-head"><div class="idx">1</div><h2>导航真相：9 个图标只有 7 个是视图</h2><div class="q">收敛方案符合真实的视图模型，不发明第 8、9 个视图</div></div>
+  <details class="evid"><summary><i data-lucide="paperclip"></i>证据与出处（viewId 联合类型 / 两个开关 · file:line）</summary><div class="ev-b">
+    IdeWorkbench.tsx:199-208 SIDEBAR_VIEWS＝写作/资源/搜索/作品基础/故事推进/技能文风/分析工具（七个；use-panel-manager.ts:20-27 联合类型钉死）；<br>
+    「AI 对话」＝ chat 面板开关（:1584-1589 handleChatToggle，渲染 :1855-1884 chatSlot）；「写作设置」＝ showSettings（:1590-1595）——这两个从来不是视图。
+  </div></details>
+  <div class="frame tall">
+    <div style="padding:20px 24px;">
+      <table class="flat">
+        <tr><th style="width:10%;">图标</th><th style="width:17%;">真实身份</th><th style="width:10%;">归属</th><th style="width:36%;">改造处置</th><th>依据/约束</th></tr>
+        <tr><td>写作</td><td>ViewId · WriteViewPanel</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td>保留；重排内部（屏 2）</td><td>三步循环「写/改/收尾」照实保留</td></tr>
+        <tr><td>资源管理器</td><td>ViewId · WorkbenchResourceTree</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td>与「分析工具」合并为「资源」：内部分两 tab——项目树 / 工具树</td><td>两个视图本是同一组件两副节点（:1636-1645 / :1697-1700），合并零成本</td></tr>
+        <tr><td>搜索</td><td>ViewId · SearchPanel</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td>保留原位</td><td>书内全文检索，无改动需求</td></tr>
+        <tr><td>作品基础</td><td>ViewId · CharactersAndLoreSidebarPanel</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td>保留；内部三 tab（角色册/世界录/草案）按页头模具重排（屏 4）</td><td>草案 tab 与统一确认已真实落地</td></tr>
+        <tr><td>故事推进</td><td>ViewId · StorylineAndPlanningSidebarPanel</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td>保留；中央默认已是「下一章」整合页——基本完成，只剩页头/文案对齐（屏 3）</td><td>默认视图已改「下一章」</td></tr>
+        <tr><td>技能文风</td><td>ViewId · SkillsAndStyleSidebarPanel ＋ 中央蒸馏/金库</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td>保留；技能收敛为 8 作者入口＋折叠；内部词翻译（屏 4）</td><td>中央 = StyleDistillationWorkspace/StyleVaultPanel（:1749-1757）</td></tr>
+        <tr><td>分析工具</td><td>ViewId · WorkbenchResourceTree(toolNodes)</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td><b>并入「资源」</b></td><td>——</td></tr>
+        <tr><td>AI 对话</td><td><b>不是视图</b> · chat 面板开关</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>位置</span> <span class="lvc lv-up"><span class="d d-up"></span>内容</span></td><td><b>无需新增</b>——dock 是可拖宽面板，内部 Dockview 自由拆分/合并/重排且布局持久化；候选卡嫌挤：把栏拖宽即可。唯一微增＝dock 头部加「可拖拽」提示</td><td>Allotment.Pane minSize=200（IdeWorkbench.tsx:1855）；NarratorDock.tsx:113-130</td></tr>
+        <tr><td>写作设置</td><td><b>不是视图</b> · showSettings 浮层</td><td><span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></td><td>保持开关；图标加文字「设置」</td><td>——</td></tr>
+      </table>
+      <div class="alt-note">活动栏收敛结果：<b>6 个视图（写作/资源/搜索/作品基础/故事推进/技能文风）＋ 叙述者 ＋ 设置</b>；图标下带文字（现状是纯图标靠 title 悬停——用户原话「点开才知道什么意思」）。全部改动在 novel-plugin，过自家契约测试即可。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ s2 写作视图 ============ -->
+<div class="screen" id="s2">
+  <div class="screen-head"><div class="idx">2</div><h2>写作视图（WriteViewPanel）改造</h2><div class="q">现状"左栈堆信息＋中央大字空态" → 侧栏有页头、中央有正事</div></div>
+  <details class="evid"><summary><i data-lucide="paperclip"></i>证据与出处（file:line）</summary><div class="ev-b">
+    WriteViewPanel 挂点 IdeWorkbench.tsx:1619-1635；三步「写/改/收尾」、罗盘、警告条均在其左栈；中央 = WorkbenchCanvas(:1763)，空态巨字；自动保存已有测试；「改」步自审区块＋交叙述者人文化按钮、编辑器候选面板、选区回写链路均已落地（本轮主线）。
+  </div></details>
+  <div class="frame">
+    <div class="app">
+      <div class="abar">
+        <div class="ab on"><i data-lucide="pen-line"></i>写作</div>
+        <div class="ab"><i data-lucide="folder-open"></i>资源</div>
+        <div class="ab"><i data-lucide="search"></i>搜索</div>
+        <div class="ab"><i data-lucide="boxes"></i>作品</div>
+        <div class="ab"><i data-lucide="compass"></i>推进</div>
+        <div class="ab"><i data-lucide="paintbrush"></i>技能</div>
+        <div class="sp"></div>
+        <div class="ab"><i data-lucide="message-square"></i>叙述者</div>
+        <div class="ab"><i data-lucide="settings"></i>设置</div>
+      </div>
+      <div class="side">
+        <div class="sd-head"><div class="tile"><i data-lucide="pen-line"></i></div><div><div class="t">写作</div><div class="sub">一章的三步：写 → 改 → 收尾 · 当前：第 30 章 · 写作中</div></div></div>
+        <div class="side-scroll">
+          <div class="card doing"><div class="c-t"><span class="stepno">1</span>写 · 第 30 章<span class="sp"></span><span class="badge b-accent">1,240 / 6,000</span></div><div class="c-b">昨天 22:10 停笔 · 蓝图已定（3 场景 · 2 留白）</div><div style="margin-top:7px; display:flex; gap:6px;"><span class="btn btn-xs btn-primary"><i data-lucide="play"></i>继续写</span><span class="btn btn-xs"><i data-lucide="sparkles"></i>生成蓝图</span></div></div>
+          <div class="card"><div class="c-t"><span class="stepno">2</span>改 · 第 29 章<span class="sp"></span><span class="badge b-warn">自审 2 问题</span></div><div class="c-b">段落自审 · 候选对照 · 人文化 ≤10%（均已实现）</div><div style="margin-top:7px; display:flex; gap:6px;"><span class="btn btn-xs">进入改</span><span class="btn btn-xs">交叙述者人文化</span></div></div>
+          <div class="card"><div class="c-t"><span class="stepno">3</span>收尾 · 第 29 章<span class="sp"></span></div><div class="c-b">章后结算 · 入档 · 「重新结算 6 章」未做 <span class="badge b-warn">过期</span></div><div style="margin-top:7px;"><span class="btn btn-xs">去收尾</span></div></div>
+          <div class="sec-t">本章罗盘（降权保留）</div>
+          <div class="card" style="opacity:.85;"><div class="c-b">目标 / 守住 / 避开 / 备注——内容照旧，视觉降为次级；警告条改为徽章（见各卡右上）。</div></div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="page-head">
+          <span class="badge b-ok"><i data-lucide="check"></i>已保存</span><span class="kv">第 30 章 · 未命名 · 1,240 字</span>
+          <div class="sp"></div>
+          <span class="sel"><i data-lucide="list"></i>大纲</span><span class="sel"><i data-lucide="layers"></i>写作注入 8</span><span class="sel"><i data-lucide="zap"></i>模型默认</span>
+        </div>
+        <div class="tabs"><span class="on">第 30 章</span><span class="td" style="padding:7px 4px;"><i data-lucide="plus"></i></span></div>
+        <div class="emptybox" style="max-height:520px;">
+          <div class="tile lg"><i data-lucide="book-open"></i></div>
+          <div class="e-t">这一章还在写，编辑器却不在眼前。</div>
+          <div class="e-s">点「继续写」打开第 30 章编辑器，或从左侧「资源」挑一个文件。<br>（空态模板：还没有 X。做 Y 即可 Z。　替代现状巨字）</div>
+          <div class="btn btn-primary"><i data-lucide="play"></i>继续写第 30 章</div>
+        </div>
+      </div>
+      <div style="width:300px; flex:none; border-left:1px solid var(--border); display:flex; flex-direction:column; background:var(--surface-2);">
+        <div class="sd-head"><div class="tile plain"><i data-lucide="message-square"></i></div><div><div class="t">叙述者 <span class="lvc lv-up"><span class="d d-up"></span>上游面板</span></div><div class="sub">右侧 dock（现状形态）· 内部不可定制</div></div></div>
+        <div class="side-scroll">
+          <div class="upstream">
+            <div class="up-cap"><i data-lucide="lock"></i>上游 Runtime 原始 UI 占位——消息流 / composer / dock 布局不可定制</div>
+            <div class="up-row">（消息流 —— 上游）</div>
+            <div class="up-row">（工具调用行 —— 上游行容器）</div>
+            <div style="border:1px solid var(--accent-line); background:var(--surface); border-radius:8px; padding:9px 11px; font-size:var(--fs-xs);">
+              <div style="font-weight:600; color:var(--accent-deep); display:flex; align-items:center; gap:6px;"><i data-lucide="file-diff"></i>选区改写候选 · 第 30 章<span class="badge b-accent">待你审</span></div>
+              <div style="color:var(--ink-2); margin-top:4px;">原文 / 候选对照 · 应用候选 · 放弃　<span class="lvc lv-studio"><span class="d d-studio"></span>我们的结果卡（已存在）</span></div>
+            </div>
+            <div class="up-row" style="margin-bottom:0;">（composer —— 上游）</div>
+          </div>
+          <div class="kv" style="margin-top:10px;">注入点四个：结果卡渲染 ✔（候选卡已在）/ 文件打开拦截 ✔ / 配色 ✔ / 外壳尺寸。想占更大面积 → 直接把这条栏拖宽（现状能力，见屏 5）。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">改造点：侧栏页头模具（icon tile＋标题＋一句用途＋当前状态）；三步卡动作补齐；警告升级为徽章；中央空态巨字 → 空态模板。<span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span> 叙述者右栏保持现状形态。</div>
+</div>
+
+<!-- ============ s3 故事推进 ============ -->
+<div class="screen" id="s3">
+  <div class="screen-head"><div class="idx">3</div><h2>故事推进视图 —— 已完成 80%，只做对齐</h2><div class="q">整合页已落地且默认；不重画，补页头模具与文案</div></div>
+  <details class="evid"><summary><i data-lucide="paperclip"></i>证据与出处（file:line）</summary><div class="ev-b">
+    StorylineAndPlanningSidebarPanel（IdeWorkbench.tsx:1664-1683）；中央默认已改「下一章」整合视图（焦点卡＋情节板＋伏笔账本四段，测试 6 条过）；「执行」画布含「组建工人团队」；「章后事实」含写作注入区块。
+  </div></details>
+  <div class="frame" style="height:560px;">
+    <div class="app">
+      <div class="abar">
+        <div class="ab"><i data-lucide="pen-line"></i>写作</div><div class="ab"><i data-lucide="folder-open"></i>资源</div><div class="ab"><i data-lucide="search"></i>搜索</div><div class="ab"><i data-lucide="boxes"></i>作品</div><div class="ab on"><i data-lucide="compass"></i>推进</div><div class="ab"><i data-lucide="paintbrush"></i>技能</div>
+        <div class="sp"></div><div class="ab"><i data-lucide="message-square"></i>叙述者</div><div class="ab"><i data-lucide="settings"></i>设置</div>
+      </div>
+      <div class="side">
+        <div class="sd-head"><div class="tile"><i data-lucide="compass"></i></div><div><div class="t">故事推进</div><div class="sub">只回答一个问题：下一章写什么</div></div></div>
+        <div class="side-scroll">
+          <div class="card"><div class="c-t"><span class="badge b-danger">1 超期</span>账本体征</div><div class="c-b">伏笔 8 · 超期 1 / 临近 2 · 弧线冷 1</div></div>
+          <div class="card"><div class="c-t">结算网关 <span class="badge b-warn">6 章过期</span></div><div class="c-b">重新结算后才可信 · <span class="link">去结算</span></div></div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="tabs"><span class="on">下一章</span><span>故事画布<span class="td">浏览</span></span><span>执行<span class="td">工作流</span></span><span>章后事实</span></div>
+        <div class="content">
+          <div style="border:1px solid var(--accent-line); background:linear-gradient(180deg,var(--surface),var(--accent-soft)); border-radius:var(--radius); padding:14px 16px; display:flex; gap:22px; align-items:flex-start;">
+            <div><div class="kv" style="color:var(--ink-3);">当前焦点</div><div style="font-weight:600; display:flex; align-items:center; gap:7px; margin-top:2px;"><i data-lucide="crosshair" style="color:var(--accent-deep);"></i>主线 · 守擂战</div><div class="kv" style="margin-top:4px;">意图：赢，但暴露一个更大的代价</div></div>
+            <div style="flex:1;"></div>
+            <div style="border:1px dashed var(--accent); border-radius:8px; background:var(--surface); padding:9px 13px; font-size:var(--fs-xs); min-width:270px; line-height:1.8;"><b style="color:var(--accent-deep); display:flex; align-items:center; gap:5px;"><i data-lucide="sparkles"></i>下一章建议（数据合成，可改）</b>① 焦点线推进 ② 冷线回暖（苏澄 15 章未动） ③ 回收"测灵盘的容差"（超期 3 章）</div>
+          </div>
+          <div class="alt-note" style="margin-top:12px;">下方为已实现的 Plottr 情节板（停滞行冒顶＋虚线建议格）与伏笔账本四段（超期/临近/近期可用/待埋入，按钮落点=数据操作）。<b>此屏不重画</b>——它是在 v1.0 草图上先实现出来的部分；本板的职责是防止其他视图再长成旧样子。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">剩余工作量：侧栏页头模具化、按钮文案按规范、巨字空态若存在则套模板。<span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span> 小改即完。</div>
+</div>
+
+<!-- ============ s4 作品基础 + 技能文风 ============ -->
+<div class="screen" id="s4">
+  <div class="screen-head"><div class="idx">4</div><h2>作品基础 ／ 技能文风 · 卡面与文案纪律</h2><div class="q">不改组件结构，改"卡上放什么、界面上写什么字"</div></div>
+  <details class="evid"><summary><i data-lucide="paperclip"></i>证据与出处（file:line）</summary><div class="ev-b">
+    作品基础 = CharactersAndLoreSidebarPanel（IdeWorkbench.tsx:1647-1662），三 tab「角色册/世界录/草案」与统一确认已落地（GET /jingwei/staging 清单＋草案面板＋入口徽标）；技能文风 = SkillsAndStyleSidebarPanel ＋中央蒸馏/金库（:1684-1696, 1749-1757）；8 个作者入口技能存在但为"推荐未启用"（纪律：须作者确认，代码注释明文）。
+  </div></details>
+  <div class="frame" style="height:660px;">
+    <div class="app">
+      <div class="abar">
+        <div class="ab"><i data-lucide="pen-line"></i>写作</div><div class="ab"><i data-lucide="folder-open"></i>资源</div><div class="ab"><i data-lucide="search"></i>搜索</div><div class="ab on"><i data-lucide="boxes"></i>作品</div><div class="ab"><i data-lucide="compass"></i>推进</div><div class="ab"><i data-lucide="paintbrush"></i>技能</div>
+        <div class="sp"></div><div class="ab"><i data-lucide="message-square"></i>叙述者</div><div class="ab"><i data-lucide="settings"></i>设置</div>
+      </div>
+      <div class="side">
+        <div class="sd-head"><div class="tile"><i data-lucide="boxes"></i></div><div><div class="t">作品基础</div><div class="sub">这本书的骨头：人物、设定、待确认的草案</div></div></div>
+        <div class="side-scroll">
+          <div style="display:flex; gap:2px; border-bottom:1px solid var(--border); margin-bottom:9px; font-size:var(--fs-xs);">
+            <span style="padding:7px 9px; border-radius:7px 7px 0 0; background:var(--accent-soft); color:var(--accent-deep); font-weight:600;">角色册 18</span>
+            <span style="padding:7px 9px; color:var(--ink-2);">世界录 70</span>
+            <span style="padding:7px 9px; color:var(--ink-2);">草案 <span class="badge b-warn">3</span></span>
+          </div>
+          <div class="card">
+            <div class="c-t"><i data-lucide="user"></i>薛行之 <span class="badge b-accent">主角</span><span class="sp"></span><span class="voice-dots"><i class="f"></i><i class="f"></i><i class="f"></i><i></i></span></div>
+            <div class="c-b">声线 3/4 · 最近出场 第 30 章 · 正式</div>
+          </div>
+          <div class="card">
+            <div class="c-t"><i data-lucide="user"></i>苏澄 <span class="badge b-gray">配角</span><span class="sp"></span><span class="voice-dots"><i class="f"></i><i class="f"></i><i></i><i></i></span></div>
+            <div class="c-b">声线 2/4 · 最近出场 第 15 章 <span class="badge b-warn"><i data-lucide="snowflake"></i>冷</span></div>
+          </div>
+          <div class="alt-note" style="margin-top:6px;">卡面纪律：只放 <b>名称 / 唯一角标 / 状态 / 关键进度（声线点·最近出场章）</b>；从正文刮出的碎句标签（"后出现天灵务局问询室…"）一律不进卡面——走查时点名的问题。</div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="page-head">
+          <div class="tile"><i data-lucide="paintbrush"></i></div>
+          <div><b style="font-size:var(--fs-md);">技能文风</b><div style="font-size:var(--fs-xs); color:var(--ink-2);">技能收敛为「8 个作者入口卡＋其余折叠」；蒸馏/金库中央页不变</div></div>
+          <div class="sp"></div>
+          <div class="btn btn-primary btn-xs"><i data-lucide="flask-conical"></i>跑一次文风蒸馏</div>
+        </div>
+        <div class="content" style="padding-top:16px;">
+          <div class="sec-t" style="padding-top:0;">作者入口 · 8（点卡即交给叙述者执行）</div>
+          <div class="entries">
+            <div class="entry"><div class="tile"><i data-lucide="gauge"></i></div><h4>看进度</h4><p>写到哪、欠什么、下一步</p></div>
+            <div class="entry"><div class="tile"><i data-lucide="feather"></i></div><h4>写下一章</h4><p>按蓝图与工作流写</p></div>
+            <div class="entry"><div class="tile"><i data-lucide="search-check"></i></div><h4>审这一章</h4><p>自审＋对抗审查，带原句出处</p></div>
+            <div class="entry"><div class="tile"><i data-lucide="scissors"></i></div><h4>改这段</h4><p>划词改写 · 候选对照 · ≤10%</p></div>
+            <div class="entry"><div class="tile"><i data-lucide="git-branch"></i></div><h4>伏笔</h4><p>埋点 / 回收 / 账本体检</p></div>
+            <div class="entry"><div class="tile"><i data-lucide="database"></i></div><h4>设定</h4><p>补条目 / 查设定冲突</p></div>
+            <div class="entry"><div class="tile"><i data-lucide="brain"></i></div><h4>写法记忆</h4><p>把这次的写法存成本书资产</p></div>
+            <div class="entry"><div class="tile"><i data-lucide="package"></i></div><h4>导出</h4><p>打包 / 发布格式 / 项目档案</p></div>
+          </div>
+          <div style="border:1px dashed var(--border-2); border-radius:8px; padding:9px 13px; font-size:var(--fs-xs); color:var(--ink-2); margin-top:8px;">其余 23 个技能默认折叠（叙述者自己会调）——纪律：入口技能是<b>推荐≠默认启用</b>，作者确认才点亮；界面显示「推荐启用」，不撒谎。</div>
+          <div class="alt-note"><b>文案翻译表（必做）</b>：查毒 → 敏感内容检查　｜　人文 → 语感体检　｜　惯例 → 本书约定　｜　T2.2/工序名 → 蒸馏/起草　｜　jingwei 条目 → 待确认。内部术语一律不上界面。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">作品基础只动卡面与页头（结构不变）；技能文风做"8 入口收敛＋折叠＋术语翻译"。<span class="lvc lv-plug"><span class="d d-plug"></span>novel-plugin</span></div>
+</div>
+
+<!-- ============ s5 叙述者三住所 ============ -->
+<div class="screen" id="s5">
+  <div class="screen-head"><div class="idx">5</div><h2>叙述者的三个住所 · 哪个能动、动到哪</h2><div class="q">一等公民 = 住得近、可变大；装修不归我们管</div></div>
+  <details class="evid"><summary><i data-lucide="paperclip"></i>证据与出处（file:line）</summary><div class="ev-b">
+    住所①右侧 dock＝chatSlot（IdeWorkbench.tsx:1865，宿主注入 RuntimeWritingWorkbenchRoute.tsx:581-590）——现状已存在；<b>住所②拖拽布局（现有，无需新增）</b>——dock 宽度可拖（IdeWorkbench.tsx:1855 Allotment.Pane minSize=200），内部面板拆分/合并/重排、布局持久化、拖拽时会话与滚动位置存活（NarratorDock.tsx:113-130）；住所③整页路由 /next/narrators/$sessionId（router.ts:26-29）——现状已存在。<br>
+    注入点：toolResultRenderer（我们的结果卡，已在）/ onOpenFile / colorScheme / compact（RuntimeNarratorPanelMount.tsx:57-131）；唯一桥被测试钉死（product-capability-matrix.test.ts:95-115）。
+  </div></details>
+  <div class="frame" style="height:560px;">
+    <div style="display:flex; height:100%;">
+      <div style="flex:1; border-right:1px solid var(--border); padding:18px 20px; display:flex; flex-direction:column;">
+        <div class="kv" style="display:flex; align-items:center; gap:8px;"><div class="tile plain"><i data-lucide="panel-right"></i></div><b>住所① 右侧 dock（现状）</b> <span class="lvc lv-up"><span class="d d-up"></span>内部上游</span></div>
+        <div class="upstream" style="margin-top:10px; flex:1;">
+          <div class="up-cap"><i data-lucide="lock"></i>上游原始 UI 占位——内部结构不可定制</div>
+          <div class="up-row">消息流（上游）</div>
+          <div class="up-row" style="margin-bottom:0;">输入框（上游）</div>
+        </div>
+      </div>
+      <div style="flex:1; border-right:1px solid var(--border); padding:18px 20px; display:flex; flex-direction:column;">
+        <div class="kv" style="display:flex; align-items:center; gap:8px;"><div class="tile"><i data-lucide="move-horizontal"></i></div><b>住所② 拖宽 · 重排（现有，不是新功能）</b> <span class="lvc lv-plug"><span class="d d-plug"></span>宿主具备</span></div>
+        <div style="margin-top:10px; flex:1; display:flex; flex-direction:column; gap:8px;">
+          <div class="kv" style="background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; line-height:1.9;">
+            <b>① 拖宽这条栏</b>：分隔条左拖，minSize 200、默认 320（IdeWorkbench.tsx:1855）<br>
+            <b>② 面板重排</b>：chat / 工具面板可拆分·合并·换位，布局持久化；拖拽时会话与滚动位置不丢（NarratorDock.tsx:113-130）<br>
+            <b>③ 已知边界</b>：拖放只认这一块 dock 内部（surfaceId 限定）——跨进中央画布不支持，若要支持再单独立项评估
+          </div>
+          <div style="border:1px solid var(--accent-line); background:var(--surface); border-radius:8px; padding:9px 11px; font-size:var(--fs-xs);">
+            <b style="color:var(--accent-deep); display:flex; align-items:center; gap:6px;"><i data-lucide="file-diff"></i>整章修订候选 · 第 30 章</b> <span class="badge b-accent">待你审</span>
+            <div style="color:var(--ink-2); margin-top:4px;">Before/After 并排、逐条采用/放弃、防覆盖闸——<b>栏一拖宽，对照卡就舒展</b>（studio 注册，已存在）</div>
+          </div>
+          <div class="kv" style="color:var(--ink-3);">唯一微增项：dock 头部加一句「可拖拽调宽 / 面板可重排」提示——能力一直在，只是没人告诉用户。</div>
+        </div>
+      </div>
+      <div style="width:300px; flex:none; padding:18px 20px;">
+        <div class="kv" style="display:flex; align-items:center; gap:8px;"><div class="tile plain"><i data-lucide="book-open"></i></div><b>住所③ 叙述者整页（现状）</b> <span class="lvc lv-studio"><span class="d d-studio"></span>studio</span></div>
+        <div class="kv" style="margin-top:9px; color:var(--ink-3);">/next/narrators/$sessionId——多任务管理、历史会话、工作流长跑时住这。</div>
+        <div class="alt-note" style="margin-top:14px;"><b>分工</b>：写作中扫一眼 → ①；审候选/看大段工具输出 → ②（更宽，结果卡舒展）；翻历史/管多叙述者 → ③。<br><br><b>红线</b>：不画消息气泡、不重排 composer——那是上游的脸。想动内部，先单独立项评估 fork 成本，不在本板。</div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">结论修正：「固定为中央 tab」不做——现有拖拽已覆盖（用户提醒后核实，板子曾把它误当新需求；较早前"自绘聊天工作台"的 v1.0 方案已废）。剩余动作只有一句「可拖拽」提示。</div>
+</div>
+
+<!-- ============ s6 规范区 ============ -->
+<div class="screen" id="s6">
+  <div class="screen-head"><div class="idx">6</div><h2>规范区 · 七条验收尺</h2><div class="q">每实现一处，按这七条走查</div></div>
+  <div class="frame tall">
+    <div style="padding:24px 28px;">
+      <div class="spec-grid">
+        <div class="spec-card">
+          <h4><span class="stepno">1</span>页头模具（侧栏与中央页都要有）</h4>
+          <div class="demo">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="tile"><i data-lucide="compass"></i></div>
+              <div><b style="font-size:var(--fs-md);">面板名</b><div style="font-size:var(--fs-xs); color:var(--ink-2);">一句用途——替你回答什么问题</div></div>
+              <div style="flex:1;"></div>
+              <div class="btn btn-xs">次要</div><div class="btn btn-primary btn-xs">主</div>
+            </div>
+          </div>
+          <div class="kv">主按钮每区 ≤1 个，其余描边；icon tile（软底＋lucide）是页头与卡片的统一开头。</div>
+        </div>
+        <div class="spec-card">
+          <h4><span class="stepno">2</span>空态模板（禁巨字、禁纯图标）</h4>
+          <div class="demo" style="text-align:center; padding:20px;">
+            <div class="tile lg" style="margin:0 auto 10px;"><i data-lucide="book-open"></i></div>
+            <div style="font-size:var(--fs-sm); font-weight:600;">还没有打开章节。</div>
+            <div style="font-size:var(--fs-xs); color:var(--ink-2); margin-top:4px;">从「资源」挑一个文件，或直接写下一章。</div>
+            <div class="btn btn-primary btn-xs" style="margin-top:10px;"><i data-lucide="play"></i>写下一章</div>
+          </div>
+          <div class="kv">句式「还没有 X。做 Y 即可 Z。」＋ icon tile ＋ 一个主按钮。</div>
+        </div>
+        <div class="spec-card">
+          <h4><span class="stepno">3</span>图标系统（v2.1 新增，防 emoji）</h4>
+          <div class="demo" style="display:flex; gap:14px; flex-wrap:wrap; color:var(--ink-2);">
+            <i data-lucide="pen-line"></i><i data-lucide="folder-open"></i><i data-lucide="search"></i><i data-lucide="boxes"></i><i data-lucide="compass"></i><i data-lucide="paintbrush"></i><i data-lucide="message-square"></i><i data-lucide="settings"></i><i data-lucide="file-diff"></i><i data-lucide="sparkles"></i><i data-lucide="git-branch"></i><i data-lucide="brain"></i><i data-lucide="package"></i><i data-lucide="gauge"></i><i data-lucide="search-check"></i><i data-lucide="scissors"></i>
+          </div>
+          <div class="kv"><b>lucide 唯一图标源</b>：14px 网格、1.75 笔画、currentColor 着墨；emoji 一律不进界面（只能出现在用户正文里）。实现时接 studio 现有图标依赖，没有就加 lucide-react——先查依赖再装。</div>
+        </div>
+        <div class="spec-card">
+          <h4><span class="stepno">4</span>颜色与字号</h4>
+          <div class="sw">
+            <div class="swatch"><i style="background:#0f766e;"></i>accent 主按钮/选中</div>
+            <div class="swatch"><i style="background:#e5f3f0;"></i>accent-soft</div>
+            <div class="swatch"><i style="background:#b45309;"></i>warn</div>
+            <div class="swatch"><i style="background:#b91c1c;"></i>danger</div>
+            <div class="swatch"><i style="background:#15803d;"></i>ok</div>
+            <div class="swatch"><i style="background:#f7f6f2;"></i>surface 底</div>
+          </div>
+          <div class="type-row" style="margin-top:8px;"><span class="tk">text-2xs · 11</span><span style="font-size:11px;">角标、字数</span></div>
+          <div class="type-row"><span class="tk">text-xs · 12</span><span style="font-size:12px;">副信息、徽章</span></div>
+          <div class="type-row"><span class="tk">text-sm · 13</span><span style="font-size:13px;">导航、按钮</span></div>
+          <div class="type-row"><span class="tk">text-base · 14</span><span style="font-size:14px;">界面正文</span></div>
+          <div class="type-row" style="border-bottom:none;"><span class="tk">editor · 16.5</span><span style="font-size:16.5px;">纸面正文（行长 ≤42 字）</span></div>
+        </div>
+        <div class="spec-card">
+          <h4><span class="stepno">5</span>层标纪律（防幻想复发）</h4>
+          <div class="kv">
+            <span class="d d-plug"></span> novel-plugin：导航/侧栏/中央画布/空态/卡片——主战场，过自家契约测试<br>
+            <span class="d d-studio"></span> studio：外壳/路由/全局侧栏/结果卡——注意 e2e 契约（/next 重定向）<br>
+            <span class="d d-up"></span> 上游：只用 4 个注入点；<b>任何"重画面板内部"的设计稿一律退回</b><br>
+            <span class="d d-fork"></span> fork：板上不画；真要动上游，单独立项
+          </div>
+        </div>
+        <div class="spec-card">
+          <h4><span class="stepno">6</span>文案纪律（只说作者语言）</h4>
+          <div class="kv">
+            内部词禁用（翻译表见屏 4）；按钮一律动词（"去确认""排进第 30 章"）；<br>
+            AI 原则写进文案（"AI 识别结果须逐条确认"）；<br>
+            推荐≠启用——入口技能显示「推荐启用」，不撒谎。
+          </div>
+        </div>
+      </div>
+      <div class="alt-note" style="margin-top:18px;"><b>⑦ 响应式与发版验收</b>：桌面 1440 基准；窄屏 760 活动栏收成纯图标、侧栏改抽屉（照 IdeWorkbench 现有机能评估后实现，不发明新机制）；每屏按 1440 / 760 两档截图存档后发版；360 极窄不承诺。</div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center; color:var(--ink-3); font-size:var(--fs-xs); margin-top:20px;">
+  NovelFork 前端预设图 v2.1（对齐现实版）· 走查顺序：屏 1 导航 → 屏 2 写作 → 屏 3 对齐 → 屏 4 卡面文案 → 屏 5 住法确认（无新增） · 全部在 novel-plugin / studio 层内完成，不触碰上游
+</div>
+
+</div>
+<script>if (window.lucide) { lucide.createIcons({ attrs: { 'stroke-width': 1.75 } }); }</script>
+</body>
+</html>
