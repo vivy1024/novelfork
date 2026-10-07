@@ -68,9 +68,21 @@ export interface NarrativeStructurePayload {
   readonly entities: readonly NarrativeEntityInfo[];
 }
 
+/** 章节文件索引（chapters/index.json）里的一章：正式章节的现行权威源。 */
+export interface NarrativeChapterFileInput {
+  readonly number: number;
+  readonly title: string;
+  readonly wordCount: number;
+}
+
 export interface BuildNarrativeStructureOptions {
   /** 已解析的伏笔阈值；不传用默认值。 */
   readonly foreshadowThresholds?: ForeshadowDebtThresholds;
+  /**
+   * 章节文件索引。正式章节早已改存 chapters/ 下的文件（writing_resource 表只剩旧书的遗留行），
+   * 不传这份索引时新书的章节列表永远为空、当前章永远是 0，伏笔悬置章数与剧情线停滞全部算错。
+   */
+  readonly chapterFiles?: readonly NarrativeChapterFileInput[];
 }
 
 function safeJsonParse<T>(raw: string | null | undefined): T | null {
@@ -139,11 +151,18 @@ function extractVolumes(storage: StorageDatabase, bookId: string): NarrativeVolu
 }
 
 /**
- * 提取已采纳章节列表及其张力评分。
+ * 提取正式章节列表及其张力评分。
+ *
+ * 章节以文件索引为准；writing_resource 里还没迁成文件的旧行只补索引里没有的章号
+ * （与 WritingResourceService.list 合并两处存储的口径一致），已软删的行不算。
  */
-function extractChapters(storage: StorageDatabase, bookId: string): NarrativeChapterInfo[] {
+function extractChapters(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterFiles: readonly NarrativeChapterFileInput[] = [],
+): NarrativeChapterInfo[] {
   try {
-    const rows = storage.sqlite
+    const legacyRows = storage.sqlite
       .prepare<{
         chapter_number: number;
         title: string;
@@ -152,10 +171,26 @@ function extractChapters(storage: StorageDatabase, bookId: string): NarrativeCha
       }>(`
         SELECT chapter_number, title, status, length(content) AS word_count
         FROM writing_resource
-        WHERE book_id = ? AND type = 'chapter' AND status = 'accepted'
+        WHERE book_id = ? AND type = 'chapter' AND status = 'accepted' AND deleted_at IS NULL
+          AND chapter_number IS NOT NULL
         ORDER BY chapter_number ASC
       `)
       .all(bookId);
+
+    const byNumber = new Map<number, { chapter_number: number; title: string; status: string; word_count: number }>();
+    for (const row of legacyRows) {
+      if (!byNumber.has(row.chapter_number)) byNumber.set(row.chapter_number, row);
+    }
+    for (const file of chapterFiles) {
+      if (!Number.isInteger(file.number) || file.number < 1) continue;
+      byNumber.set(file.number, {
+        chapter_number: file.number,
+        title: file.title,
+        status: "accepted",
+        word_count: Number.isFinite(file.wordCount) ? file.wordCount : 0,
+      });
+    }
+    const rows = [...byNumber.values()].sort((left, right) => left.chapter_number - right.chapter_number);
 
     // 尝试联合张力评分
     const tensionScores = new Map<number, number>();
@@ -279,7 +314,7 @@ export function buildNarrativeStructure(
   options: BuildNarrativeStructureOptions = {},
 ): NarrativeStructurePayload {
   const foreshadowThresholds = options.foreshadowThresholds ?? DEFAULT_FORESHADOW_DEBT_THRESHOLDS;
-  const chapters = extractChapters(storage, bookId);
+  const chapters = extractChapters(storage, bookId, options.chapterFiles);
   const currentChapter = chapters.length > 0
     ? Math.max(...chapters.map((c) => c.number))
     : 0;

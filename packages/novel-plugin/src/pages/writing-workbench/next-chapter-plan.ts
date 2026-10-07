@@ -11,6 +11,9 @@
  *  2. 最长停滞线：chaptersSinceLastBeat 最大的活跃线（带真实停滞数字）；
  *  3. 若 1、2 是同一条线，只出一条；有两条才并列。
  * 最早到期的伏笔附进建议。没有剧情线时给「先建剧情线」的引导而不是空建议。
+ *
+ * 这是「下一章写什么 / 该收哪条伏笔」的唯一规则：故事画布「下一章」页与故事推进侧栏的
+ * 下一步卡都引用同一份计划与同一句建议（describeNextChapterSuggestion），不另算第二套。
  */
 
 import type { NarrativeScene } from "../../engine/narrative-memory/scene-store.js";
@@ -109,8 +112,9 @@ export function buildNextChapterPlan(input: {
   const watch = input.foreshadows
     .filter((debt) => debt.urgency === "watch")
     .sort((a, b) => pending(b) - pending(a));
+  // 「近期可用」是还开着、能排进下一章的伏笔；已回收的债 urgency 也是 ok，但不能再拿来排。
   const healthy = input.foreshadows
-    .filter((debt) => debt.urgency === "ok")
+    .filter((debt) => debt.urgency === "ok" && debt.status !== "paid_off")
     .sort((a, b) => pending(b) - pending(a));
 
   const lanes = laneStats({ storylines: input.storylines, scenes: input.scenes, mounts: input.mounts, currentChapter });
@@ -164,4 +168,36 @@ export function buildNextChapterPlan(input: {
     healthy,
     narrativeSummary: `共 ${input.storylines.length} 条剧情线 · ${input.scenes.length} 个场景 · ${input.foreshadows.length} 条伏笔`,
   };
+}
+
+const STORYLINE_KIND_LABEL: Readonly<Record<string, string>> = {
+  main: "主线",
+  sub: "支线",
+  romance: "感情线",
+  faction: "势力线",
+  mystery: "悬疑线",
+  "character-arc": "人物成长",
+  conflict: "矛盾线",
+  character: "人物线",
+  foreshadow: "伏笔线",
+  other: "其他",
+};
+
+/** 剧情线类型的作者语言；认不出的原样显示。 */
+export function storylineKindLabel(kind: string): string {
+  return STORYLINE_KIND_LABEL[kind] ?? kind;
+}
+
+/**
+ * 下一章建议的一句话：「下一章建议：第 N 章 · 主线「…」（焦点点名）· 顺手回收「…」」。
+ * 画布「下一章」页的建议行与侧栏下一步卡共用这一句，口径只有一处。
+ */
+export function describeNextChapterSuggestion(plan: NextChapterPlan): string {
+  const lanes = !plan.hasStorylines
+    ? " · 还没有剧情线"
+    : plan.suggestions.length > 0
+      ? ` · ${plan.suggestions.map((s) => `${storylineKindLabel(s.laneKind)}「${s.laneTitle}」（${s.reasonText}）`).join("；")}`
+      : " · 活跃剧情线都在推进中";
+  const hook = plan.hookPlan.length > 0 ? ` · 顺手回收「${plan.hookPlan[0]!.debt.title}」` : "";
+  return `下一章建议：第 ${plan.nextChapter} 章${lanes}${hook}`;
 }

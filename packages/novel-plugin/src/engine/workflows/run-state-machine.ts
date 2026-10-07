@@ -288,7 +288,7 @@ export function createRunState(recipe: WorkflowGraphRecipe): WorkflowTransition 
       "graph-invalid",
       `工作流「${recipe.name}」的结构有 ${issues.length} 处问题，无法运行：${first.what}`,
       first.why,
-      `到「故事推进 › 执行」的画布上修好后再启动（${first.action}）`,
+      `到「写作 › 工作流」的画布上修好后再启动（${first.action}）`,
     );
   }
   if (!stepNodes(recipe).some((step) => step.enabled)) {
@@ -310,7 +310,7 @@ function staleStep(stepId: string, state: WorkflowRunState): WorkflowTransition 
     "stale-step",
     `工序 ${stepId} 现在不能这样操作（进行中：${active.join("、") || "无"}）`,
     "只能操作正在进行或等待确认的工序，旧工序的操作多半来自过期的页面或模型记错了进度",
-    "重新读取运行状态（叙述者调用 workflow_get_current_step，作者刷新「执行」页）后再操作",
+    "重新读取运行状态（叙述者调用 workflow_get_current_step，作者刷新「工作流」页）后再操作",
   );
 }
 
@@ -321,7 +321,7 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
       "run-finished",
       `这个运行已${state.status === "done" ? "完成" : "取消"}`,
       "已结束的运行不再接受任何操作",
-      "如需继续，请在「故事推进 › 执行」重新启动一个运行",
+      "如需继续，请在「写作 › 工作流」重新启动一个运行",
     );
   }
 
@@ -381,7 +381,7 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
             "not-accepting-output",
             `工序「${current.label}」现在不接收产物`,
             "上一份产物正在等作者确认，此时再交会让作者审的内容和最终落盘的对不上",
-            "停止产出，等待作者在「执行」页确认或打回",
+            "停止产出，等待作者在「工作流」页确认或打回",
           );
         }
         return staleStep(current.stepId, state);

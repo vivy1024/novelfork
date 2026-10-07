@@ -1,7 +1,7 @@
 /**
  * 创作工作流运行的作者侧接口：启动、查看、批准、打回、重试、跳过、取消。
  *
- * 叙述者侧只经工具（workflow.*）交互；这里只服务「故事推进 › 执行」页。
+ * 叙述者侧只经工具（workflow.*）交互；这里只服务「写作 › 工作流」页。
  * 叙述者归属必须由宿主校验（authorizeNarrator），不接受任意 narratorId；
  * 运行必须属于路径上的书，否则一律 404，不泄露别的书的运行。
  * 所有变更都要带 expectedRevision：作者与叙述者会并发操作同一个运行，错配返回 409。
@@ -113,7 +113,7 @@ export function createWorkflowRunsRouter(options: CreateWorkflowRunsRouterOption
     return c.json(errorBody("run-not-found", {
       what: "找不到这个运行",
       why: "运行不存在，或不属于这本书",
-      action: "刷新「执行」页后重试",
+      action: "刷新「工作流」页后重试",
     }), 404);
   }
 

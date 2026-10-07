@@ -522,7 +522,7 @@ function collectDueHooks(storage: StorageDatabase, bookId: string, currentChapte
     });
     const due = selectDueHooks(inputs, currentChapter).map((hook) => ({
       title: hook.title,
-      excerpt: hook.seedText ?? "（无种子文本，详见伏笔看板）",
+      excerpt: hook.seedText ?? "（无种子文本，详见经纬里的伏笔条目）",
       dueChapter: hook.dueChapter,
     }));
     // 已触发未兑现：阶段由经纬伏笔条目 + 关联的已应用 hook 事件派生（见 foreshadow-states）

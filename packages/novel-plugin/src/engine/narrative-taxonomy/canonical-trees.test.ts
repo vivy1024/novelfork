@@ -89,6 +89,30 @@ describe("buildChapterForkTree 章节分叉", () => {
     expect(forest.root.children.map((node) => node.chapterNumber)).toEqual([1, 2]);
   });
 
+  it("给了已写章节：标题用作者起的章名，摘要挂详情；写了没摘要与规划未写分开标", () => {
+    const forest = buildChapterForkTree({
+      entries: settingEntries,
+      volumes,
+      writtenChapters: [{ number: 1, title: "归档" }, { number: 2, title: "追查" }],
+    });
+    const chapters = forest.root.children[0]!.children.filter((node) => node.kind === "chapter");
+    expect(chapters.map((node) => [node.label, node.subtitle ?? null])).toEqual([
+      ["第 1 章 归档", null],
+      ["第 2 章 追查", null],
+      ["第 3 章", "未写"],
+    ]);
+    expect(chapters[0]!.detail).toBe("接手异常");
+  });
+
+  it("没有卷纲也没有章摘要、但已有章节时按章平铺，而不是显示空树", () => {
+    const forest = buildChapterForkTree({ writtenChapters: [{ number: 2, title: "旧站台" }, { number: 1, title: "雨夜" }] });
+    expect(forest.emptyReason).toBeUndefined();
+    expect(forest.root.children.map((node) => [node.label, node.subtitle])).toEqual([
+      ["第 1 章 雨夜", "尚无摘要"],
+      ["第 2 章 旧站台", "尚无摘要"],
+    ]);
+  });
+
   it("outline 条目 fields.volumes 也能当卷纲", () => {
     const forest = buildChapterForkTree({
       entries: [
@@ -114,6 +138,15 @@ describe("buildTimelineTree 发展历程", () => {
     expect(chapter1.children[0]!.children.map((node) => node.id)).toEqual(["event:e2"]);
     const chapter2 = forest.root.children.find((node) => node.chapterNumber === 2)!;
     expect(chapter2.children.map((node) => node.id)).toEqual(["event:e3"]);
+  });
+
+  it("给了已写章节时，章用作者起的章名标，不用摘要条目的「第N章」标题", () => {
+    const forest = buildTimelineTree({
+      entries: settingEntries,
+      events,
+      writtenChapters: [{ number: 1, title: "雨夜" }, { number: 2, title: "旧站台" }],
+    });
+    expect(forest.root.children.map((node) => node.label)).toEqual(["第 1 章 雨夜", "第 2 章 旧站台"]);
   });
 
   it("没有事件时给可执行空态", () => {

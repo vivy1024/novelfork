@@ -4,7 +4,7 @@ import type { ForeshadowDebt } from "../../engine/narrative-taxonomy/foreshadow-
 import type { NarrativeScene, NarrativeStoryline } from "../../engine/narrative-memory/scene-store.js";
 import type { SceneStorylineMount } from "../../engine/narrative-memory/scene-store.js";
 
-import { buildNextChapterPlan } from "./next-chapter-plan";
+import { buildNextChapterPlan, describeNextChapterSuggestion, storylineKindLabel } from "./next-chapter-plan";
 
 function storyline(overrides: Partial<NarrativeStoryline>): NarrativeStoryline {
   return {
@@ -151,6 +151,18 @@ describe("下一章计划组装", () => {
     expect(plan.hookPlan[0]!.headline).toContain("15 章");
   });
 
+  it("已回收的伏笔不进「近期可用」：它没法再排进下一章", () => {
+    const plan = buildNextChapterPlan({
+      chapters: [{ number: 7 } as never],
+      scenes: [],
+      storylines: [],
+      mounts: [],
+      foreshadows: [debt("open", "ok", 1), { ...debt("paid", "ok"), status: "paid_off", reason: "已标记回收" }],
+      focus: null,
+    });
+    expect(plan.healthy.map((d) => d.id)).toEqual(["open"]);
+  });
+
   it("已完结（resolved）与已放弃的剧情线不出现在建议里", () => {
     const active = storyline({ id: "a", name: "活跃" });
     const done = storyline({ id: "d", name: "完结", lifecycle: "resolved" });
@@ -166,5 +178,52 @@ describe("下一章计划组装", () => {
       currentChapter: 12,
     });
     expect(plan.suggestions.every((suggestion) => suggestion.storylineId !== "d")).toBe(true);
+  });
+});
+
+describe("下一章建议的一句话（画布与侧栏共用）", () => {
+  it("有建议线与到期伏笔：列出建议线并附最先到期的伏笔", () => {
+    const main = storyline({ id: "main", kind: "main", name: "夺回师门" });
+    const romance = storyline({ id: "rom", kind: "romance", name: "与沈遥" });
+    const plan = buildNextChapterPlan({
+      chapters: [{ number: 12 } as never],
+      scenes: [scene("s10", 10), scene("s2", 2)],
+      storylines: [main, romance],
+      mounts: [mount("s10", "main"), mount("s2", "rom")],
+      foreshadows: [debt("a", "watch", 6), debt("b", "overdue", 13)],
+      focus: { goal: "让主线退一档" },
+      currentChapter: 12,
+    });
+    expect(describeNextChapterSuggestion(plan)).toBe(
+      "下一章建议：第 13 章 · 主线「夺回师门」（焦点点名）；感情线「与沈遥」（已 10 章未推进） · 顺手回收「伏笔 b」",
+    );
+  });
+
+  it("活跃线都在推进、没有到期伏笔时如实说明；没有剧情线时直说还没有", () => {
+    const quiet = buildNextChapterPlan({
+      chapters: [{ number: 3 } as never],
+      scenes: [],
+      storylines: [storyline({ id: "main", lifecycle: "resolved" })],
+      mounts: [],
+      foreshadows: [debt("c", "ok", 1)],
+      focus: null,
+      currentChapter: 3,
+    });
+    expect(describeNextChapterSuggestion(quiet)).toBe("下一章建议：第 4 章 · 活跃剧情线都在推进中");
+
+    const empty = buildNextChapterPlan({
+      chapters: [{ number: 3 } as never],
+      scenes: [],
+      storylines: [],
+      mounts: [],
+      foreshadows: [debt("d", "overdue", 14)],
+      focus: null,
+    });
+    expect(describeNextChapterSuggestion(empty)).toBe("下一章建议：第 4 章 · 还没有剧情线 · 顺手回收「伏笔 d」");
+  });
+
+  it("剧情线类型用作者语言，认不出的原样显示", () => {
+    expect(storylineKindLabel("romance")).toBe("感情线");
+    expect(storylineKindLabel("custom-kind")).toBe("custom-kind");
   });
 });

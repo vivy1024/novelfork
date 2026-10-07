@@ -97,7 +97,8 @@ describe("CanonicalTreesPanel 四张正图", () => {
     render(<CanonicalTreesPanel bookId="book-1" />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
     expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("worldview");
-    expect(screen.getByTestId("tidy-tree-row-dimension:story")).toBeTruthy();
+    // React Flow 量完尺寸才挂节点；满载跑全套时会晚一拍，等它出现而不是同步取。
+    expect(await screen.findByTestId("tidy-tree-row-dimension:story")).toBeTruthy();
   });
 
   it("人物关系页签画按实体 id 连边的焦点网络，不再是共现生成树", async () => {
@@ -203,6 +204,44 @@ describe("CanonicalTreesPanel 四张正图", () => {
     });
     render(<CanonicalTreesPanel bookId="book-1" />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-degraded")).toBeTruthy());
+  });
+
+  it("有叙事结构快照时，世界观、发展历程、章节脉络照样有数据；章节树用作者起的章名", async () => {
+    // 回归：此前快照路径只把卷传给建树，这三棵树永远是空的，章节树每章都是「尚无摘要」。
+    fetchJson.mockImplementation(async (url: string) => {
+      if (url.endsWith("/narrative-structure")) {
+        return {
+          ok: true,
+          bookId: "book-1",
+          currentChapter: 2,
+          volumes: [{ id: "vol-1", title: "西京篇", chapterRange: { from: 1, to: 3 }, status: "active", goal: "" }],
+          chapters: [
+            { number: 1, title: "归档", status: "accepted", wordCount: 10 },
+            { number: 2, title: "追查", status: "accepted", wordCount: 10 },
+          ],
+          scenes: [], storylines: [], mounts: [], foreshadows: [], entities: [],
+          foreshadowThresholds: { watchChapters: 5, overdueChapters: 12 },
+        };
+      }
+      if (url.includes("narrative-memory/graph")) {
+        return { facts: [], events: [{ id: "e1", chapterNumber: 1, subject: "薛行之", predicate: "接手", object: "异常", eventType: "character_state_changed" }] };
+      }
+      return { entries };
+    });
+    render(<CanonicalTreesPanel bookId="book-1" />);
+    await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
+    expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("worldview");
+    expect(screen.queryByText(/经纬里还没有条目/)).toBeNull();
+
+    fireEvent.click(screen.getByTestId("canonical-tree-tab-chapters"));
+    expect(screen.getByText("第 2 章 追查")).toBeTruthy();
+    expect(screen.getByTestId("tidy-tree-row-chapter:3")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("canonical-tree-tab-timeline"));
+    expect(screen.getByTestId("tidy-tree-row-event:e1")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("canonical-tree-tab-chronicle"));
+    expect(screen.getByTestId("tidy-tree-row-chronicle:surface")).toBeTruthy();
   });
 
   it("kinds 属性支持按镜头精确筛选展示的子树集合", async () => {

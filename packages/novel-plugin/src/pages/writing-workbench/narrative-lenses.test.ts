@@ -27,9 +27,9 @@ describe("narrative-lenses 4 大叙事镜头与面板归属", () => {
     }
   });
 
-  it("50 个面板全部明确归入镜头，且无未归类面板", () => {
-    // 50 个面板清单（下线废弃画布后保持核心精炼）
-    expect(PANEL_CLASSIFICATIONS.length).toBeGreaterThanOrEqual(47);
+  it("面板全部明确归入镜头，且无未归类面板", () => {
+    // 面板清单（下线废弃画布、删除从未挂载的组件与伏笔看板 / 进度账本后保持核心精炼）
+    expect(PANEL_CLASSIFICATIONS.length).toBeGreaterThanOrEqual(46);
 
     const names = new Set<string>();
     for (const item of PANEL_CLASSIFICATIONS) {
@@ -60,12 +60,12 @@ describe("narrative-lenses 4 大叙事镜头与面板归属", () => {
     expect(lorePanels.some((p) => p.panel === "JingweiCanonPanel")).toBe(true);
     expect(lorePanels.some((p) => p.panel === "CanonicalTreesPanel")).toBe(true);
 
-    // 推：StoryProgressBoard, TensionCurvePanel, ForeshadowingBoard 等
+    // 推：StoryProgressBoard, TensionCurvePanel 等（伏笔看板已删，伏笔只在故事画布「下一章」的伏笔账本）
     expect(progressionPanels.some((p) => p.panel === "StoryProgressBoard")).toBe(true);
     expect(progressionPanels.some((p) => p.panel === "TensionCurvePanel")).toBe(true);
 
-    // 审：AiTasteReport, CompliancePanel, NarrativeConsistencyPanel 等
-    expect(auditPanels.some((p) => p.panel === "AiTasteReport")).toBe(true);
+    // 审：CompliancePanel, NarrativeConsistencyPanel 等
+    expect(auditPanels.some((p) => p.panel === "NarrativeConsistencyPanel")).toBe(true);
     expect(auditPanels.some((p) => p.panel === "CompliancePanel")).toBe(true);
   });
 
@@ -79,6 +79,11 @@ describe("narrative-lenses 4 大叙事镜头与面板归属", () => {
     expect(retiredNames).toContain("StoryProgressionCanvas.network");
     expect(retiredNames).toContain("NarrativeMemoryGraphWorkspace");
     expect(retiredNames).toContain("StoryTreePanel");
+    // 故事推进减法：伏笔看板、侧栏进度账本与故事画布子页签、画布「执行」视图已下线
+    expect(retiredNames).toContain("ForeshadowingBoard（伏笔看板）");
+    expect(retiredNames).toContain("StorylineAndPlanningSidebarPanel.foreshadowing（进度账本）");
+    expect(retiredNames).toContain("StorylineAndPlanningSidebarPanel.canvas（故事画布子页签）");
+    expect(retiredNames).toContain("StoryProgressionCanvas.workflow（执行）");
 
     for (const entry of RETIRED_DUPLICATE_ENTRIES) {
       expect(entry.replacement.trim().length).toBeGreaterThan(0);
@@ -86,11 +91,20 @@ describe("narrative-lenses 4 大叙事镜头与面板归属", () => {
     }
   });
 
+  it("已删除的组件不再登记在面板清单里", () => {
+    const names = PANEL_CLASSIFICATIONS.map((item) => item.panel);
+    for (const removed of ["ImportWizard", "AiTasteReport", "CheckpointPanel", "ComplianceViolationCard", "ForeshadowingBoard", "LedgerProgressTable"]) {
+      expect(names).not.toContain(removed);
+    }
+  });
+
   it("辅助查找函数准确可靠", () => {
     expect(getLensForPanel("ChapterEditor")).toBe("write");
     expect(getLensForPanel("CanonicalTreesPanel")).toBe("lore");
     expect(getLensForPanel("StoryProgressBoard")).toBe("progression");
-    expect(getLensForPanel("AiTasteReport")).toBe("audit");
+    expect(getLensForPanel("CompliancePanel")).toBe("audit");
+    // 工作流执行面板随入口迁到写作视图
+    expect(getLensForPanel("WorkflowTimelinePanel")).toBe("write");
     expect(getLensForPanel("ResourceHistoryPanel")).toBe("system");
 
     expect(isPanelInLens("ChapterEditor", "write")).toBe(true);

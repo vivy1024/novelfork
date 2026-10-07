@@ -36,12 +36,10 @@ function scanTsxFiles(dir: string): string[] {
 const KNOWN_LEGACY_FETCH_WHITELIST = new Set([
   "ChapterContextRail.tsx",
   "CreativeCompassPanel.tsx",
-  "ForeshadowingBoard.tsx",
   "GovernanceCockpitPanel.tsx",
   "IdeWorkbench.tsx",
   "JingweiCanonPanel.tsx",
   "JingweiEntryEditor.tsx",
-  "LedgerProgressTable.tsx",
   "StoryProgressBoard.tsx",
   "TensionCurvePanel.tsx",
   "WorldCardPage.tsx",

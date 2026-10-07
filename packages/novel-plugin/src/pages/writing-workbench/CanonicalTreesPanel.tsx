@@ -88,6 +88,76 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function toTreeEntry(row: RawEntry): TreeEntryInput {
+  return {
+    id: row.id,
+    ...(row.title ? { title: row.title } : {}),
+    ...(row.category ? { category: row.category } : {}),
+    ...(row.summaryMd !== undefined ? { summaryMd: row.summaryMd } : {}),
+    ...(row.contentMd ? { contentMd: row.contentMd } : {}),
+    ...(row.fields ? { fields: row.fields } : {}),
+    ...(row.lifecycle ? { lifecycle: row.lifecycle } : {}),
+    ...(row.status ? { status: row.status } : {}),
+  };
+}
+
+interface MemoryInputs {
+  readonly entries: TreeEntryInput[];
+  readonly cooccurrence: CooccurrenceEdgeInput[];
+  readonly events: TimelineEventInput[];
+  /** 经纬条目读取失败的原因；没有快照时这是致命错误，有快照时降级。 */
+  readonly entriesError: unknown;
+  readonly graphFailed: boolean;
+}
+
+/**
+ * 树要的经纬条目（世界观、章摘要、卷纲）与动态记忆（事件、共现）。
+ * 叙事结构快照只装结构（卷 / 章 / 场景 / 剧情线），不带这些——此前快照路径只把卷传给建树，
+ * 世界观、发展历程、章节脉络永远是空树，章节树每章都显示「尚无摘要」。两条路径共用这一份取数。
+ */
+async function loadMemoryInputs(base: string): Promise<MemoryInputs> {
+  const [entriesResult, relationshipResult, eventResult] = await Promise.allSettled([
+    fetchJson<{ entries?: RawEntry[] } | RawEntry[]>(`${base}/jingwei/entries`),
+    fetchJson<GraphPayload>(`${base}/narrative-memory/graph?view=relationship&limit=0`),
+    fetchJson<GraphPayload>(`${base}/narrative-memory/graph?view=event_chain&limit=0`),
+  ]);
+  const rows = entriesResult.status === "fulfilled"
+    ? (Array.isArray(entriesResult.value) ? entriesResult.value : entriesResult.value.entries ?? [])
+    : [];
+  const entries = rows.map(toTreeEntry);
+
+  const cooccurrence: CooccurrenceEdgeInput[] = [];
+  if (relationshipResult.status === "fulfilled") {
+    cooccurrence.push(...(relationshipResult.value.cooccurrence?.edges ?? []));
+    if (cooccurrence.length === 0) {
+      for (const fact of relationshipResult.value.facts ?? []) {
+        if (fact.category !== "relationship") continue;
+        const source = text(fact.subject);
+        const target = text(fact.object);
+        if (!source || !target) continue;
+        cooccurrence.push({ source, target, weight: 1, coCount: 1 });
+      }
+    }
+  }
+  if (cooccurrence.length === 0) {
+    for (const entry of entries) {
+      if (entry.category !== "relationships") continue;
+      const source = text(entry.fields?.source) || text(entry.fields?.sourceName);
+      const target = text(entry.fields?.target) || text(entry.fields?.targetName);
+      if (!source || !target) continue;
+      cooccurrence.push({ source, target, weight: 1, coCount: 1 });
+    }
+  }
+
+  return {
+    entries,
+    cooccurrence,
+    events: eventResult.status === "fulfilled" ? [...(eventResult.value.events ?? [])] : [],
+    entriesError: entriesResult.status === "rejected" ? entriesResult.reason : null,
+    graphFailed: relationshipResult.status === "rejected" || eventResult.status === "rejected",
+  };
+}
+
 function readVolumes(entries: readonly TreeEntryInput[]): VolumeTreeInput[] {
   for (const entry of entries) {
     if (entry.category !== "outline") continue;
@@ -193,128 +263,87 @@ export function CanonicalTreesPanel({
     const base = `/api/books/${encodeURIComponent(bookId)}`;
 
     void (async () => {
-      // 任务 4 优先路径：尝试单次快照
+      // 任务 4 优先路径：单次快照给结构（卷 / 已写章 / 场景 / 剧情线）；取不到时只靠经纬条目建树。
+      let struct: NarrativeStructurePayload | null = null;
       try {
-        const struct = await fetchJson<NarrativeStructurePayload>(`${base}/narrative-structure`);
-        if (generation !== generationRef.current) return;
-        if (struct && struct.ok) {
-          const volumes = struct.volumes.map((v) => ({
+        const payload = await fetchJson<NarrativeStructurePayload>(`${base}/narrative-structure`);
+        if (payload && payload.ok) struct = payload;
+      } catch {
+        // 回退：没有快照就没有场景与剧情线，其余树照常用经纬条目建。
+      }
+      if (generation !== generationRef.current) return;
+
+      const memory = await loadMemoryInputs(base);
+      if (generation !== generationRef.current) return;
+
+      if (!struct && memory.entriesError) {
+        const cause = memory.entriesError;
+        setState({
+          status: "error",
+          message: cause instanceof ApiRequestError
+            ? `经纬条目读取失败（HTTP ${cause.status ?? "?"}）。`
+            : "经纬条目读取失败，请刷新后重试。",
+        });
+        return;
+      }
+
+      const volumes: VolumeTreeInput[] = struct
+        ? struct.volumes.map((v) => ({
             id: v.id,
             title: v.title,
             chapterRange: v.chapterRange,
             status: v.status,
             goal: v.goal,
-          }));
-          const base = buildCanonicalTrees({ volumes });
+            mainlineBeats: (v.mainlineBeats ?? []).map((title, index) => ({ id: String(index), title })),
+          }))
+        : readVolumes(memory.entries);
+      const trees = buildCanonicalTrees({
+        entries: memory.entries,
+        cooccurrence: memory.cooccurrence,
+        events: memory.events,
+        volumes,
+        ...(struct ? { writtenChapters: struct.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })) } : {}),
+      });
 
-          // buildCanonicalTrees 的「章节」树只到卷 → 章；场景要落进去得用
-          // buildCarrierTree（卷 → 章 → 场景），它产出同一套 CanonicalForest
-          // 结构，可直接替换那一棵，而不是往 buildCanonicalTrees 里再塞一份
-          // 重复的建树逻辑。没有场景时保持原树，避免老书凭空多出一层空节点。
-          const scenes = struct.scenes.map((s) => ({
-            id: s.id,
-            chapterNumber: s.chapterNumber,
-            ordinal: s.ordinal,
-            title: s.title,
-            summary: s.summary,
-            function: s.function,
-            status: s.status,
-          }));
-          const trees = {
-            ...base,
-            ...(scenes.length > 0
-              ? {
-                  chapters: buildCarrierTree({
-                    volumes,
-                    chapters: struct.chapters.map((chapter) => ({
-                      number: chapter.number,
-                      title: chapter.title,
-                    })),
-                    scenes,
-                  }),
-                }
-              : {}),
-          };
-          setState({ status: "ready", trees, degraded: false, structure: struct });
-          return;
-        }
-      } catch {
-        // 回退兼容多路请求
-      }
-
-      let entries: TreeEntryInput[] = [];
-      try {
-        const payload = await fetchJson<{ entries?: RawEntry[] } | RawEntry[]>(`${base}/jingwei/entries`);
-        const rows = Array.isArray(payload) ? payload : payload.entries ?? [];
-        entries = rows.map((row) => ({
-          id: row.id,
-          ...(row.title ? { title: row.title } : {}),
-          ...(row.category ? { category: row.category } : {}),
-          ...(row.summaryMd !== undefined ? { summaryMd: row.summaryMd } : {}),
-          ...(row.contentMd ? { contentMd: row.contentMd } : {}),
-          ...(row.fields ? { fields: row.fields } : {}),
-          ...(row.lifecycle ? { lifecycle: row.lifecycle } : {}),
-          ...(row.status ? { status: row.status } : {}),
-        }));
-      } catch (cause) {
-        if (generation === generationRef.current) {
-          setState({
-            status: "error",
-            message: cause instanceof ApiRequestError
-              ? `经纬条目读取失败（HTTP ${cause.status ?? "?"}）。`
-              : "经纬条目读取失败，请刷新后重试。",
-          });
-        }
+      if (!struct) {
+        setState({
+          status: "ready",
+          trees: {
+            ...trees,
+            // 没有快照就没有场景与剧情线，别把「读取失败」说成「还没有剧情线」。
+            causal: { ...trees.causal, emptyReason: "叙事结构快照没读到，因果画布暂时画不出来；点刷新重试。" },
+          },
+          degraded: memory.graphFailed,
+        });
         return;
       }
 
-      let cooccurrence: CooccurrenceEdgeInput[] = [];
-      let events: TimelineEventInput[] = [];
-      let graphFailed = false;
-      try {
-        const [relationshipGraph, eventGraph] = await Promise.all([
-          fetchJson<GraphPayload>(`${base}/narrative-memory/graph?view=relationship&limit=0`),
-          fetchJson<GraphPayload>(`${base}/narrative-memory/graph?view=event_chain&limit=0`),
-        ]);
-        cooccurrence = [...(relationshipGraph.cooccurrence?.edges ?? [])];
-        if (cooccurrence.length === 0) {
-          for (const fact of relationshipGraph.facts ?? []) {
-            if (fact.category !== "relationship") continue;
-            const source = text(fact.subject);
-            const target = text(fact.object);
-            if (!source || !target) continue;
-            cooccurrence.push({ source, target, weight: 1, coCount: 1 });
-          }
-        }
-        events = [...(eventGraph.events ?? [])];
-      } catch {
-        graphFailed = true;
-      }
-      if (cooccurrence.length === 0) {
-        for (const entry of entries) {
-          if (entry.category !== "relationships") continue;
-          const source = text(entry.fields?.source) || text(entry.fields?.sourceName);
-          const target = text(entry.fields?.target) || text(entry.fields?.targetName);
-          if (!source || !target) continue;
-          cooccurrence.push({ source, target, weight: 1, coCount: 1 });
-        }
-      }
-
-      if (generation !== generationRef.current) return;
-      const fallbackTrees = buildCanonicalTrees({
-        entries,
-        cooccurrence,
-        events,
-        volumes: readVolumes(entries),
-      });
+      // buildCanonicalTrees 的「章节」树只到卷 → 章；有场景时换成 buildCarrierTree（卷 → 章 → 场景），
+      // 同一套 CanonicalForest 结构，可直接顶替。没有场景时保持原树，避免老书凭空多出一层空节点。
+      const scenes = struct.scenes.map((s) => ({
+        id: s.id,
+        chapterNumber: s.chapterNumber,
+        ordinal: s.ordinal,
+        title: s.title,
+        summary: s.summary,
+        function: s.function,
+        status: s.status,
+      }));
       setState({
         status: "ready",
-        trees: {
-          ...fallbackTrees,
-          // 没有快照就没有场景与剧情线，别把「读取失败」说成「还没有剧情线」。
-          causal: { ...fallbackTrees.causal, emptyReason: "叙事结构快照没读到，因果画布暂时画不出来；点刷新重试。" },
-        },
-        degraded: graphFailed,
+        trees: scenes.length > 0
+          ? {
+              ...trees,
+              chapters: buildCarrierTree({
+                volumes,
+                chapters: struct.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })),
+                scenes,
+              }),
+            }
+          : trees,
+        // 有快照时经纬条目读不到也不挡结构：世界观、章摘要、事件缺失，按降级提示。
+        degraded: memory.graphFailed || Boolean(memory.entriesError),
+        structure: struct,
       });
     })();
 
@@ -398,7 +427,7 @@ export function CanonicalTreesPanel({
     <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="canonical-trees-panel">
       {state.status === "ready" && state.degraded && !networkView ? (
         <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-2xs text-amber-700 dark:text-amber-300" data-testid="canonical-trees-degraded">
-          动态记忆没读到，世界观和章节仍可用；发展历程、章节脉络会缺事件。
+          部分数据没读到（动态记忆或经纬条目）：发展历程、章节脉络可能缺事件，章节树可能缺摘要；结构部分照常可用。
         </p>
       ) : null}
 

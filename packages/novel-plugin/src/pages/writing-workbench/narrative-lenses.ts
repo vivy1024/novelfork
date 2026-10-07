@@ -138,6 +138,12 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     role: "章后结算浮动横幅",
     explanation: { what: "结算本章实际回收的伏笔与人物变更", why: "确认本章实际兑现的叙事价值", action: "确认或修正结算结果存入叙事记忆" },
   },
+  {
+    panel: "WorkflowTimelinePanel",
+    lens: "write",
+    role: "创作工作流执行（写作 › 工作流）",
+    explanation: { what: "按作者装配的工作流方案，把本章拆成若干道工序依次推进", why: "每道工序有自己的目标、可用工具与人工门禁，避免一口气写完却跳过校审", action: "在写作侧栏点「工作流：按工序写这一章」，选方案与章号启动，逐道工序查看产物并批准或打回" },
+  },
 
   // ── 镜头 2：理（设定是什么） ──
   {
@@ -239,12 +245,6 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     explanation: { what: "随章吸附的小型情绪张力指示条", why: "不占主屏的情况下监控本章在全书曲线的位置", action: "观察当前章张力强度建议" },
   },
   {
-    panel: "ForeshadowingBoard",
-    lens: "progression",
-    role: "伏笔与悬念看板",
-    explanation: { what: "埋伏、暗线与回收状态追踪矩阵", why: "杜绝遗忘烂尾伏笔，控制伏笔债务率", action: "查看待回收伏笔并指派给下一章" },
-  },
-  {
     panel: "BeatBudgetEditor",
     lens: "progression",
     role: "细纲节拍预算编辑器",
@@ -266,7 +266,7 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     panel: "StorylineAndPlanningSidebarPanel",
     lens: "progression",
     role: "IDE 侧边栏大纲与推进导航",
-    explanation: { what: "分卷大纲、伏笔清单与下一章规划快捷栏", why: "在编写正文时快速对照大纲规划", action: "点击跳至大纲节点或伏笔项" },
+    explanation: { what: "章节与大纲、章后事实两个子页签，顶部是位置条、下一步提醒与「打开故事画布」", why: "在编写正文时快速对照大纲规划，下一章建议引用故事画布「下一章」页的同一份计划", action: "点击跳至大纲节点，或打开故事画布看下一章建议与伏笔账本" },
   },
   {
     panel: "CreativeCompassPanel",
@@ -274,37 +274,13 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     role: "创作罗盘（核心驱动力指南）",
     explanation: { what: "全书核心卖点、金手指机制与受众期待定盘星", why: "防止长篇写作中途跑偏核心人设与爽点定位", action: "核对下一章情节是否符合核心受众期待" },
   },
-  {
-    panel: "LedgerProgressTable",
-    lens: "progression",
-    role: "叙事台账进度对照表",
-    explanation: { what: "章节已完成进度与规划预期的定量比对", why: "监控写作进度与大纲偏离度", action: "校准实际章节与预期台账偏差" },
-  },
-  {
-    panel: "WorkflowTimelinePanel",
-    lens: "progression",
-    role: "创作工作流执行（故事推进 › 执行）",
-    explanation: { what: "按作者装配的工作流方案，把本章拆成若干道工序依次推进", why: "每道工序有自己的目标、可用工具与人工门禁，避免一口气写完却跳过校审", action: "选方案与章号启动，逐道工序查看产物并批准或打回" },
-  },
 
   // ── 镜头 4：审（这章行不行） ──
-  {
-    panel: "AiTasteReport",
-    lens: "audit",
-    role: "AI 味检测与去油报告",
-    explanation: { what: "扫描文本中的机械陈词、AI 烂梗与套路句式", why: "去除生硬 AI 腔调，让文笔自然通透有网文质感", action: "一键采纳去 AI 味替换建议" },
-  },
   {
     panel: "CompliancePanel",
     lens: "audit",
     role: "平台合规与敏感词审查面板",
     explanation: { what: "扫描涉黄、涉政、暴力违禁及敏感词汇", why: "保障章节在番茄、起点等目标平台的过审安全", action: "定位红线内容并进行脱敏改写" },
-  },
-  {
-    panel: "ComplianceViolationCard",
-    lens: "audit",
-    role: "单条合规违规诊断卡片",
-    explanation: { what: "展示单处可疑语段的上下文与违规风险级别", why: "精确呈现为什么违规及建议改写方式", action: "按卡片建议替换违禁词句" },
   },
   {
     panel: "StyleDriftPanel",
@@ -357,12 +333,6 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     explanation: { what: "文档的历史快照与 diff 差异对比", why: "追踪修改轨迹与误删挽救", action: "对比历史差异或回滚到历史版本" },
   },
   {
-    panel: "CheckpointPanel",
-    lens: "system",
-    role: "创作里程碑与安全检查点",
-    explanation: { what: "在重大剧情转折前打下的可还原里程碑快照", why: "试验性大改无需担心破坏已有成果", action: "打上检查点标签或一键恢复状态" },
-  },
-  {
     panel: "CollaborationVersionPanel",
     lens: "system",
     role: "协作与版本合并控制面板",
@@ -392,12 +362,6 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     role: "新书初始化引导向导",
     explanation: { what: "引导新建书籍、设定基石与第一卷", why: "降低开书门槛，快速启动项目", action: "跟随步骤完成开书基础要素录入" },
   },
-  {
-    panel: "ImportWizard",
-    lens: "system",
-    role: "已有书稿反向导入向导",
-    explanation: { what: "将本地 txt 或 word 拆分成标准项目分卷", why: "兼容老作者已有资产迁移", action: "上传书稿文件并确认分章规则" },
-  },
 ] as const;
 
 /**
@@ -423,6 +387,26 @@ export const RETIRED_DUPLICATE_ENTRIES = [
     name: "StoryProgressionCanvas.network",
     replacement: "RelationNetworkPanel（设定图谱 › 人物关系）",
     reason: "与故事树内置的「关系树」子视图 100% 重复，已按 DoD 彻底下线顶层 Tab，并由 normalizeStoryProgressionView 自动引导",
+  },
+  {
+    name: "ForeshadowingBoard（伏笔看板）",
+    replacement: "NextChapterPanel 伏笔账本（故事画布 › 下一章）",
+    reason: "伏笔只保留一处：下一章页的伏笔账本按同一份 ForeshadowDebt 分超期 / 临近 / 近期可用，可排进下一章、标记已回收、埋新伏笔；看板早已无入口",
+  },
+  {
+    name: "StorylineAndPlanningSidebarPanel.foreshadowing（进度账本）",
+    replacement: "NextChapterPanel 伏笔账本（故事画布 › 下一章）",
+    reason: "与画布伏笔账本重复且到期口径不一致（目标章 ≤ 当前章 + 1 对比按埋设章悬置数判债），按作者决定只留画布一处",
+  },
+  {
+    name: "StorylineAndPlanningSidebarPanel.canvas（故事画布子页签）",
+    replacement: "故事推进侧栏顶部「打开故事画布」按钮",
+    reason: "子页签点开只剩一段说明文字，改为一个明确的按钮，打开画布并落在「下一章」",
+  },
+  {
+    name: "StoryProgressionCanvas.workflow（执行）",
+    replacement: "WorkflowTimelinePanel（写作 › 工作流，中央标签）",
+    reason: "工作流回答「这一章按什么工序写」，属于写作；画布只留下一章 / 推进 / 故事树，旧的 workflow 取值由 normalizeStoryProgressionView 落到「下一章」",
   },
   {
     name: "StoryMapCanvas",

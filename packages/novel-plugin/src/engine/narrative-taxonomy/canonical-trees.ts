@@ -105,9 +105,17 @@ export interface CanonicalForest {
   readonly emptyReason?: string;
 }
 
+/** 已写成的正式章节（章号 + 作者起的标题），来自叙事结构快照。 */
+export interface WrittenChapterInput {
+  readonly number: number;
+  readonly title?: string;
+}
+
 export interface BuildCanonicalTreesInput extends BuildStoryTreeInput {
   readonly cooccurrence?: readonly CooccurrenceEdgeInput[];
   readonly volumes?: readonly VolumeTreeInput[];
+  /** 已写章节；给了它，章节树才分得清「写了没摘要」和「卷纲里规划了还没写」。 */
+  readonly writtenChapters?: readonly WrittenChapterInput[];
   readonly events?: readonly TimelineEventInput[];
   readonly maxChaptersPerVolume?: number;
   readonly maxEventsPerChapter?: number;
@@ -384,7 +392,8 @@ function normalizeVolumes(volumes: readonly VolumeTreeInput[]): Array<{
   return out.sort((left, right) => left.from - right.from);
 }
 
-function chapterNode(ref: ChapterRef, placeholder: boolean): CanonicalTreeNode {
+function chapterNode(ref: ChapterRef, placeholder: boolean | string | undefined): CanonicalTreeNode {
+  const subtitle = typeof placeholder === "string" ? placeholder : placeholder ? "尚无摘要" : undefined;
   return {
     id: `chapter:${ref.chapterNumber}`,
     kind: "chapter",
@@ -395,16 +404,72 @@ function chapterNode(ref: ChapterRef, placeholder: boolean): CanonicalTreeNode {
     chapterNumber: ref.chapterNumber,
     ...(ref.entryId ? { entryId: ref.entryId } : {}),
     ...(ref.detail ? { detail: ref.detail } : {}),
-    ...(placeholder ? { subtitle: "尚无摘要" } : {}),
+    ...(subtitle ? { subtitle } : {}),
+  };
+}
+
+/**
+ * 章摘要与已写章节合并成章列表：标题取作者给章节起的名字（摘要条目的标题多是「第 N 章摘要」），
+ * 正文摘要挂在 detail；只有摘要、没有章节文件的章照常保留，不静默丢。
+ */
+function mergeWrittenChapters(
+  summaries: readonly ChapterRef[],
+  written: readonly WrittenChapterInput[] | undefined,
+): ChapterRef[] {
+  if (!written || written.length === 0) return [...summaries];
+  const byNumber = new Map(summaries.map((chapter) => [chapter.chapterNumber, chapter] as const));
+  for (const chapter of written) {
+    const number = toChapter(chapter.number);
+    if (!number) continue;
+    const realTitle = clean(chapter.title);
+    const summary = byNumber.get(number);
+    byNumber.set(number, {
+      chapterNumber: number,
+      title: realTitle || summary?.title || `第 ${number} 章`,
+      ...(summary?.entryId ? { entryId: summary.entryId } : {}),
+      ...(summary?.detail ? { detail: summary.detail } : {}),
+    });
+  }
+  return [...byNumber.values()].sort((left, right) => left.chapterNumber - right.chapterNumber);
+}
+
+/** 只换标题：章摘要条目的标题多是「第N章」「第 N 章摘要」，作者起的章名在章节上。不增删章。 */
+function withWrittenTitles(
+  chapters: readonly ChapterRef[],
+  written: readonly WrittenChapterInput[] | undefined,
+): { readonly chapters: ChapterRef[]; readonly titleOf: (chapterNumber: number) => string } {
+  const titles = new Map<number, string>();
+  for (const chapter of written ?? []) {
+    const number = toChapter(chapter.number);
+    const title = clean(chapter.title);
+    if (number && title) titles.set(number, title);
+  }
+  return {
+    chapters: chapters.map((chapter) => {
+      const title = titles.get(chapter.chapterNumber);
+      return title ? { ...chapter, title } : chapter;
+    }),
+    titleOf: (chapterNumber) => titles.get(chapterNumber) ?? `第 ${chapterNumber} 章`,
   };
 }
 
 export function buildChapterForkTree(input: {
   readonly entries?: readonly TreeEntryInput[];
   readonly volumes?: readonly VolumeTreeInput[];
+  readonly writtenChapters?: readonly WrittenChapterInput[];
   readonly maxChaptersPerVolume?: number;
 }): CanonicalForest {
-  const chapters = readChapters(input.entries ?? []);
+  const summaries = readChapters(input.entries ?? []);
+  const chapters = mergeWrittenChapters(summaries, input.writtenChapters);
+  const knowsWritten = (input.writtenChapters?.length ?? 0) > 0;
+  const writtenNumbers = new Set((input.writtenChapters ?? []).map((chapter) => chapter.number));
+  const summarized = new Set(summaries.map((chapter) => chapter.chapterNumber));
+  /** 占位副标题：知道哪些章写了，就把「写了没摘要」和「还没写」分开说。 */
+  const subtitleFor = (chapterNumber: number): string | undefined => {
+    if (summarized.has(chapterNumber)) return undefined;
+    if (!knowsWritten) return "尚无摘要";
+    return writtenNumbers.has(chapterNumber) ? "尚无摘要" : "未写";
+  };
   const volumes = normalizeVolumes(
     (input.volumes && input.volumes.length > 0) ? input.volumes : readVolumesFromEntries(input.entries ?? []),
   );
@@ -416,7 +481,7 @@ export function buildChapterForkTree(input: {
       kind: "chapters",
       root: emptyRoot("chapters", "章节"),
       truncated: false,
-      emptyReason: "还没有卷纲，也没有章节摘要。先写卷纲或对已写章节做摘要。",
+      emptyReason: "还没有卷纲，也没有章节。先写卷纲或写下第一章。",
     };
   }
 
@@ -433,7 +498,7 @@ export function buildChapterForkTree(input: {
       const existing = chapterByNumber.get(chapterNumber);
       nodes.push(chapterNode(
         existing ?? { chapterNumber, title: `第 ${chapterNumber} 章` },
-        !existing,
+        subtitleFor(chapterNumber),
       ));
     }
     return nodes;
@@ -477,14 +542,14 @@ export function buildChapterForkTree(input: {
       kind: "volume",
       label: "未分卷",
       count: leftover.length,
-      children: leftover.slice(0, maxChapters).map((chapter) => chapterNode(chapter, false)),
+      children: leftover.slice(0, maxChapters).map((chapter) => chapterNode(chapter, subtitleFor(chapter.chapterNumber))),
       defaultExpanded: false,
-      subtitle: "有摘要但不在任何卷区间里",
+      subtitle: "不在任何卷的章节区间里",
     });
   }
 
   const chapterOnly = volumes.length === 0
-    ? chapters.slice(0, maxChapters).map((chapter) => chapterNode(chapter, false))
+    ? chapters.slice(0, maxChapters).map((chapter) => chapterNode(chapter, subtitleFor(chapter.chapterNumber)))
     : [];
   if (volumes.length === 0 && chapters.length > maxChapters) truncated = true;
 
@@ -504,7 +569,7 @@ export function buildChapterForkTree(input: {
       defaultExpanded: true,
       subtitle: volumes.length > 0
         ? `${volumes.length} 卷 · ${total} 章`
-        : `${chapters.length} 章（还没有卷纲，按摘要平铺）`,
+        : `${chapters.length} 章（还没有卷纲，按章平铺）`,
     },
     truncated,
   };
@@ -554,10 +619,11 @@ function eventNode(event: TimelineEventInput, children: readonly CanonicalTreeNo
 export function buildTimelineTree(input: {
   readonly events?: readonly TimelineEventInput[];
   readonly entries?: readonly TreeEntryInput[];
+  readonly writtenChapters?: readonly WrittenChapterInput[];
   readonly maxEventsPerChapter?: number;
 }): CanonicalForest {
   const maxEvents = input.maxEventsPerChapter ?? DEFAULT_MAX_EVENTS;
-  const chapters = readChapters(input.entries ?? []);
+  const { chapters, titleOf } = withWrittenTitles(readChapters(input.entries ?? []), input.writtenChapters);
   const chapterByNumber = new Map(chapters.map((chapter) => [chapter.chapterNumber, chapter]));
   const validEvents = (input.events ?? []).filter((event) => toChapter(event.chapterNumber));
   const byId = new Map<string, TimelineEventInput>();
@@ -621,7 +687,7 @@ export function buildTimelineTree(input: {
     const existing = chapterByNumber.get(chapterNumber);
     const eventChildren = events.slice(0, maxEvents).map(makeEventForest);
     return {
-      ...chapterNode(existing ?? { chapterNumber, title: `第 ${chapterNumber} 章` }, !existing),
+      ...chapterNode(existing ?? { chapterNumber, title: titleOf(chapterNumber) }, !existing),
       count: Math.max(1, events.length),
       children: eventChildren,
       defaultExpanded: true,
@@ -658,9 +724,10 @@ function tensionOf(entry: TreeEntryInput): number | undefined {
 export function buildChronicleTree(input: {
   readonly entries?: readonly TreeEntryInput[];
   readonly events?: readonly TimelineEventInput[];
+  readonly writtenChapters?: readonly WrittenChapterInput[];
   readonly maxEventsPerChapter?: number;
 }): CanonicalForest {
-  const chapters = readChapters(input.entries ?? []);
+  const { chapters } = withWrittenTitles(readChapters(input.entries ?? []), input.writtenChapters);
   const maxEvents = input.maxEventsPerChapter ?? DEFAULT_MAX_EVENTS;
   const surface: CanonicalTreeNode[] = chapters.map((chapter) => {
     const source = (input.entries ?? []).find((entry) => {
@@ -861,17 +928,20 @@ export function buildCanonicalTrees(input: BuildCanonicalTreesInput): CanonicalT
   const chapters = buildChapterForkTree({
     ...(input.entries ? { entries: input.entries } : {}),
     ...(input.volumes ? { volumes: input.volumes } : {}),
+    ...(input.writtenChapters ? { writtenChapters: input.writtenChapters } : {}),
     ...(input.maxChaptersPerVolume ? { maxChaptersPerVolume: input.maxChaptersPerVolume } : {}),
   });
   const overview = buildOverviewTree({ worldview, chapters });
   const timeline = buildTimelineTree({
     ...(input.events ? { events: input.events } : {}),
     ...(input.entries ? { entries: input.entries } : {}),
+    ...(input.writtenChapters ? { writtenChapters: input.writtenChapters } : {}),
     ...(input.maxEventsPerChapter ? { maxEventsPerChapter: input.maxEventsPerChapter } : {}),
   });
   const chronicle = buildChronicleTree({
     ...(input.entries ? { entries: input.entries } : {}),
     ...(input.events ? { events: input.events } : {}),
+    ...(input.writtenChapters ? { writtenChapters: input.writtenChapters } : {}),
     ...(input.maxEventsPerChapter ? { maxEventsPerChapter: input.maxEventsPerChapter } : {}),
   });
   const causal: CanonicalForest = {

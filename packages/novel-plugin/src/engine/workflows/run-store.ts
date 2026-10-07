@@ -453,7 +453,7 @@ export function createWorkflowRun(storage: StorageDatabase, input: CreateWorkflo
     return failure("active-run-exists", 409, {
       what: `这个叙述者已有进行中的运行（第 ${existing.chapterNumber} 章 · ${existing.recipe.name}）`,
       why: "同一个叙述者同时推进两个运行，工序简报与工具限制会互相打架",
-      action: "先在「执行」页完成或取消当前运行，再启动新的",
+      action: "先在「工作流」页完成或取消当前运行，再启动新的",
     });
   }
   const initial = createRunState(input.recipe);
@@ -518,7 +518,7 @@ export function applyWorkflowAction(
         early.value = failure("run-not-found", 404, {
           what: `找不到运行 ${runId}`,
           why: "运行可能已被删除，或 id 有误",
-          action: "刷新「执行」页，按页面上的运行重新操作",
+          action: "刷新「工作流」页，按页面上的运行重新操作",
         });
         return;
       }

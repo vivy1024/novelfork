@@ -1,8 +1,8 @@
 /**
  * 压力账本种类词表与遗忘阈值。
  *
- * 写后闸（pressure-ledger-gate）与进度表（LedgerProgressTable）共用这一处，
- * 避免「钱/证/仇/债」和 staleAfter=8 在两处各写一遍。
+ * 写后闸（pressure-ledger-gate）读这一处的词表与阈值，
+ * 「钱/证/仇/债」和 staleAfter=8 不在别处另写一遍。
  */
 
 export type PressureLedgerKind = "money" | "evidence" | "grudge" | "debt" | "hook";
@@ -17,7 +17,7 @@ export const PRESSURE_LEDGER_KIND_LABEL: Record<PressureLedgerKind, string> = {
   hook: "伏笔",
 };
 
-/** 超过这个章数没有推进，闸与进度表都标「可能被遗忘」。 */
+/** 超过这个章数没有推进，闸标「可能被遗忘」。 */
 export const PRESSURE_LEDGER_STALE_AFTER_CHAPTERS = 8;
 
 export const PRESSURE_RESOURCE_KIND_HINTS: ReadonlyArray<{

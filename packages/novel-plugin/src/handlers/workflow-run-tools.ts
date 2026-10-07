@@ -120,7 +120,7 @@ function fromStore(
 
 function nextStepSummary(run: WorkflowRunRecord): string {
   if (run.state.status === "done") return "工作流已完成。";
-  if (run.state.status === "awaiting_approval") return "已提交，等待作者在「故事推进 › 执行」确认；现在停止产出。";
+  if (run.state.status === "awaiting_approval") return "已提交，等待作者在「写作 › 工作流」确认；现在停止产出。";
   const running = runningSteps(run.state);
   if (running.length === 0) return "已提交。";
   return `进行中的工序：${running.map((step) => `「${step.label}」`).join("、")}，按返回的 brief 继续。`;
@@ -152,7 +152,7 @@ export async function executeWorkflowRunTool(
   }
 
   if (!run) {
-    return fail("no-active-run", "当前没有进行中的创作工作流。工作流由作者在「故事推进 › 执行」启动；没有运行时按作者的普通指令继续。");
+    return fail("no-active-run", "当前没有进行中的创作工作流。工作流由作者在「写作 › 工作流」启动；没有运行时按作者的普通指令继续。");
   }
   const runRevision = typeof input.runRevision === "number" ? input.runRevision : Number.NaN;
   if (!Number.isInteger(runRevision)) {

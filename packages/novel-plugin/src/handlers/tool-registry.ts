@@ -779,7 +779,7 @@ action=create | update | delete | retire。
   sessionTool({
     name: "workflow.edit_recipe",
     description:
-      "新建或修改工作流草稿：用一批编辑指令（加节点、改节点、删节点、连线、断线、改名称）改图，不要整张重写。\n\n规则：\n- 你建的和改的一律是草稿，作者在「故事推进 › 执行」的画布上确认发布后才能运行\n- 已发布的方案不能直接改，用 copyFrom 另建草稿\n- 一批指令里任一条不合法则整批不生效，按返回说明修正后重交\n- 草稿可以暂时有结构问题（返回 issues），但要在交给作者前修好\n- 并行：一道工序连出多条无条件连线；分支：工序声明 outcomes，出线带 outcome；多条分支会合前加汇合节点",
+      "新建或修改工作流草稿：用一批编辑指令（加节点、改节点、删节点、连线、断线、改名称）改图，不要整张重写。\n\n规则：\n- 你建的和改的一律是草稿，作者在「写作 › 工作流」的画布上确认发布后才能运行\n- 已发布的方案不能直接改，用 copyFrom 另建草稿\n- 一批指令里任一条不合法则整批不生效，按返回说明修正后重交\n- 草稿可以暂时有结构问题（返回 issues），但要在交给作者前修好\n- 并行：一道工序连出多条无条件连线；分支：工序声明 outcomes，出线带 outcome；多条分支会合前加汇合节点",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["workflow.edit_recipe"]),
     risk: "draft-write",
     renderer: "generic",

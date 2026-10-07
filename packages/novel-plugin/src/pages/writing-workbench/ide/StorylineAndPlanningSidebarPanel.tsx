@@ -3,26 +3,26 @@
  *
  * 顶部是所有 tab 共享的「推进驾驶舱」：
  * 1. 位置锚定条：当前第 N 章 / 目标 M 章 · 进度%（打开即见，无需切 tab）；
- * 2. NEXT 下一步卡：readiness 五级规则推导唯一最高优先级动作，点击直达。
+ * 2. NEXT 下一步卡：维护提醒（缺卷纲 / 提拔规划中的纲 / 待审事件 / 记忆过期）优先；都没有时引用
+ *    故事画布「下一章」页的同一份计划（next-chapter-plan），侧栏不再自算第二套伏笔或下一章判断。
  *
- * 四个能力 tab 保持单一权威入口：
+ * 标题行右侧是「打开故事画布」按钮（落在「下一章」；推进 / 故事树在画布顶部切换）。
+ * 两个能力 tab 保持单一权威入口：
  * 1. 「章节与大纲」：章节树 + 大纲树 + 一键提拔（★大纲唯一权威入口）；
- * 2. 「章后事实」：轻量摘要卡（待审/高风险计数），完整面板在中央 Tab 打开；
- * 3. 「故事画布」：单按钮打开中央画布（发展历程/双螺旋/地图在画布内切换）；
- * 4. 「进度账本」：伏笔 / 冲突 / 债务进度表（tab id 仍是 foreshadowing）。
+ * 2. 「章后事实」：轻量摘要卡（待审/高风险计数），完整面板在中央 Tab 打开。
+ * 伏笔只在故事画布「下一章」页的伏笔账本（原「进度账本」子页签已下线）。
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Bookmark, BookOpen, ChevronDown, ChevronRight, FilePlus2, FileText, ListTree, Map as MapIcon, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, FilePlus2, FileText, ListTree, Map as MapIcon, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateApiPaths, useApi } from "@/hooks/use-api";
 import { StaleSettlementList, freshnessPath, useStaleSettlementCount } from "./StaleSettlementList";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
-import { computeForeshadowingDebt, type ForeshadowingDebt } from "../../../engine/jingwei/foreshadowing-debt";
-import { useForeshadowThresholds } from "../use-foreshadow-thresholds";
 import { NarrativeMemorySummary } from "../NarrativeMemoryPanel";
-import { LedgerProgressTable } from "../LedgerProgressTable";
+import { describeNextChapterSuggestion } from "../next-chapter-plan";
+import { useNextChapterPlan } from "../use-next-chapter-plan";
 import { createMemoryCenterNode, createStoryProgressionNode } from "../useWorkbenchResources";
 import type { ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
@@ -34,15 +34,129 @@ export interface StorylineAndPlanningSidebarPanelProps {
   outlineTreeNodes?: readonly WorkbenchResourceNode[];
   selectedNodeId: string | null;
   onOpen: (node: WorkbenchResourceNode) => void;
-  onSwitchView: (view: "write") => void;
+  /**
+   * 已不再使用：侧栏头部的「当前语境」按钮只是切到写作视图，与活动栏「写作」完全重复、名不副实，已下线。
+   * 保留可选字段只为不打断宿主的现有传参。
+   */
+  onSwitchView?: (view: "write") => void;
   onAction?: (action: ResourceTreeAction) => void;
   onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   /** 叙述者通道：NEXT 卡的「让叙述者生成卷纲」等 seed 动作经由它一键发送。 */
   onSendToNarrator?: (message: string) => Promise<void> | void;
   /** 本书目标总章数（来自 book 配置），用于进度百分比；缺省时只显示当前章号。 */
   bookTargetChapters?: number;
-  /** 进度账本行上的来源/到期章跳转。 */
+  /**
+   * 已不再使用：原「进度账本」行上的来源/到期章跳转，账本下线后侧栏没有章号跳转。
+   * 保留可选字段只为不打断宿主的现有传参。
+   */
   onJumpToChapter?: (chapterNumber: number) => void;
+}
+
+function collectBranchIds(nodes: readonly WorkbenchResourceNode[], into: string[] = []): string[] {
+  for (const node of nodes) {
+    if ((node.children?.length ?? 0) > 0) {
+      into.push(node.id);
+      collectBranchIds(node.children!, into);
+    }
+  }
+  return into;
+}
+
+function isPositiveChapterNumber(value: unknown): boolean {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0;
+}
+
+/**
+ * 章节树只放章节。chapters/ 下不是章节文件的笔记（例如「作者说清单.md」）认不出章号，
+ * 此前被当成章节挂在树上、点开进了章节编辑器；没有章节的空卷目录点了也没有反应。
+ * 两者都不进这棵树——它们在「资源」的文件树里照常可见、可编辑。
+ */
+export function pruneStoryChapterTree(nodes: readonly WorkbenchResourceNode[]): WorkbenchResourceNode[] {
+  const result: WorkbenchResourceNode[] = [];
+  for (const node of nodes) {
+    if (node.kind === "chapter") {
+      if (isPositiveChapterNumber(node.metadata?.chapterNumber)) result.push(node);
+      continue;
+    }
+    const children = node.children ? pruneStoryChapterTree(node.children) : [];
+    if (children.length > 0) result.push({ ...node, children });
+  }
+  return result;
+}
+
+interface OutlineVolumeField {
+  readonly id?: unknown;
+  readonly title?: unknown;
+  readonly chapterRange?: { readonly from?: unknown; readonly to?: unknown };
+}
+
+function outlineFields(node: WorkbenchResourceNode): Record<string, unknown> | undefined {
+  return node.metadata?.fields as Record<string, unknown> | undefined;
+}
+
+/** 卷纲条目：fields.volumes 承载全书分卷（唯一权威源），它是容器，不是某一章的纲。 */
+function isVolumeOutlineEntry(node: WorkbenchResourceNode): boolean {
+  return Array.isArray(outlineFields(node)?.volumes);
+}
+
+/** 大纲条目对应的章号：提拔回写的 targetChapterNumber 优先，其次标题里的「第 N 章」。 */
+function outlineChapterOf(node: WorkbenchResourceNode): number | undefined {
+  const target = Number(outlineFields(node)?.targetChapterNumber);
+  if (Number.isInteger(target) && target > 0) return target;
+  const match = /第\s*(\d+)\s*章/u.exec(node.title);
+  return match ? Number(match[1]) : undefined;
+}
+
+/** 卷纲容器的子节点：按章节区间排好的各卷。点它打开卷纲条目本身。 */
+function volumeChildren(entry: WorkbenchResourceNode): WorkbenchResourceNode[] {
+  const volumes = (outlineFields(entry)?.volumes as readonly OutlineVolumeField[] | undefined) ?? [];
+  return volumes
+    .map((volume, index) => {
+      const from = Number(volume?.chapterRange?.from);
+      const to = Number(volume?.chapterRange?.to);
+      const title = typeof volume?.title === "string" && volume.title.trim() ? volume.title.trim() : `第 ${index + 1} 卷`;
+      const range = Number.isInteger(from) && Number.isInteger(to) && from > 0 && to >= from ? `（第 ${from}–${to} 章）` : "";
+      const node: WorkbenchResourceNode = {
+        id: `${entry.id}#volume:${typeof volume?.id === "string" && volume.id ? volume.id : index}`,
+        kind: "group",
+        title: `${title}${range}`,
+        capabilities: entry.capabilities,
+        metadata: { outlineVolumeOf: entry },
+      };
+      return { order: Number.isInteger(from) && from > 0 ? from : Number.MAX_SAFE_INTEGER, node };
+    })
+    .sort((left, right) => left.order - right.order)
+    .map((item) => item.node);
+}
+
+/**
+ * 大纲按推进顺序排：卷纲容器在前（展开成各卷），单章细纲按章号，认不出章号的放最后。
+ * 此前按条目创建顺序排列，「第 8 章细纲」会排在卷纲前面。
+ */
+export function orderOutlineTree(nodes: readonly WorkbenchResourceNode[]): WorkbenchResourceNode[] {
+  const rank = (node: WorkbenchResourceNode): number => (isVolumeOutlineEntry(node) ? 0 : 1);
+  return nodes
+    .map((node) => {
+      if (node.kind === "jingwei-entry" && isVolumeOutlineEntry(node)) {
+        const volumes = volumeChildren(node);
+        return volumes.length > 0 ? { ...node, children: volumes } : node;
+      }
+      return node.children ? { ...node, children: orderOutlineTree(node.children) } : node;
+    })
+    .sort((left, right) =>
+      rank(left) - rank(right)
+      || (outlineChapterOf(left) ?? Number.MAX_SAFE_INTEGER) - (outlineChapterOf(right) ?? Number.MAX_SAFE_INTEGER)
+      || left.title.localeCompare(right.title, "zh-CN"));
+}
+
+function countOutlineEntries(nodes: readonly WorkbenchResourceNode[]): number {
+  let count = 0;
+  for (const node of nodes) {
+    if (node.kind === "jingwei-entry" || node.kind === "story") count += 1;
+    else if (node.children) count += countOutlineEntries(node.children);
+  }
+  return count;
 }
 
 function StorylineResourceTree({
@@ -59,15 +173,17 @@ function StorylineResourceTree({
   onOpen: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(nodes.map((node) => node.id)));
+  // 默认全部展开：这两棵树就是用来看章与纲的，卷目录收着等于什么都没显示。
+  // 只对首次出现的分支自动展开，作者收起过的不会在刷新后被重新撑开。
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(collectBranchIds(nodes)));
+  const [seen] = useState<Set<string>>(() => new Set(collectBranchIds(nodes)));
 
   useEffect(() => {
-    setExpanded((previous) => {
-      const next = new Set(previous);
-      for (const node of nodes) next.add(node.id);
-      return next;
-    });
-  }, [nodes]);
+    const fresh = collectBranchIds(nodes).filter((id) => !seen.has(id));
+    if (fresh.length === 0) return;
+    for (const id of fresh) seen.add(id);
+    setExpanded((previous) => new Set([...previous, ...fresh]));
+  }, [nodes, seen]);
 
   const toggle = (nodeId: string) => {
     setExpanded((previous) => {
@@ -82,6 +198,9 @@ function StorylineResourceTree({
     const hasChildren = (node.children?.length ?? 0) > 0;
     const isExpanded = expanded.has(node.id);
     const isOutline = node.kind === "jingwei-entry" || node.kind === "story";
+    // 卷纲容器承载全书分卷，提拔它只会建出一个叫「卷纲」的章节并把章号写回卷纲，不给提拔。
+    const isVolumeContainer = isOutline && isVolumeOutlineEntry(node);
+    const openTarget = node.metadata?.outlineVolumeOf as WorkbenchResourceNode | undefined;
     // T3 身份链：fields.targetChapterNumber + 章节树存在性 → drafted/planned 推导。
     const targetChapter = Number((node.metadata?.fields as Record<string, unknown> | undefined)?.targetChapterNumber);
     const outlineState: "drafted" | "planned" | null =
@@ -100,7 +219,7 @@ function StorylineResourceTree({
             type="button"
             className="flex min-w-0 flex-1 items-center gap-1 rounded px-1.5 py-1 text-left text-2xs"
             style={{ paddingLeft: `${depth * 12 + 4}px` }}
-            onClick={() => (hasChildren ? toggle(node.id) : onOpen(node))}
+            onClick={() => (hasChildren ? toggle(node.id) : onOpen(openTarget ?? node))}
           >
             {hasChildren ? (isExpanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />) : <span className="w-3 shrink-0" />}
             {node.kind === "chapter" ? <FileText className="size-3 shrink-0 text-blue-500" /> : <ListTree className="size-3 shrink-0 text-sky-500" />}
@@ -110,7 +229,7 @@ function StorylineResourceTree({
           </button>
 
           {/* 大纲节点一键提拔落稿到手稿章节；已落稿的条目不再重复提拔（T3 守卫） */}
-          {isOutline && onAction && outlineState !== "drafted" ? (
+          {isOutline && !isVolumeContainer && onAction && outlineState !== "drafted" ? (
             <button
               type="button"
               title="将大纲提拔至手稿章节"
@@ -135,89 +254,10 @@ function StorylineResourceTree({
   return nodes.length > 0 ? <div className="space-y-0.5">{nodes.map((node) => renderNode(node))}</div> : <p className="px-1 py-2 text-2xs text-muted-foreground">{emptyLabel}</p>;
 }
 
-type StorylineSubTab = "outline" | "memory" | "canvas" | "foreshadowing";
-
-interface StorylineForeshadowingEntry {
-  id: string;
-  title: string;
-  contentMd?: string;
-  customFields?: Record<string, unknown>;
-  fieldsJson?: string;
-}
-
-export interface StorylineForeshadowItem {
-  id: string;
-  title: string;
-  name: string;
-  description: string;
-  status: string;
-  plantedChapter: number;
-  targetChapter: number;
-  debt: ForeshadowingDebt;
-}
-
-const FORESHADOW_SETTLED = new Set(["已回收", "已废弃"]);
-
-/**
- * 故事侧栏伏笔数据源（单一请求，驾驶舱 chips 与账本列表共享）。
- * currentChapter 必须由调用方传真实值——债务判定依赖它，传 undefined 会静默失效。
- */
-function useStorylineForeshadowing(bookId: string, currentChapter: number | undefined) {
-  const { data, loading, error, refetch } = useApi<{ entries?: StorylineForeshadowingEntry[] }>(
-    `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=foreshadowing`,
-  );
-  const thresholds = useForeshadowThresholds(bookId);
-
-  const items = useMemo<StorylineForeshadowItem[]>(() => {
-    return (data?.entries ?? []).map((entry) => {
-      let fields: Record<string, unknown> = {};
-      if (entry.customFields && typeof entry.customFields === "object") {
-        fields = entry.customFields;
-      } else if (entry.fieldsJson) {
-        try {
-          fields = JSON.parse(entry.fieldsJson);
-        } catch {
-          // ignore
-        }
-      }
-      const name = (typeof fields.name === "string" ? fields.name : "") || entry.title || "未命名伏笔";
-      const status = typeof fields.status === "string" ? fields.status : "已埋设";
-      const plantedChapter = typeof fields.plantedChapter === "number" ? fields.plantedChapter : 0;
-      const targetChapter = typeof fields.targetChapter === "number" ? fields.targetChapter : 0;
-      const settled = FORESHADOW_SETTLED.has(status);
-      const debt = computeForeshadowingDebt({
-        plantedChapter,
-        currentChapter: currentChapter ?? null,
-        settled,
-        thresholds,
-      });
-      return {
-        id: entry.id,
-        title: entry.title,
-        name,
-        description: (typeof fields.description === "string" ? fields.description : "") || entry.contentMd || "",
-        status,
-        plantedChapter,
-        targetChapter,
-        debt,
-      };
-    });
-  }, [data, currentChapter, thresholds]);
-
-  /** 承诺口径统计：未回收总数 + 本章到期数（目标章 ≤ 当前章+1 的未回收伏笔）。 */
-  const stats = useMemo(() => {
-    const open = items.filter((item) => !FORESHADOW_SETTLED.has(item.status));
-    const dueNow = open.filter(
-      (item) => item.targetChapter > 0 && currentChapter !== undefined && item.targetChapter <= currentChapter + 1,
-    );
-    return { openCount: open.length, dueNowCount: dueNow.length };
-  }, [items, currentChapter]);
-
-  return { items, stats, loading, error, refetch };
-}
+type StorylineSubTab = "outline" | "memory";
 
 // ---------------------------------------------------------------------------
-// 推进驾驶舱：位置锚定 + NEXT 五级规则
+// 推进驾驶舱：位置锚定 + NEXT 下一步
 // ---------------------------------------------------------------------------
 
 /** 从章节树推导当前最大章号（与 WorkbenchCanvas.resolveCurrentChapter 同口径的轻量版）。 */
@@ -250,9 +290,9 @@ function countPlannedOutlineNodes(
 
 /** NEXT 建议的唯一动作形态。 */
 interface NextAction {
-  readonly key: "outline-empty" | "promote-outline" | "review-pending" | "resettle-stale" | "foreshadow-due" | "all-set";
+  readonly key: "outline-empty" | "promote-outline" | "review-pending" | "resettle-stale" | "next-chapter";
   readonly label: string;
-  /** 点击后切到哪个 tab；undefined 表示纯叙述者 seed 动作或只读状态。 */
+  /** 点击后切到哪个 tab；undefined 表示叙述者 seed 动作或打开故事画布。 */
   readonly tab?: StorylineSubTab;
 }
 
@@ -268,24 +308,26 @@ const OUTLINE_SEED_MESSAGE =
   "请为我生成第一卷卷纲草案（outline.volume action=suggest），生成后给我确认，确认前不要直接写入。";
 
 /**
- * NEXT 五级规则：按序取第一个命中，永远只给一条建议。
- * 1 缺纲 → 叙述者 seed；2 有规划未落稿 → 提拔；3 有待审 → 章后事实；
- * 3.5 有记忆过期的章 → 章后事实重新结算；4 有到期伏笔 → 账本；5 默认就绪态（只读文案，写作入口在写作视图避免双入口）。
+ * NEXT 规则：按序取第一个命中，永远只给一条建议。
+ * 前四级是维护提醒：1 缺纲 → 叙述者 seed；2 有规划未落稿 → 提拔；3 有待审 → 章后事实；
+ * 4 有记忆过期的章 → 章后事实重新结算。
+ * 都没有时给「下一章写什么」——这一句只引用故事画布「下一章」页的计划（describeNextChapterSuggestion），
+ * 侧栏不另算伏笔到期或下一章；计划还没读到时引导去画布看。
  */
 export function resolveNextAction(input: {
   readonly hasOutline: boolean;
   readonly plannedCount: number;
   readonly pendingCount: number;
-  readonly dueNowCount: number;
   /** 正文结算后又被改过的章数（记忆过期）。 */
   readonly staleCount?: number;
+  /** 下一章计划的一句话建议（来自 next-chapter-plan）；计划未就绪时缺省。 */
+  readonly nextChapterSuggestion?: string;
 }): NextAction {
   if (!input.hasOutline) return { key: "outline-empty", label: "让叙述者生成第一卷卷纲" };
   if (input.plannedCount > 0) return { key: "promote-outline", tab: "outline", label: `提拔规划中的大纲落稿（${input.plannedCount} 条）` };
   if (input.pendingCount > 0) return { key: "review-pending", tab: "memory", label: `处理章后待审事件（${input.pendingCount} 条）` };
   if ((input.staleCount ?? 0) > 0) return { key: "resettle-stale", tab: "memory", label: `重新结算记忆过期的章节（${input.staleCount} 章）` };
-  if (input.dueNowCount > 0) return { key: "foreshadow-due", tab: "foreshadowing", label: `本章有 ${input.dueNowCount} 条伏笔到期` };
-  return { key: "all-set", label: "一切就绪 · 继续写下一章" };
+  return { key: "next-chapter", label: input.nextChapterSuggestion ?? "打开故事画布，看下一章写什么" };
 }
 
 function StorylineCockpit({
@@ -324,17 +366,12 @@ function StorylineCockpit({
         type="button"
         data-testid={`storyline-next-${next.key}`}
         onClick={() => onActivate(next)}
-        disabled={next.key === "all-set"}
-        className={cn(
-          "w-full flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-2xs transition-colors",
-          next.key === "all-set"
-            ? "border-border bg-card/60 text-muted-foreground cursor-default"
-            : "border-primary/40 bg-primary/5 text-foreground hover:bg-primary/10",
-        )}
+        title={next.label}
+        className="w-full flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-left text-2xs text-foreground transition-colors hover:bg-primary/10"
       >
-        <Sparkles className={cn("size-3 shrink-0", next.key === "all-set" ? "text-muted-foreground" : "text-primary")} />
+        <Sparkles className="size-3 shrink-0 text-primary" />
         <span className="min-w-0 flex-1 truncate">{next.label}</span>
-        {next.key !== "all-set" ? <ChevronRight className="size-3 shrink-0 text-muted-foreground" /> : null}
+        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
       </button>
     </div>
   );
@@ -346,26 +383,20 @@ export function StorylineAndPlanningSidebarPanel({
   outlineTreeNodes = [],
   selectedNodeId,
   onOpen,
-  onSwitchView,
   onAction,
   onSendToNarrator,
   bookTargetChapters,
-  onJumpToChapter,
 }: StorylineAndPlanningSidebarPanelProps) {
   const [activeSubTab, setActiveSubTab] = useState<StorylineSubTab>("outline");
 
-  /** 跳转到统一的大屏「故事画布」：同一本书共用一个 Tab，画布内部切正图/推进/脉络。 */
-  const openProgressionCanvas = (view: "tree" | "board" | "chronicle") => {
-    onOpen(createStoryProgressionNode(bookId, view));
+  /** 打开统一的大屏「故事画布」：同一本书共用一个 Tab，落在「下一章」，其余视图在画布顶部切换。 */
+  const openProgressionCanvas = () => {
+    onOpen(createStoryProgressionNode(bookId, "next"));
   };
 
-  const handleSubTabChange = (tab: StorylineSubTab) => {
-    setActiveSubTab(tab);
-    if (tab === "canvas") {
-      // 直接打开大屏画布（默认正图），消除"点了只看到一段说明文字"的空转。
-      openProgressionCanvas("tree");
-    }
-  };
+  const storyChapterNodes = useMemo(() => pruneStoryChapterTree(chapterTreeNodes), [chapterTreeNodes]);
+  const orderedOutlineNodes = useMemo(() => orderOutlineTree(outlineTreeNodes), [outlineTreeNodes]);
+  const outlineEntryCount = useMemo(() => countOutlineEntries(outlineTreeNodes), [outlineTreeNodes]);
 
   const draftedChapters = useMemo(() => {
     const out = new Set<number>();
@@ -382,9 +413,11 @@ export function StorylineAndPlanningSidebarPanel({
   const currentChapter = useMemo(() => maxChapterFromTree(chapterTreeNodes), [chapterTreeNodes]);
   const pendingCount = usePendingEventCount(bookId);
   const staleCount = useStaleSettlementCount(bookId);
-  // 驾驶舱需要伏笔统计，账本也需要同一份数据：hook 在顶层调用一次共享。
-  const foreshadow = useStorylineForeshadowing(bookId, currentChapter);
+  // 下一章建议只引用故事画布「下一章」页的同一份计划，不另算伏笔到期。
+  const nextChapterPlan = useNextChapterPlan(bookId, currentChapter > 0 ? currentChapter : undefined);
+  const reloadNextChapterPlan = nextChapterPlan.reload;
   useWritingProgressRefresh(bookId, () => {
+    reloadNextChapterPlan();
     invalidateApiPaths([
       `/api/books/${encodeURIComponent(bookId)}/jingwei/entries`,
       `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
@@ -397,24 +430,29 @@ export function StorylineAndPlanningSidebarPanel({
     () => countPlannedOutlineNodes(outlineTreeNodes, draftedChapters),
     [outlineTreeNodes, draftedChapters],
   );
+  const nextChapterSuggestion = nextChapterPlan.plan ? describeNextChapterSuggestion(nextChapterPlan.plan) : undefined;
   const next = useMemo(
     () => resolveNextAction({
       hasOutline: outlineTreeNodes.length > 0,
       plannedCount,
       pendingCount,
       staleCount,
-      dueNowCount: foreshadow.stats.dueNowCount,
+      ...(nextChapterSuggestion ? { nextChapterSuggestion } : {}),
     }),
-    [outlineTreeNodes.length, plannedCount, pendingCount, staleCount, foreshadow.stats.dueNowCount],
+    [outlineTreeNodes.length, plannedCount, pendingCount, staleCount, nextChapterSuggestion],
   );
 
-  /** NEXT 卡点击的唯一入口：tab 类动作切 tab；叙述者 seed 动作一键发送。 */
+  /** NEXT 卡点击的唯一入口：tab 类动作切 tab；叙述者 seed 动作一键发送；下一章建议打开画布「下一章」看全貌。 */
   const handleNextActivate = (action: NextAction) => {
     if (action.tab) {
-      handleSubTabChange(action.tab);
+      setActiveSubTab(action.tab);
       return;
     }
-    if (action.key === "outline-empty") void onSendToNarrator?.(OUTLINE_SEED_MESSAGE);
+    if (action.key === "outline-empty") {
+      void onSendToNarrator?.(OUTLINE_SEED_MESSAGE);
+      return;
+    }
+    if (action.key === "next-chapter") openProgressionCanvas();
   };
 
   return (
@@ -434,13 +472,21 @@ export function StorylineAndPlanningSidebarPanel({
             <Sparkles className="size-3.5 text-primary" />
             <span>故事推进</span>
           </div>
-          <Button size="xs" variant="ghost" className="h-6 text-2xs" onClick={() => onSwitchView("write")}>
-            <BookOpen className="size-3" />
-            当前语境
+          {/* 原「故事画布」子页签点开只剩一段说明文字，改为一个明确的按钮：打开画布并落在「下一章」。 */}
+          <Button
+            size="xs"
+            variant="outline"
+            className="h-7 gap-1 text-2xs"
+            title="在中央打开故事画布：下一章 / 推进 / 故事树"
+            data-testid="storyline-open-canvas"
+            onClick={openProgressionCanvas}
+          >
+            <MapIcon className="size-3.5 text-primary" />
+            打开故事画布
           </Button>
         </div>
 
-        {/* 4 个核心功能 Tab 切换（带明确的高亮状态） */}
+        {/* 2 个核心功能 Tab 切换（带明确的高亮状态） */}
         <div className="grid grid-cols-2 gap-1.5">
           <Button
             size="xs"
@@ -449,7 +495,7 @@ export function StorylineAndPlanningSidebarPanel({
               "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
               activeSubTab === "outline" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
             )}
-            onClick={() => handleSubTabChange("outline")}
+            onClick={() => setActiveSubTab("outline")}
           >
             <ListTree className="size-3.5 text-sky-500" />
             <span className="truncate">章节与大纲</span>
@@ -462,37 +508,12 @@ export function StorylineAndPlanningSidebarPanel({
               "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
               activeSubTab === "memory" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
             )}
-            onClick={() => handleSubTabChange("memory")}
+            onClick={() => setActiveSubTab("memory")}
           >
             <Sparkles className="size-3.5 text-amber-500" />
             <span className="truncate">章后事实</span>
           </Button>
 
-          <Button
-            size="xs"
-            variant={activeSubTab === "canvas" ? "default" : "outline"}
-            className={cn(
-              "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
-              activeSubTab === "canvas" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
-            )}
-            onClick={() => handleSubTabChange("canvas")}
-          >
-            <MapIcon className="size-3.5 text-primary" />
-            <span className="truncate">故事画布</span>
-          </Button>
-
-          <Button
-            size="xs"
-            variant={activeSubTab === "foreshadowing" ? "default" : "outline"}
-            className={cn(
-              "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
-              activeSubTab === "foreshadowing" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
-            )}
-            onClick={() => handleSubTabChange("foreshadowing")}
-          >
-            <Bookmark className="size-3.5 text-indigo-500" />
-            <span className="truncate">进度账本</span>
-          </Button>
         </div>
       </div>
 
@@ -505,16 +526,17 @@ export function StorylineAndPlanningSidebarPanel({
                 <ListTree className="size-3.5 text-sky-500" />
                 <span>章节与大纲</span>
               </div>
-              <span className="text-2xs text-muted-foreground">章节 {chapterTreeNodes.length} · 大纲 {outlineTreeNodes.length}</span>
+              {/* 此前数的是顶层节点（「正文」目录 1 个、分类组 1 个），七章两条纲也显示「章节 1 · 大纲 1」。 */}
+              <span className="text-2xs text-muted-foreground">章节 {draftedChapters.size} · 大纲 {outlineEntryCount}</span>
             </div>
             <div className="space-y-2">
               <div>
                 <div className="mb-1 text-2xs font-medium text-muted-foreground">章节树</div>
-                <StorylineResourceTree nodes={chapterTreeNodes} emptyLabel="暂无章节文件" onOpen={onOpen} onAction={onAction} />
+                <StorylineResourceTree nodes={storyChapterNodes} emptyLabel="暂无章节" onOpen={onOpen} onAction={onAction} />
               </div>
               <div>
                 <div className="mb-1 text-2xs font-medium text-muted-foreground">大纲</div>
-                <StorylineResourceTree nodes={outlineTreeNodes} emptyLabel="暂无大纲条目" draftedChapters={draftedChapters} onOpen={onOpen} onAction={onAction} />
+                <StorylineResourceTree nodes={orderedOutlineNodes} emptyLabel="暂无大纲条目" draftedChapters={draftedChapters} onOpen={onOpen} onAction={onAction} />
               </div>
             </div>
           </section>
@@ -530,33 +552,6 @@ export function StorylineAndPlanningSidebarPanel({
           </div>
         )}
 
-        {activeSubTab === "canvas" && (
-          <div className="flex flex-col items-center justify-center p-6 text-center space-y-2 text-muted-foreground">
-            <MapIcon className="size-8 text-primary/60" />
-            <p className="text-xs font-medium text-foreground">故事画布已在中央打开</p>
-            <p className="text-2xs leading-relaxed">
-              推进 / 故事树 / 执行共用同一个画布 Tab，在画布顶部切换；故事树里再分章节、因果、脉络与发展历程。
-            </p>
-            <Button size="xs" variant="outline" className="h-7 justify-start text-2xs" onClick={() => openProgressionCanvas("tree")}>
-              🌳 打开故事树
-            </Button>
-            <Button size="xs" variant="outline" className="h-7 justify-start text-2xs" onClick={() => openProgressionCanvas("board")}>
-              📊 打开推进（下一章该写什么）
-            </Button>
-            <Button size="xs" variant="outline" className="h-7 justify-start text-2xs" onClick={() => openProgressionCanvas("chronicle")}>
-              🧬 打开章节脉络
-            </Button>
-          </div>
-        )}
-
-        {activeSubTab === "foreshadowing" && (
-          <LedgerProgressTable
-            bookId={bookId}
-            currentChapter={currentChapter > 0 ? currentChapter : undefined}
-            onOpen={onOpen}
-            onJumpToChapter={onJumpToChapter}
-          />
-        )}
       </div>
     </div>
   );

@@ -8,7 +8,7 @@
  * 4. 拒绝空 bookId。
  */
 
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -208,6 +208,56 @@ describe("GET /api/books/:bookId/narrative-structure", () => {
       });
       expect(causal.lanes.some((lane) => lane.label.includes("主线：复仇"))).toBe(true);
       expect(causal.scenes.every((node) => node.laneId !== "unmounted")).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("章节以 chapters/index.json 为准：新书的文件章节进快照，当前章与伏笔悬置按它算；软删的旧行不算", async () => {
+    const storage = await createStorage();
+    try {
+      const bookId = "file-chapter-book";
+      const now = Date.now();
+      storage.sqlite.exec(`INSERT INTO book (id, name, created_at, updated_at) VALUES ('${bookId}', '文件章节书', ${now}, ${now});`);
+      // 旧表里只剩一条已软删的第 9 章：不得冒出来。
+      storage.sqlite.exec(`
+        INSERT INTO writing_resource (id, book_id, type, status, chapter_number, title, content, created_at, updated_at, deleted_at)
+        VALUES ('ch-9', '${bookId}', 'chapter', 'accepted', 9, '已删的章', '旧正文', ${now}, ${now}, ${now});
+      `);
+      storage.sqlite.exec(`
+        INSERT INTO story_jingwei_section (id, book_id, key, name, "order", created_at, updated_at)
+        VALUES ('sec-hook', '${bookId}', 'foreshadowing', '伏笔', 1, ${now}, ${now});
+        INSERT INTO story_jingwei_entry (id, section_id, book_id, category, title, fields_json, created_at, updated_at)
+        VALUES ('hook-1', 'sec-hook', '${bookId}', 'foreshadowing', '停摆的钟', '${JSON.stringify({ status: "已埋设", plantedChapter: 1 })}', ${now}, ${now});
+      `);
+
+      const bookRoot = join(tmpdir(), `novelfork-structure-files-${crypto.randomUUID()}`);
+      tempDirs.push(bookRoot);
+      await mkdir(join(bookRoot, "chapters"), { recursive: true });
+      await writeFile(join(bookRoot, "chapters", "index.json"), JSON.stringify([
+        { number: 1, title: "雨夜", fileName: "卷01/0001_雨夜.md", wordCount: 120, updatedAt: new Date(now).toISOString() },
+        { number: 2, title: "旧站台", fileName: "卷01/0002_旧站台.md", wordCount: 80, updatedAt: new Date(now).toISOString() },
+        { number: 7, title: "雾钟", fileName: "卷02/0007_雾钟.md", wordCount: 60, updatedAt: new Date(now).toISOString() },
+      ]), "utf8");
+
+      const app = createNarrativeStructureRouter({ storage, resolveBookRoot: () => bookRoot });
+      const body = await (await app.request(`/api/books/${bookId}/narrative-structure`)).json() as {
+        currentChapter: number;
+        chapters: Array<{ number: number; title: string; wordCount: number }>;
+        foreshadows: Array<{ title: string; chaptersPending?: number }>;
+      };
+      expect(body.chapters.map((chapter) => [chapter.number, chapter.title, chapter.wordCount])).toEqual([
+        [1, "雨夜", 120],
+        [2, "旧站台", 80],
+        [7, "雾钟", 60],
+      ]);
+      expect(body.currentChapter).toBe(7);
+      expect(body.foreshadows.find((debt) => debt.title === "停摆的钟")?.chaptersPending).toBe(6);
+
+      // 没给书籍目录（或目录读不到）时退回旧表，不报 500。
+      const legacyOnly = await createNarrativeStructureRouter({ storage }).request(`/api/books/${bookId}/narrative-structure`);
+      expect(legacyOnly.status).toBe(200);
+      expect(((await legacyOnly.json()) as { chapters: unknown[] }).chapters).toEqual([]);
     } finally {
       storage.close();
     }

@@ -5,6 +5,8 @@
      * 组件只负责渲染，计算逻辑与判定口径统一在此收口。
      */
 
+    import { resolveForeshadowPhase } from "./foreshadow-states.js";
+
     export type ForeshadowDebtStatus = "planted" | "triggered" | "paid_off" | "unknown";
     export type ForeshadowDebtUrgency = "ok" | "watch" | "overdue";
 
@@ -113,19 +115,22 @@
     }
 
     /**
-     * 伏笔状态：只认白名单枚举值。
-     * 脏值/缺失 → 用 payoffChapter / plantedChapter 二次推断，推不出记 unknown。
+     * 伏笔状态：状态词表与阶段读模型共用 resolveForeshadowPhase（中英两套写法都认：
+     * 进度账本写「已埋设 / 部分揭示 / 已回收 / 已废弃」，工具与旧数据写 planted / paid_off）。
+     * 此前这里只认英文，账本里标了「已回收」的伏笔仍被当成未还的债，排进下一章建议。
+     * 脏值/缺失 → 用章号二次推断，推不出记 unknown。部分揭示仍是未还的债，按 planted 计。
      */
     export function resolveDebtStatus(entry: ForeshadowJingweiEntryLike): ForeshadowDebtStatus {
-      const raw = text(fields(entry).status).toLowerCase();
-      if (raw === "paid_off" || raw === "paid-off" || raw === "resolved") return "paid_off";
-      if (raw === "triggered" || raw === "paying_off" || raw === "唤醒中") return "triggered";
-      if (raw === "planted" || raw === "open" || raw === "pending" || raw === "reinforced") return "planted";
-      const payoff = toChapter(fields(entry).payoffChapter);
-      if (payoff !== undefined) return "paid_off";
-      const planted = toChapter(fields(entry).plantedChapter);
-      if (planted !== undefined) return "planted";
+      const phase = resolveForeshadowPhase(fields(entry));
+      if (phase === "paid_off" || phase === "abandoned") return "paid_off";
+      if (phase === "triggered") return "triggered";
+      if (phase === "planted" || phase === "reinforced") return "planted";
       return "unknown";
+    }
+
+    /** 作者标了「已废弃」的伏笔不是债：不进债务清单，也不算「已回收」。 */
+    function isAbandoned(entry: ForeshadowJingweiEntryLike): boolean {
+      return resolveForeshadowPhase(fields(entry)) === "abandoned";
     }
 
     export function debtUrgency(
@@ -170,6 +175,7 @@
       const debts: ForeshadowDebt[] = [];
       for (const entry of entries) {
         if (entry.lifecycle === "archived" || entry.lifecycle === "retired") continue;
+        if (isAbandoned(entry)) continue;
         const f = fields(entry);
         const plantedChapter = toChapter(f.plantedChapter) ?? chapterFromTitle(entry.title);
         const payoffChapter = toChapter(f.payoffChapter);

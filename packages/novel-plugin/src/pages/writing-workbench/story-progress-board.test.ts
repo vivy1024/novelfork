@@ -39,9 +39,41 @@ describe("resolveDebtStatus 伏笔状态解析", () => {
     expect(resolveDebtStatus(entry({ id: "c", fields: { plantedChapter: 3, payoffChapter: 9 } }))).toBe("paid_off");
   });
 
+  it("认进度账本写的中文状态：已回收不再当成未还的债，部分揭示仍算未回收", () => {
+    expect(resolveDebtStatus(entry({ id: "zh-1", fields: { status: "已回收", plantedChapter: 3 } }))).toBe("paid_off");
+    expect(resolveDebtStatus(entry({ id: "zh-2", fields: { status: "已埋设", plantedChapter: 3 } }))).toBe("planted");
+    expect(resolveDebtStatus(entry({ id: "zh-3", fields: { status: "部分揭示", plantedChapter: 3 } }))).toBe("planted");
+    expect(resolveDebtStatus(entry({ id: "zh-4", fields: { status: "已触发", plantedChapter: 3 } }))).toBe("triggered");
+  });
+
+  it("已废弃的伏笔不进债务清单", () => {
+    const debts = buildForeshadowDebts([
+      entry({ id: "drop", title: "放弃的线", fields: { status: "已废弃", plantedChapter: 1 } }),
+      entry({ id: "keep", title: "还在的线", fields: { status: "已埋设", plantedChapter: 1 } }),
+      entry({ id: "paid", title: "收了的线", fields: { status: "已回收", plantedChapter: 1 } }),
+    ], 20);
+    expect(debts.map((debt) => [debt.entryId, debt.status, debt.urgency])).toEqual([
+      ["keep", "planted", "overdue"],
+      ["paid", "paid_off", "ok"],
+    ]);
+  });
+
   it("完全没有线索时记 unknown，不猜", () => {
     expect(resolveDebtStatus(entry({ id: "d", fields: {} }))).toBe("unknown");
     expect(resolveDebtStatus(entry({ id: "e" }))).toBe("unknown");
+  });
+});
+
+describe("断档的线只算剧情推进", () => {
+  it("「未收伏笔」行的格子是埋设章，不算断档的线（催收归「该收的债」）", () => {
+    const board = buildStoryProgressBoard({
+      currentChapter: 9,
+      foreshadowEntries: [entry({ id: "fs-old", title: "旧伏笔", fields: { status: "已埋设", plantedChapter: 2 } })],
+    });
+    const foreshadowLane = board.lanes.find((lane) => lane.kind === "foreshadow");
+    expect(foreshadowLane?.stalled).toBe(false);
+    expect(board.focus?.stalledLanes.some((lane) => lane.kind === "foreshadow")).toBe(false);
+    expect(board.debts.map((debt) => debt.entryId)).toEqual(["fs-old"]);
   });
 });
 

@@ -111,7 +111,7 @@ export function buildWorkflowRunBrief(run: WorkflowRunRecord): string | null {
     const failed = run.state.steps.find((step) => step.status === "failed");
     lines.push(`状态：受阻——${failed ? `工序「${failed.label}」` : ""}${failed?.note?.what ?? "工序失败"}。`);
     if (failed?.note) lines.push(`原因：${failed.note.why}`);
-    lines.push("等待作者在「执行」页选择重试、跳过或取消；期间不要调用写入工具，也不要提交其他工序。");
+    lines.push("等待作者在「工作流」页选择重试、跳过或取消；期间不要调用写入工具，也不要提交其他工序。");
     return lines.join("\n");
   }
 
@@ -125,8 +125,8 @@ export function buildWorkflowRunBrief(run: WorkflowRunRecord): string | null {
     for (const step of awaiting) {
       lines.push(
         step.executorKind === "manual-gate"
-          ? `「${step.label}」：人工门禁，等待作者在「故事推进 › 执行」放行。`
-          : `「${step.label}」：${step.expectedOutput ? KIND_LABEL[step.expectedOutput] : "产物"}已提交，等待作者在「故事推进 › 执行」确认。`,
+          ? `「${step.label}」：人工门禁，等待作者在「写作 › 工作流」放行。`
+          : `「${step.label}」：${step.expectedOutput ? KIND_LABEL[step.expectedOutput] : "产物"}已提交，等待作者在「写作 › 工作流」确认。`,
       );
     }
     lines.push("现在停止产出，不要调用任何写入工具；作者确认或打回后会在下一轮告诉你结果。");

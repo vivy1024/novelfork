@@ -238,10 +238,10 @@ describe("planFixAction", () => {
     }
   });
 
-  it("routes review actions to sidebar views", () => {
-    // 待确认事件与伏笔账本都在故事推进侧栏（伏笔不在工具区，就地渲染）
+  it("routes review actions to where they can be handled", () => {
+    // 待确认事件在故事推进侧栏的章后事实；伏笔账本只在故事画布「下一章」页
     expect(planFixAction("review-pending", { chapterNumber: 5 }).view).toBe("storyline");
-    expect(planFixAction("review-hooks", { chapterNumber: 5 }).view).toBe("storyline");
+    expect(planFixAction("review-hooks", { chapterNumber: 5 })).toMatchObject({ kind: "story-canvas" });
   });
 
   /**

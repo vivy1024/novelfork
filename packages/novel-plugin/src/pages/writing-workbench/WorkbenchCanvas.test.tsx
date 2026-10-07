@@ -44,6 +44,12 @@ vi.mock("./StoryProgressionCanvas", () => ({
   ),
 }));
 
+vi.mock("./WorkflowTimelinePanel", () => ({
+  WorkflowTimelinePanel: ({ bookId, currentChapter, narratorId }: { bookId: string; currentChapter?: number; narratorId?: string }) => (
+    <div data-testid="mock-workflow" data-book={bookId} data-chapter={String(currentChapter ?? "")} data-narrator={narratorId ?? ""} />
+  ),
+}));
+
 import { WorkbenchCanvas } from "./WorkbenchCanvas";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -258,6 +264,32 @@ describe("WorkbenchCanvas", () => {
     // 跳转目标是发展历程权威入口（故事画布 + timeline 视图）
     expect(opened.id).toBe("story-progression:book-1");
     expect(opened.metadata?.preferredView).toBe("timeline");
+  });
+
+  it("工作流中央标签渲染原「执行」页面板，透传书、当前章与叙述者会话", async () => {
+    render(
+      <WorkbenchCanvas
+        node={node({
+          id: "workflow:book-1",
+          kind: "file",
+          title: "工作流",
+          content: undefined,
+          metadata: { isWorkflowRun: true, bookId: "book-1" },
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        })}
+        nodes={[node({ id: "chapter:12", metadata: { chapterNumber: 12 } })]}
+        bookId="book-1"
+        narratorId="narrator-7"
+        onSave={vi.fn()}
+      />,
+    );
+
+    const panel = await screen.findByTestId("mock-workflow");
+    expect(panel.getAttribute("data-book")).toBe("book-1");
+    expect(panel.getAttribute("data-chapter")).toBe("12");
+    expect(panel.getAttribute("data-narrator")).toBe("narrator-7");
+    // 不落到通用编辑器
+    expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
   });
 
   it("章后事实面板把来源章回跳接到 onJumpToChapter", async () => {

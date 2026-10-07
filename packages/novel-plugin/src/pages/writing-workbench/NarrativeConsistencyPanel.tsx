@@ -34,7 +34,7 @@ export interface NarrativeConsistencyPanelProps {
   readonly bookId: string;
   /** 只体检到这一章为止；缺省为全书当前状态。 */
   readonly currentChapter?: number;
-  /** 复用工作台的章节跳转（与 ForeshadowingBoard 同一契约）。 */
+  /** 复用工作台的章节跳转（与其他面板同一契约：按章号打开对应章节）。 */
   readonly onJumpToChapter?: (chapterNumber: number) => void;
   /**
    * 打开经纬条目。返回 false 表示条目未载入/不存在，面板会提示作者，

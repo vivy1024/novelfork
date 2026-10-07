@@ -316,17 +316,17 @@ function resolveOnboarding(
  *
  * 纪律：任何会写入的修复都必须经叙述者与 Runtime 权限确认（kind="narrator"），
  * 前端不得静默 POST 写数据；只有导航类动作（view / settings / lore-panel /
- * write-compass）才由前端直接完成。
+ * write-compass / story-canvas）才由前端直接完成。
  *
  * 导航目标必须与 preflight 的判据同源，否则作者点完按钮改了东西、重跑
  * preflight 却发现问题还在。参见 CHECK_META 上方注释。
  */
 export interface FixActionPlan {
-  readonly kind: "narrator" | "view" | "settings" | "lore-panel" | "write-compass";
+  readonly kind: "narrator" | "view" | "settings" | "lore-panel" | "write-compass" | "story-canvas";
   /** kind=narrator 时发给叙述者的请求文本 */
   readonly message?: string;
   /** kind=view 时要切到的侧栏视图 */
-  readonly view?: Extract<ViewId, "characters-lore" | "storyline" | "skills-style" | "tools" | "explorer">;
+  readonly view?: Extract<ViewId, "characters-lore" | "storyline" | "skills-style" | "resources">;
   /** kind=settings 时要定位到的写作设置分区 */
   readonly settingsSection?: SettingsSectionId;
   /** kind=lore-panel 时要在经纬面板里定位的分类 */
@@ -358,22 +358,22 @@ export function planFixAction(
     // 待确认事件属于故事脉络工作区的章后事实队列。
     case "review-pending":
       return { kind: "view", view: "storyline", label: "去处理待确认事件" };
-    // 伏笔账本唯一入口在故事推进侧栏（就地渲染，不在工具区）。
+    // 伏笔账本只在故事画布「下一章」页（侧栏的「进度账本」已下线），一键修直接打开画布并落在「下一章」。
     case "review-hooks":
-      return { kind: "view", view: "storyline", label: "去查看伏笔账本" };
+      return { kind: "story-canvas", label: "打开故事画布看伏笔账本" };
     // 判据是当前项目 `.novelfork/skills/` 的实际文件，唯一能改它的界面是
-    // 「技能文风」视图里的写作技能面板（写作设置里已没有写作技能分区）。切「工具」视图只有诊断面板，改不了这项。
+    // 「技能文风」视图里的写作技能面板（写作设置里已没有写作技能分区）。切到「资源」里的分析工具只有诊断面板，改不了这项。
     case "enable-style":
       return { kind: "view", view: "skills-style", label: "启用写作技能" };
     case "adjust-word-target":
-      return { kind: "view", view: "explorer", label: "调整章字数目标" };
+      return { kind: "view", view: "resources", label: "调整章字数目标" };
     // preflight 的 currentFocus 来自 cockpit 的 readCurrentFocusFromJingwei，
     // 权威源是经纬 current-focus 创作罗盘（写作侧栏常驻），不是
     // story/current_focus.md。一键修应留在写作视图填罗盘，而不是跳去卷纲。
     case "open-focus":
       return { kind: "write-compass", label: "填写创作罗盘" };
     default:
-      return { kind: "view", view: "tools", label: "查看详情" };
+      return { kind: "view", view: "resources", label: "查看详情" };
   }
 }
 

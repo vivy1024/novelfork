@@ -62,6 +62,12 @@ export interface BuildStoryProgressBoardInput {
   readonly storylines?: readonly NarrativeStoryline[];
   readonly scenes?: readonly NarrativeScene[];
   readonly mounts?: readonly SceneStorylineMount[];
+
+  // 叙事结构快照已算好的两样：给了就直接用，不再从散装条目推。
+  /** 已写章节（章号 + 作者起的章名 + 张力分），章节轴的标题以它为准。 */
+  readonly chapters?: readonly { readonly number: number; readonly title?: string; readonly tensionScore?: number }[];
+  /** 服务端按作者阈值算好的伏笔债务；给了就不再用 foreshadowEntries 重算。 */
+  readonly foreshadowDebts?: readonly ForeshadowDebt[];
 }
 
 // ─── 输出类型 ───
@@ -273,8 +279,9 @@ function laneFromCells(
     color: LANE_COLORS[kind] ?? LANE_COLORS.other,
     cellsByChapter,
     ...(chaptersSinceLastBeat !== undefined ? { chaptersSinceLastBeat } : {}),
-    // 完全没有节拍不算「断档」（那是还没开始），只有推进过又停下才算
-    stalled: chaptersSinceLastBeat !== undefined && chaptersSinceLastBeat >= STALLED_LANE_GAP,
+    // 完全没有节拍不算「断档」（那是还没开始），只有推进过又停下才算。
+    // 「未收伏笔」行的格子是埋设章，不是推进节拍；它的催收归「该收的债」，不能算一条断档的线。
+    stalled: kind !== "foreshadow" && chaptersSinceLastBeat !== undefined && chaptersSinceLastBeat >= STALLED_LANE_GAP,
     source: options?.source ?? "derived",
     ...(options?.storylineId ? { storylineId: options.storylineId } : {}),
     ...(options?.lifecycle ? { lifecycle: options.lifecycle } : {}),
@@ -321,9 +328,20 @@ function buildChapterColumns(
   summaries: readonly ProgressJingweiEntry[],
   events: readonly ProgressMemoryEvent[],
   currentChapter: number,
+  written: BuildStoryProgressBoardInput["chapters"] = [],
 ): StoryProgressChapterColumn[] {
   const titleByChapter = new Map<number, string>();
   const tensionByChapter = new Map<number, number>();
+  // 作者起的章名优先；摘要条目的标题多是「第N章」，此前列头因此成了「第 1 章 / 第 1 章」。
+  for (const chapter of written ?? []) {
+    const number = toChapter(chapter.number);
+    if (number === undefined) continue;
+    const title = typeof chapter.title === "string" ? chapter.title.trim() : "";
+    if (title) titleByChapter.set(number, trimTitle(title, 18));
+    if (typeof chapter.tensionScore === "number" && Number.isFinite(chapter.tensionScore) && chapter.tensionScore >= 0) {
+      tensionByChapter.set(number, chapter.tensionScore);
+    }
+  }
   for (const entry of summaries) {
     const chapter = resolveEntryChapter(entry, "chapterNumber", "chapter_number");
     if (chapter === undefined) continue;
@@ -335,7 +353,7 @@ function buildChapterColumns(
       : typeof f.tensionScore === "number" ? f.tensionScore
       : Number(f.tension_score ?? f.tensionScore);
     // 负值是「评过但失败」的哨兵，与未评分同样按缺省处理
-    if (Number.isFinite(rawTension) && rawTension >= 0) tensionByChapter.set(chapter, rawTension);
+    if (Number.isFinite(rawTension) && rawTension >= 0 && !tensionByChapter.has(chapter)) tensionByChapter.set(chapter, rawTension);
   }
   for (const event of events) {
     const chapter = toChapter(event.chapterNumber);
@@ -400,7 +418,7 @@ export function buildNextChapterFocus(
 export function buildStoryProgressBoard(input: BuildStoryProgressBoardInput): StoryProgressBoardModel {
   const currentChapter = resolveCurrentChapter(input);
   const events = input.events ?? [];
-  const chapters = buildChapterColumns(input.chapterSummaries ?? [], events, currentChapter);
+  const chapters = buildChapterColumns(input.chapterSummaries ?? [], events, currentChapter, input.chapters);
 
   // 1. 真剧情线优先装配（挂载场景）
   const storylines = input.storylines ?? [];
@@ -487,7 +505,10 @@ export function buildStoryProgressBoard(input: BuildStoryProgressBoardInput): St
     );
   });
 
-  const debts = buildForeshadowDebts(input.foreshadowEntries ?? [], currentChapter, input.foreshadowThresholds);
+  // 快照路径此前只传了剧情线与场景：伏笔债务永远是空的，「该收的债」与底部账本都显示没有伏笔。
+  const debts = input.foreshadowDebts
+    ? [...input.foreshadowDebts]
+    : buildForeshadowDebts(input.foreshadowEntries ?? [], currentChapter, input.foreshadowThresholds);
 
   // 伏笔泳道：只画未回收的（已回收的进债务行的历史区，不占网格）
   const foreshadowCells: StoryProgressCell[] = [];
@@ -510,15 +531,17 @@ export function buildStoryProgressBoard(input: BuildStoryProgressBoardInput): St
   );
 
   const derivedLanes: StoryProgressLane[] = [
-    // 如果已有真主线，派生主线标注为章节摘要
-    laneFromCells(
-      "lane:main",
-      "main",
-      hasRealStorylines ? "章节摘要 (自动归类)" : "主线",
-      mainCells,
-      currentChapter,
-      { source: "derived" },
-    ),
+    // 如果已有真主线，派生主线标注为章节摘要；它一格都没有时不画——有真剧情线时那只是一行空壳。
+    ...(hasRealStorylines && mainCells.length === 0
+      ? []
+      : [laneFromCells(
+          "lane:main",
+          "main",
+          hasRealStorylines ? "章节摘要 (自动归类)" : "主线",
+          mainCells,
+          currentChapter,
+          { source: "derived" },
+        )]),
     ...conflictLanes,
     ...characterLanes.map((l) => ({ ...l, source: "derived" as const })),
     ...(foreshadowCells.length > 0

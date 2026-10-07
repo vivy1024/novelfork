@@ -2,7 +2,8 @@
  * 下一章整合页（T4.5）：一屏回答「下一章写什么」。
  *
  * 三块数据全部来自现有权威源：
- *  - 焦点与建议：经纬 current-focus 单例 + narrative-structure 快照（纯函数 next-chapter-plan 合成，不另算）
+ *  - 焦点与建议：经纬 current-focus 单例 + narrative-structure 快照（纯函数 next-chapter-plan 合成，不另算；
+ *    数据装配在 use-next-chapter-plan，故事推进侧栏的下一步卡引用同一份计划与同一句建议）
  *  - 情节板：快照里的剧情线 × 场景（建议排序优先，不重复 buildStoryProgressBoard 的另一套派生线）
  *  - 伏笔账本：快照里已带 urgency 的 ForeshadowDebt，「排进本章」发叙述者指令、
  *    「标记已回收」走 PUT jingwei/entries 的 fieldsPatch、待埋点用 POST 建 needs-review 草稿——
@@ -13,8 +14,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown, Compass, Loader2, RefreshCw, Sprout, Swords } from "lucide-react";
 
 import { fetchJson } from "@/hooks/use-api";
-import { buildNextChapterPlan, type NextChapterPlan } from "./next-chapter-plan";
-import { useNarrativeStructure } from "./useNarrativeStructure";
+import { describeNextChapterSuggestion, storylineKindLabel as kindLabel } from "./next-chapter-plan";
+import { useNextChapterPlan } from "./use-next-chapter-plan";
 import type { ForeshadowDebt } from "../../engine/narrative-taxonomy/foreshadow-debts.js";
 import type { NarrativeScene, NarrativeStoryline } from "../../engine/narrative-memory/scene-store.js";
 
@@ -25,45 +26,9 @@ export interface NextChapterPanelProps {
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
-interface FocusEntryLike {
-  readonly title?: string;
-  readonly fields?: Record<string, unknown>;
-}
-
 interface ForeshadowEntryLike {
   readonly id: string;
   readonly fields?: Record<string, unknown>;
-}
-
-function readFocus(raw: unknown): { goal: string; why?: string } | null {
-  const record = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
-  const entries = record && Array.isArray(record.entries) ? (record.entries as readonly FocusEntryLike[]) : null;
-  const entry = entries?.[0];
-  const fields = entry?.fields && typeof entry.fields === "object" ? entry.fields : {};
-  const goal = typeof fields.goal === "string" ? fields.goal.trim() : "";
-  if (!goal) return null;
-  const why = typeof fields.why === "string" && fields.why.trim() ? fields.why.trim() : undefined;
-  return { goal, ...(why ? { why } : {}) };
-}
-
-function useCurrentFocus(bookId: string | undefined): { readonly focus: { goal: string; why?: string } | null; readonly error: string | null } {
-  const [focus, setFocus] = useState<{ goal: string; why?: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!bookId) return;
-    let cancelled = false;
-    void fetchJson<{ entries?: readonly FocusEntryLike[] }>(
-      `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=current-focus&limit=1`,
-    )
-      .then((raw) => {
-        if (!cancelled) setFocus(readFocus(raw));
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error && err.message ? err.message : "读取本章焦点失败");
-      });
-    return () => { cancelled = true; };
-  }, [bookId]);
-  return { focus, error };
 }
 
 function useForeshadowEntries(bookId: string | undefined, version: number): ReadonlyMap<string, Record<string, unknown>> | null {
@@ -96,25 +61,8 @@ const URGENCY_META: Record<ForeshadowDebt["urgency"], { label: string; className
   ok: { label: "近期可用", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
 };
 
-function kindLabel(kind: string): string {
-  const map: Record<string, string> = {
-    main: "主线",
-    sub: "支线",
-    romance: "感情线",
-    faction: "势力线",
-    mystery: "悬疑线",
-    "character-arc": "人物成长",
-    conflict: "矛盾线",
-    character: "人物线",
-    foreshadow: "伏笔线",
-    other: "其他",
-  };
-  return map[kind] ?? kind;
-}
-
 export function NextChapterPanel({ bookId, currentChapter, onOpenChapter, onSendToNarrator }: NextChapterPanelProps) {
-  const { state, reload } = useNarrativeStructure(bookId);
-  const { focus } = useCurrentFocus(bookId);
+  const { state, reload, plan } = useNextChapterPlan(bookId, currentChapter);
   const [version, setVersion] = useState(0);
   const fieldsMap = useForeshadowEntries(bookId, version);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -123,19 +71,6 @@ export function NextChapterPanel({ bookId, currentChapter, onOpenChapter, onSend
   const [plantTitle, setPlantTitle] = useState("");
   const [plantChapter, setPlantChapter] = useState("");
   const [plantBusy, setPlantBusy] = useState(false);
-
-  const plan = useMemo<NextChapterPlan | null>(() => {
-    if (state.status !== "ready") return null;
-    return buildNextChapterPlan({
-      chapters: state.data.chapters,
-      scenes: state.data.scenes,
-      storylines: state.data.storylines,
-      mounts: state.data.mounts,
-      foreshadows: state.data.foreshadows,
-      focus,
-      ...(currentChapter !== undefined ? { currentChapter } : {}),
-    });
-  }, [state, focus, currentChapter]);
 
   const sceneTitlesByChapter = useMemo(() => {
     const map = new Map<string, Map<number, string[]>>();
@@ -284,11 +219,7 @@ export function NextChapterPanel({ bookId, currentChapter, onOpenChapter, onSend
           )}
           {plan.hasStorylines ? (
             <div className="mt-2 rounded-md bg-primary/10 px-3 py-2 text-2xs text-foreground" data-testid="next-suggestion-line">
-              下一章建议：第 {plan.nextChapter} 章
-              {plan.suggestions.length > 0
-                ? ` · ${plan.suggestions.map((s) => `${kindLabel(s.laneKind)}「${s.laneTitle}」（${s.reasonText}）`).join("；")}`
-                : " · 活跃剧情线都在推进中"}
-              {plan.hookPlan.length > 0 ? ` · 顺手回收「${plan.hookPlan[0]!.debt.title}」` : ""}
+              {describeNextChapterSuggestion(plan)}
             </div>
           ) : (
             <div className="mt-2 rounded-md bg-muted px-3 py-2 text-2xs text-muted-foreground" data-testid="next-suggestion-empty">

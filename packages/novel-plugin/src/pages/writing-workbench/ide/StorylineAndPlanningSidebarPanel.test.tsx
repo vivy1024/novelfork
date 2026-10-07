@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveNextAction, StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
+import { orderOutlineTree, pruneStoryChapterTree, resolveNextAction, StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
 import { buildTargetChapterFields } from "./IdeWorkbench";
 import type { ResourceTreeAction } from "../../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
@@ -35,6 +35,9 @@ vi.mock("@/hooks/use-api", () => ({
         refetch: vi.fn(async () => undefined),
       };
     }
+    if (path?.endsWith("/settlement-freshness") && path.includes("/books/book-quiet/")) {
+      return { data: { chapters: [], staleChapters: [] }, loading: false, error: null, refetch: vi.fn(async () => undefined) };
+    }
     if (path?.endsWith("/settlement-freshness")) {
       return {
         data: {
@@ -65,6 +68,35 @@ vi.mock("@/hooks/use-api", () => ({
     return { data: undefined, loading: false, error: null, refetch: vi.fn(async () => undefined) };
   },
 }));
+
+// 下一章计划：侧栏只引用画布「下一章」页的同一份计划；这里给一份固定计划。
+const planHarness = vi.hoisted(() => ({
+  plan: null as import("../next-chapter-plan").NextChapterPlan | null,
+  reload: vi.fn(),
+  calls: [] as Array<{ bookId: string; currentChapter: number | undefined }>,
+}));
+
+vi.mock("../use-next-chapter-plan", () => ({
+  useNextChapterPlan: (bookId: string, currentChapter: number | undefined) => {
+    planHarness.calls.push({ bookId, currentChapter });
+    return { state: { status: "loading" }, reload: planHarness.reload, plan: planHarness.plan };
+  },
+}));
+
+function fixturePlan(): import("../next-chapter-plan").NextChapterPlan {
+  const debt = { id: "d1", entryId: "d1", title: "青铜戒指之谜", status: "planted", plantedChapter: 1, chaptersPending: 13, urgency: "overdue" as const, reason: "已悬置 13 章" };
+  return {
+    nextChapter: 13,
+    focus: { goal: "让主线退一档" },
+    hasStorylines: true,
+    suggestions: [{ id: "focus:main", storylineId: "main", laneKind: "main", laneTitle: "夺回师门", reason: "focus-named", reasonText: "焦点点名" }],
+    hookPlan: [{ debt, pendingChapters: 13, headline: "已悬置 13 章" }],
+    overdue: [debt],
+    watch: [],
+    healthy: [],
+    narrativeSummary: "共 1 条剧情线 · 0 个场景 · 1 条伏笔",
+  };
+}
 
 vi.mock("../NarrativeMemoryPanel", () => ({
   NarrativeMemorySummary: ({ onOpenCenter }: { onOpenCenter?: () => void }) => (
@@ -118,6 +150,8 @@ function renderPanel(options: {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  planHarness.plan = null;
+  planHarness.calls = [];
 });
 
 describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）", () => {
@@ -126,9 +160,14 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
 
     expect(screen.getByRole("button", { name: "章节与大纲" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "章后事实" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "故事画布" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "进度账本" })).toBeTruthy();
-    expect(screen.getByText("当前语境")).toBeTruthy();
+    // 只剩两个子页签：「故事画布」改成顶部按钮，「进度账本」与画布伏笔账本重复，已下线
+    expect(screen.queryByRole("button", { name: "故事画布" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "进度账本" })).toBeNull();
+    expect(screen.getByRole("button", { name: "打开故事画布" })).toBeTruthy();
+    // 「当前语境」只是切到写作视图，与活动栏「写作」重复，已下线
+    expect(screen.queryByText("当前语境")).toBeNull();
+    // 计数是真实章数与纲条目数，不是顶层节点数
+    expect(screen.getByText("章节 1 · 大纲 1")).toBeTruthy();
     expect(screen.getByText("第 12 章")).toBeTruthy();
     expect(screen.getByText("第一卷：起点")).toBeTruthy();
 
@@ -168,11 +207,93 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     );
 
     expect(screen.getByText("正文")).toBeTruthy();
-    // 卷目录默认收起，展开后才看到章节
-    fireEvent.click(screen.getByRole("button", { name: "卷01" }));
+    // 卷目录默认展开：打开即见章节，不用逐个点开
+    expect(screen.getByRole("button", { name: "卷01" })).toBeTruthy();
     expect(screen.queryByText("0001_雨夜.md")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "第 1 章 雨夜" }));
     expect(onOpen).toHaveBeenCalledWith(chapterFile);
+  });
+
+  it("章节树只放章节：chapters/ 下的非章节笔记与空卷目录不进树", () => {
+    const chapterFile: WorkbenchResourceNode = {
+      id: "file:chapters/卷01/0001_雨夜.md",
+      kind: "chapter",
+      title: "0001_雨夜.md",
+      capabilities,
+      metadata: { filePath: "chapters/卷01/0001_雨夜.md", isFile: true, chapterNumber: 1 },
+    };
+    // 资源树把 chapters/ 下所有 .md 都标成 chapter；认不出章号的是作者笔记，不是章节
+    const note: WorkbenchResourceNode = {
+      id: "file:chapters/作者说清单.md",
+      kind: "chapter",
+      title: "作者说清单.md",
+      capabilities,
+      metadata: { filePath: "chapters/作者说清单.md", isFile: true },
+    };
+    const emptyVolume: WorkbenchResourceNode = { id: "file-dir:chapters/卷03", kind: "group", title: "卷03", capabilities, metadata: { isDirectory: true }, children: [] };
+    const root: WorkbenchResourceNode = {
+      id: "file-dir:chapters",
+      kind: "group",
+      title: "chapters",
+      capabilities,
+      metadata: { filePath: "chapters", isDirectory: true },
+      children: [
+        { id: "file-dir:chapters/卷01", kind: "group", title: "卷01", capabilities, metadata: { isDirectory: true }, children: [chapterFile] },
+        emptyVolume,
+        note,
+      ],
+    };
+    const pruned = pruneStoryChapterTree([root]);
+    expect(pruned[0]!.children!.map((child) => child.title)).toEqual(["卷01"]);
+    expect(pruned[0]!.children![0]!.children).toEqual([chapterFile]);
+    expect(pruneStoryChapterTree([note, emptyVolume])).toEqual([]);
+  });
+
+  it("大纲按推进顺序：卷纲在前并展开成按章节区间排的各卷，细纲按章号；卷纲不给提拔", () => {
+    const onOpen = vi.fn();
+    const onAction = vi.fn();
+    const volumeOutline: WorkbenchResourceNode = {
+      id: "jingwei-entry:vol",
+      kind: "jingwei-entry",
+      title: "卷纲",
+      capabilities,
+      metadata: {
+        category: "outline",
+        fields: {
+          volumes: [
+            { id: "v2", title: "第二卷 北港", chapterRange: { from: 5, to: 9 } },
+            { id: "v1", title: "第一卷 雨城", chapterRange: { from: 1, to: 4 } },
+          ],
+        },
+      },
+    };
+    const chapter8 = { ...node("jingwei-entry:c8", "第8章 细纲：雾钟敲响", "jingwei-entry"), metadata: { category: "outline", fields: {} } };
+    const chapter3 = { ...node("jingwei-entry:c3", "第 3 章 细纲：灰衣人", "jingwei-entry"), metadata: { category: "outline", fields: {} } };
+    const group = node("jingwei-cat:outline", "卷纲/大纲 (3)", "group", [chapter8, volumeOutline, chapter3]);
+
+    const ordered = orderOutlineTree([group]);
+    expect(ordered[0]!.children!.map((child) => child.title)).toEqual(["卷纲", "第 3 章 细纲：灰衣人", "第8章 细纲：雾钟敲响"]);
+    expect(ordered[0]!.children![0]!.children!.map((child) => child.title)).toEqual([
+      "第一卷 雨城（第 1–4 章）",
+      "第二卷 北港（第 5–9 章）",
+    ]);
+
+    render(
+      <StorylineAndPlanningSidebarPanel
+        bookId="book-1"
+        chapterTreeNodes={[]}
+        outlineTreeNodes={[group]}
+        selectedNodeId={null}
+        onOpen={onOpen}
+        onAction={onAction}
+      />,
+    );
+    expect(screen.getByText("章节 0 · 大纲 3")).toBeTruthy();
+    // 两条单章细纲有提拔按钮，卷纲容器没有
+    expect(screen.getAllByTitle("将大纲提拔至手稿章节")).toHaveLength(2);
+    // 点某一卷，打开的是卷纲条目本身
+    fireEvent.click(screen.getByRole("button", { name: "第一卷 雨城（第 1–4 章）" }));
+    expect(onOpen).toHaveBeenCalledWith(volumeOutline);
   });
 
   it("T3 身份链：已落稿纲显示 ✓徽标且隐藏提拔按钮，规划中显示 🗺，无目标号不标", () => {
@@ -250,62 +371,34 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(fetchJson).toHaveBeenCalledWith("/api/books/book-1/narrative-memory/chapters/3/resettle", { method: "POST" });
   });
 
-  it("故事画布 Tab 点击即在中央打开画布，并提供故事树/推进/脉络快捷入口；经典图谱入口已移除", () => {
+  it("顶部「打开故事画布」按钮在中央打开画布并落在「下一章」；侧栏不再有画布说明页与跳转按钮", () => {
     const { onOpen } = renderPanel();
 
-    fireEvent.click(screen.getByRole("button", { name: "故事画布" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开故事画布" }));
 
     expect(onOpen).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "story-progression:book-1",
-        metadata: expect.objectContaining({ isStoryProgression: true, preferredView: "tree" }),
+        metadata: expect.objectContaining({ isStoryProgression: true, preferredView: "next" }),
       }),
     );
-
-    // 侧栏只保留两个轻量快捷入口，不再堆叠全部视图按钮与经典图谱折叠区
+    // 点开只剩一段说明文字的「故事画布」子页签已下线
+    expect(screen.queryByTestId("storyline-canvas-note")).toBeNull();
     expect(screen.queryByTestId("storyline-canvas-entries")).toBeNull();
     expect(screen.queryByRole("button", { name: "关系网络" })).toBeNull();
     expect(screen.queryByRole("button", { name: /独立全屏故事地图/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /大纲总览/ })).toBeNull();
-
-    // 快捷入口跟随画布的四视图：故事树（默认主视觉）/ 推进 / 章节脉络
-    fireEvent.click(screen.getByRole("button", { name: /打开故事树/ }));
-    expect(onOpen).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ preferredView: "tree" }),
-      }),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /打开推进/ }));
-    expect(onOpen).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ preferredView: "board" }),
-      }),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /打开章节脉络/ }));
-    expect(onOpen).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ preferredView: "chronicle" }),
-      }),
-    );
+    expect(screen.queryByRole("button", { name: /打开故事树/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /打开推进/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /打开章节脉络/ })).toBeNull();
   });
 
-  it("当前语境切换到写作视图，进度账本就地渲染伏笔/冲突/债务，点看板才打开 tool 节点", async () => {
-    const { onOpen, onSwitchView } = renderPanel();
-
-    fireEvent.click(screen.getByRole("button", { name: "当前语境" }));
-    expect(onSwitchView).toHaveBeenCalledWith("write");
-
-    fireEvent.click(screen.getByRole("button", { name: "进度账本" }));
-    expect(screen.getByTestId("ledger-progress-table")).toBeTruthy();
-    expect(screen.getByText("青铜戒指之谜")).toBeTruthy();
-    expect(screen.getByText("通道授权争夺")).toBeTruthy();
-    expect(screen.getByText("实验债")).toBeTruthy();
+  it("侧栏不再渲染伏笔 / 冲突 / 债务进度表（伏笔只在画布「下一章」的伏笔账本）", () => {
+    const { onOpen } = renderPanel();
+    expect(screen.queryByTestId("ledger-progress-table")).toBeNull();
+    expect(screen.queryByText("通道授权争夺")).toBeNull();
+    expect(screen.queryByText("实验债")).toBeNull();
     expect(onOpen).not.toHaveBeenCalledWith(expect.objectContaining({ id: "tool:foreshadowing" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "打开看板" }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "tool:foreshadowing" }));
   });
 
   it("驾驶舱显示位置锚定条，并把目标章数渲染为进度", () => {
@@ -324,14 +417,52 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(onSendToNarrator).toHaveBeenCalledWith(expect.stringContaining("outline.volume"));
   });
 
-  it("resolveNextAction 五级规则只返回最高优先级一条", () => {
-    expect(resolveNextAction({ hasOutline: false, plannedCount: 3, pendingCount: 2, dueNowCount: 1 }).key).toBe("outline-empty");
-    expect(resolveNextAction({ hasOutline: true, plannedCount: 2, pendingCount: 9, dueNowCount: 4 }).key).toBe("promote-outline");
-    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 3, dueNowCount: 4 }).key).toBe("review-pending");
-    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, staleCount: 2, dueNowCount: 4 }))
+  it("resolveNextAction 维护提醒优先，只返回最高优先级一条；都没有时给下一章建议", () => {
+    expect(resolveNextAction({ hasOutline: false, plannedCount: 3, pendingCount: 2 }).key).toBe("outline-empty");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 2, pendingCount: 9 }).key).toBe("promote-outline");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 3 }).key).toBe("review-pending");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, staleCount: 2 }))
       .toMatchObject({ key: "resettle-stale", tab: "memory" });
-    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 1, staleCount: 2, dueNowCount: 0 }).key).toBe("review-pending");
-    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, dueNowCount: 2 }).key).toBe("foreshadow-due");
-    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, dueNowCount: 0 }).key).toBe("all-set");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 1, staleCount: 2 }).key).toBe("review-pending");
+    // 下一章建议原样引用计划那一句，不另算伏笔到期
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, nextChapterSuggestion: "下一章建议：第 13 章 · 主线「夺回师门」（焦点点名）" }))
+      .toEqual({ key: "next-chapter", label: "下一章建议：第 13 章 · 主线「夺回师门」（焦点点名）" });
+    // 计划还没读到：引导去画布看，不自造建议
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0 }))
+      .toEqual({ key: "next-chapter", label: "打开故事画布，看下一章写什么" });
+  });
+
+  it("NEXT 卡的下一章建议与画布「下一章」页同一句；点击打开画布并落在「下一章」", async () => {
+    const { describeNextChapterSuggestion } = await import("../next-chapter-plan");
+    planHarness.plan = fixturePlan();
+    const onOpen = vi.fn();
+    const chapter = { ...node("chapter:12", "第 12 章", "chapter"), metadata: { chapterNumber: 12 } };
+    // book-quiet：没有待审、没有记忆过期，维护提醒都不命中，才轮到下一章建议
+    render(
+      <StorylineAndPlanningSidebarPanel
+        bookId="book-quiet"
+        chapterTreeNodes={[node("chapters", "章节", "group", [chapter])]}
+        outlineTreeNodes={[node("outline:1", "第一卷：起点", "jingwei-entry")]}
+        selectedNodeId={null}
+        onOpen={onOpen}
+      />,
+    );
+
+    // 侧栏把真实当前章交给同一个计划 hook
+    expect(planHarness.calls.at(-1)).toEqual({ bookId: "book-quiet", currentChapter: 12 });
+    const card = screen.getByTestId("storyline-next-next-chapter");
+    expect(card.textContent).toBe(describeNextChapterSuggestion(fixturePlan()));
+    expect(card.textContent).toContain("顺手回收「青铜戒指之谜」");
+    // 旧的侧栏伏笔口径（目标章 ≤ 当前章 + 1）与「一切就绪」占位都已下线
+    expect(screen.queryByTestId("storyline-next-foreshadow-due")).toBeNull();
+    expect(screen.queryByTestId("storyline-next-all-set")).toBeNull();
+
+    fireEvent.click(card);
+    expect(onOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "story-progression:book-quiet",
+        metadata: expect.objectContaining({ isStoryProgression: true, preferredView: "next" }),
+      }),
+    );
   });
 });

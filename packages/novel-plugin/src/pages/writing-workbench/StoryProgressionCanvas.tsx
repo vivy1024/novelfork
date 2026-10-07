@@ -11,7 +11,6 @@ import {
   Network,
   ScrollText,
   Swords,
-  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,9 +25,6 @@ const NextChapterPanel = lazy(() =>
 const CanonicalTreesPanel = lazy(() =>
   import("./CanonicalTreesPanel").then((m) => ({ default: m.CanonicalTreesPanel })),
 );
-const WorkflowTimelinePanel = lazy(() =>
-  import("./WorkflowTimelinePanel").then((m) => ({ default: m.WorkflowTimelinePanel })),
-);
 
 // ─── 视图定义 ─────────────────────────────────────────────────────────────
 
@@ -37,7 +33,9 @@ const WorkflowTimelinePanel = lazy(() =>
  *  - next      下一章（默认，主视觉）：一屏回答「下一章写什么」——焦点 + 建议 + 情节板 + 伏笔账本
  *  - board     推进：章 × 剧情线网格 + 下一章焦点 + 伏笔债务
  *  - tree      故事树（参考）：章节 / 因果 / 脉络 / 发展历程；世界观与人物关系在「作品基础」
- *  - workflow  执行：按创作工作流方案逐道工序推进本章
+ *
+ * 工作流「执行」已迁到写作视图（写作 › 工作流）：它回答「这一章按什么工序写」，属于写作，
+ * 不再是画布的视图；旧的 workflow 取值落到「下一章」，不会白屏。
  *
  * 为什么主视觉不再是图：调研 Plottr / Arc Studio / Scrivener / Aeon / Twine 等后确认，
  * 线性叙事的「推进」主视觉几乎都是看板/章节网格（≈45%），力导向图当推进主视觉没有成功案例
@@ -46,7 +44,7 @@ const WorkflowTimelinePanel = lazy(() =>
  * 原「发展历程」三层（事件流/关系演化/矛盾冲突）已从推进页移除：
  * 它们是叙事记忆的浏览视图，归 NarrativeMemoryPanel，不回答「下一章写什么」。
  */
-export type StoryProgressionView = "next" | "board" | "tree" | "workflow";
+export type StoryProgressionView = "next" | "board" | "tree";
 
 export interface StoryProgressionViewDef {
   readonly id: StoryProgressionView;
@@ -59,8 +57,6 @@ export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
   { id: "next", label: "下一章", description: "一屏回答「下一章写什么」：焦点 + 建议 + 情节板 + 伏笔账本", icon: Swords },
   { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
   { id: "tree", label: "故事树", description: "章节 / 因果 / 脉络 / 发展历程（世界观与人物关系在「作品基础」）", icon: FolderTree },
-  // 工作流的归宿：它回答的是「这一章按什么工序推进」，属于推进镜头，不是一个可选分析工具。
-  { id: "workflow", label: "执行", description: "按创作工作流方案逐道工序推进本章", icon: Workflow },
 ] as const;
 
 const PROGRESSION_TREE_KINDS: readonly import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind[] = [
@@ -79,10 +75,12 @@ export const LEGACY_VIEW_TARGETS: Record<string, { view: StoryProgressionView; t
   network: { view: "tree", treeKind: "causal" },
   map: { view: "tree", treeKind: "causal" },
   outline: { view: "tree", treeKind: "chapters" },
+  // 「执行」已迁到写作视图（写作 › 工作流）；旧取值落到「下一章」，不白屏。
+  workflow: { view: "next" },
 };
 
 export function isStoryProgressionView(value: unknown): value is StoryProgressionView {
-  return value === "next" || value === "tree" || value === "board" || value === "workflow";
+  return value === "next" || value === "tree" || value === "board";
 }
 
 /** 兼容旧的 initialView 取值；非法或缺省进「下一章」整合页。 */
@@ -101,8 +99,7 @@ export function resolveInitialTreeKind(value: unknown): import("../../engine/nar
 
 export interface StoryProgressionCanvasProps {
   readonly bookId: string;
-  /** 初始视图；外部再次变更时会同步切换内部视图（侧栏跳转入口）。 */
-  /** 初始视图；缺省进故事树。 */
+  /** 初始视图；外部再次变更时会同步切换内部视图（侧栏跳转入口）。缺省进「下一章」。 */
   readonly initialView?: StoryProgressionView | string;
   /** 当前写作章节号（由宿主透传）。 */
   readonly currentChapter?: number;
@@ -112,20 +109,18 @@ export interface StoryProgressionCanvasProps {
   readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   /** 把意图交给叙述者执行（规划下一章 / 补缺失线索）。 */
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
-  /** 当前打开的本书叙述者会话；「执行」视图的工作流作用在它身上。 */
-  readonly narratorId?: string;
 }
 
 // ─── 主组件 ───────────────────────────────────────────────────────────────
 
 export function StoryProgressionCanvas({
   bookId,
-  initialView = "tree",
+  // 「下一章」是推进页的主视觉（T4.5 起）；此前这里仍默认故事树，新做的整合页从没被当成落点。
+  initialView = "next",
   currentChapter,
   onOpenChapter,
   onOpenEntityDetail,
   onSendToNarrator,
-  narratorId,
 }: StoryProgressionCanvasProps) {
   const [view, setView] = useState<StoryProgressionView>(() => normalizeStoryProgressionView(initialView));
   const [fullscreen, setFullscreen] = useState(false);
@@ -248,17 +243,6 @@ export function StoryProgressionCanvas({
               {...(onSendToNarrator ? { onSendToNarrator } : {})}
               compactHeader={fullscreen}
             />
-          </div>
-        ) : view === "workflow" ? (
-          <div className="h-full min-h-0 overflow-y-auto" data-testid="story-progression-workflow">
-            <Suspense fallback={fallback("正在载入工作流…")}>
-              <WorkflowTimelinePanel
-                bookId={bookId}
-                {...(currentChapter !== undefined ? { currentChapter } : {})}
-                {...(onSendToNarrator ? { onSendToNarrator } : {})}
-                {...(narratorId ? { narratorId } : {})}
-              />
-            </Suspense>
           </div>
         ) : (
           <div className="h-full min-h-0" data-testid="story-progression-tree">

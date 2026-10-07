@@ -2,7 +2,7 @@
  * 叙述者侧的工作流方案工具：列出、查看、编辑（只改草稿）、启动运行。
  *
  * 方案读写限定在可信书籍绑定的作品目录里；模型输入里不含书籍、路径或叙述者标识。
- * 叙述者建的或改的方案一律是草稿：作者在「故事推进 › 执行」的画布上确认发布后才能运行。
+ * 叙述者建的或改的方案一律是草稿：作者在「写作 › 工作流」的画布上确认发布后才能运行。
  * 已发布的方案叙述者不能直接改——要改就用 copyFrom 另建一份草稿。
  */
 
@@ -188,7 +188,7 @@ export async function executeWorkflowRecipeTool(
     return {
       ok: true,
       summary: issues.length === 0
-        ? `草稿「${saved.name}」已保存（第 ${saved.revision} 版），结构完整，请作者在「故事推进 › 执行」的画布上确认发布。`
+        ? `草稿「${saved.name}」已保存（第 ${saved.revision} 版），结构完整，请作者在「写作 › 工作流」的画布上确认发布。`
         : `草稿「${saved.name}」已保存（第 ${saved.revision} 版），还有 ${issues.length} 处结构问题，发布前需要修好：${issues[0]!.explanation.what}`,
       data: { recipe: recipeForModel(saved) },
     };

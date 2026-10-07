@@ -827,11 +827,15 @@ export function StoryProgressBoard({
   const board = useMemo(() => {
     if (state.status !== "ready") return null;
     if (state.data.structurePayload) {
+      const struct = state.data.structurePayload;
       return buildStoryProgressBoard({
-        storylines: state.data.structurePayload.storylines,
-        scenes: state.data.structurePayload.scenes,
-        mounts: state.data.structurePayload.mounts,
-        currentChapter: currentChapter ?? state.data.structurePayload.currentChapter,
+        storylines: struct.storylines,
+        scenes: struct.scenes,
+        mounts: struct.mounts,
+        // 快照里已有章名与按作者阈值算好的伏笔债务，一并交给网格（此前只给了剧情线与场景）。
+        chapters: struct.chapters,
+        foreshadowDebts: struct.foreshadows ?? [],
+        currentChapter: currentChapter ?? struct.currentChapter,
       });
     }
     return buildStoryProgressBoard({

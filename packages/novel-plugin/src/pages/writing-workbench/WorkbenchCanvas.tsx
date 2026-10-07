@@ -46,7 +46,7 @@ const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => (
 const TensionCurvePanel = lazy(() => import("./TensionCurvePanel").then(m => ({ default: m.TensionCurvePanel })));
 const ChapterSettlementBanner = lazy(() => import("./ChapterSettlementBanner").then(m => ({ default: m.ChapterSettlementBanner })));
 const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
-const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
+const WorkflowTimelinePanel = lazy(() => import("./WorkflowTimelinePanel").then(m => ({ default: m.WorkflowTimelinePanel })));
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
 const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel").then(m => ({ default: m.CollaborationVersionPanel })));
@@ -208,7 +208,7 @@ function ToolPanelLoading() {
 /**
  * 本书当前（最大已完成）章号。权威源是资源树：book 节点带后端算出的 nextChapter
  * （GET /api/books/:bookId 用最大章号 + 1），退化时用 chapter 节点的最大 chapterNumber。
- * 两者都拿不到时返回 undefined —— 伏笔看板会显式显示「悬念未知」，不能编默认值。
+ * 两者都拿不到时返回 undefined —— 下游面板按「章号未知」显示，不能编默认值。
  */
 export function resolveCurrentChapter(nodes: readonly WorkbenchResourceNode[] | undefined): number | undefined {
   if (!nodes || nodes.length === 0) return undefined;
@@ -232,7 +232,7 @@ export function resolveCurrentChapter(nodes: readonly WorkbenchResourceNode[] | 
 
 function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, currentChapter, onJumpToChapter, onOpenJingweiEntry, onSendToNarrator }: { toolPanel: ToolPanelId; bookId: string; bookPlatform?: string; repositoryPath?: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void; onOpenJingweiEntry?: (entryId: string) => boolean; onSendToNarrator?: (message: string) => Promise<void> | void }) {
   switch (toolPanel) {
-    // 工作流不再是工具面板：它的唯一入口是「故事推进 › 执行」。
+    // 工作流不是工具面板：它的唯一入口是写作侧栏的「工作流：按工序写这一章」（写作 › 工作流）。
     case "quality":
       return (
         <Suspense fallback={<ToolPanelLoading />}>
@@ -250,8 +250,6 @@ function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, curren
       return <Suspense fallback={<ToolPanelLoading />}><CharacterArcsPanel bookId={bookId} onClose={() => {}} /></Suspense>;
     case "compliance":
       return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} bookPlatform={bookPlatform} onClose={() => {}} /></Suspense>;
-    case "foreshadowing":
-      return <Suspense fallback={<ToolPanelLoading />}><ForeshadowingBoard bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} /></Suspense>;
     case "governance":
       return <GovernanceCockpitPanel bookId={bookId} />;
     case "runtime":
@@ -290,7 +288,7 @@ export interface WorkbenchCanvasProps {
   toolbarSlotRef?: RefObject<HTMLDivElement | null>;
   /** 当前 canvas 是否为激活状态（多实例模式下控制 portal 行为） */
   isActive?: boolean;
-  /** 工具面板（如伏笔看板）跳转到指定章节，由上层打开对应章节 Tab */
+  /** 工具面板跳转到指定章节，由上层打开对应章节 Tab */
   onJumpToChapter?: (chapterNumber: number) => void;
   /** 关联条目跳转；返回 false 表示目标资源不存在。 */
   onOpenJingweiEntry?: (entryId: string) => boolean;
@@ -310,7 +308,7 @@ export interface WorkbenchCanvasProps {
    * 产品 HTTP 适配层没有 Provider，这类动作必须由 Runtime 的叙述者执行。
    */
   onSendToNarrator?: (message: string) => Promise<void> | void;
-  /** 当前打开的本书叙述者会话 id（供「故事推进 › 执行」启动工作流）。 */
+  /** 当前打开的本书叙述者会话 id（供「写作 › 工作流」启动工作流）。 */
   narratorId?: string;
   /** 叙述者结果卡送回的待审阅选区候选；仅在 chapterNumber 与当前章节一致时显示。 */
   selectionCandidate?: SelectionCandidate | null;
@@ -522,6 +520,22 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             onOpenChapter={onJumpToChapter}
             onOpenEntityDetail={onOpenEntityDetail}
             onSendToNarrator={onSendToNarrator}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+
+  // 工作流 — 写作视图的中央标签（入口在写作侧栏）；面板就是原故事画布「执行」页的 WorkflowTimelinePanel。
+  if (node.metadata?.isWorkflowRun && bookId) {
+    const currentChapter = resolveCurrentChapter(nodes);
+    return (
+      <div className="h-full min-h-0 overflow-y-auto p-2" data-testid="workflow-run-view">
+        <Suspense fallback={<ToolPanelLoading />}>
+          <WorkflowTimelinePanel
+            bookId={bookId}
+            {...(currentChapter !== undefined ? { currentChapter } : {})}
+            {...(onSendToNarrator ? { onSendToNarrator } : {})}
             {...(narratorId ? { narratorId } : {})}
           />
         </Suspense>

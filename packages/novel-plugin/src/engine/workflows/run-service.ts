@@ -95,7 +95,7 @@ export async function startWorkflowRun(input: StartWorkflowRunInput): Promise<Wo
     return { ok: false, code: "recipe-not-found", status: 404, explanation: {
       what: `找不到工作流方案「${input.recipeId}」`,
       why: "方案可能已被删除或改名",
-      action: "刷新「执行」页，从下拉框重新选择方案",
+      action: "刷新「工作流」页，从下拉框重新选择方案",
     } };
   }
   if (recipe.status !== "published") {
@@ -104,7 +104,7 @@ export async function startWorkflowRun(input: StartWorkflowRunInput): Promise<Wo
       why: recipe.createdBy === "narrator"
         ? "叙述者建的工作流要作者在画布上确认后才能运行"
         : "草稿可能还有没修好的结构问题",
-      action: "在「故事推进 › 执行」的画布上检查并发布它",
+      action: "在「写作 › 工作流」的画布上检查并发布它",
     } };
   }
   return createWorkflowRun(input.storage, {
@@ -246,7 +246,7 @@ export interface SubmitStepOutputInput {
 function noActiveRun<T>(): WorkflowServiceResult<T> {
   return { ok: false, code: "no-active-run", status: 404, explanation: {
     what: "当前没有进行中的创作工作流",
-    why: "工作流由作者在「故事推进 › 执行」启动，没有运行就没有工序可提交",
+    why: "工作流由作者在「写作 › 工作流」启动，没有运行就没有工序可提交",
     action: "按作者的普通指令继续；需要工作流时请作者先启动",
   } };
 }
@@ -451,7 +451,7 @@ export function findApprovedProseMismatch(
   if (normalizeProse(content) === normalizeProse(approvedContent)) return null;
   return {
     what: `${canonicalToolName} 要写入的正文与作者批准的版本不一致`,
-    why: "作者在「执行」页批准的是另一份正文；落盘不同内容会让审过的和写进书里的对不上",
+    why: "作者在「工作流」页批准的是另一份正文；落盘不同内容会让审过的和写进书里的对不上",
     action: "用 workflow_get_current_step 取回已批准的正文原样写入；若确需改动，先重新提交正文等作者确认",
   };
 }

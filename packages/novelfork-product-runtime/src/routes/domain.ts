@@ -279,6 +279,8 @@ novelDomainRoutes.route(
 		createNarrativeStructureRouter({
 			// 伏笔阈值由作者按书设置，存于 book.json。
 			loadBookConfig: (bookId) => productRouterContext.state.loadBookConfig(bookId),
+			// 正式章节存在书籍目录的 chapters/index.json，快照的章节列表与当前章以它为准。
+			resolveBookRoot: resolveDomainBookRoot,
 		}),
 	),
 );

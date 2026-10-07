@@ -218,8 +218,8 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
           currentChapter: 2,
           volumes: [],
           chapters: [
-            { number: 1, title: "第 1 章", status: "accepted", wordCount: 2000 },
-            { number: 2, title: "第 2 章", status: "accepted", wordCount: 3000 },
+            { number: 1, title: "雨夜", status: "accepted", wordCount: 2000 },
+            { number: 2, title: "旧站台", status: "accepted", wordCount: 3000 },
           ],
           scenes: [
             { id: "sc-1", bookId: "book-single", chapterNumber: 1, ordinal: 1, title: "夜宴", summary: "首战", function: "advance", status: "confirmed" },
@@ -230,7 +230,9 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
           mounts: [
             { sceneId: "sc-1", storylineId: "line-1", role: "primary", createdAt: 1000 },
           ],
-          foreshadows: [],
+          foreshadows: [
+            { id: "debt:fs-1", title: "停摆的钟", entryId: "fs-1", plantedChapter: 1, status: "planted", chaptersPending: 1, urgency: "watch", reason: "埋于第 1 章，已悬 1 章未回收" },
+          ],
           entities: [],
         };
       }
@@ -242,6 +244,12 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
     await waitFor(() => expect(screen.getByTestId("story-progress-board")).toBeTruthy());
     expect(screen.getByTestId("story-progress-lane-line-1")).toBeTruthy();
     expect(screen.getByText("主线：崛起")).toBeTruthy();
+    // 回归：快照里的章名与伏笔债务此前被丢掉——列头成了「第 1 章 / 第 1 章」，账本显示没有伏笔。
+    expect(screen.getByTestId("story-progress-chapter-1").textContent).toContain("雨夜");
+    expect(screen.getByTestId("story-progress-debt-fs-1")).toBeTruthy();
+    expect(screen.queryByTestId("story-progress-debts-empty")).toBeNull();
+    // 有真剧情线、又没有任何章摘要时，不画一行空壳「章节摘要 (自动归类)」
+    expect(screen.queryByText("章节摘要 (自动归类)")).toBeNull();
     // 验证确实只发起了对 /narrative-structure 的 1 次请求，未发起任何分路请求
     expect(fetchJson).toHaveBeenCalledTimes(1);
     expect(fetchJson.mock.calls[0][0]).toContain("/api/books/book-single/narrative-structure");

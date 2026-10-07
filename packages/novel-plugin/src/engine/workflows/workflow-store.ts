@@ -612,7 +612,7 @@ export async function deleteWorkflowRecipe(
   if (current.length === 1) {
     throw explained("last-recipe", 400, {
       what: "这是最后一个工作流方案",
-      why: "作品至少要保留一个方案，「执行」页才能启动运行",
+      why: "作品至少要保留一个方案，「工作流」页才能启动运行",
       action: "先新建一个方案，再删除这个",
     });
   }

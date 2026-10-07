@@ -89,7 +89,7 @@ export function explainWorkflowDenial(
 		return {
 			what: `${canonicalName} 被拦下：${awaiting.join("、") || "工序"}正在等作者确认`,
 			why: "确认之前写入，会让作者审的内容与写进书里的对不上",
-			action: "停止产出，等作者在「故事推进 › 执行」确认或打回",
+			action: "停止产出，等作者在「写作 › 工作流」确认或打回",
 		};
 	}
 	const direct = directSteps(run);
