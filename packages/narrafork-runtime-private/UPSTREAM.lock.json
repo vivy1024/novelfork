@@ -1,144 +1,50 @@
 {
   "schemaVersion": 1,
-  "repository": "NarraFork/novelfork-runtime-private",
-  "remote": "https://github.com/NarraFork/novelfork-runtime-private.git",
-  "commit": "42c8648fc2f01d79cd2048398aea13889c5f446f",
-  "tree": "adaa3ed1a616fd6d98e8acc953010d60c7a5be5f",
-  "branch": "novelfork/integration-v0.7.10",
-  "localBranch": "novelfork/upgrade-0.7.10",
-  "version": "0.7.12",
-  "importedAt": "2026-10-02T14:54:41.000Z",
-  "trackedFileCount": 4579,
+  "repository": "NarraFork/novelfork-runtime",
+  "remote": "https://github.com/NarraFork/novelfork-runtime.git",
+  "commit": "6f02fc259a6970b5ae6bd00eb103afca10ec2713",
+  "tree": "578748f7d44a25f3b19106ae57e716d1498f056b",
+  "branch": "novelfork/upgrade-0.8.3",
+  "version": "0.8.3",
+  "importedAt": "2026-10-08T03:06:03.000Z",
+  "trackedFileCount": 5049,
   "importMethod": "git-archive",
   "provenance": {
-    "note": "2026-09-28 在宿主库 packages/.narrafork-runtime-fork-staging 的 worktree 分支 novelfork/upgrade-0.7.10 上合并上游 v0.7.10，合并提交 bc6347b9，其后本地提交见 forkCommitsAfterMerge。均尚未推送：计划推到 fork 远端新分支 novelfork/integration-v0.7.10（旧分支 novelfork/integration-v0.6.6 保留作存档）。推送前 pnpm runtime:sync 只能从本机取到该提交：先执行 GIT_DIR=packages/.narrafork-runtime-sync git fetch <宿主库路径> +refs/heads/novelfork/upgrade-0.7.10:refs/heads/novelfork/upgrade-0.7.10。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。上一版物化目录备份在 .runtime-backup-v0.7.10-02bd382b-20261002/（不含 node_modules）。2026-10-02 又在同一 worktree 合入上游 v0.7.12（第二次合并 3d564db7，见 mergesAfterImport），文件头部版本号随之上移。在物化树里跑 Runtime 测试套件要两个环境准备：NARRAFORK_MIGRATIONS_DIR=runtime-migrations（drizzle/ 是本机 drizzle-kit 生成物、不入库也不物化，缺了会在 tests/setup.ts 报无名字的 ENOENT）；tsgo 过 vscode-extension 需先在该目录内 bun install（它有自己的 bun.lock 与 node_modules）。",
-    "forkBase": {
-      "commit": "006bf8291456d5140055d037c9adceb1475593cd",
-      "subject": "feat(host): 嵌入宿主接受宿主的明暗方案（colorScheme）",
-      "note": "合并前的 fork 头：远端 novelfork/integration-v0.6.6 的 dda73094 之上加一个本地提交（主题功能用的 colorScheme 参数），该提交同样未推送"
+    "note": "2026-10-08 由私有线切换到公开线：从公开 NarraFork/NarraFork 的 release: v0.8.3 锚点开新分支 novelfork/upgrade-0.8.3，把 fork 层以树级移植逐文件重放（无 merge 血缘），已推送到公开 fork 仓 NarraFork/novelfork-runtime 同名分支。本目录是该分支的导出物。上一版（0.7.12 物化）备份在 .runtime-backup-v0.7.12-20261008/（不含 node_modules）。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。在物化树里跑 Runtime 测试套件要设 NARRAFORK_MIGRATIONS_DIR=runtime-migrations（drizzle/ 是本机 drizzle-kit 生成物、不入库也不物化）。",
+    "publicBase": {
+      "commit": "be6240400cbaec5b5dc7227376fac07364c46c70",
+      "subject": "release: v0.8.3",
+      "ref": "upstream-public（公开仓 https://github.com/NarraFork/NarraFork，无 tag；main 头当时为 4e04d2f2、领先锚点 2 提交）"
     },
-    "upstream": {
+    "virtualBase": {
       "commit": "3ac2d0df7816fa0a50d2a225fd236b846a57b16d",
-      "subject": "fix(model,codex,subagent): 指纹/turn-state 与子模型继承、续跑修正",
-      "ref": "upstream/main",
-      "note": "2026-10-02 时 upstream/main 头（v0.7.12 之后）；v0.7.11 / v0.7.12 未打 tag，按 upstream/main 合并。此前基线为 v0.7.10 的 24f2436a"
+      "note": "私有线末代（0.7.12 时代内容对齐点），仅作本次逐文件三方的虚拟 base 注记；公开历史不含该对象，之后升级不再需要它"
     },
-    "mergeBase": "24f2436ab01a8785b93a55616d9216276df4cce6",
-    "mergesAfterImport": [
-      {
-        "commit": "3d564db7a9c6aae1f6fa39e03785b191712f82f1",
-        "parent": "02bd382b5a108926d6861a8c19f66835f982cc3a",
-        "range": "24f2436a..3ac2d0df",
-        "subject": "merge: 合入上游 v0.7.12（30 提交，1 处冲突）",
-        "status": "local",
-        "conflictsResolved": [
-          "frontend/components/narrator/vlist/render-registry.tsx — fork 的 detailSlot/runtimeRenderer 与上游 onPermissionFormHeight 同点新增，按并集解"
-        ],
-        "migrations": "无新增 SQLite 迁移与 runtime-migrations 变化（上游 JSON 列空串修复走 data-backfills），embedded-migrations 未重生成",
-        "verification": "合并触及的 63 个测试文件与纯上游基线（upstream/main@3ac2d0df + db:generate 单文件 schema）对照：revert-planner-local-access 两树同 2 fail（PLAN_STALE）；paging.test.ts 的 EBUSY 为 bun:sqlite 1.3.13/Windows close 句柄待 GC（NARRAFORK_DEFER_WINDOWS_TEMP_CLEANUP=1 可消，基线同现）；TlsSection 为 bun mock 批次顺序污染（候选树单跑全绿）；export yields event loop 为 Bun/Windows timer 相位差异（上游假设 Node 语序）。无合并独有失败。已知上游不稳：revert 系列文件在 bun 1.3.13/Windows 全量长跑下偶发 stack overflow panic 或挂起（基线两次崩同一区域），全量套件本机需分块跑"
-      }
-    ],
-    "conflictsResolved": [
-      "server/services/narrator-session.ts — 上游把 Agent 循环主体移到 server/services/agent-runtime/orchestrator.ts；产品叙述者判断抽到新文件 server/services/product-narrator-tools.ts，会话与 orchestrator 共用。buildSystemPrompt 保留 narratorId 参数与 runtimeToolNames；项目级例程覆盖改用上游三态常驻模式；被拒工具重跑路径在上游重构后重新接入产品工具过滤",
-      "server/services/agent-runtime/orchestrator.ts — 无文本冲突，重新接入产品工具可见性同步与按权限模式过滤；删除 fork 旧有的 permissionMode getter（读的是同一个快照，与上游写法等价）",
-      "frontend/components/narrator/vlist/* — 上游把 ExactRow 从 PretextExactMessageList 拆出，领域工具结果渲染的注入点随之移到 ExactRow.tsx；RenderToolCall.tsx 取上游后重新加 detailSlot / runtimeRenderer",
-      "server/db/run-migrations.ts — 保留 runtime-migrations 优先与嵌入迁移，合入上游新增的重建拷贝校验与退役索引容错",
-      "server/routes/projects.ts — 保留导出的 deleteProjectById（产品删书用），在其开头补上游的 requireSqliteProjectMutation",
-      "server/services/narrator-prompt.ts — 并集：可信资源根的 Resource Instructions 与上游 File References 两段都保留",
-      "server/lib/agent/tools/index.ts — 并集：产品贡献的可选工具与上游 Eval 工具",
-      "server/services/knowledge-service.ts、server/services/worktree-tree-snapshot.ts — 采用上游（fork 的修复已被上游覆盖）",
-      "tests/scripts/build-plugin.test.ts 与 Kiro / Cline 外部命令 e2e 测试 — 上游已删除，随之删除",
-      "测试文件 — Windows 路径修复（fileURLToPath）保留；fork 的图片发送测试被上游 multipart 用例覆盖，取上游；bash-analyze 的 PowerShell git -C 用例改用宿主 resolve（fork 的 POSIX 夹具不适用于 PowerShell 分析）",
-      "bun.lock — 以上游为准，bun install 重建，保留 fork 的 zod 固定版本与 workbox 依赖"
-    ],
-    "migrations": "新增 runtime-migrations/0011_tense_shadow_king（drizzle-kit generate 对 0010 快照求差）：21 张新表与若干新列；narrators 删除 prune_boundary_message_id / pruned_percent / prune_enabled，narrator_message_refs 删除 pruned_percent，均为上游移除动态修剪，按新建处理、无改名。数据回填均按列是否存在触发（run-migrations.ts 与 data-backfills.ts），精简迁移不影响；write_audience 默认 owner，无回填",
-    "verification": "tsgo 类型检查与纯上游 24f2436a 基线逐条一致；fork 层与会话相关 65 个测试文件，与放入同一套迁移的上游基线对照，无合并独有的失败",
-    "postMaterializeDeviations": [],
-    "forkCommitsAfterMerge": [
-      {
-        "commit": "127e5c31386e582dadff43c6feb5357104f95507",
-        "parent": "bc6347b9107bd58d1ec1eae4a1d2d050a9c40742",
-        "subject": "feat(host): 嵌入宿主可接管叙述者面板里的文件打开",
-        "status": "local",
-        "note": "新增 RuntimeFileOpenInterceptorContext 与 EmbeddedNarratorDockHost.onOpenFile；NovelFork 用它把章节交给写作台打开。与合并提交一起待推送"
-      },
-      {
-        "commit": "3d788013a7af3215d4336665025cda34dc3d0523",
-        "parent": "127e5c31386e582dadff43c6feb5357104f95507",
-        "subject": "feat(host): Monaco 配色跟随嵌入宿主的配色切换",
-        "status": "local",
-        "note": "Monaco 监听根元素属性变化并重新解析配色，嵌入宿主换书房主题（不翻转明暗）时编辑器跟着换色。与合并提交一起待推送"
-      },
-      {
-        "commit": "4a84267ce175efec449e1e46a5d25047316f688e",
-        "parent": "3d788013a7af3215d4336665025cda34dc3d0523",
-        "subject": "feat(host): 嵌入宿主可显示单个 Runtime 原页（通用页面宿主）",
-        "status": "local",
-        "note": "根路由上下文 embeddedPage 为真时只渲染页面；EmbeddedRuntimePageHost 以 Runtime 路由树 + 内存历史嵌入单个原页，跳出范围的导航交给宿主。与合并提交一起待推送"
-      },
-      {
-        "commit": "16dcbc90228bae8e94189c2baa4cc5d56b57e958",
-        "parent": "4a84267ce175efec449e1e46a5d25047316f688e",
-        "subject": "feat(host): 嵌入的原页里普通链接也走嵌入路由",
-        "status": "local",
-        "note": "同源 <a href> 改经嵌入路由跳转，范围检查与 onNavigateOutside 同样生效。与合并提交一起待推送"
-      },
-      {
-        "commit": "7088e4fb0a4dce82750d7dfe72586c8249e499f1",
-        "parent": "16dcbc90228bae8e94189c2baa4cc5d56b57e958",
-        "subject": "fix(fork): 全量测试里只在 fork 上失败的三项",
-        "status": "local",
-        "note": "与纯上游基线分批对照整套测试后修正：ExactRow 产品卡读取移出 memo 行体；迁移目录与技能根目录两个测试按 fork 层约定改断言。与合并提交一起待推送"
-      },
-      {
-        "commit": "9b1678765c39c5c1966b50ecdded5fb93d72ffe7",
-        "parent": "7088e4fb0a4dce82750d7dfe72586c8249e499f1",
-        "subject": "feat(host): 产品宿主可调用 Runtime 的服务端文本生成",
-        "status": "local",
-        "note": "新增 RuntimeProductHostServices（product-host/text-generation.ts）：产品 HTTP 路由按当前用户调用 Runtime 配置的默认 / 摘要模型做无工具补全，用量经 trackApiRequest 记到该用户（kind=external）。与合并提交一起待推送"
-      },
-      {
-        "commit": "eb8c02b4bad9cc48137a51ee748f5b0ba163da85",
-        "parent": "9b1678765c39c5c1966b50ecdded5fb93d72ffe7",
-        "subject": "feat(host): 嵌入宿主接上插件 runtime 与全局授权弹窗",
-        "status": "local",
-        "note": "新增 EmbeddedPluginUiHost（每个嵌入宿主各自包 PluginUiRuntimeProvider，createAppPluginHostLocal 挂 queryClient，不传 getContext 走 fallback）与 EmbeddedPluginPermissionRequestHost（模块级 leader 选举，防多嵌入宿主对同一权限事件重复弹窗）；RuntimeFrontendHostProviders 的 QueryClientProvider children 改由两者挂载。宿主测试补齐 jsdom 环境（memoryStorage、TestResizeObserver、TestMutationObserver）与 i18n / plugins registry mock。与合并提交一起待推送"
-      },
-      {
-        "commit": "db3d703f4eade54e54016640cceba02b40c4eedd",
-        "parent": "eb8c02b4bad9cc48137a51ee748f5b0ba163da85",
-        "subject": "fix(host): 通用页面宿主测试的路由参数对齐 0.7.10 路由名",
-        "status": "local",
-        "note": "EmbeddedRuntimePage.test.tsx 的内联路由写 /knowledge/$id 与 /narrators/$id，0.7.10 路由树已更名 $entryId / $narratorId，tsgo 报 6 条（合并后未跑全量类型检查的遗留）；随该文件归一 CRLF→LF。与合并提交一起待推送"
-      },
-      {
-        "commit": "88fc6ceaf692b2297bfc8e8e38d72de6afb903ea",
-        "parent": "db3d703f4eade54e54016640cceba02b40c4eedd",
-        "subject": "fix(host): 补齐 embedded-licenses 的环境模块声明",
-        "status": "local",
-        "note": "上游 0.7.10 引入 licenses 清单但该生成产物没有 ambient module 声明（同类产物都有），新鲜物化树 tsgo 报 TS2307；按 fork 约定补进 server/types/novelfork-generated-modules.d.ts。vscode-extension 的缺 vscode 类型属环境问题：该目录有自己的 bun.lock 与工具链，物化后需在其内单独 bun install。与合并提交一起待推送"
-      },
-      {
-        "commit": "02bd382b5a108926d6861a8c19f66835f982cc3a",
-        "parent": "88fc6ceaf692b2297bfc8e8e38d72de6afb903ea",
-        "subject": "fix(tests): reference-tool-rpc 夹具与示例插件重新对齐",
-        "status": "local",
-        "note": "上游 4b776900 把 examples/plugins/tool-command 升到 1.0.1、夹具停在 1.0.0：镜像一致性测试失败、hello 版本握手被拒。夹具 index.js 对齐示例、夹具 manifest 只升 version。纯上游基线同样存在该失败。与合并提交一起待推送"
-      },
-      {
-        "commit": "cc1069c74b2d132e787ba799a47f445552f6c8d5",
-        "parent": "3d564db7a9c6aae1f6fa39e03785b191712f82f1",
-        "subject": "fix(host): 权限弹窗 leader 退位递补 + 嵌入插件宿主接上失效通知",
-        "status": "local",
-        "note": "审计发现：① 弹窗宿主只在 mount 选举一次，leader 卸载后其余宿主不会再显示权限请求，改模块级有序挂载表 + useSyncExternalStore 按挂载序递补（附继任测试）；② EmbeddedPluginUiHost import 了 handlePluginUiNotification 却没接 onNotification（biome noUnusedImports 红 + 嵌入面缓存失效通知静默丢失），按 App.tsx 同款接线。与合并提交一起待推送"
-      },
-      {
-        "commit": "42c8648fc2f01d79cd2048398aea13889c5f446f",
-        "parent": "cc1069c74b2d132e787ba799a47f445552f6c8d5",
-        "subject": "fix(test): 继任弹窗测试闭包里 root 的 TS 收窄",
-        "status": "local",
-        "note": "tsgo 在物化树上对 afterEach 闭包捕获 root 报 TS18048，改为先取局部常量再 act。与合并提交一起待推送"
-      }
-    ]
+    "port": {
+      "method": "树级移植（评估报告 docs/design/Runtime-0.8.3-升级评估.md 的路径 C）",
+      "steps": [
+        "fork 独有 49 文件整体 checkout（product-host、host 宿主层、runtime-migrations、product-narrator-tools 等）",
+        "fork 单边修改 81 文件按 3ac2d0df 为虚拟 base 三方重放（merge-file 干净落地）",
+        "9 个真实冲突文件逐块手工解决（评估预期 10；zstd-patch-file.test.ts 在锚点上干净自动合并）",
+        "9 个文件跟随上游删除/消毒集（在锚点上已真空删除，0 文件实际 rm）；另删除上游 0.8.3 发布后在 main 上删的 9 个文件（CHANGELOG/DESIGN/Dockerfile 等）保持同构",
+        "package.json pins 重放（zod=4.3.6、workbox-*=7.4.0 ×5；bun-pty 上游已自带 0.4.11 pin）+ bun install 重建 bun.lock",
+        "drizzle-kit generate 对 0011 快照求差生成 runtime-migrations/0012_wealthy_red_hulk（5 新表 + 5 表重建）；无新列故无回填"
+      ],
+      "portCommits": "be6240400..6f02fc259 共 15 笔：2a0b25d26 fork-unique、19452d93c single-side replay、025937911 deletions(0)、fd5d323dd pins、41226c090 bun.lock、ed1e1ba54/10c51cdec/8b50cc27d/85e22b418/9101ff566/83e6d2ae9/c78e764ba/7eb4f9b34/d7233808d resolve ×9、eb332b1eb follow main deletions、2d7ddfc1f/42a2dd969/a4f6807d3 anchor fixes ×3、6f02fc259 migration 0012",
+      "anchorDefectsFixed": "锚点树 be6240400 自身有三处历史重写残损（settings 顶层常量缺失、narrator-event-handler invalid_state case 截断、malformed-request-dump 与其两个测试文件半成品重构），已按公开 main 头 4e04d2f2 的完好文本修复成三笔 fix 提交（测试文件修复后与 main 字节级一致）；判定依据为这些文件均不在 fork 层",
+      "conflictsResolved": [
+        "server/services/agent-runtime/orchestrator.ts（3 块）— buildSystemPrompt 两调用点并集（narratorId 穿参 + runtimeToolNames/summaryRange 并集 destructure），sync 落点保持 prompt 生效后",
+        "server/services/narrator-session.ts（1 块）— 返回类型融合为 BuildPromptResult & { runtimeToolNames }，产品贡献解析全保留",
+        "frontend/components/narrator/dock/NarratorDockContext.tsx — 拦截 hook 改锚存活的 apiRef 行；丢弃已退役 fileModProps 状态行",
+        "frontend/components/narrator/vlist/ExactRow.tsx — 并集：上游折叠/只读渲染 + fork renderer 注入",
+        "server/routes/projects.ts — 上游 withProjectRetirement 包装完整保留在导出版 deleteProjectById(id, signal?) 内",
+        "server/main.ts — 机械并集：产品宿主登记与优雅关闭",
+        "frontend/components/AppRootLayout.tsx — 以 0.8.3 为主体，租约改动重嵌到新宿主 AuthenticatedAppLayout.tsx",
+        "server/lib/browser/pool.ts（2 块）— fork 修复全保留（上游 25+/15- 仅代理重构，零覆盖）；仅丢过时注释",
+        "frontend/lib/narrator-ws-manager.test.ts — 双方同点新增断言并集"
+      ],
+      "verification": "9 个解冲突文件全量 grep 无残留标记；tsgo 分段（server+shared+tests / frontend+shared）与纯公开 0.8.3 基线（补同三处锚点修补）对照差集仅 3 行、全属已知 codegen 恒红家族（routeTree.gen / embedded-migrations-data / build-info 行移位），合并独有语义错误 0；fork 层与缺口测试在 0012 生成后转绿（projects 3+3、orchestrator 40、run-migrations 59）；零库 13 条与 0.7.12 链→0012 哨兵保留双路径迁移验证通过；permission-rule-request-service 18 红经 A/B（换回纯锚点 narrator-permission.ts 同红）判为上游基线类 + Windows symlink EPERM",
+      "postMaterializeDeviations": []
+    }
   }
 }
