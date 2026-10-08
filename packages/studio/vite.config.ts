@@ -155,6 +155,12 @@ export default defineConfig({
       "@tiptap/starter-kit",
     ],
   },
+  // Runtime 0.8.x 前端引入模块 Worker（text-document-worker-client 等）；Vite 默认的
+  // worker iife 产物不支持 code-splitting，与 Runtime 自己的 frontend/vite.config.ts
+  // 保持一致改为 ES 模块格式。
+  worker: {
+    format: "es",
+  },
   build: {
     // Official artifacts are served by the private Runtime's only HTTP/WS process.
     // Keep this outside Studio's dist/ so the legacy Studio API server cannot be
