@@ -400,7 +400,12 @@ function toBunFilePath(path: string): string {
 export const RUNTIME_WORKER_ENTRIES = [
 	"server/lib/db-worker/worker-entry.ts",
 	"server/services/editor-document-worker.ts",
+	"server/lib/browser/memory-snapshot-worker.ts",
+	"server/lib/browser/memory-profile-worker.ts",
+	"server/lib/share-preview-worker.ts",
 	"server/services/revert-transaction-manifest-worker.ts",
+	"server/services/project-archive/legacy-sync-worker.ts",
+	"server/services/project-archive/legacy-import-worker.ts",
 ] as const;
 
 /**
