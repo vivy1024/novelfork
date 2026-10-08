@@ -128,8 +128,12 @@ describe("根 Host 编译契约", () => {
     expect(rootMain).toContain("NOVELFORK_STORAGE_DB_PATH");
     expect(rootMain).toContain('resolve(novelForkHome, "novelfork.db")');
     expect(rootMain).toContain('process.env.PORT ??= "4567"');
-    expect(rootMain.indexOf("NOVELFORK_STORAGE_DB_PATH")).toBeLessThan(rootMain.indexOf(runtimeImport));
-    expect(rootMain.indexOf("NARRAFORK_HOME")).toBeLessThan(rootMain.indexOf(runtimeImport));
+    // main.ts 的 worker-flag 分支（a2c85ec6）刻意在不做任何产品设置的情况下先动态
+    // import runtime（worker 子进程若先求值产品集成会抢实例锁、JSON 日志污染 RPC 帧），
+    // 因此 runtimeImport 的首次出现总是先于环境变量赋值。顺序契约只约束主进程分支：
+    // 用最后一次出现（else 分支）判定。
+    expect(rootMain.indexOf("NOVELFORK_STORAGE_DB_PATH")).toBeLessThan(rootMain.lastIndexOf(runtimeImport));
+    expect(rootMain.indexOf("NARRAFORK_HOME")).toBeLessThan(rootMain.lastIndexOf(runtimeImport));
   });
 
   test("根工作区使用 PNPM 安装并保持 Tiptap 主版本隔离", () => {
