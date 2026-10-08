@@ -208,16 +208,19 @@ NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-
 - `runtime-migrations/` 在 fork 仓库与物化目录各有一份：`server/db/run-migrations.ts` **优先读 runtime-migrations/**（fork 层资产），新迁移必须两处同步。
 - **两个远端都用 HTTPS**：本机 SSH 被代理阻断（`Connection closed by 198.18.0.18`），`git@github.com:` 形式的 remote 会直接失败。
 
-### 升级流程（当前有效）
+### 升级流程（当前有效，2026-10-08 起为公开线流程）
 
-1. 在宿主库 `packages/.narrafork-runtime-fork-staging/` 里 `git fetch upstream`，然后 `git worktree add` 开一个工作区（**不要**重新 clone——接缝分支只存在于这个本地库和 fork 远端）。
-2. `git merge upstream/main`——常规三方合并；fork 层约 169 个文件是冲突面。
-3. 补齐上游缺失项（上游可能不带 drizzle 迁移：用 Terminal 交互跑 `bunx drizzle-kit generate`，产物同步进 `drizzle/` 与 `runtime-migrations/` 两处并提交）。
-4. 验证：`bun run typecheck`（注意 runtime 用 tsgo、bridge 用 tsc，tsc 更严格会暴露 tsgo 漏报的上游缺陷）；权限/agent 工具测试套件；失败项须在**纯上游同版本基线** worktree 复跑对比，确认是否为上游自身缺陷或 Windows 环境既有问题。
-5. 推送 fork 分支 → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（`commit`/`tree`/`branch` 与 provenance：接缝基线、上游提交、合并基点、冲突处理、物化后偏离）→ `pnpm runtime:sync` 导出到 `packages/narrafork-runtime-private/` 并 `bun install`（只改两版之间变化的文件；不要再手工 `git archive` 覆盖，否则同步脚本记录的状态会与目录不一致）→ typecheck + 冒烟测试 → 全工作区 `pnpm run typecheck` → 用隔离实例做真实启动验证。
-6. 已知基线：上游 v0.6.6（`751ad11b`，注意 0.6.6 发布过两次，`13e9c88d` 被 `78d739d1` 回滚后由 `751ad11b` 重发），fork 分支头 `dda73094`（2026-09-26，由 `f779ff11` 快进合入 Runtime PR #1）。接缝基线提交 `5ab50ffe`（上游 v0.6.5 + 产品定制）。
-   - 2026-09-28 本地已合并上游 v0.7.10（`24f2436a`，无 tag）：宿主库分支 `novelfork/upgrade-0.7.10` 的 `bc6347b9`，物化目录已同步到它。`pnpm runtime:sync` 只能从本机宿主库取到该提交（做法见 `UPSTREAM.lock.json` 的 `provenance.note`）。**私有血统分支不推公开**（含上游开源前未消毒历史）；随 v0.0.4 发行的 MPL 源码提供改为公开仓 `NarraFork/novelfork-runtime`（公开 v0.7.12 原树 + fork delta 树级重建）。下一版本窗口按 `docs/design/Runtime-0.8.3-升级评估.md` 切公开线升级（树级移植，真实冲突 10 处）。
-   - 0.7.x 起 Agent 循环主体在 `server/services/agent-runtime/orchestrator.ts`，fork 的产品叙述者判断收在 `server/services/product-narrator-tools.ts`；上游不跟踪 SQLite `drizzle/`，纯上游基线跑数据库测试前要把同一套迁移复制进基线 worktree。
+上游 Runtime 已开源（`NarraFork/NarraFork`，MPL-2.0，main 无 tag，版本锚点 = main 上 `release: vX.Y.Z` 提交）。fork 已切换到公开线（0.8.3 由树级移植完成，见 `docs/design/Runtime-0.8.3-升级评估.md` 与 `docs/design/上游开源跟进策略.md`）。
+
+1. `GIT_DIR=packages/.narrafork-runtime-sync git fetch upstream-public main`，例行先查锚点：`git log --grep='^release: v' upstream-public/main`；再查历史连续性：`git merge-base --is-ancestor <上次基点> upstream-public/main`——若上次基点不在公开历史（上游又重写了），退回树级移植而非 merge。
+2. 从公开锚点开分支 `novelfork/upgrade-<版本>`（worktree 放 `packages/.narrafork-runtime-upgrade-<版本>`，纯基线对照 worktree 另开 `--detach`）。
+3. `git merge upstream-public/main`——常规三方合并（公开线fork 层冲突面以当次评估为准）；首次从私有线换轨按 0.8.3 的树级移植（49 独有 checkout / 单边重放 / 手工冲突 / 删除跟随）。
+4. 补齐上游缺失项（上游不带 SQLite `drizzle/`：对 `runtime-migrations` 末版快照求差 `bunx drizzle-kit generate`，产物同步进 `drizzle/` 与 `runtime-migrations/` 两处并提交；语义期 typecheck 本机可能 OOM，可按 server/frontend 拆分 include 分段跑）。
+5. 验证：与**纯上游同锚点基线** worktree 对照 tsgo（合并独有错误应为 0，已知 codegen 恒红家族豁免）；权限/agent 工具/迁移缺口相关套件由红转绿；双路径迁移（新库从零 + 旧库升级哨兵）；隔离实例冷启动 + 工序闸门拦/放 + 权限过滤各一例；EXE 冒烟（bun 1.4.2，`bun run compile`，旧库副本升级 + health + 零 error）。
+6. 推送 fork 分支到公开仓 `NarraFork/novelfork-runtime` → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（repository/remote 指公开仓，provenance 记 publicBase/virtualBase/移植方式）→ `pnpm runtime:sync` 导 → `bun install` → 主仓定向契约（`RUNTIME_WORKER_ENTRIES` 随上游 Worker 增减对齐，契约测试先行报缺）→ 全仓 typecheck + 测试 → master 提交推送 → MPL 快照按产品版本打 `source/vX` 分支（只追加不 force-push）。
+7. 已知锚点：公开 v0.7.12 = `f275816a4`；公开 v0.8.3 = `be6240400`（main 头曾 `4e04d2f2`，0.8.3+2）；当前 fork 分支 `novelfork/upgrade-0.8.3`（头 `6f02fc259`，物化与 lock 已对齐）。
+   - 注意公开 0.8.3 锚点树自带 3 处历史重写的文本损坏（settings/index.ts 声明丢失、narrator-event-handler 截断、malformed-request-dump 残片），已在 fork 分支用 main 头文本修复；纯基线对照跑测试会复现这些损坏，属上游重写残损非 fork 问题。
+   - 0.7.x 起 Agent 循环主体在 `server/services/agent-runtime/orchestrator.ts`，fork 的产品叙述者判断收在 `server/services/product-narrator-tools.ts`；上游不跟踪 SQLite `drizzle/`。
 
 ### 已知环境噪声（不要当成缺陷追查）
 
