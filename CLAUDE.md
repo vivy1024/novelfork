@@ -26,13 +26,14 @@ NarraFork 宿主系统与开发者规则
 ├─ 公开跟踪：产品代码、Bridge、构建与发布脚本
 └─ 本地存在、Git 忽略：packages/narrafork-runtime-private/（唯一生产 Runtime 来源）
 
-私有 fork 仓库（Runtime 源头权威，不在本仓库内）
-└─ NarraFork/novelfork-runtime-private @ novelfork/integration-v0.6.6
+Runtime 源头权威（公开仓库，不在本仓库内）
+└─ NarraFork/novelfork-runtime（NarraFork/NarraFork 的 fork，MPL-2.0）
+   当前 fork 分支：novelfork/upgrade-0.8.3（内容 = 物化树 = MPL 快照 source/v0.0.4）
 
 本地辅助（均不提交）
-├─ packages/.narrafork-runtime-fork-staging/  Runtime 宿主 git 库（接缝分支与上游镜像的本地唯一副本）
-├─ packages/.narrafork-runtime-import/        导入脚本暂存区，含 zstd 工具链（仍被引用，勿删）
-└─ .runtime-backup-v0.6.6-20260928/           上一次物化目录备份（回滚用；更早的 v0.6.5 等备份也在根目录）
+├─ packages/.narrafork-runtime-sync/          宿主 git 库：公开上游镜像 + fork 分支 + 私有血统完整历史，worktree 从这里开
+├─ packages/.narrafork-runtime-fork-staging/  私有线时代的宿主库（留档，不再参与流程）
+└─ .runtime-backup-v0.7.12-20261008/          上一次物化目录备份（回滚用，当前唯一一份）
 ```
 
 | 路径 | 角色 | Git |
@@ -43,17 +44,17 @@ NarraFork 宿主系统与开发者规则
 | `packages/novelfork-product-runtime/` | 产品 Runtime 适配、书籍绑定、产品路由 | 跟踪（公开） |
 | `packages/narrafork-runtime-bridge/` | Studio/产品层与 Runtime 的窄契约 | 跟踪（公开） |
 | `packages/fitness-plugin/` | 示例/扩展插件 | 跟踪（公开） |
-| `packages/narrafork-runtime-private/` | 可运行的完整 Runtime 物化树（= 私有 fork 分支内容） | **ignore，仅本地**（例外：`UPSTREAM.lock.json` 作为来源元数据被跟踪） |
-| `packages/.narrafork-runtime-fork-staging/` | Runtime 宿主 git 库：接缝分支 + 上游镜像，worktree 从这里开 | **ignore，仅本地** |
-| `NarraFork/novelfork-runtime-private` | Runtime fork 权威仓库，分支 `novelfork/integration-v0.6.6` | **独立私有仓库（不在本仓库内）** |
+| `packages/narrafork-runtime-private/` | 可运行的完整 Runtime 物化树（= 公开 fork 分支内容） | **ignore，仅本地**（例外：`UPSTREAM.lock.json` 作为来源元数据被跟踪） |
+| `packages/.narrafork-runtime-sync/` | 宿主 git 库：公开上游镜像 + fork 分支 + 私有血统完整历史 | **ignore，仅本地** |
+| `NarraFork/novelfork-runtime` | Runtime fork 权威仓库，当前分支 `novelfork/upgrade-0.8.3` | **独立公开仓库（MPL-2.0，不在本仓库内）** |
 
 ### 公开边界（硬约束）
 
-- **不公开**完整 NarraFork Runtime 源码树。
-- **不公开**完整 Runtime 实现（Product Host、嵌入 Narrator 面板、Provider、Runtime 迁移等）；它们只存在于私有 fork 和本地 ignore 物化树。
-- 公开树可包含产品代码与 Bridge 契约；不得把 `packages/narrafork-runtime-private/` 重新加入跟踪。
-- 仅把当前 tip 改公开**不够**：若 Git 历史仍含 Runtime/overlay 源码，公开 clone 仍会泄露。公开前必须确认历史已清理，或改用无敏感历史的公开镜像。
-- `NarraFork/novelfork-runtime-private` 必须保持**私有**（它含完整上游源码）。协作者在该仓库内部建分支提 PR（给写入权限），**不要** fork 到个人账号：原仓库切换可见性时，已有个人 fork 会脱离并保持原可见性。2026-09-26 曾误设为公开并被 fork 成公开仓库，已于 09-27 改回私有。
+- 上游 Runtime 已开源（`NarraFork/NarraFork`，MPL-2.0，2026-02 起），我们的 Runtime 定制也全部公开在 fork `NarraFork/novelfork-runtime`——**「Runtime 源码不可公开」的时代已结束**，公开边界收敛为两条：
+  1. **单一权威源**：本仓库不得跟踪物化树（`packages/narrafork-runtime-private/` 仅 `UPSTREAM.lock.json` 例外）。Runtime 改动只能在 fork 分支落下、导出物化；两边同时长就是双权威。
+  2. **私有血统不进公开渠道**：上游开源前的未消毒提交与消毒集内容，只留在本地 sync 镜像与已归档私有仓，绝不推送到任何公开远端。
+- 不提交密钥、Token、`.env`、用户数据；本地辅助目录（`packages/.narrafork-runtime-*`、`.runtime-backup-*`）不进入 Git。
+- `NarraFork/novelfork-runtime-private` 已于 2026-10-09 archive 只读封存，仅留档（历史教训：2026-09-26 曾误设公开并被 fork，09-27 改回；原仓库切换可见性时已有个人 fork 会脱离并保持原可见性）。
 - 边界检查：`pnpm check:boundary`（当前文件）、`.githooks/`（提交 / 推送前，`git config core.hooksPath .githooks` 启用）、公开 CI（PR 的每个提交）共用 `scripts/check-public-boundary.mjs`。
 - 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 本地编译发布产物 + 用 Windows EXE 做功能核验（详见「多平台发版流程」）。
 
@@ -79,7 +80,7 @@ packages/narrafork-runtime-private/  本地 ignore：唯一生产 Runtime 物化
 ### 1. 起手必做
 
 1. 工作目录确认在仓库根：`D:\DESKTOP\novelfork`。
-2. 需要完整本地可运行能力时，确认 `packages/narrafork-runtime-private/` 已物化存在（唯一生产 Runtime，来源为 `NarraFork/novelfork-runtime-private` fork 分支）。
+2. 需要完整本地可运行能力时，确认 `packages/narrafork-runtime-private/` 已物化存在（唯一生产 Runtime，来源为公开 fork `NarraFork/novelfork-runtime` 的 fork 分支，经 `pnpm runtime:sync` 导出）。
 3. 先读当前用户目标与相关源码/报错；不要假设旁路仓库或历史计划就是待办。
 
 ### 2. 改哪里
@@ -90,8 +91,8 @@ packages/narrafork-runtime-private/  本地 ignore：唯一生产 Runtime 物化
 | 书籍绑定、产品权限、产品 API | `packages/novelfork-product-runtime/` |
 | 通用模型/存储/插件契约 | `packages/core/` |
 | 与 Runtime 的类型/面板契约 | `packages/narrafork-runtime-bridge/` |
-| Runtime 通用接入补丁 / 嵌入面板 / Product Host SPI | **私有 fork 仓库** `NarraFork/novelfork-runtime-private`（fork 层），改动经 fork 分支提交后同步物化目录 |
-| Runtime 本体行为 | 上游 `NarraFork/narrafork-private`；升级走私有 fork 的 git merge，**禁止**为图方便把产品逻辑写回 Runtime 并提交到公开树 |
+| Runtime 通用接入补丁 / 嵌入面板 / Product Host SPI | **公开 fork** `NarraFork/novelfork-runtime` 的 fork 分支（宿主库 `packages/.narrafork-runtime-sync` 开 worktree 改动），提交推送后经 `pnpm runtime:sync` 导出物化目录 |
+| Runtime 本体行为 | 上游 `NarraFork/NarraFork`（公开，MPL-2.0）；升级见「Runtime 上游同步与 Fork 升级」，**禁止**为图方便把产品逻辑写进 Runtime fork 层解决（fork 层只放接入补丁） |
 
 ### 3. 实现原则
 
@@ -171,7 +172,7 @@ NovelFork Studio（产品壳）
   ├─ 原生叙述者面板：运行时复用 Runtime 的 EmbeddedNarratorDockHost
   └─ API / WebSocket：连接 NarraFork Runtime
 
-NarraFork Runtime（本地 ignore 的物化树；源头在私有 fork 仓库 novelfork/integration-v0.6.6）
+NarraFork Runtime（本地 ignore 的物化树；源头在公开 fork NarraFork/novelfork-runtime 的 fork 分支）
   ├─ Agent Loop、Provider、权限（统一 ACL 内核）、会话、消息、工具循环、WebSocket 与运行时状态
   ├─ 维护 NarratorPanel 的核心行为、状态与通用前端依赖
   └─ 经由 Product Host SPI 调用 NovelFork 产品能力
@@ -191,22 +192,22 @@ NovelFork Product Runtime
 
 ## Runtime 上游同步与 Fork 升级（严格）
 
-Runtime 采用 **git fork 模式**（2026-08-20 起，取代早期的 archive+overlay 重放）：
+Runtime 自 2026-10-08 起采用**公开线 git fork 模式**（此前的私有线流程及更早的 archive+overlay 重放均已停用，留档在本节末「变迁历史」）：
 
 ```text
-NarraFork/narrafork-private          上游 main（domexie 维护）
-        │ git merge
-NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-v0.6.6
-        │                             （fork 层 = product-host SPI + runtime-migrations + 宿主组件）
-本地宿主库 packages/.narrafork-runtime-fork-staging/   接缝分支与上游镜像的本地唯一 git 副本
-        │ git archive
-本地物化 packages/narrafork-runtime-private/   从 fork 分支导出而来（gitignore，不进公开仓库）
+NarraFork/NarraFork              上游公开 main（MPL-2.0，无 tag；版本锚点 = main 上 release: vX.Y.Z 提交）
+        │ git merge（常规三方）／历史再被重写时退回树级移植
+NarraFork/novelfork-runtime      公开 fork，分支 novelfork/upgrade-<版本>
+        │ git archive（pnpm runtime:sync）
+本地物化 packages/narrafork-runtime-private/   fork 分支导出物（gitignore，只认 UPSTREAM.lock.json）
+        ▲
+宿主库 packages/.narrafork-runtime-sync/   公开上游镜像 + fork 分支 + 私有血统完整历史，worktree 从这里开
 ```
 
-- fork 层内容以 fork 分支上的 `feat(runtime): materialize` 提交为准（原始出处 `42641a32`，2026-08-20）。
-- 本地物化目录是 fork 分支内容的**导出物**：升级 = 在宿主库开 worktree → merge 上游 → 解决冲突 → 验证 → `git archive` 导出到物化目录。**不是**公开仓库提交（该目录被主仓库 `.gitignore` 忽略；例外是 `UPSTREAM.lock.json`，它作为来源元数据被跟踪）。
+- fork 层 = product-host SPI + runtime-migrations + 宿主组件 + 嵌入宿主接线；逐文件明细与移植记录见 `UPSTREAM.lock.json` 的 `provenance`。
+- 本地物化目录是 fork 分支的**导出物**：不直接改物化目录；改动在宿主库 fork 分支提交 → 推送公开 fork → 更新 `UPSTREAM.lock.json` → `pnpm runtime:sync` 导出。物化目录不进公开仓库（例外 `UPSTREAM.lock.json`）。
 - `runtime-migrations/` 在 fork 仓库与物化目录各有一份：`server/db/run-migrations.ts` **优先读 runtime-migrations/**（fork 层资产），新迁移必须两处同步。
-- **两个远端都用 HTTPS**：本机 SSH 被代理阻断（`Connection closed by 198.18.0.18`），`git@github.com:` 形式的 remote 会直接失败。
+- **远端都用 HTTPS**：本机 SSH 被代理阻断（`Connection closed by 198.18.0.18`），`git@github.com:` 形式的 remote 会直接失败。
 
 ### 升级流程（当前有效，2026-10-08 起为公开线流程）
 
@@ -217,7 +218,7 @@ NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-
 3. `git merge upstream-public/main`——常规三方合并（公开线fork 层冲突面以当次评估为准）；首次从私有线换轨按 0.8.3 的树级移植（49 独有 checkout / 单边重放 / 手工冲突 / 删除跟随）。
 4. 补齐上游缺失项（上游不带 SQLite `drizzle/`：对 `runtime-migrations` 末版快照求差 `bunx drizzle-kit generate`，产物同步进 `drizzle/` 与 `runtime-migrations/` 两处并提交；语义期 typecheck 本机可能 OOM，可按 server/frontend 拆分 include 分段跑）。
 5. 验证：与**纯上游同锚点基线** worktree 对照 tsgo（合并独有错误应为 0，已知 codegen 恒红家族豁免）；权限/agent 工具/迁移缺口相关套件由红转绿；双路径迁移（新库从零 + 旧库升级哨兵）；隔离实例冷启动 + 工序闸门拦/放 + 权限过滤各一例；EXE 冒烟（bun 1.4.2，`bun run compile`，旧库副本升级 + health + 零 error）。
-6. 推送 fork 分支到公开仓 `NarraFork/novelfork-runtime` → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（repository/remote 指公开仓，provenance 记 publicBase/virtualBase/移植方式）→ `pnpm runtime:sync` 导 → `bun install` → 主仓定向契约（`RUNTIME_WORKER_ENTRIES` 随上游 Worker 增减对齐，契约测试先行报缺）→ 全仓 typecheck + 测试 → master 提交推送 → MPL 快照按产品版本打 `source/vX` 分支（只追加不 force-push）。
+6. 推送 fork 分支到公开仓 `NarraFork/novelfork-runtime` → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（repository/remote 指公开仓，provenance 记 publicBase/virtualBase/移植方式）→ `pnpm runtime:sync` 导 → `bun install` → 主仓定向契约（`RUNTIME_WORKER_ENTRIES` 随上游 Worker 增减对齐，契约测试先行报缺）→ 全仓 typecheck + 测试 → master 提交推送 → MPL 快照：**`source/vX` 分支必须等于 vX 实际发货 EXE 里的 Runtime 树**（与 `UPSTREAM.lock.json` 的 commit 核对一致后再打；只追加不 force-push）。2026-10-09 教训：升级窗口顺移后快照分支名与实际发货树错位过一次，发版前一刻必须核对这个等式。
 7. 已知锚点：公开 v0.7.12 = `f275816a4`；公开 v0.8.3 = `be6240400`（main 头曾 `4e04d2f2`，0.8.3+2）；当前 fork 分支 `novelfork/upgrade-0.8.3`（头 `6f02fc259`，物化与 lock 已对齐）。
    - 注意公开 0.8.3 锚点树自带 3 处历史重写的文本损坏（settings/index.ts 声明丢失、narrator-event-handler 截断、malformed-request-dump 残片），已在 fork 分支用 main 头文本修复；纯基线对照跑测试会复现这些损坏，属上游重写残损非 fork 问题。
    - 0.7.x 起 Agent 循环主体在 `server/services/agent-runtime/orchestrator.ts`，fork 的产品叙述者判断收在 `server/services/product-narrator-tools.ts`；上游不跟踪 SQLite `drizzle/`。
@@ -228,17 +229,11 @@ NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-
 - **物化树的 tsgo typecheck 恒红**，源于 `frontend/routeTree.gen.ts`、`server/generated/embedded-licenses.ts` 等构建期 codegen 产物不在跟踪文件里（0.6.5 时代同样如此）。判断合并是否引入问题，要与**纯上游同版本基线**对照，不是看绝对错误数。
 - 上游 0.6.6 的 `bash-analyze.test.ts` 有一条假设 POSIX 路径解析的测试，在 Windows 上必然失败，非本地引入。
 
-### 早期 overlay 重放流程（已废弃，仅历史排查时参考）
+### 变迁历史（均已停用，仅历史排查参考）
 
-以下命令与约定属于 archive+overlay 时代，**不再用于日常升级**：
+**私有线 fork 模式（2026-08-20 → 2026-10-08）**。Runtime 源头是私有 fork `NarraFork/novelfork-runtime-private`（分支 `novelfork/integration-v0.6.6` 起），宿主库为 `packages/.narrafork-runtime-fork-staging/`，升级 = 私有 fork 上 git merge 上游。上游 2026-02 开源（公开历史全量重写、与私有线不相交）后，0.8.3 起改走公开线（见上文流程）；私有仓已于 2026-10-09 archive 只读封存。fork 层原始出处 `42641a32`（2026-08-20 `feat(runtime): materialize`）；私有血统完整历史只留在本地 `packages/.narrafork-runtime-sync/` 与 `fork-staging/`（宿主机 git status 报数千假修改是这两库的文件系统层 stat 老毛病，以 `git diff` 为准）。
 
-```bash
-bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # 影响报告仍可用于冲突预估
-```
-
-- 当时以 `UPSTREAM.lock.json` 的 commit/tree 为哈希绑定基线、以 overlay manifest 的 SHA-256 精确补丁重放；fork 化后这些约束由 git merge 天然满足。
-- 该时代的残留缓存（`packages/.narrafork-runtime-{fork-replay,policy-base,policy-staging,policy-test-home,*-check-*}` 与 `packages/narrafork-runtime-overlay/`）已于 2026-09-17 清理。overlay 私有仓库 `NarraFork/novelfork-runtime-overlay-private` 同日删除。
-- **`packages/.narrafork-runtime-*` 下现存两个目录都不能删**：`fork-staging` 托管接缝分支与上游镜像；`import` 被 `scripts/import-narrafork-runtime.ts:27` 引用且含不易重下的 zstd 工具链。
+**archive+overlay 重放（更早期）**。当时以 `UPSTREAM.lock.json` 的 commit/tree 为哈希绑定基线、以 overlay manifest 的 SHA-256 精确补丁重放；fork 化后这些约束由 git 天然满足。`bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only` 的影响报告仍可用于冲突预估，但它引用的 `packages/.narrafork-runtime-import/`（含 zstd 工具链）已在 2026-10-09 目录大扫除时删除，要用须重新准备工具链。该时代的残留缓存与 `packages/narrafork-runtime-overlay/` 已于 2026-09-17 清理，overlay 私有仓库同日删除。
 
 ## 单一权威源（硬纪律）
 
@@ -294,7 +289,7 @@ bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only   # �
 - 不执行 `git reset --hard`、`git checkout --`、`git clean`、强制推送、历史重写或其他破坏性操作，除非用户明确授权。
 - 只有在用户明确要求时才创建 commit、push、tag 或 Release。
 - 主仓库提交不得重新引入 `packages/narrafork-runtime-private/` 的源码；该目录仅 `UPSTREAM.lock.json` 被跟踪，提交它需 `git add -f` 并逐次核对暂存集只含这一个文件。
-- Runtime 本体变更：先在宿主库的 fork 分支上提交、推送到 `NarraFork/novelfork-runtime-private`，再更新 `UPSTREAM.lock.json` 并 `pnpm runtime:sync` 同步物化目录。overlay submodule 已于 2026-09-17 随目录与远端仓库一并移除（`.gitmodules` 现为空文件）。
+- Runtime 本体变更：先在宿主库的 fork 分支上提交、推送到公开 fork `NarraFork/novelfork-runtime`，再更新 `UPSTREAM.lock.json` 并 `pnpm runtime:sync` 导出物化目录。私有仓已 archive（2026-10-09），不再作为远端；overlay submodule 已于 2026-09-17 随目录与远端仓库一并移除（`.gitmodules` 现为空文件）。
 - 推送主仓库前跑 `pnpm check:boundary`（启用 `.githooks` 后自动检查即将推送的每个提交）。
 - **改动 `.github/workflows/` 的推送需要 `workflow` 权限。** 本机 `git` 默认用 Git Credential Manager 的令牌，没有这个权限，GitHub 会拒收并报 `refusing to allow an OAuth App to create or update workflow ... without workflow scope`（新增、修改、删除工作流文件都算）。做法：先一次性执行 `gh auth refresh -h github.com -s workflow`（按提示在浏览器确认），之后这类推送改用 gh 的凭据：`git -c credential.helper= -c "credential.helper=!gh auth git-credential" push origin master`。不涉及工作流文件的推送不受影响。一次推送多个分支或标签时，只有含工作流改动的那个会被拒、其余照常推上去，必须逐行核对推送输出。
 - 发布前完成与改动相称的本地构建/测试，并用 Windows EXE 做发版前功能核验。
@@ -332,12 +327,21 @@ pnpm run compile:all     # 全部 7 个平台，发版用
 
 1. `pnpm test` 与相关 typecheck 通过，工作区无意外改动。
 2. 更新版本号与 CHANGELOG，`pnpm run compile:all` 一次性产出 7 个平台产物。
-3. 用当次编译出的 `windows-x64.exe` 做功能核验（不是旧产物）。
-4. 只有在用户明确要求时才 commit、tag、push 与创建 Release；上传时带上聚合校验和文件。
+3. 用当次编译出的 `windows-x64.exe` 做功能核验（不是旧产物），核验必须含两条路径：
+   - **真实库副本升级**：把 `<NOVELFORK_HOME>` 整个复制到临时目录再启动（v0.0.4 曾借此抓到迁移哈希误报阻断项，光测空库测不出来）；
+   - 空库冷启动 + health ready、首页 200、日志零 error。
+4. MPL 快照核对：`UPSTREAM.lock.json` 的 commit == 公开 fork `source/v<版本>` 分支头——该分支就是随 EXE 分发的 MPL §3.2 源码提供载体，Release 说明须附链接。
+5. 只有在用户明确要求时才 commit、tag、push 与创建 Release；上传时带上聚合校验和文件。
 
 产物校验：每个产物旁生成 `<产物名>.sha256`；多平台构建额外生成 `dist/novelfork-v<版本>-SHA256SUMS` 汇总全部产物，Release 资产以它为准。
 
-Bun 版本：编译用的 Bun 必须与 Runtime `package.json` 的 `packageManager` 完全一致（Runtime 0.7.10 起为 1.4.2，脚本常量 `REQUIRED_RUNTIME_BUN_VERSION`），不一致时编译在开头就报错。产物内嵌的就是这个 Bun，与上游发布和测试用的版本对齐。
+Bun 版本：编译用的 Bun 必须与 Runtime `package.json` 的 `packageManager` 完全一致（Runtime 0.7.10 起为 1.4.2，脚本常量 `REQUIRED_RUNTIME_BUN_VERSION`），不一致时编译在开头就报错。产物内嵌的就是这个 Bun，与上游发布和测试用的版本对齐。注意版本检查的是**每个进程**的 `Bun.version`：本机 PATH 上是旧版（1.3.13）时，光用绝对路径调 1.4.2 不够——编译脚本嵌套 spawn `bun` 子进程仍按 PATH 解析，会在中途炸掉。正确姿势是把 1.4.2 目录前置 PATH 跑整条链：
+
+```bash
+PATH="$PWD/tmp/bun-1.4.2/extracted/bun-windows-x64:$PATH" bun run compile:all
+```
+
+`.build-tmp/` 是构建脚本 `statfs` 的常驻 scratch 目录（已在 `.gitignore`），目录大扫除时也不得删除，否则编译炸在 `statfs ENOENT`（2026-10-09 实例）。
 
 Runtime 的 Worker：`new Worker()` 的路径打包器不跟随，Runtime 自己的编译脚本把这些模块列为额外入口。产品编译在临时工作区的 `server/…` 下生成一行导入的垫片作为额外入口（`RUNTIME_WORKER_ENTRIES`），使它们嵌在 Runtime 会探测的路径上；契约测试核对这份清单与 Runtime 编译脚本一致。上游新增 Worker 时测试会失败，照着补上即可。
 
@@ -348,6 +352,8 @@ EXE 核验注意：产物启动时会自动打开产品窗口。无头核验必�
 ```bash
 NOVELFORK_HOME="$(mktemp -d)" NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-v<版本>-windows-x64.exe
 ```
+
+产物在 Windows 上绑定的是 IPv6 loopback（`[::1]:<port>`）：脚本探测健康端点时用 `localhost` 或 `[::1]`，`curl 127.0.0.1:<port>` 会被拒（浏览器访问不受影响）。
 
 已知限制：非 Windows 产物在本机只能验证交叉编译成功与目标格式（Mach-O / ELF），真实运行行为需要在对应系统上核验。上游 Runtime 的 `latest*.yml` 自动更新清单与二进制签名不属于 NovelFork 发版流程——产品层未接自动更新服务，不要顺手引入。
 
@@ -510,6 +516,6 @@ D:/DESKTOP/novelfork-video/
 | 小说写作流程 | `packages/novel-plugin/` 的当前实现与测试 |
 | Runtime 行为 | 本地 `packages/narrafork-runtime-private/`（勿提交） |
 | Runtime 物化来源与升级历史 | `packages/narrafork-runtime-private/UPSTREAM.lock.json` 的 `provenance` 字段 |
-| Runtime fork 分支与上游历史 | 宿主库 `packages/.narrafork-runtime-fork-staging/`（`origin` = fork，`upstream` = 上游本体） |
-| 上游 Runtime 源码对照 | 从宿主库 `git worktree add` 检出对应 tag，不要另行 clone |
+| Runtime fork 分支与上游镜像 | 宿主库 `packages/.narrafork-runtime-sync/`（`upstream-public` = 公开上游镜像，fork 分支与私有血统完整历史同库） |
+| 上游 Runtime 源码对照 | 上游公开无 tag：从宿主库 `git worktree add` 检出 main 上的 `release: vX.Y.Z` 锚点或 fork 分支，不要另行 clone |
 | 历史背景 | Kiro、Engram 与历史计划，且须与当前指令核对 |
