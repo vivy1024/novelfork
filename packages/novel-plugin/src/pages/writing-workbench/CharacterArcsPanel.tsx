@@ -33,7 +33,6 @@ interface ArcsResponse {
 
 export interface CharacterArcsPanelProps {
   readonly bookId: string;
-  readonly onClose: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,17 +95,14 @@ function SourceBadge({ source }: { source?: string }) {
 // Component
 // ---------------------------------------------------------------------------
 
-export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps) {
+export function CharacterArcsPanel({ bookId }: CharacterArcsPanelProps) {
   const { data, loading, error } = useApi<ArcsResponse>(`/api/books/${encodeURIComponent(bookId)}/arcs`);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (loading) {
     return (
       <div className="rounded-lg border border-border p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium">角色弧线</span>
-          <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">关闭</button>
-        </div>
+        <span className="text-xs font-medium">角色弧线</span>
         <div className="flex items-center justify-center py-6">
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
           <span className="ml-2 text-xs text-muted-foreground">加载中…</span>
@@ -118,10 +114,7 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
   if (error) {
     return (
       <div className="rounded-lg border border-border p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium">角色弧线</span>
-          <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">关闭</button>
-        </div>
+        <span className="text-xs font-medium">角色弧线</span>
         <p className="text-xs text-destructive">{error}</p>
       </div>
     );
@@ -131,13 +124,10 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
 
   return (
     <div className="rounded-lg border border-border p-3 space-y-2" data-testid="character-arcs-panel">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <TrendingUp className="size-3.5 text-primary" />
-          <span className="text-xs font-medium">角色弧线</span>
-          <Badge variant="secondary" className="text-2xs h-4">{arcs.length}</Badge>
-        </div>
-        <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">关闭</button>
+      <div className="flex items-center gap-1.5">
+        <TrendingUp className="size-3.5 text-primary" />
+        <span className="text-xs font-medium">角色弧线</span>
+        <Badge variant="secondary" className="text-2xs h-4">{arcs.length}</Badge>
       </div>
 
       {arcs.length === 0 && (

@@ -20,6 +20,8 @@ describe("context menu registry", () => {
     expect(plain).not.toContain("generate-variant");
     expect(plain).not.toContain("scene-spec");
     expect(plain).toEqual(expect.arrayContaining(["open-side", "rename", "delete", "copy-path", "copy", "cut"]));
-    expect(dir).toEqual(expect.arrayContaining(["create-file", "create-folder", "open-side", "delete", "paste"]));
+    expect(dir).toEqual(expect.arrayContaining(["create-file", "create-folder", "delete", "paste"]));
+    // 目录没有可分屏显示的内容，「在侧边打开」只对可打开的文件出现
+    expect(dir).not.toContain("open-side");
   });
 });

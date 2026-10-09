@@ -71,7 +71,6 @@ interface ChapterScanResult {
 export interface CompliancePanelProps {
   bookId: string;
   bookPlatform?: string;
-  onClose: () => void;
 }
 
 const STATUS_ICON: Record<RiskStatus, React.ReactNode> = {
@@ -94,7 +93,7 @@ function statusFromCounts(high: number, medium: number): RiskStatus {
   return "clear";
 }
 
-export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePanelProps) {
+export function CompliancePanel({ bookId, bookPlatform }: CompliancePanelProps) {
   const compliancePlatform = toCompliancePlatform(bookPlatform);
   const [checking, setChecking] = useState(false);
   const [report, setReport] = useState<PublishReadinessReport | null>(null);
@@ -174,10 +173,7 @@ export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePan
 
   return (
     <div className="space-y-3 rounded-lg border border-border p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium">投稿风险自检</span>
-        <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">收起</button>
-      </div>
+      <span className="text-xs font-medium">投稿风险自检</span>
 
       <button type="button" disabled={checking} onClick={() => void handleCheck()} className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
         {checking ? <Loader2 className="size-3 animate-spin" /> : null}

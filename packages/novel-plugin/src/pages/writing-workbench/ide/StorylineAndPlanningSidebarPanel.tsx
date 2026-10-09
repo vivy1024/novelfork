@@ -336,11 +336,13 @@ function StorylineCockpit({
   targetChapters,
   next,
   onActivate,
+  onSendToNarrator,
 }: {
   currentChapter: number;
   targetChapters?: number;
   next: NextAction;
   onActivate: (next: NextAction) => void;
+  onSendToNarrator?: (message: string) => Promise<void> | void;
 }) {
   const percent = targetChapters !== undefined && targetChapters > 0
     ? Math.min(100, Math.round((currentChapter / targetChapters) * 100))
@@ -374,6 +376,10 @@ function StorylineCockpit({
         <span className="min-w-0 flex-1 truncate">{next.label}</span>
         <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
       </button>
+      {/* 叙述者 seed 动作而没有叙述者通道时明说，不静默吞掉点击（口径同 NextChapterPanel 的 note） */}
+      {next.key === "outline-empty" && !onSendToNarrator ? (
+        <p className="text-2xs text-muted-foreground" data-testid="storyline-next-no-narrator">当前视图没接叙述者通道，这条建议点了发不出去；先在对话里开启叙述者会话。</p>
+      ) : null}
     </div>
   );
 }
@@ -485,6 +491,7 @@ export function StorylineAndPlanningSidebarPanel({
         targetChapters={bookTargetChapters}
         next={next}
         onActivate={handleNextActivate}
+        onSendToNarrator={onSendToNarrator}
       />
 
       {/* 顶部子标签切换导航（带常亮高亮） */}

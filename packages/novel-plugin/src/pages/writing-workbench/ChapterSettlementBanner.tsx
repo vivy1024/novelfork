@@ -75,10 +75,15 @@ export function ChapterSettlementBanner({ bookId, chapterNumber, content, onAskR
         size="xs"
         variant="outline"
         className="h-6 shrink-0 gap-1 text-2xs"
+        disabled={!onAskResettle}
+        title={onAskResettle ? undefined : "先在对话里开启叙述者会话"}
         onClick={onAskResettle}
       >
         让叙述者重结算
       </Button>
+      {!onAskResettle ? (
+        <span className="shrink-0 text-2xs text-amber-600/80 dark:text-amber-400/80" data-testid="chapter-stale-no-narrator">先在对话里开启叙述者会话</span>
+      ) : null}
     </div>
   );
 }

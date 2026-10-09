@@ -978,23 +978,51 @@ export function StoryProgressBoard({
             </div>
             {board.chapters.map((column) => {
               const isFocus = board.focus?.chapterNumber === column.chapterNumber;
-              return (
-                <button
-                  key={column.chapterNumber}
-                  type="button"
-                  className={
-                    "sticky top-0 z-[1] rounded-md px-2 py-1.5 text-left "
-                    + (isFocus ? "bg-primary/15 ring-1 ring-primary/40" : column.future ? "bg-muted/20" : "bg-muted/50")
-                  }
-                  data-testid={`story-progress-chapter-${column.chapterNumber}`}
-                  onClick={() => onOpenChapter?.(column.chapterNumber)}
-                >
+              const headerClass =
+                "sticky top-0 z-[1] rounded-md px-2 py-1.5 text-left "
+                + (isFocus ? "bg-primary/15 ring-1 ring-primary/40" : column.future ? "bg-muted/20" : "bg-muted/50");
+              const headerBody = (
+                <>
                   <div className="text-2xs font-semibold">
                     第 {column.chapterNumber} 章{isFocus ? " ·下一章" : ""}
                   </div>
                   <div className="truncate text-2xs text-muted-foreground" title={column.title}>
                     {column.future ? "待写" : column.title}
                   </div>
+                </>
+              );
+              // 未来章还没有章文件，跳章节必然落空；唯一出口是「去写」进写作视图，没有出口就不可点。
+              if (column.future) {
+                return onOpenWriteView ? (
+                  <button
+                    key={column.chapterNumber}
+                    type="button"
+                    className={headerClass}
+                    data-testid={`story-progress-chapter-${column.chapterNumber}`}
+                    title="去写本章"
+                    onClick={() => onOpenWriteView()}
+                  >
+                    {headerBody}
+                  </button>
+                ) : (
+                  <div
+                    key={column.chapterNumber}
+                    className={headerClass}
+                    data-testid={`story-progress-chapter-${column.chapterNumber}`}
+                  >
+                    {headerBody}
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={column.chapterNumber}
+                  type="button"
+                  className={headerClass}
+                  data-testid={`story-progress-chapter-${column.chapterNumber}`}
+                  onClick={() => onOpenChapter?.(column.chapterNumber)}
+                >
+                  {headerBody}
                 </button>
               );
             })}

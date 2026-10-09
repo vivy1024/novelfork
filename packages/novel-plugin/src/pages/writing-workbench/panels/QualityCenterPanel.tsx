@@ -1,24 +1,26 @@
 /**
- * F2 · 质量中心 —— 四个质量类面板的单一权威入口（IA 收敛）。
+ * F2 · 质量中心 —— 质量类面板的单一权威入口（IA 收敛）。
  *
  * 各分区回答一个问题，互不重叠：
  * - 📈 趋势：近 20 章质量/AI味/漂移走势（/quality-trend，唯一图表区）
  * - 📊 指标：全书四项健康指标卡（/health 唯一挂载点，原「全书健康」并入）
- * - 🖋 文风检测：主动触发当前章节 AI 味/漂移检测（原「文风一致性」并入）
  * - 🩺 一致性体检：经纬设定 ↔ 叙事记忆纰漏（原「叙事体检」并入）
  *
- * 编辑收敛纪律不适用本面板——四个分区都是只读展示/主动检测，无写操作。
+ * 编辑收敛纪律不适用本面板——三个分区都是只读展示/主动检测，无写操作。
+ *
+ * 「文风检测」分区已下线：检测需要真实正文输入，此入口没有正文源，
+ * 挂载 StyleDriftPanel 时展示的是空文本算出的伪造对比。组件文件保留，
+ * 等能接上当前章正文（chapterContent）的入口再恢复。
  */
 
 import { useState } from "react";
-import { BarChart3, Gauge, Palette, Stethoscope, type LucideIcon } from "lucide-react";
+import { BarChart3, Gauge, Stethoscope, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { QualityPanel } from "./QualityPanel";
 import { BookHealthSummary } from "../BookHealthSummary";
-import { StyleDriftPanel } from "../StyleDriftPanel";
 import { NarrativeConsistencyPanel } from "../NarrativeConsistencyPanel";
 
 export interface QualityCenterPanelProps {
@@ -31,7 +33,7 @@ export interface QualityCenterPanelProps {
   readonly onOpenJingweiEntry?: (entryId: string) => boolean;
 }
 
-type QualityTabId = "trend" | "metrics" | "style" | "consistency";
+type QualityTabId = "trend" | "metrics" | "consistency";
 
 interface QualityTabDef {
   readonly id: QualityTabId;
@@ -43,7 +45,6 @@ interface QualityTabDef {
 const QUALITY_TABS: readonly QualityTabDef[] = [
   { id: "trend", label: "趋势", description: "近 20 章质量与 AI 味走势", icon: BarChart3 },
   { id: "metrics", label: "指标", description: "全书健康四指标", icon: Gauge },
-  { id: "style", label: "文风检测", description: "主动检测本章 AI 味与漂移", icon: Palette },
   { id: "consistency", label: "一致性体检", description: "设定与记忆的纰漏排查", icon: Stethoscope },
 ];
 
@@ -88,11 +89,6 @@ export function QualityCenterPanel({ bookId, currentChapter, onJumpToChapter, on
         {activeTab === "metrics" && (
           <div data-testid="quality-center-metrics">
             <BookHealthSummary bookId={bookId} />
-          </div>
-        )}
-        {activeTab === "style" && (
-          <div data-testid="quality-center-style">
-            <StyleDriftPanel bookId={bookId} onClose={() => undefined} />
           </div>
         )}
         {activeTab === "consistency" && (

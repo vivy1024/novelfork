@@ -409,6 +409,11 @@ export const RETIRED_DUPLICATE_ENTRIES = [
     reason: "工作流回答「这一章按什么工序写」，属于写作；画布只留下一章 / 推进 / 故事树，旧的 workflow 取值由 normalizeStoryProgressionView 落到「下一章」",
   },
   {
+    name: "QualityCenterPanel.style（文风检测分区）",
+    replacement: "StyleDriftPanel 组件保留，待接上当前章正文输入后再恢复挂载",
+    reason: "该入口拿不到真实章正文，挂载时展示的是空文本算出的伪造对比；按「不做假数据」原则先下线",
+  },
+  {
     name: "StoryMapCanvas",
     replacement: "StoryProgressBoard / CanonicalTreesPanel",
     reason: "早期力导向图主视觉探索，已证明不符合网文线性叙事直觉，全面收拢进推进看板与权威故事树",

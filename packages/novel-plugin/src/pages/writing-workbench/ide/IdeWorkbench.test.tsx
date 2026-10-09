@@ -16,7 +16,13 @@ const saveHarness = vi.hoisted(() => ({
   keybindings: null as IdeKeybindingActions | null,
   commands: null as Parameters<typeof import("./use-ide-commands").useIdeCommands>[0] | null,
   confirm: vi.fn<WorkbenchDialogs["confirm"]>().mockResolvedValue(true),
+  alert: vi.fn<WorkbenchDialogs["alert"]>().mockResolvedValue(undefined),
   realSaving: false,
+  // true 时 panel-manager mock 返回真实容器，侧栏面板（含被 mock 成探针的面板）才真正渲染。
+  renderPanels: false,
+  resourceTrees: [] as Array<ComponentProps<typeof import("../WorkbenchResourceTree").WorkbenchResourceTree>>,
+  writeView: null as ComponentProps<typeof import("../WriteViewPanel").WriteViewPanel> | null,
+  fileTreeNodes: [] as WorkbenchResourceNode[],
 }));
 
 vi.mock("allotment", async () => {
@@ -37,12 +43,22 @@ vi.mock("./use-panel-manager", async () => {
     usePanelManager: (initial = "resources") => {
       const [activeView, setActiveView] = React.useState(initial);
       const hostRef = React.useRef<HTMLDivElement>(null);
+      const containersRef = React.useRef(new Map<string, HTMLDivElement>());
       return {
         activeView,
         showPanel: setActiveView,
         hostRef,
-        getContainer: () => null,
-        ready: false,
+        // renderPanels 开启后给每个视图一个容器，让面板（含 mock 探针）真实渲染。
+        getContainer: (view: string) => {
+          if (!saveHarness.renderPanels) return null;
+          let el = containersRef.current.get(view);
+          if (!el) {
+            el = document.createElement("div");
+            containersRef.current.set(view, el);
+          }
+          return el;
+        },
+        ready: saveHarness.renderPanels,
       };
     },
   };
@@ -74,7 +90,7 @@ vi.mock("./use-ide-tabs", async (importOriginal) => {
 });
 
 vi.mock("./use-book-file-tree", () => ({
-  useBookFileTree: () => ({ nodes: [], loading: false, error: null, reload: vi.fn(), refresh: vi.fn() }),
+  useBookFileTree: () => ({ nodes: saveHarness.fileTreeNodes, loading: false, error: null, reload: vi.fn(), refresh: vi.fn() }),
 }));
 
 vi.mock("./use-ide-keybindings", () => ({ useIdeKeybindings: (actions: IdeKeybindingActions) => { saveHarness.keybindings = actions; } }));
@@ -110,7 +126,12 @@ vi.mock("../WorkbenchCanvas", async () => {
     },
   };
 });
-vi.mock("../WorkbenchResourceTree", () => ({ WorkbenchResourceTree: () => null }));
+vi.mock("../WorkbenchResourceTree", () => ({
+  WorkbenchResourceTree: (props: ComponentProps<typeof import("../WorkbenchResourceTree").WorkbenchResourceTree>) => {
+    saveHarness.resourceTrees.push(props);
+    return null;
+  },
+}));
 vi.mock("../panels/BookSettingsPanel", () => ({ BookSettingsPanel: () => null }));
 vi.mock("../NarrativeMemoryPanel", () => ({ NarrativeMemoryPanel: () => null }));
 vi.mock("./SkillsAndStyleSidebarPanel", () => ({ SkillsAndStyleSidebarPanel: () => null }));
@@ -118,12 +139,18 @@ vi.mock("./CharactersAndLoreSidebarPanel", () => ({ CharactersAndLoreSidebarPane
 vi.mock("./StorylineAndPlanningSidebarPanel", () => ({ StorylineAndPlanningSidebarPanel: () => null }));
 vi.mock("../EntityDetailDrawer", () => ({ EntityDetailDrawer: () => null }));
 vi.mock("../jingwei/JingweiSidebarToolbar", () => ({ JingweiSidebarToolbar: () => null }));
-vi.mock("../WriteViewPanel", () => ({ WriteViewPanel: () => null, WRITING_PROGRESS_EVENT: "ide:test-progress" }));
+vi.mock("../WriteViewPanel", () => ({
+  WriteViewPanel: (props: ComponentProps<typeof import("../WriteViewPanel").WriteViewPanel>) => {
+    saveHarness.writeView = props;
+    return null;
+  },
+  WRITING_PROGRESS_EVENT: "ide:test-progress",
+}));
 vi.mock("./use-workbench-dialogs", () => ({
   useWorkbenchDialogs: () => ({
     confirm: saveHarness.confirm,
     prompt: vi.fn().mockResolvedValue(null),
-    alert: vi.fn().mockResolvedValue(undefined),
+    alert: saveHarness.alert,
     element: null,
   }),
 }));
@@ -135,13 +162,24 @@ vi.mock("../useWorkbenchResources", () => ({
   createWorkflowNode: () => null,
 }));
 vi.mock("../lore-workspace-split", () => ({
-  groupEntriesByCategory: () => [],
+  // 按 category 真实分组（设定/推进两个分区参数在此不作区分），
+  // 让「一键修跳分类」之类的测试能看到与生产一致的嵌套分类树。
+  groupEntriesByCategory: (entries: Array<{ category?: string }>) => {
+    const byCategory = new Map<string, Array<{ category?: string }>>();
+    for (const entry of entries) {
+      const category = entry.category ?? "unclassified";
+      if (!byCategory.has(category)) byCategory.set(category, []);
+      byCategory.get(category)!.push(entry);
+    }
+    return [...byCategory.entries()].map(([category, list]) => ({ category, name: category, entries: list }));
+  },
   memoryFactLabel: (value: string) => value,
 }));
 vi.mock("../../../engine/jingwei/unified-categories", () => ({ CATEGORY_META: [], normalizeCategory: (value: string) => value }));
 vi.mock("@/components/ui/toast", () => ({ toast: vi.fn() }));
 
 import { IdeWorkbench, ResourcesSidebarPanel, loadedFileKey, type IdeWorkbenchProps } from "./IdeWorkbench";
+import { toast } from "@/components/ui/toast";
 
 function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
@@ -692,5 +730,194 @@ describe("ResourcesSidebarPanel", () => {
   it("中央正显示作品总览时高亮入口", () => {
     render(<ResourcesSidebarPanel overviewActive onShowOverview={vi.fn()} files={null} tools={null} />);
     expect(screen.getByRole("button", { name: "作品总览" }).getAttribute("aria-current")).toBe("page");
+  });
+});
+
+
+describe("IdeWorkbench 静默交互修复", () => {
+  function makeTabs(tab: { id: string; kind: string; view: string }) {
+    saveHarness.tabs = {
+      tabs: [{ id: tab.id, nodeId: tab.id, title: tab.id, dirty: false, kind: tab.kind, view: tab.view }],
+      activeTabId: tab.id,
+      setDirty: vi.fn(), openTab: vi.fn(), activateTab: vi.fn(), closeTab: vi.fn(), closeOthers: vi.fn(),
+      closeAll: vi.fn(), closeSaved: vi.fn(), closeRight: vi.fn(), togglePin: vi.fn(), reorderTabs: vi.fn(),
+      hasDirtyTabs: () => false,
+    } as unknown as UseIdeTabsReturn;
+  }
+
+  beforeEach(() => {
+    saveHarness.confirm.mockReset().mockResolvedValue(true);
+    saveHarness.alert.mockReset().mockResolvedValue(undefined);
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ content: "磁盘正文", entries: [], facts: [], changes: [] })));
+  });
+
+  afterEach(() => {
+    cleanup();
+    saveHarness.tabs = null;
+    saveHarness.canvases.clear();
+    saveHarness.editorTabs = null;
+    saveHarness.commands = null;
+    saveHarness.writeView = null;
+    saveHarness.resourceTrees.length = 0;
+    saveHarness.fileTreeNodes = [];
+    saveHarness.renderPanels = false;
+    vi.mocked(toast).mockClear();
+    vi.unstubAllGlobals();
+  });
+
+  it("「在侧边打开」先读正文写入缓存再分屏，而不是开一片空白", async () => {
+    stubHostWidth(1440);
+    saveHarness.renderPanels = true;
+    render(<IdeWorkbench bookId="book-1" nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} />);
+    await screen.findByTestId("ide-workbench");
+    const treeProps = saveHarness.resourceTrees.at(-1)!;
+    expect(treeProps.onAction).toBeTypeOf("function");
+    const fileNode: WorkbenchResourceNode = {
+      id: "file:notes/a.md",
+      kind: "file",
+      title: "a.md",
+      capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false },
+      metadata: { isFile: true, filePath: "notes/a.md" },
+    };
+    act(() => { void treeProps.onAction!({ type: "open-side", node: fileNode }); });
+    await waitFor(() => expect(screen.queryByTitle("关闭分屏")).toBeTruthy());
+    const urls = vi.mocked(globalThis.fetch).mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => url.includes("/api/books/book-1/files/read"))).toBe(true);
+  });
+
+  it("「在侧边打开」读文件失败时弹出错误提示，不静默", async () => {
+    stubHostWidth(1440);
+    saveHarness.renderPanels = true;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).includes("/files/read")) throw new Error("网络中断");
+      return jsonResponse({ content: "磁盘正文", entries: [], facts: [], changes: [] });
+    });
+    render(<IdeWorkbench bookId="book-1" nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} />);
+    await screen.findByTestId("ide-workbench");
+    const treeProps = saveHarness.resourceTrees.at(-1)!;
+    const fileNode: WorkbenchResourceNode = {
+      id: "file:notes/a.md",
+      kind: "file",
+      title: "a.md",
+      capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false },
+      metadata: { isFile: true, filePath: "notes/a.md" },
+    };
+    act(() => { void treeProps.onAction!({ type: "open-side", node: fileNode }); });
+    await waitFor(() => expect(saveHarness.alert).toHaveBeenCalledWith(expect.objectContaining({ title: "在侧边打开失败" })));
+    expect(screen.queryByTitle("关闭分屏")).toBeNull();
+  });
+
+  it("按章号跳转找不到章文件时 toast 提示，不再静默 miss；找得到时照常打开", async () => {
+    const chapter: WorkbenchResourceNode = {
+      id: "chapter:1",
+      kind: "chapter",
+      title: "第 1 章 雨夜",
+      content: "正文",
+      capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false },
+      metadata: { isFile: true, isChapter: true, chapterNumber: 1, filePath: "chapters/卷01/0001_雨夜.md" },
+    };
+    makeTabs({ id: "chapter:1", kind: "chapter", view: "resources" });
+    render(<IdeWorkbench nodes={[chapter]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} />);
+    await waitFor(() => expect(saveHarness.canvases.get("chapter:1")).toBeTruthy());
+
+    act(() => { saveHarness.canvases.get("chapter:1")!.onJumpToChapter!(99); });
+    expect(vi.mocked(toast)).toHaveBeenCalledWith("找不到第 99 章的章文件", expect.any(String));
+
+    act(() => { saveHarness.canvases.get("chapter:1")!.onJumpToChapter!(1); });
+    expect(vi.mocked(toast)).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(saveHarness.tabs!.openTab).toHaveBeenCalledWith("chapter:1", expect.any(String), "chapter", "resources"));
+  });
+
+  it("命令面板的「导入旧书」：没有叙述者会话时弹出提示，不静默", async () => {
+    render(<IdeWorkbench nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} />);
+    await screen.findByTestId("ide-workbench");
+    await act(async () => { await saveHarness.commands!.openImportWizard(); });
+    expect(saveHarness.alert).toHaveBeenCalledWith(expect.objectContaining({ description: expect.stringContaining("叙述者会话") }));
+  });
+
+  it("命令面板的「导入旧书」：有叙述者会话时把导入指令交给叙述者", async () => {
+    const onSendToNarrator = vi.fn();
+    render(<IdeWorkbench nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} onSendToNarrator={onSendToNarrator} />);
+    await screen.findByTestId("ide-workbench");
+    act(() => { saveHarness.commands!.openImportWizard(); });
+    expect(onSendToNarrator).toHaveBeenCalledWith(expect.stringContaining("pipeline.import_chapters"));
+    expect(saveHarness.alert).not.toHaveBeenCalled();
+  });
+
+  it("面包屑「作品基础」段解析不到目标时渲染成不可点", async () => {
+    const entry: WorkbenchResourceNode = {
+      id: "jingwei-entry:e1",
+      kind: "jingwei-entry",
+      title: "韩立",
+      content: "",
+      capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
+      metadata: { entryId: "e1", category: "characters" },
+    };
+    makeTabs({ id: "jingwei-entry:e1", kind: "jingwei-entry", view: "characters-lore" });
+    render(<IdeWorkbench nodes={[entry]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} />);
+
+    // 「作品基础」在活动栏按钮里也有同名文本，按面包屑段的类名定位
+    const segments = await screen.findAllByText("作品基础");
+    const loreSegment = segments.find((el) => el.className.includes("truncate"));
+    expect(loreSegment).toBeTruthy();
+    expect(loreSegment!.className).not.toContain("cursor-pointer");
+    // 书名段仍可点（回驾驶舱）
+    expect(screen.getByText("NovelFork").className).toContain("cursor-pointer");
+  });
+
+  it("面包屑按路径前缀递归定位目录节点：嵌套的卷目录可点且点击打开", async () => {
+    const chapterFile: WorkbenchResourceNode = {
+      id: "file:chapters/卷01/0001_雨夜.md",
+      kind: "chapter",
+      title: "0001_雨夜.md",
+      content: "雨",
+      capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false },
+      metadata: { isFile: true, isChapter: true, chapterNumber: 1, filePath: "chapters/卷01/0001_雨夜.md" },
+    };
+    const volumeDir: WorkbenchResourceNode = {
+      id: "dir:chapters/卷01",
+      kind: "group",
+      title: "卷01",
+      capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+      metadata: { isDirectory: true, filePath: "chapters/卷01" },
+      children: [chapterFile],
+    };
+    saveHarness.fileTreeNodes = [{
+      id: "dir:chapters",
+      kind: "group",
+      title: "chapters",
+      capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+      metadata: { isDirectory: true, filePath: "chapters" },
+      children: [volumeDir],
+    }];
+    makeTabs({ id: "file:chapters/卷01/0001_雨夜.md", kind: "chapter", view: "resources" });
+    const onOpen = vi.fn();
+    render(<IdeWorkbench nodes={[]} selectedNode={null} onOpen={onOpen} onSave={vi.fn()} />);
+
+    const volumeSegment = await screen.findByText("卷01");
+    expect(volumeSegment.className).toContain("cursor-pointer");
+    fireEvent.click(volumeSegment);
+    expect(onOpen).toHaveBeenCalledWith(volumeDir);
+  });
+
+  it("写作视图一键修跳分类：经统一打开链路解析嵌套的分类节点", async () => {
+    const onOpen = vi.fn();
+    saveHarness.renderPanels = true;
+    const runtimeFetch = vi.fn(async (input: string) => {
+      if (input.includes("/jingwei/entries")) {
+        return { entries: [{ id: "e1", title: "韩立", category: "characters", contentMd: "" }] };
+      }
+      if (input.includes("narrative-memory/facts")) return { facts: [] };
+      return {};
+    });
+    render(<IdeWorkbench bookId="book-1" nodes={[]} selectedNode={null} onOpen={onOpen} onSave={vi.fn()} runtimeFetch={runtimeFetch} />);
+    await screen.findByTestId("ide-workbench");
+    await waitFor(() => expect(saveHarness.writeView?.onOpenLorePanel).toBeTypeOf("function"));
+
+    // 经纬树异步载入：载好前调用是空转，等到分类节点真正解析出来
+    await waitFor(() => {
+      act(() => { saveHarness.writeView!.onOpenLorePanel!("characters"); });
+      expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "jingwei-cat:characters" }));
+    });
   });
 });

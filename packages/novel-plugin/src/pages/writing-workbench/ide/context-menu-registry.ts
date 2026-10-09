@@ -25,7 +25,7 @@ function isChapter(node: WorkbenchResourceNode): boolean {
 }
 
 export const RESOURCE_CONTEXT_MENU_ITEMS: readonly ResourceContextMenuItem[] = [
-  { id: "open-side", label: "在侧边打开", action: "open-side", group: "navigation", when: (node) => node.capabilities.open || isDirectory(node) },
+  { id: "open-side", label: "在侧边打开", action: "open-side", group: "navigation", when: (node) => node.capabilities.open && !isDirectory(node) },
   { id: "create", label: "新建条目", action: "create", group: "edit", when: (node) => node.kind === "jingwei-section" },
   { id: "create-file", label: "新建文件", action: "create-file", group: "edit", when: isDirectory },
   { id: "create-folder", label: "新建文件夹", action: "create-folder", group: "edit", when: isDirectory },

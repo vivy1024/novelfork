@@ -247,9 +247,9 @@ function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, curren
     case "tension":
       return <Suspense fallback={<ToolPanelLoading />}><TensionCurvePanel bookId={bookId} onJumpToChapter={onJumpToChapter} /></Suspense>;
     case "arcs":
-      return <Suspense fallback={<ToolPanelLoading />}><CharacterArcsPanel bookId={bookId} onClose={() => {}} /></Suspense>;
+      return <Suspense fallback={<ToolPanelLoading />}><CharacterArcsPanel bookId={bookId} /></Suspense>;
     case "compliance":
-      return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} bookPlatform={bookPlatform} onClose={() => {}} /></Suspense>;
+      return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} bookPlatform={bookPlatform} /></Suspense>;
     case "governance":
       return <GovernanceCockpitPanel bookId={bookId} />;
     case "runtime":
@@ -326,6 +326,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   const [sceneSpecOpen, setSceneSpecOpen] = useState(false);
   const [sceneSpec, setSceneSpec] = useState<SceneSpec | null>(null);
   const [sceneSpecLoading, setSceneSpecLoading] = useState(false);
+  // 蓝图生成的可见报错槽（请求失败 / 拿到空蓝图都写这里，不静默）。
+  const [sceneSpecError, setSceneSpecError] = useState<string | null>(null);
   const [contextRailOpen, setContextRailOpen] = useState(true);
   // 已启用预设提供写法指南；尚未升级的旧书继续兼容统计摘要。
   const [styleProfileSummary, setStyleProfileSummary] = useState<string | undefined>(undefined);
@@ -378,6 +380,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
     setHistoryError(null);
     setSceneSpec(null);
     setSceneSpecOpen(false);
+    setSceneSpecError(null);
     setContextRailOpen(true);
   }, [resourceKey]);
 
@@ -587,6 +590,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         <Button size="sm" variant="ghost" className="gap-1" disabled={sceneSpecLoading}
           onClick={async () => {
             setSceneSpecLoading(true);
+            setSceneSpecError(null);
             try {
               const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : 1;
               const data = await fetchJson<{ data?: { sceneSpec?: SceneSpec } }>(
@@ -598,6 +602,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
                 },
               );
               if (data.data?.sceneSpec) { setSceneSpec(data.data.sceneSpec); setSceneSpecOpen(true); }
+              else setSceneSpecError("这次没生成蓝图");
+            } catch (cause) {
+              setSceneSpecError(`生成蓝图失败：${cause instanceof Error ? cause.message : "未知错误"}`);
             } finally { setSceneSpecLoading(false); }
           }}
           title="生成章节蓝图"
@@ -605,6 +612,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
           <FileText className="size-3.5" />
         </Button>
       )}
+      {sceneSpecError && <span role="alert" data-testid="blueprint-error" className="text-xs text-destructive truncate max-w-48" title={sceneSpecError}>{sceneSpecError}</span>}
     </div>
   );
 
@@ -847,14 +855,16 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         </Sheet>
       )}
 
-      {/* T4b 改章 stale 横幅：dirty 时防抖比对指纹，提示重结算 */}
+      {/* T4b 改章 stale 横幅：dirty 时防抖比对指纹，提示重结算；没有叙述者通道时不装作能重结算 */}
       {isChapterWorkflowNode(node) && bookId && dirty && typeof node.metadata?.chapterNumber === "number" && content.trim() && (
         <Suspense fallback={null}>
           <ChapterSettlementBanner
             bookId={bookId}
             chapterNumber={node.metadata.chapterNumber}
             content={content}
-            onAskResettle={() => onSendToNarrator?.(`请对第 ${node.metadata?.chapterNumber} 章重新执行 memory.settle_chapter（force=true），正文已修改需要刷新叙事记忆。`)}
+            {...(onSendToNarrator
+              ? { onAskResettle: () => { void onSendToNarrator(`请对第 ${node.metadata?.chapterNumber} 章重新执行 memory.settle_chapter（force=true），正文已修改需要刷新叙事记忆。`); } }
+              : {})}
           />
         </Suspense>
       )}

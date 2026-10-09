@@ -1,6 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// 缩略图与选中浮层依赖浏览器布局/tippy，jsdom 跑不起来；正文仍用真实 TipTap。
+vi.mock("./resource-viewers/EditorMinimap", () => ({ EditorMinimap: () => null }));
+vi.mock("@tiptap/react", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@tiptap/react")>(),
+  BubbleMenu: () => null,
+}));
+
 vi.mock("./NarrativeMemoryPanel", () => ({
   NarrativeMemoryPanel: ({
     bookId,
@@ -48,6 +55,19 @@ vi.mock("./WorkflowTimelinePanel", () => ({
   WorkflowTimelinePanel: ({ bookId, currentChapter, narratorId }: { bookId: string; currentChapter?: number; narratorId?: string }) => (
     <div data-testid="mock-workflow" data-book={bookId} data-chapter={String(currentChapter ?? "")} data-narrator={narratorId ?? ""} />
   ),
+}));
+
+const settlementProbe = vi.hoisted(() => ({ props: [] as Array<{ onAskResettle?: () => void }> }));
+vi.mock("./ChapterSettlementBanner", () => ({
+  ChapterSettlementBanner: (props: { onAskResettle?: () => void }) => {
+    settlementProbe.props.push(props);
+    return null;
+  },
+}));
+
+// 上下文导轨走 react-query（需要 QueryClientProvider），本文件的用例不覆盖它。
+vi.mock("./ChapterContextRail", () => ({
+  ChapterContextRail: () => null,
 }));
 
 import { WorkbenchCanvas } from "./WorkbenchCanvas";
@@ -471,5 +491,50 @@ describe("WorkbenchCanvas", () => {
     // 节点点击 → 实体详情抽屉协同（Phase 2）
     fireEvent.click(canvas);
     expect(onOpenEntityDetail).toHaveBeenCalledWith("薛行之");
+  });
+
+  it("生成蓝图失败或这次没生成蓝图都在界面亮出，不静默", async () => {
+    let failOnce = false;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/scene-spec")) {
+        if (failOnce) throw new Error("网络中断");
+        return new Response(JSON.stringify({ data: {} }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+
+    render(
+      <WorkbenchCanvas
+        node={node({ metadata: { isChapter: true, chapterNumber: 3 }, content: "初始正文" })}
+        bookId="book-1"
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "生成章节蓝图" }));
+    expect((await screen.findByTestId("blueprint-error")).textContent).toContain("这次没生成蓝图");
+
+    failOnce = true;
+    fireEvent.click(screen.getByRole("button", { name: "生成章节蓝图" }));
+    await waitFor(() => expect(screen.getByTestId("blueprint-error").textContent).toContain("生成蓝图失败"));
+    expect(screen.getByTestId("blueprint-error").textContent).toContain("网络中断");
+  });
+
+  it("改章横幅的重结算通道只在与叙述者相连时才提供", async () => {
+    settlementProbe.props.length = 0;
+    const props = {
+      node: node({ metadata: { isChapter: true, chapterNumber: 3 }, content: "初始正文" }),
+      bookId: "book-1",
+      onSave: vi.fn(),
+    };
+    const { rerender } = render(<WorkbenchCanvas {...props} />);
+    editTiptap("章节正文", "修改过的正文");
+    await waitFor(() => expect(settlementProbe.props.length).toBeGreaterThan(0));
+    // 没有 onSendToNarrator：不传 onAskResettle，由横幅自己呈现禁用态
+    expect(settlementProbe.props.at(-1)!.onAskResettle).toBeUndefined();
+
+    rerender(<WorkbenchCanvas {...props} onSendToNarrator={vi.fn()} />);
+    await waitFor(() => expect(settlementProbe.props.at(-1)?.onAskResettle).toBeTypeOf("function"));
   });
 });

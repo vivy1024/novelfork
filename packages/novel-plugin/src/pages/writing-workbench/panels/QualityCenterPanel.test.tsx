@@ -4,9 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../BookHealthSummary", () => ({
   BookHealthSummary: ({ bookId }: { bookId: string }) => <div data-testid="mock-book-health">{bookId}</div>,
 }));
-vi.mock("../StyleDriftPanel", () => ({
-  StyleDriftPanel: ({ bookId }: { bookId: string }) => <div data-testid="mock-style-drift">{bookId}</div>,
-}));
 vi.mock("../NarrativeConsistencyPanel", () => ({
   NarrativeConsistencyPanel: ({
     bookId,
@@ -53,15 +50,12 @@ describe("QualityCenterPanel 质量中心（F2 收敛）", () => {
     expect(screen.queryByTestId("quality-center-metrics")).toBeNull();
   });
 
-  it("四个分区可切换，指标/文风/一致性各自渲染对应子面板", () => {
+  it("其余分区可切换，指标/一致性各自渲染对应子面板", () => {
     render(<QualityCenterPanel {...props} />);
 
     fireEvent.click(screen.getByRole("tab", { name: /指标/ }));
     expect(screen.getByTestId("quality-center-metrics")).toBeTruthy();
     expect(screen.getByTestId("mock-book-health").textContent).toBe("book-1");
-
-    fireEvent.click(screen.getByRole("tab", { name: /文风检测/ }));
-    expect(screen.getByTestId("mock-style-drift").textContent).toBe("book-1");
 
     fireEvent.click(screen.getByRole("tab", { name: /一致性体检/ }));
     const consistency = screen.getByTestId("mock-consistency");
@@ -71,6 +65,12 @@ describe("QualityCenterPanel 质量中心（F2 收敛）", () => {
     fireEvent.click(consistency);
     expect(props.onJumpToChapter).toHaveBeenCalledWith(7);
     expect(props.onOpenJingweiEntry).toHaveBeenCalledWith("entry-1");
+  });
+
+  it("「文风检测」分区已下线：没有真实正文源时展示的是伪造对比，不再出现", () => {
+    render(<QualityCenterPanel {...props} />);
+    expect(screen.queryByRole("tab", { name: /文风检测/ })).toBeNull();
+    expect(screen.queryByTestId("quality-center-style")).toBeNull();
   });
 
   it("tab 具备 aria-selected 状态供无障碍与测试定位", () => {

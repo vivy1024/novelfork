@@ -4,8 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Sparkles, Pencil, Plus, Trash2 } from "lucide-react";
-import { fetchJson } from "@/hooks/use-api";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
 import { ChapterEditor, type SelectionCandidate } from "./ChapterEditor";
@@ -139,8 +138,6 @@ function isUnfilledSection(body: string): boolean {
 
 function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void }) {
   const [editingRaw, setEditingRaw] = useState(false);
-  const [generatingSection, setGeneratingSection] = useState<string | null>(null);
-  const [generationError, setGenerationError] = useState<string | null>(null);
   const content = node.content ?? "";
   const sections = parseJingweiSections(content);
 
@@ -180,47 +177,14 @@ function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNod
           <div key={i} className="rounded-lg border border-border bg-card p-4">
             <h3 className="text-sm font-semibold text-foreground mb-2">{section.title}</h3>
             {isUnfilledSection(section.body) ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>尚未填写</span>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
-                  disabled={generatingSection !== null}
-                  onClick={async () => {
-                    setGeneratingSection(section.title);
-                    setGenerationError(null);
-                    try {
-                      const data = await fetchJson<{ content?: string; error?: string }>("/api/ai/generate", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ prompt: `请为小说的"${section.title}"部分生成详细内容。要求具体、生动、可直接用于写作。输出纯文本，不要解释。`, maxTokens: 1000 }),
-                      });
-                      if (!data.content?.trim()) throw new Error("AI 没有返回可用内容。");
-
-                      // Replace placeholder with generated content
-                      const updated = node.content?.replace(
-                        new RegExp(`## ${section.title}\\n[\\s\\S]*?(?=\\n## |$)`),
-                        `## ${section.title}\\n${data.content.trim()}\\n`,
-                      );
-                      if (updated && onContentChange) onContentChange(updated);
-                    } catch (error) {
-                      setGenerationError(error instanceof Error ? error.message : "AI 生成失败。");
-                    } finally {
-                      setGeneratingSection(null);
-                    }
-                  }}
-                >
-                  <Sparkles className="size-3" />
-                  {generatingSection === section.title ? "生成中…" : "让 AI 生成"}
-                </button>
-              </div>
+              // 「让 AI 生成」入口已删：它调用的 /api/ai/generate 接口不存在，点了永远失败。
+              <div className="text-xs text-muted-foreground">尚未填写</div>
             ) : (
               <div className="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{section.body}</div>
             )}
           </div>
         ))
       )}
-      {generationError ? <p role="alert" className="text-xs text-destructive">{generationError}</p> : null}
     </div>
   );
 }

@@ -426,6 +426,30 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(onSendToNarrator).toHaveBeenCalledWith(expect.stringContaining("outline.volume"));
   });
 
+  it("NEXT 缺纲而没有叙述者通道时，卡内明说而不是静默吞掉点击", () => {
+    const chapter = { ...node("chapter:12", "第 12 章", "chapter"), metadata: { chapterNumber: 12 } };
+    render(
+      <StorylineAndPlanningSidebarPanel
+        bookId="book-quiet"
+        chapterTreeNodes={[node("chapters", "章节", "group", [chapter])]}
+        outlineTreeNodes={[]}
+        selectedNodeId={null}
+        onOpen={vi.fn()}
+      />,
+    );
+    const note = screen.getByTestId("storyline-next-no-narrator");
+    expect(note.textContent).toContain("叙述者");
+    // 点击不报错也不偷偷发消息，提示仍在
+    fireEvent.click(screen.getByTestId("storyline-next-outline-empty"));
+    expect(screen.getByTestId("storyline-next-no-narrator")).toBeTruthy();
+  });
+
+  it("接上叙述者通道后卷纲 seed 照常发送，不出现提示", () => {
+    const onSendToNarrator = vi.fn();
+    renderPanel({ outlineTreeNodes: [], onSendToNarrator });
+    expect(screen.queryByTestId("storyline-next-no-narrator")).toBeNull();
+  });
+
   it("resolveNextAction 维护提醒优先，只返回最高优先级一条；都没有时给下一章建议", () => {
     expect(resolveNextAction({ hasOutline: false, plannedCount: 3, pendingCount: 2 }).key).toBe("outline-empty");
     expect(resolveNextAction({ hasOutline: true, plannedCount: 2, pendingCount: 9 }).key).toBe("promote-outline");

@@ -259,6 +259,39 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
     expect(fetchJson.mock.calls[0][0]).toContain("/api/books/book-single/narrative-structure");
   });
 
+  it("未来章列头点击「去写」进写作视图；已写章列头仍跳章节", async () => {
+    const onOpenWriteView = vi.fn();
+    const onOpenChapter = vi.fn();
+    mockRoutes({ summaries });
+    render(
+      <StoryProgressBoard
+        bookId="book-1"
+        currentChapter={2}
+        onOpenWriteView={onOpenWriteView}
+        onOpenChapter={onOpenChapter}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("story-progress-board")).toBeTruthy());
+    // 第 3 章是待写的未来章：点击去写，而不是去跳一个不存在的章文件
+    fireEvent.click(screen.getByTestId("story-progress-chapter-3"));
+    expect(onOpenWriteView).toHaveBeenCalledTimes(1);
+    expect(onOpenChapter).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("story-progress-chapter-1"));
+    expect(onOpenChapter).toHaveBeenCalledWith(1);
+    expect(onOpenWriteView).toHaveBeenCalledTimes(1);
+  });
+
+  it("没有「去写」出口时未来章列头不可点，已写章列头行为不变", async () => {
+    mockRoutes({ summaries });
+    render(<StoryProgressBoard bookId="book-1" currentChapter={2} />);
+
+    await waitFor(() => expect(screen.getByTestId("story-progress-board")).toBeTruthy());
+    expect(screen.getByTestId("story-progress-chapter-3").tagName).toBe("DIV");
+    expect(screen.getByTestId("story-progress-chapter-1").tagName).toBe("BUTTON");
+  });
+
   it("行头点击新建剧情线，提交后发起 POST 并触发刷新 (Task A7)", async () => {
     mockRoutes({ summaries });
     render(<StoryProgressBoard bookId="book-1" currentChapter={2} />);

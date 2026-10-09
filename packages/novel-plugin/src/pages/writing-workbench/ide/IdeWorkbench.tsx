@@ -254,6 +254,20 @@ function collectCategoryNodes(
   return result;
 }
 
+/** 面包屑中段按路径前缀定位目录节点：目录嵌在树里，必须递归找，只查顶层会静默落空。 */
+function findFileNodeBySubPath(
+  nodes: readonly WorkbenchResourceNode[],
+  subPath: string,
+): WorkbenchResourceNode | null {
+  for (const node of nodes) {
+    const fp = node.metadata?.filePath;
+    if (typeof fp === "string" && (fp === subPath || fp.endsWith("/" + subPath) || fp.endsWith("\\" + subPath))) return node;
+    const nested = node.children ? findFileNodeBySubPath(node.children, subPath) : null;
+    if (nested) return nested;
+  }
+  return null;
+}
+
 // ── Main Component ──────────────────────────────────────
 
 export function IdeWorkbench({
@@ -909,6 +923,8 @@ export function IdeWorkbench({
     const target = findChapterNode(nodes) ?? findChapterNode(fileTree.nodes);
     if (target) {
       handleOpen(target);
+    } else {
+      toast(`找不到第 ${chapterNumber} 章的章文件`, "warning");
     }
   }, [nodes, fileTree.nodes, handleOpen]);
 
@@ -989,39 +1005,40 @@ export function IdeWorkbench({
   }, [bookId, loadLoreSections]);
 
   // ── 面包屑导航 ──
-  const handleBreadcrumbNavigate = useCallback((segment: string, index: number) => {
-    if (index === 0) {
-      // 点击书名 → 关闭所有 tab 回到驾驶舱
-      void handleCloseAllTabs();
-      return;
-    }
-    if (!activeNode) return;
+  // 解析某段面包屑的可导航目标：解析不到就回 null，渲染侧据此把该段画成不可点，
+  // 不再保留「看着能点、点了没反应」的死段。
+  const resolveBreadcrumbTarget = useCallback((segment: string, index: number): WorkbenchResourceNode | "close-all" | null => {
+    if (index === 0) return "close-all"; // 书名 → 关闭所有 tab 回到驾驶舱
+    if (!activeNode) return null;
 
     // 文件节点：尝试拼接路径段找到对应资源
     if (activeNode.metadata?.isFile) {
       const filePath = activeNode.metadata?.filePath;
-      if (typeof filePath === "string") {
-        const parts = filePath.split(/[\\/]/).filter(Boolean);
-        const subPath = parts.slice(0, index).join("/");
-        if (subPath) {
-          const match = fileTree.nodes.find(n => {
-            const fp = n.metadata?.filePath;
-            return typeof fp === "string" && (fp === subPath || fp.endsWith("/" + subPath) || fp.endsWith("\\" + subPath));
-          });
-          if (match) { handleOpen(match); return; }
-        }
-      }
+      if (typeof filePath !== "string") return null;
+      const parts = filePath.split(/[\\/]/).filter(Boolean);
+      const subPath = parts.slice(0, index).join("/");
+      return subPath ? findFileNodeBySubPath(fileTree.nodes, subPath) : null;
     }
 
-    // 经纬条目：点击分类段 → 打开分类节点
+    // 经纬条目：分类段 → 分类节点（节点嵌在「设定 / 推进」工作区分组里，递归找）
     if (activeNode.kind === "jingwei-entry" || activeNode.kind === "jingwei") {
       const catMeta = CATEGORY_META.find(m => m.name === segment);
-      if (catMeta) {
-        const sectionNode = jingweiSections.find(s => s.metadata?.category === catMeta.id);
-        if (sectionNode) { handleOpen(sectionNode); return; }
-      }
+      if (!catMeta) return null;
+      return collectCategoryNodes(jingweiSections, catMeta.id)[0] ?? null;
     }
-  }, [activeNode, fileTree.nodes, jingweiSections, handleOpen, handleCloseAllTabs]);
+    return null;
+  }, [activeNode, fileTree.nodes, jingweiSections]);
+
+  const handleBreadcrumbNavigate = useCallback((segment: string, index: number) => {
+    const target = resolveBreadcrumbTarget(segment, index);
+    if (target === "close-all") { void handleCloseAllTabs(); return; }
+    if (target) handleOpen(target);
+  }, [resolveBreadcrumbTarget, handleOpen, handleCloseAllTabs]);
+
+  const canNavigateBreadcrumb = useCallback(
+    (segment: string, index: number) => resolveBreadcrumbTarget(segment, index) !== null,
+    [resolveBreadcrumbTarget],
+  );
 
   // ActivityBar click: VS Code 行为 — 同一个图标折叠，不同图标切换
   // ActivityBar click: 命令式切换面板
@@ -1147,9 +1164,9 @@ export function IdeWorkbench({
         return null;
       };
       const target = findCategory(jingweiSections);
-      if (target) onOpen(target);
+      if (target) handleOpen(target);
     }
-  }, [showPanel, jingweiSections, onOpen, setShowSettings]);
+  }, [showPanel, jingweiSections, handleOpen, setShowSettings]);
 
   /**
    * 回到作品总览：「资源」侧栏顶部的「作品总览」，以及写作视图起书引导卡的「先回答建书十一问」。
@@ -1227,12 +1244,14 @@ export function IdeWorkbench({
     setShowSettings,
     closeTab: keybindingActions.closeTab,
     closeAllTabs: handleCloseAllTabs,
-    // 导入是写操作：交给叙述者执行，保留 Runtime 的权限确认。
-    openImportWizard: () => onSendToNarrator?.(
-      "我要导入一本已有的旧书继续写。请先问我要导入的文本或文件，然后用 pipeline.import_chapters（autoSettle+extractBrief）导入；拆书产物先留在 needs-review，等我确认再入 canon。",
-    ),
+    // 导入是写操作：交给叙述者执行，保留 Runtime 的权限确认；没有叙述者会话时明说而不静默。
+    openImportWizard: onSendToNarrator
+      ? () => { void onSendToNarrator(
+        "我要导入一本已有的旧书继续写。请先问我要导入的文本或文件，然后用 pipeline.import_chapters（autoSettle+extractBrief）导入；拆书产物先留在 needs-review，等我确认再入 canon。",
+      ); }
+      : () => { void alertDialog({ title: "导入旧书", description: "先在对话里开启叙述者会话，再导入旧书。" }); },
     sendToNarrator: (message: string) => { void onSendToNarrator?.(message); },
-  }), [onSendToNarrator, keybindingActions, setShowSettings, handleCloseAllTabs]);
+  }), [onSendToNarrator, alertDialog, keybindingActions, setShowSettings, handleCloseAllTabs]);
   const ideCommands = useIdeCommands(ideCommandOptions);
 
   // Quick Open: flatten file tree + jingwei entries into palette commands
@@ -1407,6 +1426,32 @@ export function IdeWorkbench({
         await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
       }
     } else if (type === "open-side") {
+      // 文件树节点此时只解析到裸节点（正文尚未载入），直接开分屏会看到空白；
+      // 与 handleOpen 同一链路：先读正文写入 loadedFiles，再开分屏。
+      const alreadyLoaded = loadedFilesRef.current.has(loadedFileKey(bookId, node.id));
+      if (node.metadata?.isFile && typeof node.metadata?.filePath === "string" && !alreadyLoaded) {
+        const filePath = node.metadata.filePath;
+        const generation = fileReadGenerationRef.current;
+        const controller = new AbortController();
+        fileReadControllersRef.current.add(controller);
+        void fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`, { signal: controller.signal })
+          .then(async (response) => {
+            if (!response.ok) throw new Error(`请求失败：${response.status}`);
+            return response.json() as Promise<{ content?: string }>;
+          })
+          .then((data) => {
+            if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
+            const loaded: WorkbenchResourceNode = { ...node, content: data.content ?? "" };
+            setLoadedFiles(prev => new Map(prev).set(loadedFileKey(bookId, node.id), loaded));
+            setSplitNodeId(node.id);
+          })
+          .catch((err) => {
+            if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
+            void alertDialog({ title: "在侧边打开失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
+          })
+          .finally(() => fileReadControllersRef.current.delete(controller));
+        return;
+      }
       setSplitNodeId(node.id);
     } else if (type === "generate-variant" || type === "scene-spec") {
       // 章节专属操作：打开章节文件，用户通过编辑器工具栏操作
@@ -1722,7 +1767,7 @@ export function IdeWorkbench({
                       onSplitRight={(tabId) => setSplitNodeId(tabId)}
                     />
                   )}
-                  <EditorBreadcrumbs bookTitle={bookRoot?.title} node={activeNode} view={activeView} showSettings={showSettings} onNavigate={handleBreadcrumbNavigate} />
+                  <EditorBreadcrumbs bookTitle={bookRoot?.title} node={activeNode} view={activeView} showSettings={showSettings} onNavigate={handleBreadcrumbNavigate} canNavigate={canNavigateBreadcrumb} />
                   <div className="flex-1 min-h-0">
                   <EditorErrorBoundary>
                     {showSettings && bookId ? (
@@ -2224,13 +2269,15 @@ const VIEW_LABEL: Record<SidebarView, string> = {
   search: "搜索",
 };
 
-function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: {
+function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate, canNavigate }: {
   bookTitle?: string;
   node: WorkbenchResourceNode | null;
   view: SidebarView;
   showSettings?: boolean;
   /** 点击面包屑段时回调（segment 文本 + index） */
   onNavigate?: (segment: string, index: number) => void;
+  /** 该段是否有可解析的导航目标；没有目标的段渲染成不可点（缺省视为全部可点）。 */
+  canNavigate?: (segment: string, index: number) => boolean;
 }) {
   // 写作设置 → 书 › 写作设置；有激活节点 → 节点路径；否则 → 书 › 视图名
   const segments = showSettings
@@ -2242,7 +2289,7 @@ function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: 
     <div style={{ height: 24, minHeight: 24 }} className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-card/50 px-3 [&::-webkit-scrollbar]:hidden">
       {segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
-        const clickable = !!onNavigate && !isLast;
+        const clickable = !!onNavigate && !isLast && (canNavigate ? canNavigate(seg, i) : true);
         return (
           <span key={`${seg}-${i}`} className="flex items-center gap-0.5 shrink-0">
             {i > 0 && <ChevronRight className="size-3 text-muted-foreground/50" />}

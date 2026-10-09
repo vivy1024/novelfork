@@ -168,4 +168,19 @@ describe("ResourceViewer", () => {
     expect(screen.getByText("通用资源")) .toBeTruthy();
     expect(screen.getByTestId("raw-resource-node").textContent).toContain('"title": "神秘资源"');
   });
+
+  it("未填写的设定分区只显示「尚未填写」，不再有「让 AI 生成」死入口", () => {
+    render(
+      <ResourceViewer
+        node={node({
+          id: "story:jd",
+          kind: "jingwei",
+          title: "设定.md",
+          content: "# 设定\n\n## 世界背景\n\n*(待AI生成)*\n\n## 势力\n\n两大王朝并立。",
+        })}
+      />,
+    );
+    expect(screen.getByText("尚未填写")).toBeTruthy();
+    expect(screen.queryByText(/让 AI 生成/)).toBeNull();
+  });
 });

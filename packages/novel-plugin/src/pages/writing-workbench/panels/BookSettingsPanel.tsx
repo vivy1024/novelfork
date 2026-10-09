@@ -69,7 +69,8 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
   const [config, setConfig] = useState<BookConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  // error 态带着失败信息一直留到下次保存动作，不再静默落回 idle。
+  const [saveStatus, setSaveStatus] = useState<{ state: "idle" | "saving" | "saved" } | { state: "error"; message: string }>({ state: "idle" });
   // book.json 里伏笔阈值的原始值，交给阈值字段自行校验与回退。
   const [foreshadowThresholdsRaw, setForeshadowThresholdsRaw] = useState<unknown>(undefined);
   const [layers, setLayers] = useState<BookWritingLayers>({
@@ -138,35 +139,35 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
   }, [bookId]);
 
   const saveConfig = useCallback(async (partial: Partial<BookConfig>) => {
-    setSaveStatus("saving");
+    setSaveStatus({ state: "saving" });
     try {
       await fetchJson(`/api/books/${encodeURIComponent(bookId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(partial),
       });
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 1500);
-    } catch {
-      setSaveStatus("idle");
+      setSaveStatus({ state: "saved" });
+      setTimeout(() => setSaveStatus({ state: "idle" }), 1500);
+    } catch (cause) {
+      setSaveStatus({ state: "error", message: cause instanceof Error ? cause.message : "未知错误" });
     }
   }, [bookId]);
   const debouncedSave = useDebounce(saveConfig, 1000);
   const saveForeshadowThresholds = useCallback(async (value: ForeshadowDebtThresholds | null) => {
-    setSaveStatus("saving");
+    setSaveStatus({ state: "saving" });
     try {
       await fetchJson(`/api/books/${encodeURIComponent(bookId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ foreshadowDebtThresholds: value }),
       });
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 1500);
+      setSaveStatus({ state: "saved" });
+      setTimeout(() => setSaveStatus({ state: "idle" }), 1500);
       // 已打开的伏笔看板、推进看板、侧栏据此重读阈值，不必刷新页面。
       dispatchWritingProgress({ reason: "foreshadow-thresholds", bookId });
       return true;
-    } catch {
-      setSaveStatus("idle");
+    } catch (cause) {
+      setSaveStatus({ state: "error", message: cause instanceof Error ? cause.message : "未知错误" });
       return false;
     }
   }, [bookId]);
@@ -176,7 +177,7 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
   }, [debouncedSave]);
 
   const saveLayers = useDebounce(async (next: BookWritingLayers) => {
-    setSaveStatus("saving");
+    setSaveStatus({ state: "saving" });
     try {
       await fetchJson(`/api/books/${encodeURIComponent(bookId)}/writing-layers`, {
         method: "PUT",
@@ -190,10 +191,10 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
           bookRulesRaw: next.bookRulesRaw,
         }),
       });
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 1500);
-    } catch {
-      setSaveStatus("idle");
+      setSaveStatus({ state: "saved" });
+      setTimeout(() => setSaveStatus({ state: "idle" }), 1500);
+    } catch (cause) {
+      setSaveStatus({ state: "error", message: cause instanceof Error ? cause.message : "未知错误" });
     }
   }, 1000);
   const updateLayers = useCallback((key: keyof BookWritingLayers, value: string) => {
@@ -209,8 +210,13 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0"><ArrowLeft className="size-4" /></Button>
         <h1 className="text-sm font-semibold text-foreground">书籍设置</h1>
-        {saveStatus === "saving" && <span className="ml-auto text-2xs text-muted-foreground">保存中...</span>}
-        {saveStatus === "saved" && <span className="ml-auto text-2xs text-green-500">已保存</span>}
+        {saveStatus.state === "saving" && <span className="ml-auto text-2xs text-muted-foreground">保存中...</span>}
+        {saveStatus.state === "saved" && <span className="ml-auto text-2xs text-green-500">已保存</span>}
+        {saveStatus.state === "error" && (
+          <span role="alert" data-testid="book-settings-save-error" className="ml-auto text-2xs text-destructive" title={saveStatus.message}>
+            保存失败：{saveStatus.message}
+          </span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-6 px-4 py-4">

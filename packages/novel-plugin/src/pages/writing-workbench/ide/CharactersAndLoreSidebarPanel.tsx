@@ -99,6 +99,7 @@ export function CharactersAndLoreSidebarPanel({
   const [newCharName, setNewCharName] = useState("");
   const [newCharCategory, setNewCharCategory] = useState<string>(WORLD_CREATE_CATEGORY_META[0]?.id ?? "world-model");
   const [creatingBusy, setCreatingBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // 角色当前内核（每个角色的当前动机/情绪一行摘要），来自结算后写入的 character_kernel。
   // 这个角色册面板就是作者查「这个角色现在是谁」的地方——顺带把内核贴上来，不必再翻叙事记忆面板。
@@ -256,6 +257,7 @@ export function CharactersAndLoreSidebarPanel({
   const handleCreateEntry = async () => {
     if (!newCharName.trim() || creatingBusy) return;
     setCreatingBusy(true);
+    setCreateError(null);
     try {
       await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
         method: "POST",
@@ -269,8 +271,8 @@ export function CharactersAndLoreSidebarPanel({
       setNewCharName("");
       setCreatingChar(false);
       onChanged?.();
-    } catch {
-      // ignore
+    } catch (cause) {
+      setCreateError(`创建失败：${cause instanceof Error ? cause.message : "未知错误"}`);
     } finally {
       setCreatingBusy(false);
     }
@@ -383,6 +385,9 @@ export function CharactersAndLoreSidebarPanel({
               创建
             </Button>
           </div>
+          {createError ? (
+            <p role="alert" className="text-2xs text-destructive" data-testid="lore-create-error">{createError}</p>
+          ) : null}
         </div>
       )}
 
@@ -801,7 +806,8 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
   const [text, setText] = useState("");
   const [category, setCategory] = useState("characters");
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  // 结果分成功/失败两种，失败用 destructive 色，不能一律成功色误导。
+  const [result, setResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
   const handleImport = async () => {
     if (!text.trim() || importing) return;
@@ -864,10 +870,10 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
           body: JSON.stringify({ entries }),
         },
       );
-      setResult(`成功导入 ${data.imported} 条设定条目`);
+      setResult({ kind: "success", message: `成功导入 ${data.imported} 条设定条目` });
       setTimeout(onImported, 600);
     } catch {
-      setResult("导入失败，请检查格式");
+      setResult({ kind: "error", message: "导入失败，请检查格式" });
     } finally {
       setImporting(false);
     }
@@ -913,7 +919,14 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
           </Button>
         </div>
       </div>
-      {result && <p className="text-2xs text-emerald-600 font-medium">{result}</p>}
+      {result && (
+        <p
+          className={`text-2xs font-medium ${result.kind === "error" ? "text-destructive" : "text-emerald-600"}`}
+          data-testid={`lore-import-result-${result.kind}`}
+        >
+          {result.message}
+        </p>
+      )}
     </div>
   );
 }

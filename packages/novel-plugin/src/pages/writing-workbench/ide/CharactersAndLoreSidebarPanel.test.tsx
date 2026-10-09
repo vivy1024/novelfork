@@ -3,6 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NarrativeStructureState } from "../useNarrativeStructure";
 
+const fetchJson = vi.fn();
+
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: (...args: unknown[]) => fetchJson(...args),
+}));
+
 vi.mock("../character-kernel-client", () => ({
   fetchCharacterKernels: vi.fn(async () => []),
 }));
@@ -82,6 +88,10 @@ function renderPanel(nodes: readonly WorkbenchResourceNode[], facts: readonly En
 
 beforeEach(() => {
   structureMock.state = { status: "loading" };
+  fetchJson.mockReset().mockImplementation(async (url: string) => {
+    if (String(url).includes("/jingwei/staging")) return { total: 0 };
+    return {};
+  });
 });
 afterEach(() => cleanup());
 
@@ -358,5 +368,50 @@ describe("CharactersAndLoreSidebarPanel 点击打开", () => {
     const card = screen.getByTestId("lore-card");
     expect(card.tagName).toBe("BUTTON");
     expect(card.getAttribute("type")).toBe("button");
+  });
+});
+
+describe("CharactersAndLoreSidebarPanel 新建与导入的失败提示", () => {
+  it("新建条目失败时在卡片栏内显示失败信息，不再静默", async () => {
+    fetchJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") throw new Error("服务不可用");
+      if (String(url).includes("/jingwei/staging")) return { total: 0 };
+      return {};
+    });
+    renderPanel([characterNode("薛行之")], []);
+
+    fireEvent.click(screen.getByRole("button", { name: /新角色/ }));
+    fireEvent.change(screen.getByPlaceholderText(/输入角色名/), { target: { value: "新角色" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+
+    const error = await screen.findByTestId("lore-create-error");
+    expect(error.textContent).toContain("创建失败");
+    expect(error.textContent).toContain("服务不可用");
+  });
+
+  it("导入失败用 destructive 色展示，成功保持 emerald", async () => {
+    let fail = true;
+    fetchJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/jingwei/import")) {
+        if (fail) throw new Error("bad payload");
+        return { imported: 2 };
+      }
+      if (String(url).includes("/jingwei/staging")) return { total: 0 };
+      return {};
+    });
+    renderPanel([characterNode("薛行之")], []);
+
+    fireEvent.click(screen.getByRole("button", { name: /^导入$/ }));
+    fireEvent.change(screen.getByPlaceholderText(/粘贴 Markdown/), { target: { value: "## 角色甲\n\n设定内容" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始导入" }));
+
+    const failure = await screen.findByTestId("lore-import-result-error");
+    expect(failure.className).toContain("text-destructive");
+    expect(failure.className).not.toContain("text-emerald-600");
+
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "开始导入" }));
+    const success = await screen.findByTestId("lore-import-result-success");
+    expect(success.className).toContain("text-emerald-600");
   });
 });
