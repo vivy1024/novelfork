@@ -121,4 +121,15 @@ describe("EditorMinimap viewport mapping", () => {
     fireEvent.pointerDown(canvas, { button: 0, pointerId: 3, clientY: 160 });
     expect(scrollEl.scrollTop).toBeCloseTo(750);
   });
+
+  it("正文一屏放得下时整条隐藏：没有滚动范围，点拖都是空操作", () => {
+    const scrollEl = document.createElement("div");
+    defineMetric(scrollEl, "clientHeight", 1_000);
+    defineMetric(scrollEl, "scrollHeight", 1_000);
+    const scrollContainerRef = { current: scrollEl } as RefObject<HTMLDivElement | null>;
+    const editor = { on: vi.fn(), off: vi.fn() } as unknown as Editor;
+
+    const rendered = render(<EditorMinimap editor={editor} scrollContainerRef={scrollContainerRef} />);
+    expect(rendered.container.querySelector("canvas")).toBeNull();
+  });
 });

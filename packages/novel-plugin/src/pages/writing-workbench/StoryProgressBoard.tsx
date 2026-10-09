@@ -489,7 +489,8 @@ function DebtLedger({
           </Button>
         ) : null}
       </div>
-      <ul className="mt-1.5 space-y-1">
+      {/* 展开态限高 + 内部滚动：本页是定高布局，账本无限长高会把底部挤出可视区且无处滚动 */}
+      <ul className={`mt-1.5 space-y-1${expanded ? " max-h-[min(44vh,24rem)] overflow-y-auto pr-1" : ""}`}>
         {visible.map((debt) => (
           <li
             key={debt.id}

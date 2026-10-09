@@ -813,12 +813,16 @@ export function IdeWorkbench({
           const loaded: WorkbenchResourceNode = { ...node, content };
           const cacheKey = loadedFileKey(bookId, node.id);
           setLoadedFiles(prev => new Map(prev).set(cacheKey, loaded));
-          revealTab("file", "resources");
+          // 章节是全书主对象：从哪个工作区点开，tab 就落在哪个工作区，
+          // 不再把活动栏拽去资源（reducer 会把旧视图里的同章 tab 搬过来，不会重影）。
+          if (node.kind === "chapter") revealTab(toTabKind(node), activeViewRef.current);
+          else revealTab("file", "resources");
           onOpen(loaded);
         })
         .catch(() => {
           if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
-          revealTab("file", "resources");
+          if (node.kind === "chapter") revealTab(toTabKind(node), activeViewRef.current);
+          else revealTab("file", "resources");
           onOpen(node);
         })
         .finally(() => fileReadControllersRef.current.delete(controller));
@@ -835,7 +839,8 @@ export function IdeWorkbench({
     ) {
       setLoadedFiles((previous) => new Map(previous).set(loadedFileKey(bookId, node.id), node));
     }
-    if (node.capabilities.open) revealTab(toTabKind(node), toTabView(node));
+    // 章节同上：留在点开它的工作区（资源树里的章节点开时当前视图本就是资源，行为不变）。
+    if (node.capabilities.open) revealTab(toTabKind(node), node.kind === "chapter" ? activeViewRef.current : toTabView(node));
     onOpen(node);
   }, [onOpen, bookId, showPanel]);
 

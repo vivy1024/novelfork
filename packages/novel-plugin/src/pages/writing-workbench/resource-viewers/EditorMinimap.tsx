@@ -3,15 +3,18 @@
  *
  * 使用 canvas 绘制文档结构：每行一个小矩形，标题行加粗。
  * 高亮当前可视区域，点击可跳转。
+ *
+ * 只在正文真的滚得动时才出现：一章不超高时它没有滚动范围，
+ * 挂在那里是一条点不动的死轨道（曾被认为是「超大滚动条」）。
  */
-import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { Editor } from "@tiptap/core";
 
 interface EditorMinimapProps {
   editor: Editor;
   /** 编辑器内容的滚动容器（即 chapter-editor-wrapper div） */
   scrollContainerRef: RefObject<HTMLDivElement | null>;
-  /** minimap 宽度（px），默认 60 */
+  /** minimap 宽度（px），默认 40 */
   width?: number;
 }
 
@@ -70,12 +73,39 @@ export function isEditorMinimapViewportHit(viewport: EditorMinimapViewport, y: n
 export function EditorMinimap({
   editor,
   scrollContainerRef,
-  width = 60,
+  width = 40,
 }: EditorMinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const drawTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const dragRef = useRef<{ pointerId: number; grabOffset: number } | null>(null);
+  const [scrollable, setScrollable] = useState(false);
+
+  // 正文滚不滚得动决定这条缩略图是导航轨道还是死装饰；容器尺寸与内容高度都可能变，到处复测
+  const measure = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const canScroll = el.scrollHeight - el.clientHeight > 4;
+    setScrollable((previous) => (previous === canScroll ? previous : canScroll));
+  }, [scrollContainerRef]);
+
+  // 挂载（首绘前）与容器尺寸变化时复测
+  useLayoutEffect(() => {
+    measure();
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure, scrollContainerRef]);
+
+  // 打字/载入改变文档高度；等 ProseMirror 布局落地后在下一帧复测
+  useEffect(() => {
+    if (!editor) return;
+    const onUpdate = () => { requestAnimationFrame(measure); };
+    editor.on("update", onUpdate);
+    return () => { editor.off("update", onUpdate); };
+  }, [editor, measure]);
 
   // 绘制 minimap
   const draw = useCallback(() => {
@@ -157,10 +187,10 @@ export function EditorMinimap({
     });
 
     ctx.fillStyle = accent;
-    ctx.globalAlpha = isDark ? 0.14 : 0.1;
+    ctx.globalAlpha = isDark ? 0.22 : 0.16;
     ctx.fillRect(0, viewport.top, canvasWidth, viewport.height);
     ctx.strokeStyle = accent;
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = 0.55;
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, viewport.top + 0.5, canvasWidth - 1, Math.max(0, viewport.height - 1));
     ctx.globalAlpha = 1;
@@ -214,6 +244,11 @@ export function EditorMinimap({
     const timer = setTimeout(draw, 100);
     return () => clearTimeout(timer);
   }, [draw]);
+
+  // 从「滚不动」变成「滚得动」时画布刚挂上，上面几个监听还没接上内容，补一次重绘
+  useEffect(() => {
+    if (scrollable) scheduleRedraw();
+  }, [scrollable, scheduleRedraw]);
 
   const getPointerY = useCallback((event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();
@@ -275,6 +310,9 @@ export function EditorMinimap({
   useEffect(() => () => {
     dragRef.current = null;
   }, []);
+
+  // 正文一屏放得下时没有滚动范围，点拖全是空操作——整条隐藏，不挂死轨道
+  if (!scrollable) return null;
 
   return (
     <div

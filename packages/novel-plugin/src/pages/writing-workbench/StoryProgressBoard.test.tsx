@@ -135,6 +135,10 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
 
     fireEvent.click(screen.getByTestId("story-progress-debts-toggle"));
     expect(screen.getByTestId("story-progress-debt-f8")).toBeTruthy();
+    // 展开态限高 + 内部滚动：本页定高布局，账本不能无限长高把底部挤出可视区
+    const list = ledger.querySelector("ul");
+    expect(list?.className).toContain("overflow-y-auto");
+    expect(list?.className).toContain("max-h-");
   });
 
   it("点击债务的查看按钮打开经纬条目", async () => {

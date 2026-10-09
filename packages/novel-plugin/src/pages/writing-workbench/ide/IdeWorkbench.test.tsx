@@ -250,6 +250,7 @@ describe("IdeWorkbench 宿主打开请求", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    saveHarness.tabs = null;
   });
 
   it("活动栏每项都有可见文字；空态说明用途与第一步，侧栏收起时给出展开按钮", async () => {
@@ -328,6 +329,27 @@ describe("IdeWorkbench 宿主打开请求", () => {
 
     rerender(<IdeWorkbench {...props} openRequest={{ bookId: "book-2", node: chapter, seq: 3 }} />);
     expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it("从故事推进打开章节：tab 落在当前视图，不把活动栏拽去资源", async () => {
+    stubHostWidth(1440);
+    const openTab = vi.fn();
+    saveHarness.tabs = {
+      tabs: [], activeTabId: null, setDirty: vi.fn(), openTab, activateTab: vi.fn(), closeTab: vi.fn(),
+      closeOthers: vi.fn(), closeAll: vi.fn(), closeSaved: vi.fn(), closeRight: vi.fn(), togglePin: vi.fn(),
+      reorderTabs: vi.fn(), hasDirtyTabs: () => false,
+    } as unknown as UseIdeTabsReturn;
+    const chapter = { id: "chapter:10", kind: "chapter", title: "第10章 拓扑同构", capabilities: { open: true, edit: true } } as const;
+    const props = { bookId: "book-1", nodes: [chapter], selectedNode: null, onOpen: vi.fn(), onSave: vi.fn() };
+    const { rerender } = render(<IdeWorkbench {...props} />);
+    await screen.findByTestId("ide-workbench");
+
+    fireEvent.click(screen.getByRole("button", { name: "故事推进" }));
+    rerender(<IdeWorkbench {...props} openRequest={{ bookId: "book-1", node: chapter, seq: 1 }} />);
+
+    await waitFor(() => expect(openTab).toHaveBeenCalledWith("chapter:10", expect.any(String), "chapter", "storyline"));
+    // 活动栏留在故事推进，不被拽去资源
+    expect(screen.getByRole("button", { name: "故事推进" }).getAttribute("aria-pressed")).toBe("true");
   });
 });
 
