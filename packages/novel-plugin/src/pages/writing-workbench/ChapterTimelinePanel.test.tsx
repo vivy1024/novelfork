@@ -159,15 +159,4 @@ describe("ChapterTimelinePanel 全书走势", () => {
     await waitFor(() => expect(screen.getByTestId("chapter-timeline-row-28").textContent).toContain("在写"));
     expect(screen.getByTestId("chapter-timeline-row-1").textContent).not.toContain("在写");
   });
-
-  it("展开后给「打开正文」入口", async () => {
-    installFetch();
-    const onOpenChapter = vi.fn();
-    render(<ChapterTimelinePanel bookId="book-1" onOpenChapter={onOpenChapter} />);
-
-    await waitFor(() => screen.getByTestId("chapter-timeline-row-9"));
-    fireEvent.click(screen.getByTestId("chapter-timeline-row-9"));
-    fireEvent.click(await waitFor(() => screen.getByTestId("chapter-timeline-open-chapter")));
-    expect(onOpenChapter).toHaveBeenCalledWith(9);
-  });
 });

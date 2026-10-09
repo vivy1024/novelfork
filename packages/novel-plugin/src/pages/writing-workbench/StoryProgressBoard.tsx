@@ -58,8 +58,10 @@ import { useWritingProgressRefresh } from "./use-writing-progress-refresh";
 export interface StoryProgressBoardProps {
   readonly bookId: string;
   readonly currentChapter?: number;
-  /** 打开某章（跳转写作面板）。 */
+  /** 打开某章（章节列头/格子等指向已存在章节的入口）。 */
   readonly onOpenChapter?: (chapterNumber: number) => void;
+  /** 「去写」下一章：进写作视图（下一章还没有章文件，跳章节必然落空）。 */
+  readonly onOpenWriteView?: () => void;
   /** 打开经纬条目详情（伏笔/冲突条目卡）。 */
   readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   /** 把「下一章该写什么」交给叙述者。 */
@@ -321,12 +323,12 @@ function StructureScoreStrip({
 /** 「下一章」焦点卡：这页的核心，回答「下一章该写什么」。全景模式下默认折叠为小条，不占画布高度。 */
 function FocusCard({
   board,
-  onOpenChapter,
+  onOpenWriteView,
   onSendToNarrator,
   defaultCollapsed = false,
 }: {
   board: BoardModel;
-  onOpenChapter?: (chapterNumber: number) => void;
+  onOpenWriteView?: () => void;
   onSendToNarrator?: (message: string) => Promise<void> | void;
   defaultCollapsed?: boolean;
 }) {
@@ -383,13 +385,13 @@ function FocusCard({
           收起
         </button>
         <div className="ml-auto flex items-center gap-1">
-          {onOpenChapter ? (
+          {onOpenWriteView ? (
             <Button
               size="xs"
               variant="outline"
               className="h-7 gap-1 text-2xs"
               data-testid="story-progress-focus-open"
-              onClick={() => onOpenChapter(focus.chapterNumber)}
+              onClick={() => onOpenWriteView()}
             >
               <PenLine className="size-3" />
               去写
@@ -693,6 +695,7 @@ export function StoryProgressBoard({
   bookId,
   currentChapter,
   onOpenChapter,
+  onOpenWriteView,
   onOpenEntityDetail,
   onSendToNarrator,
   onAddBeat,
@@ -948,7 +951,7 @@ export function StoryProgressBoard({
       <FocusCard
         board={board}
         defaultCollapsed={!!compactHeader}
-        {...(onOpenChapter ? { onOpenChapter } : {})}
+        {...(onOpenWriteView ? { onOpenWriteView } : {})}
         {...(onSendToNarrator ? { onSendToNarrator } : {})}
       />
 

@@ -107,6 +107,8 @@ export interface StoryProgressionCanvasProps {
   readonly currentChapter?: number;
   /** 节点/格子点击 → 跳转打开对应章节（与写作主面板协同）。 */
   readonly onOpenChapter?: (chapterNumber: number) => void;
+  /** 「去写」：进写作视图开写下一章（下一章还没有章文件，跳章节必然落空）。 */
+  readonly onOpenWriteView?: () => void;
   /** 打开实体详情抽屉；带 entryId 时宿主可直接跳经纬条目卡。 */
   readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   /** 把意图交给叙述者执行（规划下一章 / 补缺失线索）。 */
@@ -121,6 +123,7 @@ export function StoryProgressionCanvas({
   initialView = "next",
   currentChapter,
   onOpenChapter,
+  onOpenWriteView,
   onOpenEntityDetail,
   onSendToNarrator,
 }: StoryProgressionCanvasProps) {
@@ -233,7 +236,7 @@ export function StoryProgressionCanvas({
               <NextChapterPanel
                 bookId={bookId}
                 {...(currentChapter !== undefined ? { currentChapter } : {})}
-                {...(onOpenChapter ? { onOpenChapter } : {})}
+                {...(onOpenWriteView ? { onOpenWriteView } : {})}
                 {...(onSendToNarrator ? { onSendToNarrator } : {})}
                 onOpenBoardProgress={() => setView("board")}
                 onOpenCausalTree={() => { setTreeKindOverride("causal"); setView("tree"); }}
@@ -246,6 +249,7 @@ export function StoryProgressionCanvas({
               bookId={bookId}
               {...(currentChapter !== undefined ? { currentChapter } : {})}
               {...(onOpenChapter ? { onOpenChapter } : {})}
+              {...(onOpenWriteView ? { onOpenWriteView } : {})}
               {...(onOpenEntityDetail ? { onOpenEntityDetail: openEntityDetail } : {})}
               {...(onSendToNarrator ? { onSendToNarrator } : {})}
               compactHeader={fullscreen}

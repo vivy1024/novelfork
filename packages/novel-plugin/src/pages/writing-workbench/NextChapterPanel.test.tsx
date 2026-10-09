@@ -101,6 +101,24 @@ describe("下一章默认页（全书走势 + 下一章双栏）", () => {
     expect(screen.getByTestId("next-suggestion-line").textContent).toContain("感情线「与沈遥」（已 10 章未推进）");
   });
 
+  it("「去写」是走势页唯一出口：进写作视图，而不是跳一个不存在的章文件", async () => {
+    const onOpenWriteView = vi.fn();
+    installFetch();
+    render(<NextChapterPanel bookId={BOOK.id} onOpenWriteView={onOpenWriteView} />);
+
+    const button = await waitFor(() => screen.getByTestId("next-open-write-view"));
+    fireEvent.click(button);
+    expect(onOpenWriteView).toHaveBeenCalledTimes(1);
+  });
+
+  it("宿主没接写作视图入口时不显示「去写」（不给死按钮）", async () => {
+    installFetch();
+    render(<NextChapterPanel bookId={BOOK.id} />);
+
+    await waitFor(() => screen.getByTestId("next-chapter-side"));
+    expect(screen.queryByTestId("next-open-write-view")).toBeNull();
+  });
+
   it("伏笔账本：文字标签 + 色点 + 标题，按紧迫度排序，默认只展开最急 3 条", async () => {
     installFetch();
     render(<NextChapterPanel bookId={BOOK.id} />);

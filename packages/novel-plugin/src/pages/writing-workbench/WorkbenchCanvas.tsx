@@ -290,6 +290,8 @@ export interface WorkbenchCanvasProps {
   isActive?: boolean;
   /** 工具面板跳转到指定章节，由上层打开对应章节 Tab */
   onJumpToChapter?: (chapterNumber: number) => void;
+  /** 「去写」入口：由上层切到写作视图（故事推进的下一章焦点用） */
+  onOpenWriteView?: () => void;
   /** 关联条目跳转；返回 false 表示目标资源不存在。 */
   onOpenJingweiEntry?: (entryId: string) => boolean;
   /** 图谱节点打开实体详情抽屉。 */
@@ -315,7 +317,7 @@ export interface WorkbenchCanvasProps {
   onDismissSelectionCandidate?: () => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate }: WorkbenchCanvasProps) {
   const { resourceKey, content, dirty, saving, saveError, setContent, save: handleSave, setSaveError } = useResourceAutosave(node, bookId, onSave);
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -523,6 +525,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             initialView={preferredView}
             currentChapter={resolveCurrentChapter(nodes)}
             onOpenChapter={onJumpToChapter}
+            {...(onOpenWriteView ? { onOpenWriteView } : {})}
             onOpenEntityDetail={onOpenEntityDetail}
             onSendToNarrator={onSendToNarrator}
           />

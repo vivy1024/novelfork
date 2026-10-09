@@ -88,8 +88,8 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
     expect(focus.textContent).toContain("薛行之");
   });
 
-  it("「去写」跳转下一章；「让叙述者规划」把上下文交给叙述者", async () => {
-    const onOpenChapter = vi.fn();
+  it("「去写」进写作视图；「让叙述者规划」把上下文交给叙述者", async () => {
+    const onOpenWriteView = vi.fn();
     const onSendToNarrator = vi.fn();
     mockRoutes({
       summaries,
@@ -101,13 +101,13 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
       <StoryProgressBoard
         bookId="book-1"
         currentChapter={10}
-        onOpenChapter={onOpenChapter}
+        onOpenWriteView={onOpenWriteView}
         onSendToNarrator={onSendToNarrator}
       />,
     );
 
     fireEvent.click(await waitFor(() => screen.getByTestId("story-progress-focus-open")));
-    expect(onOpenChapter).toHaveBeenCalledWith(11);
+    expect(onOpenWriteView).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByTestId("story-progress-focus-plan"));
     expect(onSendToNarrator).toHaveBeenCalledTimes(1);

@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ChevronDown, Compass, GitFork, LayoutGrid, Loader2, MoonStar, RefreshCw, Route, Sprout } from "lucide-react";
+import { Check, ChevronDown, Compass, GitFork, LayoutGrid, Loader2, MoonStar, PenLine, RefreshCw, Route, Sprout } from "lucide-react";
 
 import { fetchJson } from "@/hooks/use-api";
 import { describeNextChapterSuggestion, storylineKindLabel as kindLabel } from "./next-chapter-plan";
@@ -27,7 +27,8 @@ import type { ForeshadowDebt } from "../../engine/narrative-taxonomy/foreshadow-
 export interface NextChapterPanelProps {
   readonly bookId: string;
   readonly currentChapter?: number;
-  readonly onOpenChapter?: (chapterNumber: number) => void;
+  /** 「去写」：进写作视图开写下一章（下一章按定义还没有章文件，跳章节必然落空）。 */
+  readonly onOpenWriteView?: () => void;
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
   /** 有剧情线时的视图入口；入口的实现在宿主画布（页签切换），这里只发意图。 */
   readonly onOpenBoardProgress?: () => void;
@@ -80,7 +81,7 @@ const INDUCE_STORYLINES_MESSAGE =
 export function NextChapterPanel({
   bookId,
   currentChapter,
-  onOpenChapter,
+  onOpenWriteView,
   onSendToNarrator,
   onOpenBoardProgress,
   onOpenCausalTree,
@@ -204,12 +205,11 @@ export function NextChapterPanel({
       </header>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[2fr_1fr]" data-testid="next-chapter-columns">
-        {/* 左栏：全书走势 */}
+        {/* 左栏：全书走势（纯阅读：点行展开本章事件，不提供跳转出口） */}
         <section className="min-w-0 rounded-md border border-border bg-card/50 px-2 py-1.5" aria-label="全书走势">
           <ChapterTimelinePanel
             bookId={bookId}
             {...(currentChapter !== undefined ? { currentChapter } : {})}
-            {...(onOpenChapter ? { onOpenChapter } : {})}
           />
         </section>
 
@@ -217,6 +217,16 @@ export function NextChapterPanel({
         <aside className="flex min-w-0 flex-col gap-3 rounded-md border border-border bg-card/50 px-3 py-2" data-testid="next-chapter-side" aria-label={`下一章：第 ${plan.nextChapter} 章`}>
           <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             <Compass className="size-3.5" /> 下一章 · 第 {plan.nextChapter} 章
+            {onOpenWriteView ? (
+              <button
+                type="button"
+                className="ml-auto inline-flex items-center gap-1 rounded bg-primary px-2 py-0.5 normal-case tracking-normal text-primary-foreground hover:bg-primary/90"
+                onClick={() => onOpenWriteView()}
+                data-testid="next-open-write-view"
+              >
+                <PenLine className="size-3" /> 去写
+              </button>
+            ) : null}
           </div>
 
           {/* 焦点卡 */}

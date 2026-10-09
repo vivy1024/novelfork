@@ -1522,6 +1522,7 @@ export function IdeWorkbench({
       jingweiActions={jingweiActions}
       toolbarSlotRef={toolbarSlotRef}
       onJumpToChapter={handleJumpToChapter}
+      onOpenWriteView={() => keybindingActions.switchView("write")}
       onOpenJingweiEntry={handleOpenJingweiEntry}
       onOpenEntityDetail={handleOpenEntityFromGraph}
       onOpenEntityDrawer={handleOpenEntityDrawer}
@@ -1760,6 +1761,7 @@ export function IdeWorkbench({
                               toolbarSlotRef={toolbarSlotRef}
                               isActive={tabId === ideTabs.activeTabId}
                               onJumpToChapter={handleJumpToChapter}
+                              onOpenWriteView={() => keybindingActions.switchView("write")}
                               onOpenJingweiEntry={handleOpenJingweiEntry}
                               onOpenEntityDetail={handleOpenEntityFromGraph}
                               onOpenEntityDrawer={handleOpenEntityDrawer}
@@ -1818,6 +1820,7 @@ export function IdeWorkbench({
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
                         onJumpToChapter={handleJumpToChapter}
+                        onOpenWriteView={() => keybindingActions.switchView("write")}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={handleOpenEntityFromGraph}
                         onOpenEntityDrawer={handleOpenEntityDrawer}

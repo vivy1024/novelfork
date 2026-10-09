@@ -26,7 +26,6 @@ import {
 export interface ChapterTimelinePanelProps {
   readonly bookId: string;
   readonly currentChapter?: number;
-  readonly onOpenChapter?: (chapterNumber: number) => void;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -164,7 +163,7 @@ function ChapterRow({
   );
 }
 
-export function ChapterTimelinePanel({ bookId, currentChapter, onOpenChapter }: ChapterTimelinePanelProps) {
+export function ChapterTimelinePanel({ bookId, currentChapter }: ChapterTimelinePanelProps) {
   const { state, reload } = useChapterTimeline(bookId);
   const [expanded, setExpanded] = useState<number | null>(null);
   const anchorRef = useRef<HTMLLIElement | null>(null);
@@ -230,16 +229,6 @@ export function ChapterTimelinePanel({ bookId, currentChapter, onOpenChapter }: 
           />
         ))}
       </ul>
-      {expanded !== null && onOpenChapter ? (
-        <button
-          type="button"
-          className="mt-1 self-end text-2xs text-muted-foreground hover:text-foreground"
-          onClick={() => onOpenChapter(expanded)}
-          data-testid="chapter-timeline-open-chapter"
-        >
-          打开第 {expanded} 章正文 →
-        </button>
-      ) : null}
     </div>
   );
 }
