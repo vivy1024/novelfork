@@ -101,8 +101,6 @@ export function EditorTabs({
         <DropdownMenuContent align="end" className="w-40">
           <DropdownMenuItem onClick={() => onCloseSaved?.()} disabled={!onCloseSaved}>关闭已保存</DropdownMenuItem>
           <DropdownMenuItem onClick={() => onCloseAll?.()} disabled={!onCloseAll}>全部关闭</DropdownMenuItem>
-          <DropdownMenuItem disabled>全部折叠</DropdownMenuItem>
-          <DropdownMenuItem disabled>全部展开</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -238,7 +236,6 @@ function SortableTab({
         <ContextMenuItem onClick={() => onCloseRight?.(tab.id)} disabled={!onCloseRight || tabs[tabs.length - 1]?.id === tab.id}>关闭右侧</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={() => onSplitRight?.(tab.nodeId)} disabled={!onSplitRight}>拆分到右侧</ContextMenuItem>
-        <ContextMenuItem disabled>在新窗口打开</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={() => onCloseSaved?.()} disabled={!onCloseSaved}>关闭已保存</ContextMenuItem>
         <ContextMenuItem onClick={() => onCloseAll?.()} disabled={!onCloseAll}>全部关闭</ContextMenuItem>
