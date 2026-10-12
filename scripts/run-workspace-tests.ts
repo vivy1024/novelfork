@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
+import { REQUIRED_RUNTIME_BUN_VERSION } from "./lib/isolated-runtime-build";
 import { prepareRuntimeExecutionRoot } from "./runtime-execution";
 
 const repositoryRoot = resolve(import.meta.dir, "..");
@@ -90,7 +91,41 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 	return environment;
 }
 
+function bunVersionOf(executable: string): string | null {
+	try {
+		const probe = Bun.spawnSync([executable, "--version"], { stdout: "pipe", stderr: "ignore" });
+		return probe.exitCode === 0 ? probe.stdout.toString().trim() : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Runtime 测试必须跑在它 packageManager 声明的 Bun 上（与编译、发货 EXE 内嵌的同一版本）。
+ * 用 PATH 上的旧 Bun 跑会出现大面积假红甚至 Bun 自身崩溃，等于没验证。
+ * 解析顺序：当前进程 → NOVELFORK_RUNTIME_BUN → 仓库 tmp/bun-<版本>/extracted 下的解压版。
+ */
+function resolveRuntimeBun(): string {
+	if (Bun.version === REQUIRED_RUNTIME_BUN_VERSION) return process.execPath;
+	const executableName = process.platform === "win32" ? "bun.exe" : "bun";
+	const extracted = join(repositoryRoot, "tmp", `bun-${REQUIRED_RUNTIME_BUN_VERSION}`, "extracted");
+	const candidates = [
+		process.env.NOVELFORK_RUNTIME_BUN?.trim(),
+		...(existsSync(extracted)
+			? readdirSync(extracted).map((entry) => join(extracted, entry, executableName))
+			: []),
+	].filter((candidate): candidate is string => Boolean(candidate) && existsSync(candidate!));
+	for (const candidate of candidates) {
+		if (bunVersionOf(candidate) === REQUIRED_RUNTIME_BUN_VERSION) return candidate;
+	}
+	throw new Error(
+		`Runtime 测试需要 Bun ${REQUIRED_RUNTIME_BUN_VERSION}（当前进程为 ${Bun.version}，未找到匹配的可执行文件）。` +
+			`请把 ${REQUIRED_RUNTIME_BUN_VERSION} 前置到 PATH，或设置 NOVELFORK_RUNTIME_BUN 指向它。`,
+	);
+}
+
 assertRuntimeMigrationAssets();
+const runtimeBun = resolveRuntimeBun();
 const runtimeRoot = join(repositoryRoot, "packages", "narrafork-runtime-private");
 if (!existsSync(runtimeRoot) || !statSync(runtimeRoot).isDirectory()) {
 	throw new Error(
@@ -132,13 +167,16 @@ try {
 	if (publicExitCode === 0) {
 		// Keep Runtime's real-timer recovery tests deterministic on Windows while
 		// retaining fresh globals for every test file.
+		const runtimeEnvironment = testEnvironment("runtime");
+		// 测试内部还会按 PATH 再起 bun 子进程，必须同样落在要求的版本上。
+		runtimeEnvironment.PATH = [dirname(runtimeBun), runtimeEnvironment.PATH].filter(Boolean).join(delimiter);
 		const runtimeTests = Bun.spawn(
-			[process.execPath, "test", "--isolate", "--parallel=1", "--timeout=30000"],
+			[runtimeBun, "test", "--isolate", "--parallel=1", "--timeout=30000"],
 			{
 				// Keep Runtime module resolution on its canonical materialized path; the
 				// short junction remains alive above only for public-package imports.
 				cwd: runtimeRoot,
-				env: testEnvironment("runtime"),
+				env: runtimeEnvironment,
 				stdio: ["inherit", "inherit", "inherit"],
 			},
 		);
