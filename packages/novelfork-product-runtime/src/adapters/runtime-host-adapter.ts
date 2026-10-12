@@ -30,8 +30,10 @@ import { z } from "zod/v4";
 import {
 	contextIndexCardExtension,
 	explainWorkflowDenial,
+	explainWorkflowLookupFailure,
 	findActiveWorkflowRun,
 	isToolVisibleDuringRun,
+	lookupActiveWorkflowRun,
 	workflowPromptExtension,
 	writingInjectionPreserveExtension,
 } from "./workflow-run-gate";
@@ -538,7 +540,20 @@ export class NovelRuntimeHostAdapter {
 		};
 
 		// 创作工作流的权威约束：每次调用都查，本工序不允许的写入直接拒绝并说明原因。
-		const run = findActiveWorkflowRun(narratorId, boundBookId(context));
+		// 运行状态读不出来时对写类 fail-closed（可见性那侧仍按「没有运行」处理）。
+		const lookup = lookupActiveWorkflowRun(narratorId, boundBookId(context));
+		if (!lookup.ok) {
+			const denial = explainWorkflowLookupFailure(canonicalToolName, runtimeRisk);
+			if (denial) {
+				return errorResult(
+					"workflow-state-unavailable",
+					this.toModelFacingText(`${denial.what}。${denial.why}。${denial.action}。`),
+					toolName,
+					{ ...runtimeMetadata, explanation: denial },
+				);
+			}
+		}
+		const run = lookup.ok ? lookup.run : null;
 		if (run) {
 			let effectiveRisk: RuntimeToolRisk = runtimeRisk;
 			try {

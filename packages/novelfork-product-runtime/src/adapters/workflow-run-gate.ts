@@ -37,13 +37,46 @@ function isWorkflowTool(canonicalName: string): boolean {
  * 视为没有运行——此时产品本身也无法工作，不应因此改变既有行为。
  */
 export function findActiveWorkflowRun(narratorId: string, bookId: string | undefined): WorkflowRunRecord | null {
-	if (!bookId) return null;
+	const lookup = lookupActiveWorkflowRun(narratorId, bookId);
+	return lookup.ok ? lookup.run : null;
+}
+
+export type ActiveWorkflowRunLookup =
+	| { readonly ok: true; readonly run: WorkflowRunRecord | null }
+	| { readonly ok: false; readonly error: unknown };
+
+/**
+ * 写侧用的查询：区分「确实没有运行」和「读不出来」。
+ * - 产品库尚未初始化（纯单元测试、Runtime 尚未初始化产品库）：此时产品本身也无法工作，
+ *   与 findActiveWorkflowRun 一致视为没有运行；
+ * - 库已打开但查询抛错：返回失败，由 execute 闸门对写类 fail-closed。
+ *   findActiveWorkflowRun 把它也当成没有运行，用于可见性（体验层）可以；execute 若照搬，
+ *   存储一出错所有写工具都会放行——工序约束整个失效。
+ */
+export function lookupActiveWorkflowRun(narratorId: string, bookId: string | undefined): ActiveWorkflowRunLookup {
+	if (!bookId) return { ok: true, run: null };
+	let storage: ReturnType<typeof getStorageDatabase>;
 	try {
-		const run = getActiveWorkflowRunForNarrator(getStorageDatabase(), narratorId);
-		return run && run.bookId === bookId ? run : null;
+		storage = getStorageDatabase();
 	} catch {
-		return null;
+		return { ok: true, run: null };
 	}
+	try {
+		const run = getActiveWorkflowRunForNarrator(storage, narratorId);
+		return { ok: true, run: run && run.bookId === bookId ? run : null };
+	} catch (error) {
+		return { ok: false, error };
+	}
+}
+
+/** 运行状态读不出来时，对写类调用的拦截说明（读类与 workflow.* 不拦）。 */
+export function explainWorkflowLookupFailure(canonicalName: string, risk: Risk): WorkflowExplanation | null {
+	if (isWorkflowTool(canonicalName) || risk === "read") return null;
+	return {
+		what: `${canonicalName} 被拦下：无法读取本书的创作工作流状态`,
+		why: "读不出是否有进行中的工作流，就无法判断这次写入是否越出当前工序；放行可能绕过作者设定的工序与批准",
+		action: "稍后重试；若反复失败，重启产品、确认运行状态后再执行",
+	};
 }
 
 /** 由叙述者本人执行的进行中工序（委派子代理的工序不允许叙述者直接写入）。 */

@@ -18,7 +18,7 @@ import {
 	preserveLatestWritingInjection,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import { NovelRuntimeAdapter, type NovelRuntimeBindingResolver } from "./runtime-adapter";
-import { contextIndexCardExtension, CONTEXT_INDEX_CARD_EXTENSION_ID, explainWorkflowDenial, writingInjectionPreserveExtension, WRITING_INJECTION_PRESERVE_EXTENSION_ID } from "./workflow-run-gate";
+import { contextIndexCardExtension, CONTEXT_INDEX_CARD_EXTENSION_ID, explainWorkflowDenial, explainWorkflowLookupFailure, findActiveWorkflowRun, lookupActiveWorkflowRun, writingInjectionPreserveExtension, WRITING_INJECTION_PRESERVE_EXTENSION_ID } from "./workflow-run-gate";
 
 class MemoryResolver implements NovelRuntimeBindingResolver {
 	context: RuntimeResolveContext | null = null;
@@ -295,5 +295,33 @@ describe("正文一致性校验的 fail-closed 闸门", () => {
 		expect(denial!.what).toContain("无法校验");
 		expect(denial!.why).toContain("工作流存储");
 		expect(denial!.action).toContain("重试");
+	});
+
+	test("产品库已打开但查询工作流运行抛错时，写类工具 fail-closed、读类与 workflow 工具照常", () => {
+		const storage = getStorageDatabase();
+		const originalPrepare = storage.sqlite.prepare.bind(storage.sqlite);
+		// 故障注入：库仍打开，但读 workflow_runs 的查询抛错（I/O 错误、库损坏等）。
+		(storage.sqlite as { prepare: unknown }).prepare = ((sql: string) => {
+			if (sql.includes("workflow_runs")) throw new Error("disk I/O error");
+			return originalPrepare(sql);
+		}) as typeof storage.sqlite.prepare;
+		try {
+			expect(lookupActiveWorkflowRun("narrator-a", "book-1").ok).toBe(false);
+			// 可见性那侧仍视为没有运行
+			expect(findActiveWorkflowRun("narrator-a", "book-1")).toBeNull();
+		} finally {
+			(storage.sqlite as { prepare: unknown }).prepare = originalPrepare;
+		}
+		const denial = explainWorkflowLookupFailure("chapter.write", "confirmed-write");
+		expect(denial?.what).toContain("无法读取本书的创作工作流状态");
+		expect(explainWorkflowLookupFailure("chapter.read", "read")).toBeNull();
+		expect(explainWorkflowLookupFailure("workflow.status", "draft-write")).toBeNull();
+		// 没绑书时不算失败
+		expect(lookupActiveWorkflowRun("narrator-a", undefined)).toEqual({ ok: true, run: null });
+	});
+
+	test("产品库尚未初始化时视为没有运行，不拦写入", () => {
+		closeStorageDatabase();
+		expect(lookupActiveWorkflowRun("narrator-a", "book-1")).toEqual({ ok: true, run: null });
 	});
 });
