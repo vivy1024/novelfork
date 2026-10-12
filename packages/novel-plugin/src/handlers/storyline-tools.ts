@@ -4,7 +4,8 @@
  * 纪律（单一 Agent 契约）：
  * - 只产 needs-review 草稿，确认/驳回由作者在「待确认」面板或剧情线 review 接口完成；
  *   叙述者不能确认自己的草稿。
- * - 幂等：同书同名的待审草稿已存在时不重复创建，返回已存在草稿。
+ * - 幂等：同书同名的剧情线已存在（待审或已确认）时不重复创建，返回已存在的那条；
+ *   作者驳回过的名字直接拒绝，不反复起草。
  * - relatedEntryTitles 只解析不建实体；解析不出的名字在结果里如实列出。
  */
 
@@ -12,7 +13,7 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 
 import {
   createStoryline,
-  findPendingStorylineByName,
+  findStorylineByName,
   isStorylineKind,
 } from "../engine/narrative-memory/scene-store.js";
 
@@ -68,12 +69,19 @@ export async function handleStorylinePropose(input: StorylineProposeInput): Prom
     else unresolved.push(trimmed);
   }
 
-  const existing = findPendingStorylineByName(storage, input.bookId, name);
+  const existing = findStorylineByName(storage, input.bookId, name);
+  if (existing && existing.status === "rejected") {
+    return fail(
+      "storyline-rejected",
+      `剧情线「${name}」作者已驳回，不再重复提交同名草稿。若事件确实支撑一条不同的线，请换一个能区分的名字并在 evidenceNote 里说明与被驳回那条的差别。`,
+    );
+  }
   if (existing) {
     const unresolvedText = unresolved.length > 0 ? `未解析的名字：${unresolved.join("、")}。` : "";
+    const stateText = existing.status === "needs-review" ? "已存在（待审中）" : "已是本书的正式剧情线";
     return {
       ok: true,
-      summary: `剧情线草稿「${name}」已存在（待审中），未重复创建。${unresolvedText}`,
+      summary: `剧情线「${name}」${stateText}，未重复创建。${unresolvedText}`,
       data: {
         storylineId: existing.id,
         name: existing.name,

@@ -312,6 +312,24 @@ export function getStoryline(storage: StorageDatabase, id: string): NarrativeSto
   return row ? toStoryline(row) : undefined;
 }
 
+/**
+ * 同书同名剧情线（任意状态）：待审优先，其次按创建时间最早的一条。
+ * storyline.propose 用它判定「已确认 / 已被作者驳回」的名字不再重复起草。
+ */
+export function findStorylineByName(
+  storage: StorageDatabase,
+  bookId: string,
+  name: string,
+): NarrativeStoryline | undefined {
+  ensureNarrativeMemorySchema(storage);
+  const row = storage.sqlite
+    .prepare<StorylineRow>(
+      "SELECT * FROM narrative_storyline WHERE book_id = ? AND name = ? ORDER BY CASE status WHEN 'needs-review' THEN 0 ELSE 1 END, created_at",
+    )
+    .get(bookId, name.trim());
+  return row ? toStoryline(row) : undefined;
+}
+
 /** 按书名找同书、同名、仍待审的剧情线草稿（storyline.propose 的幂等键）。 */
 export function findPendingStorylineByName(
   storage: StorageDatabase,

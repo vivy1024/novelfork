@@ -119,4 +119,23 @@ describe("storyline.propose", () => {
     expect(reviewed.ok).toBe(false);
     expect(getStoryline(storage, created.data!.id)?.status).toBe("confirmed");
   });
+
+  it("同名剧情线已确认时复用，不再起草", async () => {
+    const { createStoryline } = await import("../engine/narrative-memory/scene-store.js");
+    const created = createStoryline(activeStorage!, { bookId: "book-test-1", name: "复仇线", layer: "canon", status: "confirmed", source: "manual" });
+    const result = await propose({ bookId: "book-test-1", name: "复仇线" });
+    expect(result.ok).toBe(true);
+    expect((result.data as { reused: boolean; storylineId: string })).toMatchObject({ reused: true, storylineId: created.data!.id });
+    expect(listStorylines(activeStorage!, "book-test-1")).toHaveLength(1);
+  });
+
+  it("作者驳回过的名字不再重复起草", async () => {
+    const { reviewStoryline } = await import("../engine/narrative-memory/scene-store.js");
+    const first = await propose({ bookId: "book-test-1", name: "宫斗线" });
+    expect(reviewStoryline(activeStorage!, (first.data as { storylineId: string }).storylineId, "rejected").ok).toBe(true);
+    const again = await propose({ bookId: "book-test-1", name: "宫斗线" });
+    expect(again.ok).toBe(false);
+    expect(again.error).toBe("storyline-rejected");
+    expect(listStorylines(activeStorage!, "book-test-1")).toHaveLength(1);
+  });
 });
