@@ -9,13 +9,19 @@
  * 在头部写明）；它只是快照，库内权威原文可能已更新，重取指针仍归资料索引卡。
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 
+import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 import type { NarrativeContextPackage, NarrativeRetrievalPurpose } from "./types.js";
 
 export const WRITING_INJECTION_PRESERVE_FILE = "writing-injection-preserved.json";
+
+/**
+ * 保留件随每趟对话重建进系统提示，原文过大时每趟都重复付这份 token，压缩省下的空间又被占回去。
+ * 超过这个估算量只注入头部与重取指引，不注入原文（整件略过并写明，不做静默裁剪）。
+ */
+export const WRITING_INJECTION_PRESERVE_MAX_TOKENS = 8000;
 
 type SectionKey = keyof NarrativeContextPackage["sections"];
 
@@ -45,7 +51,7 @@ function preservePath(bookRoot: string): string {
 }
 
 /**
- * 把一次成功装配的写作注入原样落盘（原子写：先临时文件再 rename，同 style-vault 约定）。
+ * 把一次成功装配的写作注入原样落盘（tmp+fsync+rename，失败清理临时文件，与章节正文同一实现）。
  * 每书一份，下一次写作注入直接覆盖。
  */
 export async function preserveLatestWritingInjection(
@@ -61,10 +67,7 @@ export async function preserveLatestWritingInjection(
     totalEstimatedTokens: pack.diagnostics.totalEstimatedTokens,
     sections: { ...pack.sections },
   };
-  await mkdir(preserveDir(bookRoot), { recursive: true });
-  const temporary = join(preserveDir(bookRoot), `.preserve-${randomUUID()}.tmp`);
-  await writeFile(temporary, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
-  await rename(temporary, preservePath(bookRoot));
+  await writeFileAtomic(preservePath(bookRoot), `${JSON.stringify(snapshot, null, 2)}\n`);
   return snapshot;
 }
 
@@ -123,18 +126,27 @@ const PURPOSE_LABELS: Readonly<Record<string, string>> = {
   outline: "大纲",
 };
 
-/** 渲染成注入给模型的保留件文本。空通道（无内容）略过并在头部写明。 */
-export function renderWritingInjectionPreserve(snapshot: WritingInjectionPreserveSnapshot): string {
+/** 渲染成注入给模型的保留件文本。空通道（无内容）略过并在头部写明；超上限时整件不注入原文。 */
+export function renderWritingInjectionPreserve(
+  snapshot: WritingInjectionPreserveSnapshot,
+  maxTokens: number = WRITING_INJECTION_PRESERVE_MAX_TOKENS,
+): string {
   const filledKeys = SECTION_KEYS.filter((key) => (snapshot.sections[key] ?? "").trim().length > 0);
   const skipped = SECTION_KEYS.length - filledKeys.length;
   const chapter = snapshot.chapterNumber !== undefined ? `第 ${snapshot.chapterNumber} 章` : "未标章";
+  const oversized = snapshot.totalEstimatedTokens > maxTokens;
   const header = [
     "【写作注入保留件 · 上次写作召回的原文快照】",
-    `最近一次写作注入（${PURPOSE_LABELS[snapshot.purpose] ?? snapshot.purpose}，${chapter}，${snapshot.capturedAt}，约 ${snapshot.totalEstimatedTokens} 估算 token）成功装配、真正进过上下文的原文如下。`,
-    "会话压缩只折叠历史消息，本保留件随每趟重建、不被摘要掉；案头若只剩摘要版，以此原件为准对照。",
-    ...(skipped > 0 ? [`${skipped} 个通道当时无注入内容，已整栏略过（不是裁剪）。`] : []),
+    `最近一次写作注入（${PURPOSE_LABELS[snapshot.purpose] ?? snapshot.purpose}，${chapter}，${snapshot.capturedAt}，约 ${snapshot.totalEstimatedTokens} 估算 token）成功装配、真正进过上下文。`,
+    ...(oversized
+      ? [`原文约 ${snapshot.totalEstimatedTokens} 估算 token，超过保留件上限 ${maxTokens}，本趟整件不随系统提示重放（不是裁剪，原文完整在库）。需要对照时按资料索引卡的通道指针重取。`]
+      : [
+          "原文如下。会话压缩只折叠历史消息，本保留件随每趟重建、不被摘要掉；案头若只剩摘要版，以此原件为准对照。",
+          ...(skipped > 0 ? [`${skipped} 个通道当时无注入内容，已整栏略过（不是裁剪）。`] : []),
+        ]),
     "它只是快照：此后若有结算/修改，库中原文可能已更新——按资料索引卡的通道指针可重取活本。",
   ].join("\n");
+  if (oversized) return header;
   const body = filledKeys.map((key) => snapshot.sections[key]).join("\n\n");
   return `${header}\n\n${body}`;
 }

@@ -116,4 +116,23 @@ describe("写作注入保留件（T4.7 尾巴）", () => {
     expect(text).not.toContain("<timeline_context>");
     expect(text).not.toContain("<style_rules>");
   });
+
+  it("渲染：原文超过上限时只给头部与重取指引，不重放原文", async () => {
+    const bookRoot = makeBookRoot();
+    await preserveLatestWritingInjection(bookRoot, makePack());
+    const snapshot = (await loadWritingInjectionPreserve(bookRoot, "book-1"))!;
+    const text = renderWritingInjectionPreserve(snapshot, 1000);
+
+    expect(text).toContain("超过保留件上限 1000");
+    expect(text).toContain("资料索引卡");
+    expect(text).not.toContain("硬状态 A");
+    expect(text).not.toContain("<hard_constraints>");
+  });
+
+  it("落盘后目录里不残留临时文件", async () => {
+    const bookRoot = makeBookRoot();
+    await preserveLatestWritingInjection(bookRoot, makePack());
+    const { readdirSync } = await import("node:fs");
+    expect(readdirSync(join(bookRoot, "story")).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+  });
 });
