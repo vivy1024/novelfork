@@ -40,8 +40,13 @@ vi.mock("./panels/AboutPanel", () => ({
   AboutPanel: () => <div data-testid="about-panel-stub" />,
 }));
 vi.mock("./panels/SetupWizardPanel", () => ({
-  SetupWizardPanel: ({ onComplete }: { onComplete: () => void }) => (
-    <button type="button" data-testid="setup-wizard-stub" onClick={onComplete}>向导弹幕</button>
+  SetupWizardPanel: ({ onComplete, onGoToProviders }: { onComplete: () => void; onGoToProviders?: () => void }) => (
+    <div>
+      <button type="button" data-testid="setup-wizard-stub" onClick={onComplete}>向导弹幕</button>
+      {onGoToProviders && (
+        <button type="button" data-testid="setup-wizard-jump" onClick={onGoToProviders}>去「设置 › AI 供应商」配置</button>
+      )}
+    </div>
   ),
 }));
 
@@ -150,5 +155,19 @@ describe("设置页：初始向导", () => {
     renderPage();
     expect(await screen.findByTestId("runtime-page-host-mock")).toBeTruthy();
     expect(screen.queryByTestId("setup-wizard-stub")).toBeNull();
+  });
+
+  it("向导的供应商步有出口：跳去真正的 AI 供应商设置（此前整页替换向导让新用户无路可去）", async () => {
+    prefsMocks.get.mockResolvedValue({ setupWizardCompleted: false });
+    const view = renderPage();
+
+    const jump = await screen.findByTestId("setup-wizard-jump");
+    fireEvent.click(jump);
+    expect(view.props.onNavigate).toHaveBeenCalledWith({ kind: "settings", path: "/settings/providers" });
+
+    // 父组件按新地址重渲染后：向导暂停（偏好未改写），Runtime 原页落在供应商子页
+    view.rerenderWith({ route: { kind: "settings", path: "/settings/providers" } });
+    await waitFor(() => expect(screen.queryByTestId("setup-wizard-stub")).toBeNull());
+    expect((await screen.findByTestId("runtime-page-host-mock")).getAttribute("data-path")).toBe("/settings/providers");
   });
 });

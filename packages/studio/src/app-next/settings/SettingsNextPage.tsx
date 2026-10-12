@@ -72,6 +72,10 @@ export function SettingsNextPage({ route, onNavigate, onNavigateRuntimePath }: S
 	const [lastRuntimePath, setLastRuntimePath] = useState(routeRuntimePath ?? RUNTIME_SETTINGS_ROOT);
 	const [runtimeMounted, setRuntimeMounted] = useState(routeRuntimePath !== null);
 	const [wizardDismissed, setWizardDismissed] = useState<boolean>(true);
+	// 向导会整页替换设置页，但供应商必须去 Runtime 原页配——向导的供应商步靠这个出口
+	// 暂停向导（不写偏好），直接落到嵌入原页的 /settings/providers；离开设置页后再进，
+	// 向导会重新出现并重新读取供应商数量，配好了就能往下走。
+	const [wizardPaused, setWizardPaused] = useState(false);
 
 	useEffect(() => {
 		void createUserPreferencesClient().get()
@@ -92,11 +96,17 @@ export function SettingsNextPage({ route, onNavigate, onNavigateRuntimePath }: S
 	const activeTab = TABS.find((tab) => tab.id === (panel ?? "runtime")) ?? TABS[0]!;
 
 	// 与原设置页一致：首次设置向导未完成时整页换成向导，两个世界的内容都不渲染。
-	if (!wizardDismissed) {
+	if (!wizardDismissed && !wizardPaused) {
 		return (
 			<section aria-label="设置" data-testid="settings-page" className="flex h-full min-h-0 w-full flex-col overflow-y-auto">
 				<div className="mx-auto w-full max-w-[960px] p-4">
-					<SetupWizardPanel onComplete={() => setWizardDismissed(true)} />
+					<SetupWizardPanel
+						onComplete={() => setWizardDismissed(true)}
+						onGoToProviders={() => {
+							setWizardPaused(true);
+							onNavigate({ kind: "settings", path: "/settings/providers" });
+						}}
+					/>
 				</div>
 			</section>
 		);

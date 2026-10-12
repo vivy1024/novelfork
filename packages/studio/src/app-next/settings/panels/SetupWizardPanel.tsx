@@ -16,11 +16,11 @@ const TOTAL_STEPS = 6;
 
 export interface SetupWizardPanelProps {
   readonly onComplete: () => void;
+  /** 供应商步的出口：向导占着整个设置页时，靠它跳去真正的「AI 供应商」页。 */
+  readonly onGoToProviders?: () => void;
 }
 
-/* PLACEHOLDER_REST */
-
-export function SetupWizardPanel({ onComplete }: SetupWizardPanelProps) {
+export function SetupWizardPanel({ onComplete, onGoToProviders }: SetupWizardPanelProps) {
   const [step, setStep] = useState(0);
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [deps, setDeps] = useState<DependencyCheckResult | null>(null);
@@ -84,7 +84,7 @@ export function SetupWizardPanel({ onComplete }: SetupWizardPanelProps) {
       <div className="flex-1 overflow-y-auto px-6 py-6">
         {step === 0 && <WelcomeStep />}
         {step === 1 && <DepsStep deps={deps} />}
-        {step === 2 && <ProviderStep count={providerCount} />}
+        {step === 2 && <ProviderStep count={providerCount} onGoToProviders={onGoToProviders} />}
         {step === 3 && <BasicStep models={selectOptions} defaultModel={defaultModel} summaryModel={summaryModel} onDefaultChange={setDefaultModel} onSummaryChange={setSummaryModel} />}
         {step === 4 && <NetworkStep mode={networkMode} onModeChange={setNetworkMode} />}
         {step === 5 && <CompleteStep />}
@@ -143,12 +143,19 @@ function DepsStep({ deps }: { deps: DependencyCheckResult | null }) {
   );
 }
 
-function ProviderStep({ count }: { count: number }) {
+function ProviderStep({ count, onGoToProviders }: { count: number; onGoToProviders?: () => void }) {
   return (
     <div className="flex flex-col gap-4 py-4">
       <p className="text-sm text-muted-foreground">至少配置一个 AI 供应商才能使用写作功能。</p>
       <Badge variant={count > 0 ? "secondary" : "destructive"} className="w-fit">{count > 0 ? `已配置 ${count} 个供应商` : "尚未配置供应商"}</Badge>
-      {count === 0 && <p className="text-xs text-orange-600">请先前往「设置 → AI 供应商」配置至少一个供应商后回来继续。</p>}
+      {onGoToProviders && (
+        <div className="flex flex-col items-start gap-1.5">
+          <Button variant="outline" size="sm" onClick={onGoToProviders}>
+            去「设置 › AI 供应商」配置
+          </Button>
+          <p className="text-xs text-muted-foreground">配好至少一个供应商后回到本页，这里会自动识别到，再继续下一步。</p>
+        </div>
+      )}
     </div>
   );
 }
