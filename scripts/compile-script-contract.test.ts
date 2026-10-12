@@ -136,6 +136,24 @@ describe("根 Host 编译契约", () => {
     expect(rootMain.indexOf("NARRAFORK_HOME")).toBeLessThan(rootMain.lastIndexOf(runtimeImport));
   });
 
+  test("根入口的 worker 分流 flag 与 Runtime server/index.ts 的分流集合一致", () => {
+    // 曾手抄成 --db-integrity-worker / --watcher-worker，与 Runtime 实际 flag 不符：
+    // 完整性探针子进程因此走完整产品启动（开库、迁移、FTS 重建），损坏库上直接崩、拿不到报告。
+    const runtimeIndex = readFileSync(
+      join(repositoryRoot, "packages", "narrafork-runtime-private", "server", "index.ts"),
+      "utf8",
+    );
+    const runtimeFlagNames = [...runtimeIndex.matchAll(/process\.argv\.includes\((\w+)\)/g)].map((match) => match[1]!);
+    expect(runtimeFlagNames.length).toBeGreaterThan(0);
+    const workerBlock = rootMain.slice(rootMain.indexOf("const WORKER_FLAGS"), rootMain.indexOf("] as const;"));
+    for (const name of runtimeFlagNames) {
+      expect(rootMain).toMatch(new RegExp(`import \\{ ${name} \\} from "\\./packages/narrafork-runtime-private/server/`));
+      expect(workerBlock).toContain(name);
+    }
+    // 分流必须先于任何产品设置
+    expect(rootMain.indexOf("WORKER_FLAGS.some")).toBeLessThan(rootMain.indexOf("process.env.NOVELFORK_HOME ="));
+  });
+
   test("根工作区使用 PNPM 安装并保持 Tiptap 主版本隔离", () => {
     expect(packageJson.packageManager).toBe("pnpm@10.24.0");
     expect(packageJson.overrides?.["@tiptap/core"]).toBeUndefined();

@@ -1,17 +1,22 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
+// 三个协议模块都刻意零副作用（不开库、不读设置），静态导入不会提前触发产品启动。
+import { DB_INTEGRITY_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/db/integrity-protocol.ts";
+import { WATCHER_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/lib/watcher/worker-protocol.ts";
+import { PLUGIN_RUNTIME_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/plugin-runtime-worker.ts";
+
 // 自检与后台 worker 子进程必须在所有产品设置之前分流：
-// - 上面的延迟 import 链（product 集成、bridge 的 db/settings）一旦先求值，
-//   会以父进程为名去开 Runtime 数据库、取实例锁并打印 JSON 日志——
+// - 下面的延迟 import 链（product 集成、bridge 的 db/settings）一旦先求值，
+//   会以父进程为名去开 Runtime 数据库、跑迁移、取实例锁并打印 JSON 日志——
 //   既与父进程抢锁（实测本地插件激活即被隔离），也把 JSON 日志淋到 STDOUT、
-//   污染 worker 的 Content-Length RPC 帧。
+//   污染 worker 的 Content-Length RPC 帧；完整性探针还会在只读检查前先读写一遍待查的库。
 // - Runtime 的 server/index.ts 自带这些 flag 的分流（在 ./main 之前）；
-//   产品 root 入口也必须遵守同一个契约。
+//   产品 root 入口也必须遵守同一个契约。flag 名直接引用 Runtime 常量，不手抄。
 const WORKER_FLAGS = [
-  "--db-integrity-worker",
-  "--watcher-worker",
-  "--plugin-runtime-worker",
+  DB_INTEGRITY_WORKER_FLAG,
+  WATCHER_WORKER_FLAG,
+  PLUGIN_RUNTIME_WORKER_FLAG,
 ] as const;
 
 if (WORKER_FLAGS.some((flag) => process.argv.includes(flag))) {
