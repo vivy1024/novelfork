@@ -5,6 +5,7 @@ import type { LengthCountingMode } from "@vivy1024/novelfork-core";
 
 import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
 import type { ChapterContentChange } from "./chapter-change-effects.js";
+import { withChapterIndexLock } from "./chapter-index-lock.js";
 import {
   CHAPTERS_DIRECTORY,
   chapterWordCount,
@@ -36,6 +37,16 @@ export interface ReconciledChapterFile extends ChapterContentChange {
  * 这里只更新索引并返回变更清单；写作日志与审计标记由调用方对每条变更执行 `applyChapterContentChange`。
  */
 export async function reconcileChapterFiles(input: {
+  readonly bookId: string;
+  readonly bookRoot: string;
+  readonly countingMode: LengthCountingMode;
+  readonly resolveVolumeDirectory: ChapterVolumeDirectoryResolver;
+}): Promise<ReconciledChapterFile[]> {
+  // 对账同样是 index.json 的读改写，与写作台保存、叙述者写章串行（锁可重入）。
+  return withChapterIndexLock(input.bookRoot, () => reconcileChapterFilesLocked(input));
+}
+
+async function reconcileChapterFilesLocked(input: {
   readonly bookId: string;
   readonly bookRoot: string;
   readonly countingMode: LengthCountingMode;

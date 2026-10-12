@@ -26,6 +26,8 @@ import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { handleChapterWrite } from "./chapter-write.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
+import { writeFileAtomic } from "../engine/writing-resource/atomic-write.js";
+import { withChapterIndexLock } from "../engine/writing-resource/chapter-index-lock.js";
 import { executePipelineWrite, type PipelineWriteInput, type PipelineWriteOptions } from "./pipeline-write-service.js";
 import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
@@ -166,7 +168,8 @@ async function readBoundChapter(binding: TrustedRuntimeBookBinding, chapterNumbe
 async function withBookLock<T>(binding: TrustedRuntimeBookBinding, task: () => Promise<T>): Promise<T> {
   const release = await trustedBookState(binding).acquireBookLock(binding.bookId);
   try {
-    return await task();
+    // 跨进程文件锁之外再排进程内章节索引锁：写作台保存、对账不拿文件锁，只认这一把。
+    return await withChapterIndexLock(binding.root, task);
   } finally {
     await release();
   }
@@ -486,7 +489,7 @@ async function importChapters(
       const chapterContent = `# ${title}\n\n${chapter.content}`;
       const chapterPath = join(chaptersDir, fileName);
       await mkdir(dirname(chapterPath), { recursive: true });
-      await writeFile(chapterPath, chapterContent, "utf8");
+      await writeFileAtomic(chapterPath, chapterContent);
       totalWords += chapter.content.length;
       imported.push({
         number,

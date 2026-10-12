@@ -12,6 +12,7 @@ import type { LengthCountingMode } from "@vivy1024/novelfork-core";
 
 import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
 import { writeFileAtomic } from "./atomic-write.js";
+import { withChapterIndexLock } from "./chapter-index-lock.js";
 import type {
   CreateWritingResourceInput,
   ListWritingResourcesFilter,
@@ -79,7 +80,13 @@ export function createWritingResourceFileStore(
   }
 
   async function ensureLayout(bookId: string): Promise<void> {
-    await synchronizeChapterLayout(bookId, resolveBookDir(bookId), resolveVolumeDirectory, { countingMode });
+    const bookRoot = resolveBookDir(bookId);
+    await withChapterIndexLock(bookRoot, () => synchronizeChapterLayout(bookId, bookRoot, resolveVolumeDirectory, { countingMode }));
+  }
+
+  /** index.json 的读改写全程持锁，防并发写入方互相覆盖（见 chapter-index-lock.ts）；锁可重入。 */
+  function locked<T>(bookId: string, task: () => Promise<T>): Promise<T> {
+    return withChapterIndexLock(resolveBookDir(bookId), task);
   }
 
   async function chapterToResource(bookId: string, entry: ChapterIndexRecord, content: string): Promise<WritingResource> {
@@ -137,6 +144,7 @@ export function createWritingResourceFileStore(
     },
 
     async create(bookId, input) {
+      return locked(bookId, async () => {
       await ensureLayout(bookId);
       const bookRoot = resolveBookDir(bookId);
       const content = input.content;
@@ -169,9 +177,11 @@ export function createWritingResourceFileStore(
       nextIndex.sort((a, b) => a.number - b.number);
       await writeChapterIndex(bookRoot, nextIndex);
       return chapterToResource(bookId, record, content);
+      });
     },
 
     async update(bookId, id, input) {
+      return locked(bookId, async () => {
       await ensureLayout(bookId);
       const bookRoot = resolveBookDir(bookId);
       const chapterNumber = parseChapterId(id);
@@ -207,9 +217,11 @@ export function createWritingResourceFileStore(
       index[idx] = entry;
       await writeChapterIndex(bookRoot, index);
       return chapterToResource(bookId, entry, content);
+      });
     },
 
     async softDelete(bookId, id) {
+      return locked(bookId, async () => {
       await ensureLayout(bookId);
       const bookRoot = resolveBookDir(bookId);
       const chapterNumber = parseChapterId(id);
@@ -220,6 +232,7 @@ export function createWritingResourceFileStore(
       await writeChapterIndex(bookRoot, index.filter((item) => item.number !== chapterNumber));
       try { await unlink(chapterPath(bookId, entry.fileName)); } catch { /* ignore */ }
       return { ...(await chapterToResource(bookId, entry, "")), status: "archived" };
+      });
     },
 
     async findAcceptedChapter(bookId, chapterNumber) {
