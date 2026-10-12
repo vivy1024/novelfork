@@ -61,7 +61,6 @@ function equivalentMigrationHashes(sql: string): ReadonlySet<string> {
 		// 早期内嵌构建按读到的原文（LF、未 trim）记录校验和，换 normalize(+trim) 后必须继续承认这批已登记哈希
 		rawMigrationHash(sql.replace(/\r\n/g, "\n")),
 		rawMigrationHash(sql),
-		rawMigrationHash(sql),
 		rawMigrationHash(normalized.replace(/\n/g, "\r\n")),
 	]);
 }
