@@ -6,6 +6,7 @@ import type { LengthCountingMode } from "@vivy1024/novelfork-core";
 import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
 import type { ChapterContentChange } from "./chapter-change-effects.js";
 import { withChapterIndexLock } from "./chapter-index-lock.js";
+import { resolveChapterFile } from "./chapter-path-guard.js";
 import {
   CHAPTERS_DIRECTORY,
   chapterWordCount,
@@ -61,8 +62,10 @@ async function reconcileChapterFilesLocked(input: {
   let indexChanged = false;
 
   for (const entry of index) {
+    // S1.1：fileName 不可信，越出章节目录的条目跳过（readChapterIndex 已先行过滤，这里再守一层）。
+    const absolutePath = resolveChapterFile(join(bookRoot, CHAPTERS_DIRECTORY), entry.fileName);
+    if (!absolutePath) continue;
     const relativePath = normalizeChapterRelativePath(join(CHAPTERS_DIRECTORY, entry.fileName));
-    const absolutePath = join(bookRoot, relativePath);
     const info = await stat(absolutePath).catch(() => null);
     if (!info?.isFile()) continue;
 

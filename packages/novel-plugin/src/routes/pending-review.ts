@@ -39,6 +39,7 @@ import {
   STYLE_VAULT_RELATIVE_DIR,
 } from "../engine/writing-layers/style-vault.js";
 import { CHAPTERS_DIRECTORY, readChapterIndex } from "../engine/writing-resource/chapter-layout.js";
+import { resolveChapterFile } from "../engine/writing-resource/chapter-path-guard.js";
 import { listPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import { listStorylines } from "../engine/narrative-memory/scene-store.js";
 import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
@@ -249,7 +250,8 @@ async function collectRevisionItems(
       continue;
     }
     if (!draft) continue;
-    const current = await readFile(join(bookRoot, CHAPTERS_DIRECTORY, indexEntry.fileName), "utf8").catch(() => "");
+    const currentPath = resolveChapterFile(join(bookRoot, CHAPTERS_DIRECTORY), indexEntry.fileName);
+    const current = currentPath ? await readFile(currentPath, "utf8").catch(() => "") : "";
     if (!current) continue;
     for (const pair of extractRevisionPairs(draft.text, current)) {
       const id = revisionSampleId(chapterNumber, pair.authorText);

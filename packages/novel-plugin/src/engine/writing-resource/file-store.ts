@@ -13,6 +13,7 @@ import type { LengthCountingMode } from "@vivy1024/novelfork-core";
 import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
 import { writeFileAtomic } from "./atomic-write.js";
 import { withChapterIndexLock } from "./chapter-index-lock.js";
+import { requireChapterFile } from "./chapter-path-guard.js";
 import type {
   CreateWritingResourceInput,
   ListWritingResourcesFilter,
@@ -76,7 +77,8 @@ export function createWritingResourceFileStore(
   }
 
   function chapterPath(bookId: string, fileName: string) {
-    return join(chaptersDir(bookId), fileName);
+    // S1.1：索引里的 fileName 不可信，越出章节目录的一律拒绝（抛错，不静默读写别处）。
+    return requireChapterFile(chaptersDir(bookId), fileName);
   }
 
   async function ensureLayout(bookId: string): Promise<void> {

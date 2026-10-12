@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { CHAPTERS_DIRECTORY, readChapterIndex } from "../writing-resource/chapter-layout.js";
+import { resolveChapterFile } from "../writing-resource/chapter-path-guard.js";
 import { createStylePreset, STYLE_SCENE_TYPES, type StylePreset } from "./style-preset.js";
 import { loadStylePreset, saveStylePreset, type LoadedStylePreset } from "./style-preset-store.js";
 
@@ -190,7 +191,9 @@ export interface ChapterVaultSummary {
 }
 
 async function readCurrentChapterText(bookRoot: string, fileName: string): Promise<string> {
-  return readFile(join(bookRoot, CHAPTERS_DIRECTORY, fileName), "utf8");
+  const path = resolveChapterFile(join(bookRoot, CHAPTERS_DIRECTORY), fileName);
+  if (!path) throw new Error(`章节文件路径不在章节目录内：${JSON.stringify(fileName)}`);
+  return readFile(path, "utf8");
 }
 
 export async function summarizeStyleVault(bookRoot: string): Promise<{
