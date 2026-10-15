@@ -34,6 +34,7 @@
     "compile:all": "bun run compile:bundles && bun scripts/compile-product-runtime.ts --platform=all",
     "test": "pnpm run test:full",
     "test:full": "bun scripts/run-workspace-tests.ts",
+    "test:waiver": "bun scripts/run-waiver-tests.ts",
     "test:public": "pnpm -r --if-present test",
     "test:changed": "bun scripts/run-changed-verification.ts --tests-only",
     "lint": "pnpm -r lint",
