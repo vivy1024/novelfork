@@ -1,6 +1,12 @@
 import { Hono, type Context } from "hono";
 import { ApiError, getStorageDatabase, isSafeBookId, resolveGlobalConfigDir, type StorageDatabase } from "@vivy1024/novelfork-core";
 import { handleJingweiWrite } from "../handlers/jingwei-write-handler.js";
+import {
+  entryNotInBookError,
+  sectionNotInBookError,
+  type JingweiReferenceErrorCode,
+  type JingweiReferenceExplanation,
+} from "../engine/jingwei/repositories/entry-repo.js";
 import type {
   JingweiEntryLifecycle,
   JingweiEntryStatus,
@@ -41,6 +47,40 @@ async function ensureBook(storage: StorageDatabase, bookId: string): Promise<voi
   if (!book) {
     throw new ApiError(404, "BOOK_NOT_FOUND", `Book not found: ${bookId}`);
   }
+}
+
+// T-12: 关联、依赖、推进的目标条目必须属于本书。不属于时统一返回 404，不区分"不存在"与"属于其他书"，
+// 避免借状态码探测其他书的条目是否存在。文案与三段式解释由引擎层的 JingweiReferenceError 统一给出。
+function ensureEntryInBook(storage: StorageDatabase, bookId: string, entryId: string): void {
+  const row = storage.sqlite.prepare<{ id: string }>(`
+    SELECT id FROM story_jingwei_entry WHERE id = ? AND book_id = ? AND deleted_at IS NULL
+  `).get(entryId, bookId);
+  if (!row) throw entryNotInBookError(entryId);
+}
+
+/**
+ * T-12：引擎层的跨书引用错误（分区/父条目/目标条目越界、父子成环）按 code 映射 HTTP 状态，
+ * 并原样带出三段式 explanation。按 code 而非 instanceof 识别：引擎经动态 import 加载，不依赖模块同一性。
+ */
+const REFERENCE_ERROR_STATUS: Readonly<Record<JingweiReferenceErrorCode, 400 | 404>> = {
+  JINGWEI_ENTRY_NOT_FOUND: 404,
+  JINGWEI_SECTION_NOT_IN_BOOK: 404,
+  JINGWEI_PARENT_NOT_IN_BOOK: 404,
+  JINGWEI_PARENT_CYCLE: 400,
+};
+
+function referenceErrorResponse(error: unknown): {
+  status: 400 | 404;
+  body: { error: { code: string; message: string }; explanation: JingweiReferenceExplanation };
+} | null {
+  if (!(error instanceof Error)) return null;
+  const { code, explanation } = error as { code?: unknown; explanation?: unknown };
+  if (typeof code !== "string" || !Object.prototype.hasOwnProperty.call(REFERENCE_ERROR_STATUS, code)) return null;
+  if (!explanation || typeof explanation !== "object") return null;
+  return {
+    status: REFERENCE_ERROR_STATUS[code as JingweiReferenceErrorCode],
+    body: { error: { code, message: error.message }, explanation: explanation as JingweiReferenceExplanation },
+  };
 }
 
 async function readJson(c: Context): Promise<Record<string, unknown>> {
@@ -218,6 +258,8 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     if (error instanceof ApiError) {
       return c.json(jsonError(error), error.status as 400);
     }
+    const reference = referenceErrorResponse(error);
+    if (reference) return c.json(reference.body, reference.status);
     return c.json(jsonError(error instanceof Error ? error : new Error(String(error))), 500);
   });
 
@@ -336,6 +378,11 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const sectionRepo = createStoryJingweiSectionRepository(storage);
     const requestedCategory = typeof body.category === "string" && body.category.trim() ? body.category.trim() : undefined;
     let section = typeof body.sectionId === "string" ? await sectionRepo.getById(bookId, body.sectionId) : null;
+    // T-12：显式给了 sectionId 却不在本书（不存在或属于别的书）时直接拒绝，
+    // 不再悄悄退回按 category 建条目——那会让调用方以为写进了自己指定的分区。
+    if (!section && typeof body.sectionId === "string" && body.sectionId.trim()) {
+      throw sectionNotInBookError(body.sectionId);
+    }
 
     if (!section && requestedCategory) {
       section = (await sectionRepo.listByBook(bookId)).find((candidate) => candidate.key === requestedCategory) ?? null;
@@ -621,6 +668,8 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const targetEntryId = requireText(body.targetEntryId, "JINGWEI_TARGET_ENTRY_REQUIRED", "targetEntryId is required.");
     const relationType = requireText(body.relationType, "JINGWEI_RELATION_TYPE_REQUIRED", "relationType is required.");
     const label = optionalNullableText(body.label);
+    ensureEntryInBook(storage, bookId, sourceEntryId);
+    ensureEntryInBook(storage, bookId, targetEntryId);
     const id = crypto.randomUUID();
     const now = Date.now();
     storage.sqlite.prepare(`
@@ -830,6 +879,8 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     const entryId = c.req.param("entryId");
     await ensureBook(storage, bookId);
+    // T-12：路径里的 entryId 必须属于本书，否则会把推进记录挂到别的书的条目上。
+    ensureEntryInBook(storage, bookId, entryId);
     const body = await readJson(c);
     const fieldKey = requireText(body.fieldKey, "PROGRESSION_FIELD_KEY_REQUIRED", "fieldKey is required.");
     const newValue = requireText(body.newValue, "PROGRESSION_NEW_VALUE_REQUIRED", "newValue is required.");
@@ -1030,11 +1081,12 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const entryId = c.req.param("entryId");
     const storage = await resolveStorage(options);
 
+    // T-12: 两端条目都必须属于本书。JOIN 上加 e.book_id，防止跨书标题经依赖查询泄露。
     const dependsOn = storage.sqlite.prepare(`
       SELECT d.id as depId, d.relation_type as relationType, d.target_entry_id as targetEntryId,
         e.title, e.category
       FROM jingwei_dependency d
-      JOIN story_jingwei_entry e ON e.id = d.target_entry_id
+      JOIN story_jingwei_entry e ON e.id = d.target_entry_id AND e.book_id = d.book_id
       WHERE d.source_entry_id = ? AND d.book_id = ? AND e.deleted_at IS NULL
     `).all(entryId, bookId);
 
@@ -1042,7 +1094,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       SELECT d.id as depId, d.relation_type as relationType, d.source_entry_id as sourceEntryId,
         e.title, e.category
       FROM jingwei_dependency d
-      JOIN story_jingwei_entry e ON e.id = d.source_entry_id
+      JOIN story_jingwei_entry e ON e.id = d.source_entry_id AND e.book_id = d.book_id
       WHERE d.target_entry_id = ? AND d.book_id = ? AND e.deleted_at IS NULL
     `).all(entryId, bookId);
 
@@ -1053,12 +1105,17 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     const storage = await resolveStorage(options);
     const body = await c.req.json<{ sourceEntryId: string; targetEntryId: string; relationType?: string }>();
+    const sourceEntryId = requireText(body.sourceEntryId, "JINGWEI_SOURCE_ENTRY_REQUIRED", "sourceEntryId is required.");
+    const targetEntryId = requireText(body.targetEntryId, "JINGWEI_TARGET_ENTRY_REQUIRED", "targetEntryId is required.");
+    // T-12: 依赖的两端都必须属于本书，跨书依赖在写入前即被拒绝。
+    ensureEntryInBook(storage, bookId, sourceEntryId);
+    ensureEntryInBook(storage, bookId, targetEntryId);
 
     const id = crypto.randomUUID();
     storage.sqlite.prepare(`
       INSERT OR IGNORE INTO jingwei_dependency (id, source_entry_id, target_entry_id, book_id, relation_type, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, body.sourceEntryId, body.targetEntryId, bookId, body.relationType ?? "references", Date.now());
+    `).run(id, sourceEntryId, targetEntryId, bookId, body.relationType ?? "references", Date.now());
     return c.json({ ok: true, id });
   });
 

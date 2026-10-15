@@ -278,9 +278,137 @@ function toFtsFields(entry: StoryJingweiEntryRecord): FtsSyncFields {
   };
 }
 
+// ---------------------------------------------------------------------------
+// 跨书引用守卫（T-12）
+// ---------------------------------------------------------------------------
+
+/** 三段式解释，与 handlers/diagnostic-explanation.ts 的 DiagnosticExplanation 同形（引擎层不反向依赖 handlers）。 */
+export interface JingweiReferenceExplanation {
+  readonly whatHappened: string;
+  readonly whyItMatters: string;
+  readonly suggestedAction: string;
+}
+
+export type JingweiReferenceErrorCode =
+  | "JINGWEI_ENTRY_NOT_FOUND"
+  | "JINGWEI_SECTION_NOT_IN_BOOK"
+  | "JINGWEI_PARENT_NOT_IN_BOOK"
+  | "JINGWEI_PARENT_CYCLE";
+
+/**
+ * 条目引用越界（T-12）：分区、父条目、关联/依赖/推进的目标条目必须属于同一本书，父子关系不能成环。
+ * 引擎层只表达领域事实（code + explanation），路由层按 code 映射 HTTP 状态。
+ * 「不存在」与「属于别的书」统一成同一个 code 与文案，不让调用方借此探测别的书里有没有某个 id。
+ */
+export class JingweiReferenceError extends Error {
+  constructor(
+    readonly code: JingweiReferenceErrorCode,
+    readonly explanation: JingweiReferenceExplanation,
+  ) {
+    super(explanation.whatHappened);
+    this.name = "JingweiReferenceError";
+  }
+}
+
+export function entryNotInBookError(entryId: string): JingweiReferenceError {
+  return new JingweiReferenceError("JINGWEI_ENTRY_NOT_FOUND", {
+    whatHappened: `条目 ${entryId} 不在本书中（不存在、已删除，或属于另一本书）。`,
+    whyItMatters: "关联、依赖与状态推进只能连接同一本书的条目；跨书连接会把两本书的设定串在一起，并泄露另一本书的条目。",
+    suggestedAction: "刷新经纬面板，确认条目仍在本书后，从本书条目中重新选择。",
+  });
+}
+
+export function sectionNotInBookError(sectionId: string): JingweiReferenceError {
+  return new JingweiReferenceError("JINGWEI_SECTION_NOT_IN_BOOK", {
+    whatHappened: `分区 ${sectionId} 不在本书中（不存在、已删除，或属于另一本书）。`,
+    whyItMatters: "条目只能放进本书自己的分区；放进别的书的分区会让两本书的设定互相串门，并泄露另一本书的结构。",
+    suggestedAction: "刷新经纬面板后从本书现有分区中重新选择，或改用 category 让系统按分类找到或新建本书分区。",
+  });
+}
+
+function parentNotInBookError(parentId: string): JingweiReferenceError {
+  return new JingweiReferenceError("JINGWEI_PARENT_NOT_IN_BOOK", {
+    whatHappened: `父条目 ${parentId} 不在本书中（不存在、已删除，或属于另一本书）。`,
+    whyItMatters: "层级树只能在同一本书内组织；挂到别的书的条目下会把两本书的设定串在一起，并泄露另一本书的条目。",
+    suggestedAction: "刷新经纬面板后，从本书现有条目中重新选择父条目，或把它设为顶层条目。",
+  });
+}
+
+function parentCycleError(entryId: string, parentId: string): JingweiReferenceError {
+  return new JingweiReferenceError("JINGWEI_PARENT_CYCLE", {
+    whatHappened: `不能把条目 ${entryId} 挂到 ${parentId} 下面：那是它自己，或是它的下级条目。`,
+    whyItMatters: "父子关系成环后层级树没有根，树形展示与按层级注入上下文都会丢条目或陷入死循环。",
+    suggestedAction: "先把那个下级条目移到别处，再移动本条目；或选择一个不在本条目之下的父条目。",
+  });
+}
+
+/**
+ * 分区只校验归属，不排除本书已软删的分区：叙述者写入按 key 取分区时不排除软删
+ * （jingwei-write-handler），在这里收紧会改变同书内的既有行为；要守住的边界是“不跨书”。
+ */
+function assertSectionInBook(storage: StorageDatabase, bookId: string, sectionId: string): void {
+  const row = storage.sqlite.prepare(`
+    SELECT 1 AS "found" FROM "story_jingwei_section" WHERE "id" = ? AND "book_id" = ?
+  `).get(sectionId, bookId);
+  if (!row) throw sectionNotInBookError(sectionId);
+}
+
+/**
+ * 父条目必须是本书的条目，且不能是自己或自己的后代。沿 parent_id 往上走，走到自己即成环；
+ * visited 防止历史数据里已有的环让循环停不下来。新挂父条目要求父条目未删除；
+ * 回退修订（requireLive=false）允许回到当时合法、后来被删的同书父条目。
+ */
+function assertParentAllowed(
+  storage: StorageDatabase,
+  bookId: string,
+  entryId: string,
+  parentId: string,
+  options: { readonly requireLive: boolean },
+): void {
+  if (parentId === entryId) throw parentCycleError(entryId, parentId);
+  const parentOf = storage.sqlite.prepare(`
+    SELECT "parent_id", "deleted_at" FROM "story_jingwei_entry" WHERE "id" = ? AND "book_id" = ?
+  `);
+  const parent = parentOf.get(parentId, bookId) as { parent_id: string | null; deleted_at: number | null } | undefined;
+  if (!parent || (options.requireLive && parent.deleted_at !== null)) throw parentNotInBookError(parentId);
+  const visited = new Set<string>([parentId]);
+  let cursor = parent.parent_id;
+  while (cursor) {
+    if (cursor === entryId) throw parentCycleError(entryId, parentId);
+    if (visited.has(cursor)) break;
+    visited.add(cursor);
+    cursor = (parentOf.get(cursor, bookId) as { parent_id: string | null } | undefined)?.parent_id ?? null;
+  }
+}
+
+/**
+ * relatedEntryIds 只保留属于本书的 id（含本书已软删的，删除状态由读取侧处理）。
+ * 选择过滤而不是整体拒绝：这是一组软关联，读取侧本就要容忍失效 id；批量导入、合并与叙述者写入时
+ * 夹带一个失效 id 不该让整次写入失败。安全上要保证的是：别的书的 id 永远不会落库。
+ * 代价是同一批里尚未创建的本书条目也会被滤掉，需要先建条目再补关联。
+ */
+function filterRelatedEntryIds(storage: StorageDatabase, bookId: string, ids: readonly string[] | null | undefined): string[] {
+  const candidates = (ids ?? []).filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (candidates.length === 0) return [];
+  const unique = [...new Set(candidates)];
+  const owned = new Set<string>();
+  for (let offset = 0; offset < unique.length; offset += 500) {
+    const chunk = unique.slice(offset, offset + 500);
+    const rows = storage.sqlite.prepare(`
+      SELECT "id" FROM "story_jingwei_entry" WHERE "book_id" = ? AND "id" IN (${chunk.map(() => "?").join(", ")})
+    `).all(bookId, ...chunk) as Array<{ id: string }>;
+    for (const row of rows) owned.add(row.id);
+  }
+  return candidates.filter((id) => owned.has(id));
+}
+
 export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
   const repo = {
     async create(input: CreateStoryJingweiEntryInput): Promise<StoryJingweiEntryRecord> {
+      // T-12：先校验引用归属，越界时一行都不写。
+      assertSectionInBook(storage, input.bookId, input.sectionId);
+      if (input.parentId) assertParentAllowed(storage, input.bookId, input.id, input.parentId, { requireLive: true });
+      const relatedEntryIds = filterRelatedEntryIds(storage, input.bookId, input.relatedEntryIds);
       const fields = resolveFields(input, {});
       const sectionCategory = storage.sqlite.prepare(`
         SELECT "key", "builtin_kind" FROM "story_jingwei_section" WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
@@ -327,7 +455,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         serializeJson(input.tags),
         serializeJson(aliases),
         serializeJson(input.relatedChapterNumbers),
-        serializeJson(input.relatedEntryIds),
+        serializeJson(relatedEntryIds),
         serializeJson(input.visibilityRule),
         nextParticipatesInAi ? 1 : 0,
         input.tokenBudget ?? null,
@@ -444,6 +572,17 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       const current = readEntry(storage, bookId, id);
       if (!current) return null;
 
+      // T-12：只拦截本次新写入的引用（与现值相同则放过），历史数据不阻断无关编辑。
+      if (updates.sectionId !== undefined && updates.sectionId !== current.sectionId) {
+        assertSectionInBook(storage, bookId, updates.sectionId);
+      }
+      if (updates.parentId !== undefined && updates.parentId !== null && updates.parentId !== current.parentId) {
+        assertParentAllowed(storage, bookId, id, updates.parentId, { requireLive: true });
+      }
+      const nextRelatedEntryIds = updates.relatedEntryIds !== undefined
+        ? filterRelatedEntryIds(storage, bookId, updates.relatedEntryIds)
+        : current.relatedEntryIds;
+
       const source: EntrySource = updates.source ?? "user";
       const changedFields = Object.keys(updates).filter((key) => !["source", "updatedAt", "revisionReason", "changedBy"].includes(key));
       const hasChanges = changedFields.length > 0;
@@ -506,7 +645,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
           serializeJson(updates.tags ?? current.tags),
           serializeJson(nextAliases),
           serializeJson(updates.relatedChapterNumbers ?? current.relatedChapterNumbers),
-          serializeJson(updates.relatedEntryIds ?? current.relatedEntryIds),
+          serializeJson(nextRelatedEntryIds),
           serializeJson(updates.visibilityRule ?? current.visibilityRule),
           nextParticipatesInAi ? 1 : 0,
           updates.tokenBudget !== undefined ? updates.tokenBudget : current.tokenBudget,
@@ -557,6 +696,12 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       };
       const updatedAt = options.updatedAt ?? new Date();
       const changedBy = options.changedBy ?? "user";
+      // T-12：回退同样不得引入跨书分区/父条目或成环（旧父条目可能已被挂到本条目之下）。
+      if (snapshot.sectionId !== current.sectionId) assertSectionInBook(storage, bookId, snapshot.sectionId);
+      if (snapshot.parentId && snapshot.parentId !== current.parentId) {
+        assertParentAllowed(storage, bookId, entryId, snapshot.parentId, { requireLive: false });
+      }
+      const revertRelatedEntryIds = filterRelatedEntryIds(storage, bookId, snapshot.relatedEntryIds);
 
       const run = storage.sqlite.transaction(() => {
         insertRevision(storage, current, {
@@ -592,7 +737,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
           serializeJson(snapshot.tags),
           serializeJson(snapshot.aliases),
           serializeJson(snapshot.relatedChapterNumbers),
-          serializeJson(snapshot.relatedEntryIds),
+          serializeJson(revertRelatedEntryIds),
           serializeJson(snapshot.visibilityRule),
           snapshot.participatesInAi && snapshot.status !== "needs-review" ? 1 : 0,
           snapshot.tokenBudget,

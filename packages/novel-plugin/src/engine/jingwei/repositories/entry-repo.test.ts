@@ -313,3 +313,136 @@ describe("story jingwei entry identity and source refs", () => {
     expect(reverted?.sourceRefs).toEqual([{ chapterNumber: 12, excerpt: "本章摘要" }]);
   });
 });
+
+describe("story jingwei entry cross-book references (T-12)", () => {
+  // book-1 / section-1 由 createStorage 建好；这里再建一本书 book-2 及其分区与条目，作为“别的书”。
+  async function createTwoBookStorage(): Promise<StorageDatabase> {
+    const storage = await createStorage();
+    await createBookRepository(storage).create({
+      id: "book-2",
+      name: "别的书",
+      jingweiMode: "dynamic",
+      currentChapter: 1,
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    await createStoryJingweiSectionRepository(storage).create({
+      id: "section-other",
+      bookId: "book-2",
+      key: "characters",
+      name: "角色",
+      description: "",
+      icon: null,
+      order: 0,
+      enabled: true,
+      showInSidebar: true,
+      participatesInAi: true,
+      defaultVisibility: "tracked",
+      fieldsJson: [],
+      builtinKind: "characters",
+      sourceTemplate: "test",
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    const repo = createStoryJingweiEntryRepository(storage);
+    await repo.create(entryInput({ id: "entry-other", bookId: "book-2", sectionId: "section-other", title: "别书角色" }));
+    await repo.create(entryInput({ id: "entry-a", title: "甲" }));
+    await repo.create(entryInput({ id: "entry-b", title: "乙", parentId: "entry-a" }));
+    return storage;
+  }
+
+  function entryInput(overrides: Partial<Parameters<ReturnType<typeof createStoryJingweiEntryRepository>["create"]>[0]> & { id: string; title: string }) {
+    return {
+      bookId: "book-1",
+      sectionId: "section-1",
+      contentMd: "",
+      category: "characters",
+      fields: {},
+      tags: [],
+      aliases: [],
+      customFields: {},
+      relatedChapterNumbers: [],
+      relatedEntryIds: [],
+      visibilityRule: { type: "tracked" as const },
+      participatesInAi: true,
+      tokenBudget: null,
+      createdAt: new Date("2026-08-01T01:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T01:00:00.000Z"),
+      ...overrides,
+    };
+  }
+
+  function rowCount(storage: StorageDatabase, id: string): number {
+    return storage.sqlite.prepare<{ n: number }>(`SELECT COUNT(*) AS n FROM story_jingwei_entry WHERE id = ?`).get(id)!.n;
+  }
+
+  it("新建条目：分区属于别的书时拒绝，且不落库", async () => {
+    const storage = await createTwoBookStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await expect(repo.create(entryInput({ id: "entry-x", title: "丙", sectionId: "section-other" })))
+      .rejects.toMatchObject({ code: "JINGWEI_SECTION_NOT_IN_BOOK", explanation: { whatHappened: expect.any(String) } });
+    expect(rowCount(storage, "entry-x")).toBe(0);
+  });
+
+  it("新建条目：父条目属于别的书或就是自己时拒绝", async () => {
+    const storage = await createTwoBookStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await expect(repo.create(entryInput({ id: "entry-x", title: "丙", parentId: "entry-other" })))
+      .rejects.toMatchObject({ code: "JINGWEI_PARENT_NOT_IN_BOOK" });
+    await expect(repo.create(entryInput({ id: "entry-y", title: "丁", parentId: "entry-y" })))
+      .rejects.toMatchObject({ code: "JINGWEI_PARENT_CYCLE" });
+    expect(rowCount(storage, "entry-x") + rowCount(storage, "entry-y")).toBe(0);
+  });
+
+  it("新建条目：relatedEntryIds 里别的书的 id 被滤掉，本书 id 保留", async () => {
+    const storage = await createTwoBookStorage();
+    const created = await createStoryJingweiEntryRepository(storage)
+      .create(entryInput({ id: "entry-x", title: "丙", relatedEntryIds: ["entry-a", "entry-other", "entry-b"] }));
+    expect(created.relatedEntryIds).toEqual(["entry-a", "entry-b"]);
+  });
+
+  it("更新条目：改到别的书的分区或父条目时拒绝，原值不变", async () => {
+    const storage = await createTwoBookStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await expect(repo.update("book-1", "entry-b", { sectionId: "section-other" }))
+      .rejects.toMatchObject({ code: "JINGWEI_SECTION_NOT_IN_BOOK" });
+    await expect(repo.update("book-1", "entry-b", { parentId: "entry-other" }))
+      .rejects.toMatchObject({ code: "JINGWEI_PARENT_NOT_IN_BOOK" });
+    const stored = await repo.getById("book-1", "entry-b");
+    expect(stored?.sectionId).toBe("section-1");
+    expect(stored?.parentId).toBe("entry-a");
+  });
+
+  it("更新条目：父条目不能是自己，也不能是自己的后代（成环）", async () => {
+    const storage = await createTwoBookStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await expect(repo.update("book-1", "entry-a", { parentId: "entry-a" })).rejects.toMatchObject({ code: "JINGWEI_PARENT_CYCLE" });
+    // entry-b 是 entry-a 的子条目：把 entry-a 挂到 entry-b 下会成环
+    await expect(repo.update("book-1", "entry-a", { parentId: "entry-b" })).rejects.toMatchObject({ code: "JINGWEI_PARENT_CYCLE" });
+    expect((await repo.getById("book-1", "entry-a"))?.parentId).toBeNull();
+  });
+
+  it("更新条目：relatedEntryIds 过滤别的书的 id；同书父条目与分区正常可改（对照）", async () => {
+    const storage = await createTwoBookStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await repo.create(entryInput({ id: "entry-c", title: "丙" }));
+    const updated = await repo.update("book-1", "entry-c", { parentId: "entry-b", sectionId: "section-1", relatedEntryIds: ["entry-other", "entry-a"] });
+    expect(updated?.parentId).toBe("entry-b");
+    expect(updated?.relatedEntryIds).toEqual(["entry-a"]);
+  });
+
+  it("回退到旧修订时若旧父条目已成为自己的后代，拒绝回退以免成环", async () => {
+    const storage = await createTwoBookStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await repo.create(entryInput({ id: "entry-p", title: "父" }));
+    await repo.create(entryInput({ id: "entry-c", title: "子", parentId: "entry-p" }));
+    // 把 entry-c 移到根：这次更新前的快照里 parentId 仍是 entry-p
+    await repo.update("book-1", "entry-c", { parentId: null, revisionReason: "move" });
+    const [moveRevision] = await repo.listRevisions("book-1", "entry-c");
+    expect(moveRevision?.snapshot?.parentId).toBe("entry-p");
+    // 再把 entry-p 挂到 entry-c 下；此时回退 entry-c 会得到 c → p → c 的环
+    await repo.update("book-1", "entry-p", { parentId: "entry-c" });
+    await expect(repo.revertToRevision("book-1", "entry-c", moveRevision!.id)).rejects.toMatchObject({ code: "JINGWEI_PARENT_CYCLE" });
+    expect((await repo.getById("book-1", "entry-c"))?.parentId).toBeNull();
+  });
+});

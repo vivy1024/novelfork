@@ -211,6 +211,13 @@ describe("Jingwei markdown import", () => {
 describe("Jingwei mutation routes", () => {
   it("records revisions for move and bulk mutations instead of bypassing the repository", async () => {
     const created = await postEntry();
+    // T-12 起父条目必须是本书真实存在的条目（此前这里用的是不存在的 "parent-1"）。
+    const parentResponse = await request("/entries", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "parent-1", title: "宗门", category: "characters" }),
+    });
+    expect(parentResponse.status).toBe(201);
     const moveResponse = await request(`/entries/${created.id}/move`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -431,4 +438,219 @@ describe("Jingwei mutation routes", () => {
     });
   });
 
+});
+
+describe("Jingwei cross-book reference ownership (T-12)", () => {
+  const NOW = new Date("2026-08-01T00:00:00.000Z");
+  let crossBookDir: string;
+  let store: StorageDatabase;
+
+  beforeEach(async () => {
+    crossBookDir = join(tmpdir(), `novelfork-jingwei-t12-${crypto.randomUUID()}`);
+    await mkdir(crossBookDir, { recursive: true });
+    store = createStorageDatabase({ databasePath: join(crossBookDir, "novelfork.db") });
+    runStorageMigrations(store, { migrationsDir: join(process.cwd(), "../core/src/storage/migrations") });
+    await seedTwoBooks(store);
+  });
+
+  afterEach(async () => {
+    store.close();
+    await rm(crossBookDir, { recursive: true, force: true });
+  });
+
+  function crossBookApp() {
+    return createJingweiRouter({ storage: store });
+  }
+
+  function postJson(path: string, body: unknown): Promise<Response> {
+    return crossBookApp().request(`http://localhost/api/books/book-a/jingwei${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function seedTwoBooks(db: StorageDatabase): Promise<void> {
+    for (const id of ["book-a", "book-b"]) {
+      await createBookRepository(db).create({ id, name: id, jingweiMode: "dynamic", currentChapter: 1, createdAt: NOW, updatedAt: NOW });
+    }
+    db.sqlite.prepare(`INSERT INTO story_jingwei_section (id, book_id, key, name, description, "order", enabled, show_in_sidebar, participates_in_ai, default_visibility, fields_json, builtin_kind, source_template, created_at, updated_at)
+      VALUES ('sec-a', 'book-a', 'characters', '角色', '', 0, 1, 1, 1, 'tracked', '[]', 'characters', 'manual', ?, ?)`).run(NOW.getTime(), NOW.getTime());
+    db.sqlite.prepare(`INSERT INTO story_jingwei_section (id, book_id, key, name, description, "order", enabled, show_in_sidebar, participates_in_ai, default_visibility, fields_json, builtin_kind, source_template, created_at, updated_at)
+      VALUES ('sec-b', 'book-b', 'characters', '角色', '', 0, 1, 1, 1, 'tracked', '[]', 'characters', 'manual', ?, ?)`).run(NOW.getTime(), NOW.getTime());
+    insertEntry(db, "entry-a", "book-a", "sec-a", "本书角色");
+    insertEntry(db, "entry-a2", "book-a", "sec-a", "本书角色乙");
+    insertEntry(db, "entry-secret", "book-b", "sec-b", "机密角色甲");
+  }
+
+  function insertEntry(db: StorageDatabase, id: string, bookId: string, sectionId: string, title: string): void {
+    db.sqlite.prepare(`INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, created_at, updated_at, category, fields_json, layer, status)
+      VALUES (?, ?, ?, ?, '', '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}', 1, ?, ?, 'characters', '{}', 'dynamic', 'confirmed')`).run(id, bookId, sectionId, title, NOW.getTime(), NOW.getTime());
+  }
+
+  function sendJson(method: "POST" | "PUT" | "PATCH", path: string, body: unknown): Promise<Response> {
+    return crossBookApp().request(`http://localhost/api/books/book-a/jingwei${path}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** 拦截必须带三段式 explanation，且不得回显另一本书的内容。 */
+  async function expectExplainedRejection(response: Response, status: number, code: string): Promise<void> {
+    const text = await response.text();
+    expect(response.status, text).toBe(status);
+    const body = JSON.parse(text) as { error: { code: string; message: string }; explanation?: Record<string, unknown> };
+    expect(body.error.code).toBe(code);
+    expect(body.explanation).toEqual({
+      whatHappened: expect.stringMatching(/\S/),
+      whyItMatters: expect.stringMatching(/\S/),
+      suggestedAction: expect.stringMatching(/\S/),
+    });
+    expect(text).not.toContain("机密角色甲");
+  }
+
+  function entryRow(id: string): { section_id: string; parent_id: string | null; related_entry_ids_json: string } | undefined {
+    return store.sqlite.prepare<{ section_id: string; parent_id: string | null; related_entry_ids_json: string }>(
+      `SELECT section_id, parent_id, related_entry_ids_json FROM story_jingwei_entry WHERE id = ?`,
+    ).get(id);
+  }
+
+  it("does not reveal another book's entry title through the dependency query (T-12)", async () => {
+    // 修复前已落库的跨书依赖（建依赖端点现已拒绝），这里直接写入以模拟历史数据。
+    store.sqlite.prepare(`INSERT INTO jingwei_dependency (id, source_entry_id, target_entry_id, book_id, relation_type, created_at) VALUES ('dep-x', 'entry-a', 'entry-secret', 'book-a', 'references', ?)`).run(NOW.getTime());
+
+    const response = await crossBookApp().request("http://localhost/api/books/book-a/jingwei/entries/entry-a/dependencies");
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).not.toContain("机密角色甲");
+  });
+
+  it("does not reveal another book's entry title through the reverse dependency query (T-12)", async () => {
+    store.sqlite.prepare(`INSERT INTO jingwei_dependency (id, source_entry_id, target_entry_id, book_id, relation_type, created_at) VALUES ('dep-y', 'entry-secret', 'entry-a', 'book-a', 'references', ?)`).run(NOW.getTime());
+
+    const response = await crossBookApp().request("http://localhost/api/books/book-a/jingwei/entries/entry-a/dependencies");
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).not.toContain("机密角色甲");
+  });
+
+  it("lists same-book dependencies with their titles in both directions (T-12 control)", async () => {
+    store.sqlite.prepare(`INSERT INTO jingwei_dependency (id, source_entry_id, target_entry_id, book_id, relation_type, created_at) VALUES ('dep-ok', 'entry-a', 'entry-a2', 'book-a', 'references', ?)`).run(NOW.getTime());
+
+    const forward = await crossBookApp().request("http://localhost/api/books/book-a/jingwei/entries/entry-a/dependencies");
+    const reverse = await crossBookApp().request("http://localhost/api/books/book-a/jingwei/entries/entry-a2/dependencies");
+
+    expect(forward.status).toBe(200);
+    expect(reverse.status).toBe(200);
+    expect(await forward.json()).toMatchObject({ dependsOn: [{ targetEntryId: "entry-a2", title: "本书角色乙" }] });
+    expect(await reverse.json()).toMatchObject({ dependedBy: [{ sourceEntryId: "entry-a", title: "本书角色" }] });
+  });
+
+  it("allows a dependency between two entries of the same book (T-12 control)", async () => {
+    const response = await postJson("/dependencies", { sourceEntryId: "entry-a", targetEntryId: "entry-a2", relationType: "references" });
+    const rows = store.sqlite.prepare<{ count: number }>(`SELECT COUNT(*) AS count FROM jingwei_dependency WHERE source_entry_id = 'entry-a' AND target_entry_id = 'entry-a2'`).get()!;
+
+    expect(response.status).toBe(200);
+    expect(rows.count).toBe(1);
+  });
+
+  it("rejects a dependency whose target belongs to another book (T-12)", async () => {
+    const response = await postJson("/dependencies", { sourceEntryId: "entry-a", targetEntryId: "entry-secret", relationType: "references" });
+    const rows = store.sqlite.prepare<{ count: number }>(`SELECT COUNT(*) AS count FROM jingwei_dependency WHERE target_entry_id = 'entry-secret'`).get()!;
+
+    await expectExplainedRejection(response, 404, "JINGWEI_ENTRY_NOT_FOUND");
+    expect(rows.count).toBe(0);
+  });
+
+  it("rejects a dependency whose source belongs to another book (T-12)", async () => {
+    const response = await postJson("/dependencies", { sourceEntryId: "entry-secret", targetEntryId: "entry-a", relationType: "references" });
+    const rows = store.sqlite.prepare<{ count: number }>(`SELECT COUNT(*) AS count FROM jingwei_dependency WHERE source_entry_id = 'entry-secret'`).get()!;
+
+    await expectExplainedRejection(response, 404, "JINGWEI_ENTRY_NOT_FOUND");
+    expect(rows.count).toBe(0);
+  });
+
+  it("allows a relation between two entries of the same book (T-12 control)", async () => {
+    const response = await postJson("/relations", { sourceEntryId: "entry-a", targetEntryId: "entry-a2", relationType: "knows" });
+    const rows = store.sqlite.prepare<{ count: number }>(`SELECT COUNT(*) AS count FROM jingwei_relations WHERE source_entry_id = 'entry-a' AND target_entry_id = 'entry-a2'`).get()!;
+
+    expect(response.status).toBe(201);
+    expect(rows.count).toBe(1);
+  });
+
+  it("rejects a relation whose target belongs to another book (T-12)", async () => {
+    const response = await postJson("/relations", { sourceEntryId: "entry-a", targetEntryId: "entry-secret", relationType: "knows" });
+    const rows = store.sqlite.prepare<{ count: number }>(`SELECT COUNT(*) AS count FROM jingwei_relations WHERE target_entry_id = 'entry-secret'`).get()!;
+
+    await expectExplainedRejection(response, 404, "JINGWEI_ENTRY_NOT_FOUND");
+    expect(rows.count).toBe(0);
+  });
+
+  it("rejects a progression on another book's entry addressed through this book's path (T-12)", async () => {
+    const response = await postJson("/entries/entry-secret/progressions", { fieldKey: "realm", newValue: "筑基" });
+    const rows = store.sqlite.prepare<{ count: number }>(`SELECT COUNT(*) AS count FROM jingwei_progressions WHERE entry_id = 'entry-secret'`).get()!;
+
+    await expectExplainedRejection(response, 404, "JINGWEI_ENTRY_NOT_FOUND");
+    expect(rows.count).toBe(0);
+  });
+
+  it("records a progression on a same-book entry (T-12 control)", async () => {
+    const response = await postJson("/entries/entry-a/progressions", { fieldKey: "realm", newValue: "筑基" });
+
+    expect(response.status).toBe(201);
+    expect(store.sqlite.prepare<{ count: number }>(`SELECT COUNT(*) AS count FROM jingwei_progressions WHERE entry_id = 'entry-a' AND book_id = 'book-a'`).get()!.count).toBe(1);
+  });
+
+  it("rejects creating an entry in another book's section, even with a category fallback (T-12)", async () => {
+    const response = await postJson("/entries", { id: "entry-new", title: "新角色", sectionId: "sec-b", category: "characters" });
+
+    await expectExplainedRejection(response, 404, "JINGWEI_SECTION_NOT_IN_BOOK");
+    expect(entryRow("entry-new")).toBeUndefined();
+  });
+
+  it("rejects creating an entry under another book's parent entry (T-12)", async () => {
+    const response = await postJson("/entries", { id: "entry-new", title: "新角色", sectionId: "sec-a", parentId: "entry-secret" });
+
+    await expectExplainedRejection(response, 404, "JINGWEI_PARENT_NOT_IN_BOOK");
+    expect(entryRow("entry-new")).toBeUndefined();
+  });
+
+  it("creates a same-book entry and drops other books' ids from relatedEntryIds (T-12 control)", async () => {
+    const response = await postJson("/entries", {
+      id: "entry-new", title: "新角色", sectionId: "sec-a", parentId: "entry-a", relatedEntryIds: ["entry-a2", "entry-secret"],
+    });
+
+    expect(response.status).toBe(201);
+    expect(entryRow("entry-new")).toMatchObject({ section_id: "sec-a", parent_id: "entry-a" });
+    expect(JSON.parse(entryRow("entry-new")!.related_entry_ids_json)).toEqual(["entry-a2"]);
+  });
+
+  it("rejects moving an entry into another book's section or under another book's entry via PUT (T-12)", async () => {
+    await expectExplainedRejection(await sendJson("PUT", "/entries/entry-a2", { sectionId: "sec-b" }), 404, "JINGWEI_SECTION_NOT_IN_BOOK");
+    await expectExplainedRejection(await sendJson("PUT", "/entries/entry-a2", { parentId: "entry-secret" }), 404, "JINGWEI_PARENT_NOT_IN_BOOK");
+    expect(entryRow("entry-a2")).toMatchObject({ section_id: "sec-a", parent_id: null });
+  });
+
+  it("rejects a PUT that would make an entry its own ancestor (T-12)", async () => {
+    expect((await sendJson("PUT", "/entries/entry-a2", { parentId: "entry-a" })).status).toBe(200);
+    await expectExplainedRejection(await sendJson("PUT", "/entries/entry-a", { parentId: "entry-a2" }), 400, "JINGWEI_PARENT_CYCLE");
+    await expectExplainedRejection(await sendJson("PUT", "/entries/entry-a", { parentId: "entry-a" }), 400, "JINGWEI_PARENT_CYCLE");
+    expect(entryRow("entry-a")?.parent_id).toBeNull();
+  });
+
+  it("filters other books' ids from relatedEntryIds on PUT (T-12)", async () => {
+    const response = await sendJson("PUT", "/entries/entry-a", { relatedEntryIds: ["entry-secret", "entry-a2"] });
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(entryRow("entry-a")!.related_entry_ids_json)).toEqual(["entry-a2"]);
+  });
+
+  it("rejects moving an entry under another book's entry or into a cycle via the move endpoint (T-12)", async () => {
+    await expectExplainedRejection(await sendJson("PATCH", "/entries/entry-a/move", { parentId: "entry-secret" }), 404, "JINGWEI_PARENT_NOT_IN_BOOK");
+    expect((await sendJson("PATCH", "/entries/entry-a2/move", { parentId: "entry-a" })).status).toBe(200);
+    await expectExplainedRejection(await sendJson("PATCH", "/entries/entry-a/move", { parentId: "entry-a2" }), 400, "JINGWEI_PARENT_CYCLE");
+    expect(entryRow("entry-a")?.parent_id).toBeNull();
+    expect(entryRow("entry-a2")?.parent_id).toBe("entry-a");
+  });
 });
