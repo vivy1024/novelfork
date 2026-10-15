@@ -162,3 +162,88 @@ describe("novel tool registry lore/memory boundary", () => {
     }
   });
 });
+
+describe("T-05a 按动作判定风险（lore.write 与 memory.events）", () => {
+  const RANK: Record<string, number> = { read: 0, "draft-write": 1, "confirmed-write": 2, destructive: 3 };
+  const risk = (name: string, input: Record<string, unknown>) => {
+    const definition = tool(name);
+    if (!definition) throw new Error(`tool ${name} not registered`);
+    return definition.resolveRisk?.(input) ?? definition.risk;
+  };
+
+  it("lore.write 的 retire 与 delete 风险不低于 confirmed-write", () => {
+    expect(RANK[risk("lore.write", { action: "retire" })]!).toBeGreaterThanOrEqual(RANK["confirmed-write"]!);
+    expect(RANK[risk("lore.write", { action: "delete" })]!).toBeGreaterThanOrEqual(RANK["confirmed-write"]!);
+  });
+
+  it("memory.events 的 approve 与 reject 风险不低于 confirmed-write", () => {
+    expect(RANK[risk("memory.events", { action: "approve", eventId: "e1" })]!).toBeGreaterThanOrEqual(RANK["confirmed-write"]!);
+    expect(RANK[risk("memory.events", { action: "reject", eventId: "e1" })]!).toBeGreaterThanOrEqual(RANK["confirmed-write"]!);
+  });
+
+  it("只读与非 canon 的新建/更新不被误升到 confirmed-write 或更高", () => {
+    expect(RANK[risk("memory.events", { action: "list" })]!).toBeLessThanOrEqual(RANK["draft-write"]!);
+    // 普通 dynamic / reference 写入仍是草稿级；canon 才升级（见下方 canon 用例）。
+    expect(RANK[risk("lore.write", { action: "create", category: "relationships" })]!).toBeLessThanOrEqual(RANK["draft-write"]!);
+    expect(RANK[risk("lore.write", { action: "update", layer: "dynamic", category: "characters" })]!).toBeLessThanOrEqual(RANK["draft-write"]!);
+    expect(RANK[risk("lore.write", { action: "create", layer: "reference", category: "characters" })]!).toBeLessThanOrEqual(RANK["draft-write"]!);
+    expect(RANK[risk("lore.write", { action: "create", category: "自定义分类" })]!).toBeLessThanOrEqual(RANK["draft-write"]!);
+    // 拒绝拆书候选不写正式库，仍是草稿级。
+    expect(RANK[risk("lore.write", { stagingId: "s1", stagingDecision: "reject" })]!).toBeLessThanOrEqual(RANK["draft-write"]!);
+  });
+
+  it("lore.write 批量 entries[] 里夹带的 delete/retire 不能被顶层草稿级掩盖", () => {
+    expect(risk("lore.write", { entries: [{ action: "retire", title: "旧设定", reason: "过期" }] })).toBe("confirmed-write");
+    expect(risk("lore.write", { action: "create", category: "relationships", entries: [
+      { action: "create", category: "relationships", title: "A" },
+      { action: "delete", title: "B" },
+    ] })).toBe("confirmed-write");
+    // handler 对每项递归执行，嵌套 entries 同样要扫描。
+    expect(risk("lore.write", { entries: [{ entries: [{ action: "retire", title: "C" }] }] })).toBe("confirmed-write");
+    // 全部是 dynamic 普通写入的批量仍是草稿级（顶层单条字段在批量时被 handler 忽略，不参与判定）。
+    expect(risk("lore.write", { entries: [
+      { action: "create", category: "relationships", title: "A" },
+      { action: "update", layer: "dynamic", category: "characters", title: "B" },
+    ] })).toBe("draft-write");
+  });
+
+  it("lore.write 写入或覆盖 canon、晋升拆书候选一律升到 confirmed-write（顶层与 entries[] 都看）", () => {
+    expect(risk("lore.write", { action: "create", layer: "canon", category: "characters", title: "主角" })).toBe("confirmed-write");
+    expect(risk("lore.write", { action: "update", layer: "canon", category: "characters", title: "主角" })).toBe("confirmed-write");
+    expect(risk("lore.write", { action: "update", confirmCanonEdit: true, title: "主角", layer: "dynamic" })).toBe("confirmed-write");
+    expect(risk("lore.write", { stagingId: "s1", stagingDecision: "promote" })).toBe("confirmed-write");
+    // 不显式给 layer 时 handler 按分类默认层落盘：canon 默认分类等同写 canon。
+    expect(risk("lore.write", { action: "create", category: "characters", title: "主角" })).toBe("confirmed-write");
+    expect(risk("lore.write", { action: "create", category: "character", title: "主角" })).toBe("confirmed-write");
+    // 不给分类时 handler 按标题/正文推断分类，可能落到 canon 分类，按 canon 计。
+    expect(risk("lore.write", { action: "create", title: "主角", contentMd: "主角设定" })).toBe("confirmed-write");
+    expect(risk("lore.write", { entries: [{ action: "create", layer: "canon", category: "premise", title: "基线" }] })).toBe("confirmed-write");
+    expect(risk("lore.write", { entries: [{ action: "update", confirmCanonEdit: true, layer: "dynamic", title: "主角" }] })).toBe("confirmed-write");
+    expect(risk("lore.write", { entries: [{ stagingId: "s1", stagingDecision: "promote" }] })).toBe("confirmed-write");
+  });
+
+  it("memory.events 的批量 events[] 不携带逐条动作，风险只由顶层 action 决定", () => {
+    // handler 只认顶层 action；events[] 里写 approve 也只会按 create 建 pending 事件。
+    expect(risk("memory.events", { action: "create", events: [{ action: "approve", eventId: "e1" }] })).toBe("draft-write");
+    expect(risk("memory.events", { action: "approve", eventId: "e1", events: [] })).toBe("confirmed-write");
+  });
+
+  it("outline.volume / arc.character 与 handler 同样先 trim 并转小写再判定动作", () => {
+    // handler 的 parseAction 会把 "SET" / " sync " 解析成写动作；风险判定不能按原样比较而降成只读。
+    expect(risk("outline.volume", { action: "SET" })).toBe("confirmed-write");
+    expect(risk("outline.volume", { action: " Suggest " })).toBe("draft-write");
+    expect(risk("outline.volume", { action: "get" })).toBe("read");
+    expect(risk("arc.character", { action: " SYNC " })).toBe("draft-write");
+    expect(risk("arc.character", { action: "Refine" })).toBe("draft-write");
+    expect(risk("arc.character", {})).toBe("read");
+  });
+});
+
+describe("T-05a 既有行为守护：book.dissect 的 resolveRisk 不变", () => {
+  it("apply 或 settle 为 draft-write，其余为 read", () => {
+    const definition = NOVEL_SESSION_TOOL_DEFINITIONS.find((item) => item.name === "book.dissect");
+    expect(definition?.resolveRisk?.({ apply: true })).toBe("draft-write");
+    expect(definition?.resolveRisk?.({ settle: true })).toBe("draft-write");
+    expect(definition?.resolveRisk?.({})).toBe("read");
+  });
+});

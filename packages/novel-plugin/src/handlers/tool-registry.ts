@@ -7,6 +7,7 @@
  */
 import { NOVEL_TOOL_SCHEMAS } from "../tool-schemas.js";
 import type { ToolInputSchema } from "../tool-schemas.js";
+import { getCategoryDefaultLayer } from "../engine/jingwei/unified-categories.js";
 
 /** Portable equivalents of Studio's session-tool contracts. Keep this catalog Studio-free. */
 export type NovelRuntimeToolRisk = "read" | "draft-write" | "confirmed-write" | "destructive";
@@ -116,6 +117,56 @@ const WRITE_SESSION_PERMISSION_MODES: readonly NovelSessionPermissionMode[] = ["
 /** Preserve the Studio-compatible object-schema shape without importing Studio. */
 function toJsonObjectSchema(schema: ToolInputSchema): ToolInputSchema {
   return schema;
+}
+
+// ─── 按输入判定风险（T-05a） ────────────────────────────────────────────────
+// resolveRisk 必须与 handler 实际怎么解析输入保持一致：handler 会执行的写动作，
+// 风险判定不能因为字段位置、大小写或缺省值不同而判低。
+
+const RISK_RANK: Readonly<Record<NovelRuntimeToolRisk, number>> = { read: 0, "draft-write": 1, "confirmed-write": 2, destructive: 3 };
+
+function maxRisk(risks: readonly NovelRuntimeToolRisk[]): NovelRuntimeToolRisk {
+  return risks.reduce<NovelRuntimeToolRisk>((highest, risk) => (RISK_RANK[risk] > RISK_RANK[highest] ? risk : highest), "read");
+}
+
+/** 与 outline-volume / arc-character 的 parseAction 同口径：先 trim 再转小写。 */
+function normalizedAction(input?: Record<string, unknown>): string {
+  return typeof input?.action === "string" ? input.action.trim().toLowerCase() : "";
+}
+
+/**
+ * lore.write 单条写入是否落 canon 层。与 jingwei-write-handler 的层级解析同口径：
+ * 显式 layer 只认三个小写取值；未显式给出时 handler 按分类的 defaultLayer 落盘，
+ * 分类缺省或为 "setting" 时 handler 按标题/正文推断分类，可能落到 canon 分类，按 canon 计（宁可多确认一次）。
+ */
+function loreWriteTargetsCanon(item: Record<string, unknown>): boolean {
+  if (item.layer === "canon") return true;
+  if (item.layer === "dynamic" || item.layer === "reference") return false;
+  const category = typeof item.category === "string" ? item.category.trim() : "";
+  if (!category || category === "setting") return true;
+  return getCategoryDefaultLayer(category) === "canon";
+}
+
+/** handler 对 entries[] 逐项递归执行；超过这个嵌套深度直接按 confirmed-write 处理，不再展开。 */
+const LORE_WRITE_MAX_ENTRY_DEPTH = 4;
+
+/**
+ * lore.write 风险：handler 收到非空 entries[] 时忽略顶层单条字段、逐项（可再嵌套）执行，
+ * 所以批量调用取各项最高风险；任何一项是 delete/retire、canon 写入或覆盖、拆书候选晋升，都升到 confirmed-write。
+ */
+function resolveLoreWriteRisk(input: Record<string, unknown> | undefined, depth = 0): NovelRuntimeToolRisk {
+  if (depth > LORE_WRITE_MAX_ENTRY_DEPTH) return "confirmed-write";
+  const item = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  if (Array.isArray(item.entries) && item.entries.length > 0) {
+    return maxRisk(item.entries.map((entry) => resolveLoreWriteRisk(entry as Record<string, unknown>, depth + 1)));
+  }
+  // 带 stagingId 的拒绝：handler 在任何正式写入之前就只把候选标为 rejected 并返回，不进正式经纬。
+  if (item.stagingDecision === "reject" && typeof item.stagingId === "string" && item.stagingId.trim()) return "draft-write";
+  if (item.action === "delete" || item.action === "retire") return "confirmed-write";
+  if (item.stagingDecision === "promote") return "confirmed-write";
+  if (item.confirmCanonEdit === true) return "confirmed-write";
+  if (loreWriteTargetsCanon(item)) return "confirmed-write";
+  return "draft-write";
 }
 
 function sessionTool(
@@ -344,7 +395,11 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
       "卷级大纲（卷纲）管理。\n\naction=get（默认）：读取 volumes 与当前卷；\naction=suggest：按目标章数/卷数按确定性规则生成草案（不落盘）；action=set：落盘 story/volume_outline.json + .md。\n\n用途：长篇中盘防跑偏——当前卷目标会进 write.preflight 与 scene.spec 上下文。\n不写 lore canon。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["outline.volume"]),
     risk: "confirmed-write",
-    resolveRisk: (input) => input?.action === "suggest" ? "draft-write" : input?.action === "set" ? "confirmed-write" : "read",
+    // handler 的 parseAction 先 trim 再转小写，这里同口径，避免 "SET" 被判成只读。
+    resolveRisk: (input) => {
+      const action = normalizedAction(input);
+      return action === "suggest" ? "draft-write" : action === "set" ? "confirmed-write" : "read";
+    },
     renderer: "outline.volume",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
@@ -355,7 +410,11 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
       "角色弧线工具。\n\naction=status（默认，只读）：列出各角色弧类型、当前阶段、beats 数、最后推进章，并给出弧线不一致/停滞告警；\naction=sync：按确定性规则从指定章正文抽取 beats 并写入动态弧线表。\n\n用途：长篇人物成长线可见与纠偏。写入 jingwei_character_arc（dynamic），不动 canon。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["arc.character"]),
     risk: "confirmed-write",
-    resolveRisk: (input) => input?.action === "sync" || input?.action === "refine" ? "draft-write" : "read",
+    // 与 handler 的 parseAction 同口径（trim + 小写）。
+    resolveRisk: (input) => {
+      const action = normalizedAction(input);
+      return action === "sync" || action === "refine" ? "draft-write" : "read";
+    },
     renderer: "character.arcs",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
@@ -495,6 +554,9 @@ action=create | update | delete | retire。
 - 动态叙事事实应进入 memory.events / Narrative Memory 事件流程。`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.write"]),
     risk: "draft-write",
+    // T-05a：delete/retire、canon 写入或覆盖（含按分类默认落 canon）、拆书候选晋升升为 confirmed-write；
+    // 批量 entries[] 逐项（含嵌套）取最高风险。普通 dynamic/reference 写入保持草稿级。
+    resolveRisk: (input) => resolveLoreWriteRisk(input),
     renderer: "jingwei.write",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
@@ -567,6 +629,8 @@ action=create | update | delete | retire。
     description: "Pending NarrativeEvents 工具。用于创建、列出、批准或拒绝 Pending NarrativeEvents；approve 会写入 Narrative Memory facts，pending event 不等于 confirmed memory，更不能自动写入 Lore canon。create 可传 events[] 一次写入多条（最多 20）。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.events"]),
     risk: "draft-write",
+    // T-05a：approve 会写入 Narrative Memory facts，reject 会结束待定事件；二者按动作升为 confirmed-write。list/create 保持草稿级。
+    resolveRisk: (input) => input?.action === "approve" || input?.action === "reject" ? "confirmed-write" : "draft-write",
     renderer: "narrative-memory.events",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
