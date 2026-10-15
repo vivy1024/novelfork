@@ -28,6 +28,7 @@ import {
 	novelRuntimeBindingRoutes,
 } from "./http";
 import { adminUserCleanupRoutes } from "./routes/admin-user-cleanup";
+import { mountProductBodyLimit } from "./routes/body-limit";
 import { bundledPluginRoutes } from "./routes/bundled-plugins";
 import {
 	canAccessBoundNarratorFromUserId,
@@ -101,6 +102,9 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 	},
 	shutdown: closeNovelRuntimeStorage,
 	mountAuthenticatedGuards(app: Hono): void {
+		// T-11：产品路径的请求体上限（默认 2 MiB，长文本入口 8 MiB，档案导入 256 MiB）。
+		// 必须先于书籍守卫与任何产品路由挂载；非产品路径（Runtime 自身的大体积路由）不受影响。
+		mountProductBodyLimit(app);
 		app.use("/api/books/:bookId", guardNovelBookRoute);
 		app.use("/api/books/:bookId/*", guardNovelBookRoute);
 		app.use("/api/narrators/permissions/:requestId/*", async (c, next) => {
