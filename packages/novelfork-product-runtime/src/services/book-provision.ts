@@ -13,11 +13,13 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
+	AppError,
 	chapters,
 	db as runtimeDb,
 	deleteProjectById,
 	FOLLOW_DEFAULT_MODEL,
 	generateId,
+	logger,
 	narrators,
 	NotFoundError,
 	projects,
@@ -68,8 +70,10 @@ import {
 	bookRuntimeBindingService,
 	deriveBookRoot,
 	diagnoseTrustedBookRoot,
+	ensureBookGitRepository,
 	EXTERNAL_BOOK_WORKSPACE_MARKER,
 	getControlledBooksRoot,
+	probeRuntimeProjectGitPath,
 	resolveTrustedBookRoot,
 } from "./book-binding";
 
@@ -83,6 +87,15 @@ type ProvisionState =
 	| "compensation-required";
 
 type ProvisionOperation = typeof bookProvisionOperations.$inferSelect;
+
+/** 建书成功但有需要作者知道的降级（不落库，只随本次建书结果返回）。 */
+export type BookProvisionWarning = {
+	readonly code: "BOOK_GIT_INIT_FAILED";
+	readonly explanation: string;
+};
+
+/** 本次建书流程的结果：持久化的流程记录 + 本次执行中产生的降级说明。 */
+type ProvisionResult = ProvisionOperation & { readonly warnings?: readonly BookProvisionWarning[] };
 
 export type ProductBookWorkspaceSource = "none" | "new" | "existing";
 
@@ -158,7 +171,7 @@ export type GuidedSetupResult = {
 const READY_STATE: ProvisionState = "ready";
 const ROOT_CHAPTER_TITLE = "小说主线";
 const NOVELIST_PROMPT =
-	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 scene.spec 建立蓝图，再使用 pipeline.write；它会执行本书的字数、预设、节拍和审校治理。没有可用文本模型时必须如实说明阻塞，绝不能用 chapter.write 写入短文本充当新章节。chapter.write 仅用于覆盖已存在的完整章节，局部改写使用 rewrite.apply；所有写入都遵守 Runtime 权限确认。不要使用通用文件或命令工具绕过书籍领域边界。";
+	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 scene.spec 建立蓝图，再使用 pipeline.write；它会执行本书的字数、预设、节拍和审校治理。没有可用文本模型时必须如实说明阻塞，绝不能用 chapter.write 写入短文本充当新章节。chapter.write 仅用于覆盖已存在的完整章节，局部改写使用 rewrite.apply；所有写入都遵守 Runtime 权限确认。通用文件、命令、搜索等工具可以正常使用；但写章节正文请用 chapter.write / pipeline.write，改设定请用 lore.* 工具，这样字数、结算和审计才会正确记录。";
 
 export type RuntimeEntityCapabilities = {
 	read: boolean;
@@ -336,9 +349,25 @@ async function resolveWorkspacePath(
 	return { absolutePath, relativePath };
 }
 
+/** 书根的版本库目录：由 git 与 Runtime 管理，不在工作台文件树里出现，也不能经文件网关改动。 */
+const WORKSPACE_GIT_DIR = ".git";
+
+function isWorkspaceGitPath(relativePath: string): boolean {
+	return relativePath.split("/")[0]?.toLowerCase() === WORKSPACE_GIT_DIR;
+}
+
 function assertMutableWorkspacePath(relativePath: string): void {
 	if (PROTECTED_WORKSPACE_FILES.has(relativePath)) {
 		throw new ValidationError(`${relativePath} is managed by NovelFork and cannot be changed from the IDE file tree`);
+	}
+	if (isWorkspaceGitPath(relativePath)) {
+		throw new ValidationError(
+			[
+				`发生了什么：${relativePath} 位于作品目录的 .git 版本库里，工作台文件网关不能改动它。`,
+				"为什么要看：.git 由 git 和 NarraFork Runtime 管理，改动其中的配置或钩子会破坏版本记录，甚至让 Runtime 执行 git 时运行意外的命令。",
+				"建议怎么做：作品内容请在 chapters、story 等目录里编辑；确实需要调整版本库时，请在终端里用 git 命令操作。",
+			].join("\n"),
+		);
 	}
 }
 
@@ -607,7 +636,7 @@ function operationState(operation: ProvisionOperation): ProvisionState {
 	return operation.state as ProvisionState;
 }
 
-function publicOperation(operation: ProvisionOperation) {
+function publicOperation(operation: ProvisionResult) {
 	return {
 		id: operation.id,
 		bookId: operation.bookId,
@@ -618,6 +647,7 @@ function publicOperation(operation: ProvisionOperation) {
 		error: operation.errorMessage,
 		createdAt: operation.createdAt,
 		updatedAt: operation.updatedAt,
+		...(operation.warnings?.length ? { warnings: operation.warnings } : {}),
 	};
 }
 
@@ -1095,6 +1125,101 @@ async function isProductOwnedBookRoot(bookRoot: string): Promise<boolean> {
 	return rel !== "" && rel !== ".." && !isAbsolute(rel) && !/[\\/]/u.test(rel);
 }
 
+const BOOK_GIT_FAILURE_LABEL = {
+	"git-unavailable": "找不到 git 程序",
+	timeout: "git 命令超时",
+	failed: "git 命令失败",
+} as const;
+
+/**
+ * 建书时把受控书根初始化为 git 仓库（NarraFork 的项目即 git 仓库）。git 不可用时建书照常完成，
+ * 返回一条说明；删书时另有兜底（见 prepareRuntimeProjectGitPath），不会因此删不掉。
+ */
+async function initializeControlledBookGit(
+	root: string,
+	creatorUserId: string | null,
+): Promise<BookProvisionWarning | null> {
+	const result = await ensureBookGitRepository(root, { creatorUserId });
+	if (result.status !== "failed") return null;
+	logger.warn("Controlled book root could not be initialized as a git repository", {
+		root,
+		reason: result.reason,
+		detail: result.detail,
+	});
+	return {
+		code: "BOOK_GIT_INIT_FAILED",
+		explanation: [
+			`发生了什么：作品目录 ${root} 没能初始化为 git 仓库（${BOOK_GIT_FAILURE_LABEL[result.reason]}：${result.detail}）。作品本身已经建好，可以正常写作。`,
+			"为什么要看：NarraFork Runtime 把每个项目当作 git 仓库管理，这本书在 Runtime 里的版本记录、分支对比等 git 功能不可用；删除这本书不受影响，会自动兜底。",
+			"建议怎么做：安装 git 并确认运行 NovelFork 的进程能在 PATH 里找到它；如果只用 NovelFork 写作，可以忽略这条提示。",
+		].join("\n"),
+	};
+}
+
+/**
+ * 删书第 1 步之前：让 Runtime 删项目时的 git 核实能通过，同时绝不在用户的外部目录里执行 git init。
+ *
+ * Runtime 0.8.3 删除项目前会在 gitPath 上执行 `git rev-parse --git-common-dir`，失败就拒绝（409），
+ * 而 v0.0.4 建在受控目录里的书都不是 git 仓库，所以删不掉。
+ * - gitPath 能通过核实（本身是仓库或位于仓库里）：不动；
+ * - gitPath 就是 NovelFork 自己管理的书根：按建书口径补做 git 初始化；
+ * - 外部目录不是仓库、目录已经不在、git 不可用或补做失败：把这条 Runtime 项目的 gitPath 置空，
+ *   Runtime 就跳过 git 核实与 worktree 清理（不是仓库的目录本来也不可能挂着工作树），目录本身原样保留；
+ * - 核实超时：不置空，交给 Runtime 自己判断，免得把一次卡顿当成「不是仓库」而绕过资源保护。
+ * 可重入：gitPath 置空后再删一次会直接跳过这一步。
+ */
+async function prepareRuntimeProjectGitPath(
+	project: { readonly id: string; readonly gitPath: string | null },
+	ownedBookRoot: string | null,
+	creatorUserId: string | null,
+): Promise<void> {
+	if (!project.gitPath) return;
+	const probe = await probeRuntimeProjectGitPath(project.gitPath);
+	if (probe.ok || probe.reason === "timeout") return;
+	let detail = probe.detail;
+	if (ownedBookRoot && (await realpath(project.gitPath).catch(() => null)) === ownedBookRoot) {
+		const ensured = await ensureBookGitRepository(ownedBookRoot, { creatorUserId });
+		if (ensured.status !== "failed") {
+			const recheck = await probeRuntimeProjectGitPath(project.gitPath);
+			if (recheck.ok) return;
+			detail = recheck.detail;
+		} else {
+			detail = ensured.detail;
+		}
+	}
+	logger.warn("Clearing Runtime project gitPath before deletion: path is not a usable git repository", {
+		projectId: project.id,
+		gitPath: project.gitPath,
+		controlled: Boolean(ownedBookRoot),
+		detail,
+	});
+	await runtimeDb
+		.update(projects)
+		.set({ gitPath: null, updatedAt: now() })
+		.where(eq(projects.id, project.id));
+}
+
+/** Runtime 资源保护拒绝删除时的错误码（worktree-lifecycle-guard 的 ResourceProtectionError，409）。 */
+const RUNTIME_RESOURCE_PROTECTION_CODES = new Set(["RESOURCE_PROTECTED", "RESOURCE_PROTECTION_UNAVAILABLE"]);
+
+/** 删除 Runtime 项目；Runtime 以资源保护为由拒绝时换成作者看得懂的三段式说明，状态码与错误码不变。 */
+async function deleteRuntimeProjectExplained(projectId: string): Promise<void> {
+	try {
+		await deleteProjectById(projectId);
+	} catch (error) {
+		if (!(error instanceof AppError) || !RUNTIME_RESOURCE_PROTECTION_CODES.has(error.code)) throw error;
+		throw new AppError(
+			[
+				`发生了什么：NarraFork Runtime 拒绝删除这本书对应的 Runtime 项目（${error.message}）。`,
+				"为什么要看：Runtime 发现这本书的工作区还被占用，或无法确认没有被占用；为了不误删正在使用的内容，删除在第一步就停下了，书、章节和目录都原样保留。",
+				"建议怎么做：先停掉这本书正在运行的叙述者，关闭在 Runtime 里打开的终端或分支工作区，然后再删一次；仍然失败时，请把这条信息和 Runtime 日志一起反馈。",
+			].join("\n"),
+			error.statusCode,
+			error.code,
+		);
+	}
+}
+
 function resolveDomainBookRoot(bookId: string): string {
 	return resolveBookStorageDir(dirname(getControlledBooksRoot()), bookId);
 }
@@ -1335,11 +1460,15 @@ export class NovelForkProductBookService {
 		// 1. Runtime 项目先删：Runtime 拒绝（如无法核实资源保护）时什么都还没改；
 		//    在 Windows 上它的 watcher/git 进程还会占着书目录，先删项目才能删目录。
 		//    上一次删除已删掉项目时跳过。
-		const projectStillExists = await runtimeDb.query.projects.findFirst({
+		//    删之前先让 Runtime 的 git 核实能通过：受控目录补做 git 初始化，外部非仓库目录只把 gitPath 置空。
+		const runtimeProject = await runtimeDb.query.projects.findFirst({
 			where: eq(projects.id, operation.runtimeProjectId),
-			columns: { id: true },
+			columns: { id: true, gitPath: true },
 		});
-		if (projectStillExists) await deleteProjectById(operation.runtimeProjectId);
+		if (runtimeProject) {
+			await prepareRuntimeProjectGitPath(runtimeProject, ownedBookRoot, operation.actorUserId);
+			await deleteRuntimeProjectExplained(operation.runtimeProjectId);
+		}
 		// 2. 产品库里这本书的全部数据（单事务；失败时绑定与记录都还在，可重试）。
 		purgeBookScopedStorage(getStorageDatabase(), normalizedBookId);
 		// 3. 只删 NovelFork 自己管理的目录；外部目录只解绑。
@@ -2179,6 +2308,8 @@ export class NovelForkProductBookService {
 			)) {
 				if (entry.isSymbolicLink()) continue;
 				const childPath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+				// 受控书初始化为 git 仓库后书根多了 .git：不进文件树，免得暴露版本库内部、拖慢扫描。
+				if (isWorkspaceGitPath(childPath)) continue;
 				const child = await resolveWorkspacePath(root, childPath, { requireExisting: true }).catch(
 					() => null,
 				);
@@ -2347,6 +2478,7 @@ export class NovelForkProductBookService {
 	async mkdirWorkspacePath(bookId: string, rawPath: string, actor: ProductActor): Promise<{ path: string }> {
 		const { root, operation } = await this.getReadyBookRoot(bookId, actor);
 		const target = await resolveWorkspacePath(root, rawPath, { requireExisting: false, allowMissingParents: true });
+		if (isWorkspaceGitPath(target.relativePath)) assertMutableWorkspacePath(target.relativePath);
 		if (await stat(target.absolutePath).catch(() => null)) throw new ValidationError("workspace path already exists");
 		await mkdir(target.absolutePath, { recursive: true });
 		this.invalidateWorkspaceFileTree(operation.bookId);
@@ -2603,12 +2735,13 @@ export class NovelForkProductBookService {
 	private async resume(
 		operation: ProvisionOperation,
 		actor: ProductActor,
-	): Promise<ProvisionOperation> {
+	): Promise<ProvisionResult> {
 		if (operation.actorUserId !== actor.userId && actor.role !== "admin") {
 			throw new NotFoundError("Book provision operation", operation.bookId);
 		}
 		if (operationState(operation) === "ready") return operation;
 		let current = operation;
+		let warnings: readonly BookProvisionWarning[] = [];
 		try {
 			if (operationState(current) === "reserved" || operationState(current) === "failed") {
 				await this.stageCore(current);
@@ -2628,12 +2761,14 @@ export class NovelForkProductBookService {
 				});
 			}
 			if (operationState(current) === "filesystem-promoted") {
-				current = await this.bindRuntime(current);
+				const bound = await this.bindRuntime(current);
+				current = bound;
+				warnings = bound.warnings ?? [];
 			}
 			if (operationState(current) === "runtime-bound") {
 				current = await this.updateOperation(current.id, { state: "ready", errorMessage: null });
 			}
-			return current;
+			return warnings.length > 0 ? { ...current, warnings } : current;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const state: ProvisionState =
@@ -2750,7 +2885,7 @@ export class NovelForkProductBookService {
 		return operation;
 	}
 
-	private async bindRuntime(operation: ProvisionOperation): Promise<ProvisionOperation> {
+	private async bindRuntime(operation: ProvisionOperation): Promise<ProvisionResult> {
 		const input = operation.inputJson as ProductBookInput;
 		const external = isExternalBookWorkspace(input.projectInit);
 		const root = external && input.projectInit?.workspaceRoot
@@ -2762,6 +2897,12 @@ export class NovelForkProductBookService {
 			if (external) await readImportBookConfig(root);
 			else throw new ValidationError("Book metadata is invalid");
 		});
+		// Runtime 的项目即 git 仓库：落在受控根下的书（新建、复制导入、档案导入、认领都经这里）
+		// 先按 NarraFork 的 init 口径初始化，再写项目行。要不要初始化只看物理位置，与删书判定一致；
+		// 用户的外部目录一律不碰。git 不可用时不让建书失败，结果里带说明。
+		const gitWarning = (await isProductOwnedBookRoot(root))
+			? await initializeControlledBookGit(root, operation.actorUserId)
+			: null;
 		let current = operation;
 		const projectId = current.runtimeProjectId ?? generateId();
 		const chapterId = current.runtimeChapterId ?? generateId();
@@ -2834,7 +2975,8 @@ export class NovelForkProductBookService {
 			operation.actorUserId,
 			root,
 		);
-		return this.updateOperation(current.id, { state: "runtime-bound", errorMessage: null });
+		const bound = await this.updateOperation(current.id, { state: "runtime-bound", errorMessage: null });
+		return gitWarning ? { ...bound, warnings: [gitWarning] } : bound;
 	}
 
 	private async controlledBookRoot(bookId: string, createRoot: boolean): Promise<string> {

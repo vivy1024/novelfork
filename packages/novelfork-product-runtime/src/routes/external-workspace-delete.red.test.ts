@@ -3,7 +3,7 @@ import { access, copyFile, mkdir, mkdtemp, readFile, realpath, rename, rm, write
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { AppError } from "@vivy1024/narrafork-runtime-bridge";
+import { AppError, db as runtimeDb } from "@vivy1024/narrafork-runtime-bridge";
 import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
 import { novelForkProductIntegration } from "../index";
 import { initializeNovelRuntimeStorage } from "../adapters/storage";
@@ -225,9 +225,10 @@ describe("删书：只删 NovelFork 自己管理的目录，外部目录只解�
 		});
 		expect({ status: created.status, state: created.json.state }).toMatchObject({ status: 201, state: "ready" });
 		expect(await exists(join(legacyRoot, "book.json"))).toBe(true);
-		// Runtime 删项目前要用 git 核实资源保护，非 git 目录会被 409 拒绝（见下方「Runtime 拒绝」用例）；
-		// 这里只验证目录归属判定，先把它变成 git 仓库。
-		await git(legacyRoot, ["init", "-q"]);
+		// 物理上在受控根里：建书时按受控目录初始化了 git（判定只看物理位置，与删书一致）。
+		expect(await exists(join(legacyRoot, ".git"))).toBe(true);
+		// 再模拟修复前建的书（没有 .git）：Runtime 删项目前的 git 核实会失败，删书须先补做初始化。
+		await rm(join(legacyRoot, ".git"), { recursive: true, force: true });
 
 		const remove = await app.request(`/api/novelfork/books/${bookId}`, { method: "DELETE" });
 		expect({ status: remove.status, body: await remove.clone().text() }).toMatchObject({ status: 200 });
@@ -295,18 +296,38 @@ describe("删书：只删 NovelFork 自己管理的目录，外部目录只解�
 		expect(await readFile(join(root, "source-marker.md"), "utf8")).toBe(SOURCE_TEXT);
 	});
 
-	test("Runtime 拒绝删除项目时（书目录不是 git 仓库，无法核实资源保护）什么都不改：产品库数据、绑定与目录原样保留", async () => {
+	test("Runtime 拒绝删除项目时（项目下还登记着叙述者工作区，资源受保护）什么都不改：产品库数据、绑定与目录原样保留，报错带三段式说明", async () => {
 		const app = productApp(owner);
 		const created = await createBook(app, { title: `s14-runtime-refuses-${crypto.randomUUID()}` });
 		expect({ status: created.status, state: created.json.state }).toMatchObject({ status: 201, state: "ready" });
 		const bookId = created.json.bookId as string;
+		const runtimeProjectId = created.json.runtimeProjectId as string;
 		withRelaxedConstraints(() => {
 			seedRow("workflow_runs", bookId);
 			seedRow("narrative_fact", bookId);
 		});
+		// 书目录已是 git 仓库，Runtime 的 git 核实能过；这里用 Runtime 自己的资源保护让它拒绝：
+		// 项目名下登记着一个叙述者工作区时，withProjectRetirement 一律拒绝删除。
+		const runtimeSqlite = (runtimeDb as unknown as { $client: { prepare(sql: string): { run(...params: unknown[]): unknown } } }).$client;
+		const resourceId = `s14-protected-${crypto.randomUUID()}`;
+		runtimeSqlite
+			.prepare(
+				`INSERT INTO narrator_worktree_resources (id, scope_kind, scope_project_id, device_id, repository_key, worktree_path, state, create_request_id)
+				 VALUES (?, 'project', ?, 'local', ?, ?, 'ready', ?)`,
+			)
+			.run(resourceId, runtimeProjectId, `s14-repo-${resourceId}`, join(tmpdir(), resourceId), resourceId);
 
-		const refused = await app.request(`/api/novelfork/books/${bookId}`, { method: "DELETE" });
+		let refused: Response;
+		try {
+			refused = await app.request(`/api/novelfork/books/${bookId}`, { method: "DELETE" });
+		} finally {
+			runtimeSqlite.prepare("DELETE FROM narrator_worktree_resources WHERE id = ?").run(resourceId);
+		}
 		expect(refused.status).toBe(409);
+		const refusal = (await refused.json()) as { code: string; error: string };
+		expect(refusal.code).toBe("RESOURCE_PROTECTED");
+		expect(refusal.error).toContain("发生了什么");
+		expect(refusal.error).toContain("建议怎么做");
 		expect({
 			book: countRows("book", "id = ?", bookId),
 			runs: countRows("workflow_runs", "book_id = ?", bookId),
