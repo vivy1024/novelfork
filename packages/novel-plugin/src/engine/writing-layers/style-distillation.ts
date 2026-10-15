@@ -188,6 +188,14 @@ function normalizeChapters(input: StyleDistillationSourceInput): DistillableChap
   if (hasText) {
     const text = input.text!.trim();
     if (!text) throw new StyleDistillationError("参考正文不能为空。", "STYLE_DISTILLATION_INVALID_INPUT");
+    // 先按蒸馏自己的口径判总长度（T-07）：超长正文交给切章会被切章器的 200 万上限拦下，
+    // 再被下面的 catch 包装成「章节分割规则无效」，让作者去改一条本来没问题的规则。
+    if (text.length > MAX_STYLE_DISTILLATION_CHARS) {
+      throw new StyleDistillationError(
+        `参考正文最多支持 ${MAX_STYLE_DISTILLATION_CHARS} 字，当前为 ${text.length} 字。请截取要学习的部分章节后再预览。`,
+        "STYLE_DISTILLATION_TOO_LARGE",
+      );
+    }
     let split: ReadonlyArray<SplitChapter>;
     try {
       split = splitChapters(text, input.splitPattern?.trim() || undefined);

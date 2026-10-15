@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -426,6 +426,7 @@ function BookStyleDistillationWorkspace({
   onBusyChange,
 }: StyleDistillationWorkspaceProps) {
   const [draft, setDraft] = useState<Draft>({ sourceName: "", text: "", splitPattern: "" });
+  const splitPatternHintId = useId();
   const [stage, setStage] = useState<Stage>("input");
   const [preview, setPreview] = useState<StyleDistillationPreviewResponse | null>(null);
   const [review, setReview] = useState<Review | null>(null);
@@ -728,9 +729,20 @@ function BookStyleDistillationWorkspace({
                 <span className="text-sm font-medium">来源名称</span>
                 <Input aria-label="来源名称" value={draft.sourceName} onChange={(event) => updateDraft({ sourceName: event.target.value })} placeholder="例如：参考作品 A" disabled={busy} />
               </label>
+              {/* 这个值会作为分章正则（splitPattern）交给后端切章；旧文案「章节范围提示 / 第1章至第20章」会诱导作者填范围。 */}
               <label className="space-y-1.5">
-                <span className="text-sm font-medium">章节范围提示</span>
-                <Input aria-label="章节范围提示" value={draft.splitPattern} onChange={(event) => updateDraft({ splitPattern: event.target.value })} placeholder="可选，例如：第1章至第20章" disabled={busy} />
+                <span className="text-sm font-medium">章节标题规则（可选，正则）</span>
+                <Input
+                  aria-label="章节标题规则（可选，正则）"
+                  aria-describedby={splitPatternHintId}
+                  value={draft.splitPattern}
+                  onChange={(event) => updateDraft({ splitPattern: event.target.value })}
+                  placeholder="^【\d+】(.*)"
+                  spellCheck={false}
+                  autoComplete="off"
+                  disabled={busy}
+                />
+                <span id={splitPatternHintId} className="block text-xs text-muted-foreground">留空则自动识别『第X章』『Chapter X』等标题；只支持简单规则</span>
               </label>
             </div>
             <label className="block space-y-1.5">

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import {
   splitChapters,
   splitChaptersWithVolumes,
+  MAX_SPLIT_TEXT_LENGTH,
   StateManager,
   getStorageDatabase,
   type ChapterMeta,
@@ -458,6 +459,9 @@ async function importChapters(
   // 默认 500 章防误贴整本；允许的调用方可显式提高到 2000（如整书旧稿导入）。单次 dissect 上限另算。
   const maxChapters = Math.min(optionalPositiveInteger(input.maxChapters) ?? 500, 2000);
   if (content.length < 1000) return fail("text-too-short", "导入文本至少需要 1000 字。");
+  if (content.length > MAX_SPLIT_TEXT_LENGTH) {
+    return fail("import-text-too-large", `导入文本超过 ${MAX_SPLIT_TEXT_LENGTH} 字上限，请分批导入。`);
+  }
   let split;
   try {
     split = splitChaptersWithVolumes(content, typeof input.splitPattern === "string" ? input.splitPattern : undefined);

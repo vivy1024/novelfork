@@ -233,4 +233,21 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
     expect(vol01).toHaveLength(210);
     expect(await readdir(join(testDir, "story", "import-source"))).toHaveLength(1);
   }, 120_000);
+
+  it("超过正文上限的导入被前置拒绝，且不写入任何章节文件", async () => {
+    const { MAX_SPLIT_TEXT_LENGTH } = await import("@vivy1024/novelfork-core");
+    const oversized = `第一章 x\n${"字".repeat(MAX_SPLIT_TEXT_LENGTH)}`;
+
+    const result = await executeRuntimeDomainTool(
+      "pipeline.import_chapters",
+      { content: oversized, sourceName: "超大旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      binding,
+      {} as never,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("import-text-too-large");
+    expect(result.error).not.toBe("invalid-split-pattern");
+    expect(await readdir(join(testDir, "chapters"))).toEqual([]);
+  });
 });

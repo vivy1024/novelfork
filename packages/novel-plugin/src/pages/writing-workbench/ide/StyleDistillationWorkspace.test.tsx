@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { splitChapters } from "@vivy1024/novelfork-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StyleDistillationWorkspace, type StyleDistillationFetchJson } from "./StyleDistillationWorkspace";
+
+const SPLIT_PATTERN_LABEL = "章节标题规则（可选，正则）";
 
 afterEach(() => cleanup());
 
@@ -44,7 +47,7 @@ function seedPreviewRequest(request: ReturnType<typeof vi.fn>, result = job) {
 
 function fillDraft() {
   fireEvent.change(screen.getByLabelText("来源名称"), { target: { value: "参考作品 A" } });
-  fireEvent.change(screen.getByLabelText("章节范围提示"), { target: { value: "第3章至第4章" } });
+  fireEvent.change(screen.getByLabelText(SPLIT_PATTERN_LABEL), { target: { value: "^第(\\d+)章" } });
   fireEvent.change(screen.getByLabelText("粘贴参考文本"), { target: { value: "第三章 雨夜。她停在门前。" } });
 }
 
@@ -80,8 +83,21 @@ describe("StyleDistillationWorkspace", () => {
     expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toEqual({
       sourceName: "参考作品 A",
       text: "第三章 雨夜。她停在门前。",
-      splitPattern: "第3章至第4章",
+      splitPattern: "^第(\\d+)章",
     });
+  });
+
+  it("分章规则输入框如实标注为正则：占位是一条真能用的规则，并说明留空自动识别（T-07）", () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    // 旧标签「章节范围提示」+ 占位「第1章至第20章」会诱导作者填章节范围，而值实际被当成分章正则。
+    expect(screen.queryByLabelText("章节范围提示")).toBeNull();
+    const input = screen.getByLabelText(SPLIT_PATTERN_LABEL) as HTMLInputElement;
+    expect(input.placeholder).not.toMatch(/至/);
+    // 照着占位填，后端切章器能直接用
+    expect(splitChapters("【1】开篇\n甲。\n【2】转折\n乙。", input.placeholder).map((chapter) => chapter.title)).toEqual(["开篇", "转折"]);
+    const hint = screen.getByText("留空则自动识别『第X章』『Chapter X』等标题；只支持简单规则");
+    expect(input.getAttribute("aria-describedby")).toBe(hint.id);
   });
 
   it("逐条确认保留证据和迁移边界，来源专属也能确认", async () => {
@@ -184,7 +200,7 @@ describe("StyleDistillationWorkspace", () => {
     expect(screen.getByRole("button", { name: "复制 SKILL.md 内容" })).toBeTruthy();
   });
 
-  it("切回输入阶段保留来源名称、范围提示和参考文本草稿", async () => {
+  it("切回输入阶段保留来源名称、标题规则和参考文本草稿", async () => {
     const request = vi.fn<StyleDistillationFetchJson>();
     seedPreviewRequest(request);
     render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
@@ -193,7 +209,7 @@ describe("StyleDistillationWorkspace", () => {
     await screen.findByText("来源包预览");
     fireEvent.click(screen.getByRole("button", { name: "返回修改" }));
     expect(screen.getByDisplayValue("参考作品 A")).toBeTruthy();
-    expect(screen.getByDisplayValue("第3章至第4章")).toBeTruthy();
+    expect(screen.getByDisplayValue("^第(\\d+)章")).toBeTruthy();
     expect(screen.getByDisplayValue("第三章 雨夜。她停在门前。")).toBeTruthy();
   });
 });
