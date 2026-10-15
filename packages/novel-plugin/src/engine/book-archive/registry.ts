@@ -6,6 +6,8 @@
  * 「未包含」，不会被悄悄丢掉。
  */
 
+import { WRITING_INJECTION_PRESERVE_FILE } from "../narrative-memory/writing-injection-preserve.js";
+
 export const BOOK_ARCHIVE_FORMAT = "novelfork-book-archive";
 /** 当前档案格式版本。读取更新的版本会被明确拒绝；更旧的版本在 upgradeManifest 里逐级升级。 */
 export const BOOK_ARCHIVE_FORMAT_VERSION = 1;
@@ -161,6 +163,42 @@ const REFERENCE_FILES = new Set(["story/dissect_draft.json", "story/market_radar
 const STYLE_FILES = new Set(["story/style_preset.json", "story/style_profile.json", "story/style_guide.md"]);
 /** 作品根目录下允许迁移的点文件；其余点文件（如 .env）一律不导出也不导入。 */
 const ALLOWED_ROOT_DOT_FILES = new Set([".writing-resource-migrated"]);
+/** 无点前缀的私钥与凭据文件名（大小写不敏感）：导出与导入一律不处理。 */
+const SENSITIVE_BASENAME = /^(id_rsa(\.pub)?|credentials)$/iu;
+/**
+ * 写作注入保留件（T-05c）：最近一次写作召回的派生快照，随系统提示重放。它由本机召回重新生成，
+ * 导出不打包；导入档案里出现即拒收——否则一份档案就能往系统提示里塞任意「召回原文」。
+ */
+const WRITING_INJECTION_PRESERVE_PATH = `story/${WRITING_INJECTION_PRESERVE_FILE}`;
+/**
+ * Runtime 从叙述者工作目录（即作品根）读取的项目指令文件，取第一个存在的注入系统提示「## Project Instructions」
+ * （narrafork-runtime 的 server/lib/global-prompt-paths.ts PROJECT_PROMPT_FILENAMES，由 narrator-prompt.ts 读取）。
+ * 档案若能写入这些文件，导入一份档案就能改写叙述者的系统指令，所以作品根这一层一律不导出、不导入；
+ * 子目录里的同名文件 Runtime 不读，不受影响。小写比较（Windows 文件名大小写不敏感）。
+ */
+const ROOT_PROJECT_PROMPT_FILES = new Set(["agents.override.md", "agents.md", "agent.md", "claude.md"]);
+/**
+ * 可执行文件与脚本扩展名（T-09，作者定：项目档案是整本书的备份，不需要任何可执行文件）。
+ * 任意层级（含 .novelfork/skills/）一律不导出、不导入；大小写不敏感。.app 是目录包，路径里任一段以它结尾都算。
+ */
+const EXECUTABLE_EXTENSIONS = new Set([
+  ".exe", ".dll", ".com", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".wsf", ".scr", ".msi", ".msp",
+  ".lnk", ".jar", ".app", ".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".cjs",
+]);
+
+/**
+ * Windows 建文件时会去掉名字末尾的点与空格（档案里的 "AGENTS.md." 或 "tool.exe " 落盘后就是 "AGENTS.md" / "tool.exe"），
+ * 按名字与扩展名判定前先做同样的规整，再转小写，避免借此绕过。
+ */
+function effectiveName(segment: string): string {
+  return segment.replace(/[. ]+$/u, "").toLowerCase();
+}
+
+function hasExecutableExtension(segment: string): boolean {
+  const name = effectiveName(segment);
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 && EXECUTABLE_EXTENSIONS.has(name.slice(dot));
+}
 
 /**
  * 按作品根目录下的相对路径（正斜杠）判定文件归属。导出与导入共用：
@@ -172,16 +210,27 @@ export function classifyBookFile(relativePath: string): BookFileClass {
   const first = segments[0] ?? "";
   const last = segments[segments.length - 1] ?? "";
   if (relativePath === "book.json") return { kind: "book" };
+  // 凭据与环境变量文件在任何目录下都不导出（含 .novelfork/ 技能目录，模型会读取其中文件）。
+  if (last.startsWith(".env")) return { kind: "excluded", explanation: "环境变量文件可能含密钥，不随作品迁移。" };
+  if (SENSITIVE_BASENAME.test(last)) return { kind: "excluded", explanation: "私钥与凭据文件含敏感信息，不随作品迁移。" };
+  // 可执行文件在任何目录下都不导出、不导入（含 .novelfork/skills/，技能目录会被模型读取与调用）。
+  if (hasExecutableExtension(last) || segments.slice(0, -1).some((segment) => effectiveName(segment).endsWith(".app"))) {
+    return { kind: "excluded", explanation: "可执行文件与脚本不属于作品内容；项目档案是整本书的备份，不打包也不导入任何可执行文件。" };
+  }
+  if (segments.length === 1 && ROOT_PROJECT_PROMPT_FILES.has(effectiveName(last))) {
+    return { kind: "excluded", explanation: "作品根目录下的 AGENTS.md / CLAUDE.md 等项目指令文件会被叙述者当作系统指令读取，属于本机配置，不随作品迁移。" };
+  }
+  if (effectiveName(relativePath) === WRITING_INJECTION_PRESERVE_PATH) {
+    return { kind: "excluded", explanation: "写作注入保留件是最近一次写作召回的派生快照，导入后由新书的写作召回重新生成，不随作品迁移。" };
+  }
   if (first.startsWith(".")) {
     if (first === ".novelfork") {
-      if (last.startsWith(".env")) return { kind: "excluded", explanation: "环境变量文件可能含密钥，不随作品迁移。" };
       if (segments[1] === "skills" && segments.length > 2) return { kind: "module", module: "skills" };
       return { kind: "module", module: "chapters" };
     }
     if (segments.length === 1 && ALLOWED_ROOT_DOT_FILES.has(first)) return { kind: "module", module: "chapters" };
     return { kind: "excluded", explanation: "作品根目录下的隐藏目录与点文件（版本库、Runtime 工作区、编辑器与环境配置等）属于本机，不随作品迁移。" };
   }
-  if (last.startsWith(".env")) return { kind: "excluded", explanation: "环境变量文件可能含密钥，不随作品迁移。" };
   if (last === ".write.lock" || last.endsWith(".lock") || last.endsWith(".tmp")) {
     return { kind: "excluded", explanation: "写锁与临时文件只在写入过程中存在，不随作品迁移。" };
   }
