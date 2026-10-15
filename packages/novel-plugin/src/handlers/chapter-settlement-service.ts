@@ -366,6 +366,140 @@ function persistSettlementEvents(storage: StorageDatabase, events: readonly Narr
   return { reducible, all, authorDecidedPreserved };
 }
 
+/**
+ * 「作者裁决过」与「机器自动应用」的区分（T-14①）。
+ *
+ * narrative_event 没有记录是谁裁决的字段：机器自动应用与作者批准都写成 status='applied'，
+ * applied_at 也会在归约时被刷新，不能拿来区分。驳回只可能来自作者，但被驳回的事件本来就没有事实。
+ * 所以由结算自己把「本次（及沿用的）机器自动应用的事件 id」记进证据链 artifact，
+ * 改写重结算时只作废这份名单里的旧事件派生的事实；名单里没有的（作者批准的）一律不动。
+ * 旧版本留下的证据链没有这份名单 → 来源无法确认，按作者裁决保护，并如实告警。
+ */
+function readMachineAppliedEventIds(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number,
+  contentFingerprint: string,
+): ReadonlySet<string> | undefined {
+  const row = storage.sqlite.prepare<{ artifactJson: string }>(`
+    SELECT artifact_json AS artifactJson
+    FROM narrative_settlement_artifact
+    WHERE book_id = ? AND chapter_number = ? AND content_fingerprint = ?
+  `).get(bookId, chapterNumber, contentFingerprint);
+  if (!row) return undefined;
+  try {
+    const parsed = JSON.parse(row.artifactJson) as { machineAppliedEventIds?: unknown };
+    if (!Array.isArray(parsed.machineAppliedEventIds)) return undefined;
+    return new Set(parsed.machineAppliedEventIds.filter((id): id is string => typeof id === "string"));
+  } catch {
+    return undefined;
+  }
+}
+
+type StaleFactRetirement = Readonly<{
+  /** 作废的机器派生旧事实条数。 */
+  retired: number;
+  /** 因作废而重新打开的前驱事实条数（被作废事实关闭的旧值）。 */
+  reopened: number;
+  /** 来源无法确认、按作者裁决保护而未作废的旧事实条数。 */
+  unknownProvenance: number;
+}>;
+
+/**
+ * 改写重结算：作废本次不再产出的旧事件所派生、且确认由机器自动应用的 open 事实（T-14①），
+ * 再把被它们关闭的前驱值重新打开（T-14③），避免槽位出现空洞。
+ *
+ * 作废值取 chapterNumber - 1：写作上下文以 visibleChapter = currentChapter - 1 过滤，
+ * valid_until >= visibleChapter 才可见；写第 chapterNumber 章时必须看不见旧派生。
+ *
+ * 重新打开前驱只在证据确凿时做：
+ * - 同槽位（slot_key）、valid_until 恰为被作废事实的 valid_from（reducer 关闭旧值时写的就是新值的起始章）；
+ * - 作废后该槽位已没有 open 值（有就说明已被别的值顶上，例如作者手动值或本次新抽到的值）；
+ * - 前驱不是「作废态」（valid_until < valid_from），也不是本次同样过期的旧事件派生；
+ * - 前驱没有被作者纠正过（纠正会留下 source_id = manual-correction:<前驱 id> 的替代链）。
+ * 作者手动作废写的 valid_until 是当时全书最大章，与被作废事实的起始章对不上，不会被误开。
+ */
+function retireStaleMachineFacts(
+  storage: StorageDatabase,
+  input: Readonly<{
+    bookId: string;
+    chapterNumber: number;
+    staleEventIds: readonly string[];
+    machineAppliedEventIds: ReadonlySet<string> | undefined;
+    updatedAt: string;
+  }>,
+): StaleFactRetirement {
+  if (input.staleEventIds.length === 0) return { retired: 0, reopened: 0, unknownProvenance: 0 };
+
+  const openEventFactsSql = (ids: readonly string[]) => `
+    SELECT f.id AS id, f.slot_key AS slotKey, f.valid_from_chapter AS validFrom
+    FROM narrative_fact f
+    WHERE f.book_id = ?
+      AND f.source_type = 'event'
+      AND f.valid_until_chapter IS NULL
+      AND f.source_id IN (${ids.map(() => "?").join(", ")})
+      AND EXISTS (
+        SELECT 1 FROM narrative_event e
+        WHERE e.book_id = f.book_id AND e.id = f.source_id AND e.status = 'applied'
+      )
+  `;
+
+  if (!input.machineAppliedEventIds) {
+    const unknown = storage.sqlite
+      .prepare<{ id: string }>(openEventFactsSql(input.staleEventIds))
+      .all(input.bookId, ...input.staleEventIds);
+    return { retired: 0, reopened: 0, unknownProvenance: unknown.length };
+  }
+
+  const retirableIds = input.staleEventIds.filter((id) => input.machineAppliedEventIds!.has(id));
+  if (retirableIds.length === 0) return { retired: 0, reopened: 0, unknownProvenance: 0 };
+
+  const stale = storage.sqlite
+    .prepare<{ id: string; slotKey: string | null; validFrom: number | null }>(openEventFactsSql(retirableIds))
+    .all(input.bookId, ...retirableIds);
+  const retire = storage.sqlite.prepare(`
+    UPDATE narrative_fact SET valid_until_chapter = ?, updated_at = ? WHERE id = ?
+  `);
+  const closeAt = Math.max(0, input.chapterNumber - 1);
+  for (const fact of stale) retire.run(closeAt, input.updatedAt, fact.id);
+
+  const staleIdPlaceholders = input.staleEventIds.map(() => "?").join(", ");
+  const slotOccupied = storage.sqlite.prepare<{ count: number }>(`
+    SELECT COUNT(*) AS count FROM narrative_fact
+    WHERE book_id = ? AND slot_key = ? AND valid_until_chapter IS NULL
+  `);
+  const reopen = storage.sqlite.prepare(`
+    UPDATE narrative_fact
+    SET valid_until_chapter = NULL, updated_at = ?
+    WHERE book_id = ?
+      AND slot_key = ?
+      AND id != ?
+      AND valid_until_chapter = ?
+      AND valid_until_chapter >= COALESCE(valid_from_chapter, source_chapter, 0)
+      AND NOT (source_type = 'event' AND source_id IN (${staleIdPlaceholders}))
+      AND NOT EXISTS (
+        SELECT 1 FROM narrative_fact correction
+        WHERE correction.book_id = narrative_fact.book_id
+          AND correction.source_id = 'manual-correction:' || narrative_fact.id
+      )
+  `);
+  let reopened = 0;
+  for (const fact of stale) {
+    if (!fact.slotKey || fact.validFrom === null) continue;
+    if ((slotOccupied.get(input.bookId, fact.slotKey)?.count ?? 0) > 0) continue;
+    reopened += reopen.run(
+      input.updatedAt,
+      input.bookId,
+      fact.slotKey,
+      fact.id,
+      fact.validFrom,
+      ...input.staleEventIds,
+    ).changes;
+  }
+
+  return { retired: stale.length, reopened, unknownProvenance: 0 };
+}
+
 function skipped(
   input: ChapterSettlementInput,
   warning: string,
@@ -800,6 +934,43 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
         }
         const downgradedPendingIds: string[] = [];
 
+        // T-14①：上一次结算里由机器自动应用的事件 id。必须在本次 artifact 覆盖（同指纹强制重结算）之前读取。
+        const previousMachineApplied = idempotency.record
+          ? readMachineAppliedEventIds(storage, input.bookId, input.chapterNumber, idempotency.record.contentFingerprint)
+          : undefined;
+        // 本次机器自动应用的事件：归约器直接应用的，加上「事实已存在而跳过」的（两者都是机器写成 applied，作者没经手）；
+        // 沿用的既有事件若上次就是机器应用、且仍是 applied，继续记为机器应用，名单随重结算延续下去。
+        const machineAppliedEventIds = new Set<string>([...applied.appliedEventIds, ...applied.skippedEventIds]);
+        for (const event of eventResults) {
+          if (event.status === "applied" && previousMachineApplied?.has(event.id)) machineAppliedEventIds.add(event.id);
+        }
+
+        // T-14①③：改写后本次不再产出的旧事件所派生的事实，只作废机器自动应用、作者没裁决过的那部分，
+        // 并把被它们关闭的前驱值重新打开。旧台账的 eventIds 必须在 recordChapterSettlement 覆盖前读取。
+        if (idempotency.record) {
+          const producedIds = new Set(eventResults.map((event) => event.id));
+          const retirement = retireStaleMachineFacts(storage, {
+            bookId: input.bookId,
+            chapterNumber: input.chapterNumber,
+            staleEventIds: idempotency.record.eventIds.filter((id) => !producedIds.has(id)),
+            machineAppliedEventIds: previousMachineApplied,
+            updatedAt: new Date(settledAt).toISOString(),
+          });
+          if (retirement.retired > 0) {
+            warnings.push(
+              `第${input.chapterNumber}章改写后，旧正文里机器自动记下的 ${retirement.retired} 条事实已不再成立，已作废`
+              + (retirement.reopened > 0 ? `；被它们替换掉的 ${retirement.reopened} 条旧值已恢复。` : "。")
+              + "作者批准过的事实保持不动。",
+            );
+          }
+          if (retirement.unknownProvenance > 0) {
+            warnings.push(
+              `第${input.chapterNumber}章改写前的 ${retirement.unknownProvenance} 条旧事实无法确认是机器自动记下的还是作者批准过的`
+              + "（上一次结算来自旧版本，没有留下这项记录），已保留不动。若它们已不符合新正文，请在叙事记忆面板里逐条作废。",
+            );
+          }
+        }
+
         // 结算真正跑完才登记台账：登记的是「这份正文已被结算」，下一次同内容调用据此跳过。
         const record = recordChapterSettlement(storage, {
           bookId: input.bookId,
@@ -817,6 +988,8 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
           chapterTitle: input.title ?? null,
           settledAt,
           sandboxIntercepted,
+          /** 机器自动应用（作者没经手）的事件 id；下次改写重结算据此区分可作废的机器派生与作者裁决（T-14①）。 */
+          machineAppliedEventIds: [...machineAppliedEventIds],
           drafts: evidenceDrafts.map((entry) => {
             const eventStatus = entry.eventId ? appliedById.get(entry.eventId) : undefined;
             return {
