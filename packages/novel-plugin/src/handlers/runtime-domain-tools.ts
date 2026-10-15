@@ -976,9 +976,6 @@ async function pipelineWrite(
       ...(typeof input.jingweiContext === "string" ? { jingweiContext: input.jingweiContext } : {}),
       ...(typeof input.previousChapterTail === "string" ? { previousChapterTail: input.previousChapterTail } : {}),
       autoRevise: input.autoRevise !== false,
-      ...(typeof input.continueWithHighRiskPending === "boolean"
-        ? { continueWithHighRiskPending: input.continueWithHighRiskPending }
-        : {}),
       ...(typeof input.adversarialAudit === "boolean" ? { adversarialAudit: input.adversarialAudit } : {}),
       ...(typeof input.maxReviseRounds === "number" ? { maxReviseRounds: input.maxReviseRounds } : {}),
       ...(writingSkillAcknowledgements(input.acknowledgedSkills)

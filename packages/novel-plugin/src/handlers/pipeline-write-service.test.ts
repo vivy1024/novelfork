@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, summarizeAuditIssueCategories } from "./pipeline-write-service.js";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import type { NarrativeContextPackage } from "../engine/narrative-memory/types.js";
+import { NOVEL_TOOL_SCHEMAS } from "../tool-schemas.js";
 
 /**
  * 被检查的源码文件路径。
@@ -101,8 +102,11 @@ describe("pipeline.write canonical result contract", () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
 
     expect(source.indexOf("listHighRiskPendingNarrativeEvents")).toBeGreaterThan(-1);
-    expect(source).toContain("continueWithHighRiskPending === undefined");
     expect(source).toContain("blockWriteOnHighRiskPending");
+    // T-13（D1）：停写只看作者的本书设置，管线不再读取模型传入的继续参数（行为见 pipeline-write-high-risk-gate.test.ts）。
+    expect(source).not.toContain("input.continueWithHighRiskPending");
+    expect(source).not.toContain("readonly continueWithHighRiskPending");
+    expect(NOVEL_TOOL_SCHEMAS["pipeline.write"]!.properties).not.toHaveProperty("continueWithHighRiskPending");
     // pipeline.write 不再内部生成正文（无 WriterAgent）。
     expect(source).not.toContain("const writer = new WriterAgent");
   });

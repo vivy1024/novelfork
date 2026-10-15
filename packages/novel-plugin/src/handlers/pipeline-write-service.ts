@@ -49,6 +49,7 @@ import type { ChapterEventExtractorInput } from "../engine/narrative-memory/chap
 import type { StyleSnippet } from "../engine/narrative-memory/channels/style-channel.js";
 import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
 import { formatAuthorExplanation, isAuthorFacingDetail } from "./diagnostic-explanation.js";
+import { isBookJsonUnreadable } from "./book-config-readable.js";
 
 export interface PipelineCanvasArtifact {
   readonly id: string;
@@ -79,8 +80,8 @@ export interface PipelineWriteInput {
   readonly jingweiContext?: string;
   readonly previousChapterTail?: string;
   readonly autoRevise?: boolean;
-  /** 存在 high-risk pending NarrativeEvents 时仍明确继续写作。默认 false，会在写作前返回提醒。 */
-  readonly continueWithHighRiskPending?: boolean;
+  // T-13（D1）：已删除 continueWithHighRiskPending。高风险待确认事件是否停写只由本书设置
+  // narrativeMemory.settlement.blockWriteOnHighRiskPending（作者的决定）决定；模型自己传继续参数等于自我放行。
   /** 对抗式审查：3 视角独立审查 + 交叉合成（默认 false，回退单 agent） */
   readonly adversarialAudit?: boolean;
   /** 多轮自愈：审查→修订最多 N 轮（默认 1） */
@@ -192,6 +193,7 @@ export interface PipelineWriteError {
    */
   readonly code:
     | "book-not-found"
+    | "book-config-unreadable"
     | "spec-invalid"
     | "beat-budget-invalid"
     | "generation-failed"
@@ -592,6 +594,9 @@ export function buildPipelineChapterResultMetadata(input: { readonly narrativeCo
   return input.narrativeContext?.diagnostics;
 }
 
+/** T-13（D1）：高风险待确认事件拦截时给出的处理办法——只有作者确认能放行，模型不能自我放行。 */
+const HIGH_RISK_PENDING_AUTHOR_ACTION = "请作者在待确认里处理高风险事件后再写（逐条批准或拒绝；叙述者不能代替作者确认）。";
+
 export function buildHighRiskPendingReminder(events: readonly NarrativeEvent[]): string {
   const highRisk = events.filter((event) => event.status === "pending" && event.riskLevel === "high");
   if (highRisk.length === 0) return "";
@@ -620,7 +625,6 @@ async function executePipelineWriteUnlocked(
     requireFactCheckPass = false,
     factCheckAutoRevise = false,
   } = input;
-  let continueWithHighRiskPending = input.continueWithHighRiskPending;
   let narrativeContext = input.narrativeContext;
   const { root, logger } = options;
 
@@ -641,14 +645,27 @@ async function executePipelineWriteUnlocked(
     try {
       book = await state.loadBookConfig(bookId);
     } catch {
+      // T-13②：文件存在却无法解析时，不能说成「书籍不存在」。按文件真实状态给出阻断理由。
+      if (await isBookJsonUnreadable(state.bookDir(bookId))) {
+        return {
+          ok: false,
+          code: "book-config-unreadable",
+          error: `Book "${bookId}" 的 book.json 无法解析。`,
+          summary: "本书的配置文件损坏，无法确认写作设置，已阻止生成。",
+          explanation: [
+            "发生了什么：本书的 book.json 存在，但内容无法解析为配置。",
+            "为什么要看：写作依赖书籍配置（字数目标、平台、门禁开关）；在配置不可读时继续写会绕过这些门禁。",
+            "建议怎么做：检查 book.json 是否为合法 JSON（可从备份恢复），修复后重试写章。",
+          ].join("\n"),
+        };
+      }
       return { ok: false, code: "book-not-found", error: `Book "${bookId}" not found` };
     }
 
     const bookDir = state.bookDir(bookId);
     const memoryConfig = await loadNarrativeMemoryConfig(bookId, bookDir).catch(() => null);
-    if (continueWithHighRiskPending === undefined) {
-      continueWithHighRiskPending = !(memoryConfig?.settlement.blockWriteOnHighRiskPending ?? false);
-    }
+    // T-13（D1）：是否因高风险待确认事件停写，只看作者在本书设置里的决定；不读模型传入的任何继续参数。
+    const blockOnHighRiskPending = memoryConfig?.settlement.blockWriteOnHighRiskPending ?? false;
     const chapterNumber = sceneSpec.chapter ?? await state.getNextChapterNumber(bookId);
 
     // 已有章节覆盖采用可选的乐观保护：旧调用方不传 hash/version 时保持兼容，
@@ -717,12 +734,15 @@ async function executePipelineWriteUnlocked(
         const hard = preflight.blockers.filter((item) => (
           item.code === "empty-recent-progress"
           || item.code === "book-not-found"
+          || item.code === "high-risk-pending"
         ));
         if (hard.length > 0) {
           const firstBlocker = hard[0];
-          const explanationText = firstBlocker?.explanation
+          // T-13（D1）：高风险待确认事件的拦截必须交给作者处理，说明里写明这一点（不论它是不是第一条阻断项）。
+          const highRiskAction = hard.some((item) => item.code === "high-risk-pending") ? `\n${HIGH_RISK_PENDING_AUTHOR_ACTION}` : "";
+          const explanationText = (firstBlocker?.explanation
             ? `\n${firstBlocker.explanation.whatHappened}\n${firstBlocker.explanation.whyItMatters}\n${firstBlocker.explanation.suggestedAction}`
-            : "";
+            : "") + highRiskAction;
           const summaryMsg = hard.map((item) => item.message).join("；");
           return {
             ok: false,
@@ -798,12 +818,40 @@ async function executePipelineWriteUnlocked(
       if (reminder) {
         highRiskPendingReminder = reminder;
         logger?.warn(`[pipeline.write] ${reminder.split("\n")[0]}`);
-        if (!continueWithHighRiskPending) {
-          return { ok: false, code: "high-risk-pending", error: reminder };
+        if (blockOnHighRiskPending) {
+          // 提醒文本的首行写的是「只提醒，默认不拦」，停写时不能沿用；只复用逐条明细。
+          const highRiskCount = pendingEvents.filter((event) => event.status === "pending" && event.riskLevel === "high").length;
+          const details = reminder.split("\n").slice(1).join("\n");
+          const summary = `第${chapterNumber}章没有生成：本书有 ${highRiskCount} 条高风险待确认事件，本书设置为此时停写。`;
+          return {
+            ok: false,
+            code: "high-risk-pending",
+            error: `${summary}\n${details}`,
+            summary,
+            explanation: [
+              `发生了什么：本书有 ${highRiskCount} 条机器抽取的高风险事件还在待确认，本书设置为有高风险待确认事件时停写。`,
+              "为什么要看：这些事件尚未经作者确认，直接续写可能把未确认的设定当成既定事实写进正文。叙述者传入的任何继续参数都不算作者确认。",
+              `建议怎么做：${HIGH_RISK_PENDING_AUTHOR_ACTION}`,
+            ].join("\n"),
+          };
         }
       }
     } catch (err) {
-      logger?.debug(`[pipeline.write] High-risk pending check skipped: ${err instanceof Error ? err.message : String(err)}`);
+      // T-13②：高风险待处理的检查本身读取失败时，无法确认是否存在高风险事件，按失败即关闭阻断写章。
+      // 不再静默跳过（此前只记 debug 日志就继续写，等于在门禁读不到时放行）。
+      const detail = err instanceof Error ? err.message : String(err);
+      logger?.error(`[pipeline.write] High-risk pending check failed closed: ${detail}`);
+      return {
+        ok: false,
+        code: "high-risk-pending",
+        error: `高风险待处理检查失败：${detail}`,
+        summary: "无法确认是否存在高风险待处理事件，已阻止生成。",
+        explanation: [
+          "发生了什么：读取高风险待处理事件时出错，无法确认本书是否还有未处理的高风险事件。",
+          "为什么要看：若跳过检查，可能在存在未处理高风险事件时继续写章，造成设定冲突。",
+          "建议怎么做：检查本书的存储与记忆数据是否可读，修复后重试写章。",
+        ].join("\n"),
+      };
     }
 
     if (!narrativeContext) {

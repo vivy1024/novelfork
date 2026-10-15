@@ -594,7 +594,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       jingweiContext: stringSchema("按 scene spec 补读的经纬上下文文本（可选）。"),
       previousChapterTail: stringSchema("前一章末尾 500 字（可选，用于衔接）。"),
       autoRevise: booleanSchema("是否自动修订审计不过的 critical 问题。默认 true。"),
-      continueWithHighRiskPending: booleanSchema("存在 high-risk pending NarrativeEvents 时是否明确继续写作。默认 false，会先返回处理提醒。"),
+      // T-13（D1）：continueWithHighRiskPending 已删除——高风险待确认事件只能由作者处理后放行，模型不能自我放行。
       adversarialAudit: booleanSchema("是否启用多视角对抗式审计。"),
       maxReviseRounds: numberSchema("最大自动修订轮数。"),
       acknowledgedSkills: acknowledgedSkillsSchema,
