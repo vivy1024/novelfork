@@ -13,6 +13,7 @@ import {
 	writeGlobalPrompt,
 } from "@vivy1024/narrafork-runtime-bridge";
 import { Hono } from "hono";
+import { forwardErrorsToParent } from "./forward-errors";
 import { z } from "zod/v4";
 import type {
 	BookRuntimeAccessActor,
@@ -289,7 +290,7 @@ function validateHookUpdateState(
 }
 
 export function createBookRuntimeCapabilitiesRoutes(deps: BookRuntimeCapabilitiesRouteDeps): Hono {
-	const routes = new Hono();
+	const routes = forwardErrorsToParent(new Hono());
 
 	routes.get("/routines", async (c) => {
 		const access = await deps.resolveAccess(requiredParam(c, "bookId"), actor(c));
