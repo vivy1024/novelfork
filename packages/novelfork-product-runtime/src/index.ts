@@ -34,8 +34,8 @@ import {
 	canAccessBoundPermissionFromUserId,
 } from "./services/narrator-access";
 import { migrateLegacySessions } from "./services/legacy-session-migration";
-import {
 import { shouldBypassBookGuard } from "./services/book-guard-bypass";
+import {
 	isNovelForkProductNarrator,
 	resolveNovelForkNarratorCwd,
 } from "./narrator-profile";
