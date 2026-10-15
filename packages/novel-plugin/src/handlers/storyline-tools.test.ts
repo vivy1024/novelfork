@@ -138,4 +138,14 @@ describe("storyline.propose", () => {
     expect(again.error).toBe("storyline-rejected");
     expect(listStorylines(activeStorage!, "book-test-1")).toHaveLength(1);
   });
+
+  it("同名既有较早的驳回、又有较晚的确认时按已确认复用，不误判为驳回", async () => {
+    const { createStoryline } = await import("../engine/narrative-memory/scene-store.js");
+    createStoryline(activeStorage!, { bookId: "book-test-1", name: "师门线", status: "rejected", source: "manual" });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const confirmed = createStoryline(activeStorage!, { bookId: "book-test-1", name: "师门线", layer: "canon", status: "confirmed", source: "manual" });
+    const result = await propose({ bookId: "book-test-1", name: "师门线" });
+    expect(result.ok).toBe(true);
+    expect((result.data as { reused: boolean; storylineId: string })).toMatchObject({ reused: true, storylineId: confirmed.data!.id });
+  });
 });
