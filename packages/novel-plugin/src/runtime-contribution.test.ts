@@ -16,6 +16,8 @@ import { executeRuntimeDomainTool } from "./handlers/runtime-domain-tools.js";
 import { createBookRepository } from "./engine/jingwei/repositories/book-repo.js";
 import { ensureNarrativeMemorySchema } from "./engine/narrative-memory/storage.js";
 import { NOVEL_RUNTIME_CONTRIBUTION } from "./runtime-contribution.js";
+import { NOVEL_AGENT_PRESET_LIST } from "./index.js";
+import { NOVEL_AGENT_PRESETS } from "./handlers/tool-registry.js";
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
@@ -822,5 +824,31 @@ describe("novel Runtime contribution", () => {
 
     expect(result).toMatchObject({ ok: true, data: { content: "trusted content" } });
     expect(JSON.stringify(result)).not.toContain("escaped content");
+  });
+});
+
+describe("novelist 预设不含 Runtime 不存在的 worktree 工具（T-19）", () => {
+  const WORKTREE_TOOLS = ["EnterWorktree", "ExitWorktree"];
+
+  it("交给 Runtime 的 novelist 预设工具集不含 EnterWorktree / ExitWorktree", () => {
+    const novelist = NOVEL_RUNTIME_CONTRIBUTION.agentPresets?.find((preset) => preset.id === "novelist");
+    expect(novelist).toBeDefined();
+    for (const name of WORKTREE_TOOLS) {
+      expect(novelist?.tools).not.toContain(name);
+    }
+  });
+
+  it("插件清单中的 novelist 预设列表不含 EnterWorktree / ExitWorktree", () => {
+    const novelist = NOVEL_AGENT_PRESET_LIST.find((preset) => preset.agentId === "novelist");
+    expect(novelist).toBeDefined();
+    for (const name of WORKTREE_TOOLS) {
+      expect(novelist?.tools).not.toContain(name);
+    }
+  });
+
+  it("NOVEL_AGENT_PRESETS 的 novelist enable 列表不含 EnterWorktree / ExitWorktree", () => {
+    for (const name of WORKTREE_TOOLS) {
+      expect(NOVEL_AGENT_PRESETS.novelist?.enable).not.toContain(name);
+    }
   });
 });

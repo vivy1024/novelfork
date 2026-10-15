@@ -156,7 +156,7 @@ export const NOVEL_TOOL_DEFINITIONS: readonly PluginToolDefinition[] = NOVEL_TOO
  * 小说 Agent 角色预设（v1.8: 合并为单一 novelist）
  */
 export const NOVEL_AGENT_PRESET_LIST: PluginAgentPreset[] = [
-  { agentId: "novelist", name: "📝 小说创作", tools: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate"] },
+  { agentId: "novelist", name: "📝 小说创作", tools: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "TaskCreate"] },
 ];
 
 export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {

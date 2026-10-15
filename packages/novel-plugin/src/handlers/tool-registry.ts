@@ -897,7 +897,7 @@ export const NOVEL_TOOL_NAMES: readonly string[] = NOVEL_RUNTIME_TOOL_CATALOG.ma
  */
 export const NOVEL_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
   novelist: {
-    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate", "Terminal", "Browser", "Recall", "ShareFile"],
+    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "TaskCreate", "Terminal", "Browser", "Recall", "ShareFile"],
     disable: [],
   },
 };
