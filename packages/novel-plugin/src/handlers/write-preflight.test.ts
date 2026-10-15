@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ensureNarrativeMemorySchema,
   insertNarrativeEvent,
+  updateNarrativeEventStatus,
 } from "../engine/narrative-memory/storage.js";
 import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
 import type { CockpitState } from "./cockpit-service.js";
@@ -357,24 +358,106 @@ describe("write.preflight", () => {
     expect(result.blockers.some((item) => item.code === "high-risk-pending")).toBe(true);
   });
 
-  it("keeps high-risk pending as a warning when the config is readable and blocking is off (T-13 control)", async () => {
-    const bookRoot = join(tmpdir(), `novelfork-t13-ok-${crypto.randomUUID()}`);
+});
+
+/**
+ * 高风险待确认事件门禁（作者 2026-10-15 的决定）：没有本书开关，存在就停写；
+ * 放行只走 NarraFork 的通道——AskUserQuestion 请作者逐条批准/驳回，再按选择调 memory.events approve/reject，
+ * 或作者在「待确认」面板处理。NovelFork 不按权限模式替作者放行。
+ */
+describe("write.preflight：高风险待确认事件一律阻断，放行只走 NarraFork 的通道", () => {
+  async function bookRootWithJson(book: Record<string, unknown>): Promise<string> {
+    const bookRoot = join(tmpdir(), `novelfork-high-risk-${crypto.randomUUID()}`);
     tempDirs.push(bookRoot);
     await mkdir(bookRoot, { recursive: true });
-    await writeFile(join(bookRoot, "book.json"), JSON.stringify({ id: "book-1", title: "测试书" }), "utf-8");
-    insertNarrativeEvent(activeStorage!, pendingHighRiskEvent("e-t13-ctrl", 10));
+    await writeFile(join(bookRoot, "book.json"), JSON.stringify({ id: "book-1", title: "测试书", ...book }), "utf-8");
+    return bookRoot;
+  }
 
+  async function preflight(bookRoot?: string) {
     const { handleWritePreflight } = await import("./write-preflight.js");
-    const result = await handleWritePreflight({
+    return handleWritePreflight({
       bookId: "book-1",
-      userDirectives: "继续写药园试探，推进小瓶秘密。",
+      userDirectives: "开篇写主角下山寻仇，先从客栈冲突切入。",
       storage: activeStorage,
-      bookRoot,
-      cockpitState: cockpitState({ formalChapterCount: 11 }),
+      ...(bookRoot ? { bookRoot } : {}),
+      cockpitState: cockpitState({ formalChapterCount: 0, focus: null }),
     });
+  }
 
-    expect(result.blockers.some((item) => item.code === "high-risk-pending")).toBe(false);
-    expect(result.warningItems.some((item) => item.code === "high-risk-pending")).toBe(true);
+  function expectReleaseFlow(text: string | undefined): void {
+    const value = text ?? "";
+    expect(value).toContain("AskUserQuestion");
+    expect(value).toContain("memory.events");
+    expect(value).toContain("approve");
+    expect(value).toContain("reject");
+    expect(value).toContain("「待确认」面板");
+    // 同步阻塞地问作者，不用异步提问；也不许绕过。
+    expect(value).toMatch(/不要用异步|不要 async/u);
+    expect(value).toContain("不要换别的工具绕过");
+  }
+
+  it("没有任何本书设置时，存在高风险待确认事件就阻断，三段式说明写明 AskUserQuestion → memory.events 的流程", async () => {
+    const bookRoot = await bookRootWithJson({});
+    insertNarrativeEvent(activeStorage!, { ...pendingHighRiskEvent("e-hr-1", 3), subject: "山门", predicate: "规则", object: "外人入山者死" });
+
+    const result = await preflight(bookRoot);
+
+    expect(result.ok).toBe(false);
+    const blocker = result.blockers.find((item) => item.code === "high-risk-pending");
+    expect(blocker).toBeTruthy();
+    expect(blocker?.explanation?.whatHappened).toContain("外人入山者死");
+    expect(blocker?.explanation?.whyItMatters).toBeTruthy();
+    expectReleaseFlow(blocker?.explanation?.suggestedAction);
+    // 不再有「只提醒、默认不拦」的分支。
+    expect(result.warningItems.some((item) => item.code === "high-risk-pending")).toBe(false);
+    expect(result.warnings.join("\n")).not.toContain("高风险");
+  });
+
+  it("不传 bookRoot 时同样阻断（门禁不依赖任何本书配置）", async () => {
+    insertNarrativeEvent(activeStorage!, pendingHighRiskEvent("e-hr-noroot", 3));
+
+    const result = await preflight();
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.some((item) => item.code === "high-risk-pending")).toBe(true);
+  });
+
+  it("旧书 book.json 残留 blockWriteOnHighRiskPending=false：正常读取，照样阻断", async () => {
+    const bookRoot = await bookRootWithJson({
+      narrativeMemory: { settlement: { blockWriteOnHighRiskPending: false, minConfidence: 0.8 } },
+    });
+    insertNarrativeEvent(activeStorage!, pendingHighRiskEvent("e-hr-legacy", 3));
+
+    const result = await preflight(bookRoot);
+
+    expect(result.blockers.some((item) => item.code === "book-config-unreadable")).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.blockers.some((item) => item.code === "high-risk-pending")).toBe(true);
+  });
+
+  it("作者批准或驳回后放行；只剩中风险待确认时不阻断", async () => {
+    const bookRoot = await bookRootWithJson({});
+    insertNarrativeEvent(activeStorage!, pendingHighRiskEvent("e-hr-approve", 3));
+    insertNarrativeEvent(activeStorage!, pendingHighRiskEvent("e-hr-reject", 4));
+    insertNarrativeEvent(activeStorage!, { ...pendingHighRiskEvent("e-medium", 4), riskLevel: "medium" });
+
+    expect((await preflight(bookRoot)).ok).toBe(false);
+
+    updateNarrativeEventStatus(activeStorage!, { id: "e-hr-approve", status: "applied" });
+    expect((await preflight(bookRoot)).ok).toBe(false);
+
+    updateNarrativeEventStatus(activeStorage!, { id: "e-hr-reject", status: "rejected" });
+    const released = await preflight(bookRoot);
+    expect(released.blockers).toEqual([]);
+    expect(released.ok).toBe(true);
+  });
+
+  it("没有高风险待确认事件时照常放行", async () => {
+    const bookRoot = await bookRootWithJson({});
+    const result = await preflight(bookRoot);
+    expect(result.ok).toBe(true);
+    expect(result.blockers).toEqual([]);
   });
 });
 

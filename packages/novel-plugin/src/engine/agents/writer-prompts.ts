@@ -163,11 +163,11 @@ function buildToolOrchestrationSop(): string {
 3. 正式写章前：必须 write.preflight。blockers 非空立即停止写章：
    - missing-directive：补至少 8 字本章目标，或 AskUserQuestion；只有接受 currentFocus 默认句时才传 acceptFocusDefault=true。
    - empty-recent-progress：先 memory.settle_range，或 book.dissect(settle=true)；若是外部导入，优先 pipeline.import_chapters(autoSettle=true)。
-   - high-risk-pending：先 memory.events / memory.bulk_approve 处理待审事件；不能把 pending 当 confirmed memory。
+   - high-risk-pending：有高风险待确认事件就一律停写，没有任何开关或继续写的办法。先用 memory.events（action=list）取出这些事件，再用 AskUserQuestion 把它们逐条摘要列给作者（同步等作者回答，不要用异步提问；每次最多 4 条，多了分批问），每条让作者选「批准」或「驳回」；按作者的选择逐条调用 memory.events 的 approve 或 reject（是否还要作者点确认由 NarraFork 的权限模式决定：全部运行模式下自动执行，其他模式会请求确认）；作者也可以直接在「待确认」面板处理。全部处理完再重新 write.preflight 后写章。不要跳过、不要换别的工具绕过、不要替作者选择，也不能把 pending 当 confirmed memory。
    - book-not-found：停止并报告绑定/书籍不可读，不得猜路径或换 bookId。
 4. preflight.ok=true 后，用 resolvedDirective（或用户确认的一句目标）调用 scene.spec；sceneSpec 必须由当前 Runtime Agent 显式提交。
 5. scene.spec.ok=true 后才调用 pipeline.write。scene-spec-required/invalid、empty-scenes、incomplete-scene：修正蓝图后重调；不要拿自然语言正文代替 sceneSpec。
-6. pipeline.write 返回 beat-budget-invalid：回 scene.spec 重排预算；返回 context-not-ready：回 write.preflight 的 blocker 路由；返回 writing-skill-compliance-failed：按逐条 warnings 定点改稿后重跑，不要删掉技能约束；返回 memory-budget-overflow：受保护资料超出召回预算被停步——看「写作可见」报告确认占用后请作者调大本书 recall 预算或确认精简受保护内容，禁止自行削减硬状态/知情/伏笔，禁止盲目重试。
+6. pipeline.write 返回 beat-budget-invalid：回 scene.spec 重排预算；返回 high-risk-pending：按上面 high-risk-pending 的流程请作者处理后再写，不要重试绕过；返回 context-not-ready：回 write.preflight 的 blocker 路由；返回 writing-skill-compliance-failed：按逐条 warnings 定点改稿后重跑，不要删掉技能约束；返回 memory-budget-overflow：受保护资料超出召回预算被停步——看「写作可见」报告确认占用后请作者调大本书 recall 预算或确认精简受保护内容，禁止自行削减硬状态/知情/伏笔，禁止盲目重试。
 7. 正文保存成功后由 pipeline.write 自动发起 memory.settle_chapter；若只结算失败，正文不丢，直接重试 memory.settle_chapter，不要重复写章。
 8. 写后按需要调用 chapter.audit、skills.check_compliance、publish.check；它们是审查/报告工具，不是写前硬门，也不能把未通过报告伪装成已通过。
 
@@ -190,7 +190,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：memory.settle_range；何时：已有正式章但近章摘要/事实/时间线为空，或用户要求回填历史；前置：目标章节范围明确、正文存在；失败回退：保留已存在数据，报告失败章节并重试，或改用 book.dissect(settle=true)，不要把废稿结算进正史。
 - 工具：memory.settle_chapter；何时：pipeline.write 保存后的章后结算，或结算失败重试；前置：正文已落盘且章号明确；失败回退：只重试本工具，正文已保存，不重复 pipeline.write；chapter-not-persisted 时先保存正文。
 - 工具：chapter.discard_range；何时：用户明确把一段试写章作废并清掉章域记忆；前置：显式范围、确认策略和 confirm=true；失败回退：不做部分猜删，先用 resource.manage/memory.list 盘点并报告；不可用时保留原稿。
-- 工具：AskUserQuestion；何时：目标、视角、冲突或取舍确实不明确，需要用户选择；前置：先说明缺少哪个决策；失败回退：保留问题并停在等待用户回答，不擅自替用户定方向；指令完整时跳过。
+- 工具：AskUserQuestion；何时：目标、视角、冲突或取舍确实不明确，需要用户选择；或写前检查 / 写章被高风险待确认事件拦下，需要作者逐条选「批准 / 驳回」（同步等回答，不用异步提问）；前置：先说明缺少哪个决策；失败回退：保留问题并停在等待用户回答，不擅自替用户定方向；指令完整时跳过。
 - 工具：memory.read_line；何时：查看叙事线节点、边和 warnings；前置：明确要检查的故事线；失败回退：用 memory.graph/memory.read 查看动态事件，不能直接提出修改。
 - 工具：memory.propose_change；何时：需要新增/删除/调整叙事线时先出差异草案；前置：先 memory.read_line，变更原因和目标节点明确；失败回退：保留正式叙事线，修正草案或重新读取，不直接写入。
 - 工具：memory.approve_change；何时：对 memory.propose_change 的预览作批准或驳回；前置：对应草案、用户明确结论；失败回退：驳回则保留原线，需改动时重新 propose，不重复提交旧草案。
@@ -228,7 +228,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：storyline.propose；何时：作者要求归纳剧情线，或书籍缺少剧情线需从已结算事件归纳时，逐条提交剧情线草稿；前置：先用 memory.events / memory.list 读已结算事件，relatedEntryTitles 按经纬标题给；失败回退：解析不出的名字按结果清单如实转述，不建实体；草稿一律 needs-review，确认/驳回只由作者在「故事推进 › 待确认」面板完成，你不得代作者确认。
 - 工具：memory.read；何时：写作、修订、审计、诊断前召回动态 ContextCards 和 token budget；前置：明确章节/任务范围；失败回退：缩小范围或改用 memory.graph/events，禁止把静态 Lore 当动态记忆。
 - 工具：memory.graph；何时：查看关系图、时间线、角色弧、伏笔网络、矛盾地图和事件链；前置：需要图谱问题且书籍绑定有效；失败回退：用 memory.read/memory.events 获取具体事实，不向图谱工具写入。
-- 工具：memory.events；何时：创建、列出、批准或拒绝 Pending NarrativeEvents；前置：事件来源、章节和证据明确，approve 需作者结论；失败回退：保持 pending 并报告，不能把 pending 自动写 Lore canon。
+- 工具：memory.events；何时：创建、列出、批准或拒绝 Pending NarrativeEvents，包括按作者在 AskUserQuestion 里的选择处理高风险待确认事件；前置：事件来源、章节和证据明确，approve / reject 只按作者的选择执行（是否还要作者点确认由 NarraFork 的权限模式决定）；失败回退：保持 pending 并报告，不能把 pending 自动写 Lore canon。
 - 工具：memory.list；何时：管理层盘点 facts/events/logs/vectors，清理或导出前审计；前置：kind/范围明确；失败回退：改用 memory.stats/memory.search，不做无条件清理。
 - 工具：memory.read_entry；何时：按 kind + id 精确读取一条 fact/event/log/vector；前置：真实 kind 和 id；失败回退：先 memory.list/search 找 id，不凭标题猜条目。
 - 工具：memory.search；何时：跨 facts/events/logs/vectors 搜关键词并查看命中原因；前置：关键词和可选 kind/范围；失败回退：先扩大同义词或缩小范围，再用 memory.read_entry 精查，不因零命中直接写新事实。

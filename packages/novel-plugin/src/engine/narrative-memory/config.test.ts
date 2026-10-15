@@ -81,4 +81,32 @@ describe("narrative memory config", () => {
   it("rejects invalid patch values", () => {
     expect(() => parseNarrativeMemoryConfigPatch({ settlement: { minConfidence: 2 } })).toThrow();
   });
+
+  // 2026-10-15：高风险待确认事件一律停写，放行只走 NarraFork 的权限通道，NovelFork 不再有本书开关。
+  it("高风险待确认没有本书开关：默认配置不含 blockWriteOnHighRiskPending", () => {
+    expect(DEFAULT_NARRATIVE_MEMORY_CONFIG.settlement).not.toHaveProperty("blockWriteOnHighRiskPending");
+  });
+
+  it("旧书 book.json 残留 blockWriteOnHighRiskPending：读取时忽略、其他字段照常，下次保存时清掉", async () => {
+    const root = await tempBook("book-1", {
+      narrativeMemory: { settlement: { blockWriteOnHighRiskPending: true, minConfidence: 0.9 } },
+    });
+
+    const loaded = await loadNarrativeMemoryConfig("book-1", root);
+    expect(loaded.settlement).not.toHaveProperty("blockWriteOnHighRiskPending");
+    expect(loaded.settlement.minConfidence).toBe(0.9);
+
+    const saved = await saveNarrativeMemoryConfig("book-1", root, { settlement: { autoApplyLowRisk: false } });
+    expect(saved.settlement).not.toHaveProperty("blockWriteOnHighRiskPending");
+    const raw = JSON.parse(await readFile(join(root, "book.json"), "utf8")) as {
+      narrativeMemory?: { settlement?: Record<string, unknown> };
+    };
+    expect(raw.narrativeMemory?.settlement).not.toHaveProperty("blockWriteOnHighRiskPending");
+    expect(raw.narrativeMemory?.settlement?.minConfidence).toBe(0.9);
+    expect(raw.narrativeMemory?.settlement?.autoApplyLowRisk).toBe(false);
+  });
+
+  it("旧客户端仍提交该字段时不报错，也不落进配置", () => {
+    expect(() => parseNarrativeMemoryConfigPatch({ settlement: { blockWriteOnHighRiskPending: false } })).not.toThrow();
+  });
 });

@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, summarizeAuditIssueCategories } from "./pipeline-write-service.js";
+import { buildPipelineChapterResultMetadata, buildPipelineContextPackage, summarizeAuditIssueCategories } from "./pipeline-write-service.js";
+import { explainHighRiskPendingBlock } from "./write-preflight.js";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import type { NarrativeContextPackage } from "../engine/narrative-memory/types.js";
 import { NOVEL_TOOL_SCHEMAS } from "../tool-schemas.js";
@@ -98,12 +99,14 @@ describe("pipeline.write canonical result contract", () => {
     expect(source).not.toContain("settleConfirmedChapter");
   });
 
-  it("checks high-risk pending events before persisting and follows saved blocking policy", async () => {
+  it("checks high-risk pending events before persisting and always blocks without a per-book switch", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
 
     expect(source.indexOf("listHighRiskPendingNarrativeEvents")).toBeGreaterThan(-1);
-    expect(source).toContain("blockWriteOnHighRiskPending");
-    // T-13（D1）：停写只看作者的本书设置，管线不再读取模型传入的继续参数（行为见 pipeline-write-high-risk-gate.test.ts）。
+    // 2026-10-15：删掉本书开关，存在高风险待确认事件就停写；放行只走 NarraFork 的通道（行为见 pipeline-write-high-risk-gate.test.ts）。
+    expect(source).not.toContain("blockWriteOnHighRiskPending");
+    expect(source).not.toContain("blockOnHighRiskPending");
+    // T-13（D1）：管线不读取模型传入的继续参数。
     expect(source).not.toContain("input.continueWithHighRiskPending");
     expect(source).not.toContain("readonly continueWithHighRiskPending");
     expect(NOVEL_TOOL_SCHEMAS["pipeline.write"]!.properties).not.toHaveProperty("continueWithHighRiskPending");
@@ -182,9 +185,9 @@ describe("summarizeAuditIssueCategories", () => {
   });
 });
 
-describe("pipeline.write high-risk pending reminder", () => {
-  it("summarizes high-risk pending events with evidence and handling entry", () => {
-    const reminder = buildHighRiskPendingReminder([{
+describe("高风险待确认事件的拦截说明", () => {
+  it("逐条列出事件与正文依据，给出 NarraFork 通道里的处理流程，不再说「只提醒」", () => {
+    const explanation = explainHighRiskPendingBlock([{
       id: "event-1",
       bookId: "book-1",
       chapterNumber: 12,
@@ -200,10 +203,17 @@ describe("pipeline.write high-risk pending reminder", () => {
       createdAt: "2026-07-02T00:00:00.000Z",
     }]);
 
-    expect(reminder).toContain("高风险待审事件");
-    expect(reminder).not.toContain("event-1");
-    expect(reminder).toContain("灵根可被后天逆转");
-    expect(reminder).toContain("默认不拦写作");
+    const text = [explanation.whatHappened, explanation.whyItMatters, explanation.suggestedAction].join("\n");
+    expect(explanation.whatHappened).toContain("1 条");
+    expect(explanation.whatHappened).toContain("灵根可被后天逆转");
+    expect(explanation.whatHappened).toContain("韩立确认灵根可被后天逆转。");
+    // 内部 id 不进作者可读文案；叙述者用 memory.events 的 list 取 id。
+    expect(text).not.toContain("event-1");
+    expect(explanation.suggestedAction).toContain("AskUserQuestion");
+    expect(explanation.suggestedAction).toContain("memory.events");
+    expect(explanation.suggestedAction).toContain("「待确认」面板");
+    expect(text).not.toContain("只提醒");
+    expect(text).not.toContain("默认不拦");
   });
 });
 

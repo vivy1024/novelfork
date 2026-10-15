@@ -15,7 +15,9 @@ const DEFAULT_SETTLEMENT_CONFIG = {
   autoApplyMediumRisk: true,
   highRiskAlwaysPending: true,
   minConfidence: 0.75,
-  blockWriteOnHighRiskPending: false,
+  // 没有「高风险待确认时是否停写」的本书开关：存在高风险待确认事件一律停写，放行只走 NarraFork 的
+  // 权限通道（AskUserQuestion 请作者选择 → memory.events approve/reject）。旧书 book.json 里残留的
+  // blockWriteOnHighRiskPending 由下方 zod 对象的默认 strip 行为在读取时丢弃，下次保存即清掉，无需迁移。
   useLlmExtraction: true,
   autoChapterSummary: true,
 };
@@ -51,7 +53,6 @@ const SettlementConfigSchema = z.object({
   autoApplyMediumRisk: z.boolean().default(DEFAULT_SETTLEMENT_CONFIG.autoApplyMediumRisk),
   highRiskAlwaysPending: z.boolean().default(DEFAULT_SETTLEMENT_CONFIG.highRiskAlwaysPending),
   minConfidence: z.number().min(0).max(1).default(DEFAULT_SETTLEMENT_CONFIG.minConfidence),
-  blockWriteOnHighRiskPending: z.boolean().default(DEFAULT_SETTLEMENT_CONFIG.blockWriteOnHighRiskPending),
   useLlmExtraction: z.boolean().default(DEFAULT_SETTLEMENT_CONFIG.useLlmExtraction),
   autoChapterSummary: z.boolean().default(DEFAULT_SETTLEMENT_CONFIG.autoChapterSummary),
 }).default(DEFAULT_SETTLEMENT_CONFIG);

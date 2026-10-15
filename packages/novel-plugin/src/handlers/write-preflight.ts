@@ -15,7 +15,7 @@ import { ensureNarrativeMemorySchema, listHighRiskPendingNarrativeEvents } from 
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
 import { ensureJingweiLedgerSchema } from "./jingwei-ledger-store.js";
 import { listStaleChapters } from "./audit-freshness.js";
-import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
+import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
 import { explainDiagnostic, type DiagnosticExplanation } from "./diagnostic-explanation.js";
 import {
   checkBookConfigReadability,
@@ -99,7 +99,6 @@ export interface WritePreflightWarning {
     | "volume-focus-missing"
     | "short-directive"
     | "focus-default-only"
-    | "high-risk-pending"
     | "empty-chapter-summary"
     | "platform-target-mismatch"
     | "audit-stale"
@@ -338,6 +337,50 @@ function makeBlocker(
 ): WritePreflightBlocker {
   const explained = explainDiagnostic(code, message);
   return { code, message, explanation: explanationOverride ?? explained.explanation, kind: explained.kind };
+}
+
+/**
+ * 高风险待确认事件的放行办法（作者 2026-10-15 的决定：按 NarraFork 的权限来，不自己开权限系统）。
+ *
+ * 存在未处理的高风险待确认事件（pending 且 high）时，write.preflight 与 pipeline.write 一律停写，没有本书开关。
+ * 放行只走 NarraFork 的通道：AskUserQuestion 请作者逐条选「批准 / 驳回」，再按选择调 memory.events 的
+ * approve / reject（confirmed-write，是否还要作者点确认由 Runtime 的权限模式决定），或作者直接在「待确认」面板处理。
+ * NovelFork 这里不做任何「代替作者批准」「按权限模式自动放行」的判断：是否自动作答、是否自动执行，
+ * 只由 Runtime 的权限模式与问题反思决定。
+ */
+export const HIGH_RISK_PENDING_RELEASE_STEPS = [
+  "先处理这些事件再写，按以下步骤：",
+  "① 用 memory.events（action=list）取出待确认的高风险事件，再用 AskUserQuestion 把它们逐条摘要列给作者（同步等作者回答，不要用异步提问；每次最多 4 条，多了分批问），每条让作者选「批准」或「驳回」；",
+  "② 按作者的选择逐条调用 memory.events 的 approve 或 reject（是否还需要作者再点确认由 NarraFork 的权限模式决定：全部运行模式下自动执行，其他模式会请求确认）；",
+  "③ 作者也可以直接在「待确认」面板逐条处理；",
+  "④ 全部处理完再重新写前检查、再写章。不要跳过这一步，不要换别的工具绕过，也不要替作者做选择。",
+].join("\n");
+
+/** 拦截说明里逐条列出的高风险事件条数上限；超出的只报数量。 */
+const HIGH_RISK_PENDING_PREVIEW_LIMIT = 5;
+
+/**
+ * 高风险待确认事件拦截的三段式说明，write.preflight 的 blocker 与 pipeline.write 的停写结果共用。
+ * 只列章号、事件内容与正文依据，不列内部 id（叙述者用 memory.events 的 list 取 id）。
+ */
+export function explainHighRiskPendingBlock(events: readonly NarrativeEvent[]): DiagnosticExplanation {
+  const highRisk = events.filter((event) => event.status === "pending" && event.riskLevel === "high");
+  const items = highRisk.slice(0, HIGH_RISK_PENDING_PREVIEW_LIMIT).map((event) => [
+    `- 第${event.chapterNumber}章：${event.subject} ${event.predicate} ${event.object}`,
+    event.evidenceText ? `  正文依据：${event.evidenceText}` : "",
+  ].filter(Boolean).join("\n"));
+  const more = highRisk.length > HIGH_RISK_PENDING_PREVIEW_LIMIT
+    ? [`……另外还有 ${highRisk.length - HIGH_RISK_PENDING_PREVIEW_LIMIT} 条。`]
+    : [];
+  return {
+    whatHappened: [
+      `本书有 ${highRisk.length} 条章后结算抽出的高风险事件还在待确认，写章已停。`,
+      ...items,
+      ...more,
+    ].join("\n"),
+    whyItMatters: "高风险事件可能改写世界规则、核心设定或造成不可逆变化；作者确认前它们不是既定事实，直接续写可能把未确认的内容当成设定写进正文，后面大范围返工。",
+    suggestedAction: HIGH_RISK_PENDING_RELEASE_STEPS,
+  };
 }
 
 /** book.json 读不出的独立 blocker（T-13）：占用/权限与内容损坏分开措辞。 */
@@ -641,34 +684,23 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     blockers.push(makeBlocker("empty-recent-progress", `已有 ${formalChapterCount} 章进度，但近章摘要/时间线记忆为空。请先 memory.settle_range / book.dissect(settle=true) 回填，或 pipeline.import_chapters 后 autoSettle。`));
   }
 
+  // 高风险待确认事件一律阻断（作者的决定）：没有本书开关，也不读任何配置；放行只走 NarraFork 的通道，
+  // 处理办法见 HIGH_RISK_PENDING_RELEASE_STEPS。
   const highRisk = listHighRiskPendingNarrativeEvents(storage, { bookId, limit: 20 });
-  let blockHighRisk = false;
+  if (highRisk.length > 0) {
+    blockers.push(makeBlocker(
+      "high-risk-pending",
+      `存在 ${highRisk.length} 条高风险待确认事件未处理，需作者逐条批准或驳回后才能写章。`,
+      explainHighRiskPendingBlock(highRisk),
+    ));
+  }
   let blockOnOverdueHooks = false;
-  // loadNarrativeMemoryConfig 对读不出的 book.json 会静默退化为默认配置；读不出时上面已有独立
-  // blocker（book-config-unreadable）挡住写章，这里另外按「无法确认是否允许带风险写作」失败关闭。
-  const bookJsonUnreadable = unreadableBookConfig !== undefined;
   if (input.bookRoot?.trim()) {
-    try {
-      const config = await loadNarrativeMemoryConfig(bookId, input.bookRoot);
-      blockHighRisk = config.settlement.blockWriteOnHighRiskPending;
-    } catch {
-      blockHighRisk = false;
-    }
     try {
       const book = await cockpitState.loadBookConfig(bookId);
       blockOnOverdueHooks = Boolean((book as { blockOnOverdueHooks?: unknown }).blockOnOverdueHooks);
     } catch {
       blockOnOverdueHooks = false;
-    }
-  }
-  if (highRisk.length > 0) {
-    const msg = `存在 ${highRisk.length} 条高风险 pending NarrativeEvents，请先 memory.events / 面板处理。`;
-    if (blockHighRisk || bookJsonUnreadable) {
-      blockers.push(makeBlocker("high-risk-pending", bookJsonUnreadable && !blockHighRisk
-        ? `${msg} 另外，本书的 book.json 读不出，无法确认是否允许带风险写作，已按阻断处理。`
-        : msg));
-    } else {
-      pushWarning(warnings, warningItems, "high-risk-pending", msg);
     }
   }
 

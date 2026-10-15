@@ -99,6 +99,39 @@ describe("writer prompt writing-skill/style channel boundary", () => {
     }
   });
 
+  it("高风险待确认的处理流程只走 NarraFork 通道：AskUserQuestion 同步问作者 → memory.events approve/reject，没有继续参数或「只提醒」的旧说法", () => {
+    const prompt = buildWriterSystemPrompt(
+      BOOK,
+      GENRE,
+      null,
+      "# Book Rules",
+      "# Genre Body",
+      "# Style Guide",
+      undefined,
+      3,
+      "creative",
+      undefined,
+      "zh",
+      "governed",
+      buildLengthSpec(2200, "zh"),
+    );
+    const route = prompt.split("\n").find((line) => line.trim().startsWith("- high-risk-pending："));
+    expect(route).toBeTruthy();
+    expect(route).toContain("AskUserQuestion");
+    expect(route).toMatch(/不要用异步|不要 async/u);
+    expect(route).toContain("memory.events");
+    expect(route).toContain("approve");
+    expect(route).toContain("reject");
+    expect(route).toContain("「待确认」面板");
+    expect(route).toContain("不要换别的工具绕过");
+    // pipeline.write 自己也会以 high-risk-pending 停写，回到同一条路由。
+    expect(prompt).toMatch(/pipeline\.write 返回[^\n]*high-risk-pending/u);
+    expect(prompt).not.toContain("continueWithHighRiskPending");
+    expect(prompt).not.toContain("继续参数");
+    expect(prompt).not.toContain("只提醒，默认不拦");
+    expect(prompt).not.toContain("默认只提醒");
+  });
+
   it("injects book design and rules without any author-habit section", () => {
     const prompt = buildWriterSystemPrompt(
       BOOK,

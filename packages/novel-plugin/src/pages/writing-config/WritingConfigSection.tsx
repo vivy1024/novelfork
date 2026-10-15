@@ -2,74 +2,25 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { AlertCircle, BrainCircuit, Loader2, Sparkles, Wrench } from "lucide-react";
+import { AlertCircle, BrainCircuit, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/hooks/use-api";
 import { WritingSkillsPanel } from "../writing-workbench/WritingSkillsPanel";
 import { CharacterKernelFieldsEditor, effectiveKernelFields } from "./CharacterKernelFieldsEditor";
 import type { KernelFieldSpec } from "../../engine/narrative-memory/types";
 
-type ConfigTab = "skills" | "memory" | "tools";
-
-interface ToolItem {
-  readonly id: string;
-  readonly label: string;
-}
-
-const OPTIONAL_TOOLS: readonly ToolItem[] = [
-  { id: "lore.read", label: "静态设定" },
-  { id: "memory.read", label: "叙事记忆" },
-  { id: "memory.graph", label: "记忆图谱" },
-  { id: "memory.events", label: "待确认事件" },
-  { id: "chapter.read", label: "章节" },
-  { id: "cockpit.snapshot", label: "快照" },
-  { id: "hooks.manage", label: "伏笔" },
-  { id: "character.check_consistency", label: "角色一致性" },
-  { id: "skills.check_compliance", label: "合规检查" },
-  { id: "memory.read_line", label: "叙事线" },
-];
-
-const ROLE_DEFAULTS: readonly string[] = [
-  "lore.read",
-  "memory.read",
-  "chapter.read",
-  "cockpit.snapshot",
-  "hooks.manage",
-  "skills.check_compliance",
-];
-
-function toolStorageKey(sessionId: string): string {
-  return `novelfork-tool-config-${sessionId}`;
-}
-
-function loadToolConfig(sessionId: string | undefined): Set<string> | null {
-  if (!sessionId) return null;
-  try {
-    const raw = localStorage.getItem(toolStorageKey(sessionId));
-    return raw ? new Set(JSON.parse(raw) as string[]) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveToolConfig(sessionId: string | undefined, enabled: Set<string>): void {
-  if (!sessionId) return;
-  try {
-    localStorage.setItem(toolStorageKey(sessionId), JSON.stringify([...enabled]));
-  } catch {
-    // Best effort only: the session policy remains the server-side authority.
-  }
-}
+// 「辅助工具」页签已下线：它向不存在的会话接口发 toolPolicy，从未生效；工具启用由 NarraFork 的「套路 › 可选工具」负责。
+type ConfigTab = "skills" | "memory";
 
 type NarrativeMemorySettings = {
   version: 1;
+  // 没有「高风险待审时阻断写作」开关：高风险待确认事件一律停写，放行只走 NarraFork 的权限通道。
   settlement: {
     enabled: boolean;
     autoApplyLowRisk: boolean;
     autoApplyMediumRisk: boolean;
     highRiskAlwaysPending: boolean;
     minConfidence: number;
-    blockWriteOnHighRiskPending: boolean;
     useLlmExtraction: boolean;
   };
   ledger: { closeSupersededFacts: boolean; currentViewLimit: number };
@@ -263,7 +214,6 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
         <NarrativeMemoryToggle label="自动应用中风险事件" description="中风险事件无需作者审批即可结算；高风险事件仍保留人工确认。" checked={config.settlement.autoApplyMediumRisk} onCheckedChange={(checked) => updateSettlement({ autoApplyMediumRisk: checked })} disabled={!config.settlement.enabled} />
         <NarrativeMemoryToggle label="高风险事件始终待审" description="涉及世界规则、核心伏笔或不可逆变化时，始终进入作者确认队列。" checked={config.settlement.highRiskAlwaysPending} onCheckedChange={(checked) => updateSettlement({ highRiskAlwaysPending: checked })} disabled={!config.settlement.enabled} />
         <NarrativeMemoryToggle label="使用 LLM 提取事件" description="关闭后仅使用规则与已有运行时状态提取章后事件。" checked={config.settlement.useLlmExtraction} onCheckedChange={(checked) => updateSettlement({ useLlmExtraction: checked })} disabled={!config.settlement.enabled} />
-        <NarrativeMemoryToggle label="高风险待审时阻断写作" description="默认只提醒，不阻断；开启后需先处理高风险待审事件。" checked={config.settlement.blockWriteOnHighRiskPending} onCheckedChange={(checked) => updateSettlement({ blockWriteOnHighRiskPending: checked })} />
         <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2.5">
           <span className="min-w-0 text-sm font-medium">自动结算最低置信度</span>
           <Input aria-label="自动结算最低置信度" type="number" min={0} max={1} step={0.05} value={config.settlement.minConfidence} onChange={(event) => {
@@ -372,55 +322,13 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
   );
 }
 
-function ToolsTab({ sessionId }: { sessionId?: string }) {
-  const [enabledTools, setEnabledTools] = useState<Set<string>>(() => loadToolConfig(sessionId) ?? new Set(ROLE_DEFAULTS));
-
-  useEffect(() => { setEnabledTools(loadToolConfig(sessionId) ?? new Set(ROLE_DEFAULTS)); }, [sessionId]);
-  useEffect(() => {
-    if (!sessionId) return;
-    saveToolConfig(sessionId, enabledTools);
-    const deny = OPTIONAL_TOOLS.map((tool) => tool.id).filter((id) => !enabledTools.has(id));
-    void fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionConfig: { toolPolicy: { deny } } }),
-    }).catch(() => undefined);
-  }, [sessionId, enabledTools]);
-
-  if (!sessionId) {
-    return <div className="flex flex-col items-center justify-center gap-2 py-8"><Wrench className="size-6 text-muted-foreground/50" /><p className="text-sm text-muted-foreground">请在写作会话中配置工具开关</p></div>;
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-2xs text-muted-foreground">勾选叙述者写作时可主动调用的辅助工具。未勾选的工具将被禁用。</p>
-      <div className="space-y-1.5">
-        {OPTIONAL_TOOLS.map((tool) => {
-          const checked = enabledTools.has(tool.id);
-          return <label key={tool.id} className="flex cursor-pointer items-center gap-2 select-none rounded-md border border-border p-2 hover:bg-muted/50" title={tool.id}>
-            <input type="checkbox" checked={checked} onChange={() => setEnabledTools((previous) => {
-              const next = new Set(previous);
-              if (next.has(tool.id)) next.delete(tool.id); else next.add(tool.id);
-              return next;
-            })} className="size-4 accent-primary shrink-0" />
-            <span className={cn("text-sm font-medium", checked ? "text-foreground" : "text-muted-foreground")}>{tool.label}</span>
-            <span className="ml-auto text-2xs text-muted-foreground/70 font-mono">{tool.id}</span>
-          </label>;
-        })}
-      </div>
-    </div>
-  );
-}
-
 const TABS: ReadonlyArray<{ id: ConfigTab; label: string; icon: typeof Sparkles }> = [
   { id: "skills", label: "写作技能", icon: Sparkles },
   { id: "memory", label: "叙事记忆", icon: BrainCircuit },
-  { id: "tools", label: "辅助工具", icon: Wrench },
 ];
 
-export function WritingConfigSection({ bookId, sessionId }: { bookId?: string; sessionId?: string }) {
+export function WritingConfigSection({ bookId }: { bookId?: string }) {
   const [activeTab, setActiveTab] = useState<ConfigTab>("skills");
-  const needsBook = activeTab === "skills" || activeTab === "memory";
 
   return (
     <div className="flex flex-col gap-3">
@@ -435,13 +343,12 @@ export function WritingConfigSection({ bookId, sessionId }: { bookId?: string; s
         })}
       </div>
       <div>
-        {needsBook && !bookId ? (
+        {!bookId ? (
           <div className="flex flex-col items-center justify-center py-8 gap-2"><AlertCircle className="size-6 text-muted-foreground/50" /><p className="text-sm text-muted-foreground">请先选择书籍</p></div>
         ) : (
           <>
-            {activeTab === "skills" && bookId && <WritingSkillsPanel bookId={bookId} />}
-            {activeTab === "memory" && bookId && <NarrativeMemorySettingsSection bookId={bookId} />}
-            {activeTab === "tools" && <ToolsTab sessionId={sessionId} />}
+            {activeTab === "skills" && <WritingSkillsPanel bookId={bookId} />}
+            {activeTab === "memory" && <NarrativeMemorySettingsSection bookId={bookId} />}
           </>
         )}
       </div>

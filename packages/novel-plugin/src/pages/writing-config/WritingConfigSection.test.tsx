@@ -52,14 +52,37 @@ describe("WritingConfigSection", () => {
     expect(html).not.toContain("节拍模板");
   });
 
-  it("Optional tools 使用 skills.check_compliance", async () => {
+  it("不再有「辅助工具」页签，也不向会话接口发 toolPolicy（工具启用归 NarraFork「套路 › 可选工具」）", async () => {
+    const { render, screen } = await import("@testing-library/react");
+    const { WritingConfigSection } = await import("./WritingConfigSection");
+    // 宿主按 PluginSectionProps 传入 bookId 与 sessionId；sessionId 不再被使用。
+    const hostProps = { bookId: BOOK_ID, sessionId: "session-1" };
+    render(<WritingConfigSection {...hostProps} />);
+
+    expect(screen.queryByRole("button", { name: "辅助工具" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "写作技能" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "叙事记忆" }).length).toBeGreaterThan(0);
+    expect(requestedPaths.some((path) => path.includes("/sessions/"))).toBe(false);
+  });
+
+  it("叙事记忆页没有「高风险待审时阻断写作」开关（高风险待确认一律停写，放行走 NarraFork 权限）", async () => {
+    stubs[`/api/books/${BOOK_ID}/narrative-memory/config`] = {
+      config: {
+        version: 1,
+        settlement: { enabled: true, autoApplyLowRisk: true, autoApplyMediumRisk: false, highRiskAlwaysPending: true, minConfidence: 0.7, useLlmExtraction: true },
+        ledger: { closeSupersededFacts: true, currentViewLimit: 50 },
+        retrieval: { maxTokens: 6000, channels: { state: true, timeline: true, hooks: true, facts: true, style: false, semantic: false }, waveEnabled: false, semanticEnabled: false },
+        characterKernel: { enabled: false, injectBudgetRatio: 0.1, stateSummaryMaxChars: 200 },
+      },
+    };
     const { fireEvent, render, screen } = await import("@testing-library/react");
     const { WritingConfigSection } = await import("./WritingConfigSection");
-    render(<WritingConfigSection sessionId="session-1" />);
+    render(<WritingConfigSection bookId={BOOK_ID} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "辅助工具" }));
-    expect(screen.getByText("skills.check_compliance")).toBeTruthy();
-    expect(screen.queryByText("presets.check_compliance")).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: "叙事记忆" })[0]!);
+    expect(await screen.findByRole("switch", { name: "高风险事件始终待审" })).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "高风险待审时阻断写作" })).toBeNull();
+    expect(screen.queryByText("默认只提醒，不阻断；开启后需先处理高风险待审事件。")).toBeNull();
   });
 
   it("叙事记忆页展示角色内核子区；默认关闭时字段编辑器不出现，开启后展示内置默认字段集", async () => {
@@ -67,7 +90,7 @@ describe("WritingConfigSection", () => {
     stubs[`/api/books/${BOOK_ID}/narrative-memory/config`] = {
       config: {
         version: 1,
-        settlement: { enabled: true, autoApplyLowRisk: true, autoApplyMediumRisk: false, highRiskAlwaysPending: true, minConfidence: 0.7, blockWriteOnHighRiskPending: false, useLlmExtraction: true },
+        settlement: { enabled: true, autoApplyLowRisk: true, autoApplyMediumRisk: false, highRiskAlwaysPending: true, minConfidence: 0.7, useLlmExtraction: true },
         ledger: { closeSupersededFacts: true, currentViewLimit: 50 },
         retrieval: { maxTokens: 6000, channels: { state: true, timeline: true, hooks: true, facts: true, style: false, semantic: false }, waveEnabled: false, semanticEnabled: false },
         characterKernel: { enabled: false, injectBudgetRatio: 0.1, stateSummaryMaxChars: 200 },
@@ -93,7 +116,7 @@ describe("WritingConfigSection", () => {
     stubs[`/api/books/${BOOK_ID}/narrative-memory/config`] = {
       config: {
         version: 1,
-        settlement: { enabled: true, autoApplyLowRisk: true, autoApplyMediumRisk: false, highRiskAlwaysPending: true, minConfidence: 0.7, blockWriteOnHighRiskPending: false, useLlmExtraction: true },
+        settlement: { enabled: true, autoApplyLowRisk: true, autoApplyMediumRisk: false, highRiskAlwaysPending: true, minConfidence: 0.7, useLlmExtraction: true },
         ledger: { closeSupersededFacts: true, currentViewLimit: 50 },
         retrieval: { maxTokens: 6000, channels: { state: true, timeline: true, hooks: true, facts: true, style: false, semantic: false }, waveEnabled: false, semanticEnabled: false },
         characterKernel: { enabled: false, injectBudgetRatio: 0.1, stateSummaryMaxChars: 200 },

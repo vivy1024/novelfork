@@ -50,6 +50,7 @@ import type { StyleSnippet } from "../engine/narrative-memory/channels/style-cha
 import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
 import { formatAuthorExplanation, isAuthorFacingDetail } from "./diagnostic-explanation.js";
 import { isBookJsonUnreadable } from "./book-config-readable.js";
+import { explainHighRiskPendingBlock } from "./write-preflight.js";
 
 export interface PipelineCanvasArtifact {
   readonly id: string;
@@ -80,8 +81,8 @@ export interface PipelineWriteInput {
   readonly jingweiContext?: string;
   readonly previousChapterTail?: string;
   readonly autoRevise?: boolean;
-  // T-13（D1）：已删除 continueWithHighRiskPending。高风险待确认事件是否停写只由本书设置
-  // narrativeMemory.settlement.blockWriteOnHighRiskPending（作者的决定）决定；模型自己传继续参数等于自我放行。
+  // T-13（D1）：已删除 continueWithHighRiskPending——模型自己传继续参数等于自我放行。
+  // 2026-10-15 起也没有本书开关：存在高风险待确认事件一律停写，放行只走 NarraFork 的通道（见 write-preflight.ts 的 HIGH_RISK_PENDING_RELEASE_STEPS）。
   /** 对抗式审查：3 视角独立审查 + 交叉合成（默认 false，回退单 agent） */
   readonly adversarialAudit?: boolean;
   /** 多轮自愈：审查→修订最多 N 轮（默认 1） */
@@ -141,7 +142,10 @@ export interface PipelineWriteOutput {
   readonly reviseRounds?: number;
   /** 正式章节确认后的 Narrative Memory 自动结算摘要 */
   readonly narrativeSettlement?: ChapterSettlementResult;
-  /** 写作前发现的高风险 pending NarrativeEvents 提醒 */
+  /**
+   * @deprecated 2026-10-15 起存在高风险待确认事件就以 high-risk-pending 停写，成功结果不再带这条提醒。
+   * 字段只为兼容仍在读取它的调用方（runtime-domain-tools、Studio 结果卡）而保留，等它们下线后删除。
+   */
   readonly highRiskPendingReminder?: string;
   /** 轻量投稿风险提示：只提供本地线索与人工复核建议，不阻断保存。 */
   readonly publishHint?: {
@@ -594,25 +598,11 @@ export function buildPipelineChapterResultMetadata(input: { readonly narrativeCo
   return input.narrativeContext?.diagnostics;
 }
 
-/** T-13（D1）：高风险待确认事件拦截时给出的处理办法——只有作者确认能放行，模型不能自我放行。 */
-const HIGH_RISK_PENDING_AUTHOR_ACTION = "请作者在待确认里处理高风险事件后再写（逐条批准或拒绝；叙述者不能代替作者确认）。";
-
-export function buildHighRiskPendingReminder(events: readonly NarrativeEvent[]): string {
-  const highRisk = events.filter((event) => event.status === "pending" && event.riskLevel === "high");
-  if (highRisk.length === 0) return "";
-  const items = highRisk.slice(0, 5).map((event) => [
-    `- 第${event.chapterNumber}章：${event.subject} ${event.predicate} ${event.object}`,
-    event.evidenceText ? `  正文依据：${event.evidenceText}` : "",
-  ].filter(Boolean).join("\n")).join("\n");
-  const more = highRisk.length > 5 ? `\n……另外还有 ${highRisk.length - 5} 条高风险待审。` : "";
-  return `检测到 ${highRisk.length} 条高风险待审事件（只提醒，默认不拦写作；去叙事记忆面板处理）。系统不会自动改正文或经纬设定。\n${items}${more}`;
-}
-
 async function executePipelineWriteUnlocked(
   input: PipelineWriteInput,
   options: PipelineWriteOptions,
 ): Promise<PipelineWriteResult> {
-  // 产品口径：章后结算默认自动；是否阻断高风险 pending 由本书 narrativeMemory 配置决定。
+  // 产品口径：章后结算默认自动；存在高风险待确认事件一律停写（没有本书开关），放行只走 NarraFork 的通道。
   const {
     bookId,
     sceneSpec,
@@ -664,8 +654,6 @@ async function executePipelineWriteUnlocked(
 
     const bookDir = state.bookDir(bookId);
     const memoryConfig = await loadNarrativeMemoryConfig(bookId, bookDir).catch(() => null);
-    // T-13（D1）：是否因高风险待确认事件停写，只看作者在本书设置里的决定；不读模型传入的任何继续参数。
-    const blockOnHighRiskPending = memoryConfig?.settlement.blockWriteOnHighRiskPending ?? false;
     const chapterNumber = sceneSpec.chapter ?? await state.getNextChapterNumber(bookId);
 
     // 已有章节覆盖采用可选的乐观保护：旧调用方不传 hash/version 时保持兼容，
@@ -737,13 +725,26 @@ async function executePipelineWriteUnlocked(
           || item.code === "high-risk-pending"
         ));
         if (hard.length > 0) {
-          const firstBlocker = hard[0];
-          // T-13（D1）：高风险待确认事件的拦截必须交给作者处理，说明里写明这一点（不论它是不是第一条阻断项）。
-          const highRiskAction = hard.some((item) => item.code === "high-risk-pending") ? `\n${HIGH_RISK_PENDING_AUTHOR_ACTION}` : "";
-          const explanationText = (firstBlocker?.explanation
-            ? `\n${firstBlocker.explanation.whatHappened}\n${firstBlocker.explanation.whyItMatters}\n${firstBlocker.explanation.suggestedAction}`
-            : "") + highRiskAction;
           const summaryMsg = hard.map((item) => item.message).join("；");
+          // 高风险待确认事件单独返回 high-risk-pending（不混成「近章记忆未就绪」），它的说明排最前：
+          // 放行只走 NarraFork 的通道（AskUserQuestion → memory.events approve/reject，或「待确认」面板）。
+          const highRiskBlocker = hard.find((item) => item.code === "high-risk-pending");
+          if (highRiskBlocker) {
+            const explanation = [highRiskBlocker, ...hard.filter((item) => item !== highRiskBlocker)]
+              .flatMap((item) => (item.explanation ? [formatAuthorExplanation(item.explanation)] : []))
+              .join("\n\n");
+            return {
+              ok: false,
+              code: "high-risk-pending",
+              error: `${summaryMsg}\n${explanation}`,
+              summary: summaryMsg,
+              explanation,
+            };
+          }
+          const firstBlocker = hard[0];
+          const explanationText = firstBlocker?.explanation
+            ? `\n${firstBlocker.explanation.whatHappened}\n${firstBlocker.explanation.whyItMatters}\n${firstBlocker.explanation.suggestedAction}`
+            : "";
           return {
             ok: false,
             code: "context-not-ready",
@@ -810,32 +811,14 @@ async function executePipelineWriteUnlocked(
 
     logger?.info(`[pipeline.write] Starting for book=${bookId} chapter=${chapterNumber}`);
 
-    let highRiskPendingReminder: string | undefined;
+    // 高风险待确认事件门禁：存在就停写——没有本书开关，也不读模型传入的任何继续参数。
+    // skipContextGate 跳过写前预检时同样经过这里。放行只走 NarraFork 的通道（AskUserQuestion 请作者选择 →
+    // memory.events approve/reject，或「待确认」面板）；是否自动作答、自动执行由 Runtime 的权限模式与问题反思决定，这里不判断。
+    let highRiskPending: NarrativeEvent[];
     try {
       const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-      const pendingEvents = listHighRiskPendingNarrativeEvents(getStorageDatabase(), { bookId, limit: 50 });
-      const reminder = buildHighRiskPendingReminder(pendingEvents);
-      if (reminder) {
-        highRiskPendingReminder = reminder;
-        logger?.warn(`[pipeline.write] ${reminder.split("\n")[0]}`);
-        if (blockOnHighRiskPending) {
-          // 提醒文本的首行写的是「只提醒，默认不拦」，停写时不能沿用；只复用逐条明细。
-          const highRiskCount = pendingEvents.filter((event) => event.status === "pending" && event.riskLevel === "high").length;
-          const details = reminder.split("\n").slice(1).join("\n");
-          const summary = `第${chapterNumber}章没有生成：本书有 ${highRiskCount} 条高风险待确认事件，本书设置为此时停写。`;
-          return {
-            ok: false,
-            code: "high-risk-pending",
-            error: `${summary}\n${details}`,
-            summary,
-            explanation: [
-              `发生了什么：本书有 ${highRiskCount} 条机器抽取的高风险事件还在待确认，本书设置为有高风险待确认事件时停写。`,
-              "为什么要看：这些事件尚未经作者确认，直接续写可能把未确认的设定当成既定事实写进正文。叙述者传入的任何继续参数都不算作者确认。",
-              `建议怎么做：${HIGH_RISK_PENDING_AUTHOR_ACTION}`,
-            ].join("\n"),
-          };
-        }
-      }
+      highRiskPending = listHighRiskPendingNarrativeEvents(getStorageDatabase(), { bookId, limit: 50 })
+        .filter((event) => event.status === "pending" && event.riskLevel === "high");
     } catch (err) {
       // T-13②：高风险待处理的检查本身读取失败时，无法确认是否存在高风险事件，按失败即关闭阻断写章。
       // 不再静默跳过（此前只记 debug 日志就继续写，等于在门禁读不到时放行）。
@@ -851,6 +834,18 @@ async function executePipelineWriteUnlocked(
           "为什么要看：若跳过检查，可能在存在未处理高风险事件时继续写章，造成设定冲突。",
           "建议怎么做：检查本书的存储与记忆数据是否可读，修复后重试写章。",
         ].join("\n"),
+      };
+    }
+    if (highRiskPending.length > 0) {
+      const summary = `第${chapterNumber}章没有生成：本书有 ${highRiskPending.length} 条高风险待确认事件未处理，需作者逐条批准或驳回后才能写。`;
+      const explanation = formatAuthorExplanation(explainHighRiskPendingBlock(highRiskPending));
+      logger?.warn(`[pipeline.write] ${summary}`);
+      return {
+        ok: false,
+        code: "high-risk-pending",
+        error: `${summary}\n${explanation}`,
+        summary,
+        explanation,
       };
     }
 
@@ -1278,7 +1273,6 @@ async function executePipelineWriteUnlocked(
         ...(knowledgeWarnings.length > 0 ? { knowledgeWarnings } : {}),
         ...(timelineWarnings.length > 0 ? { timelineWarnings } : {}),
         publishHint,
-        ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),
         ...(narrativeEvents.length > 0 ? { narrativeEvents } : {}),
         generatedAt: new Date().toISOString(),
       };
@@ -1460,7 +1454,6 @@ async function executePipelineWriteUnlocked(
       pipelineStages,
       ...(needsHumanReview ? { needsHumanReview: true } : {}),
       ...(lengthWarning ? { lengthWarning } : {}),
-      ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),
       ...(narrativeSettlement ? { narrativeSettlement } : {}),
       ...(settlementDispatch ? { settlementDispatch } : {}),
       ...(settlementDispatch && !settlementDispatch.ok
