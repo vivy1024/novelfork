@@ -35,6 +35,7 @@ import {
 } from "./services/narrator-access";
 import { migrateLegacySessions } from "./services/legacy-session-migration";
 import {
+import { shouldBypassBookGuard } from "./services/book-guard-bypass";
 	isNovelForkProductNarrator,
 	resolveNovelForkNarratorCwd,
 } from "./narrator-profile";
@@ -64,7 +65,7 @@ function actorFromContext(c: Context): ProductActor {
 async function guardNovelBookRoute(c: Context, next: Next): Promise<void> {
 	// Runtime capability routes resolve their own canonical book/project gateway
 	// and need to retain their uniform fail-closed error contract.
-	if (/^\/api\/books\/[^/]+\/(?:routines|skills|hooks|mcp|rules)(?:\/|$)/u.test(c.req.path)) {
+	if (shouldBypassBookGuard(c.req.path, c.req.method)) {
 		await next();
 		return;
 	}
