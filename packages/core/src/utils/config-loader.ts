@@ -52,7 +52,7 @@ export async function loadProjectConfig(
   const { config: loadEnv } = await import("dotenv");
 
   // Priority: ~/.novelfork/.env > project .env overrides
-  // Embedding 密钥不走这里，落到产品库 kv_store。
+  // Embedding 密钥不走这里，以 AES-256-GCM 加密存入产品库 kv_store（主密钥在 NOVELFORK_HOME/.secret-key）。
   loadEnv({ path: resolveGlobalEnvPath() });
   loadEnv({ path: join(root, ".env"), override: true });
 

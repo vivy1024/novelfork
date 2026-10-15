@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 /**
  * NovelFork 数据目录（产品全局配置、作者级技能、市场数据等的默认根）。
  * 设置 NOVELFORK_HOME 时以它为准，否则为 ~/.novelfork。LLM 的 <数据目录>/.env
- * 仍由 loadProjectConfig 读取；embedding 密钥不再走这里，而是落在产品库 kv_store。
+ * 仍由 loadProjectConfig 读取；embedding 与朱雀检测的密钥不再走这里，而是以 AES-256-GCM
+ * 加密后存入产品库 kv_store，主密钥在 NOVELFORK_HOME/.secret-key（见 novel-plugin engine/secret-box.ts，T-10）。
  *
  * 路径必须懒计算：Studio 会经 core 根入口把本模块打进浏览器包。
  * 顶层 homedir()/join() 会在 Vite 构建期因 node 内置空壳硬崩。

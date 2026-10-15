@@ -1,6 +1,11 @@
 /**
  * 独立 embedding 提供商配置：落到 NovelFork 产品库 kv_store，
  * 不写 .env，不挤进 Runtime「AI 供应商」chat 配置。
+ *
+ * 地址口径（作者 2026-10-15 决定，按 NarraFork 模型供应商地址口径）：地址由管理员配置
+ * （写接口在产品层只许管理员），本地模型服务（Ollama、LM Studio 的 localhost）与内网地址
+ * 都是正当用法，不做内网限制；只做协议白名单——http(s) 以外的地址（file: 会被读成本机文件）
+ * 在保存时拒绝，读出存量配置时也按未配置处理，保证 createEmbeddings 永远拿不到它。
  */
 
 import {
@@ -10,6 +15,8 @@ import {
   type EmbeddingConfig,
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
+import { isHttpEndpoint } from "../net-guard.js";
+import { decryptSecret, encryptSecret } from "../secret-box.js";
 
 export const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3";
 export const DEFAULT_EMBEDDING_DIM = 1024;
@@ -53,12 +60,13 @@ function maskSecret(value: string): string {
   return `${EMBEDDING_API_KEY_MASK}${trimmed.slice(-4)}`;
 }
 
-function parseStoredConfig(raw: string | null | undefined): EmbeddingConfig | null {
+async function parseStoredConfig(raw: string | null | undefined): Promise<EmbeddingConfig | null> {
   if (!raw?.trim()) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<EmbeddingConfig>;
+    const parsed = JSON.parse(raw) as Partial<Omit<EmbeddingConfig, "apiKey">> & { apiKey?: unknown };
     const baseUrl = typeof parsed.baseUrl === "string" ? parsed.baseUrl.trim() : "";
-    const apiKey = typeof parsed.apiKey === "string" ? parsed.apiKey.trim() : "";
+    // 密文对象或旧版明文字符串都能读出；解密失败时视为未配置，不回显任何内容。
+    const apiKey = parsed.apiKey === undefined ? "" : (await decryptSecret(parsed.apiKey).catch(() => "")).trim();
     const model = typeof parsed.model === "string" && parsed.model.trim()
       ? parsed.model.trim()
       : DEFAULT_EMBEDDING_MODEL;
@@ -66,6 +74,8 @@ function parseStoredConfig(raw: string | null | undefined): EmbeddingConfig | nu
       ? parsed.dim
       : DEFAULT_EMBEDDING_DIM;
     if (!baseUrl || !apiKey) return null;
+    // 存量配置可能早于协议校验写入：非 http(s) 地址视为未配置，发请求前就拦下。
+    if (!isHttpEndpoint(baseUrl)) return null;
     return { baseUrl, apiKey, model, dim };
   } catch {
     return null;
@@ -94,7 +104,7 @@ function storeFor(storage?: StorageDatabase): EmbeddingSettingsStore {
 export async function loadEmbeddingConfig(storage?: StorageDatabase): Promise<EmbeddingConfig | null> {
   try {
     const raw = await storeFor(storage).get(EMBEDDING_SETTINGS_KV_KEY);
-    return parseStoredConfig(raw);
+    return await parseStoredConfig(raw);
   } catch {
     return null;
   }
@@ -165,13 +175,26 @@ export async function saveEmbeddingSettings(
   storage?: StorageDatabase,
 ): Promise<PublicEmbeddingSettings> {
   const current = await loadEmbeddingConfig(storage);
+  const baseUrl = patch.baseUrl ?? current?.baseUrl ?? DEFAULT_EMBEDDING_BASE_URL;
+  if (!isHttpEndpoint(baseUrl)) {
+    throw new Error("向量模型的服务地址必须是 http 或 https 地址，配置没有保存：file: 等地址会被当成本机文件读取；请填写模型服务的接口地址（本机服务可用 http://localhost:端口/v1）。");
+  }
+  // A key belongs to the endpoint it was entered for. Moving to a different base URL
+  // without supplying a new key must not carry the old key along to the new endpoint.
+  const endpointChanged = current !== null && baseUrl.replace(/\/+$/, "") !== current.baseUrl.replace(/\/+$/, "");
+  const carriedKey = endpointChanged ? "" : (current?.apiKey ?? "");
   const next: EmbeddingConfig = {
-    baseUrl: patch.baseUrl ?? current?.baseUrl ?? DEFAULT_EMBEDDING_BASE_URL,
+    baseUrl,
     model: patch.model ?? current?.model ?? DEFAULT_EMBEDDING_MODEL,
     dim: patch.dim ?? current?.dim ?? DEFAULT_EMBEDDING_DIM,
-    apiKey: patch.apiKey ?? current?.apiKey ?? "",
+    apiKey: patch.apiKey ?? carriedKey,
   };
-  await storeFor(storage).set(EMBEDDING_SETTINGS_KV_KEY, JSON.stringify(next));
+  await storeFor(storage).set(EMBEDDING_SETTINGS_KV_KEY, JSON.stringify({
+    baseUrl: next.baseUrl,
+    model: next.model,
+    dim: next.dim,
+    apiKey: next.apiKey ? await encryptSecret(next.apiKey) : "",
+  }));
   return toPublicEmbeddingSettings(next.apiKey ? next : null);
 }
 
@@ -192,11 +215,18 @@ export async function probeEmbeddingSettings(input: {
     }
     return { ok: true, model: result.model || config.model, dim };
   } catch (error) {
+    // 底层错误可能含内部主机与端口（T-10），只据 HTTP 状态给出方向，不回显消息文本。
+    const status = typeof (error as { status?: unknown })?.status === "number"
+      ? (error as { status: number }).status
+      : undefined;
+    const message = status === 401 || status === 403
+      ? "向量模型的 API Key 无效或无权限，请检查后重试。"
+      : "向量模型连接失败，请检查服务地址与网络后重试。";
     return {
       ok: false,
       model: config.model,
       dim: config.dim,
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
     };
   }
 }

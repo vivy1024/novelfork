@@ -119,6 +119,8 @@ describe("AI taste filter rules", () => {
       zhuqueConfig: {
         apiKey: "key",
         endpoint: "https://zhuque.local/scan",
+        // 发请求前会校验解析结果不是内网；这里模拟解析到公网文档地址。
+        resolveHost: async () => ["203.0.113.10"],
         fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ score: 42 }) }),
       },
     });

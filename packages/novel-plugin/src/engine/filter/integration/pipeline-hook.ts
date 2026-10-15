@@ -4,6 +4,7 @@ import { runFilter } from "../engine/index.js";
 import { createFilterReportRepository } from "../repositories/filter-report-repo.js";
 import { summarizeHitCounts } from "../engine/index.js";
 import type { FilterReport } from "../types.js";
+import type { ZhuqueConfig } from "../zhuque/client.js";
 
 export interface ScanChapterAndStoreFilterReportInput {
   bookId: string;
@@ -11,6 +12,8 @@ export interface ScanChapterAndStoreFilterReportInput {
   text: string;
   reportId?: string;
   scannedAt?: Date;
+  /** 仅由用户手动触发的入口传入；写章管线不传，因此自动写作不会外发。 */
+  zhuqueConfig?: ZhuqueConfig | null;
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> {
@@ -27,7 +30,7 @@ export async function scanChapterAndStoreFilterReport(storage: StorageDatabase, 
   const summary = await summaryRepo.getByChapter(input.bookId, input.chapterNumber);
   const metadata = parseJsonObject(summary?.metadataJson ?? "{}");
   const pgiUsed = Boolean(metadata.pgi_answers);
-  const report = await runFilter(input.text, { bookId: input.bookId, pgiUsed });
+  const report = await runFilter(input.text, { bookId: input.bookId, pgiUsed, zhuqueConfig: input.zhuqueConfig ?? null });
   const reportId = input.reportId ?? crypto.randomUUID();
   const scannedAt = input.scannedAt ?? new Date();
   report.filterReportId = reportId;

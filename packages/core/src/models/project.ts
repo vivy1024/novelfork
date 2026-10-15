@@ -17,8 +17,8 @@ export const LLMConfigSchema = z.object({
 export type LLMConfig = z.infer<typeof LLMConfigSchema>;
 
 /**
- * 独立 embedding provider 的配置形状。密钥落在 NovelFork 产品库 kv_store，
- * 不进 novelfork.json，也不写 .env。
+ * 独立 embedding provider 的配置形状。密钥以 AES-256-GCM 加密存入 NovelFork 产品库 kv_store，
+ * 主密钥在 NOVELFORK_HOME/.secret-key（见 novel-plugin engine/secret-box.ts，T-10）；不进 novelfork.json，也不写 .env。
  */
 export const EmbeddingConfigSchema = z.object({
   baseUrl: z.string().url(),

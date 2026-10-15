@@ -6,6 +6,7 @@ import { createStorageDatabase, runStorageMigrations, type StorageDatabase } fro
 
 import { createEmbeddingSettingsRouter } from "./embedding.js";
 import { EMBEDDING_SETTINGS_KV_KEY } from "../engine/narrative-memory/embedding-settings.js";
+import { decryptSecret } from "../engine/secret-box.js";
 
 const tempDirs: string[] = [];
 
@@ -61,7 +62,9 @@ describe("createEmbeddingSettingsRouter", () => {
       const raw = storage.sqlite.prepare<{ value: string }>(
         `SELECT "value" FROM "kv_store" WHERE "key" = ?`,
       ).get(EMBEDDING_SETTINGS_KV_KEY);
-      expect(JSON.parse(raw?.value ?? "{}").apiKey).toBe("sk-embed");
+      expect(raw?.value ?? "").not.toContain("sk-embed");
+      expect(JSON.parse(raw?.value ?? "{}").apiKey).toMatchObject({ enc: "v1" });
+      expect(await decryptSecret(JSON.parse(raw?.value ?? "{}").apiKey)).toBe("sk-embed");
       expect(process.env.NOVELFORK_EMBEDDING_API_KEY).not.toBe("sk-embed");
     } finally {
       storage.close();
