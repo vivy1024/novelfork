@@ -208,6 +208,7 @@ describe("Runtime product contract", () => {
       JSON.stringify({ workspaceRoot: "D:\\\\Books\\\\book-1" }),
     );
     expect(fetchImpl.mock.calls[7]?.[1]?.method).toBe("DELETE");
+    expect(String(fetchImpl.mock.calls[7]?.[0])).toBe("/api/novelfork/books/book%201");
     expect(fetchImpl.mock.calls[10]?.[1]?.body).toBe(
       JSON.stringify({ title: "第 1 章" }),
     );

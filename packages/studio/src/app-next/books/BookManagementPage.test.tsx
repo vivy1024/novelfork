@@ -91,4 +91,33 @@ describe("BookManagementPage Runtime maintenance actions", () => {
     await waitFor(() => expect(onClaimLegacyBook).toHaveBeenCalledWith("legacy-book"));
     expect(await screen.findByText(/旧作品 legacy-book 已接管/)).not.toBeNull();
   });
+
+  it("删除确认与成功提示说明外部目录不会被删除，不再声称删除作品文件", async () => {
+    const onDeleteBook = vi.fn(async () => undefined);
+    render(
+      <BookManagementPage
+        books={[{ id: "book-1", title: "长夜" }]}
+        loading={false}
+        error={null}
+        onNavigateToBook={vi.fn()}
+        onCreateBook={vi.fn()}
+        onClaimLegacyBook={vi.fn()}
+        onRepairBook={vi.fn()}
+        onRebindBookWorkspace={vi.fn()}
+        onDeleteBook={onDeleteBook}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("外部目录不会被删除");
+    expect(dialog.textContent).toContain("NovelFork 管理的作品目录");
+    expect(dialog.textContent).not.toContain("会删除作品文件");
+
+    fireEvent.change(screen.getByLabelText("作品名"), { target: { value: "长夜" } });
+    fireEvent.click(screen.getByRole("button", { name: "永久删除" }));
+
+    await waitFor(() => expect(onDeleteBook).toHaveBeenCalledWith("book-1"));
+    expect(await screen.findByText(/作品 长夜 已删除.*外部目录不会被删除/)).not.toBeNull();
+  });
 });

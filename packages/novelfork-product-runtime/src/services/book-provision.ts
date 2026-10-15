@@ -10,6 +10,7 @@ import {
 	stat,
 	writeFile,
 } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
 	chapters,
@@ -29,6 +30,7 @@ import {
 	resolveBookStorageDir,
 	resolveLengthCountingMode,
 	StateManager,
+	type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 import { and, desc, eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 // The private Runtime tsconfig maps only the plugin root. Keep direct source
@@ -65,6 +67,7 @@ import {
 	type BookRuntimeBindingRecord,
 	bookRuntimeBindingService,
 	deriveBookRoot,
+	diagnoseTrustedBookRoot,
 	EXTERNAL_BOOK_WORKSPACE_MARKER,
 	getControlledBooksRoot,
 	resolveTrustedBookRoot,
@@ -534,6 +537,17 @@ export function isExternalBookWorkspace(
 	return projectInit.source === "existing" || projectInit.source === "new";
 }
 
+/**
+ * 外部目录路径与 NarraFork 建项目一致：`~` 与 `~/…` 展开为当前用户主目录
+ * （Windows 上也接受 `~\…`）。不设允许根：任何登录用户都能指向任意绝对路径。
+ */
+export function expandWorkspacePath(rawPath: string, home: string = homedir()): string {
+	const trimmed = rawPath.trim();
+	if (trimmed === "~") return home;
+	if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) return join(home, trimmed.slice(2));
+	return trimmed;
+}
+
 function normalizeInput(
 	input: ProductBookInput,
 ): Required<Pick<ProductBookInput, "title">> & ProductBookInput {
@@ -542,7 +556,8 @@ function normalizeInput(
 	if (title.length > 200) throw new ValidationError("title must be at most 200 characters");
 	const rawProjectInit = input.projectInit as Partial<NonNullable<ProductBookInput["projectInit"]>> | undefined;
 	const source = rawProjectInit?.source ?? (rawProjectInit as { repositorySource?: ProductBookWorkspaceSource } | undefined)?.repositorySource ?? "none";
-	const workspaceRoot = rawProjectInit?.workspaceRoot?.trim() || undefined;
+	const rawWorkspaceRoot = rawProjectInit?.workspaceRoot?.trim();
+	const workspaceRoot = rawWorkspaceRoot ? expandWorkspacePath(rawWorkspaceRoot) : undefined;
 	// External paths are user-owned: never default to managed auto-delete.
 	const managedByNovelFork = workspaceRoot
 		? false
@@ -608,6 +623,36 @@ function publicOperation(operation: ProvisionOperation) {
 
 async function pathExists(path: string): Promise<boolean> {
 	return Boolean(await stat(path).catch(() => null));
+}
+
+/** 已经是一本作品的标志文件：新建作品不能落在这样的目录里。 */
+const EXISTING_BOOK_MARKERS = ["book.json", join("chapters", "index.json")] as const;
+
+function workspaceAlreadyABookError(workspaceRoot: string, marker: string): ValidationError {
+	return new ValidationError(
+		`所选目录 ${workspaceRoot} 里已经有 ${marker}，它已经是一本作品。` +
+			"新建作品会在这个目录里写入新的作品配置与章节索引，可能与已有内容冲突或覆盖它。" +
+			"请改用「导入已有作品」接入这本书，或为新作品另选一个目录。",
+		"WORKSPACE_ALREADY_A_BOOK",
+	);
+}
+
+/**
+ * 数据安全检查（不是权限限制）：source=new 指向的目录若已经是一本作品，建书前拒绝，
+ * 不留任何记录。其余非空目录允许（与 NarraFork 一样接受已有目录），
+ * 脚手架只写不存在的文件，见 `writeBookScaffold`。
+ */
+async function assertNewWorkspaceIsNotABook(input: ProductBookInput): Promise<void> {
+	const projectInit = input.projectInit;
+	if (!projectInit || projectInit.source !== "new" || !isExternalBookWorkspace(projectInit)) return;
+	const workspaceRoot = resolve(projectInit.workspaceRoot as string);
+	const info = await stat(workspaceRoot).catch(() => null);
+	if (!info?.isDirectory()) return;
+	for (const marker of EXISTING_BOOK_MARKERS) {
+		if (await pathExists(join(workspaceRoot, marker))) {
+			throw workspaceAlreadyABookError(workspaceRoot, marker);
+		}
+	}
 }
 
 async function listControlledChapterFiles(bookRoot: string): Promise<ControlledChapterFile[]> {
@@ -983,11 +1028,71 @@ async function writeBookScaffold(bookRoot: string, operation: ProvisionOperation
 			];
 	await mkdir(join(bookRoot, "story", "runtime"), { recursive: true });
 	await mkdir(join(bookRoot, "chapters"), { recursive: true });
-	await writeBookConfig(bookRoot, config);
-	await writeFile(join(bookRoot, "chapters", "index.json"), "[]\n", "utf8");
+	// 脚手架可能写进用户已有的目录（source=new 指向非空目录）：一律只写不存在的文件，
+	// 绝不覆盖用户已有的同名文件。book.json 已存在时只接受本书自己的（中断后重试）。
+	try {
+		await writeBookConfig(bookRoot, config, { exclusive: true });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+		await readBookConfig(bookRoot, operation.bookId).catch(() => {
+			throw workspaceAlreadyABookError(bookRoot, "book.json");
+		});
+	}
+	await writeFileIfAbsent(join(bookRoot, "chapters", "index.json"), "[]\n");
 	await Promise.all(
-		storyFiles.map(([name, content]) => writeFile(join(bookRoot, "story", name), content, "utf8")),
+		storyFiles.map(([name, content]) => writeFileIfAbsent(join(bookRoot, "story", name), content)),
 	);
+}
+
+async function writeFileIfAbsent(path: string, content: string): Promise<void> {
+	try {
+		await writeFile(path, content, { encoding: "utf8", flag: "wx" });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+	}
+}
+
+/** 删书流程的控制表：由 deleteBook 按顺序最后删除，清理书籍数据时不能提前删掉，否则失败后无法重试。 */
+const BOOK_DELETE_CONTROL_TABLES = new Set(["book_provision_operations", "book_runtime_bindings"]);
+
+/**
+ * 清掉产品库里属于这本书的全部数据（单事务）。
+ *
+ * 先交给领域代码 `purgeBookArchiveData`：它知道只靠父表关联、自身没有 book_id 的子表，
+ * 以及 FTS 索引的清理方式（必须在删 jingwei_fts_doc 之前做），并在它的清单之后删 book 行。
+ * 再枚举库里所有带 book_id 列的表逐一删除，按需建表的叙事记忆表、workflow_runs、日志等
+ * 不必登记也不会残留（workflow_run_steps 等子表经 ON DELETE CASCADE 随父表删除；
+ * 现有指向 book 的外键也都是 CASCADE）。最后再删一次 book 行，兜住领域清单跳过的情况。
+ */
+function purgeBookScopedStorage(storage: StorageDatabase, bookId: string): void {
+	storage.sqlite.transaction(() => {
+		purgeBookArchiveData(storage, bookId);
+		const tables = storage.sqlite
+			.prepare(
+				`SELECT DISTINCT m.name AS name FROM sqlite_master m JOIN pragma_table_info(m.name) p
+				 WHERE m.type = 'table' AND p.name = 'book_id'`,
+			)
+			.all() as Array<{ name: string }>;
+		for (const { name } of tables) {
+			if (BOOK_DELETE_CONTROL_TABLES.has(name)) continue;
+			storage.sqlite.prepare(`DELETE FROM "${name.replaceAll('"', '""')}" WHERE book_id = ?`).run(bookId);
+		}
+		storage.sqlite.prepare(`DELETE FROM "book" WHERE id = ?`).run(bookId);
+	})();
+}
+
+/**
+ * 书根是否是 NovelFork 自己管理的目录：realpath 后是受控书籍根的直接子目录。
+ * 只认直接子目录，既不会删到受控根本身，也不会删到别的书目录里的一部分。
+ */
+async function isProductOwnedBookRoot(bookRoot: string): Promise<boolean> {
+	const [controlledRoot, physicalRoot] = await Promise.all([
+		realpath(getControlledBooksRoot()).catch(() => null),
+		realpath(bookRoot).catch(() => null),
+	]);
+	if (!controlledRoot || !physicalRoot) return false;
+	const rel = relative(controlledRoot, physicalRoot);
+	return rel !== "" && rel !== ".." && !isAbsolute(rel) && !/[\\/]/u.test(rel);
 }
 
 function resolveDomainBookRoot(bookId: string): string {
@@ -1200,7 +1305,7 @@ export class NovelForkProductBookService {
 		return results;
 	}
 
-	async deleteBook(bookId: string, actor: ProductActor, deleteWorkspace = false): Promise<void> {
+	async deleteBook(bookId: string, actor: ProductActor): Promise<void> {
 		const normalizedBookId = normalizeBookId(bookId);
 		const operation = await this.getOperation(normalizedBookId, actor);
 		if (operation.state !== "ready" || !operation.runtimeProjectId) {
@@ -1215,34 +1320,33 @@ export class NovelForkProductBookService {
 		) {
 			throw new NotFoundError("Book", normalizedBookId);
 		}
-		const input = operation.inputJson as ProductBookInput;
-		const trustedBookRoot = await resolveTrustedBookRoot(
-			binding,
-			getControlledBooksRoot(),
-			isExternalBookWorkspace(input.projectInit),
-		);
-		if (!trustedBookRoot) {
-			throw new ValidationError("Book binding does not resolve to a trusted product directory");
-		}
+		// 要不要删目录只看物理位置，不看建书输入记录、也不看请求参数：
+		// 书根经 realpath 后是受控书籍根的直接子目录才算 NovelFork 自己管理的目录。
+		// 外部根照旧要求服务端写入的可信标记；目录已不可解析（被移走、删掉）时只解绑不删目录，
+		// 不再让删除卡在「目录无法解析」上。
+		const diagnosis = await diagnoseTrustedBookRoot(binding, getControlledBooksRoot(), true);
+		const ownedBookRoot =
+			diagnosis.reason === "trusted" && (await isProductOwnedBookRoot(diagnosis.bookRoot))
+				? diagnosis.bookRoot
+				: null;
 
-		// Tear down the Runtime project first. On Windows, its watcher/git process can
-		// hold the book directory open and make a pre-delete rename fail with EPERM.
-		// Project deletion closes those handles and cascades the trusted binding.
-		await deleteProjectById(operation.runtimeProjectId);
+		// 顺序保证可重入：每一步失败时，之前的步骤都可以安全地再做一遍，
+		// 绑定与建书记录留到最后删，所以再点一次删除能把剩下的步骤做完。
+		// 1. Runtime 项目先删：Runtime 拒绝（如无法核实资源保护）时什么都还没改；
+		//    在 Windows 上它的 watcher/git 进程还会占着书目录，先删项目才能删目录。
+		//    上一次删除已删掉项目时跳过。
+		const projectStillExists = await runtimeDb.query.projects.findFirst({
+			where: eq(projects.id, operation.runtimeProjectId),
+			columns: { id: true },
+		});
+		if (projectStillExists) await deleteProjectById(operation.runtimeProjectId);
+		// 2. 产品库里这本书的全部数据（单事务；失败时绑定与记录都还在，可重试）。
+		purgeBookScopedStorage(getStorageDatabase(), normalizedBookId);
+		// 3. 只删 NovelFork 自己管理的目录；外部目录只解绑。
+		if (ownedBookRoot) await rm(ownedBookRoot, { recursive: true, force: true });
+		// 4. 最后删绑定与建书记录。
 		await bookRuntimeBindingService.deleteByProjectId(operation.runtimeProjectId);
 		await productDb().delete(bookProvisionOperations).where(eq(bookProvisionOperations.id, operation.id));
-		// The standalone core catalog is not initialized in every Runtime process
-		// (including gateway-only tests). Its row is a derived index; the trusted
-		// directory and Runtime records above are the authoritative deletion.
-		try {
-			const storage = await getStorageDatabase();
-			storage.sqlite.run("DELETE FROM book WHERE id = ?", normalizedBookId);
-		} catch {
-			// A later create/import safely upserts this derived catalog entry.
-		}
-		if (deleteWorkspace || (operation.inputJson as ProductBookInput).projectInit?.managedByNovelFork !== false) {
-			await rm(trustedBookRoot, { recursive: true, force: true });
-		}
 		this.invalidateWorkspaceFileTree(normalizedBookId);
 	}
 
@@ -1361,6 +1465,7 @@ export class NovelForkProductBookService {
 			),
 		});
 		if (existing) return this.resume(existing, actor);
+		await assertNewWorkspaceIsNotABook(input);
 
 		const bookId = input.bookId ?? generatedBookId(input.title);
 		const alreadyReserved = await productDb().query.bookProvisionOperations.findFirst({
@@ -1408,7 +1513,7 @@ export class NovelForkProductBookService {
 		rawInput: ProductBookImportInput,
 	) {
 		const key = idempotencyKey.trim();
-		const sourcePath = rawInput.sourcePath.trim();
+		const sourcePath = expandWorkspacePath(rawInput.sourcePath);
 		if (!key || key.length > 200) throw new ValidationError("Idempotency-Key header is required");
 		const existingOperation = await productDb().query.bookProvisionOperations.findFirst({
 			where: and(
@@ -1723,7 +1828,7 @@ export class NovelForkProductBookService {
 		workspaceRoot: string,
 	): Promise<{ bookId: string; bookRoot: string; runtimeProjectId: string }> {
 		const normalizedBookId = normalizeBookId(bookId);
-		const rawRoot = workspaceRoot.trim();
+		const rawRoot = expandWorkspacePath(workspaceRoot);
 		if (!rawRoot || !isAbsolute(rawRoot)) {
 			throw new ValidationError("workspaceRoot must be an absolute path");
 		}
@@ -1814,8 +1919,8 @@ export class NovelForkProductBookService {
 				.where(eq(narrators.id, operation.narratorId));
 		}
 
-		// Keep provision input in sync so delete/list continue treating this as
-		// an external workspace and do not force-delete the user's directory.
+		// 同步建书输入，书架与工作区读取据此按外部目录解析可信根。
+		// 删书是否删除目录不看这份记录，只看物理位置（见 deleteBook）。
 		const input = operation.inputJson as ProductBookInput;
 		await this.updateOperation(operation.id, {
 			inputJson: {
@@ -2575,9 +2680,7 @@ export class NovelForkProductBookService {
 					}
 					// source=new into a directory that already has a book.json: only accept same id.
 					await readBookConfig(root, operation.bookId).catch(() => {
-						throw new ValidationError(
-							"所选目录已存在其他作品的 book.json，请换空目录或使用「已有 workspace」",
-						);
+						throw workspaceAlreadyABookError(root, "book.json");
 					});
 					return;
 				}
@@ -2585,7 +2688,6 @@ export class NovelForkProductBookService {
 					await initializeExternalBookConfig(root, operation);
 					return;
 				}
-				// source=new on an existing empty/non-book directory: scaffold in place.
 				await writeBookScaffold(root, operation);
 				return;
 			}

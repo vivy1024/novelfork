@@ -18,6 +18,7 @@ import {
 } from "../services/book-provision";
 import type { BoundNarratorActor } from "../services/narrator-access";
 import { resolveDomainBookRoot } from "./domain";
+import { forwardErrorsToParent } from "./forward-errors";
 import { getProductBootstrapContract } from "../services/product-contract";
 
 const guidedSetupAnswerSchema = z
@@ -142,7 +143,7 @@ function handlerData(result: {
  * Auth is installed by app.ts. All book and narrator IDs are validated against a
  * server-owned binding before the route touches Runtime or Core data.
  */
-export const novelForkProductBooksRoutes = new Hono();
+export const novelForkProductBooksRoutes = forwardErrorsToParent(new Hono());
 
 novelForkProductBooksRoutes.get("/bootstrap", async (c) => {
 	const currentActor = actor(c);
@@ -186,8 +187,7 @@ novelForkProductBooksRoutes.post("/books/import", async (c) => {
 });
 
 novelForkProductBooksRoutes.delete("/books/:bookId", async (c) => {
-	const deleteWorkspace = c.req.query("deleteWorkspace") === "true";
-	await novelForkProductBookService.deleteBook(requiredParam(c, "bookId"), actor(c), deleteWorkspace);
+	await novelForkProductBookService.deleteBook(requiredParam(c, "bookId"), actor(c));
 	return c.json({ ok: true });
 });
 
@@ -238,7 +238,7 @@ export async function assertBookProductAccess(
  * binding. They keep the retained NovelFork workbench functional without
  * reviving the deleted Studio server.
  */
-export const bookDomainRoutes = new Hono();
+export const bookDomainRoutes = forwardErrorsToParent(new Hono());
 
 /** NewBookGuide completion: POST /api/books/:bookId/guided-setup */
 bookDomainRoutes.post("/guided-setup", async (c) => {
@@ -448,7 +448,7 @@ bookDomainRoutes.post("/files/delete", async (c) => {
 
 // Book-scoped workspace gateway. Mutable chapter resources use semantic IDs;
 // all reads and writes resolve through the server-owned binding.
-export const bookWorkspaceRoutes = new Hono();
+export const bookWorkspaceRoutes = forwardErrorsToParent(new Hono());
 
 bookWorkspaceRoutes.get("/", async (c) => {
 	return c.json(
@@ -485,7 +485,7 @@ bookWorkspaceRoutes.put("/resources/:resourceId", async (c) => {
 // Book-scoped narrator history and creation for the NovelFork IDE shell. The
 // embedded native NarratorPanel still uses Runtime's canonical /api/narrators
 // and /ws/narrator contracts after this trusted product selection.
-export const bookNarratorGatewayRoutes = new Hono();
+export const bookNarratorGatewayRoutes = forwardErrorsToParent(new Hono());
 
 bookNarratorGatewayRoutes.get("/", async (c) => {
 	const bookId = requiredParam(c, "bookId");

@@ -69,7 +69,7 @@ export interface BookManagementPageProps {
     bookId: string,
     workspaceRoot: string,
   ) => Promise<RuntimeRebindBookWorkspaceResult>;
-  readonly onDeleteBook: (bookId: string, deleteWorkspace?: boolean) => Promise<void>;
+  readonly onDeleteBook: (bookId: string) => Promise<void>;
   /** 项目档案：三个回调齐备时才显示导出 / 导入入口。 */
   readonly loadArchiveModules?: () => Promise<readonly RuntimeBookArchiveModule[]>;
   readonly onExportBookArchive?: (bookId: string, modules: readonly string[]) => Promise<void>;
@@ -106,7 +106,6 @@ export function BookManagementPage({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ManagedBook | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [deleteWorkspace, setDeleteWorkspace] = useState(false);
   const [rebindTarget, setRebindTarget] = useState<ManagedBook | null>(null);
   const [rebindPath, setRebindPath] = useState("");
   const [rebindPickerOpen, setRebindPickerOpen] = useState(false);
@@ -200,8 +199,11 @@ export function BookManagementPage({
     setActionBookId(deleteTarget.id);
     setActionError(null);
     try {
-      await onDeleteBook(deleteTarget.id, deleteWorkspace);
-      setActionMessage(`作品 ${deleteTarget.title} 已永久删除`);
+      await onDeleteBook(deleteTarget.id);
+      // 书籍摘要尚未告诉前端这本书是否位于外部目录，先用对两种书都成立的说法。
+      setActionMessage(
+        `作品 ${deleteTarget.title} 已删除：NovelFork 里的数据与绑定已清除，NovelFork 管理的作品目录一并删除；外部目录不会被删除。`,
+      );
       setDeleteTarget(null);
       setDeleteConfirmation("");
     } catch (caught) {
@@ -349,7 +351,6 @@ export function BookManagementPage({
                   onClick={() => {
                     setDeleteTarget(book);
                     setDeleteConfirmation("");
-                    setDeleteWorkspace(false);
                   }}
                 >
                   <Trash2 data-icon="inline-start" />
@@ -532,7 +533,8 @@ export function BookManagementPage({
           <DialogHeader>
             <DialogTitle>永久删除作品</DialogTitle>
             <DialogDescription>
-              此操作会删除作品文件、Runtime 会话和绑定，且无法撤销。请输入作品名
+              此操作会删除这本书在 NovelFork 里的全部数据、Runtime 会话和绑定，且无法撤销。
+              NovelFork 管理的作品目录会一并删除；外部目录不会被删除，里面的文件保留不动。请输入作品名
               <strong className="mx-1 text-foreground">
                 {deleteTarget?.title}
               </strong>
@@ -542,7 +544,6 @@ export function BookManagementPage({
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="delete-book-confirmation">作品名</FieldLabel>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={deleteWorkspace} onChange={(event) => setDeleteWorkspace(event.target.checked)} />同时删除 workspace 目录（默认仅解绑）</label>
               <Input
                 id="delete-book-confirmation"
                 value={deleteConfirmation}

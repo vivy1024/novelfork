@@ -578,8 +578,8 @@ function RouteMountPoint({
                 await reloadRuntimeShell();
                 return result;
               }}
-              onDeleteBook={async (bookId, deleteWorkspace) => {
-                await runtimeClient.deleteBook(bookId, deleteWorkspace);
+              onDeleteBook={async (bookId) => {
+                await runtimeClient.deleteBook(bookId);
                 await reloadRuntimeShell();
               }}
               loadArchiveModules={runtimeClient.listBookArchiveModules}

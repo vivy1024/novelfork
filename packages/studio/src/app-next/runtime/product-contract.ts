@@ -776,11 +776,11 @@ export function createRuntimeProductClient(
         report: payload.report ?? null,
       };
     },
-    deleteBook: async (bookId: string, deleteWorkspace = false): Promise<OkResponse> => {
+    deleteBook: async (bookId: string): Promise<OkResponse> => {
       const normalizedBookId = bookId.trim();
       if (!normalizedBookId) throw new Error("删除作品需要 bookId");
       return runtimeJson<OkResponse>(
-        `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}${deleteWorkspace ? "?deleteWorkspace=true" : ""}`,
+        `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}`,
         { method: "DELETE" },
         fetchOptions,
       );
