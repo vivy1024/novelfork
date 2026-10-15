@@ -142,9 +142,14 @@ export {
   NOVEL_READY_RUNTIME_TOOL_NAMES,
   NOVEL_SESSION_TOOL_DEFINITIONS,
   NOVEL_TOOL_NAMES,
-  NOVEL_AGENT_PRESETS,
+  NOVEL_TOOL_ROUTINES,
+  getNovelToolRoutineId,
+  listNovelToolRoutines,
 } from "./tool-registry.js";
 export type {
+  NovelToolRoutineDefinition,
+  NovelToolRoutineId,
+  NovelToolRoutineMode,
   NovelRuntimeStatus,
   NovelRuntimeToolCatalogEntry,
   NovelRuntimeToolRisk,

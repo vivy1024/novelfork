@@ -23,7 +23,12 @@ import type {
 export interface ProjectRoutineConfig {
 	disabledRoutines?: string[];
 	enabledRoutines?: string[];
+	/** 可选工具三档（manual / auto / resident），Runtime 的套路模式权威字段。 */
+	toolModes?: Record<string, string>;
 }
+
+/** 本书对一个可选工具套路的覆盖：跟随全局，或三档之一。 */
+export type BookToolRoutineMode = "global" | "manual" | "auto" | "resident";
 
 export interface ProjectMcpConfig {
 	mcpServerOverrides?: ProjectMcpServerOverride[];
@@ -70,6 +75,8 @@ export interface BookRuntimeCapabilitiesRouteDeps {
 		enable(routineId: string, projectId: string): Promise<void>;
 		disable(routineId: string, projectId: string): Promise<void>;
 		reset(routineId: string, projectId: string): Promise<void>;
+		/** 可选工具套路的三档模式（含自动档）；只对工具套路有效，其余套路由 Runtime 拒绝。 */
+		setMode?(routineId: string, projectId: string, mode: BookToolRoutineMode): Promise<void>;
 		statuses(config?: ProjectRoutineConfig): unknown[];
 	};
 	skills: {
@@ -190,7 +197,10 @@ export function applyProjectMcpOverridePatch(
 	return projectSettings;
 }
 
-const routineActionSchema = z.object({ action: z.enum(["enable", "disable", "reset"]) }).strict();
+const routineActionSchema = z.union([
+	z.object({ action: z.enum(["enable", "disable", "reset"]) }).strict(),
+	z.object({ mode: z.enum(["global", "manual", "auto", "resident"]) }).strict(),
+]);
 const mcpBehaviorSchema = z.enum(["readOnly", "readWrite", "ask", "deny"]);
 const projectMcpOverridePatchSchema = z.object({
 	defaultBehavior: mcpBehaviorSchema.nullable().optional(),
@@ -303,7 +313,12 @@ export function createBookRuntimeCapabilitiesRoutes(deps: BookRuntimeCapabilitie
 		const parsed = routineActionSchema.safeParse(await c.req.json());
 		if (!parsed.success) throw new ValidationError(parsed.error.message);
 		const routineId = requiredParam(c, "routineId");
-		await deps.routines[parsed.data.action](routineId, access.runtimeProjectId);
+		if ("mode" in parsed.data) {
+			if (!deps.routines.setMode) throw new ValidationError("本书不支持按三档设置可选工具");
+			await deps.routines.setMode(routineId, access.runtimeProjectId, parsed.data.mode);
+		} else {
+			await deps.routines[parsed.data.action](routineId, access.runtimeProjectId);
+		}
 		return c.json({ ok: true });
 	});
 

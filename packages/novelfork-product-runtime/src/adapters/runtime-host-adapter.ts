@@ -11,6 +11,7 @@ import {
 	type ToolResult,
 	type ToolVisibility,
 	type ResolvedRuntimeContributions,
+	type RuntimeProductToolRoutineContribution,
 	type RuntimeResolveContext,
 } from "@vivy1024/narrafork-runtime-bridge";
 import { and, desc, eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
@@ -25,6 +26,7 @@ import {
 import {
 	NOVEL_RUNTIME_CONTRIBUTION,
 	getNovelToolPermissionPolicy,
+	listNovelToolRoutines,
 } from "@vivy1024/novelfork-novel-plugin";
 import { z } from "zod/v4";
 import {
@@ -346,6 +348,8 @@ export class NovelRuntimeHostAdapter {
 
 		// 创作工作流：有进行中的运行时注入工序简报，并把可见的小说工具收窄到本工序。
 		// 每趟对话开始时 Runtime 都会重新调用这里，工序推进后下一趟即按新工序生效。
+		// 这里只决定「本趟露出哪些」：Runtime 把返回的工具名当可见性过滤，会话启用了哪些
+		// 小说工具仍由套路模式与 /load 决定，收窄不会抹掉作者的手动加载。
 		const run = findActiveWorkflowRun(narratorId, boundBookId(context));
 		const workflowExtension = run ? workflowPromptExtension(run) : null;
 		// 资料索引卡（T4.7）：会话压缩折叠历史时它随本趟重建，模型随时可以按卡重取原文。
@@ -357,7 +361,6 @@ export class NovelRuntimeHostAdapter {
 				run,
 				tool.definition.name,
 				toRuntimeRisk(tool.definition.risk),
-				getNovelToolPermissionPolicy(tool.definition.name)?.visibility,
 			))
 			: resolved.tools;
 
@@ -454,50 +457,44 @@ export class NovelRuntimeHostAdapter {
 		};
 	}
 
+	/**
+	 * 可见性否决（只收窄，从不启用）：会话启用了哪些小说工具由 NarraFork 的套路模式、/load
+	 * 与持久化加载决定；这里只在给了权限模式时按工具策略拦掉该模式不允许的工具。
+	 * Runtime 自己的 toolFilter 已按同一份策略做模式判定，不传 context 时恒为 true。
+	 */
 	isToolAllowed(
 		toolName: string,
-		enabledOptionalToolNames: ReadonlySet<string>,
-		context?: Readonly<{ permissionMode?: SessionPermissionMode | string; isAdvancedEnabled?: boolean }>,
+		_enabledOptionalToolNames: ReadonlySet<string>,
+		context?: Readonly<{ permissionMode?: SessionPermissionMode | string }>,
 	): boolean {
 		const policy = this.getToolPermissionPolicy(toolName);
-		if (!policy) return true;
-
-		if (context?.permissionMode) {
-			const mode = context.permissionMode as SessionPermissionMode;
-			if (policy.enabledForModes.length > 0 && !policy.enabledForModes.includes(mode)) {
-				return false;
-			}
-		}
-
-		if (policy.visibility === "advanced") {
-			const canonicalToolName = this.toCanonicalToolName(toolName);
-			return context?.isAdvancedEnabled === true
-				|| enabledOptionalToolNames.has(toolName)
-				|| enabledOptionalToolNames.has(canonicalToolName);
-		}
-		return true;
+		if (!policy || !context?.permissionMode) return true;
+		const mode = context.permissionMode as SessionPermissionMode;
+		return policy.enabledForModes.length === 0 || policy.enabledForModes.includes(mode);
 	}
 
-	syncToolVisibility(
-		enabledToolNames: Set<string>,
-		resolvedToolNames: readonly string[],
-		context?: Readonly<{ isAdvancedEnabled?: boolean; permissionMode?: SessionPermissionMode | string }>,
-	): void {
-		const explicitlyEnabled = new Set(
-			[...enabledToolNames].map((name) => this.toWireToolName(name)),
-		);
-		const registeredNames = new Set([
-			...this.toolNameAliases.canonicalToWire.keys(),
-			...this.toolNameAliases.canonicalToWire.values(),
-		]);
-		for (const name of registeredNames) enabledToolNames.delete(name);
-		for (const name of resolvedToolNames) {
-			const policy = this.getToolPermissionPolicy(name);
-			if (!policy) continue;
-			if (policy.visibility === "author" || explicitlyEnabled.has(name)) {
-				enabledToolNames.add(name);
-			}
-		}
+	/**
+	 * 小说工具在 NarraFork「可选工具」里的套路（分组与默认档位见 NOVEL_TOOL_ROUTINES）。
+	 * 只含真正贡献给 Runtime 的工具，名字用 Runtime 注册名（点号换成下划线）。
+	 */
+	toolRoutines(): RuntimeProductToolRoutineContribution[] {
+		const contributed = (NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => {
+			const policy = getNovelToolPermissionPolicy(tool.definition.name);
+			return {
+				name: tool.definition.name,
+				visibility: policy?.visibility ?? "advanced",
+				risk: toRuntimeRisk(policy?.risk ?? tool.definition.risk),
+			};
+		});
+		return listNovelToolRoutines(contributed).map((routine) => ({
+			id: routine.id,
+			nameEn: routine.nameEn,
+			nameZh: routine.nameZh,
+			descriptionEn: routine.descriptionEn,
+			descriptionZh: routine.descriptionZh,
+			toolNames: routine.toolNames.map((name) => this.toWireToolName(name)),
+			defaultMode: routine.defaultMode,
+		}));
 	}
 
 	async execute(

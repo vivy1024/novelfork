@@ -166,9 +166,13 @@ describe("创作工作流对叙述者的约束", () => {
 		expect(parse(current.output)).toMatchObject({ data: { approvedProse: { title: "开篇", content: "作者批准的正文。" } } });
 	});
 
-	test("高级工具不参与收窄（保住作者的手动加载），但调用时照样被拦", async () => {
+	test("高级写类工具同样随工序收窄（只是可见性，启用状态由 Runtime 套路体系保留），调用时照样被拦", async () => {
 		await startRun();
-		expect(await adapter.resolveToolNames("narrator-a")).toContain("memory_bulk_delete");
+		const visible = await adapter.resolveToolNames("narrator-a");
+		expect(visible).not.toContain("memory_bulk_delete");
+		expect(visible).not.toContain("chapter_discard_range");
+		// 只读的高级工具照常可见。
+		expect(visible).toContain("memory_search");
 		const result = await adapter.execute("memory_bulk_delete", { kind: "fact", filter: { ids: ["x"] }, reason: "清理测试" }, "narrator-a");
 		expect(parse(result.output).error).toBe("workflow-step-disallowed");
 	});

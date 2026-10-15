@@ -9,9 +9,10 @@ import {
 	initializeNovelRuntimeStorage,
 } from "./adapters/storage";
 import {
+	getNovelRuntimeToolPermissionPolicy,
+	getNovelRuntimeToolRoutines,
 	isNovelProductToolAllowed,
 	novelRuntimeAdapter,
-	syncNovelRuntimeToolVisibility,
 } from "./adapters/runtime-adapter";
 import {
 	assertBookProductAccess,
@@ -135,8 +136,10 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 		resolveToolNames: (narratorId) => novelRuntimeAdapter.resolveToolNames(narratorId),
 		resolveTrustedPromptRoot: resolveNovelForkTrustedPromptRoot,
 		toolDefinitions: () => novelRuntimeAdapter.toolDefinitions(),
+		// 只做可见性：会话启用哪些小说工具由 NarraFork 的「可选工具」套路（toolRoutines）、/load 与持久化加载决定。
 		isToolAllowed: isNovelProductToolAllowed,
-		syncToolVisibility: syncNovelRuntimeToolVisibility,
+		getToolPermissionPolicy: getNovelRuntimeToolPermissionPolicy,
+		toolRoutines: getNovelRuntimeToolRoutines,
 	},
 	canAccessNarratorState: ({ userId, narratorId }) =>
 		canAccessBoundNarratorFromUserId(userId, narratorId),

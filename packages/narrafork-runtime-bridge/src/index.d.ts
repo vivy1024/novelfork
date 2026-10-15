@@ -96,14 +96,43 @@ export interface ResolvedRuntimeContributions {
 
 export type RuntimeLearningContribution = unknown;
 
+/** NarraFork「可选工具」的三档。 */
+export type RuntimeProductToolRoutineMode = "manual" | "auto" | "resident";
+
+/**
+ * 产品贡献的工具套路：与 Runtime 自带套路一起出现在「可选工具」、项目覆盖与 /load 里，
+ * 由 Runtime 的套路体系决定会话启用哪些工具。
+ */
+export interface RuntimeProductToolRoutineContribution {
+	/** 带命名空间的小写 id（如 `novelfork.writing`），也是 /load 参数。 */
+	readonly id: string;
+	readonly nameEn: string;
+	readonly nameZh: string;
+	readonly descriptionEn: string;
+	readonly descriptionZh: string;
+	/** Runtime 注册名（toolDefinitions() 返回的 name）。 */
+	readonly toolNames: readonly string[];
+	/** 全局与项目都没设置时的档位，缺省为 manual。 */
+	readonly defaultMode?: RuntimeProductToolRoutineMode;
+}
+
+/**
+ * 启用与可见分开：启用集合只由 Runtime 的套路模式、/load 与持久化加载决定；
+ * 产品经 resolveContribution / resolveToolNames（可信绑定 + 工序收窄）与 isToolAllowed 只做可见性收窄。
+ */
 export interface RuntimeProductNarratorAdapter {
 	resolve(narratorId: string): Promise<RuntimeResolveContext | null>;
 	resolveContribution(narratorId: string): Promise<ResolvedRuntimeContributions | null>;
 	resolveToolNames(narratorId: string): Promise<string[]>;
 	resolveTrustedPromptRoot?(narratorId: string): Promise<string | null>;
 	toolDefinitions(): ToolDefinition[];
-	isToolAllowed?(toolName: string, enabledOptionalToolNames: ReadonlySet<string>): boolean;
-	syncToolVisibility?(enabledToolNames: Set<string>, resolvedToolNames: readonly string[]): void;
+	isToolAllowed?(
+		toolName: string,
+		enabledOptionalToolNames: ReadonlySet<string>,
+		context?: Readonly<{ permissionMode?: SessionPermissionMode | string }>,
+	): boolean;
+	getToolPermissionPolicy?(toolName: string): ContributedToolPermissionPolicy | null;
+	toolRoutines?(): readonly RuntimeProductToolRoutineContribution[];
 }
 
 export interface RuntimeProductAccessDeniedEvent {
@@ -324,6 +353,11 @@ export const disableRoutineForProject: (...args: any[]) => Promise<void>;
 export const enableRoutineForProject: (...args: any[]) => Promise<void>;
 export const getProjectRoutineStatusesWithOverride: (...args: any[]) => any[];
 export const resetRoutineForProject: (...args: any[]) => Promise<void>;
+export const setToolRoutineModeForProject: (
+	routineId: string,
+	projectId: string,
+	mode: RuntimeProductToolRoutineMode | "global",
+) => Promise<void>;
 export const getLearningCategories: (...args: any[]) => LearningCategory[];
 export const getLearningDoc: (...args: any[]) => LearningDoc | null;
 export const getLearningDocSummaries: (...args: any[]) => LearningDocSummary[];

@@ -20,6 +20,8 @@ export type {
 	RuntimeProductTextGenerationUnavailableCode,
 	RuntimeProductTextMessage,
 	RuntimeProductTextModelRole,
+	RuntimeProductToolRoutineContribution,
+	RuntimeProductToolRoutineMode,
 	RuntimeResolveContext,
 } from "./product-host";
 import type { RuntimeProductHostServices } from "./product-host";
@@ -249,6 +251,7 @@ export {
 	enableRoutineForProject,
 	getProjectRoutineStatusesWithOverride,
 	resetRoutineForProject,
+	setToolRoutineModeForProject,
 } from "../../narrafork-runtime-private/server/services/routine-service";
 export type {
 	ProjectRoutineStatus,

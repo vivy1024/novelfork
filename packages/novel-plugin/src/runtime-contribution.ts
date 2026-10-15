@@ -94,7 +94,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 
 ## 写新章硬纪律（不可跳过）
 1. write.preflight →（确认一句指示）→ 读取相关 Writing Skills → scene.spec → pipeline.write。
-2. preflight 返回 blockers 非空：立即停写，只报告缺口（缺指示 / 近章记忆空 / 高风险 pending），不得硬写。
+2. preflight 返回 blockers 非空：立即停写，不得硬写。缺指示、近章记忆空等缺口只报告给作者；high-risk-pending（高风险事件待确认）按以下流程放行，不跳过、不换工具绕过、不替作者做选择：① memory.events（action=list）取出待确认的高风险事件；② 用 AskUserQuestion 同步问作者（每次最多 4 条，多了分批问），每条让作者选「批准」或「驳回」；③ 按作者的选择逐条调用 memory.events 的 approve / reject（是否还要作者再点确认由 NarraFork 的权限模式决定），作者也可以直接在「待确认」面板处理；④ 全部处理完再重新 write.preflight，通过后再写。pipeline.write 返回 high-risk-pending 时同样按此流程。
 3. 只使用产品内 focus、近章事实、lore brief、伏笔与用户一句 Directives；禁止用写作理论、文风大道理或外部项目总结填空。
 4. scene.spec 必须由你本人显式提交结构化蓝图（chapter/title/wordTarget/scenes/constraints/beatBudget），工具只做校验；pipeline.write 必须由你本人提交完整正文 content，工具负责校验、落盘与章后结算，不再内部生成。
 
@@ -754,14 +754,6 @@ export const NOVEL_RUNTIME_CONTRIBUTION: RuntimePluginContribution = {
       position: "after",
       order: 100,
       agentId: "novelist",
-    },
-  ],
-  agentPresets: [
-    {
-      id: "novelist",
-      name: "小说创作",
-      tools: READY_RUNTIME_TOOLS.map((tool) => tool.name),
-      systemPromptSuffix: NOVEL_RUNTIME_SYSTEM_PROMPT,
     },
   ],
   learning: NOVEL_LEARNING_CONTRIBUTION,

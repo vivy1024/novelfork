@@ -7,6 +7,7 @@ import {
 	NotFoundError,
 	projects,
 	resetRoutineForProject,
+	setToolRoutineModeForProject,
 	settings,
 	skillService,
 } from "@vivy1024/narrafork-runtime-bridge";
@@ -58,6 +59,7 @@ export const defaultBookRuntimeCapabilitiesRouteDeps: BookRuntimeCapabilitiesRou
 		enable: enableRoutineForProject,
 		disable: disableRoutineForProject,
 		reset: resetRoutineForProject,
+		setMode: setToolRoutineModeForProject,
 		statuses: getProjectRoutineStatusesWithOverride,
 	},
 	skills: skillService,

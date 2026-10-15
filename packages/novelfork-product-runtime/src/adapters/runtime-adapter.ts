@@ -28,27 +28,28 @@ export const NOVEL_PRODUCT_CORE_TOOL_NAMES: ReadonlySet<string> = new Set(["AskU
  * Product narrators no longer apply a second hard allowlist on top of Runtime.
  * Visibility matches native NarraFork:
  * - core tools (Bash/Read/Write/Edit/…) are available by default
- * - optional tools stay gated by session `_enabledOptionalTools` (routines / `/load`)
+ * - optional tools, novel tools included, stay gated by session
+ *   `_enabledOptionalTools`, which only tool routine modes / `/load` decide
  * - session details can still disable tools via custom-traits disabled-tools
  *
- * `enabledOptionalToolNames` is kept for SPI compatibility; the Runtime
- * toolFilter applies the optional-tool gate after this check returns true.
+ * This is a visibility-only veto by permission mode; it never enables a tool.
  */
 export function isNovelProductToolAllowed(
 	toolName: string,
 	enabledOptionalToolNames: ReadonlySet<string>,
-	context?: Readonly<{ permissionMode?: import("@vivy1024/narrafork-runtime-bridge").SessionPermissionMode | string; isAdvancedEnabled?: boolean }>,
+	context?: Readonly<{ permissionMode?: import("@vivy1024/narrafork-runtime-bridge").SessionPermissionMode | string }>,
 ): boolean {
 	return novelRuntimeAdapter.hostAdapter.isToolAllowed(toolName, enabledOptionalToolNames, context);
 }
 
-/** Keep existing optional-tool visibility synchronization compatible. */
-export function syncNovelRuntimeToolVisibility(
-	enabledToolNames: Set<string>,
-	resolvedToolNames: readonly string[],
-	context?: Readonly<{ isAdvancedEnabled?: boolean; permissionMode?: import("@vivy1024/narrafork-runtime-bridge").SessionPermissionMode | string }>,
-): void {
-	novelRuntimeAdapter.hostAdapter.syncToolVisibility(enabledToolNames, resolvedToolNames, context);
+/** Permission policy of a contributed novel tool (by Runtime registry name), forwarded to the Runtime. */
+export function getNovelRuntimeToolPermissionPolicy(toolName: string) {
+	return novelRuntimeAdapter.hostAdapter.getToolPermissionPolicy(toolName);
+}
+
+/** Novel tool routines for NarraFork's optional-tool machinery. */
+export function getNovelRuntimeToolRoutines() {
+	return novelRuntimeAdapter.hostAdapter.toolRoutines();
 }
 
 /**

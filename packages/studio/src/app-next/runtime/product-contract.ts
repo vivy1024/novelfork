@@ -7,6 +7,7 @@ import type { McpBehavior, McpToolPermissionPatch } from "../runtime-admin/mcp";
 import type {
   ProjectRoutineAction,
   ProjectRoutineStatus,
+  ToolRoutineModeOverride,
 } from "../runtime-admin/routines";
 import type {
   Skill,
@@ -868,6 +869,21 @@ export function createRuntimeProductClient(
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ action }),
+        },
+        fetchOptions,
+      ),
+    /** 可选工具套路的本书覆盖：跟随全局或三档之一（含自动档）。 */
+    setBookRoutineMode: (
+      bookId: string,
+      routineId: string,
+      mode: ToolRoutineModeOverride,
+    ): Promise<OkResponse> =>
+      runtimeJson(
+        buildBookProductPath(bookId, "routines", routineId),
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode }),
         },
         fetchOptions,
       ),

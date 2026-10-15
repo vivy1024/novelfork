@@ -13,5 +13,7 @@ export type {
 	RuntimeProductTextGenerationUnavailableCode,
 	RuntimeProductTextMessage,
 	RuntimeProductTextModelRole,
+	RuntimeProductToolRoutineContribution,
+	RuntimeProductToolRoutineMode,
 	RuntimeResolveContext,
 } from "../../narrafork-runtime-private/server/lib/product-host";

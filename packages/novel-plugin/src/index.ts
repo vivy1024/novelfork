@@ -1,4 +1,4 @@
-import type { PluginManifest, PluginAgentPreset, PluginToolDefinition } from "@vivy1024/novelfork-core";
+import type { PluginManifest, PluginToolDefinition } from "@vivy1024/novelfork-core";
 import { NOVEL_TOOL_SCHEMAS } from "./tool-schemas.js";
 
 // Re-export schemas for consumers (e.g. studio session-tool-registry)
@@ -93,8 +93,18 @@ export type {
 export { NOVEL_HANDLER_DECLARATIONS, isNovelPluginTool, getHandlerDeclaration } from "./handler-registry.js";
 export type { NovelHandlerDeclaration } from "./handler-registry.js";
 
-export { getNovelToolPermissionPolicy } from "./handlers/tool-registry.js";
-export type { NovelToolPermissionPolicy } from "./handlers/tool-registry.js";
+export {
+  getNovelToolPermissionPolicy,
+  getNovelToolRoutineId,
+  listNovelToolRoutines,
+  NOVEL_TOOL_ROUTINES,
+} from "./handlers/tool-registry.js";
+export type {
+  NovelToolPermissionPolicy,
+  NovelToolRoutineDefinition,
+  NovelToolRoutineId,
+  NovelToolRoutineMode,
+} from "./handlers/tool-registry.js";
 
 /**
  * 小说工具名列表 — 从 NOVEL_TOOL_SCHEMAS 动态生成，确保与 schema 定义同步。
@@ -152,13 +162,6 @@ export const NOVEL_TOOL_DEFINITIONS: readonly PluginToolDefinition[] = NOVEL_TOO
   scope: "novel" as const,
 }));
 
-/**
- * 小说 Agent 角色预设（v1.8: 合并为单一 novelist）
- */
-export const NOVEL_AGENT_PRESET_LIST: PluginAgentPreset[] = [
-  { agentId: "novelist", name: "📝 小说创作", tools: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "TaskCreate"] },
-];
-
 export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
   id: "novelfork-novel",
   name: "novelfork-novel",
@@ -167,7 +170,6 @@ export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
   description: "小说写作核心插件，提供章节管理、经纬、驾驶舱、PGI、引导式生成等工具",
   projectType: "novel",
   tools: NOVEL_TOOL_DEFINITIONS,
-  agentPresets: NOVEL_AGENT_PRESET_LIST,
   routes: [],
   uiSections: [
     {

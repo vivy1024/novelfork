@@ -196,7 +196,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "write.preflight",
     description:
-      "写章前硬门预检：组装最小上下文包（currentFocus、近章摘要/事实、本章伏笔、resolvedDirective、memoryHealth），并对缺失输入硬拦截。\n\n使用时机：\n- 写新章前的第一步（先于 scene.spec / pipeline.write）\n- 用户说「继续写」「下一章」时先核验上下文是否就绪\n\n返回：\n- ok=false 时 blockers 含 missing-directive / empty-recent-progress / high-risk-pending / book-not-found，必须停写并报告\n- ok=true 时可用 resolvedDirective 作为 scene.spec 的 userDirectives\n- needsUserConfirm=true：仅有 focus 默认句，需用户确认或 acceptFocusDefault=true\n\nWriting Skills 相关字段是告知，不是门禁：\n- requiredSkillAcknowledgements：本章相关的已启用技能清单。按各自 description 自行判断是否需要读；不读也能写章\n- writingSkillConstraints：这些技能声明的可机器校验条目（与保存前的合规校验同一份判据）。severity=error 的条目若不满足，章节保存时会被 writing-skill-compliance-failed 拒绝\n- warnings 里的 skills-not-acknowledged 只是提醒尚未加载哪些技能，不阻断\n\n不要用的时候：\n- 只是查询设定/进度（用 cockpit.snapshot / lore.read / memory.read）\n- 写后审修（chapter.audit / skills.check_compliance / rewrite.*）\n\n纪律：禁止用写作理论或外部项目总结代替 memory/lore。技能是否生效看成品能否通过 writingSkillConstraints 的逐条校验，不看是否交过引用。",
+      "写章前硬门预检：组装最小上下文包（currentFocus、近章摘要/事实、本章伏笔、resolvedDirective、memoryHealth），并对缺失输入硬拦截。\n\n使用时机：\n- 写新章前的第一步（先于 scene.spec / pipeline.write）\n- 用户说「继续写」「下一章」时先核验上下文是否就绪\n\n返回：\n- ok=false 时 blockers 含 missing-directive / empty-recent-progress / high-risk-pending / book-not-found 等，必须停写；除 high-risk-pending 外只报告缺口，等作者补齐\n- high-risk-pending（高风险事件待确认）的放行流程：memory.events（action=list）取出事件 → AskUserQuestion 同步问作者（每次最多 4 条，多了分批），每条选「批准」或「驳回」→ 按作者的选择逐条调用 memory.events 的 approve / reject（是否还要作者再确认由 NarraFork 的权限模式决定），作者也可以直接在「待确认」面板处理 → 全部处理完再重新 write.preflight、再写。不跳过、不换工具绕过、不替作者选\n- ok=true 时可用 resolvedDirective 作为 scene.spec 的 userDirectives\n- needsUserConfirm=true：仅有 focus 默认句，需用户确认或 acceptFocusDefault=true\n\nWriting Skills 相关字段是告知，不是门禁：\n- requiredSkillAcknowledgements：本章相关的已启用技能清单。按各自 description 自行判断是否需要读；不读也能写章\n- writingSkillConstraints：这些技能声明的可机器校验条目（与保存前的合规校验同一份判据）。severity=error 的条目若不满足，章节保存时会被 writing-skill-compliance-failed 拒绝\n- warnings 里的 skills-not-acknowledged 只是提醒尚未加载哪些技能，不阻断\n\n不要用的时候：\n- 只是查询设定/进度（用 cockpit.snapshot / lore.read / memory.read）\n- 写后审修（chapter.audit / skills.check_compliance / rewrite.*）\n\n纪律：禁止用写作理论或外部项目总结代替 memory/lore。技能是否生效看成品能否通过 writingSkillConstraints 的逐条校验，不看是否交过引用。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["write.preflight"]),
     risk: "read",
     renderer: "write.preflight",
@@ -516,7 +516,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "pipeline.write",
-    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节结果。\n\n使用流程：\n1. 先 write.preflight（blockers 非空禁止继续）；技能清单与 writingSkillConstraints 是参考，不需要为了通过门禁去逐个读技能\n2. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）；scene.spec 会把技能的硬性条目并入 sceneSpec.constraints\n3. 传入蓝图与正文 → 一致性审计 → 定点修订\n4. 正文落盘成功后自动发起一次 memory.settle_chapter 结算（面板可见的独立工具调用）\n\n硬门：\n- 已有正式章但近章记忆/摘要为空 → context-not-ready（先 memory.settle_range 或 chapter.discard_range）\n- 情节点预算不合规（合计低于/高于书籍章目标）→ beat-budget-invalid（回 scene.spec 重排预算，不要硬写）\n- 保存前按启用技能声明的 checks 校验成品，硬性违规 → writing-skill-compliance-failed（这是 Writing Skills 唯一的硬门；入口不再因「未提交技能引用」阻断）\n\n返回中的可观测字段：\n- publishHint.warnings：逐条列出违反了哪个技能的哪条要求\n- settlementDispatch：章后结算这一步工具调用的结果（工具名 / 是否成功）\n- settlementError：正文已保存但章后结算失败，重试 memory.settle_chapter 即可（正文已在库，不会丢稿）\n\n可选质量强化：\n- factCheckAutoRevise=true：审修后仍有事实/连续性 critical 时，额外做 1 轮事实专项 spot-fix + 复审\n- requireFactCheckPass=true：复审仍不过则 fact-check-failed 不保存\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」且 preflight ok 时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向\n- preflight blockers 非空时",
+    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节结果。\n\n使用流程：\n1. 先 write.preflight（blockers 非空禁止继续）；技能清单与 writingSkillConstraints 是参考，不需要为了通过门禁去逐个读技能\n2. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）；scene.spec 会把技能的硬性条目并入 sceneSpec.constraints\n3. 传入蓝图与正文 → 一致性审计 → 定点修订\n4. 正文落盘成功后自动发起一次 memory.settle_chapter 结算（面板可见的独立工具调用）\n\n硬门：\n- 已有正式章但近章记忆/摘要为空 → context-not-ready（先 memory.settle_range 或 chapter.discard_range）\n- 有待确认的高风险事件 → high-risk-pending（按 write.preflight 描述里的放行流程先让作者逐条批准或驳回，处理完再写；不跳过、不绕过）\n- 情节点预算不合规（合计低于/高于书籍章目标）→ beat-budget-invalid（回 scene.spec 重排预算，不要硬写）\n- 保存前按启用技能声明的 checks 校验成品，硬性违规 → writing-skill-compliance-failed（这是 Writing Skills 唯一的硬门；入口不再因「未提交技能引用」阻断）\n\n返回中的可观测字段：\n- publishHint.warnings：逐条列出违反了哪个技能的哪条要求\n- settlementDispatch：章后结算这一步工具调用的结果（工具名 / 是否成功）\n- settlementError：正文已保存但章后结算失败，重试 memory.settle_chapter 即可（正文已在库，不会丢稿）\n\n可选质量强化：\n- factCheckAutoRevise=true：审修后仍有事实/连续性 critical 时，额外做 1 轮事实专项 spot-fix + 复审\n- requireFactCheckPass=true：复审仍不过则 fact-check-failed 不保存\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」且 preflight ok 时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向\n- preflight blockers 非空时",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.write"]),
     risk: "confirmed-write",
     renderer: "pipeline.chapter-result",
@@ -892,12 +892,89 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly NovelSessionToolDefinition
 
 export const NOVEL_TOOL_NAMES: readonly string[] = NOVEL_RUNTIME_TOOL_CATALOG.map((t) => t.name);
 
+/** NarraFork「可选工具」的三档：手动（/load 才装）、自动（预留，当前同手动）、常驻（新会话默认装）。 */
+export type NovelToolRoutineMode = "manual" | "auto" | "resident";
+
+export type NovelToolRoutineId =
+  | "novelfork.writing"
+  | "novelfork.market"
+  | "novelfork.memory-inspect"
+  | "novelfork.maintenance";
+
+export interface NovelToolRoutineDefinition {
+  /** 套路 id，也是 /load 的参数；带 novelfork 命名空间，不与 NarraFork 自带套路冲突。 */
+  readonly id: NovelToolRoutineId;
+  readonly nameZh: string;
+  readonly nameEn: string;
+  readonly descriptionZh: string;
+  readonly descriptionEn: string;
+  /** 全局与本书都没设置时的档位；作者在「套路 › 可选工具」或本书覆盖里随时改。 */
+  readonly defaultMode: NovelToolRoutineMode;
+}
+
 /**
- * 小说 Agent 角色预设 — 与 AGENT_ROLES 保持一致
+ * 小说工具交给 NarraFork 套路体系管理时的分组。分组理由：
+ * - 小说创作：日常写章、经纬、记忆、伏笔、文风与工作流工具，默认常驻。工作流工具不单拆——
+ *   进行中的运行全靠它们提交工序，单独设成手动会让运行卡死。
+ * - 市场调研：会访问外部站点读榜单与公开样章，与写作无关的作者可以整组收起；默认常驻保持现状。
+ * - 资料诊断：只读排查记忆与经纬（列表、搜索、去重检查、统计、导出、审计），默认手动。
+ * - 小说维护：批量改写或删除记忆、回填结算、作废试写章节、导入旧技能，会改动或删除数据，默认手动。
  */
-export const NOVEL_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
-  novelist: {
-    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "TaskCreate", "Terminal", "Browser", "Recall", "ShareFile"],
-    disable: [],
+export const NOVEL_TOOL_ROUTINES: readonly NovelToolRoutineDefinition[] = [
+  {
+    id: "novelfork.writing",
+    nameZh: "小说创作",
+    nameEn: "Novel writing",
+    descriptionZh: "写章与审修、经纬设定、叙事记忆、伏笔、文风与角色声线、创作工作流等日常小说工具",
+    descriptionEn: "Everyday novel tools: chapters and revision, lore, narrative memory, hooks, style and voice, writing workflows",
+    defaultMode: "resident",
   },
-};
+  {
+    id: "novelfork.market",
+    nameZh: "市场调研",
+    nameEn: "Market research",
+    descriptionZh: "读取平台榜单与公开样章，做选题与竞品调研（会访问外部站点）",
+    descriptionEn: "Platform rankings and public sample chapters for topic and competitor research (fetches external sites)",
+    defaultMode: "resident",
+  },
+  {
+    id: "novelfork.memory-inspect",
+    nameZh: "资料诊断",
+    nameEn: "Memory diagnostics",
+    descriptionZh: "只读排查叙事记忆与经纬：列表、搜索、去重检查、统计、导出与经纬审计",
+    descriptionEn: "Read-only inspection of narrative memory and lore: list, search, duplicate check, stats, export, lore audit",
+    defaultMode: "manual",
+  },
+  {
+    id: "novelfork.maintenance",
+    nameZh: "小说维护",
+    nameEn: "Novel maintenance",
+    descriptionZh: "批量改写或删除记忆、回填历史章节结算、作废试写章节、导入旧版技能；会改动或删除数据",
+    descriptionEn: "Bulk memory edits and deletion, settlement backfill, discarding draft chapter ranges, legacy skill import; modifies or deletes data",
+    defaultMode: "manual",
+  },
+];
+
+/**
+ * 工具归哪个套路：由工具自身的 visibility / risk / 名称推出，不另存一份清单。
+ * 作者工具（visibility=author）进常驻组，高级工具（advanced）进手动组。
+ */
+export function getNovelToolRoutineId(
+  tool: Pick<NovelSessionToolDefinition, "name" | "visibility" | "risk">,
+): NovelToolRoutineId {
+  if (tool.visibility === "advanced") {
+    return tool.risk === "read" ? "novelfork.memory-inspect" : "novelfork.maintenance";
+  }
+  if (tool.name.startsWith("market.")) return "novelfork.market";
+  return "novelfork.writing";
+}
+
+/** 按套路分组给定工具（canonical 名）；没有工具的套路不返回。 */
+export function listNovelToolRoutines(
+  tools: readonly Pick<NovelSessionToolDefinition, "name" | "visibility" | "risk">[],
+): Array<NovelToolRoutineDefinition & { readonly toolNames: readonly string[] }> {
+  return NOVEL_TOOL_ROUTINES.map((routine) => ({
+    ...routine,
+    toolNames: tools.filter((tool) => getNovelToolRoutineId(tool) === routine.id).map((tool) => tool.name),
+  })).filter((routine) => routine.toolNames.length > 0);
+}

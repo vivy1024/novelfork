@@ -18,6 +18,7 @@ const runtimeMocks = vi.hoisted(() => ({
 const productMocks = vi.hoisted(() => ({
   listBookRoutines: vi.fn(),
   toggleBookRoutine: vi.fn(),
+  setBookRoutineMode: vi.fn(),
   listBookSkills: vi.fn(),
   getBookSkill: vi.fn(),
   createBookSkill: vi.fn(),
@@ -134,6 +135,25 @@ const bookRoutines = [
     modeOverride: "resident",
     globalMode: "manual",
   },
+  {
+    id: "novelfork.maintenance",
+    type: "tool",
+    category: "novelfork",
+    name: "memory_settle_range",
+    nameZh: "小说维护",
+    nameEn: "Novel maintenance",
+    providerId: "novelfork",
+    toolNames: ["memory_settle_range", "memory_bulk_delete"],
+    descriptionEn: "Bulk cleanup",
+    descriptionZh: "批量改写或删除记忆",
+    enabled: false,
+    override: "global",
+    globalEnabled: false,
+    mode: "manual",
+    modeOverride: "global",
+    globalMode: "manual",
+    defaultMode: "manual",
+  },
 ] as const;
 
 const bookHook = {
@@ -194,6 +214,7 @@ beforeEach(() => {
 
   productMocks.listBookRoutines.mockResolvedValue({ routines: bookRoutines });
   productMocks.toggleBookRoutine.mockResolvedValue({ ok: true });
+  productMocks.setBookRoutineMode.mockResolvedValue({ ok: true });
   productMocks.listBookSkills.mockResolvedValue([{ name: "book-style", description: "Book prose rules", location: "book", files: ["SKILL.md"], disabled: false }]);
   productMocks.getBookSkill.mockResolvedValue({ name: "book-style", description: "Book prose rules", content: "Use this style" });
   productMocks.createBookSkill.mockResolvedValue({ name: "continuity", description: "Track continuity", content: "Check facts" });
@@ -303,7 +324,7 @@ describe("套路页：本书设置", () => {
     expect(props.onSelectBook).toHaveBeenCalledWith("book-2");
   });
 
-  it("可选工具按书覆盖：显示全局的自动档，按书写常驻 / 手动 / 跟随全局", async () => {
+  it("可选工具按书覆盖：四档（跟随全局 / 常驻 / 自动 / 手动）都写 Runtime 的套路模式", async () => {
     renderPage({ route: { kind: "routines", panel: "book" } });
     openBookSection("可选工具");
 
@@ -313,13 +334,29 @@ describe("套路页：本书设置", () => {
     expect(within(terminal).getByRole("button", { name: "跟随全局" }).getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(within(terminal).getByRole("button", { name: "常驻" }));
-    await waitFor(() => expect(productMocks.toggleBookRoutine).toHaveBeenCalledWith("book-1", "terminal", "enable"));
+    await waitFor(() => expect(productMocks.setBookRoutineMode).toHaveBeenCalledWith("book-1", "terminal", "resident"));
     expect(cacheMocks.invalidateNarratorCommands).toHaveBeenCalled();
+    fireEvent.click(within(terminal).getByRole("button", { name: "自动" }));
+    await waitFor(() => expect(productMocks.setBookRoutineMode).toHaveBeenCalledWith("book-1", "terminal", "auto"));
 
     const browser = screen.getByRole("group", { name: "本书覆盖：Browser" });
     expect(within(browser).getByRole("button", { name: "常驻" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(within(browser).getByRole("button", { name: "跟随全局" }));
-    await waitFor(() => expect(productMocks.toggleBookRoutine).toHaveBeenCalledWith("book-1", "browser", "reset"));
+    await waitFor(() => expect(productMocks.setBookRoutineMode).toHaveBeenCalledWith("book-1", "browser", "global"));
+    expect(productMocks.toggleBookRoutine).not.toHaveBeenCalled();
+  });
+
+  it("小说工具套路与 Runtime 自带套路列在一起，可按书设为常驻", async () => {
+    renderPage({ route: { kind: "routines", panel: "book" } });
+    openBookSection("可选工具");
+
+    const maintenance = await screen.findByRole("group", { name: "本书覆盖：小说维护" });
+    expect(screen.getByText("小说工具")).toBeTruthy();
+    expect(screen.getByText("2 个工具")).toBeTruthy();
+    fireEvent.click(within(maintenance).getByRole("button", { name: "常驻" }));
+    await waitFor(() =>
+      expect(productMocks.setBookRoutineMode).toHaveBeenCalledWith("book-1", "novelfork.maintenance", "resident"),
+    );
   });
 
   it("本书技能走书籍网关，不带 Runtime 项目标识", async () => {

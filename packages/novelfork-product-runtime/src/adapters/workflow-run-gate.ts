@@ -87,17 +87,16 @@ function directSteps(run: WorkflowRunRecord) {
 /**
  * 可见性（每趟开始时生效）：运行中只露本工序允许的写类工具；等待确认 / 受阻时只露读类。
  *
- * 「高级」工具不参与收窄：它们要作者手动加载，Runtime 同步可见性时只保留「上一趟仍在清单里」
- * 的手动加载项——运行期间收掉，运行结束后作者加载过的状态就丢了。高级写入工具仍由
- * explainWorkflowDenial 在调用时拦下，可见性本来只是体验层。
+ * 这里只做可见性判定。会话启用了哪些小说工具（套路常驻、/load 手动加载）由 NarraFork 的套路体系
+ * 决定，Runtime 把这里的结果当本趟的可见性过滤，不会改写启用集合——所以「高级」写类工具也照常
+ * 收窄，运行结束后作者加载过的状态原样还在。调用时的权威约束仍是 explainWorkflowDenial。
  */
 export function isToolVisibleDuringRun(
 	run: WorkflowRunRecord,
 	canonicalName: string,
 	risk: Risk,
-	visibility: "author" | "advanced" = "author",
 ): boolean {
-	if (isWorkflowTool(canonicalName) || risk === "read" || visibility === "advanced") return true;
+	if (isWorkflowTool(canonicalName) || risk === "read") return true;
 	if (run.state.status === "blocked") return false;
 	return directSteps(run).some((step) => step.tools.includes(canonicalName));
 }

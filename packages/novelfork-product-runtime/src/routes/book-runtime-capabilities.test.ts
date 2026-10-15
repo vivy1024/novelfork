@@ -80,6 +80,9 @@ beforeEach(() => {
 			reset: async (routineId, projectId) => {
 				routineCalls.push({ action: "reset", routineId, projectId });
 			},
+			setMode: async (routineId, projectId, mode) => {
+				routineCalls.push({ action: `mode:${mode}`, routineId, projectId });
+			},
 			statuses: () => [],
 		},
 		skills: {
@@ -187,6 +190,30 @@ describe("NovelFork book Runtime capability routes", () => {
 		expect(routineCalls).toEqual([
 			{ action: "enable", routineId: "brainstorm", projectId: PROJECT_ID },
 		]);
+	});
+
+	test("writes the three-position tool routine mode (auto included) for the trusted project", async () => {
+		const app = appFor("user");
+		for (const mode of ["auto", "resident", "manual", "global"]) {
+			const response = await app.request(
+				"/api/books/book-a/routines/novelfork.maintenance",
+				jsonRequest("PUT", { mode }),
+			);
+			expect(response.status).toBe(200);
+		}
+		expect(routineCalls.map((call) => call.action)).toEqual([
+			"mode:auto",
+			"mode:resident",
+			"mode:manual",
+			"mode:global",
+		]);
+		expect(routineCalls.every((call) => call.projectId === PROJECT_ID)).toBe(true);
+
+		const invalid = await app.request(
+			"/api/books/book-a/routines/novelfork.maintenance",
+			jsonRequest("PUT", { mode: "always" }),
+		);
+		expect(invalid.status).toBe(400);
 	});
 
 	test("reads book MCP overrides and removes the final override when inheritance is restored", async () => {

@@ -10,10 +10,11 @@ import {
 } from "@vivy1024/novelfork-core";
 import type { RuntimeResolveContext } from "@vivy1024/narrafork-runtime-bridge";
 import {
+	getNovelRuntimeToolPermissionPolicy,
+	getNovelRuntimeToolRoutines,
 	isNovelProductToolAllowed,
 	NovelRuntimeAdapter,
 	type NovelRuntimeBindingResolver,
-	syncNovelRuntimeToolVisibility,
 } from "./runtime-adapter";
 import { toRuntimeToolName } from "./runtime-host-adapter";
 
@@ -165,13 +166,9 @@ describe("NovelRuntimeAdapter", () => {
 		});
 	});
 
-	test("removes stale manually loaded contribution tools when trust is absent", () => {
-		const enabled = new Set(["Terminal", "chapter.read"]);
-		syncNovelRuntimeToolVisibility(enabled, []);
-		expect([...enabled]).toEqual(["Terminal"]);
-
-		syncNovelRuntimeToolVisibility(enabled, ["chapter.read"]);
-		expect([...enabled]).toEqual(["Terminal", "chapter.read"]);
+	test("never edits a session's enabled tool set: there is no visibility sync any more", () => {
+		// 启用集合只归 NarraFork 的套路体系；产品只能经 resolveToolNames 收窄本趟可见的工具。
+		expect("syncToolVisibility" in adapter.hostAdapter).toBe(false);
 	});
 
 	test("does not hard-block core or optional tools (native Runtime parity)", () => {
@@ -567,23 +564,46 @@ RUNTIME_WRITING_SKILL_MARKER
 		});
 	}
 
-	test("respects contributed tool permission policy and session mode", () => {
+	test("respects contributed tool permission policy and session mode, without a second enable gate", () => {
 		bindNarrator();
 		const enabled = new Set<string>();
 
-		// 默认非 advanced 模式下，advanced 工具不会自动进入 enabledSet，但 author 工具会自动加入
-		syncNovelRuntimeToolVisibility(enabled, READY_TOOL_NAMES, { isAdvancedEnabled: false, permissionMode: "ask" });
-		expect(enabled.has("memory_list")).toBe(false);
-		expect(enabled.has("chapter_read")).toBe(true);
-
-		// 如果显式/持久化启用了 advanced 工具，sync 时将被保留
-		enabled.add("memory_list");
-		syncNovelRuntimeToolVisibility(enabled, READY_TOOL_NAMES, { isAdvancedEnabled: false, permissionMode: "ask" });
-		expect(enabled.has("memory_list")).toBe(true);
+		// 高级工具不再由产品另设「是否启用」的闸门：是否装载完全看 Runtime 的套路模式与 /load。
+		expect(isNovelProductToolAllowed("memory_list", enabled)).toBe(true);
+		expect(isNovelProductToolAllowed("memory_bulk_delete", enabled, { permissionMode: "ask" })).toBe(true);
 
 		// 模式限制：写工具在 read 模式下不允许
 		expect(isNovelProductToolAllowed("chapter.write", enabled, { permissionMode: "read" })).toBe(false);
 		expect(isNovelProductToolAllowed("chapter.read", enabled, { permissionMode: "read" })).toBe(true);
+	});
+
+	test("forwards the contributed permission policy by Runtime registry name", () => {
+		expect(getNovelRuntimeToolPermissionPolicy("chapter_write")).toMatchObject({
+			risk: "confirmed-write",
+			visibility: "author",
+		});
+		expect(getNovelRuntimeToolPermissionPolicy("memory_bulk_delete")?.visibility).toBe("advanced");
+		expect(getNovelRuntimeToolPermissionPolicy("Terminal")).toBeNull();
+	});
+
+	test("groups every contributed tool into exactly one NarraFork tool routine, by registry name", () => {
+		const routines = getNovelRuntimeToolRoutines();
+		const registered = adapter.toolDefinitions().map((tool) => tool.name).sort();
+		const grouped = routines.flatMap((routine) => routine.toolNames);
+		expect(new Set(grouped).size).toBe(grouped.length);
+		expect([...grouped].sort()).toEqual(registered);
+
+		const byId = new Map(routines.map((routine) => [routine.id, routine]));
+		expect(byId.get("novelfork.writing")?.defaultMode).toBe("resident");
+		expect(byId.get("novelfork.writing")?.toolNames).toContain("pipeline_write");
+		expect(byId.get("novelfork.writing")?.toolNames).toContain("workflow_submit_step_output");
+		expect(byId.get("novelfork.market")?.toolNames).toContain("market_scan");
+		expect(byId.get("novelfork.maintenance")?.defaultMode).toBe("manual");
+		expect(byId.get("novelfork.maintenance")?.toolNames).toContain("memory_bulk_delete");
+		expect(byId.get("novelfork.memory-inspect")?.toolNames).toContain("memory_search");
+		for (const routine of routines) {
+			expect(routine.toolNames.every((name) => /^[A-Za-z0-9_-]{1,64}$/u.test(name))).toBe(true);
+		}
 	});
 
 	test("preserves provider alias mapping without duplicating ToolDefinitions", () => {

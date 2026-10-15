@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { NOVEL_SESSION_TOOL_DEFINITIONS } from "./tool-registry";
+import {
+  getNovelToolRoutineId,
+  listNovelToolRoutines,
+  NOVEL_RUNTIME_TOOL_CATALOG,
+  NOVEL_SESSION_TOOL_DEFINITIONS,
+  NOVEL_TOOL_ROUTINES,
+} from "./tool-registry";
 
 function tool(name: string) {
   return NOVEL_SESSION_TOOL_DEFINITIONS.find((definition) => definition.name === name);
@@ -245,5 +251,55 @@ describe("T-05a 既有行为守护：book.dissect 的 resolveRisk 不变", () =>
     expect(definition?.resolveRisk?.({ apply: true })).toBe("draft-write");
     expect(definition?.resolveRisk?.({ settle: true })).toBe("draft-write");
     expect(definition?.resolveRisk?.({})).toBe("read");
+  });
+});
+
+/**
+ * 小说工具在 NarraFork「可选工具」里按套路管理：Runtime 只认套路的模式、/load 与持久化加载，
+ * 产品不再自己决定哪些工具常驻。分组由工具自身的 visibility / risk / 名称推出，不另存清单。
+ */
+describe("小说工具套路分组", () => {
+  const ready = NOVEL_RUNTIME_TOOL_CATALOG.filter((entry) => entry.runtimeStatus === "ready");
+  const routines = listNovelToolRoutines(ready);
+  const routineOf = (name: string) => routines.find((routine) => routine.toolNames.includes(name));
+
+  it("每个贡献给 Runtime 的小说工具恰好属于一个套路，且不超过 5 组", () => {
+    const all = routines.flatMap((routine) => routine.toolNames);
+    expect(new Set(all).size).toBe(all.length);
+    expect([...all].sort()).toEqual(ready.map((entry) => entry.name).sort());
+    expect(routines.length).toBeLessThanOrEqual(5);
+    expect(routines.every((routine) => routine.toolNames.length > 0)).toBe(true);
+  });
+
+  it("套路 id 带 novelfork 命名空间、全小写，中英文名称与说明齐全", () => {
+    for (const routine of NOVEL_TOOL_ROUTINES) {
+      expect(routine.id).toMatch(/^novelfork\.[a-z0-9-]+$/);
+      expect(routine.nameZh.trim()).not.toBe("");
+      expect(routine.nameEn.trim()).not.toBe("");
+      expect(routine.descriptionZh.trim()).not.toBe("");
+      expect(routine.descriptionEn.trim()).not.toBe("");
+    }
+  });
+
+  it("作者工具默认常驻，高级工具默认手动", () => {
+    for (const entry of ready) {
+      const routine = routineOf(entry.name);
+      expect(routine?.defaultMode).toBe(entry.visibility === "author" ? "resident" : "manual");
+    }
+  });
+
+  it("工作流工具留在小说创作组（进行中的运行靠它们提交工序），市场调研单独成组", () => {
+    expect(routineOf("workflow.submit_step_output")?.id).toBe("novelfork.writing");
+    expect(routineOf("pipeline.write")?.id).toBe("novelfork.writing");
+    expect(routineOf("market.scan")?.id).toBe("novelfork.market");
+    expect(getNovelToolRoutineId({ name: "market.ranks", visibility: "author", risk: "read" })).toBe("novelfork.market");
+  });
+
+  it("高级工具按是否只读分成资料诊断与小说维护", () => {
+    expect(routineOf("memory.search")?.id).toBe("novelfork.memory-inspect");
+    expect(routineOf("jingwei.audit")?.id).toBe("novelfork.memory-inspect");
+    expect(routineOf("memory.bulk_delete")?.id).toBe("novelfork.maintenance");
+    expect(routineOf("chapter.discard_range")?.id).toBe("novelfork.maintenance");
+    expect(routineOf("memory.settle_range")?.id).toBe("novelfork.maintenance");
   });
 });

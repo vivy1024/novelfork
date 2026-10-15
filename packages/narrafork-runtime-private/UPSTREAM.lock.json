@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime",
   "remote": "https://github.com/NarraFork/novelfork-runtime.git",
-  "commit": "6f02fc259a6970b5ae6bd00eb103afca10ec2713",
-  "tree": "578748f7d44a25f3b19106ae57e716d1498f056b",
-  "branch": "novelfork/upgrade-0.8.3",
+  "commit": "9c4e2f10621c85a094609b13bbfe8e87f30aa8b7",
+  "tree": "f27872f94463df1cdfde5a30f729d26005d70b63",
+  "branch": "novelfork/tool-routines",
   "version": "0.8.3",
   "importedAt": "2026-10-08T03:06:03.000Z",
-  "trackedFileCount": 5049,
+  "trackedFileCount": 5053,
   "importMethod": "git-archive",
   "provenance": {
     "note": "2026-10-08 由私有线切换到公开线：从公开 NarraFork/NarraFork 的 release: v0.8.3 锚点开新分支 novelfork/upgrade-0.8.3，把 fork 层以树级移植逐文件重放（无 merge 血缘），已推送到公开 fork 仓 NarraFork/novelfork-runtime 同名分支。本目录是该分支的导出物。上一版（0.7.12 物化）备份在 .runtime-backup-v0.7.12-20261008/（不含 node_modules）。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。在物化树里跑 Runtime 测试套件要设 NARRAFORK_MIGRATIONS_DIR=runtime-migrations（drizzle/ 是本机 drizzle-kit 生成物、不入库也不物化）。",
@@ -45,6 +45,11 @@
       ],
       "verification": "9 个解冲突文件全量 grep 无残留标记；tsgo 分段（server+shared+tests / frontend+shared）与纯公开 0.8.3 基线（补同三处锚点修补）对照差集仅 3 行、全属已知 codegen 恒红家族（routeTree.gen / embedded-migrations-data / build-info 行移位），合并独有语义错误 0；fork 层与缺口测试在 0012 生成后转绿（projects 3+3、orchestrator 40、run-migrations 59）；零库 13 条与 0.7.12 链→0012 哨兵保留双路径迁移验证通过；permission-rule-request-service 18 红经 A/B（换回纯锚点 narrator-permission.ts 同红）判为上游基线类 + Windows symlink EPERM",
       "postMaterializeDeviations": []
+    },
+    "toolRoutines": {
+      "base": "6f02fc259a6970b5ae6bd00eb103afca10ec2713（novelfork/upgrade-0.8.3 头）",
+      "commits": "f0b0e0f0a 产品工具套路 SPI、启用与可见分离、/load 如实报错、会话详情显示实际装载；ee0bef04f 删未用辅助函数；9c4e2f106 routine-modes 改相对导入",
+      "status": "2026-10-15 本地分支 novelfork/tool-routines，尚未推送公开 fork NarraFork/novelfork-runtime；推送后应快进 novelfork/upgrade-0.8.3 或按发版口径更新 branch"
     }
   }
 }
