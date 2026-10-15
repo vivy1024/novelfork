@@ -19,11 +19,23 @@ function logTagOf(logId: string): string {
   return tail.slice(0, LOG_ID_PREFIX);
 }
 
+/**
+ * 重取用的 memory.read purpose（该参数必填）。用只读的 audit 而不用 write/revise：
+ * write/revise 会把本次（通常只圈定一两个通道的）窄召回写成写作注入保留件，并新增一条写作日志让本卡改指向它；
+ * audit 召回的通道内容与写作召回一致，只是不留写作痕迹。
+ */
+const RECALL_PURPOSE = "audit";
+
+/** 指引覆盖全部召回通道（NarrativeContextChannelSchema），测试逐一核对，新增通道时要补在这里。 */
 const RECALL_CHANNELS: readonly { readonly need: string; readonly channels: readonly string[] }[] = [
-  { need: "范文 / 声线 / 文风边界", channels: ["style"] },
+  { need: "硬约束（规则 / 场景约束）", channels: ["hard"] },
+  { need: "出场角色此刻的动机、情绪与矛盾", channels: ["character-kernel"] },
   { need: "角色此刻状态与「他不知道什么」", channels: ["state", "knowledge"] },
-  { need: "该推哪条伏笔、哪些到期", channels: ["hooks"] },
   { need: "章摘要 / 时间线 / 因果与关系", channels: ["recent-summary", "timeline", "relationship"] },
+  { need: "该推哪条伏笔、哪些到期", channels: ["hooks"] },
+  { need: "已记下的叙事事实", channels: ["facts"] },
+  { need: "范文 / 声线 / 文风边界", channels: ["style"] },
+  { need: "按语义召回的相关记忆", channels: ["semantic"] },
 ];
 
 export interface ContextIndexCardSummary {
@@ -77,8 +89,8 @@ export function renderContextIndexCard(summary: ContextIndexCardSummary): string
   const lines = [
     "【资料索引卡 · 原文皆在库可重取】",
     `上次写作注入（${chapter}，日志 ${logTag}）：${channels || "（未注入任何通道）"}${usage}。`,
-    "案头资料若已被会话压缩成摘要版，按通道重取原文，别凭摘要猜：",
-    ...RECALL_CHANNELS.map((line) => `- ${line.need} → memory_read(channels=[${line.channels.map((c) => `"${c}"`).join(",")}])`),
+    `案头资料若已被会话压缩成摘要版，按通道重取原文，别凭摘要猜（重取用 purpose="${RECALL_PURPOSE}"：只读，不会覆盖写作注入保留件，也不会让本卡改指向这次重取）：`,
+    ...RECALL_CHANNELS.map((line) => `- ${line.need} → memory_read(purpose="${RECALL_PURPOSE}", channels=[${line.channels.map((c) => `"${c}"`).join(",")}])`),
     "- 经纬设定原文 → lore_read；章节正文 → chapter_read",
   ];
   return lines.join("\n");

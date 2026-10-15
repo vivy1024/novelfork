@@ -599,4 +599,54 @@ describe("lore-memory-boundary handlers", () => {
     const warnings = result.data.warnings as string[];
     expect(warnings.some((warning) => warning.includes("hard channel exceeds budget"))).toBe(true);
   });
+
+  describe("T-05c：写作注入保留件只由完整写作注入覆盖", () => {
+    const ALL_CHANNELS = ["hard", "state", "relationship", "timeline", "hooks", "facts", "style", "semantic", "character-kernel", "recent-summary", "knowledge"];
+
+    async function readPreserved(bookRoot: string): Promise<string | null> {
+      const { readFile } = await import("node:fs/promises");
+      return readFile(join(bookRoot, "story", "writing-injection-preserved.json"), "utf8").catch(() => null);
+    }
+
+    it("完整写作注入（不圈定通道或圈定全部通道）写保留件", async () => {
+      const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
+      const bookRoot = await createBookRoot({});
+      insertNarrativeFact(activeStorage!, fact({ id: "f1", subject: "韩立", predicate: "状态", object: "谨慎", validFromChapter: 1 }));
+
+      expect((await handleMemoryRead({ bookId: "book-1", purpose: "write", chapterNumber: 12, entities: ["韩立"], bookRoot })).ok).toBe(true);
+      expect(await readPreserved(bookRoot)).not.toBeNull();
+
+      const other = await createBookRoot({});
+      expect((await handleMemoryRead({ bookId: "book-1", purpose: "revise", chapterNumber: 12, channels: ALL_CHANNELS, bookRoot: other })).ok).toBe(true);
+      expect(await readPreserved(other)).not.toBeNull();
+    });
+
+    it("write/revise 但只圈定部分通道的重取不覆盖保留件，也不凭空新建", async () => {
+      const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
+      const bookRoot = await createBookRoot({});
+      insertNarrativeFact(activeStorage!, fact({ id: "f1", subject: "韩立", predicate: "状态", object: "谨慎", validFromChapter: 1 }));
+
+      // 没有保留件时，窄重取不新建
+      expect((await handleMemoryRead({ bookId: "book-1", purpose: "write", chapterNumber: 12, channels: ["style"], bookRoot })).ok).toBe(true);
+      expect(await readPreserved(bookRoot)).toBeNull();
+
+      expect((await handleMemoryRead({ bookId: "book-1", purpose: "write", chapterNumber: 12, entities: ["韩立"], bookRoot })).ok).toBe(true);
+      const full = await readPreserved(bookRoot);
+      expect(full).not.toBeNull();
+
+      for (const purpose of ["write", "revise"] as const) {
+        const narrow = await handleMemoryRead({ bookId: "book-1", purpose, chapterNumber: 13, channels: ["style"], bookRoot });
+        expect(narrow.ok).toBe(true);
+        expect(await readPreserved(bookRoot)).toBe(full);
+      }
+    });
+
+    it("资料索引卡推荐的重取写法（purpose=audit + channels）可用，且不碰保留件", async () => {
+      const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
+      const bookRoot = await createBookRoot({});
+      const result = await handleMemoryRead({ bookId: "book-1", purpose: "audit", chapterNumber: 12, channels: ["hard", "facts"], bookRoot });
+      expect(result.ok).toBe(true);
+      expect(await readPreserved(bookRoot)).toBeNull();
+    });
+  });
 });

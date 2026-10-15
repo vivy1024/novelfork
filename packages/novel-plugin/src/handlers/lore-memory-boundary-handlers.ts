@@ -21,7 +21,7 @@ import { ensureNarrativeMemorySchema, getNarrativeEventById, listPendingNarrativ
 import { buildCooccurrenceFromEvents } from "../engine/narrative-memory/wave/narrative-cooccurrence-source.js";
 import { buildNarrativeGraph } from "../engine/narrative-taxonomy/narrative-graph.js";
 import { loadForeshadowEntries } from "../engine/narrative-taxonomy/foreshadow-states.js";
-import type { NarrativeEvent, NarrativeEventType, NarrativeFactLayer, NarrativeRetrievalPurpose } from "../engine/narrative-memory/types.js";
+import { NarrativeContextChannelSchema, type NarrativeEvent, type NarrativeEventType, type NarrativeFactLayer, type NarrativeRetrievalPurpose } from "../engine/narrative-memory/types.js";
 import { handleJingweiRead, type JingweiReadInput, type JingweiReadResult } from "./jingwei-read-unified.js";
 import { handleJingweiWrite, type JingweiWriteInput, type JingweiWriteResult } from "./jingwei-write-handler.js";
 
@@ -113,6 +113,12 @@ function channelBudgetPolicy(input: MemoryReadInput): { maxTokens?: number; chan
   return Object.keys(policy).length > 0 ? policy : undefined;
 }
 
+/** 显式圈定了通道、且没有覆盖全部召回通道：这是一次部分重取，不是完整写作注入。 */
+function isPartialChannelScope(channels: readonly string[] | undefined): boolean {
+  if (!Array.isArray(channels) || channels.length === 0) return false;
+  return !NarrativeContextChannelSchema.options.every((channel) => channels.includes(channel));
+}
+
 export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResult> {
   const bookId = String(input.bookId || "").trim();
   if (!bookId) return { ok: false, error: "invalid-input", summary: "bookId 必填。" };
@@ -190,8 +196,10 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     : "";
   // T4.7 尾巴：写作注入（write/revise）把当次进上下文的原文保留一份快照，会话压缩后模型
   // 仍能在系统提示里看到原件。写盘失败不阻断召回，但在 warnings 里如实说明。
+  // T-05c：只有完整写作注入才覆盖保留件；显式圈定部分通道的重取（channels 子集）只是补看某几栏，
+  // 若也覆盖，保留件会被换成只含一两栏的窄快照，压缩后丢掉其余原文。
   const preserveWarnings: string[] = [];
-  if ((input.purpose === "write" || input.purpose === "revise") && bookRoot) {
+  if ((input.purpose === "write" || input.purpose === "revise") && bookRoot && !isPartialChannelScope(input.channels)) {
     try {
       await preserveLatestWritingInjection(bookRoot, result);
     } catch (cause) {

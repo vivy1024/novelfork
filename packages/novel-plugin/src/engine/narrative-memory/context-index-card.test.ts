@@ -6,7 +6,7 @@ import { createStorageDatabase, runStorageMigrations, type StorageDatabase } fro
 
 import { buildContextIndexCard, renderContextIndexCard, summarizeContextIndexCard } from "./context-index-card.js";
 import { insertRetrievalLog } from "./storage.js";
-import type { NarrativeRetrievalDiagnostics } from "./types.js";
+import { NarrativeContextChannelSchema, type NarrativeRetrievalDiagnostics } from "./types.js";
 
 const tempDirs: string[] = [];
 
@@ -90,8 +90,8 @@ describe("buildContextIndexCard", () => {
       expect(card).toContain("降档 1");
       expect(card).toContain("整段裁剪 1");
       expect(card).toContain("预算/条数剪裁 2");
-      expect(card).toContain('memory_read(channels=["style"])');
-      expect(card).toContain('memory_read(channels=["state","knowledge"])');
+      expect(card).toContain('memory_read(purpose="audit", channels=["style"])');
+      expect(card).toContain('memory_read(purpose="audit", channels=["state","knowledge"])');
       expect(card).toContain("lore_read");
       expect(card).toContain("chapter_read");
       expect(card).toContain("别凭摘要猜");
@@ -99,6 +99,29 @@ describe("buildContextIndexCard", () => {
     } finally {
       storage.close();
     }
+  });
+
+  it("T-05c：重取指引每条都带必填 purpose，用不触发保留件覆盖的只读 purpose，且覆盖全部召回通道", () => {
+    const card = renderContextIndexCard({
+      chapterNumber: 5,
+      logId: "narrative-retrieval:book-1:0123456789",
+      tokensByChannel: { hard: 100 },
+      degradedCount: 0,
+      droppedCount: 0,
+      trimReasonCount: 0,
+      purpose: "write_chapter",
+    });
+    const calls = [...card.matchAll(/memory_read\(([^)]*)\)/gu)].map((match) => match[1]!);
+    expect(calls.length).toBeGreaterThan(0);
+    const listed = new Set<string>();
+    for (const args of calls) {
+      // memory.read 的 purpose 必填；write/revise 会写保留件与写作日志，重取必须用只读用途。
+      const purpose = /purpose="([^"]+)"/u.exec(args)?.[1];
+      expect(purpose).toBeDefined();
+      expect(["audit", "outline", "diagnose"]).toContain(purpose);
+      for (const channel of [...args.matchAll(/"([a-z-]+)"/gu)].map((match) => match[1]!)) listed.add(channel);
+    }
+    for (const channel of NarrativeContextChannelSchema.options) expect(listed.has(channel)).toBe(true);
   });
 
   it("多条日志只取最新的一次", async () => {

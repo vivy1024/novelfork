@@ -24,6 +24,7 @@ import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
 import type { WritingSkillAcknowledgement } from "./writing-skill-acknowledgement.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { PIPELINE_RECALL_TAGS, wrapRecallData } from "../engine/narrative-memory/diagnostics.js";
 import { findHardOverflowWarning, hardOverflowExplanation } from "../engine/narrative-memory/overflow-guard.js";
 import { preserveLatestWritingInjection } from "../engine/narrative-memory/writing-injection-preserve.js";
 import { createSiliconFlowEmbeddingProvider } from "../engine/narrative-memory/embedding-provider.js";
@@ -486,6 +487,14 @@ const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"
   knowledge: "出场角色此刻知道什么、不知道什么（知情边界），防止知识越界。",
 };
 
+/**
+ * 把召回原文（伏笔摘录、旧经纬文本、前章末尾）声明为数据区。标签只能取 PIPELINE_RECALL_TAGS 里登记的名字，
+ * 内容经 wrapRecallData 统一中和定界标签（T-05c），原文里写 `</prev_chapter_tail>` 之类也逃不出数据区。
+ */
+function declareAsRecallData(tag: (typeof PIPELINE_RECALL_TAGS)[number], excerpt: string): string {
+  return wrapRecallData(tag, excerpt);
+}
+
 function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): ContextPackage["selectedContext"] {
   if (!narrativeContext) return [];
   return (Object.entries(narrativeContext.sections) as [keyof NarrativeContextPackage["sections"], string][])
@@ -568,13 +577,13 @@ export function buildPipelineContextPackage(input: BuildPipelineContextPackageIn
             reason: hook.armed
               ? "已触发未兑现的伏笔（枪已上膛，本章必须推进或兑现）"
               : "本章应推进的伏笔（到期窗口内，强制关注）",
-            excerpt: hook.armed
+            excerpt: declareAsRecallData("hook_debt", hook.armed
               ? `[已触发] ${hook.title} — ${hook.excerpt}`
-              : `[第${hook.dueChapter}章应推进] ${hook.title} — ${hook.excerpt}`,
+              : `[第${hook.dueChapter}章应推进] ${hook.title} — ${hook.excerpt}`),
           }))
         : []),
-      ...(input.jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情（legacy compatibility）", excerpt: input.jingweiContext }] : []),
-      ...(input.previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: input.previousChapterTail }] : []),
+      ...(input.jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情（legacy compatibility）", excerpt: declareAsRecallData("jingwei_context", input.jingweiContext) }] : []),
+      ...(input.previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: declareAsRecallData("prev_chapter_tail", input.previousChapterTail) }] : []),
     ],
   };
 }

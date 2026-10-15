@@ -716,7 +716,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       entities: arraySchema("关注实体列表（可选）。", { type: "string" }),
       sceneText: stringSchema("当前场景文本或写作意图（可选）。"),
       budgetTokens: numberSchema("总 token 预算（可选）。"),
-      channels: arraySchema("召回通道（可选）：hard | state | timeline | hooks | facts | style。", { type: "string" }),
+      channels: arraySchema("召回通道（可选，圈定后只召回这些通道）：hard | state | relationship | timeline | hooks | facts | style | semantic | character-kernel | recent-summary | knowledge。只圈定部分通道的 write/revise 召回不会覆盖写作注入保留件；单纯重取原文用 purpose=audit。", { type: "string" }),
     },
     required: ["bookId", "purpose"],
     additionalProperties: false,
