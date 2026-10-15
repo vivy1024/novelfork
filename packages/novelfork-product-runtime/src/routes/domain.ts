@@ -42,6 +42,8 @@ import {
 	type RuntimeProductHostServices,
 	type RuntimeProductTextGenerationStatus,
 } from "@vivy1024/narrafork-runtime-bridge";
+import { ADMIN_ONLY_WRITE_PATHS, requireAdminForWrites } from "./admin-write-guard";
+import { forwardErrorsToParent } from "./forward-errors";
 import { getControlledBooksRoot } from "../services/book-binding";
 import { novelForkProductBookService } from "../services/book-provision";
 import rootPackage from "../../../../package.json";
@@ -53,8 +55,9 @@ import { assertBookNarratorAccess } from "../services/narrator-access";
  * Authentication and book ownership are enforced by app.ts before this router
  * runs. The domain implementations remain owned by novel-plugin; this module
  * follows the server-side NovelFork repository binding only after that ACL guard.
+ * 异常交回 Runtime 父应用的 onError 统一序列化成 JSON（见 forward-errors.ts）。
  */
-export const novelDomainRoutes = new Hono();
+export const novelDomainRoutes = forwardErrorsToParent(new Hono());
 
 /**
  * Prefer the product binding's absolute book root (external workspaces included).
@@ -170,6 +173,14 @@ function asRuntimeRouter(router: unknown): Hono {
 
 const productRouterContext = createProductRouterContext();
 
+// T-04：全局写接口（朱雀检测配置、合规词典、市场数据、向量模型、全局写作技能）只允许管理员。
+// 统一按「方法 + 路径前缀」判定：GET/HEAD/OPTIONS 放行，其余方法（含 PATCH）一律要求管理员，
+// 并带三段式 explanation。必须注册在所有子路由之前，否则先注册的处理函数会抢先响应。
+// 只挂在这些具体前缀上（不用 "*"）：本路由表挂到 Runtime 根上，"*" 会波及 Runtime 自己的路由。
+for (const path of ADMIN_ONLY_WRITE_PATHS) {
+	novelDomainRoutes.use(path, requireAdminForWrites);
+}
+
 novelDomainRoutes.route(
 	"",
 	asRuntimeRouter(
@@ -244,7 +255,7 @@ novelDomainRoutes.route(
 novelDomainRoutes.route("", asRuntimeRouter(createComplianceRouter(productRouterContext)));
 novelDomainRoutes.route("", asRuntimeRouter(createFilterRouter()));
 // Writing Skills 全局目录与作者副本编辑。内容权威源始终是 SKILL.md 文件，
-// 作品级生效状态由可信根目录 `.novelfork/skills` 自动扫描决定。
+// 作品级生效状态由可信根目录 `.novelfork/skills` 自动扫描决定。全局写入只许管理员（见文件前部的统一守卫）。
 novelDomainRoutes.route("", asRuntimeRouter(createWritingSkillsRouter()));
 novelDomainRoutes.route(
 	"",
@@ -343,6 +354,7 @@ novelDomainRoutes.route(
 );
 novelDomainRoutes.route("", asRuntimeRouter(createMarketRouter()));
 // 独立 embedding 提供商：落到 NovelFork 产品库，不挤进 Runtime AI 供应商。
+// 全局配置影响所有书与用户：写入与探测只允许管理员（见文件前部的统一守卫；GET 只返回脱敏信息，保持公开）。
 novelDomainRoutes.route("", asRuntimeRouter(createEmbeddingSettingsRouter()));
 
 // Runtime state panel: knowledge / timeline / resource ledger from story/state.
