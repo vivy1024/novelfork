@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,24 @@ import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
 import type { CockpitState } from "./cockpit-service.js";
 
 let activeStorage: StorageDatabase | undefined;
+
+/** T-13：对指定路径的 readFile 注入错误码，模拟 book.json 被同步盘/杀软占用或无权限。默认透传。 */
+const fsControl = vi.hoisted(() => ({ readFailures: new Map<string, string>() }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  const readFile = (async (path: Parameters<typeof actual.readFile>[0], ...rest: unknown[]) => {
+    const code = fsControl.readFailures.get(String(path));
+    if (code) {
+      const error = new Error(`${code}: resource busy or locked, open '${String(path)}'`) as NodeJS.ErrnoException;
+      error.code = code;
+      throw error;
+    }
+    return (actual.readFile as (...args: unknown[]) => Promise<unknown>)(path, ...rest);
+  }) as typeof actual.readFile;
+  // jsdom 环境下内置模块的具名导入经 default 互操作读取，default 也要替换（同 chapter-path-guard.test.ts 的写法）。
+  return { ...actual, readFile, default: { ...actual, readFile } };
+});
 
 vi.mock("@vivy1024/novelfork-core", () => ({
   getStorageDatabase: () => {
@@ -59,6 +77,15 @@ async function createStorage(): Promise<StorageDatabase> {
   storage.sqlite.prepare(`INSERT INTO book (id, name, created_at, updated_at) VALUES ('book-1', '测试书', 0, 0)`).run();
   ensureNarrativeMemorySchema(storage);
   return storage;
+}
+
+function pendingHighRiskEvent(id: string, chapterNumber: number): NarrativeEvent {
+  return {
+    ...appliedEvent({ id, chapterNumber }),
+    eventType: "world_fact_introduced",
+    status: "pending",
+    riskLevel: "high",
+  };
 }
 
 function appliedEvent(partial: Partial<NarrativeEvent> & Pick<NarrativeEvent, "id" | "chapterNumber">): NarrativeEvent {
@@ -110,9 +137,81 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  fsControl.readFailures.clear();
   activeStorage?.close();
   activeStorage = undefined;
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+describe("write.preflight：book.json 读不出是独立阻断（T-13）", () => {
+  async function bookRootWith(content: string | null): Promise<string> {
+    const bookRoot = join(tmpdir(), `novelfork-t13-config-${crypto.randomUUID()}`);
+    tempDirs.push(bookRoot);
+    await mkdir(bookRoot, { recursive: true });
+    if (content !== null) await writeFile(join(bookRoot, "book.json"), content, "utf-8");
+    return bookRoot;
+  }
+
+  async function preflight(bookRoot: string, state?: CockpitState) {
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    return handleWritePreflight({
+      bookId: "book-1",
+      userDirectives: "继续写药园试探，推进小瓶秘密。",
+      storage: activeStorage,
+      bookRoot,
+      ...(state ? { cockpitState: state } : {}),
+    });
+  }
+
+  it("内容损坏：即使没有高风险待审事件也阻断，explanation 用「损坏」措辞", async () => {
+    const bookRoot = await bookRootWith("{ this is not valid json");
+    const result = await preflight(bookRoot, cockpitState({ formalChapterCount: 0 }));
+
+    expect(result.ok).toBe(false);
+    const blocker = result.blockers.find((item) => item.code === "book-config-unreadable");
+    expect(blocker, "corrupt book.json must be an independent blocker").toBeDefined();
+    expect(blocker?.explanation?.whatHappened).toMatch(/损坏|不是合法/u);
+    expect(blocker?.explanation?.whyItMatters).toBeTruthy();
+    expect(blocker?.explanation?.suggestedAction).toMatch(/备份|修复/u);
+  });
+
+  it("文件被占用或无权限（EBUSY/EPERM/EACCES）：阻断，explanation 提示稍后重试或检查占用", async () => {
+    for (const code of ["EBUSY", "EPERM", "EACCES"]) {
+      const bookRoot = await bookRootWith(JSON.stringify({ id: "book-1", title: "测试书" }));
+      fsControl.readFailures.set(join(bookRoot, "book.json"), code);
+      const result = await preflight(bookRoot, cockpitState({ formalChapterCount: 0 }));
+
+      expect(result.ok, `${code} must block`).toBe(false);
+      const blocker = result.blockers.find((item) => item.code === "book-config-unreadable");
+      expect(blocker, `${code} must be reported as book-config-unreadable`).toBeDefined();
+      expect(blocker?.explanation?.whatHappened).toContain(code);
+      expect(blocker?.explanation?.suggestedAction).toMatch(/稍后重试/u);
+      expect(blocker?.explanation?.suggestedAction).toMatch(/占用/u);
+      expect(blocker?.explanation?.whatHappened).not.toMatch(/损坏/u);
+      fsControl.readFailures.clear();
+    }
+  });
+
+  it("驾驶舱自己读 book.json（生产路径）时，损坏报 book-config-unreadable，不误报成书不存在", async () => {
+    const bookRoot = await bookRootWith("{ broken");
+    const result = await preflight(bookRoot);
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.map((item) => item.code)).toContain("book-config-unreadable");
+    expect(result.blockers.map((item) => item.code)).not.toContain("book-not-found");
+  });
+
+  it("对照：book.json 不存在（新书）不报 book-config-unreadable；可读时也不报", async () => {
+    const missing = await preflight(await bookRootWith(null), cockpitState({ formalChapterCount: 0 }));
+    expect(missing.blockers.map((item) => item.code)).not.toContain("book-config-unreadable");
+
+    const readable = await preflight(
+      await bookRootWith(JSON.stringify({ id: "book-1", title: "测试书" })),
+      cockpitState({ formalChapterCount: 0 }),
+    );
+    expect(readable.blockers.map((item) => item.code)).not.toContain("book-config-unreadable");
+    expect(readable.ok).toBe(true);
+  });
 });
 
 describe("write.preflight", () => {
@@ -236,6 +335,46 @@ describe("write.preflight", () => {
     expect(result.platform?.chapterTargetStatus).toBe("above-max");
     expect(result.warningItems.some((item) => item.code === "platform-target-mismatch")).toBe(true);
     expect(result.ok).toBe(true);
+  });
+
+  it("blocks writing when book.json is unreadable and high-risk pending events exist (T-13)", async () => {
+    const bookRoot = join(tmpdir(), `novelfork-t13-${crypto.randomUUID()}`);
+    tempDirs.push(bookRoot);
+    await mkdir(bookRoot, { recursive: true });
+    await writeFile(join(bookRoot, "book.json"), "{ this is not valid json", "utf-8");
+    insertNarrativeEvent(activeStorage!, pendingHighRiskEvent("e-t13-high", 10));
+
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    const result = await handleWritePreflight({
+      bookId: "book-1",
+      userDirectives: "继续写药园试探，推进小瓶秘密。",
+      storage: activeStorage,
+      bookRoot,
+      cockpitState: cockpitState({ formalChapterCount: 11 }),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.some((item) => item.code === "high-risk-pending")).toBe(true);
+  });
+
+  it("keeps high-risk pending as a warning when the config is readable and blocking is off (T-13 control)", async () => {
+    const bookRoot = join(tmpdir(), `novelfork-t13-ok-${crypto.randomUUID()}`);
+    tempDirs.push(bookRoot);
+    await mkdir(bookRoot, { recursive: true });
+    await writeFile(join(bookRoot, "book.json"), JSON.stringify({ id: "book-1", title: "测试书" }), "utf-8");
+    insertNarrativeEvent(activeStorage!, pendingHighRiskEvent("e-t13-ctrl", 10));
+
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    const result = await handleWritePreflight({
+      bookId: "book-1",
+      userDirectives: "继续写药园试探，推进小瓶秘密。",
+      storage: activeStorage,
+      bookRoot,
+      cockpitState: cockpitState({ formalChapterCount: 11 }),
+    });
+
+    expect(result.blockers.some((item) => item.code === "high-risk-pending")).toBe(false);
+    expect(result.warningItems.some((item) => item.code === "high-risk-pending")).toBe(true);
   });
 });
 

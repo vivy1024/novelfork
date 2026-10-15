@@ -50,6 +50,12 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
     whyItMatters: "缺少书籍元数据时无法判断进度、卷纲与平台，写前检查不可信。",
     suggestedAction: "确认书籍绑定正常；必要时在「我的作品」重新校验绑定。",
   },
+  "book-config-unreadable": {
+    kind: "persistent",
+    whatHappened: "本书的 book.json 存在，但内容无法解析为配置。",
+    whyItMatters: "写作依赖书籍配置（字数目标、平台、门禁开关）；配置不可读时继续写会绕过这些门禁。",
+    suggestedAction: "检查 book.json 是否为合法 JSON（可从备份恢复），修复后重试写章。",
+  },
   "style-disabled": {
     kind: "advisory",
     whatHappened: "本书没有启用任何写作技能，文风通道是空的。",

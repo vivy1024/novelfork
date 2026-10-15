@@ -1,10 +1,50 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, rm, writeFile, readFile, mkdir, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, rm, writeFile, readFile, mkdir, stat, utimes } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { StateManager } from "../state/manager.js";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
+
+/**
+ * 书籍锁测试用的文件系统故障注入（T-13）。默认全部透传真实实现，只有用例显式设置时才生效：
+ * - unlinkFailures：对指定路径的 unlink 先抛几次指定错误码（模拟 Windows 上杀软/索引器占用锁文件）；
+ * - slowRemoval：对指定锁路径的第 N 次「移除类」操作（unlink 它，或以它为源 rename）人为延迟，
+ *   用来稳定复现两个争用者同时判定陈旧时的交错。
+ */
+const fsControl = vi.hoisted(() => ({
+  unlinkFailures: new Map<string, { remaining: number; code: string }>(),
+  slowRemoval: undefined as undefined | { path: string; nth: number; delayMs: number; seen: number },
+}));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  const delayIfTargeted = async (path: string): Promise<void> => {
+    const slow = fsControl.slowRemoval;
+    if (!slow || path !== slow.path) return;
+    slow.seen += 1;
+    if (slow.seen === slow.nth) await new Promise((resolveDelay) => setTimeout(resolveDelay, slow.delayMs));
+  };
+  return {
+    ...actual,
+    unlink: async (path: Parameters<typeof actual.unlink>[0]) => {
+      const key = String(path);
+      const failure = fsControl.unlinkFailures.get(key);
+      if (failure && failure.remaining > 0) {
+        failure.remaining -= 1;
+        const error = new Error(`${failure.code}: resource busy or locked, unlink '${key}'`) as NodeJS.ErrnoException;
+        error.code = failure.code;
+        throw error;
+      }
+      await delayIfTargeted(key);
+      return actual.unlink(path);
+    },
+    rename: async (from: Parameters<typeof actual.rename>[0], to: Parameters<typeof actual.rename>[1]) => {
+      await delayIfTargeted(String(from));
+      return actual.rename(from, to);
+    },
+  };
+});
 
 describe("StateManager", () => {
   let tempDir: string;
@@ -701,6 +741,202 @@ describe("StateManager", () => {
       } finally {
         killSpy.mockRestore();
       }
+    });
+
+      it("does not reclaim a lock held by a live process just because it is older than 10 minutes (T-13)", async () => {
+        await mkdir(manager.bookDir("lock-book-6"), { recursive: true });
+        const lockPath = join(manager.bookDir("lock-book-6"), ".write.lock");
+        const elevenMinutesAgo = Date.now() - 11 * 60 * 1000;
+        await writeFile(lockPath, `pid:424243 ts:${elevenMinutesAgo}`, "utf-8");
+
+        const killSpy = vi.spyOn(process, "kill").mockImplementation((() => true) as unknown as typeof process.kill);
+
+        try {
+          await expect(manager.acquireBookLock("lock-book-6")).rejects.toThrow(/is locked/);
+          const lockData = await readFile(lockPath, "utf-8");
+          expect(lockData).toContain("pid:424243");
+        } finally {
+          killSpy.mockRestore();
+        }
+      });
+
+      it("does not let the original holder delete a lock that a new holder has taken over (T-13)", async () => {
+        const originalRelease = await manager.acquireBookLock("lock-book-7");
+        const lockPath = join(manager.bookDir("lock-book-7"), ".write.lock");
+
+        // 模拟：原持有者超时后被判陈旧，新持有者已经接管了锁文件（pid 不同）。
+        await writeFile(lockPath, "pid:999991 ts:999999999999", "utf-8");
+
+        await originalRelease();
+
+        // 释放不得删除别人的锁：文件必须仍在，且仍是新持有者的内容。
+        const survived = await readFile(lockPath, "utf-8").then(
+          (content) => content,
+          () => undefined,
+        );
+        expect(survived, "original holder's release deleted the new holder's lock file").toBeDefined();
+        expect(survived).toContain("pid:999991");
+      });
+
+    describe("T-13 陈旧判定、释放重试与条件回收", () => {
+      const localHost = encodeURIComponent(hostname());
+      const SEVEN_HOURS = 7 * 60 * 60 * 1000;
+
+      afterEach(() => {
+        fsControl.unlinkFailures.clear();
+        fsControl.slowRemoval = undefined;
+      });
+
+      async function lockPathFor(bookId: string): Promise<string> {
+        await mkdir(manager.bookDir(bookId), { recursive: true });
+        return join(manager.bookDir(bookId), ".write.lock");
+      }
+
+      function mockPidsAlive(deadPids: readonly number[] = []) {
+        return vi.spyOn(process, "kill").mockImplementation((((pid: number) => {
+          if (deadPids.includes(pid)) {
+            const error = new Error("no such process") as NodeJS.ErrnoException;
+            error.code = "ESRCH";
+            throw error;
+          }
+          return true;
+        }) as unknown) as typeof process.kill);
+      }
+
+      it("新锁文件是结构化内容：pid、主机名、开始时间、令牌，且兼容旧解析的 pid:/ts: 前缀", async () => {
+        const lockPath = await lockPathFor("lock-t13-format");
+        const release = await manager.acquireBookLock("lock-t13-format");
+        try {
+          const content = await readFile(lockPath, "utf-8");
+          expect(content).toMatch(new RegExp(`^pid:${process.pid} ts:\\d+ host:\\S+ token:\\S+$`));
+          expect(content).toContain(`host:${localHost}`);
+        } finally {
+          await release();
+        }
+      });
+
+      it("pid 被复用：同主机、pid 存活但不是本进程、锁龄超过 6 小时，视为陈旧并回收", async () => {
+        const lockPath = await lockPathFor("lock-t13-reuse");
+        await writeFile(lockPath, `pid:424244 ts:${Date.now() - SEVEN_HOURS} host:${localHost} token:ghost-token`, "utf-8");
+        const killSpy = mockPidsAlive();
+        try {
+          const release = await manager.acquireBookLock("lock-t13-reuse");
+          expect(await readFile(lockPath, "utf-8")).toContain(`pid:${process.pid}`);
+          await release();
+        } finally {
+          killSpy.mockRestore();
+        }
+      });
+
+      it("旧格式锁文件（pid:xxx ts:xxx）同样按 6 小时兜底回收", async () => {
+        const lockPath = await lockPathFor("lock-t13-legacy-old");
+        await writeFile(lockPath, `pid:424245 ts:${Date.now() - SEVEN_HOURS}`, "utf-8");
+        const killSpy = mockPidsAlive();
+        try {
+          const release = await manager.acquireBookLock("lock-t13-legacy-old");
+          expect(await readFile(lockPath, "utf-8")).toContain(`pid:${process.pid}`);
+          await release();
+        } finally {
+          killSpy.mockRestore();
+        }
+      });
+
+      it("锁来自别的主机（共享盘/同步盘）时不自动回收，报错带三段式 explanation，锁文件原样保留", async () => {
+        const lockPath = await lockPathFor("lock-t13-foreign");
+        const foreign = `pid:424246 ts:${Date.now() - SEVEN_HOURS} host:other-machine-xyz token:remote-token`;
+        await writeFile(lockPath, foreign, "utf-8");
+        // 即使本机查不到这个 pid（本机视角下「已死」），也不能据此回收别的机器的锁。
+        const killSpy = mockPidsAlive([424246]);
+        try {
+          const error = await manager.acquireBookLock("lock-t13-foreign").then(
+            () => undefined,
+            (reason: unknown) => reason as Error & { code?: string; explanation?: Record<string, string> },
+          );
+          expect(error, "foreign-host lock must not be reclaimed").toBeDefined();
+          expect(error?.message).toMatch(/is locked/);
+          expect(error?.code).toBe("book-locked-foreign-host");
+          expect(error?.explanation?.whatHappened).toContain("other-machine-xyz");
+          expect(error?.explanation?.whyItMatters).toBeTruthy();
+          expect(error?.explanation?.suggestedAction).toBeTruthy();
+          expect(await readFile(lockPath, "utf-8")).toBe(foreign);
+        } finally {
+          killSpy.mockRestore();
+        }
+      });
+
+      it("锁里是本进程 pid、但本进程内存里没有这把锁的持有记录：视为陈旧（自锁残留）", async () => {
+        const lockPath = await lockPathFor("lock-t13-self");
+        await writeFile(lockPath, `pid:${process.pid} ts:${Date.now()} host:${localHost} token:leftover-token`, "utf-8");
+        const release = await manager.acquireBookLock("lock-t13-self");
+        const content = await readFile(lockPath, "utf-8");
+        expect(content).toContain(`pid:${process.pid}`);
+        expect(content).not.toContain("leftover-token");
+        await release();
+      });
+
+      it("内容不完整的锁文件在短宽限内视为正在写入，超过宽限后视为陈旧", async () => {
+        const lockPath = await lockPathFor("lock-t13-empty");
+        await writeFile(lockPath, "", "utf-8");
+        await expect(manager.acquireBookLock("lock-t13-empty")).rejects.toThrow(/is locked/);
+
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        await utimes(lockPath, tenMinutesAgo, tenMinutesAgo);
+        const release = await manager.acquireBookLock("lock-t13-empty");
+        expect(await readFile(lockPath, "utf-8")).toContain(`pid:${process.pid}`);
+        await release();
+      });
+
+      it("释放时锁文件被短暂占用（EBUSY）：有界重试后删除成功", async () => {
+        const lockPath = await lockPathFor("lock-t13-busy");
+        const release = await manager.acquireBookLock("lock-t13-busy");
+        fsControl.unlinkFailures.set(lockPath, { remaining: 2, code: "EBUSY" });
+
+        await release();
+
+        await expect(stat(lockPath)).rejects.toThrow();
+      });
+
+      it("释放重试仍失败：记 warn 不抛错，且本进程随后可以重新拿到这把锁（不自锁）", async () => {
+        const lockPath = await lockPathFor("lock-t13-stuck");
+        const release = await manager.acquireBookLock("lock-t13-stuck");
+        fsControl.unlinkFailures.set(lockPath, { remaining: 1000, code: "EPERM" });
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+          await expect(release()).resolves.toBeUndefined();
+          expect(warnSpy).toHaveBeenCalled();
+        } finally {
+          warnSpy.mockRestore();
+          fsControl.unlinkFailures.clear();
+        }
+
+        const releaseAgain = await manager.acquireBookLock("lock-t13-stuck");
+        await releaseAgain();
+        await expect(stat(lockPath)).rejects.toThrow();
+      });
+
+      it("两个争用者同时判定同一把陈旧锁时，只能有一个拿到锁", async () => {
+        const lockPath = await lockPathFor("lock-t13-race");
+        await writeFile(lockPath, `pid:424247 ts:${Date.now()} host:${localHost} token:dead-token`, "utf-8");
+        const killSpy = mockPidsAlive([424247]);
+        // 让后到的那个争用者的「移除陈旧锁」慢半拍：先到者此时已经建好了新锁。
+        fsControl.slowRemoval = { path: lockPath, nth: 2, delayMs: 60, seen: 0 };
+        try {
+          const results = await Promise.allSettled([
+            manager.acquireBookLock("lock-t13-race"),
+            manager.acquireBookLock("lock-t13-race"),
+          ]);
+          const fulfilled = results.filter((result): result is PromiseFulfilledResult<() => Promise<void>> => result.status === "fulfilled");
+          const rejected = results.filter((result) => result.status === "rejected");
+          expect(fulfilled, "both claimants believed they hold the lock").toHaveLength(1);
+          expect(rejected).toHaveLength(1);
+          expect(String((rejected[0] as PromiseRejectedResult).reason)).toMatch(/is locked/);
+          // 赢家的锁文件仍然在位：后到者没有把它删掉或改名带走。
+          expect(await readFile(lockPath, "utf-8")).toContain(`pid:${process.pid}`);
+          for (const result of fulfilled) await result.value();
+        } finally {
+          killSpy.mockRestore();
+        }
+      });
     });
   });
 

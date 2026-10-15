@@ -18,6 +18,12 @@ import { listStaleChapters } from "./audit-freshness.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { explainDiagnostic, type DiagnosticExplanation } from "./diagnostic-explanation.js";
 import {
+  checkBookConfigReadability,
+  explainUnreadableBookConfig,
+  isUnreadableBookConfig,
+  type UnreadableBookConfig,
+} from "./book-config-readable.js";
+import {
   createCockpitService,
   type CockpitChapterSummaryItem,
   type CockpitCurrentFocusSummary,
@@ -54,7 +60,9 @@ export interface WritePreflightBlocker {
     | "missing-directive"
     | "empty-recent-progress"
     | "high-risk-pending"
-    | "book-not-found";
+    | "book-not-found"
+    /** book.json 存在却读不出（被占用/无权限）或内容损坏；文件不存在的新书不算。 */
+    | "book-config-unreadable";
   readonly message: string;
   /** 人话三段式：发生了什么 / 为什么要看 / 建议怎么做。前端不得按 code 自造文案。 */
   readonly explanation?: DiagnosticExplanation;
@@ -319,13 +327,25 @@ function pushWarning(
   });
 }
 
-/** blocker 一律带人话解释；前端读 explanation 而不是按 code 自造文案。 */
+/**
+ * 写前预检的 blocker 构造。blocker 一律带人话解释；前端读 explanation 而不是按 code 自造文案。
+ * `explanationOverride` 用于同一 code 下按具体原因给不同措辞（例如 book.json 被占用 vs 内容损坏）。
+ */
 function makeBlocker(
   code: WritePreflightBlocker["code"],
   message: string,
+  explanationOverride?: DiagnosticExplanation,
 ): WritePreflightBlocker {
   const explained = explainDiagnostic(code, message);
-  return { code, message, explanation: explained.explanation, kind: explained.kind };
+  return { code, message, explanation: explanationOverride ?? explained.explanation, kind: explained.kind };
+}
+
+/** book.json 读不出的独立 blocker（T-13）：占用/权限与内容损坏分开措辞。 */
+function makeBookConfigUnreadableBlocker(readability: UnreadableBookConfig): WritePreflightBlocker {
+  const message = readability.status === "busy"
+    ? `book.json 读取失败（${readability.errorCode}），本次不能写章，请稍后重试或检查文件占用与权限。`
+    : `book.json 内容已损坏（${readability.detail}），本次不能写章，请修复或从备份恢复。`;
+  return makeBlocker("book-config-unreadable", message, explainUnreadableBookConfig(readability));
 }
 
 /**
@@ -411,11 +431,27 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     now: input.now,
   });
 
+  // T-13：book.json 存在却读不出（占用/权限）或内容损坏，是独立的写章阻断。
+  // 不能只在「有高风险待审事件」时才阻断，也不能让驾驶舱把它说成「书不存在」：
+  // 驾驶舱与记忆配置读取都会把读失败静默退化为空/默认值，所以这里单独判定。
+  // 文件不存在是合法的新书状态，沿用原有的 book-not-found / 新书语义，不在此报。
+  const bookConfigReadability = input.bookRoot?.trim()
+    ? await checkBookConfigReadability(input.bookRoot)
+    : undefined;
+  const unreadableBookConfig = bookConfigReadability && isUnreadableBookConfig(bookConfigReadability)
+    ? bookConfigReadability
+    : undefined;
+  if (unreadableBookConfig) {
+    blockers.push(makeBookConfigUnreadableBlocker(unreadableBookConfig));
+  }
+
   let snapshot: CockpitSnapshot;
   try {
     snapshot = await cockpit.getSnapshot({ bookId });
   } catch (error) {
-    blockers.push(makeBlocker("book-not-found", `无法读取书籍驾驶舱：${error instanceof Error ? error.message : String(error)}`));
+    if (!unreadableBookConfig) {
+      blockers.push(makeBlocker("book-not-found", `无法读取书籍驾驶舱：${error instanceof Error ? error.message : String(error)}`));
+    }
     return {
       ok: false,
       bookId,
@@ -447,7 +483,8 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     };
   }
 
-  if (snapshot.status === "missing" || !snapshot.book) {
+  // 驾驶舱读不到书时，若原因是 book.json 读不出，上面已报 book-config-unreadable，不再误报成「书不存在」。
+  if ((snapshot.status === "missing" || !snapshot.book) && !unreadableBookConfig) {
     blockers.push(makeBlocker("book-not-found", `书籍 ${bookId} 不存在或不可读。`));
   }
 
@@ -607,6 +644,9 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
   const highRisk = listHighRiskPendingNarrativeEvents(storage, { bookId, limit: 20 });
   let blockHighRisk = false;
   let blockOnOverdueHooks = false;
+  // loadNarrativeMemoryConfig 对读不出的 book.json 会静默退化为默认配置；读不出时上面已有独立
+  // blocker（book-config-unreadable）挡住写章，这里另外按「无法确认是否允许带风险写作」失败关闭。
+  const bookJsonUnreadable = unreadableBookConfig !== undefined;
   if (input.bookRoot?.trim()) {
     try {
       const config = await loadNarrativeMemoryConfig(bookId, input.bookRoot);
@@ -623,8 +663,10 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
   }
   if (highRisk.length > 0) {
     const msg = `存在 ${highRisk.length} 条高风险 pending NarrativeEvents，请先 memory.events / 面板处理。`;
-    if (blockHighRisk) {
-      blockers.push(makeBlocker("high-risk-pending", msg));
+    if (blockHighRisk || bookJsonUnreadable) {
+      blockers.push(makeBlocker("high-risk-pending", bookJsonUnreadable && !blockHighRisk
+        ? `${msg} 另外，本书的 book.json 读不出，无法确认是否允许带风险写作，已按阻断处理。`
+        : msg));
     } else {
       pushWarning(warnings, warningItems, "high-risk-pending", msg);
     }
