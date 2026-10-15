@@ -6,7 +6,7 @@ import { countChapterLength, type LengthCountingMode } from "@vivy1024/novelfork
 import { chapterContentFingerprint } from "../narrative-memory/settlement-idempotency.js";
 import { writeFileAtomic } from "./atomic-write.js";
 import { parseChapterFileName, type ParsedChapterFile } from "./chapter-file-name.js";
-import { resolveChapterFile } from "./chapter-path-guard.js";
+import { createChapterFileResolver } from "./chapter-path-guard.js";
 
 // 文件名约定在不依赖 node:fs 的 chapter-file-name.ts，前端显示名也从那里解析。
 export { CHAPTER_FILE_PATTERN, parseChapterFileName, type ParsedChapterFile } from "./chapter-file-name.js";
@@ -123,8 +123,9 @@ export async function readChapterIndex(bookRoot: string): Promise<ChapterIndexRe
   }
   if (!Array.isArray(parsed)) return [];
   // S1.1：fileName 越出章节目录的条目视为无效，既不读也不写回（见 chapter-path-guard.ts）。
-  const chaptersDir = join(bookRoot, CHAPTERS_DIRECTORY);
-  return parsed.filter(isChapterIndexRecord).filter((record) => resolveChapterFile(chaptersDir, record.fileName) !== null);
+  // 整份索引共用一个解析器：章节目录的 realpath 只算一次，不随条目数重复同步 IO（T-01）。
+  const resolveChapterFile = createChapterFileResolver(join(bookRoot, CHAPTERS_DIRECTORY));
+  return parsed.filter(isChapterIndexRecord).filter((record) => resolveChapterFile(record.fileName) !== null);
 }
 
 export async function writeChapterIndex(bookRoot: string, entries: readonly ChapterIndexRecord[]): Promise<void> {

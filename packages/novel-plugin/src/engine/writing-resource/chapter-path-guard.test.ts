@@ -1,11 +1,25 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { join, resolve } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// 记录 realpathSync 调用，断言读一次索引只解析一次章节目录的真实路径（T-01 热路径）；其余透传真实 fs。
+const fsCalls = vi.hoisted(() => ({ realpath: [] as string[] }));
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const realpathSync = Object.assign(
+    (path: import("node:fs").PathLike, options?: unknown) => {
+      fsCalls.realpath.push(String(path));
+      return actual.realpathSync(path, options as never);
+    },
+    { native: actual.realpathSync.native },
+  );
+  return { ...actual, realpathSync, default: { ...actual, realpathSync } };
+});
 
 import { createWritingResourceFileStore } from "./file-store.js";
 import { readChapterIndex } from "./chapter-layout.js";
-import { resolveChapterFile } from "./chapter-path-guard.js";
+import { requireChapterFile, resolveChapterFile } from "./chapter-path-guard.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -124,5 +138,59 @@ describe("符号链接与联接点：章节目录内的链接不得指向书外"
     // 字符串层面合法，只有按真实落点复核才能发现越界。
     expect(resolveChapterFile(chaptersDir, "卷01/0001_x.md")).toBeNull();
     expect(readFileSync(victim, "utf8")).toBe("OUTSIDE-ORIGINAL");
+  });
+
+  it("悬空联接（书外目标已删除）一律拒绝：保存章节不会沿链接在书外建出目录与文件", async () => {
+    const base = mkdtempSync(join(tmpdir(), "chapter-dangling-"));
+    roots.push(base);
+    const book = join(base, "books", "b1");
+    const chaptersDir = join(book, "chapters");
+    mkdirSync(chaptersDir, { recursive: true });
+    const outsideDir = join(base, "outside");
+    mkdirSync(outsideDir, { recursive: true });
+    symlinkSync(outsideDir, join(chaptersDir, "卷01"), "junction");
+    rmSync(outsideDir, { recursive: true, force: true });
+    writeFileSync(join(chaptersDir, "index.json"), JSON.stringify([{
+      number: 1, title: "x", fileName: "卷01/0001_x.md", wordCount: 1, updatedAt: new Date().toISOString(),
+    }]), "utf8");
+
+    expect(resolveChapterFile(chaptersDir, "卷01/0001_x.md")).toBeNull();
+    expect(() => requireChapterFile(chaptersDir, "卷01/0001_x.md")).toThrow(/章节目录/);
+    const store = createWritingResourceFileStore(() => book);
+    await store.update("b1", "chapter:1", { content: "OVERWRITTEN" } as never).catch(() => undefined);
+    expect(existsSync(join(outsideDir, "0001_x.md"))).toBe(false);
+  });
+});
+
+describe("保留名补全（T-01）：沿用原导出名，判定来自 core 唯一实现", () => {
+  it("CONIN$、CONOUT$ 与上标数字的 COM/LPT 都被拒绝", () => {
+    const chaptersDir = join(tmpdir(), "chapters-x");
+    for (const bad of ["CONIN$", "卷01/conout$.md", "卷01/COM¹.md", "LPT³", "com².txt"]) {
+      expect(resolveChapterFile(chaptersDir, bad), bad).toBeNull();
+    }
+  });
+});
+
+describe("热路径（T-01）：读一次章节索引只解析一次章节目录的真实路径", () => {
+  it("索引有 40 条记录时，readChapterIndex 只对章节目录做一次 realpath", async () => {
+    const base = mkdtempSync(join(tmpdir(), "chapter-index-realroot-"));
+    roots.push(base);
+    const book = join(base, "books", "b1");
+    const chaptersDir = join(book, "chapters");
+    mkdirSync(join(chaptersDir, "卷01"), { recursive: true });
+    const now = new Date().toISOString();
+    writeFileSync(join(chaptersDir, "index.json"), JSON.stringify(Array.from({ length: 40 }, (_, index) => ({
+      number: index + 1,
+      title: `第${index + 1}章`,
+      fileName: `卷01/${String(index + 1).padStart(4, "0")}_x.md`,
+      wordCount: 1,
+      updatedAt: now,
+    }))), "utf8");
+
+    fsCalls.realpath.length = 0;
+    const entries = await readChapterIndex(book);
+
+    expect(entries).toHaveLength(40);
+    expect(fsCalls.realpath.filter((path) => resolve(path) === resolve(chaptersDir))).toHaveLength(1);
   });
 });

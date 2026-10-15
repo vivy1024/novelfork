@@ -46,6 +46,7 @@ import {
   writeChapterIndex,
   type ChapterIndexRecord,
 } from "../engine/writing-resource/chapter-layout.js";
+import { createChapterFileResolver } from "../engine/writing-resource/chapter-path-guard.js";
 import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
 
 export interface TrustedRuntimeBookBinding {
@@ -145,7 +146,11 @@ async function readChapterIndex(binding: TrustedRuntimeBookBinding): Promise<Cha
   const indexed = await readChapterLayoutIndex(binding.root);
   if (indexed.length > 0) return indexed;
 
-  // 兼容主迁移完成前缺少标准字段的旧索引；新写入始终走 chapter-layout 的标准记录。
+  // 兼容主迁移完成前缺少标准字段的旧索引（如 core StateManager 写的 ChapterMeta，本身没有 fileName）；
+  // 新写入始终走 chapter-layout 的标准记录。
+  // T-01：回退分支同样经路径守卫。importChapters 会把这里的结果原样写回索引，
+  // 不过滤就会把越界 fileName 持久化下去。带 fileName 的条目必须落在章节目录内，否则丢弃；
+  // 没有 fileName 的旧条目不指向任何文件，照旧保留。
   const raw = await readFile(join(binding.root, "chapters", "index.json"), "utf8").catch(() => "[]");
   let parsed: unknown;
   try {
@@ -153,9 +158,14 @@ async function readChapterIndex(binding: TrustedRuntimeBookBinding): Promise<Cha
   } catch {
     return [];
   }
-  return Array.isArray(parsed)
-    ? parsed.filter((entry): entry is ChapterIndexRecord => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
-    : [];
+  if (!Array.isArray(parsed)) return [];
+  const resolveChapterFile = createChapterFileResolver(join(binding.root, "chapters"));
+  return parsed.filter((entry): entry is ChapterIndexRecord => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+    const fileName = (entry as Record<string, unknown>).fileName;
+    if (fileName === undefined || fileName === null) return true;
+    return typeof fileName === "string" && resolveChapterFile(fileName) !== null;
+  });
 }
 
 async function readBoundChapter(binding: TrustedRuntimeBookBinding, chapterNumber: number) {

@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { join } from "node:path";
 import {
   ChapterSummariesStateSchema,
   CurrentStateStateSchema,
@@ -12,6 +12,7 @@ import {
 } from "../models/runtime-state.js";
 import type { Fact, StoredHook } from "./memory-db.js";
 import { normalizeHookPayoffTiming } from "../utils/hook-lifecycle.js";
+import { resolveChapterFile } from "../utils/chapter-path-guard.js";
 import {
   inferFactSubject,
   isCurrentChapterLabel,
@@ -564,26 +565,15 @@ async function resolveIndexedChapterFilePath(
   }
 }
 
+/**
+ * 索引 fileName → 章节文件绝对路径。越界判定与 novel-plugin 共用唯一守卫
+ * （utils/chapter-path-guard.ts：字符串层 + 联接/符号链接/悬空链接的真实落点层）。
+ * 这里只保留两条兼容：旧索引可能带 `chapters/` 前缀；章节文件必须是 .md。
+ */
 function resolveChapterIndexFilePath(chaptersDir: string, fileName: string): string | null {
-  let normalized = fileName.trim().replaceAll("\\", "/");
-  if (normalized.startsWith("chapters/")) normalized = normalized.slice("chapters/".length);
-  normalized = normalized.replace(/^\/+|\/+$/gu, "");
-  if (!normalized || normalized.includes("\0") || normalized.split("/").includes("..")) {
-    return null;
-  }
-  if (!normalized.toLowerCase().endsWith(".md")) return null;
-
-  const candidatePath = join(chaptersDir, ...normalized.split("/"));
-  const candidateRelativePath = relative(chaptersDir, candidatePath);
-  if (
-    !candidateRelativePath
-    || candidateRelativePath === ".."
-    || candidateRelativePath.startsWith(`..${sep}`)
-    || isAbsolute(candidateRelativePath)
-  ) {
-    return null;
-  }
-  return candidatePath;
+  const relativeName = /^chapters[\\/]/u.test(fileName) ? fileName.slice("chapters/".length) : fileName;
+  if (!relativeName.toLowerCase().endsWith(".md")) return null;
+  return resolveChapterFile(chaptersDir, relativeName);
 }
 
 export async function resolveDurableStoryProgress(params: {

@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -249,5 +249,52 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
     expect(result.error).toBe("import-text-too-large");
     expect(result.error).not.toBe("invalid-split-pattern");
     expect(await readdir(join(testDir, "chapters"))).toEqual([]);
+  });
+});
+
+describe("pipeline.import_chapters 读旧索引的兼容回退也经路径守卫（T-01）", () => {
+  const filler = "这是一段足够长的正文，用来超过 1000 字的最小导入门槛。";
+  const content = ["第一章 正义", filler.repeat(40)].join("\r\n");
+  const indexPath = () => join(testDir, "chapters", "index.json");
+
+  it("只含越界 fileName 的旧格式索引，导入后越界条目不会被写回", async () => {
+    await writeFile(indexPath(), JSON.stringify([
+      // 旧格式（缺 wordCount / updatedAt），标准读取会整体滤掉，从而落进兼容回退分支。
+      { number: 7, title: "恶意", fileName: "../../../victim.txt" },
+      { number: 8, title: "恶意二", fileName: "卷01/../../x.md" },
+      { number: 9, title: "设备名", fileName: "卷01/CONIN$.md" },
+    ]), "utf8");
+
+    const result = await executeRuntimeDomainTool(
+      "pipeline.import_chapters",
+      { content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      binding,
+      {} as never,
+    );
+    expect(result.ok).toBe(true);
+
+    const index = JSON.parse(await readFile(indexPath(), "utf8")) as Array<{ number: number; fileName?: string }>;
+    expect(index.map((entry) => entry.fileName)).toEqual(["卷01/0001_正义.md"]);
+    expect(index.map((entry) => entry.number)).toEqual([1]);
+  });
+
+  it("对照：缺 fileName 的旧格式条目（core 早期写法）仍兼容保留，新章接在其后", async () => {
+    await writeFile(indexPath(), JSON.stringify([
+      { number: 1, title: "旧章", status: "approved", wordCount: 10, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ]), "utf8");
+
+    const result = await executeRuntimeDomainTool(
+      "pipeline.import_chapters",
+      { content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      binding,
+      {} as never,
+    );
+    expect(result.ok).toBe(true);
+
+    const index = JSON.parse(await readFile(indexPath(), "utf8")) as Array<{ number: number; title: string; fileName?: string }>;
+    expect(index.map((entry) => [entry.number, entry.title, entry.fileName ?? null])).toEqual([
+      [1, "旧章", null],
+      [2, "正义", "卷01/0002_正义.md"],
+    ]);
   });
 });

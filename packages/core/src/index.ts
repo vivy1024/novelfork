@@ -111,6 +111,7 @@ export { extractPOVFromOutline, filterMatrixByPOV, filterHooksByPOV } from "./ut
 export { detectToxicPatterns, type ToxicDetectionContext, type ToxicDetectionResult } from "./utils/toxic-detector.js";
 export { parseOutlineTree, findOutlineNodeForChapter, detectOutlineDrift, type OutlineNode, type OutlineDriftResult } from "./utils/outline-drift.js";
 export { splitChapters, splitChaptersWithVolumes, MAX_SPLIT_TEXT_LENGTH, type SplitChapter, type SplitChapterWithVolume, type SplitVolume } from "./utils/chapter-splitter.js";
+export { createChapterFileResolver, resolveChapterFile, requireChapterFile } from "./utils/chapter-path-guard.js";
 export {
   detectFormat,
   htmlToPlainText,
