@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import type { StorageDatabase } from "./db.js";
 import { embeddedMigrations } from "./embedded-migrations.js";
@@ -46,6 +46,64 @@ function normalizeSql(sql: string): string {
   return sql.replace(/\r\n?/gu, "\n");
 }
 
+/** 含 DROP TABLE 的迁移会永久丢表；这类迁移执行前先做一份快照（T-23）。 */
+const DESTRUCTIVE_DROP_PATTERN = /\bDROP\s+TABLE\b/iu;
+
+/**
+ * 迁移含 DROP TABLE 时，在它执行前对数据库文件做一份快照，存到数据库同目录的 backups/ 下。
+ * 必须在事务之外调用：快照前先 wal_checkpoint(TRUNCATE)，把 WAL 内容合并回主文件，否则快照会缺最近的写入。
+ * 内存库没有文件可复制，直接跳过。
+ */
+function snapshotBeforeDestructiveMigration(storage: StorageDatabase, name: string, sql: string): string | null {
+  if (!DESTRUCTIVE_DROP_PATTERN.test(sql)) return null;
+  const databasePath = storage.databasePath;
+  if (!databasePath || databasePath === ":memory:" || !existsSync(databasePath)) return null;
+  storage.checkpoint();
+  const backupsDir = join(dirname(databasePath), "backups");
+  mkdirSync(backupsDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:.]/gu, "");
+  const safeName = name.replace(/\.sql$/iu, "").replace(/[^\w.-]/gu, "_");
+  const snapshotPath = join(backupsDir, `${stamp}-${safeName}.db`);
+  copyFileSync(databasePath, snapshotPath);
+  return snapshotPath;
+}
+
+/** 迁移前快照保留 7 天，与 NarraFork Runtime 清理更新文件的规则一致（update-service.ts cleanupOldUpdates）。 */
+export const MIGRATION_SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** 快照文件名：创建时刻（toISOString 去掉 -:.）+ 迁移名。只有符合它的文件才归清理管。 */
+const SNAPSHOT_FILE_PATTERN = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})Z-.+\.db$/u;
+
+/**
+ * 删除 backups/ 下超过保留期的迁移快照。年龄取文件名里的创建时刻：Windows 复制文件会保留原库的修改时间，
+ * 看 mtime 会把刚做的快照当成旧文件。不符合快照命名的文件（用户自己放的备份等）一律不碰；
+ * 清理失败只跳过，不阻断启动。
+ */
+function pruneExpiredMigrationSnapshots(storage: StorageDatabase, now: number = Date.now()): void {
+  const databasePath = storage.databasePath;
+  if (!databasePath || databasePath === ":memory:") return;
+  const backupsDir = join(dirname(databasePath), "backups");
+  if (!existsSync(backupsDir)) return;
+  let entries: string[];
+  try {
+    entries = readdirSync(backupsDir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const match = SNAPSHOT_FILE_PATTERN.exec(entry);
+    if (!match) continue;
+    const [, year, month, day, hour, minute, second, millisecond] = match.map(Number);
+    const createdAt = Date.UTC(year!, month! - 1, day!, hour!, minute!, second!, millisecond!);
+    if (!Number.isFinite(createdAt) || now - createdAt <= MIGRATION_SNAPSHOT_RETENTION_MS) continue;
+    try {
+      unlinkSync(join(backupsDir, entry));
+    } catch {
+      // 文件被占用或已被删，下次启动再试。
+    }
+  }
+}
+
 function hashSql(sql: string): string {
   return createHash("sha256").update(normalizeSql(sql)).digest("hex");
 }
@@ -81,6 +139,8 @@ export function runStorageMigrations(
 ): StorageMigrationResult {
   const migrationsDir = options.migrationsDir ?? resolveDefaultMigrationsDir();
   ensureMigrationTable(storage);
+  // 每次启动都清一次过期快照，不依赖这次是否有新迁移。
+  pruneExpiredMigrationSnapshots(storage);
 
   const applied: string[] = [];
   const migrationFiles = listMigrationFiles(migrationsDir);
@@ -125,6 +185,7 @@ export function runStorageMigrations(
 
       if ([...equivalentHashes].some((candidate) => appliedByHash.has(candidate))) continue;
 
+      snapshotBeforeDestructiveMigration(storage, file, sql);
       applyMigration(file, sql, hash);
       applied.push(file);
     }
@@ -144,6 +205,7 @@ export function runStorageMigrations(
 
       if ([...equivalentHashes].some((candidate) => appliedByHash.has(candidate))) continue;
 
+      snapshotBeforeDestructiveMigration(storage, migration.name, migration.sql);
       applyMigration(migration.name, migration.sql, hash);
       applied.push(migration.name);
     }

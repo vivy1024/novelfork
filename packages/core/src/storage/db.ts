@@ -38,6 +38,8 @@ export interface StorageDatabase {
   readonly databasePath: string;
   readonly sqlite: StorageSqliteDatabase;
   readonly db: StorageOrmDatabase;
+  /** 启动时 PRAGMA integrity_check 的结果：健康为 "ok"；损坏时为首条错误描述；检查本身失败时为错误信息（T-23）。内存库为 undefined。 */
+  readonly startupIntegrity?: string;
   checkpoint(): void;
   close(): void;
 }
@@ -243,21 +245,40 @@ function createDrizzleDatabase(
   return drizzle(databasePath, { schema });
 }
 
+/**
+ * 启动完整性检查（T-23）。integrity_check 健康时返回单行 "ok"；损坏时返回若干错误行，取首条。
+ * 检查本身抛错也如实返回错误信息，不静默吞掉，让调用方看得见。
+ */
+function runStartupIntegrityCheck(sqlite: StorageSqliteDatabase): string {
+  try {
+    const result = sqlite.pragma("integrity_check", { simple: true });
+    return typeof result === "string" ? result : String(result ?? "");
+  } catch (error) {
+    return `integrity_check 执行失败：${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 export function createStorageDatabase(options: CreateStorageDatabaseOptions): StorageDatabase {
   ensureDatabaseDirectory(options.databasePath);
 
   const sqliteConnection = createSqliteDatabase(options.databasePath);
   const sqlite = createStorageSqliteFacade(sqliteConnection);
+  // 写锁冲突时等待而不是立即报 database is locked（与驱动无关的标准 PRAGMA）。
+  sqlite.pragma("busy_timeout = 5000");
   sqlite.pragma("foreign_keys = ON");
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("synchronous = NORMAL");
 
   const db = createDrizzleDatabase(options.databasePath, sqlite);
 
+  // 启动完整性检查（T-23）：只对真实文件做；结果如实记录，损坏时不阻止启动，由调用方决定如何处理。
+  const startupIntegrity = options.databasePath === ":memory:" ? undefined : runStartupIntegrityCheck(sqlite);
+
   return {
     databasePath: options.databasePath,
     sqlite,
     db,
+    startupIntegrity,
     checkpoint() {
       sqlite.pragma("wal_checkpoint(TRUNCATE)");
     },
