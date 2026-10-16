@@ -104,4 +104,49 @@ describe("T-29 agent 来源草案的风险分流", () => {
     expect(event.status).toBe("pending");
     expect(queryNarrativeFacts(storage, { bookId: "book-1", limit: 0 })).toHaveLength(0);
   });
+
+  it("同一事件重复提交（改写后重新抽取）不抛数据库异常：复用已有记录，作者的裁决不被翻回", async () => {
+    const draft = {
+      bookId: "book-1",
+      action: "create" as const,
+      source: "agent" as const,
+      chapterNumber: 1,
+      eventType: "world_fact_introduced" as const,
+      subject: "山门",
+      predicate: "规则",
+      object: "外人入山者死",
+      evidenceText: "守门人说外人入山者死。",
+      confidence: 0.9,
+    };
+    const first = await handleMemoryEvents(draft, storage);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const eventId = (first.data.event as { id: string }).id;
+
+    // 作者驳回了这条高风险草案。
+    const rejected = await handleMemoryEvents({ bookId: "book-1", action: "reject", eventId }, storage);
+    expect(rejected.ok).toBe(true);
+
+    // 叙述者改写本章后重新抽取，又提交了同一事件：不能抛 UNIQUE 异常，也不能把驳回翻回 pending。
+    const again = await handleMemoryEvents(draft, storage);
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect((again.data.event as { id: string; status: string }).status).toBe("rejected");
+    const rows = storage.sqlite.prepare("SELECT COUNT(*) AS n FROM narrative_event WHERE id = ?").get(eventId) as { n: number };
+    expect(rows.n).toBe(1);
+
+    // 同一批里重复两次也一样：只落一条。
+    const batch = await handleMemoryEvents({
+      bookId: "book-1",
+      action: "create",
+      source: "agent",
+      events: [
+        { chapterNumber: 2, eventType: "location_changed", subject: "林舟", predicate: "抵达", object: "后山", evidenceText: "林舟抵达后山。", confidence: 0.9 },
+        { chapterNumber: 2, eventType: "location_changed", subject: "林舟", predicate: "抵达", object: "后山", evidenceText: "林舟抵达后山。", confidence: 0.9 },
+      ],
+    }, storage);
+    expect(batch.ok).toBe(true);
+    const chapter2 = storage.sqlite.prepare("SELECT COUNT(*) AS n FROM narrative_event WHERE book_id = 'book-1' AND chapter_number = 2").get() as { n: number };
+    expect(chapter2.n).toBe(1);
+  });
 });

@@ -597,11 +597,26 @@ export async function handleMemoryEvents(input: MemoryEventsInput, storageOverri
       // 那不是「作者已裁决」，只是风险分级的结果，必须显式压回 pending。
       createdEvents.push(isAgentSource ? created : { ...created, status: "pending" as const, appliedAt: undefined });
     }
-    const persisted = persistNarrativeEvents(storage, createdEvents);
+    // 事件 id 由「书/章/类型/主谓宾」确定性生成：改写后重新抽取、或同一批里写了两遍，都会撞同一个 id。
+    // 与章后结算的 persistSettlementEvents 同口径：已存在就复用既有记录，不重复入库、不抛数据库异常；
+    // 已被作者裁决（applied/rejected）的保持原裁决，不被重新提交翻回 pending，也不再归约。
+    const uniqueEvents = [...new Map(createdEvents.map((event) => [event.id, event])).values()];
+    const fresh: NarrativeEvent[] = [];
+    const reused: NarrativeEvent[] = [];
+    for (const event of uniqueEvents) {
+      const existing = getNarrativeEventById(storage, bookId, event.id);
+      if (existing) reused.push(existing);
+      else fresh.push(event);
+    }
+    const inserted = persistNarrativeEvents(storage, fresh);
+    const persisted = uniqueEvents.map((event) => inserted.find((item) => item.id === event.id) ?? reused.find((item) => item.id === event.id)!);
+    const reusedNote = reused.length > 0 ? `（其中 ${reused.length} 条已存在，沿用原记录）` : "";
     if (isAgentSource) {
       // 低风险草案自动生效：与章后结算同一条路——归约器写 fact 并把事件落 applied。
       // 只把 status 写成 applied 而不归约，会留下「applied 却没有 fact」的悬空事件。
-      const applied = applyNarrativeEvents(storage, bookId, persisted);
+      // 只归约新插入的，以及复用但仍是 pending 的；作者已裁决的不动。
+      const reducible = persisted.filter((event) => inserted.includes(event) || event.status === "pending");
+      const applied = applyNarrativeEvents(storage, bookId, reducible);
       if (applied.failedEvents.length > 0) {
         return {
           ok: false,
@@ -613,16 +628,16 @@ export async function handleMemoryEvents(input: MemoryEventsInput, storageOverri
       return {
         ok: true,
         summary: finalEvents.length === 1
-          ? `已创建 agent 草案：${finalEvents[0]!.id}（${finalEvents[0]!.status}）。`
-          : `已批量创建 ${finalEvents.length} 条 agent 草案。`,
+          ? `已创建 agent 草案：${finalEvents[0]!.id}（${finalEvents[0]!.status}）${reusedNote}。`
+          : `已批量创建 ${finalEvents.length} 条 agent 草案${reusedNote}。`,
         data: finalEvents.length === 1 ? { event: finalEvents[0], events: finalEvents } : { events: finalEvents },
       };
     }
     return {
       ok: true,
       summary: persisted.length === 1
-        ? `已创建 Pending NarrativeEvent：${persisted[0]!.id}。`
-        : `已批量创建 ${persisted.length} 条 Pending NarrativeEvents。`,
+        ? `已创建 Pending NarrativeEvent：${persisted[0]!.id}${reusedNote}。`
+        : `已批量创建 ${persisted.length} 条 Pending NarrativeEvents${reusedNote}。`,
       data: persisted.length === 1 ? { event: persisted[0], events: persisted } : { events: persisted },
     };
   }
