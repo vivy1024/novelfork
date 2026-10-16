@@ -1,7 +1,7 @@
 /**
- * 按 UPSTREAM.lock.json 把 packages/narrafork-runtime-private/ 对齐到私有 fork 的指定提交。
+ * 按 UPSTREAM.lock.json 把 packages/narrafork-runtime-private/ 对齐到 fork 的指定提交。
  *
- *   bun scripts/sync-runtime.ts            同步（首次会克隆 fork，需要仓库读权限）
+ *   bun scripts/sync-runtime.ts            同步（首次会克隆 fork，公开仓库无需额外权限）
  *   bun scripts/sync-runtime.ts --check    只报告是否对齐，不写任何文件；未对齐时退出码 1
  *   bun scripts/sync-runtime.ts --force    覆盖 Runtime 目录里的本地修改
  *   bun scripts/sync-runtime.ts --skip-install  同步后不执行 bun install
@@ -88,7 +88,7 @@ function ensureCommit(lock: RuntimeLock) {
       stdio: "inherit",
     });
     if (clone.status !== 0) {
-      fail("克隆 Runtime fork 失败", "多半是网络或凭据问题；lock 里的 remote 若已失效（例如仍然指向已删除的 NarraFork/novelfork-runtime-private），也要先改指公开 fork", "确认 git 能用 HTTPS 访问 GitHub；remote 失效时改为 https://github.com/NarraFork/novelfork-runtime.git 后重跑");
+      fail("克隆 Runtime fork 失败", "多半是网络或凭据问题；lock 里的 remote 若已失效（例如仍指向已 archive 的 NarraFork/novelfork-runtime-private），也要先改指公开 fork", "确认 git 能用 HTTPS 访问 GitHub；remote 失效时改为 https://github.com/NarraFork/novelfork-runtime.git 后重跑");
     }
     // 取原始字节：不做换行转换，Windows 上不因可执行位或长路径误判修改。
     for (const [key, value] of [["core.autocrlf", "false"], ["core.filemode", "false"], ["core.longpaths", "true"]]) {

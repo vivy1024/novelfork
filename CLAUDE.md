@@ -53,7 +53,7 @@ Runtime 源头权威（公开仓库，不在本仓库内）
 - 上游 Runtime 已开源（`NarraFork/NarraFork`，MPL-2.0，2026-02 起），我们的 Runtime 定制也全部公开在 fork `NarraFork/novelfork-runtime`——**「Runtime 源码不可公开」的时代已结束**，公开边界收敛为两条：
   1. **单一权威源**：本仓库不得跟踪物化树（`packages/narrafork-runtime-private/` 仅 `UPSTREAM.lock.json` 例外）。Runtime 改动只能在 fork `NarraFork/novelfork-runtime` 的分支上落下、导出物化；两边同时长就是双权威。
 - 不提交密钥、Token、`.env`、用户数据；本地辅助目录（`packages/.narrafork-runtime-*`、`.runtime-backup-*`）不进入 Git。
-- 历史遗留的 `NarraFork/novelfork-runtime-private` 已于 2026-10-09 archive 只读封存（**仍存在**：`gh api` 查得 `archived=true, private=true`，`git ls-remote` 仍可读到 HEAD），不再作为 Runtime 远端；`packages/.narrafork-runtime-sync` 的 `origin` 仍指向它，需要拉取/推送 Runtime 时先改指公开 fork。见「已知的假象与坑」。
+- 历史遗留的 `NarraFork/novelfork-runtime-private` 已于 2026-10-09 archive 只读封存（**仍存在**：`gh api` 查得 `archived=true, private=true`，`git ls-remote` 仍可读到 HEAD），不再作为 Runtime 远端。本地宿主库 `packages/.narrafork-runtime-sync` 的 `origin` 已于 2026-10-16 改指公开 fork。见「已知的假象与坑」。
 - 边界检查：`pnpm check:boundary`（当前文件）、`.githooks/`（提交 / 推送前，`git config core.hooksPath .githooks` 启用）、公开 CI（PR 的每个提交）共用 `scripts/check-public-boundary.mjs`。
 - 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 本地编译发布产物 + 用 Windows EXE 做功能核验（详见「多平台发版流程」）。
 
@@ -227,7 +227,7 @@ NarraFork/novelfork-runtime      公开 fork，分支 novelfork/upgrade-<版本>
 - **宿主库 `git status` 会报约 2689 个"已修改"文件，是假的。** 内容哈希与索引、HEAD 三方一致，`git diff HEAD` 只有个位数真实改动；`update-index --really-refresh` 与 `git reset` 都清不掉，属文件系统层 stat 问题。以真实 `git diff` 为准。
 - **物化树的 tsgo typecheck 恒红**，源于 `frontend/routeTree.gen.ts`、`server/generated/embedded-licenses.ts` 等构建期 codegen 产物不在跟踪文件里（0.6.5 时代同样如此）。判断合并是否引入问题，要与**纯上游同版本基线**对照，不是看绝对错误数。
 - 上游 0.6.6 的 `bash-analyze.test.ts` 有一条假设 POSIX 路径解析的测试，在 Windows 上必然失败，非本地引入。
-- **`packages/.narrafork-runtime-sync` 的 `origin` 仍指向已 archive 的私有仓 `NarraFork/novelfork-runtime-private`（仓库仍在，archived+private）。** 只要 lock 里的提交已在本地缓存（`git cat-file -e <sha>` 成功），`pnpm runtime:sync` 就不需要 fetch，能正常跑完——2026-10-16 的 T-11 同步正是这样完成的。但**取新提交、或在没有这个本地缓存的机器上同步都会失败**。要用时先 `git -C packages/.narrafork-runtime-sync remote set-url origin https://github.com/NarraFork/novelfork-runtime.git`。
+- **`packages/.narrafork-runtime-sync` 的 `origin` 已于 2026-10-16 改指公开 fork `NarraFork/novelfork-runtime`**（原先指向已 archive 的私有仓 `NarraFork/novelfork-runtime-private`，那个仓仍在、archived+private，但不再是 Runtime 远端）。改指后 `bun scripts/sync-runtime.ts --check` 实测仍对齐（退出 0）。`upstream-public` 仍指向上游 `NarraFork/NarraFork`，未动。
 
 ### 变迁历史（均已停用，仅历史排查参考）
 

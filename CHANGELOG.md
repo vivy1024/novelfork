@@ -259,7 +259,7 @@ v0.0.4 仍未单独发布，本批并入同一次发行。2026-10-10 v0.0.4 正�
 
 ### Runtime 与工程
 
-- Runtime 更新链改为 fork-only：生产来源仅 `NarraFork/novelfork-runtime-private`；导入脚本默认不再 replay overlay，旧 overlay 子模块从公开 gitlink / workspace 退役。
+- Runtime 更新链改为 fork-only：当时的来源是 `NarraFork/novelfork-runtime-private`（该私有仓已于 2026-10 切公开线，现由公开 fork `NarraFork/novelfork-runtime` 承担）；导入脚本默认不再 replay overlay，旧 overlay 子模块从公开 gitlink / workspace 退役。
 - 重建 `plugins` 三件套（`runtime-plugin-host` / `plugin-lifecycle` / `runtime-contract`）与 `genre-profiles` 窄入口，此前因磁盘事故未入库。
 - 前端打包补 `node:fs` / `node:crypto` / `node:module` / `node:os` / `node:events` / `node:zlib` 浏览器桩；`global-env` 改为懒解析 `~/.novelfork`。Vite 需给 `writing-progress-event` 单独 alias。recharts / `@xyflow` 独立 vendor 桶。
 - 修复经纬搜索与读取正文截断（`detailLevel` 透传）、资源文件布局、Windows 路径 / 换行哈希兼容、侧栏图标缺失、图谱 500、角色卡括号后缀查询落空、写章后会话未绑定 `bookId` 等实测缺陷。
