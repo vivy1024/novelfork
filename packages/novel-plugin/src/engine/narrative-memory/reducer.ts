@@ -79,11 +79,9 @@ function slotLockedByManualFact(storage: StorageDatabase, event: NarrativeEvent)
   const slot = narrativeFactSlotKey(probe);
   // 先读取该 category 的完整历史再判断作者手动值，不能让大书的前 200 条记录
   // 把更早/更旧的 manual fact 挤掉，导致机器事件绕过作者权威保护。
-  return queryNarrativeFacts(storage, { bookId: event.bookId, categories: [probe.category], limit: 0 })
+  return queryNarrativeFacts(storage, { bookId: event.bookId, openOnly: true, slotKey: slot, limit: 0 })
     .some((fact) =>
       fact.sourceType === "manual"
-      && (fact.validUntilChapter === undefined || fact.validUntilChapter === null)
-      && narrativeFactSlotKey(fact) === slot
       && fact.object !== probe.object,
     );
 }

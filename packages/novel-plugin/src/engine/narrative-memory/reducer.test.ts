@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { insertNarrativeFact } from "./storage.js";
+
 import { createNarrativeEvent, persistNarrativeEvents } from "./events.js";
 import { applyNarrativeEvents } from "./reducer.js";
 import type { NarrativeEvent } from "./types.js";
@@ -155,26 +157,7 @@ describe("NarrativeEvent reducer", () => {
         createdAt: "2026-06-22T00:00:00.000Z",
         updatedAt: "2026-06-22T00:00:00.000Z",
       };
-      storage.sqlite.prepare(`
-        INSERT INTO narrative_fact (
-          id, book_id, subject, predicate, object, category, layer, confidence,
-          source_type, source_chapter, valid_from_chapter, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        manual.id,
-        manual.bookId,
-        manual.subject,
-        manual.predicate,
-        manual.object,
-        manual.category,
-        manual.layer,
-        manual.confidence,
-        manual.sourceType,
-        manual.sourceChapter,
-        manual.validFromChapter,
-        manual.createdAt,
-        manual.updatedAt,
-      );
+      insertNarrativeFact(storage, manual);
       const incoming = event({
         id: "machine-after-manual",
         eventType: "character_state_changed",

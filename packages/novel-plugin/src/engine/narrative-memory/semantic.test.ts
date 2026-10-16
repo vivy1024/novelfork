@@ -163,6 +163,42 @@ describe("Semantic vector storage and channel", () => {
     }
   });
 
+  it("reads context vectors one page at a time instead of loading the whole book", async () => {
+    const storage = await createStorage();
+    try {
+      for (let index = 0; index < 25; index += 1) {
+        upsertNarrativeContextVector(storage, vector({
+          cardId: `card-${String(index).padStart(3, "0")}`,
+          vector: [1, 0, 0],
+          vectorUpdatedAt: new Date(Date.UTC(2026, 5, 22, 0, index)).toISOString(),
+          sourceCard: card({ id: `card-${index}`, sourceType: "jingwei", sourceId: `e-${index}`, channel: "semantic", title: `条目${index}`, content: `内容${index}`, entities: [`角色${index}`] }),
+        }));
+      }
+
+      const firstPage = queryNarrativeContextVectors(storage, {
+        bookId: "book-1",
+        embeddingModelId: "fake-embedding-v1",
+        embeddingDim: 3,
+        limit: 10,
+      });
+      const secondPage = queryNarrativeContextVectors(storage, {
+        bookId: "book-1",
+        embeddingModelId: "fake-embedding-v1",
+        embeddingDim: 3,
+        limit: 10,
+        cursor: firstPage.nextCursor,
+      });
+
+      expect(firstPage.vectors).toHaveLength(10);
+      expect(secondPage.vectors).toHaveLength(10);
+      const seen = [...firstPage.vectors, ...secondPage.vectors].map((item) => item.cardId);
+      expect(new Set(seen).size).toBe(20);
+      expect(firstPage.nextCursor).toBeDefined();
+    } finally {
+      storage.close();
+    }
+  });
+
   it("ranks semantic hits with exact cosine after visibility/entity filtering", async () => {
     const storage = await createStorage();
     try {

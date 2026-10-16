@@ -6,6 +6,7 @@ import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ensureNarrativeMemorySchema, insertNarrativeEvent, insertNarrativeFact, insertRetrievalLog, upsertNarrativeContextVector } from "../engine/narrative-memory/storage.js";
+import { narrativeFactSlotKey } from "../engine/narrative-memory/ledger.js";
 import type { NarrativeContextCard, NarrativeEvent, NarrativeFact, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 
 let activeStorage: StorageDatabase | undefined;
@@ -237,6 +238,17 @@ describe("memory admin handlers", () => {
     expect(blocked.ok).toBe(false);
     if (!reread.ok) return;
     expect(reread.data.entry).toMatchObject({ object: "极其谨慎", confidence: 0.95 });
+  });
+
+  it("keeps the stored slot key in sync when a fact's subject is patched", async () => {
+    const { handleMemoryUpdate } = await import("./memory-admin-handlers.js");
+
+    const updated = await handleMemoryUpdate({ bookId: "book-1", kind: "fact", id: "fact-1", reason: "改名", patch: { subject: "  韩  立  " } });
+
+    expect(updated.ok).toBe(true);
+    const row = activeStorage!.sqlite.prepare<{ slot_key: string }>("SELECT slot_key FROM narrative_fact WHERE id = ?").get("fact-1");
+    const expected = narrativeFactSlotKey({ bookId: "book-1", category: "character_state", subject: "  韩  立  ", predicate: "状态", object: "谨慎" });
+    expect(row?.slot_key).toBe(expected);
   });
 
   it("rejects invalid updates and blocks direct event status mutation", async () => {

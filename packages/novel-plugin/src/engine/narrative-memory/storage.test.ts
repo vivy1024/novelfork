@@ -6,12 +6,15 @@ import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  NARRATIVE_RETRIEVAL_LOG_RETENTION_PER_CHAPTER,
+  NARRATIVE_SETTLEMENT_ARTIFACT_RETENTION_PER_CHAPTER,
   ensureNarrativeMemorySchema,
   getLatestChapterRetrievalLog,
   insertNarrativeEvent,
   insertNarrativeFact,
   insertRetrievalLog,
   listHighRiskPendingNarrativeEvents,
+  pruneSettlementArtifacts,
   queryNarrativeFacts,
   updateNarrativeEvent,
   updateNarrativeEventStatus,
@@ -236,6 +239,20 @@ describe("Narrative Memory storage", () => {
     }
   });
 
+  it("returns only open facts for a slot query, leaving closed history out of the result", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      insertNarrativeFact(storage, fact({ id: "closed-old", subject: "韩立", predicate: "状态", object: "旧", validFromChapter: 1, validUntilChapter: 4 }));
+      insertNarrativeFact(storage, fact({ id: "open-now", subject: "韩立", predicate: "状态", object: "新", validFromChapter: 5 }));
+
+      const openOnly = queryNarrativeFacts(storage, { bookId: "book-1", entities: ["韩立"], openOnly: true });
+      expect(openOnly.map((item) => item.id)).toEqual(["open-now"]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("inserts events and updates their reducer status", async () => {
     const storage = await createStorage();
     try {
@@ -363,6 +380,82 @@ describe("Narrative Memory storage", () => {
 
       expect(getLatestChapterRetrievalLog(storage, { bookId: "book-1", chapterNumber: 99 })).toBeUndefined();
       expect(getLatestChapterRetrievalLog(storage, { bookId: "book-3", chapterNumber: 12 })).toBeUndefined();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("按章节裁剪检索日志到保留上限，保留每章最新一条，不误伤其他章节", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      const diagnostics: NarrativeRetrievalDiagnostics = {
+        totalMs: 1,
+        totalEstimatedTokens: 1,
+        channelStats: [],
+        injectedTokensByChannel: {},
+        droppedCardIds: [],
+        degradedCards: [],
+        warnings: [],
+      };
+      const total = NARRATIVE_RETRIEVAL_LOG_RETENTION_PER_CHAPTER + 5;
+      for (let index = 0; index < total; index += 1) {
+        insertRetrievalLog(storage, {
+          id: `log-${String(index).padStart(4, "0")}`,
+          bookId: "book-1",
+          chapterNumber: 1,
+          purpose: "write_chapter",
+          totalTokens: 1,
+          diagnostics,
+          createdAt: new Date(Date.UTC(2026, 5, 22, 0, 0, index)).toISOString(),
+        });
+      }
+      insertRetrievalLog(storage, {
+        id: "other-chapter",
+        bookId: "book-1",
+        chapterNumber: 2,
+        purpose: "write_chapter",
+        totalTokens: 1,
+        diagnostics,
+        createdAt: "2026-06-01T00:00:00.000Z",
+      });
+
+      const countOf = (chapterNumber: number) => storage.sqlite.prepare<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM narrative_retrieval_log WHERE book_id = ? AND chapter_number = ?",
+      ).get("book-1", chapterNumber)?.count;
+      expect(countOf(1)).toBe(NARRATIVE_RETRIEVAL_LOG_RETENTION_PER_CHAPTER);
+      expect(countOf(2)).toBe(1);
+      expect(getLatestChapterRetrievalLog(storage, { bookId: "book-1", chapterNumber: 1 })?.id).toBe(`log-${String(total - 1).padStart(4, "0")}`);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("按章节裁剪结算证据到保留上限，保留最新几份，不误伤其他章节", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      const total = NARRATIVE_SETTLEMENT_ARTIFACT_RETENTION_PER_CHAPTER + 4;
+      for (let index = 0; index < total; index += 1) {
+        storage.sqlite.prepare(`
+          INSERT INTO narrative_settlement_artifact (book_id, chapter_number, content_fingerprint, artifact_json, created_at)
+          VALUES ('book-1', 1, ?, '{}', ?)
+        `).run(`fp-${index}`, new Date(Date.UTC(2026, 5, 22, 0, 0, index)).toISOString());
+      }
+      storage.sqlite.prepare(`
+        INSERT INTO narrative_settlement_artifact (book_id, chapter_number, content_fingerprint, artifact_json, created_at)
+        VALUES ('book-1', 2, 'other', '{}', '2026-06-01T00:00:00.000Z')
+      `).run();
+
+      pruneSettlementArtifacts(storage, "book-1", 1);
+
+      const fingerprintsOf = (chapterNumber: number) => storage.sqlite.prepare<{ content_fingerprint: string }>(
+        "SELECT content_fingerprint FROM narrative_settlement_artifact WHERE book_id = ? AND chapter_number = ? ORDER BY created_at DESC",
+      ).all("book-1", chapterNumber).map((row) => row.content_fingerprint);
+      expect(fingerprintsOf(1)).toEqual(
+        Array.from({ length: NARRATIVE_SETTLEMENT_ARTIFACT_RETENTION_PER_CHAPTER }, (_, offset) => `fp-${total - 1 - offset}`),
+      );
+      expect(fingerprintsOf(2)).toEqual(["other"]);
     } finally {
       storage.close();
     }

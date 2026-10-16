@@ -2,6 +2,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { estimateTokens } from "../jingwei/context/token-budget.js";
 import { queryCurrentNarrativeLedger } from "./ledger.js";
+import { narrativeFactSlotKey, normalizeSlotPart } from "./slot-key.js";
 import { ensureNarrativeMemorySchema, type QueryNarrativeFactsInput } from "./storage.js";
 import { NarrativeContextCardSchema, NarrativeFactSchema, type NarrativeContextCard, type NarrativeFact } from "./types.js";
 
@@ -72,8 +73,11 @@ function insertOrUpdateFact(storage: StorageDatabase, fact: NarrativeFact): void
       subject_entry_id,
       object_entry_id,
       created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      updated_at,
+      slot_key,
+      subject_key,
+      object_key
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       book_id = excluded.book_id,
       subject = excluded.subject,
@@ -90,7 +94,10 @@ function insertOrUpdateFact(storage: StorageDatabase, fact: NarrativeFact): void
       valid_until_chapter = excluded.valid_until_chapter,
       subject_entry_id = excluded.subject_entry_id,
       object_entry_id = excluded.object_entry_id,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      slot_key = excluded.slot_key,
+      subject_key = excluded.subject_key,
+      object_key = excluded.object_key
   `).run(
     fact.id,
     fact.bookId,
@@ -110,6 +117,9 @@ function insertOrUpdateFact(storage: StorageDatabase, fact: NarrativeFact): void
     fact.objectEntryId ?? null,
     fact.createdAt,
     fact.updatedAt,
+    narrativeFactSlotKey(fact),
+    normalizeSlotPart(fact.subject),
+    normalizeSlotPart(fact.object),
   );
 }
 
@@ -136,18 +146,14 @@ export function searchFactsByEntities(storage: StorageDatabase, input: SearchFac
     bookId: input.bookId,
     asOfChapter,
     categories: input.categories,
-    // Filter after slot collapse so unrelated high-confidence facts cannot
-    // crowd out relevant entity facts before the ledger chooses its truth.
+    entities,
+    predicates: input.predicates?.length ? [...input.predicates] : undefined,
     limit: 500,
   });
-  const entitySet = new Set(entities);
-  const facts = ledger.items.filter((fact) => (
-    (entitySet.has(fact.subject) || entitySet.has(fact.object))
-    && (!input.predicates?.length || input.predicates.includes(fact.predicate))
-    && (!input.layer || input.layer === fact.layer)
-  ));
+  const facts = ledger.items.filter((fact) => !input.layer || input.layer === fact.layer);
   return dedupeFacts(facts).slice(0, input.limit ?? 100);
 }
+
 
 export function expandFactsOneHop(storage: StorageDatabase, input: ExpandFactsOneHopInput): NarrativeFact[] {
   const entities = uniqueStrings(input.entities);

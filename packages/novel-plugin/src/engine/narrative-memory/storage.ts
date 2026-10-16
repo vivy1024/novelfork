@@ -19,6 +19,22 @@ import {
 } from "./types.js";
 import type { ChapterMention } from "./chapter-mention.js";
 import { parseCausedBy } from "./causal-resolve.js";
+import { narrativeFactSlotKey, normalizeSlotPart } from "./slot-key.js";
+
+export function backfillNarrativeFactSlotKeys(storage: StorageDatabase): void {
+  const pending = storage.sqlite.prepare<{ id: string; bookId: string; category: string; subject: string; predicate: string; object: string }>(`
+    SELECT id, book_id AS bookId, category, subject, predicate, object
+    FROM narrative_fact
+    WHERE slot_key IS NULL OR subject_key IS NULL OR object_key IS NULL
+  `).all();
+  if (pending.length === 0) return;
+  const update = storage.sqlite.prepare(`UPDATE narrative_fact SET slot_key = ?, subject_key = ?, object_key = ? WHERE id = ?`);
+  storage.sqlite.transaction(() => {
+    for (const row of pending) {
+      update.run(narrativeFactSlotKey(row), normalizeSlotPart(row.subject), normalizeSlotPart(row.object), row.id);
+    }
+  })();
+}
 
 interface NarrativeFactRow {
   id: string;
@@ -76,6 +92,9 @@ export const QueryNarrativeFactsInputSchema = z.object({
   currentChapter: positiveInteger.optional(),
   // limit=0 is an internal full-scan mode used by ledger reconciliation.
   limit: z.number().int().min(0).max(500).optional(),
+  /** 只返回未关闭（valid_until_chapter 为空）的行；归约路径用它代替全量读取后再过滤。 */
+  openOnly: z.boolean().optional(),
+  slotKey: z.string().optional(),
 });
 export type QueryNarrativeFactsInput = Readonly<{
   bookId: string;
@@ -86,6 +105,8 @@ export type QueryNarrativeFactsInput = Readonly<{
   layer?: NarrativeFact["layer"];
   currentChapter?: number;
   limit?: number;
+  openOnly?: boolean;
+  slotKey?: string;
 }>;
 
 export const UpdateNarrativeEventStatusInputSchema = z.object({
@@ -157,6 +178,7 @@ export const QueryNarrativeContextVectorsInputSchema = z.object({
   categories: z.array(z.string()).optional(),
   // limit=0 is an internal full-scan mode used by entity embedding backfill.
   limit: z.number().int().min(0).max(5000).optional(),
+  cursor: nonEmptyString.optional(),
 });
 export type QueryNarrativeContextVectorsInput = Readonly<{
   bookId: string;
@@ -166,11 +188,13 @@ export type QueryNarrativeContextVectorsInput = Readonly<{
   entities?: readonly string[];
   categories?: readonly string[];
   limit?: number;
+  cursor?: string;
 }>;
 
 export type QueryNarrativeContextVectorsResult = Readonly<{
   vectors: readonly NarrativeContextVector[];
   dimensionMismatchCardIds: readonly string[];
+  nextCursor?: string;
 }>;
 
 export const ListPendingNarrativeEventsInputSchema = z.object({
@@ -471,6 +495,26 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     storage.sqlite.exec(`ALTER TABLE narrative_event ADD COLUMN caused_by_json TEXT`);
   }
 
+  const factColumns = existingColumns("narrative_fact");
+  const addedDerivedKeys = !factColumns.has("slot_key") || !factColumns.has("subject_key") || !factColumns.has("object_key");
+  if (!factColumns.has("slot_key")) {
+    storage.sqlite.exec(`ALTER TABLE narrative_fact ADD COLUMN slot_key TEXT`);
+  }
+  if (!factColumns.has("subject_key")) {
+    storage.sqlite.exec(`ALTER TABLE narrative_fact ADD COLUMN subject_key TEXT`);
+  }
+  if (!factColumns.has("object_key")) {
+    storage.sqlite.exec(`ALTER TABLE narrative_fact ADD COLUMN object_key TEXT`);
+  }
+  storage.sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_slot ON narrative_fact(book_id, slot_key);
+    CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_subject_key ON narrative_fact(book_id, subject_key);
+    CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_object_key ON narrative_fact(book_id, object_key);
+  `);
+  if (addedDerivedKeys) {
+    backfillNarrativeFactSlotKeys(storage);
+  }
+
   // 场景与剧情线（同步自迁移 0035）。场景是两棵叙事树共用的叶子：
   // 承载树 卷 → 章 → 场景（在哪讲），因果树 剧情线 → 场景（为什么发生）。
   // 卷不在此列——它的权威源是经纬 outline 条目，章节归属由 chapterRange 推导。
@@ -631,8 +675,11 @@ export function insertNarrativeFact(storage: StorageDatabase, fact: NarrativeFac
       subject_entry_id,
       object_entry_id,
       created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      updated_at,
+      slot_key,
+      subject_key,
+      object_key
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     parsed.id,
     parsed.bookId,
@@ -652,6 +699,9 @@ export function insertNarrativeFact(storage: StorageDatabase, fact: NarrativeFac
     parsed.objectEntryId ?? null,
     parsed.createdAt,
     parsed.updatedAt,
+    narrativeFactSlotKey(parsed),
+    normalizeSlotPart(parsed.subject),
+    normalizeSlotPart(parsed.object),
   );
   return parsed;
 }
@@ -701,6 +751,15 @@ export function queryNarrativeFacts(storage: StorageDatabase, input: QueryNarrat
     params.push(visibleChapter, visibleChapter, visibleChapter);
   }
 
+  if (parsed.openOnly) {
+    clauses.push(`valid_until_chapter IS NULL`);
+  }
+
+  if (parsed.slotKey !== undefined) {
+    clauses.push(`slot_key = ?`);
+    params.push(parsed.slotKey);
+  }
+
   const limit = parsed.limit === 0 ? undefined : Math.max(1, Math.min(parsed.limit ?? 100, 500));
   const rows = storage.sqlite.prepare<NarrativeFactRow>(`
     ${FACT_SELECT}
@@ -711,7 +770,80 @@ export function queryNarrativeFacts(storage: StorageDatabase, input: QueryNarrat
   return rows.map(factRowToRecord);
 }
 
+export function queryNarrativeFactSlotHeads(storage: StorageDatabase, input: {
+  bookId: string;
+  categories?: readonly string[];
+  entities?: readonly string[];
+  entryIds?: readonly string[];
+  predicates?: readonly string[];
+  asOfChapter?: number;
+}): NarrativeFact[] {
+  ensureNarrativeMemorySchema(storage);
+  const clauses = [`book_id = ?`];
+  const params: unknown[] = [input.bookId];
+  if (input.entities && input.entities.length > 0) {
+    const keys = [...new Set(input.entities.map(normalizeSlotPart))];
+    clauses.push(`(subject_key IN (${placeholders(keys.length)}) OR object_key IN (${placeholders(keys.length)}))`);
+    params.push(...keys, ...keys);
+  }
+  if (input.entryIds && input.entryIds.length > 0) {
+    clauses.push(`(subject_entry_id IN (${placeholders(input.entryIds.length)}) OR object_entry_id IN (${placeholders(input.entryIds.length)}))`);
+    params.push(...input.entryIds, ...input.entryIds);
+  }
+  if (input.categories && input.categories.length > 0) {
+    clauses.push(`category IN (${placeholders(input.categories.length)})`);
+    params.push(...input.categories);
+  }
+  if (input.predicates && input.predicates.length > 0) {
+    clauses.push(`predicate IN (${placeholders(input.predicates.length)})`);
+    params.push(...input.predicates);
+  }
+  if (input.asOfChapter === undefined) {
+    clauses.push(`valid_until_chapter IS NULL`);
+  } else {
+    clauses.push(`(source_chapter IS NULL OR source_chapter <= ?)`);
+    clauses.push(`(valid_from_chapter IS NULL OR valid_from_chapter <= ?)`);
+    clauses.push(`(valid_until_chapter IS NULL OR valid_until_chapter >= ?)`);
+    params.push(input.asOfChapter, input.asOfChapter, input.asOfChapter);
+  }
+  const rows = storage.sqlite.prepare<NarrativeFactRow & { rank: number }>(`
+    SELECT * FROM (
+      SELECT
+        id,
+        book_id AS bookId,
+        subject,
+        predicate,
+        object,
+        category,
+        layer,
+        confidence,
+        source_type AS sourceType,
+        source_id AS sourceId,
+        source_chapter AS sourceChapter,
+        evidence_text AS evidenceText,
+        valid_from_chapter AS validFromChapter,
+        valid_until_chapter AS validUntilChapter,
+        subject_entry_id AS subjectEntryId,
+        object_entry_id AS objectEntryId,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        ROW_NUMBER() OVER (
+          PARTITION BY slot_key
+          ORDER BY COALESCE(valid_from_chapter, source_chapter, -1) DESC,
+                   confidence DESC,
+                   updated_at DESC,
+                   id ASC
+        ) AS rank
+      FROM narrative_fact
+      WHERE ${clauses.join(" AND ")}
+    )
+    WHERE rank = 1
+  `).all(...params);
+  return rows.map(factRowToRecord);
+}
+
 export function insertNarrativeEvent(storage: StorageDatabase, event: NarrativeEvent): NarrativeEvent {
+
   ensureNarrativeMemorySchema(storage);
   const parsed = NarrativeEventSchema.parse(event);
   storage.sqlite.prepare(`
@@ -824,29 +956,61 @@ export function updateNarrativeEvent(storage: StorageDatabase, event: NarrativeE
   return row ? eventRowToRecord(row) : undefined;
 }
 
+export const NARRATIVE_SETTLEMENT_ARTIFACT_RETENTION_PER_CHAPTER = 3;
+
+export function pruneSettlementArtifacts(storage: StorageDatabase, bookId: string, chapterNumber: number): void {
+  storage.sqlite.prepare(`
+    DELETE FROM narrative_settlement_artifact
+    WHERE rowid IN (
+      SELECT rowid FROM (
+        SELECT rowid, ROW_NUMBER() OVER (ORDER BY created_at DESC, rowid DESC) AS rank_in_chapter
+        FROM narrative_settlement_artifact
+        WHERE book_id = ? AND chapter_number = ?
+      )
+      WHERE rank_in_chapter > ?
+    )
+  `).run(bookId, chapterNumber, NARRATIVE_SETTLEMENT_ARTIFACT_RETENTION_PER_CHAPTER);
+}
+
+export const NARRATIVE_RETRIEVAL_LOG_RETENTION_PER_CHAPTER = 20;
+
 export function insertRetrievalLog(storage: StorageDatabase, input: InsertRetrievalLogInput): NarrativeRetrievalLogRecord {
   ensureNarrativeMemorySchema(storage);
   const parsed = InsertRetrievalLogInputSchema.parse(input);
   const createdAt = parsed.createdAt ?? new Date().toISOString();
-  storage.sqlite.prepare(`
-    INSERT INTO narrative_retrieval_log (
-      id,
-      book_id,
-      chapter_number,
-      purpose,
-      total_tokens,
-      diagnostics_json,
-      created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    parsed.id,
-    parsed.bookId,
-    parsed.chapterNumber ?? null,
-    parsed.purpose,
-    parsed.totalTokens,
-    JSON.stringify(parsed.diagnostics),
-    createdAt,
-  );
+  storage.sqlite.transaction(() => {
+    storage.sqlite.prepare(`
+      INSERT INTO narrative_retrieval_log (
+        id,
+        book_id,
+        chapter_number,
+        purpose,
+        total_tokens,
+        diagnostics_json,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      parsed.id,
+      parsed.bookId,
+      parsed.chapterNumber ?? null,
+      parsed.purpose,
+      parsed.totalTokens,
+      JSON.stringify(parsed.diagnostics),
+      createdAt,
+    );
+
+    storage.sqlite.prepare(`
+      DELETE FROM narrative_retrieval_log
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS rank_in_chapter
+          FROM narrative_retrieval_log
+          WHERE book_id = ? AND chapter_number IS ?
+        )
+        WHERE rank_in_chapter > ?
+      )
+    `).run(parsed.bookId, parsed.chapterNumber ?? null, NARRATIVE_RETRIEVAL_LOG_RETENTION_PER_CHAPTER);
+  })();
 
   const row = storage.sqlite.prepare<NarrativeRetrievalLogRow>(`
     SELECT
@@ -999,44 +1163,75 @@ export function queryNarrativeContextVectors(storage: StorageDatabase, input: Qu
   const parsed = QueryNarrativeContextVectorsInputSchema.parse(input);
   const unlimited = parsed.limit === 0;
   const limit = unlimited ? Number.POSITIVE_INFINITY : Math.max(1, Math.min(parsed.limit ?? 100, 5000));
-  const rows = storage.sqlite.prepare<NarrativeContextVectorRow>(`
-    SELECT
-      card_id AS cardId,
-      book_id AS bookId,
-      embedding_model_id AS embeddingModelId,
-      embedding_dim AS embeddingDim,
-      vector_json AS vectorJson,
-      vector_updated_at AS vectorUpdatedAt,
-      source_card_json AS sourceCardJson
-    FROM narrative_context_vector
-    WHERE book_id = ? AND embedding_model_id = ?
-    ORDER BY vector_updated_at DESC, card_id ASC
-  `).all(parsed.bookId, parsed.embeddingModelId);
+  const pageSize = unlimited ? 500 : Math.min(Math.max(limit, 50), 500);
+  const cursor = parsed.cursor ? decodeVectorCursor(parsed.cursor) : undefined;
 
   const vectors: NarrativeContextVector[] = [];
   const dimensionMismatchCardIds: string[] = [];
   const requestedEntities = new Set((parsed.entities ?? []).map((item) => item.trim()).filter(Boolean));
   const requestedCategories = new Set((parsed.categories ?? []).map((item) => item.trim()).filter(Boolean));
   const visibleChapter = parsed.currentChapter === undefined ? undefined : Math.max(0, parsed.currentChapter - 1);
+  let afterCursor = cursor;
+  let nextCursor: string | undefined;
 
-  for (const row of rows) {
-    if (row.embeddingDim !== parsed.embeddingDim) {
-      dimensionMismatchCardIds.push(row.cardId);
-      continue;
+  while (vectors.length < limit) {
+    const page = storage.sqlite.prepare<NarrativeContextVectorRow>(`
+      SELECT
+        card_id AS cardId,
+        book_id AS bookId,
+        embedding_model_id AS embeddingModelId,
+        embedding_dim AS embeddingDim,
+        vector_json AS vectorJson,
+        vector_updated_at AS vectorUpdatedAt,
+        source_card_json AS sourceCardJson
+      FROM narrative_context_vector
+      WHERE book_id = ? AND embedding_model_id = ?
+        ${afterCursor ? "AND (vector_updated_at < ? OR (vector_updated_at = ? AND card_id > ?))" : ""}
+      ORDER BY vector_updated_at DESC, card_id ASC
+      LIMIT ?
+    `).all(
+      parsed.bookId,
+      parsed.embeddingModelId,
+      ...(afterCursor ? [afterCursor.vectorUpdatedAt, afterCursor.vectorUpdatedAt, afterCursor.cardId] : []),
+      pageSize,
+    );
+    if (page.length === 0) break;
+
+    let consumed = 0;
+    for (const row of page) {
+      consumed += 1;
+      if (row.embeddingDim !== parsed.embeddingDim) {
+        dimensionMismatchCardIds.push(row.cardId);
+        continue;
+      }
+      const record = vectorRowToRecord(row);
+      const card = record.sourceCard;
+      if (visibleChapter !== undefined) {
+        if (card.validFromChapter !== undefined && card.validFromChapter > visibleChapter) continue;
+        if (card.validUntilChapter !== undefined && card.validUntilChapter < visibleChapter) continue;
+      }
+      if (requestedEntities.size > 0 && !card.entities.some((entity) => requestedEntities.has(entity))) continue;
+      if (requestedCategories.size > 0 && !card.tags.some((tag) => requestedCategories.has(tag))) continue;
+      vectors.push(record);
+      if (vectors.length >= limit) break;
     }
-    const record = vectorRowToRecord(row);
-    const card = record.sourceCard;
-    if (visibleChapter !== undefined) {
-      if (card.validFromChapter !== undefined && card.validFromChapter > visibleChapter) continue;
-      if (card.validUntilChapter !== undefined && card.validUntilChapter < visibleChapter) continue;
-    }
-    if (requestedEntities.size > 0 && !card.entities.some((entity) => requestedEntities.has(entity))) continue;
-    if (requestedCategories.size > 0 && !card.tags.some((tag) => requestedCategories.has(tag))) continue;
-    vectors.push(record);
-    if (vectors.length >= limit) break;
+
+    const last = page[consumed - 1]!;
+    afterCursor = { vectorUpdatedAt: last.vectorUpdatedAt, cardId: last.cardId };
+    nextCursor = encodeVectorCursor(afterCursor);
+    if (page.length < pageSize || vectors.length >= limit) break;
   }
 
-  return { vectors, dimensionMismatchCardIds };
+  return { vectors, dimensionMismatchCardIds, ...(nextCursor ? { nextCursor } : {}) };
+}
+
+function encodeVectorCursor(cursor: { vectorUpdatedAt: string; cardId: string }): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeVectorCursor(cursor: string): { vectorUpdatedAt: string; cardId: string } {
+  const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as { vectorUpdatedAt: string; cardId: string };
+  return { vectorUpdatedAt: decoded.vectorUpdatedAt, cardId: decoded.cardId };
 }
 
 // ─── 角色内核（character_kernel）────────────────────────────────────────

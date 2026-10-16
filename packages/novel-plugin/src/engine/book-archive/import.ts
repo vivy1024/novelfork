@@ -14,7 +14,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { ensureDissectionStagingSchema } from "../jingwei/dissection-staging.js";
 import { rebuildBookFts } from "../jingwei/search/fts-index.js";
 import { ensureSettlementLedgerSchema } from "../narrative-memory/settlement-idempotency.js";
-import { ensureNarrativeMemorySchema } from "../narrative-memory/storage.js";
+import { backfillNarrativeFactSlotKeys, ensureNarrativeMemorySchema } from "../narrative-memory/storage.js";
 import { ensureNarrativeWaveSchema } from "../narrative-memory/wave/tag-graph.js";
 import { rebuildNarrativeEntityIndex } from "../narrative-entity/entity-index.js";
 import { computeModuleDigest } from "./export.js";
@@ -474,6 +474,7 @@ export async function importBookArchiveIntoStorage(input: ImportBookArchiveInput
         rebuildBookFts(storage, newBookId);
       }
     })();
+    backfillNarrativeFactSlotKeys(storage);
   } catch (error) {
     await rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
     if (error instanceof BookArchiveError) throw error;

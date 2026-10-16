@@ -2,6 +2,7 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
+import { narrativeFactSlotKey, normalizeSlotPart } from "../engine/narrative-memory/slot-key.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { ensureNarrativeMemorySchema, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import {
@@ -16,6 +17,7 @@ import {
   type NarrativeEventRiskLevel,
   type NarrativeEventStatus,
   type NarrativeEventType,
+  type NarrativeFact,
   type NarrativeFactLayer,
   type NarrativeFactSourceType,
 } from "../engine/narrative-memory/types.js";
@@ -745,6 +747,11 @@ export async function handleMemoryUpdate(input: MemoryUpdateInput): Promise<Tool
   if (kind === "fact") {
     assignments.push("updated_at = ?");
     params.push(new Date().toISOString());
+    if (["subject", "predicate", "object", "category"].some((key) => key in patch)) {
+      const merged = parsed.data as NarrativeFact;
+      assignments.push("slot_key = ?", "subject_key = ?", "object_key = ?");
+      params.push(narrativeFactSlotKey(merged), normalizeSlotPart(merged.subject), normalizeSlotPart(merged.object));
+    }
     storage.sqlite.prepare(`UPDATE narrative_fact SET ${assignments.join(", ")} WHERE book_id = ? AND id = ?`).run(...params, bookId, id);
   } else {
     storage.sqlite.prepare(`UPDATE narrative_event SET ${assignments.join(", ")} WHERE book_id = ? AND id = ?`).run(...params, bookId, id);

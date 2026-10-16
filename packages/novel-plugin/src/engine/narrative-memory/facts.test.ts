@@ -89,6 +89,19 @@ describe("Narrative facts", () => {
     }
   });
 
+  it("blocks facts sourced after the current chapter even when their validity starts earlier", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({ id: "sourced-later", subject: "韩立", predicate: "持有", object: "天书", validFromChapter: 3, sourceChapter: 13 }));
+
+      const result = searchFactsByEntities(storage, { bookId: "book-1", entities: ["韩立"], currentChapter: 12 });
+
+      expect(result.map((item) => item.id)).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("reads one current ledger truth per state slot", async () => {
     const storage = await createStorage();
     try {
@@ -156,6 +169,63 @@ describe("Narrative facts", () => {
       expect(card.reason).toContain("韩立");
       expect(card.brief).toContain("韩立 持有 小瓶");
       expect(card.validFromChapter).toBe(3);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps entity facts outside the ledger's recency window", async () => {
+    const storage = await createStorage();
+    try {
+      for (let index = 0; index < 501; index += 1) {
+        upsertNarrativeFact(storage, fact({
+          id: `filler-${index}`,
+          subject: `路人-${index}`,
+          predicate: "状态",
+          object: "正常",
+          validFromChapter: 1,
+          sourceChapter: 1,
+          updatedAt: `2026-07-22T02:${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}.000Z`,
+        }));
+      }
+      upsertNarrativeFact(storage, fact({
+        id: "target",
+        subject: "目标角色",
+        predicate: "状态",
+        object: "潜伏",
+        validFromChapter: 1,
+        sourceChapter: 1,
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      }));
+
+      const result = searchFactsByEntities(storage, { bookId: "book-1", entities: ["目标角色"], currentChapter: 12 });
+      expect(result.map((item) => item.id)).toEqual(["target"]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not resurrect a superseded value when the entity query differs in case", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({ id: "old-variant", subject: "Lu Hui", predicate: "状态", object: "旧状态", validFromChapter: 1, sourceChapter: 1, updatedAt: "2026-06-22T00:00:00.000Z" }));
+      upsertNarrativeFact(storage, fact({ id: "new-variant", subject: "lu hui", predicate: "状态", object: "新状态", validFromChapter: 5, sourceChapter: 5, updatedAt: "2026-06-22T01:00:00.000Z" }));
+
+      const result = searchFactsByEntities(storage, { bookId: "book-1", entities: ["Lu Hui"], currentChapter: 12 });
+      expect(result.map((item) => item.id)).toEqual(["new-variant"]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not resurrect a superseded canon value when filtering by layer", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({ id: "old-canon", subject: "韩立", predicate: "状态", object: "旧状态", layer: "canon", validFromChapter: 1, sourceChapter: 1, updatedAt: "2026-06-22T00:00:00.000Z" }));
+      upsertNarrativeFact(storage, fact({ id: "new-dynamic", subject: "韩立", predicate: "状态", object: "新状态", layer: "dynamic", validFromChapter: 5, sourceChapter: 5, updatedAt: "2026-06-22T01:00:00.000Z" }));
+
+      const canonOnly = searchFactsByEntities(storage, { bookId: "book-1", entities: ["韩立"], currentChapter: 12, layer: "canon" });
+      expect(canonOnly).toEqual([]);
     } finally {
       storage.close();
     }

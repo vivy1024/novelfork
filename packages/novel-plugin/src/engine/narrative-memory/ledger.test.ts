@@ -10,6 +10,7 @@ import {
   narrativeFactSlotKey,
   queryCurrentNarrativeLedger,
 } from "./ledger.js";
+import { queryNarrativeFactSlotHeads } from "./storage.js";
 import type { NarrativeFact } from "./types.js";
 
 const tempDirs: string[] = [];
@@ -168,6 +169,55 @@ describe("narrative memory ledger", () => {
 
       const again = closeSupersededNarrativeFacts(storage, next, 12);
       expect(again).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("SQL slot-head fold picks the same row as the JS fold, including tie-breaks", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({ id: "a", subject: "韩立", predicate: "状态", object: "甲", validFromChapter: 3, confidence: 0.8, updatedAt: "2026-07-22T01:00:00.000Z" }));
+      upsertNarrativeFact(storage, fact({ id: "b", subject: "韩立", predicate: "状态", object: "乙", validFromChapter: 3, confidence: 0.9, updatedAt: "2026-07-22T00:00:00.000Z" }));
+      upsertNarrativeFact(storage, fact({ id: "c", subject: "  韩  立  ", predicate: "状态", object: "丙", validFromChapter: 5, confidence: 0.1, updatedAt: "2026-07-22T02:00:00.000Z" }));
+
+      const js = queryCurrentNarrativeLedger(storage, { bookId: "book-1", categories: ["character_state"], limit: 500 }).items.map((item) => item.id).sort();
+      const sql = queryNarrativeFactSlotHeads(storage, { bookId: "book-1", categories: ["character_state"] }).map((item) => item.id).sort();
+      expect(sql).toEqual(js);
+
+      const jsAsOf = queryCurrentNarrativeLedger(storage, { bookId: "book-1", asOfChapter: 4, categories: ["character_state"], limit: 500 }).items.map((item) => item.id).sort();
+      const sqlAsOf = queryNarrativeFactSlotHeads(storage, { bookId: "book-1", categories: ["character_state"], asOfChapter: 4 }).map((item) => item.id).sort();
+      expect(sqlAsOf).toEqual(jsAsOf);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("closes only the superseded row in the same slot, leaving other open facts in the category untouched", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({ id: "same-slot-old", subject: "韩立", predicate: "状态", object: "旧", validFromChapter: 1 }));
+      upsertNarrativeFact(storage, fact({ id: "other-slot", subject: "墨大夫", predicate: "状态", object: "怀疑", validFromChapter: 1 }));
+      const next = fact({ id: "same-slot-new", subject: "韩立", predicate: "状态", object: "新", validFromChapter: 5, updatedAt: "2026-07-22T01:00:00.000Z" });
+
+      expect(closeSupersededNarrativeFacts(storage, next, 5)).toBe(1);
+
+      const otherOpen = storage.sqlite.prepare<{ valid_until_chapter: number | null }>("SELECT valid_until_chapter FROM narrative_fact WHERE id = ?").get("other-slot");
+      expect(otherOpen?.valid_until_chapter).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("SQL slot-head fold breaks a full tie the same way the JS fold does", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({ id: "z-tie", subject: "韩立", predicate: "状态", object: "甲", validFromChapter: 3, confidence: 0.9, updatedAt: "2026-07-22T01:00:00.000Z" }));
+      upsertNarrativeFact(storage, fact({ id: "a-tie", subject: "韩立", predicate: "状态", object: "乙", validFromChapter: 3, confidence: 0.9, updatedAt: "2026-07-22T01:00:00.000Z" }));
+
+      const js = queryCurrentNarrativeLedger(storage, { bookId: "book-1", categories: ["character_state"], limit: 500 }).items.map((item) => item.id);
+      const sql = queryNarrativeFactSlotHeads(storage, { bookId: "book-1", categories: ["character_state"] }).map((item) => item.id);
+      expect(sql).toEqual(js);
     } finally {
       storage.close();
     }
