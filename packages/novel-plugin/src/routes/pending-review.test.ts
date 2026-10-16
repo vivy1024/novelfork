@@ -205,7 +205,7 @@ describe("待确认聚合路由", () => {
       resolveAt: "角色卡 › 声线",
       target: { kind: "jingwei-entry" },
     });
-    expect(voice.items[0]!.summary).toContain("1 项待审");
+    expect(voice.items[0]!.summary).toContain("1 项待确认");
     expect(voice.items[0]!.summary).toContain("9 项待补充");
 
     const styleRule = groupOf(summary, "styleRule");

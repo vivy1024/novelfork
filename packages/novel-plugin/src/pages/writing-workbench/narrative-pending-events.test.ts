@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   bulkMutatePendingEvents,
   fetchPendingEvents,
+  fetchTrashedPendingEvents,
   groupProposalsByChapter,
   mutatePendingEvent,
+  restoreTrashedPendingEvents,
   riskLabel,
   type PendingEvent,
 } from "./narrative-pending-events";
@@ -57,7 +59,7 @@ describe("mutatePendingEvent", () => {
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/books/book-1/narrative-memory/events/event-9/approve");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toEqual({ reason: "工作台确认 Narrative Memory 事件" });
+    expect(JSON.parse(String(init.body))).toEqual({ reason: "工作台批准 Narrative Memory 事件" });
   });
 
   it("posts reject with its own default reason", async () => {
@@ -67,7 +69,7 @@ describe("mutatePendingEvent", () => {
 
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/books/book-1/narrative-memory/events/event-9/reject");
-    expect(JSON.parse(String(init.body))).toEqual({ reason: "工作台拒绝 Narrative Memory 事件" });
+    expect(JSON.parse(String(init.body))).toEqual({ reason: "工作台驳回 Narrative Memory 事件" });
   });
 
   it("keeps a caller-supplied reason", async () => {
@@ -134,6 +136,58 @@ describe("bulkMutatePendingEvents", () => {
   });
 });
 
+describe("fetchTrashedPendingEvents", () => {
+  it("reads the book-scoped trash with the deletion stamp", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      events: [{ id: "e1", subject: "韩立", deletedAt: "2026-07-01T00:00:00.000Z", deletedReason: "工作台批量丢弃" }],
+      retentionDays: 30,
+    }));
+
+    const trashed = await fetchTrashedPendingEvents("book-1", { fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledWith("/api/books/book-1/narrative-memory/events/trash");
+    expect(trashed).toEqual([{
+      id: "e1",
+      subject: "韩立",
+      deletedAt: "2026-07-01T00:00:00.000Z",
+      deletedReason: "工作台批量丢弃",
+    }]);
+  });
+
+  it("treats a missing events array as an empty trash", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({}));
+
+    await expect(fetchTrashedPendingEvents("book-1", { fetchImpl })).resolves.toEqual([]);
+  });
+
+  it("surfaces transport failures instead of silently emptying the trash", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error: "boom" }, { status: 500 }));
+
+    await expect(fetchTrashedPendingEvents("book-1", { fetchImpl })).rejects.toThrow("回收站 500");
+  });
+});
+
+describe("restoreTrashedPendingEvents", () => {
+  it("posts the ids to the restore route and returns the server summary", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已恢复 1 条", restored: ["e1"], skipped: [], missing: [] }));
+
+    const result = await restoreTrashedPendingEvents("book-1", ["e1"], { fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/books/book-1/narrative-memory/events/trash/restore");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ eventIds: ["e1"] });
+    expect(result.restored).toEqual(["e1"]);
+  });
+
+  it("reports the server explanation instead of a bare status", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "eventIds 不能为空。" }, { status: 400 }));
+
+    await expect(restoreTrashedPendingEvents("book-1", [], { fetchImpl })).rejects.toThrow("eventIds 不能为空。");
+  });
+});
+
 describe("groupProposalsByChapter", () => {
   const events: PendingEvent[] = [
     { id: "cur", chapterNumber: 32 },
@@ -181,8 +235,8 @@ describe("riskLabel", () => {
     expect(riskLabel("low")).toBe("低风险");
   });
 
-  it("falls back to 待审 when the level is absent", () => {
-    expect(riskLabel(undefined)).toBe("待审");
+  it("falls back to 待确认 when the level is absent", () => {
+    expect(riskLabel(undefined)).toBe("待确认");
   });
 
   it("keeps an unmapped level visible rather than inventing a label", () => {

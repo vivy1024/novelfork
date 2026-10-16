@@ -322,6 +322,32 @@ const EVENT_SELECT = `
   FROM narrative_event
 `;
 
+/**
+ * 主表与回收站共用的列。搬表的两条 SQL 都按这串名字对齐，新增事件列时只改这一处，
+ * 不会因为两处列序不同而错位。
+ */
+const EVENT_COLUMNS = [
+  "id",
+  "book_id",
+  "chapter_number",
+  "event_type",
+  "subject",
+  "predicate",
+  "object",
+  "evidence_text",
+  "confidence",
+  "source",
+  "status",
+  "risk_level",
+  "subject_entry_id",
+  "object_entry_id",
+  "caused_by_json",
+  "created_at",
+  "applied_at",
+] as const;
+
+const EVENT_COLUMN_LIST = EVENT_COLUMNS.join(", ");
+
 export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
   storage.sqlite.exec(`
     CREATE TABLE IF NOT EXISTS narrative_fact (
@@ -375,6 +401,37 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
 
     CREATE INDEX IF NOT EXISTS idx_narrative_event_book_chapter ON narrative_event(book_id, chapter_number);
     CREATE INDEX IF NOT EXISTS idx_narrative_event_book_status ON narrative_event(book_id, status);
+
+    -- T-28 待确认队列「批量丢弃」的回收站。丢弃不再物理删除，而是把整行搬到这里，
+    -- 作者可撤销；保留期见 NARRATIVE_EVENT_TRASH_RETENTION_DAYS，过期在下次写入时清理。
+    -- 刻意不采用「给 narrative_event 加 deleted_at」：现有 17 个读取点里
+    -- relation-graph / causal-backfill / entity-id-backfill / chapter-discard-range 等
+    -- 都没有 status 过滤，加列就要逐个补条件，漏一个已丢弃的事件就会重新冒出来；
+    -- 搬表则让所有既有读取点的语义与物理删除完全一致。
+    CREATE TABLE IF NOT EXISTS narrative_event_trash (
+      id TEXT PRIMARY KEY,
+      book_id TEXT NOT NULL,
+      chapter_number INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      predicate TEXT NOT NULL,
+      object TEXT NOT NULL,
+      evidence_text TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      source TEXT NOT NULL,
+      status TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      subject_entry_id TEXT,
+      object_entry_id TEXT,
+      caused_by_json TEXT,
+      created_at TEXT NOT NULL,
+      applied_at TEXT,
+      deleted_at TEXT NOT NULL,
+      deleted_reason TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_narrative_event_trash_book_deleted
+      ON narrative_event_trash(book_id, deleted_at DESC);
 
     -- T4 证据链：每次结算把「原始草案 + 逐条决策」序列化落盘，
     -- 回答作者「为什么抽出这些事件」。同一指纹重写即覆盖（幂等）。
@@ -957,6 +1014,222 @@ export function updateNarrativeEvent(storage: StorageDatabase, event: NarrativeE
 }
 
 export const NARRATIVE_SETTLEMENT_ARTIFACT_RETENTION_PER_CHAPTER = 3;
+
+/** 回收站保留期（天）。超过这个天数的丢弃记录在下次写入回收站时被清掉。 */
+export const NARRATIVE_EVENT_TRASH_RETENTION_DAYS = 30;
+
+const NARRATIVE_EVENT_TRASH_RETENTION_MS = NARRATIVE_EVENT_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+export interface TrashPendingNarrativeEventsInput {
+  readonly bookId: string;
+  readonly eventIds: readonly string[];
+  /** 丢弃原因，随行记进回收站，撤销与排查时能看到谁丢的、为什么。 */
+  readonly reason: string;
+  /** 注入时钟，便于测试过期边界。 */
+  readonly now?: string;
+}
+
+export interface TrashPendingNarrativeEventsResult {
+  readonly trashed: readonly string[];
+  /** status 不是 pending 的裁决历史，一律不动。 */
+  readonly skipped: readonly string[];
+  readonly failed: readonly { readonly id: string; readonly error: string }[];
+}
+
+export interface TrashedNarrativeEvent {
+  /** 被丢弃的那一行本身，逐列还原。 */
+  readonly event: NarrativeEvent;
+  readonly deletedAt: string;
+  readonly deletedReason: string;
+}
+
+export interface ListTrashedNarrativeEventsInput {
+  readonly bookId: string;
+  readonly limit?: number;
+}
+
+export interface RestoreTrashedNarrativeEventsInput {
+  readonly bookId: string;
+  readonly eventIds: readonly string[];
+}
+
+export interface RestoreTrashedNarrativeEventsResult {
+  readonly restored: readonly string[];
+  /** 目标 id 已经又存在（例如重新结算出同 id），不覆盖活跃行。 */
+  readonly skipped: readonly string[];
+  /** 不在本书回收站里的 id。 */
+  readonly missing: readonly string[];
+}
+
+const EVENT_TRASH_SELECT = `
+  SELECT
+    id,
+    book_id AS bookId,
+    chapter_number AS chapterNumber,
+    event_type AS eventType,
+    subject,
+    predicate,
+    object,
+    evidence_text AS evidenceText,
+    confidence,
+    source,
+    status,
+    risk_level AS riskLevel,
+    subject_entry_id AS subjectEntryId,
+    object_entry_id AS objectEntryId,
+    caused_by_json AS causedByJson,
+    created_at AS createdAt,
+    applied_at AS appliedAt,
+    deleted_at AS deletedAt,
+    deleted_reason AS deletedReason
+  FROM narrative_event_trash
+`;
+
+/**
+ * 待确认队列的「丢弃」：把整行搬进回收站，而不是物理删除。
+ *
+ * 只允许 status='pending'：已 applied/rejected 的是裁决历史，语义上不是「还没决定
+ * 要不要，先放着」，从这里抹掉会让作者看不到当初为什么采纳或否决。
+ *
+ * 单事务内完成「搬出 + 删主表」，任何一步失败都不会留下半条数据。写入时顺带清掉
+ * 超过保留期的旧记录，与 pruneSettlementArtifacts 一样把清理挂在正常写入路径上。
+ */
+export function trashPendingNarrativeEvents(
+  storage: StorageDatabase,
+  input: TrashPendingNarrativeEventsInput,
+): TrashPendingNarrativeEventsResult {
+  ensureNarrativeMemorySchema(storage);
+  const deletedAt = input.now ?? new Date().toISOString();
+  const trashed: string[] = [];
+  const skipped: string[] = [];
+  const failed: Array<{ id: string; error: string }> = [];
+  const selectRow = storage.sqlite.prepare<{ status: string }>(
+    `SELECT status FROM narrative_event WHERE id = ? AND book_id = ?`,
+  );
+  const insertTrash = storage.sqlite.prepare(`
+    INSERT INTO narrative_event_trash (${EVENT_COLUMN_LIST}, deleted_at, deleted_reason)
+    SELECT ${EVENT_COLUMN_LIST}, ?, ? FROM narrative_event WHERE id = ? AND book_id = ?
+  `);
+  const deleteRow = storage.sqlite.prepare(`DELETE FROM narrative_event WHERE id = ? AND book_id = ?`);
+
+  storage.sqlite.transaction(() => {
+    pruneNarrativeEventTrash(storage, deletedAt);
+    for (const eventId of input.eventIds) {
+      const existing = selectRow.get(eventId, input.bookId);
+      if (!existing) {
+        failed.push({ id: eventId, error: "not-found" });
+        continue;
+      }
+      if (existing.status !== "pending") {
+        skipped.push(eventId);
+        continue;
+      }
+      try {
+        const moved = insertTrash.run(deletedAt, input.reason, eventId, input.bookId);
+        if (moved.changes === 0) {
+          failed.push({ id: eventId, error: "not-found" });
+          continue;
+        }
+        deleteRow.run(eventId, input.bookId);
+        trashed.push(eventId);
+      } catch (error) {
+        failed.push({ id: eventId, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  })();
+
+  return { trashed, skipped, failed };
+}
+
+/** 回收站列表：最近丢弃的在前。 */
+export function listTrashedNarrativeEvents(
+  storage: StorageDatabase,
+  input: ListTrashedNarrativeEventsInput,
+): TrashedNarrativeEvent[] {
+  ensureNarrativeMemorySchema(storage);
+  const limit = Math.max(1, Math.min(input.limit ?? 200, 500));
+  const rows = storage.sqlite.prepare<TrashRow>(`
+    ${EVENT_TRASH_SELECT}
+    WHERE book_id = ?
+    ORDER BY deleted_at DESC, rowid DESC
+    LIMIT ?
+  `).all(input.bookId, limit);
+  return rows.map((row) => ({
+    event: eventRowToRecord(row),
+    deletedAt: row.deletedAt,
+    deletedReason: row.deletedReason,
+  }));
+}
+
+/**
+ * 撤销丢弃：把行搬回 narrative_event 并从回收站删掉。
+ *
+ * 目标 id 已经又存在（同章重新结算出同 id 的事件）时不覆盖它，如实报为 skipped 并
+ * 把回收站里的那一份留着，作者仍能看见冲突，而不是被静默丢掉。
+ */
+export function restoreTrashedNarrativeEvents(
+  storage: StorageDatabase,
+  input: RestoreTrashedNarrativeEventsInput,
+): RestoreTrashedNarrativeEventsResult {
+  ensureNarrativeMemorySchema(storage);
+  const restored: string[] = [];
+  const skipped: string[] = [];
+  const missing: string[] = [];
+  const selectTrash = storage.sqlite.prepare<{ id: string }>(
+    `SELECT id FROM narrative_event_trash WHERE id = ? AND book_id = ?`,
+  );
+  const selectLive = storage.sqlite.prepare<{ id: string }>(
+    `SELECT id FROM narrative_event WHERE id = ? AND book_id = ?`,
+  );
+  const insertLive = storage.sqlite.prepare(`
+    INSERT INTO narrative_event (${EVENT_COLUMN_LIST})
+    SELECT ${EVENT_COLUMN_LIST} FROM narrative_event_trash WHERE id = ? AND book_id = ?
+  `);
+  const deleteTrash = storage.sqlite.prepare(`DELETE FROM narrative_event_trash WHERE id = ? AND book_id = ?`);
+
+  storage.sqlite.transaction(() => {
+    for (const eventId of input.eventIds) {
+      if (!selectTrash.get(eventId, input.bookId)) {
+        missing.push(eventId);
+        continue;
+      }
+      if (selectLive.get(eventId, input.bookId)) {
+        skipped.push(eventId);
+        continue;
+      }
+      const inserted = insertLive.run(eventId, input.bookId);
+      if (inserted.changes === 0) {
+        missing.push(eventId);
+        continue;
+      }
+      deleteTrash.run(eventId, input.bookId);
+      restored.push(eventId);
+    }
+  })();
+
+  return { restored, skipped, missing };
+}
+
+/**
+ * 清掉超过保留期的回收站行，返回删除条数。
+ *
+ * 保留期边界是「恰好 N 天前仍保留」（用 <= 只删严格更早的），避免时钟抖动把刚丢的
+ * 记录当成过期。now 可注入，便于测试边界。
+ */
+export function pruneNarrativeEventTrash(storage: StorageDatabase, now?: string): number {
+  ensureNarrativeMemorySchema(storage);
+  const reference = now ?? new Date().toISOString();
+  const referenceMs = Date.parse(reference);
+  if (!Number.isFinite(referenceMs)) return 0;
+  const cutoff = new Date(referenceMs - NARRATIVE_EVENT_TRASH_RETENTION_MS).toISOString();
+  const result = storage.sqlite.prepare(`DELETE FROM narrative_event_trash WHERE deleted_at < ?`).run(cutoff);
+  return result.changes;
+}
+
+interface TrashRow extends NarrativeEventRow {
+  deletedAt: string;
+  deletedReason: string;
+}
 
 export function pruneSettlementArtifacts(storage: StorageDatabase, bookId: string, chapterNumber: number): void {
   storage.sqlite.prepare(`

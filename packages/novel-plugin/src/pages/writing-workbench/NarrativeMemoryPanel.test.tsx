@@ -335,7 +335,7 @@ describe("NarrativeMemoryPanelShell", () => {
     expect(html).toContain("最近结算");
     expect(html).toContain("韩立 抵达 药园");
     expect(html).toContain("改后批准");
-    expect(html).toContain("拒绝");
+    expect(html).toContain("驳回");
     expect(html).toContain("正文证据");
     expect(html).toContain("章后默认自动结算");
     expect(html).toContain("高级：召回诊断");
@@ -373,7 +373,9 @@ describe("NarrativeMemoryPanelShell", () => {
   });
 
   /**
-   * 待审队列批量操作：置信度筛选 + 多选 + 批量批准/丢弃。
+   * 待确认队列批量操作：置信度筛选 + 多选 + 批量批准/丢弃。
+   *
+   * 丢弃自 T-28 起是两步确认（点「批量丢弃」先进入确认态），一次点击不再直接丢。
    */
   it("filters pending events by confidence and exposes bulk actions for the selection", async () => {
     const onBulkApprove = vi.fn(async () => undefined);
@@ -413,13 +415,61 @@ describe("NarrativeMemoryPanelShell", () => {
       expect(screen.queryByRole("button", { name: "批量丢弃" })).toBeNull();
     });
 
-    // 切回全部再选两条 → 批量丢弃（操作栏重新出现，bulkLoading 已复位）。
+    // 切回全部再选两条 → 批量丢弃需要二次确认（操作栏重新出现，bulkLoading 已复位）。
     fireEvent.click(screen.getByRole("button", { name: "全部" }));
     const allCheckboxes = screen.getAllByRole("checkbox", { name: /选择事件/u });
     fireEvent.click(allCheckboxes[0]!);
     fireEvent.click(allCheckboxes[1]!);
     fireEvent.click(await screen.findByRole("button", { name: "批量丢弃" }));
+    // 第一次点击只是进入确认态，不会丢任何东西。
+    expect(onBulkDelete).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认丢弃 2 条" }));
     expect(onBulkDelete).toHaveBeenCalledWith(expect.arrayContaining(["e-low", "e-mid"]));
+  });
+
+  /**
+   * 批量丢弃的二次确认可取消，丢弃成功后有撤销入口。
+   *
+   * 旧实现点一下就物理删除、不留痕；误点一次只能重新结算。这里既测「取消不丢数据」，
+   * 也测「丢弃后能一键撤销」。
+   */
+  it("cancels the discard confirmation and undoes a finished bulk discard", async () => {
+    const onBulkDelete = vi.fn(async () => undefined);
+    const onRestoreTrashed = vi.fn(async () => undefined);
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[
+          { id: "e-1", eventType: "location_changed", entity: "韩立", confidence: 0.8, risk: "low", chapterNumber: 12 },
+          { id: "e-2", eventType: "location_changed", entity: "厉飞雨", confidence: 0.8, risk: "low", chapterNumber: 12 },
+        ]}
+        onBulkApprove={vi.fn(async () => undefined)}
+        onBulkDelete={onBulkDelete}
+        onRestoreTrashed={onRestoreTrashed}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前筛选下的待确认事件" }));
+    fireEvent.click(await screen.findByRole("button", { name: "批量丢弃" }));
+    expect(onBulkDelete).not.toHaveBeenCalled();
+
+    // 取消回到原状：选择集还在，什么都没丢。
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("button", { name: /确认丢弃/u })).toBeNull();
+    expect(screen.getByText(/已选 2 条/u)).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole("button", { name: "批量丢弃" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认丢弃 2 条" }));
+    await waitFor(() => expect(onBulkDelete).toHaveBeenCalledWith(["e-1", "e-2"]));
+
+    // 丢弃成功后给出撤销入口，点它调恢复通道。
+    fireEvent.click(await screen.findByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(onRestoreTrashed).toHaveBeenCalledWith(["e-1", "e-2"]));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "撤销" })).toBeNull());
   });
 
   it("selects all filtered events through the select-all toggle", () => {
@@ -438,7 +488,7 @@ describe("NarrativeMemoryPanelShell", () => {
       />,
     );
 
-    const selectAll = screen.getByRole("checkbox", { name: "全选当前筛选下的待审事件" });
+    const selectAll = screen.getByRole("checkbox", { name: "全选当前筛选下的待确认事件" });
     fireEvent.click(selectAll);
     expect(screen.getByText(/已选 2 条/u)).toBeTruthy();
 

@@ -113,6 +113,7 @@ export const NOT_ARCHIVED_TABLES: readonly NotArchivedSpec[] = [
   { name: "book_provision_operations", explanation: "建书流程记录属于本机；导入时为新书重新生成。", regenerated: true },
   { name: "jingwei_fts_doc", explanation: "经纬检索索引是派生数据；导入后按经纬条目重建。", regenerated: true },
   { name: "narrative_context_vector", explanation: "实体向量缓存依赖本机配置的 embedding 模型；导入后可在叙事记忆里重新回填。" },
+  { name: "narrative_event_trash", explanation: "待确认事件的回收站是本机临时数据：丢弃的记录只在本机保留一段时间等作者撤销，不随档案迁移。导入后新的书重新开始，回收站为空。" },
   { name: "narrative_retrieval_log", explanation: "上下文检索诊断日志只用于排查当次装配，不影响继续写作。" },
   { name: "request_log", explanation: "AI 调用用量与计费日志绑定源机器的账号和会话，不随作品迁移。" },
   { name: "workflow_runs", explanation: "工作流运行记录绑定源机器的叙述者会话，导入后无法继续执行；工作流方案本身在「工作流」模块里。" },

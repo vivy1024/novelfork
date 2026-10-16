@@ -55,7 +55,7 @@ export interface PendingReviewPanelProps {
   onOpenDistill?: () => void;
   /** 「技能文风」面板的文风页签。 */
   onOpenStylePanel?: () => void;
-  /** 章后事实待审队列（本章提议、事实与关系草案）。 */
+  /** 章后事实待确认队列（本章提议、事实与关系草案）。 */
   onOpenEvents?: () => void;
   /** 文风金库（采纳改稿段为范文）；缺省回落到 onOpenChapter。 */
   onOpenVault?: () => void;

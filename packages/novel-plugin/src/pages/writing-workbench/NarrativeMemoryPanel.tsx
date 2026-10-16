@@ -6,14 +6,16 @@ import { Badge } from "@/components/ui/badge";
 import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
-// 待审事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
+// 待确认事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
 import {
   bulkMutatePendingEvents,
   mutatePendingEvent as mutatePendingEventRequest,
+  restoreTrashedPendingEvents,
   riskLabel,
   type PendingEvent,
   type PendingEventEdit,
-} from "./narrative-pending-events";import {
+} from "./narrative-pending-events";
+import {
   correctFact,
   fetchFactsByEntity,
   retireFact,
@@ -155,10 +157,12 @@ interface NarrativeMemoryPanelShellProps {
   onSearch?: (query: string) => void;
   onApprove?: (event: PendingEvent, edit?: PendingEventEdit) => void;
   onReject?: (event: PendingEvent) => void;
-  /** 待审队列批量批准（与单条批准同一语义），成功返回后由外层刷新队列。 */
+  /** 待确认队列批量批准（与单条批准同一语义），成功返回后由外层刷新队列。 */
   onBulkApprove?: (eventIds: readonly string[]) => Promise<void>;
-  /** 待审队列批量丢弃（物理删除待审事件，不留痕）。 */
+  /** 待确认队列批量丢弃（软删除：搬进回收站，可撤销）。 */
   onBulkDelete?: (eventIds: readonly string[]) => Promise<void>;
+  /** 撤销丢弃：把回收站里的事件搬回待确认队列。 */
+  onRestoreTrashed?: (eventIds: readonly string[]) => Promise<void>;
   onSearchEntryOpen?: (entry: MemoryEntry) => void;
   onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   onCorrectFact?: (fact: EntityFact, newObject: string) => void;
@@ -179,7 +183,7 @@ interface NarrativeMemoryPanelShellProps {
   onLoadMoreSearch?: () => void;
 }
 
-/** 待审队列置信度筛选分段。无 confidence 的事件不属于任何具体段，只在「全部」显示。 */
+/** 待确认队列置信度筛选分段。无 confidence 的事件不属于任何具体段，只在「全部」显示。 */
 type PendingConfidenceFilter = "all" | "low" | "medium" | "high";
 
 const PENDING_CONFIDENCE_FILTERS: readonly { value: PendingConfidenceFilter; label: string }[] = [
@@ -365,7 +369,7 @@ function StoryStatusSummary({
         </div>
         <div className="rounded border border-border/60 p-2">
           <div className={`text-sm font-semibold tabular-nums ${highRiskCount > 0 ? "text-amber-600" : ""}`}>{highRiskCount}</div>
-          <div className="text-2xs text-muted-foreground">高风险待审</div>
+          <div className="text-2xs text-muted-foreground">高风险待确认</div>
         </div>
       </div>
 
@@ -730,7 +734,7 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
 }
 
 /**
- * 待审事件卡片：支持直接批准/拒绝，或「改后批准」——展开编辑 subject/predicate/object
+ * 待确认事件卡片：支持直接批准/驳回，或「改后批准」——展开编辑 subject/predicate/object
  * 再应用，机器抽错一个字不用整章重结。
  *
  * selectable=true 时出现批量选择框；无 id 的事件不可选（批量操作以 id 为键）。
@@ -779,7 +783,7 @@ function PendingEventCard({
             onClick={() => onReject?.(event)}
             className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
           >
-            拒绝
+            驳回
           </button>
           <button
             type="button"
@@ -830,7 +834,7 @@ function PendingEventCard({
             onClick={() => onReject?.(event)}
             className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
           >
-            拒绝
+            驳回
           </button>
           <button
             type="button"
@@ -1291,6 +1295,11 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, curr
     await load();
   }, [bookId, load]);
 
+  const restoreTrashed = useCallback(async (eventIds: readonly string[]) => {
+    await restoreTrashedPendingEvents(bookId, eventIds);
+    await load();
+  }, [bookId, load]);
+
   return (
     <NarrativeMemoryPanelShell
       bookId={bookId}
@@ -1321,6 +1330,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, curr
       onReject={(event) => void mutateEvent(event, "reject")}
       onBulkApprove={bulkApprove}
       onBulkDelete={bulkDelete}
+      onRestoreTrashed={restoreTrashed}
       onRefresh={() => void load()}
       onSearchEntryOpen={openSearchEntry}
       onOpenEntityDetail={onOpenEntityDetail}
@@ -1368,6 +1378,7 @@ export function NarrativeMemoryPanelShell({
   onReject,
   onBulkApprove,
   onBulkDelete,
+  onRestoreTrashed,
   onRefresh,
   onSearchEntryOpen,
   onOpenEntityDetail,
@@ -1387,11 +1398,16 @@ export function NarrativeMemoryPanelShell({
   const [queryInput, setQueryInput] = useState(searchQuery);
   const [pendingOpen, setPendingOpen] = useState(false);
 
-  // 待审队列批量操作状态：置信度筛选 + 多选。
+  // 待确认队列批量操作状态：置信度筛选 + 多选。
   const [confidenceFilter, setConfidenceFilter] = useState<PendingConfidenceFilter>("all");
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
-  const [bulkLoading, setBulkLoading] = useState<"approve" | "delete" | null>(null);
+  const [bulkLoading, setBulkLoading] = useState<"approve" | "delete" | "restore" | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  // 批量丢弃的二次确认：不用原生 confirm（样式脱节、EXE 里表现不一致），
+  // 就地变成「确认丢弃 N 条」+「取消」两步。
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  // 刚丢弃的一批：留在原位给一个「撤销」，避免作者误点后要去别处找。
+  const [lastDiscarded, setLastDiscarded] = useState<readonly string[]>([]);
 
   const highRiskEvents = events.filter((event) => event.risk === "high");
   const otherPending = events.filter((event) => event.risk !== "high");
@@ -1399,7 +1415,7 @@ export function NarrativeMemoryPanelShell({
   const hookFacts = useMemo(() => stateFacts.filter((fact) => entryCategory(fact) === "hook"), [stateFacts]);
   const hookHistory = useMemo(() => historyEvents.filter((entry) => entryCategory(entry) === "hook"), [historyEvents]);
 
-  // 待审队列：置信度筛选 + 低置信靠前排序。无 confidence 的事件只在「全部」里出现。
+  // 待确认队列：置信度筛选 + 低置信靠前排序。无 confidence 的事件只在「全部」里出现。
   const selectableEvents = useMemo(() => {
     const byConfidence = (a: PendingEvent, b: PendingEvent) => {
       if (a.confidence === undefined && b.confidence === undefined) return 0;
@@ -1452,12 +1468,29 @@ export function NarrativeMemoryPanelShell({
       if (action === "approve") await onBulkApprove?.(ids);
       else await onBulkDelete?.(ids);
       setSelectedEventIds(new Set());
+      setConfirmingDiscard(false);
+      // 丢弃是可以后悔的操作：留一条撤销入口，而不是让作者去别处找回收站。
+      setLastDiscarded(action === "delete" ? ids : []);
     } catch (cause) {
       setBulkError(cause instanceof Error ? cause.message : "批量操作失败");
     } finally {
       setBulkLoading(null);
     }
   }, [selectableEvents, selectedEventIds, onBulkApprove, onBulkDelete]);
+
+  const undoDiscard = useCallback(async () => {
+    if (lastDiscarded.length === 0) return;
+    setBulkLoading("restore");
+    setBulkError(null);
+    try {
+      await onRestoreTrashed?.(lastDiscarded);
+      setLastDiscarded([]);
+    } catch (cause) {
+      setBulkError(cause instanceof Error ? cause.message : "撤销丢弃失败");
+    } finally {
+      setBulkLoading(null);
+    }
+  }, [lastDiscarded, onRestoreTrashed]);
 
   if (loading) {
     return (
@@ -1506,7 +1539,7 @@ export function NarrativeMemoryPanelShell({
         </div>
       )}
 
-      {/* 章后事实本体：故事状态 / 关系矩阵 / 结算历史 / 待审队列全部平铺。 */}
+      {/* 章后事实本体：故事状态 / 关系矩阵 / 结算历史 / 待确认队列全部平铺。 */}
       <>
           <section className="rounded-lg border border-border bg-card p-3 space-y-2">
             <form
@@ -1576,7 +1609,7 @@ export function NarrativeMemoryPanelShell({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{entryTitle(entry)}</span>
-                  <span className="text-2xs text-muted-foreground">{entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已拒绝" : entry.status}</span>
+                  <span className="text-2xs text-muted-foreground">{entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已驳回" : entry.status}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-2xs text-muted-foreground">
                   <OpenSourceChapterButton chapterNumber={entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
@@ -1591,7 +1624,7 @@ export function NarrativeMemoryPanelShell({
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-pending">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-xs font-semibold text-muted-foreground">
-                待审事项 ({events.length})
+                待确认 ({events.length})
                 {highRiskEvents.length > 0 ? ` · 高风险 ${highRiskEvents.length}` : ""}
               </h3>
               {events.length > 3 && (
@@ -1603,7 +1636,7 @@ export function NarrativeMemoryPanelShell({
             <p className="text-2xs text-muted-foreground">章后默认自动结算；这里通常只剩高风险/低置信度项，可不处理也不阻断写作。</p>
 
             {/* 置信度筛选 + 全选：批量处理低置信抽取时先筛再选。 */}
-            <div className="flex flex-wrap items-center gap-1" aria-label="待审置信度筛选">
+            <div className="flex flex-wrap items-center gap-1" aria-label="待确认置信度筛选">
               {PENDING_CONFIDENCE_FILTERS.map((filter) => (
                 <button
                   key={filter.value}
@@ -1623,7 +1656,7 @@ export function NarrativeMemoryPanelShell({
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleSelectAll}
-                    aria-label="全选当前筛选下的待审事件"
+                    aria-label="全选当前筛选下的待确认事件"
                     className="size-3.5 accent-primary"
                   />
                   全选
@@ -1634,30 +1667,69 @@ export function NarrativeMemoryPanelShell({
             {selectedEventIds.size > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 rounded border border-primary/30 bg-primary/5 p-2">
                 <span className="text-2xs text-muted-foreground">已选 {selectedEventIds.size} 条</span>
+                {confirmingDiscard ? (
+                  <>
+                    <span className="text-2xs text-muted-foreground">
+                      丢弃后这些草案会离开待确认队列，进入回收站保留 30 天。
+                    </span>
+                    <button
+                      type="button"
+                      disabled={bulkLoading !== null}
+                      onClick={() => void runBulk("delete")}
+                      className="ml-auto rounded bg-destructive px-2 py-1 text-2xs text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                    >
+                      {bulkLoading === "delete" ? "丢弃中…" : `确认丢弃 ${selectedEventIds.size} 条`}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkLoading !== null}
+                      onClick={() => setConfirmingDiscard(false)}
+                      className="rounded px-2 py-1 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      取消
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={bulkLoading !== null}
+                      onClick={() => void runBulk("approve")}
+                      className="ml-auto rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {bulkLoading === "approve" ? "批准中…" : "批量批准"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkLoading !== null}
+                      onClick={() => setConfirmingDiscard(true)}
+                      className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
+                      title="把这些草案移出待确认队列（不作裁决）；进入回收站后可以撤销。"
+                    >
+                      批量丢弃
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bulkLoading !== null}
+                      onClick={() => setSelectedEventIds(new Set())}
+                      className="rounded px-2 py-1 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      取消选择
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            {lastDiscarded.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 rounded border border-border bg-muted/40 p-2">
+                  <span className="text-2xs text-muted-foreground">已丢弃 {lastDiscarded.length} 条 · 回收站保留 30 天</span>
                 <button
                   type="button"
                   disabled={bulkLoading !== null}
-                  onClick={() => void runBulk("approve")}
-                  className="ml-auto rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  onClick={() => void undoDiscard()}
+                  className="ml-auto rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
                 >
-                  {bulkLoading === "approve" ? "批准中…" : "批量批准"}
-                </button>
-                <button
-                  type="button"
-                  disabled={bulkLoading !== null}
-                  onClick={() => void runBulk("delete")}
-                  className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
-                  title="物理删除选中的待审事件记录，不留痕；已批准/已拒绝的历史不受影响。"
-                >
-                  {bulkLoading === "delete" ? "丢弃中…" : "批量丢弃"}
-                </button>
-                <button
-                  type="button"
-                  disabled={bulkLoading !== null}
-                  onClick={() => setSelectedEventIds(new Set())}
-                  className="rounded px-2 py-1 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-                >
-                  取消选择
+                  {bulkLoading === "restore" ? "撤销中…" : "撤销"}
                 </button>
               </div>
             )}
@@ -1665,9 +1737,9 @@ export function NarrativeMemoryPanelShell({
 
             {actionError && <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{actionError}</div>}
             {events.length === 0 ? (
-              <p className="text-2xs text-muted-foreground">没有待审事件。</p>
+              <p className="text-2xs text-muted-foreground">没有待确认事件。</p>
             ) : pendingToShow.length === 0 ? (
-              <p className="text-2xs text-muted-foreground">当前置信度筛选下没有待审事件。</p>
+              <p className="text-2xs text-muted-foreground">当前置信度筛选下没有待确认事件。</p>
             ) : pendingToShow.map((event, index) => (
               <PendingEventCard
                 key={event.id ?? index}
@@ -1682,7 +1754,7 @@ export function NarrativeMemoryPanelShell({
               />
             ))}
             {!pendingOpen && confidenceFilter === "all" && otherPending.length > 0 && highRiskEvents.length > 0 && (
-              <p className="text-2xs text-muted-foreground">另有 {otherPending.length} 条非高风险待审，已折叠。</p>
+              <p className="text-2xs text-muted-foreground">另有 {otherPending.length} 条非高风险待确认，已折叠。</p>
             )}
           </section>
 
@@ -1709,7 +1781,7 @@ export function NarrativeMemoryPanelShell({
             <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
             <EvidenceChainLookup bookId={bookId} />
           </div>
-          <p className="text-2xs text-muted-foreground">已自动应用或已拒绝的章后事件，按最近优先展示。</p>
+          <p className="text-2xs text-muted-foreground">已自动应用或已驳回的章后事件，按最近优先展示。</p>
           {historyEvents.length === 0 ? (
             <p className="text-2xs text-muted-foreground">暂无结算历史。写下一章后会自动出现。</p>
           ) : historyEvents.map((entry) => (
@@ -1722,7 +1794,7 @@ export function NarrativeMemoryPanelShell({
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">{entryTitle(entry)}</span>
                 <span className="text-2xs text-muted-foreground">
-                  {entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已拒绝" : entry.status ?? "history"}
+                  {entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已驳回" : entry.status ?? "history"}
                 </span>
               </div>
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
@@ -1837,7 +1909,7 @@ interface SettlementArtifactPayload {
 
 const OUTCOME_LABELS: Record<string, string> = {
   "auto-apply": "自动应用",
-  "pending-review": "进入待审",
+  "pending-review": "进入待确认",
   rejected: "已驳回",
   "intercepted-by-convergence": "沙漏拦截",
 };
@@ -2210,8 +2282,8 @@ export function WriteInjectionSection({ bookId, currentChapter }: { bookId: stri
 // ---------------------------------------------------------------------------
 // NarrativeMemorySummary — 侧栏轻量摘要卡
 //
-// IA 收敛后的分工：完整的故事状态/关系矩阵/结算历史/待审队列只在中央「章后事实」
-// Tab 呈现；侧栏这里只做两件事——给作者看得到的关键计数（待审/高风险/实体事实），
+// IA 收敛后的分工：完整的故事状态/关系矩阵/结算历史/待确认队列只在中央「章后事实」
+// Tab 呈现；侧栏这里只做两件事——给作者看得到的关键计数（待确认/高风险/实体事实），
 // 以及一个直达中央面板的入口。不重复渲染任何明细列表。
 // ---------------------------------------------------------------------------
 
@@ -2282,7 +2354,7 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
       ) : (
         <div className="space-y-1 rounded-lg border border-border bg-card p-2 text-2xs" data-testid="narrative-memory-summary-body">
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">待审事项</span>
+            <span className="text-muted-foreground">待确认</span>
             <span>
               {pendingCount} 条
               {highRiskCount > 0 ? <span className="ml-1 text-destructive">· 高风险 {highRiskCount}</span> : null}
@@ -2304,7 +2376,7 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
         </Button>
       )}
       <p className="px-1 text-2xs leading-relaxed text-muted-foreground">
-        完整的故事状态、关系矩阵、结算历史与待审队列在中央面板中管理。
+        完整的故事状态、关系矩阵、结算历史与待确认队列在中央面板中管理。
       </p>
     </div>
   );

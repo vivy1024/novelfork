@@ -112,7 +112,7 @@ function collectVoiceItems(
       continue;
     }
     if (needsReview === 0 && missing === 0) continue;
-    const parts = [needsReview > 0 ? `${needsReview} 项待审` : "", missing > 0 ? `${missing} 项待补充` : ""].filter(Boolean);
+    const parts = [needsReview > 0 ? `${needsReview} 项待确认` : "", missing > 0 ? `${missing} 项待补充` : ""].filter(Boolean);
     items.push({
       id: `voice:${entry.id}`,
       kind: "voice",
@@ -205,7 +205,7 @@ function collectNarrativeEventItems(storage: StorageDatabase, bookId: string): {
     typeLabel: PENDING_REVIEW_LABELS[kind],
     location: `第 ${event.chapterNumber} 章`,
     summary: `${subKind}：${eventSentence(event)}`,
-    resolveAt: kind === "event" ? "写作视图「收尾」步，或「章后事实 › 待审队列」" : "「章后事实 › 待审队列」",
+    resolveAt: kind === "event" ? "写作视图「收尾」步，或「章后事实 › 待确认队列」" : "「章后事实 › 待确认队列」",
     target: eventTargetFor(),
   });
   const current: PendingReviewItem[] = [];
@@ -351,13 +351,13 @@ export async function collectPendingReview(
   const explanation = total > 0
     ? [
         "这些产物要作者确认后才生效：声线规则（确认前先不进对白约束）、文风规则（确认前不进写作指南）、",
-        "伏笔草稿与待审事件（确认前不进写作上下文）、改稿段（采纳后才成为范文）、剧情线草稿（确认后才进故事推进）。",
+        "伏笔草稿与待确认事件（确认前不进写作上下文）、改稿段（采纳后才成为范文）、剧情线草稿（确认后才进故事推进）。",
         "逐项去「去处理」列出的原有入口决定；剧情线草稿没有专属页面，在本面板就地确认。",
       ].join("")
     : [
         "七类待确认来源都查过了，当前没有待处理项。",
         "来源包括：角色声线（角色卡）、文风蒸馏规则（文风自动蒸馏/技能文风）、伏笔草稿（章后结算）、",
-        "待审叙事事件（写作视图收尾/章后事实）、文风金库未采纳的改稿段与剧情线草稿（storyline.propose）。",
+        "待确认叙事事件（写作视图收尾/章后事实）、文风金库未采纳的改稿段与剧情线草稿（storyline.propose）。",
         "以后机器生成的草稿会先在这里排队，确认入口不变。",
       ].join("");
 

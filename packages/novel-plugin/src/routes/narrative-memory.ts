@@ -53,6 +53,12 @@ import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-mem
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
 import { listCharacterKernels, getCharacterKernel } from "../engine/narrative-memory/storage.js";
 import {
+  NARRATIVE_EVENT_TRASH_RETENTION_DAYS,
+  listTrashedNarrativeEvents,
+  restoreTrashedNarrativeEvents,
+  trashPendingNarrativeEvents,
+} from "../engine/narrative-memory/storage.js";
+import {
   correctNarrativeFact,
   createManualNarrativeFact,
   queryFactsByEntity,
@@ -718,12 +724,12 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
   app.post(`${base}/events/pending/:eventId/reject`, (c) => mutatePendingEvent(c, "reject"));
 
   /**
-   * 待审队列批量操作（作者工作台专用）。
+   * 待确认队列批量操作（作者工作台专用）。
    *
    * approve：逐条复用与单条批准完全相同的 handleMemoryEvents 路径（manual 保护、
    * closeSuperseded 配置、重复跳过语义一致），不会为批量另写一套归约逻辑。
-   * delete：物理删除待审事件记录（丢弃，不留痕）；只允许删除 status=pending 的行，
-   * 已 applied/rejected 的是裁决历史，不允许从这里抹掉。
+   * delete：把选中的待确认事件搬进回收站（软删除，可撤销），只允许 status=pending
+   * 的行；已 applied/rejected 的是裁决历史，不允许从这里抹掉。
    */
   app.post(`${base}/events/bulk`, async (c) => {
     const bookId = c.req.param("bookId");
@@ -771,28 +777,57 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       });
     }
 
-    const deleted: string[] = [];
-    const skipped: string[] = [];
-    const failed: Array<{ id: string; error: string }> = [];
-    for (const eventId of eventIds) {
-      const existing = storage().sqlite
-        .prepare<{ status: string }>("SELECT status FROM narrative_event WHERE id = ? AND book_id = ?")
-        .get(eventId, bookId);
-      if (!existing) { failed.push({ id: eventId, error: "not-found" }); continue; }
-      if (existing.status !== "pending") { skipped.push(eventId); continue; }
-      try {
-        storage().sqlite.prepare("DELETE FROM narrative_event WHERE id = ? AND book_id = ?").run(eventId, bookId);
-        deleted.push(eventId);
-      } catch (error) {
-        failed.push({ id: eventId, error: error instanceof Error ? error.message : String(error) });
-      }
-    }
+    const { trashed: deleted, skipped, failed } = trashPendingNarrativeEvents(storage(), {
+      bookId,
+      eventIds,
+      reason,
+    });
     return c.json({
-      summary: `批量丢弃完成：${deleted.length} 已删除，${skipped.length} 跳过（非待审），${failed.length} 失败。`,
+      summary: `批量丢弃完成：${deleted.length} 已丢弃，${skipped.length} 跳过（非待确认），${failed.length} 失败。丢弃的记录在回收站保留 ${NARRATIVE_EVENT_TRASH_RETENTION_DAYS} 天，可以撤销。`,
       deleted,
       skipped,
       failed,
       reason,
+    });
+  });
+
+  /** 回收站：列出这本书丢弃的待确认事件，最近丢弃的在前。 */
+  app.get(`${base}/events/trash`, (c) => {
+    const bookId = c.req.param("bookId");
+    const requested = queryLimit(c);
+    const entries = listTrashedNarrativeEvents(storage(), {
+      bookId,
+      ...(requested === undefined ? {} : { limit: requested }),
+    });
+    return c.json({
+      summary: entries.length === 0
+        ? "回收站是空的。丢弃的待确认事件会在这里保留一段时间，随时可以撤销。"
+        : `回收站里有 ${entries.length} 条丢弃记录，丢弃后保留 ${NARRATIVE_EVENT_TRASH_RETENTION_DAYS} 天，可以撤销。`,
+      events: entries.map((entry) => ({
+        ...pendingEventSummary(entry.event),
+        deletedAt: entry.deletedAt,
+        deletedReason: entry.deletedReason,
+      })),
+      retentionDays: NARRATIVE_EVENT_TRASH_RETENTION_DAYS,
+    });
+  });
+
+  /** 撤销丢弃：把事件搬回待确认队列。 */
+  app.post(`${base}/events/trash/restore`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await readJson(c);
+    const eventIds = Array.isArray(body.eventIds)
+      ? body.eventIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()).slice(0, 200)
+      : [];
+    if (eventIds.length === 0) {
+      return c.json({ error: "invalid-input", summary: "eventIds 不能为空。" }, 400);
+    }
+    const { restored, skipped, missing } = restoreTrashedNarrativeEvents(storage(), { bookId, eventIds });
+    return c.json({
+      summary: `撤销丢弃：${restored.length} 已恢复，${skipped.length} 跳过（同 id 的事件已在队列里），${missing.length} 不在回收站。`,
+      restored,
+      skipped,
+      missing,
     });
   });
 

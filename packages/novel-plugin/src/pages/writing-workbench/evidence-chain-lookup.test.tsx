@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 describe("EvidenceChainLookup（T4 结算证据链查询）", () => {
-  it("按章号拉取并渲染草案清单：沙漏拦截/自动应用/待审 徽标与指纹", async () => {
+  it("按章号拉取并渲染草案清单：沙漏拦截/自动应用/待确认 徽标与指纹", async () => {
     render(<EvidenceChainLookup bookId="book-1" />);
     fireEvent.change(screen.getByLabelText("证据链查询章号"), { target: { value: "12" } });
     fireEvent.click(screen.getByRole("button", { name: /查证据链/ }));
@@ -58,7 +58,7 @@ describe("EvidenceChainLookup（T4 结算证据链查询）", () => {
     expect(result.textContent).toContain("收敛沙漏拦截 1 条");
     expect(screen.getByText("沙漏拦截")).toBeTruthy();
     expect(screen.getByText("自动应用")).toBeTruthy();
-    expect(screen.getByText("进入待审")).toBeTruthy();
+    expect(screen.getByText("进入待确认")).toBeTruthy();
     // 事件级最终状态透传（applied 可能因应用失败降级）
     expect(result.textContent).toContain("applied");
   });
