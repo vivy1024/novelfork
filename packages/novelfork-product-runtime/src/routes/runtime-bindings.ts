@@ -2,15 +2,16 @@ import { Hono } from "hono";
 import { z } from "zod/v4";
 import { requireAdmin, ValidationError } from "@vivy1024/narrafork-runtime-bridge";
 import { bookRuntimeBindingService } from "../services/book-binding";
+import { forwardErrorsToParent } from "./forward-errors";
 
 const projectQuerySchema = z.object({ projectId: z.string().trim().min(1) }).strict();
 const upsertSchema = z
 	.object({ projectId: z.string().trim().min(1), bookId: z.string().trim().min(1) })
 	.strict();
 
-export const novelRuntimeBindingRoutes = new Hono<{
+export const novelRuntimeBindingRoutes = forwardErrorsToParent(new Hono<{
 	Variables: { user: { sub: string; role: "admin" | "user" } };
-}>();
+}>());
 
 // This maintenance route can attach a controlled book to an arbitrary Runtime
 // project, so it is intentionally limited to administrators. Product flows use

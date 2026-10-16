@@ -1,4 +1,4 @@
-import type { Hono } from "hono";
+import type { Env, Hono, Schema } from "hono";
 
 /**
  * 让产品子应用的异常交回 Runtime 父应用的 onError 统一序列化。
@@ -9,9 +9,11 @@ import type { Hono } from "hono";
  * 同版本组合（单元测试里常见）测不出这个问题。
  *
  * 把子应用的 onError 设为「原样重新抛出」，异常就会冒泡到父应用的 compose，由父应用 onError 处理；
- * 父子同一份 hono 时行为也不变。
+ * 父子同一份 hono 时行为也不变。泛型放宽到任意 Env，带 Variables 的子应用（如 user）也能直接包装。
  */
-export function forwardErrorsToParent<T extends Hono>(app: T): T {
+export function forwardErrorsToParent<E extends Env, S extends Schema, B extends string>(
+	app: Hono<E, S, B>,
+): Hono<E, S, B> {
 	app.onError((error) => {
 		throw error;
 	});
