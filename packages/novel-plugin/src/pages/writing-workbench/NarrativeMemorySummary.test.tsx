@@ -65,6 +65,20 @@ describe("NarrativeMemorySummary 侧栏摘要卡", () => {
     await waitFor(() => expect(screen.getByText(/当前没有需要你处理的事项/)).toBeTruthy());
   });
 
+  it("待审计数取服务端全量 pendingEvents，不被列表的默认截断压低", async () => {
+    // The list endpoint returns at most 50 by default; the count must not be the list length.
+    const pendingEvents = Array.from({ length: 2 }, (_, index) => ({ id: `e-${index}`, risk: "low" }));
+    apiMock.fetchJsonImpl = (path) => {
+      if (path.includes("/stats")) return Promise.resolve({ stats: { total: 300, pendingEvents: 120 } });
+      if (path.includes("/events/pending")) return Promise.resolve({ events: pendingEvents });
+      return Promise.reject(new Error(`unexpected fetchJson: ${path}`));
+    };
+
+    render(<NarrativeMemorySummary bookId="book-1" />);
+    await waitFor(() => expect(screen.getByText("120 条")).toBeTruthy());
+    expect(screen.queryByText("2 条")).toBeNull();
+  });
+
   it("加载失败显示错误并支持刷新重试", async () => {
     apiMock.fetchJsonImpl = () => Promise.reject(new Error("网络中断"));
     render(<NarrativeMemorySummary bookId="book-1" />);

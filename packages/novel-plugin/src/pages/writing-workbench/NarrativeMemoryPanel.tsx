@@ -2245,7 +2245,8 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
       ]);
       setStats(statsPayload?.stats ?? null);
       const events = eventsPayload.events ?? [];
-      setPendingCount(events.length);
+      // 计数用服务端全量 pendingEvents；列表只用于高风险筛选，且默认只取 50 条，不能拿来计数。
+      setPendingCount(statsPayload?.stats?.pendingEvents ?? events.length);
       setHighRiskCount(events.filter((event) => event.risk === "high").length);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "加载章后事实摘要失败");

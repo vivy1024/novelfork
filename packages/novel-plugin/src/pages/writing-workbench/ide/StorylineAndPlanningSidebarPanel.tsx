@@ -297,12 +297,12 @@ interface NextAction {
   readonly tab?: StorylineSubTab;
 }
 
-/** 待审事件计数 hook：与 NarrativeMemorySummary 同一接口，只取 length。 */
+/** 待审事件计数 hook：取服务端全量 stats.pendingEvents；列表默认只取 50 条，不能用来计数。 */
 function usePendingEventCount(bookId: string) {
-  const { data } = useApi<{ events?: ReadonlyArray<{ id?: string }> }>(
-    `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
-  );
-  return data?.events?.length ?? 0;
+  const base = `/api/books/${encodeURIComponent(bookId)}/narrative-memory`;
+  const { data: statsPayload } = useApi<{ stats?: { pendingEvents?: number } }>(`${base}/stats`);
+  const { data: eventsPayload } = useApi<{ events?: ReadonlyArray<{ id?: string }> }>(`${base}/events/pending`);
+  return statsPayload?.stats?.pendingEvents ?? eventsPayload?.events?.length ?? 0;
 }
 
 const OUTLINE_SEED_MESSAGE =
@@ -428,6 +428,7 @@ export function StorylineAndPlanningSidebarPanel({
     invalidateApiPaths([
       `/api/books/${encodeURIComponent(bookId)}/jingwei/entries`,
       `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
+      `/api/books/${encodeURIComponent(bookId)}/narrative-memory/stats`,
       `/api/books/${encodeURIComponent(bookId)}/state`,
       freshnessPath(bookId),
     ]);
