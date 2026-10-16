@@ -11,6 +11,9 @@ import {
   ensureNarrativeMemorySchema,
   insertNarrativeEvent,
   insertNarrativeFact,
+  listTrashedNarrativeEvents,
+  restoreTrashedNarrativeEvents,
+  trashPendingNarrativeEvents,
 } from "../engine/narrative-memory/storage.js";
 import { ensureSettlementLedgerSchema } from "../engine/narrative-memory/settlement-idempotency.js";
 import type { NarrativeEvent, NarrativeFact } from "../engine/narrative-memory/types.js";
@@ -160,6 +163,31 @@ describe("chapter.discard_range", () => {
       const hooks = await readFile(join(bookRoot, "story", "pending_hooks.md"), "utf8");
       expect(hooks).not.toContain("第1章");
       expect(hooks).toContain("第5章");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("删章时回收站里该章的丢弃记录一并清掉，撤销不会把事件复活到已删除的章（T-28 回收站 × 删章）", async () => {
+    const { bookRoot, storage } = await createBook([1, 5]);
+    try {
+      insertNarrativeEvent(storage, { ...event("pending-1", 1), status: "pending", appliedAt: undefined });
+      insertNarrativeEvent(storage, { ...event("pending-5", 5), status: "pending", appliedAt: undefined });
+      // 作者先在待确认面板把两条都丢进回收站。
+      const trashed = trashPendingNarrativeEvents(storage, { bookId: "book-1", eventIds: ["pending-1", "pending-5"], reason: "作者批量丢弃" });
+      expect(trashed.trashed).toEqual(["pending-1", "pending-5"]);
+
+      // 然后删掉第 1 章。
+      const result = await handleChapterDiscardRange({ bookId: "book-1", bookRoot, fromChapter: 1, toChapter: 1, confirm: true, storage });
+      expect(result.ok).toBe(true);
+
+      // 第 1 章的丢弃记录不能留在回收站里：否则「撤销」会把它搬回 narrative_event，成为已删章的孤儿事件。
+      const remaining = listTrashedNarrativeEvents(storage, { bookId: "book-1" }).map((item) => item.event.id);
+      expect(remaining).toEqual(["pending-5"]);
+      const restored = restoreTrashedNarrativeEvents(storage, { bookId: "book-1", eventIds: ["pending-1"] });
+      expect(restored.restored).toEqual([]);
+      const orphan = storage.sqlite.prepare("SELECT COUNT(*) AS n FROM narrative_event WHERE book_id = ? AND chapter_number = 1").get("book-1") as { n: number };
+      expect(orphan.n).toBe(0);
     } finally {
       storage.close();
     }

@@ -318,6 +318,13 @@ function deleteMemoryInRange(
       WHERE book_id = ? AND chapter_number >= ? AND chapter_number <= ?
     `).run(bookId, from, to).changes;
 
+    // 回收站（T-28）里同范围的丢弃记录一并清掉。不清的话，作者在待确认面板点「撤销」
+    // 会把它们搬回 narrative_event，成为已删除章节的孤儿事件。
+    storage.sqlite.prepare(`
+      DELETE FROM narrative_event_trash
+      WHERE book_id = ? AND chapter_number >= ? AND chapter_number <= ?
+    `).run(bookId, from, to);
+
     const deletedFacts = storage.sqlite.prepare(`
       DELETE FROM narrative_fact
       WHERE book_id = ? AND ${factInDiscardRangeSql("narrative_fact", from, to)}
