@@ -747,6 +747,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       evidenceText: stringSchema("create 时的证据文本。"),
       confidence: numberSchema("create 时的置信度 0-1。"),
       layer: stringSchema("create 时的事实层：dynamic | canon | reference，默认 dynamic。"),
+      source: stringSchema("create 时的草案来源：agent（叙述者抽取，低风险自动生效、高风险进待确认）| manual（作者手建，一律待确认，默认）。"),
       reason: stringSchema("批准或拒绝原因（可选）。"),
       limit: numberSchema("list 返回数量上限（可选）。"),
       events: arraySchema("一次创建多条 Pending 事件（最多 20 条）。传入后忽略顶层单条 subject/predicate/object。", {

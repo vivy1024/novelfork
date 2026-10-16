@@ -75,6 +75,12 @@ export interface MemoryEventsInput {
   evidenceText?: string;
   confidence?: number;
   layer?: NarrativeFactLayer;
+  /**
+   * create 时的草案来源。缺省 "manual"（作者手建，保持历史语义：一律 pending）。
+   * 传 "agent" 时按 classifyNarrativeEventRisk 分流：低风险自动生效并写入 fact，
+   * 高风险仍进待确认等作者裁决（T-29）。
+   */
+  source?: "manual" | "agent";
   reason?: string;
   limit?: number;
   /** approve 时覆盖原草案字段（edit-approve：机器抽错一个字不用整章重结）。 */
@@ -84,8 +90,11 @@ export interface MemoryEventsInput {
   editEvidenceText?: string;
   /** Trusted absolute book root injected by the Runtime/product router. */
   bookRoot?: string;
-  /** 一次创建多条 Pending 事件。传入后忽略顶层单条 subject/predicate/object。 */
-  events?: readonly Omit<MemoryEventsInput, "bookId" | "action" | "events" | "eventId" | "limit" | "reason" | "bookRoot">[];
+  /**
+   * 一次创建多条 Pending 事件。传入后忽略顶层单条 subject/predicate/object。
+   * source 不看这里：批次内逐条写法会分叉行为，统一以顶层 source 为准。
+   */
+  events?: readonly Omit<MemoryEventsInput, "bookId" | "action" | "events" | "eventId" | "limit" | "reason" | "bookRoot" | "source">[];
 }
 
 type ToolResult =
@@ -564,35 +573,57 @@ export async function handleMemoryEvents(input: MemoryEventsInput, storageOverri
     if (drafts.length > 20) {
       return { ok: false, error: "batch-too-large", summary: "一次最多创建 20 条 Pending NarrativeEvents。" };
     }
+    // T-29：agent 来源走 classifyNarrativeEventRisk 分流，manual 保持「一律 pending」的历史语义。
+    // 单条与批量都以顶层 source 为准，避免批量里逐条写法不一时行为分叉。
+    const isAgentSource = input.source === "agent";
     const createdEvents = [];
     for (const [index, draft] of drafts.entries()) {
       if (!draft.chapterNumber || !draft.eventType || !draft.subject || !draft.predicate || !draft.object || !draft.evidenceText) {
         return { ok: false, error: "invalid-input", summary: `create 第 ${index + 1} 条需要 chapterNumber、eventType、subject、predicate、object、evidenceText。` };
       }
-      createdEvents.push({
-        ...createNarrativeEvent({
-          bookId,
-          chapterNumber: draft.chapterNumber,
-          eventType: draft.eventType,
-          subject: draft.subject,
-          predicate: draft.predicate,
-          object: draft.object,
-          evidenceText: draft.evidenceText,
-          confidence: draft.confidence ?? 0.8,
-          source: "manual",
-          layer: draft.layer ?? "dynamic",
-        }),
-        status: "pending" as const,
-        appliedAt: undefined,
+      const created = createNarrativeEvent({
+        bookId,
+        chapterNumber: draft.chapterNumber,
+        eventType: draft.eventType,
+        subject: draft.subject,
+        predicate: draft.predicate,
+        object: draft.object,
+        evidenceText: draft.evidenceText,
+        confidence: draft.confidence ?? 0.8,
+        source: isAgentSource ? "agent" : "manual",
+        layer: draft.layer ?? "dynamic",
       });
+      // 作者手建的一律待确认：createNarrativeEvent 只看 eventType/confidence，会把低风险判成 applied，
+      // 那不是「作者已裁决」，只是风险分级的结果，必须显式压回 pending。
+      createdEvents.push(isAgentSource ? created : { ...created, status: "pending" as const, appliedAt: undefined });
     }
-    const created = persistNarrativeEvents(storage, createdEvents);
+    const persisted = persistNarrativeEvents(storage, createdEvents);
+    if (isAgentSource) {
+      // 低风险草案自动生效：与章后结算同一条路——归约器写 fact 并把事件落 applied。
+      // 只把 status 写成 applied 而不归约，会留下「applied 却没有 fact」的悬空事件。
+      const applied = applyNarrativeEvents(storage, bookId, persisted);
+      if (applied.failedEvents.length > 0) {
+        return {
+          ok: false,
+          error: "event-apply-failed",
+          summary: `agent 草案归约失败：${applied.failedEvents.map((item) => `${item.id}: ${item.error}`).join("；")}`,
+        };
+      }
+      const finalEvents = persisted.map((event) => getNarrativeEventById(storage, bookId, event.id) ?? event);
+      return {
+        ok: true,
+        summary: finalEvents.length === 1
+          ? `已创建 agent 草案：${finalEvents[0]!.id}（${finalEvents[0]!.status}）。`
+          : `已批量创建 ${finalEvents.length} 条 agent 草案。`,
+        data: finalEvents.length === 1 ? { event: finalEvents[0], events: finalEvents } : { events: finalEvents },
+      };
+    }
     return {
       ok: true,
-      summary: created.length === 1
-        ? `已创建 Pending NarrativeEvent：${created[0]!.id}。`
-        : `已批量创建 ${created.length} 条 Pending NarrativeEvents。`,
-      data: created.length === 1 ? { event: created[0], events: created } : { events: created },
+      summary: persisted.length === 1
+        ? `已创建 Pending NarrativeEvent：${persisted[0]!.id}。`
+        : `已批量创建 ${persisted.length} 条 Pending NarrativeEvents。`,
+      data: persisted.length === 1 ? { event: persisted[0], events: persisted } : { events: persisted },
     };
   }
 

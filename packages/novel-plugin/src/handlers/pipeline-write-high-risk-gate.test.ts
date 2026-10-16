@@ -239,6 +239,49 @@ describe("pipeline.write 高风险待确认门禁（T-13）", () => {
     expect(result).not.toHaveProperty("highRiskPendingReminder");
   });
 
+  it("T-29：agent 抽取的高风险草案未经作者确认，下一章写章被拦下", async () => {
+    const storage = initStorage();
+
+    // agent 抽取器提交一条高风险草案（世界规则，classifyNarrativeEventRisk 判 high）。
+    const created = await handleMemoryEvents({
+      bookId: "book-1",
+      action: "create",
+      source: "agent",
+      chapterNumber: 1,
+      eventType: "world_fact_introduced",
+      subject: "山门",
+      predicate: "规则",
+      object: "外人入山者死",
+      evidenceText: "守门人说外人入山者死。",
+      confidence: 0.9,
+    }, storage);
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const draft = created.data.event as { id: string; status: string };
+    expect(draft.status).toBe("pending");
+
+    // 这条草案还没被作者确认，下一章就写不下去。
+    const blocked = await executePipelineWrite(
+      { bookId: "book-1", sceneSpec, content: CHAPTER_TEXT },
+      { root, bookRoot, logger: silentLogger, dispatchToolCall: settled },
+    );
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) return;
+    expect(blocked.code).toBe("high-risk-pending");
+    expect(blocked.error).toContain("外人入山者死");
+
+    // 作者批准后放行——证明拦的确实是「未确认」，不是永久堵死。
+    const approved = await handleMemoryEvents({ bookId: "book-1", action: "approve", eventId: draft.id, bookRoot }, storage);
+    expect(approved.ok).toBe(true);
+
+    const result = await executePipelineWrite(
+      { bookId: "book-1", sceneSpec, content: CHAPTER_TEXT },
+      { root, bookRoot, logger: silentLogger, dispatchToolCall: settled },
+    );
+    if (!result.ok) throw new Error(`expected ok, got ${result.code}: ${result.error}`);
+    expect(result.ok).toBe(true);
+  });
+
   it("book.json 损坏时返回 book-config-unreadable，不说成书不存在", async () => {
     await writeFile(join(bookRoot, "book.json"), "{ this is not valid json", "utf-8");
 

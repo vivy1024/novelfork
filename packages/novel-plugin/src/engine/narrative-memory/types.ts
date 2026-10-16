@@ -40,7 +40,7 @@ export type NarrativeRetrievalPurpose = z.infer<typeof NarrativeRetrievalPurpose
 export const NarrativeEventStatusSchema = z.enum(["pending", "applied", "rejected"]);
 export type NarrativeEventStatus = z.infer<typeof NarrativeEventStatusSchema>;
 
-export const NarrativeEventSourceSchema = z.enum(["settle", "manual", "import"]);
+export const NarrativeEventSourceSchema = z.enum(["settle", "manual", "import", "agent"]);
 export type NarrativeEventSource = z.infer<typeof NarrativeEventSourceSchema>;
 
 export const NarrativeEventRiskLevelSchema = z.enum(["low", "medium", "high"]);

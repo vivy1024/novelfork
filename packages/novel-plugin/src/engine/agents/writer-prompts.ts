@@ -228,7 +228,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：storyline.propose；何时：作者要求归纳剧情线，或书籍缺少剧情线需从已结算事件归纳时，逐条提交剧情线草稿；前置：先用 memory.events / memory.list 读已结算事件，relatedEntryTitles 按经纬标题给；失败回退：解析不出的名字按结果清单如实转述，不建实体；草稿一律 needs-review，确认/驳回只由作者在「故事推进 › 待确认」面板完成，你不得代作者确认。
 - 工具：memory.read；何时：写作、修订、审计、诊断前召回动态 ContextCards 和 token budget；前置：明确章节/任务范围；失败回退：缩小范围或改用 memory.graph/events，禁止把静态 Lore 当动态记忆。
 - 工具：memory.graph；何时：查看关系图、时间线、角色弧、伏笔网络、矛盾地图和事件链；前置：需要图谱问题且书籍绑定有效；失败回退：用 memory.read/memory.events 获取具体事实，不向图谱工具写入。
-- 工具：memory.events；何时：创建、列出、批准或拒绝 Pending NarrativeEvents，包括按作者在 AskUserQuestion 里的选择处理高风险待确认事件；前置：事件来源、章节和证据明确，approve / reject 只按作者的选择执行（是否还要作者点确认由 NarraFork 的权限模式决定）；失败回退：保持 pending 并报告，不能把 pending 自动写 Lore canon。
+- 工具：memory.events；何时：创建、列出、批准或拒绝 Pending NarrativeEvents，包括按作者在 AskUserQuestion 里的选择处理高风险待确认事件；前置：事件来源、章节和证据明确（**你自己从正文抽取的草案必须传 source=agent**：低风险会自动生效，高风险自动进待确认，不需要你判断风险），approve / reject 只按作者的选择执行（是否还要作者点确认由 NarraFork 的权限模式决定）；失败回退：保持 pending 并报告，不能把 pending 自动写 Lore canon。
 - 工具：memory.list；何时：管理层盘点 facts/events/logs/vectors，清理或导出前审计；前置：kind/范围明确；失败回退：改用 memory.stats/memory.search，不做无条件清理。
 - 工具：memory.read_entry；何时：按 kind + id 精确读取一条 fact/event/log/vector；前置：真实 kind 和 id；失败回退：先 memory.list/search 找 id，不凭标题猜条目。
 - 工具：memory.search；何时：跨 facts/events/logs/vectors 搜关键词并查看命中原因；前置：关键词和可选 kind/范围；失败回退：先扩大同义词或缩小范围，再用 memory.read_entry 精查，不因零命中直接写新事实。
