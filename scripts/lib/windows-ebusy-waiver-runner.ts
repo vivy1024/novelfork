@@ -93,16 +93,51 @@ export function appendRunnerFailures(xml: string, run: { readonly exitCode: numb
 }
 
 /**
+ * 把同一轮里按目录分批跑出的多份 JUnit 报告合成一份。
+ * bun 的报告结构固定（`<testsuites ...>` 包一组 `<testsuite>`），这里只做最小文本搬运：
+ * 去掉每份的外层包装与 XML 声明，再把各份的 `<testsuite>` 拼在一个新的 `<testsuites>` 里。
+ * 不解析、不重排任何 testcase 内容，避免在报告往返中改动失败信息（EBUSY 判定读的就是它）。
+ * 结构不符合预期（缺少 `</testsuites>`）时原样保留该份，宁可多带一层包装也不丢弃用例。
+ */
+export function mergeJUnitReports(reports: readonly string[]): string {
+	if (reports.length === 0) throw new Error("没有可合并的 JUnit 报告");
+	if (reports.length === 1) return reports[0]!;
+	const bodies = reports.map((xml) => {
+		const openTag = xml.indexOf("<testsuites");
+		const closing = xml.lastIndexOf("</testsuites>");
+		if (openTag === -1 || closing === -1 || closing < openTag) return xml;
+		const openEnd = xml.indexOf(">", openTag);
+		if (openEnd === -1 || openEnd > closing) return xml;
+		return xml.slice(openEnd + 1, closing);
+	});
+	return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="bun test (batched)">${bodies.join("")}</testsuites>\n`;
+}
+
+/**
  * 生产环境的 runSuite：用指定 Bun 运行一次测试目录并产出 JUnit XML。
  * 环境经 buildIsolatedTestEnvironment 构造；临时目录由本函数创建并在返回后删除，只删除自己创建的目录。
+ *
+ * `testPaths` 是 bun test 的**位置过滤项**，不是文件系统路径：bun 只做子串/目录前缀匹配，
+ * 不做路径解析，也不做 glob。所以裸名字（`server`）会连带命中 `tests\server\...` 这类同段名的目录，
+ * 而 `./server` 才是「只跑这个目录」。入口脚本按目录分批时依赖后者。
  */
 export function createBunJUnitRunner(options: {
 	readonly bunExecutable: string;
 	readonly cwd: string;
-	readonly testPaths: readonly string[];
 	readonly migrationsDir: string;
-}): (index: 1 | 2) => Promise<string> {
-	return async (index) => {
+	/**
+	 * 子进程启动后回调一次，交出本次运行的批次与 scratch 路径。
+	 * 子进程的 stdout 被丢弃、stderr 落盘，调用方只能通过 errorLog 观察进度；
+	 * 这个钩子让入口脚本可以在长批次里打印心跳，而不是等整批跑完才有输出。
+	 */
+	readonly onRunStart?: (info: {
+		readonly index: 1 | 2;
+		readonly scratch: string;
+		readonly errorLog: string;
+		readonly reportPath: string;
+	}) => void;
+}): (index: 1 | 2, testPaths: readonly string[]) => Promise<string> {
+	return async (index, testPaths) => {
 		const probe = Bun.spawnSync([options.bunExecutable, "--version"], { stdout: "pipe", stderr: "pipe" });
 		await assertPinnedBunVersion(probe.stdout.toString().trim());
 		const scratch = mkdtempSync(join(tmpdir(), `nf-waiver-run${index}-`));
@@ -117,6 +152,7 @@ export function createBunJUnitRunner(options: {
 			env.PATH = [dirname(options.bunExecutable), env.PATH].filter(Boolean).join(delimiter);
 			// stderr 落盘而非丢弃：子进程在加载 preload 阶段被拒时不会写报告，stderr 是唯一的原因线索。
 			const errorLog = join(scratch, "bun-stderr.log");
+			options.onRunStart?.({ index, scratch, errorLog, reportPath });
 			const proc = Bun.spawn(
 				[
 					options.bunExecutable,
@@ -126,7 +162,7 @@ export function createBunJUnitRunner(options: {
 					"--timeout=30000",
 					"--reporter=junit",
 					`--reporter-outfile=${reportPath}`,
-					...options.testPaths,
+					...testPaths,
 				],
 				{
 					cwd: options.cwd,
@@ -138,7 +174,10 @@ export function createBunJUnitRunner(options: {
 			const exitCode = await proc.exited;
 			const stderr = existsSync(errorLog) ? readFileSync(errorLog, "utf8") : "";
 			if (!existsSync(reportPath)) {
-				throw new Error(`Bun test 未生成 JUnit 报告（退出码 ${exitCode}）。stderr 尾部：\n${stderr.slice(-2000)}`);
+				const suffix = testPaths.length > 0 ? `（批次：${testPaths.join(" ")}）` : "";
+				throw new Error(
+					`Bun test 未生成 JUnit 报告${suffix}（退出码 ${exitCode}）。stderr 尾部：\n${stderr.slice(-2000)}`,
+				);
 			}
 			return appendRunnerFailures(readFileSync(reportPath, "utf8"), { exitCode, stderr: stderr.slice(-4000) });
 		} finally {
