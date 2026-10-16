@@ -46,6 +46,7 @@ import {
 } from "../../../novel-plugin/src/engine/jingwei";
 import { createWritingResourceService } from "../../../novel-plugin/src/engine/writing-resource/service";
 import { listChapterFiles, parseChapterFileName } from "../../../novel-plugin/src/engine/writing-resource/chapter-layout";
+import { writeFileAtomic } from "../../../novel-plugin/src/engine/writing-resource/atomic-write";
 import { resolveChapterVolumeDirectory } from "../../../novel-plugin/src/handlers/outline-volume";
 import type { WritingResource } from "../../../novel-plugin/src/engine/writing-resource/types";
 import { loadWritingSkills } from "../../../novel-plugin/src/engine/writing-skills/loader";
@@ -813,10 +814,9 @@ async function updateBookTimestamp(
 	bookRoot: string,
 	config: Record<string, unknown>,
 ): Promise<void> {
-	await writeFile(
+	await writeFileAtomic(
 		join(bookRoot, "book.json"),
 		`${JSON.stringify({ ...config, updatedAt: now() }, null, 2)}\n`,
-		"utf8",
 	);
 }
 
@@ -1017,11 +1017,15 @@ async function writeBookConfig(
 	config: Record<string, unknown>,
 	options?: { readonly exclusive?: boolean },
 ): Promise<void> {
-	await writeFile(
-		join(bookRoot, "book.json"),
-		`${JSON.stringify(config, null, 2)}\n`,
-		options?.exclusive ? { encoding: "utf8", flag: "wx" } : "utf8",
-	);
+	const content = `${JSON.stringify(config, null, 2)}\n`;
+	// 覆盖更新走原子写（临时文件 + fsync + rename）：写入中断时 book.json 只会是旧版或新版，
+	// 不留半截配置导致整本书不可读。独占新建（wx）不能用 rename 覆盖，保持原语义，
+	// 以免覆盖用户目录里已有的 book.json。
+	if (options?.exclusive) {
+		await writeFile(join(bookRoot, "book.json"), content, { encoding: "utf8", flag: "wx" });
+		return;
+	}
+	await writeFileAtomic(join(bookRoot, "book.json"), content);
 }
 
 async function initializeExternalBookConfig(
@@ -1423,8 +1427,13 @@ export class NovelForkProductBookService {
 				getControlledBooksRoot(),
 				isExternalBookWorkspace(input.projectInit),
 			);
-			const config = root ? await readBookConfig(root, operation.bookId).catch(() => null) : null;
-			if (!config) continue;
+			// T-17：book.json 损坏或读取失败只让写作配置字段缺省，不让书从书架消失。
+			// 书的身份字段（id/title/status/updatedAt）来自产品库记录，与 book.json 内容无关；
+			// 信任检查（resolveTrustedBookRoot）与访问控制（canAccessBinding）保持不变，
+			// 因此降级条目不获得可信根，也不放宽任何工作区或叙述者访问。
+			const config = root
+				? (await readBookConfig(root, operation.bookId).catch(() => null)) ?? {}
+				: {};
 			results.push(this.mapBook(operation, config));
 		}
 		return results;
@@ -2027,7 +2036,7 @@ export class NovelForkProductBookService {
 			[EXTERNAL_BOOK_WORKSPACE_MARKER]: true,
 			updatedAt: now(),
 		};
-		await writeFile(join(root, "book.json"), `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+		await writeFileAtomic(join(root, "book.json"), `${JSON.stringify(nextConfig, null, 2)}\n`);
 
 		const updatedBinding = await bookRuntimeBindingService.upsert(
 			operation.runtimeProjectId,
