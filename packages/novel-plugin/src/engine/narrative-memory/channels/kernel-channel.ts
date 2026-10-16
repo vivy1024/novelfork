@@ -17,6 +17,8 @@ export interface KernelChannelInput {
   readonly storage: StorageDatabase;
   readonly bookId: string;
   readonly characterIds: readonly string[];
+  /** 经纬中已确认（status=confirmed）的角色规范名；未在此名单内的内核不注入写作上下文。 */
+  readonly confirmedCharacterNames: readonly string[];
   readonly fields: readonly KernelFieldSpec[];
   readonly stateSummaryMaxChars: number;
   readonly defaultPriority?: number;
@@ -48,17 +50,24 @@ function renderKernelFields(
   return { summary: lines.join("\n"), injectedFieldKeys: ordered.filter((f) => kernelFields[f.key]).map((f) => f.key) };
 }
 
+/**
+ * 作者确认门控：内核只有在经纬中同名角色条目为 confirmed 时才允许注入。
+ * 经纬是角色当前设定的唯一权威源；结算器产出的内核一律先不生效，待作者确认角色后随之生效。
+ * 已确认名单由调用方从经纬仓储异步读取后传入（本函数保持同步纯函数）。
+ */
 export function buildKernelCards(input: KernelChannelInput): NarrativeContextCard[] {
   const kernels = listCharacterKernels(input.storage, {
     bookId: input.bookId,
     characterIds: input.characterIds,
   });
+  const confirmed = new Set(input.confirmedCharacterNames);
   const now = new Date().toISOString();
   const priority = input.defaultPriority ?? 500;
 
   const cards: NarrativeContextCard[] = [];
   for (const kernel of kernels) {
     if (kernel.entryStatus !== "active") continue;
+    if (!confirmed.has(kernel.characterId)) continue;
     const { summary } = renderKernelFields(kernel.fields, input.fields);
     const trimmed = truncateText(summary, Math.max(input.stateSummaryMaxChars, 120));
     if (!trimmed) continue;

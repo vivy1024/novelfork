@@ -11,7 +11,7 @@ import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry
 import { createStoryJingweiSectionRepository } from "../jingwei/repositories/section-repo.js";
 import { buildNarrativeContext } from "./build-narrative-context.js";
 import { upsertNarrativeFact } from "./facts.js";
-import { getLatestNarrativeRetrievalLog, upsertNarrativeContextVector } from "./storage.js";
+import { getLatestNarrativeRetrievalLog, upsertCharacterKernel, upsertNarrativeContextVector } from "./storage.js";
 import { createScene } from "./scene-store.js";
 import { createStylePreset } from "../writing-layers/style-preset.js";
 import type { NarrativeEmbeddingProvider } from "./channels/semantic-channel.js";
@@ -420,6 +420,28 @@ describe("buildNarrativeContext", () => {
     }
   });
 
+  it("labels machine facts whose source chapter was reworked after settlement", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({ id: "machine-stale", subject: "韩立", predicate: "持有", object: "小瓶", sourceType: "event", sourceChapter: 3, validFromChapter: 3 }));
+
+      const result = await buildNarrativeContext({
+        storage,
+        bookId: "book-1",
+        purpose: "write_chapter",
+        chapterNumber: 12,
+        sceneSpec,
+        entities: ["韩立"],
+        staleSettlementChapters: [3],
+      });
+
+      expect(result.sections.facts).toContain("韩立 持有 小瓶");
+      expect(result.sections.facts).toContain("这条事实可能已过期");
+    } finally {
+      storage.close();
+    }
+  });
+
   describe("T-05c 召回内容定界", () => {
     // 测试侧独立列出全部定界标签名。
     const delimiter = /<\s*\/?\s*(?:hard_constraints|narrative_state|timeline_context|active_hooks|known_facts|style_rules|semantic_memory|character_kernel|recent_chapter_summaries|knowledge_boundary|hook_debt|jingwei_context|prev_chapter_tail)(?![\w-])/giu;
@@ -527,6 +549,144 @@ describe("buildNarrativeContext", () => {
       const log = getLatestNarrativeRetrievalLog(storage, "book-1");
       const loggedStyle = log?.diagnostics.channelStats.find((item) => item.channel === "style");
       expect((loggedStyle?.metadata?.styleSamples as Record<string, any>).selected).toHaveLength(2);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("buildNarrativeContext character-kernel author confirmation gate", () => {
+  const kernelConfig = {
+    enabled: true,
+    promptTemplate: null,
+    injectBudgetRatio: 0.1,
+    stateSummaryMaxChars: 200,
+    triggerEventTypes: [],
+    fields: [],
+  };
+
+  async function seedBookWithCharacter(storage: StorageDatabase, status: "confirmed" | "needs-review", category: string): Promise<void> {
+    runStorageMigrations(storage, { migrationsDir: join(process.cwd(), "../core/src/storage/migrations") });
+    const now = new Date("2026-06-22T00:00:00.000Z");
+    await createBookRepository(storage).create({
+      id: "book-1",
+      name: "凡人修仙录",
+      jingweiMode: "dynamic",
+      currentChapter: 12,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await createStoryJingweiSectionRepository(storage).create({
+      id: "sec-characters",
+      bookId: "book-1",
+      key: "characters",
+      name: "角色",
+      description: "",
+      icon: null,
+      order: 1,
+      enabled: true,
+      showInSidebar: true,
+      participatesInAi: true,
+      defaultVisibility: "tracked",
+      fieldsJson: [],
+      builtinKind: "characters",
+      sourceTemplate: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await createStoryJingweiEntryRepository(storage).create({
+      id: "entry-xue",
+      bookId: "book-1",
+      sectionId: "sec-characters",
+      title: "薛行之",
+      contentMd: "",
+      summaryMd: "",
+      tags: [],
+      aliases: [],
+      customFields: {},
+      relatedChapterNumbers: [],
+      relatedEntryIds: [],
+      visibilityRule: { type: "tracked" },
+      participatesInAi: true,
+      tokenBudget: null,
+      priorityTier: "core",
+      layer: "canon",
+      importance: 80,
+      summaryL0: "薛行之",
+      category,
+      fields: {},
+      status,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  function seedSettledKernel(storage: StorageDatabase): void {
+    upsertCharacterKernel(storage, {
+      id: "kernel:book-1:薛行之",
+      bookId: "book-1",
+      characterId: "薛行之",
+      entryStatus: "active",
+      fields: { motivation: "查清旧案真相" },
+      evidence: [],
+      updatedChapter: 11,
+      updatedAt: "2026-06-22T00:00:00.000Z",
+      origin: "settle",
+    });
+  }
+
+  async function buildWithKernel(storage: StorageDatabase) {
+    return buildNarrativeContext({
+      storage,
+      bookId: "book-1",
+      purpose: "write_chapter",
+      chapterNumber: 12,
+      sceneSpec,
+      sceneText: "薛行之在药园冷笑。",
+      entities: ["薛行之"],
+      maxTokens: 4000,
+      characterKernelConfig: kernelConfig,
+    });
+  }
+
+  it("does not put a settled kernel into the writing context while its character is needs-review", async () => {
+    const storage = await createStorage();
+    try {
+      await seedBookWithCharacter(storage, "needs-review", "characters");
+      seedSettledKernel(storage);
+
+      const result = await buildWithKernel(storage);
+
+      expect(result.sections["character-kernel"]).not.toContain("查清旧案真相");
+      expect(result.cards.some((card) => card.channel === "character-kernel")).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("puts the kernel into the writing context once the character is confirmed", async () => {
+    const storage = await createStorage();
+    try {
+      await seedBookWithCharacter(storage, "confirmed", "characters");
+      seedSettledKernel(storage);
+
+      const result = await buildWithKernel(storage);
+
+      expect(result.cards.some((card) => card.channel === "character-kernel" && card.content.includes("查清旧案真相"))).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("recognises a confirmed character stored under the legacy category value", async () => {
+    const storage = await createStorage();
+    try {
+      await seedBookWithCharacter(storage, "confirmed", "character");
+      seedSettledKernel(storage);
+
+      const result = await buildWithKernel(storage);
+
+      expect(result.cards.some((card) => card.channel === "character-kernel" && card.content.includes("查清旧案真相"))).toBe(true);
     } finally {
       storage.close();
     }

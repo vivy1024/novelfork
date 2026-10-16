@@ -26,6 +26,15 @@ async function seedChapterIndex() {
     { number: 3, title: "空章", fileName: chapterRelativePath("卷01", 3, "空章"), wordCount: 1200, updatedAt: "2026-09-30T00:00:00.000Z", contentHash: chapterContentFingerprint("还没结算的章。") },
   ];
   await writeChapterIndex(bookRoot, entries);
+  // 新鲜度按磁盘正文现算：正文必须真实落盘，否则会判为「未知」而不是「过期」。
+  await writeChapterBody(1, "雨夜", chapterOne);
+  await writeChapterBody(2, "入城", chapterTwoEdited);
+}
+
+async function writeChapterBody(number: number, title: string, content: string) {
+  const relativePath = chapterRelativePath("卷01", number, title);
+  await mkdir(join(bookRoot, "chapters", "卷01"), { recursive: true });
+  await writeFile(join(bookRoot, "chapters", relativePath.replace(/^chapters[\\/]/u, "")), content, "utf8");
 }
 
 function recordSettlement(chapterNumber: number, content: string) {

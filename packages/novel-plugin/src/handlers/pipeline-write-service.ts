@@ -855,8 +855,8 @@ async function executePipelineWriteUnlocked(
         const storage = getStorageDatabase();
         const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir).catch(() => undefined);
         const writingLayers = await resolveWritingLayers({ bookRoot: bookDir }).catch(() => null);
-        // 结算后又被改过的章：其摘要注入时标注可能过期（现算，读失败不阻断写作）。
-        const staleSummaryChapters = await readBookSettlementFreshness(storage, bookId, bookDir)
+        // 结算后又被改过的章：其摘要与机器事实注入时标注可能过期（现算，读失败不阻断写作）。
+        const staleSettlementChapters = await readBookSettlementFreshness(storage, bookId, bookDir)
           .then((freshness) => freshness.staleChapters)
           .catch(() => [] as readonly number[]);
         // 角色声线：只注入本章出场角色、作者已确认的字段；读取失败不阻断写作。
@@ -898,7 +898,7 @@ async function executePipelineWriteUnlocked(
           ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),
           // 结构化声线摘要随文本一起下传：只进检索诊断日志，回答「这章注入了谁的哪些声线字段」。
           ...(sceneVoices?.profiles.length ? { voiceProfiles: sceneVoices.profiles } : {}),
-          ...(staleSummaryChapters.length > 0 ? { staleSummaryChapters } : {}),
+          ...(staleSettlementChapters.length > 0 ? { staleSettlementChapters } : {}),
           ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
           // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
           ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),

@@ -133,4 +133,35 @@ describe("facts channel", () => {
       storage.close();
     }
   });
+
+  it("labels machine facts from a stale source chapter and keeps author facts unlabeled", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({ id: "machine-stale", subject: "韩立", predicate: "持有", object: "小瓶", sourceType: "event", sourceChapter: 3, validFromChapter: 3 }));
+      upsertNarrativeFact(storage, fact({ id: "machine-fresh", subject: "韩立", predicate: "怀疑", object: "墨大夫", sourceType: "event", sourceChapter: 4, validFromChapter: 4 }));
+      upsertNarrativeFact(storage, fact({ id: "manual-stale", subject: "韩立", predicate: "出身", object: "七玄门", sourceType: "manual", sourceChapter: 3, validFromChapter: 3 }));
+
+      const result = await createFactsChannel().run({
+        storage,
+        bookId: "book-1",
+        currentChapter: 12,
+        entities: ["韩立"],
+        staleChapters: [3],
+      });
+
+      const byId = new Map(result.cards.map((card) => [card.sourceId, card] as const));
+      const stale = byId.get("machine-stale");
+      const fresh = byId.get("machine-fresh");
+      const manual = byId.get("manual-stale");
+      expect(stale?.content).toContain("这条事实可能已过期");
+      expect(stale?.tags).toContain("stale");
+      expect(stale?.priority).toBeLessThan(fresh?.priority ?? 0);
+      expect(fresh?.content).not.toContain("可能已过期");
+      expect(fresh?.tags).not.toContain("stale");
+      expect(manual?.content).not.toContain("可能已过期");
+      expect(manual?.tags).not.toContain("stale");
+    } finally {
+      storage.close();
+    }
+  });
 });

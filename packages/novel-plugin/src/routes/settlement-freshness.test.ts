@@ -71,7 +71,7 @@ describe("结算新鲜度", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.chapters.map((chapter: { chapterNumber: number; status: string }) => [chapter.chapterNumber, chapter.status]))
-      .toEqual([[1, "fresh"], [2, "stale"], [3, "unsettled"], [4, "unknown"]]);
+      .toEqual([[1, "fresh"], [2, "stale"], [3, "unsettled"], [4, "fresh"]]);
     expect(body.staleChapters).toEqual([2]);
     expect(body.unsettledChapters).toEqual([3]);
     expect(body.explanation).toMatchObject({ whatHappened: expect.stringContaining("第 2 章"), suggestedAction: expect.any(String) });

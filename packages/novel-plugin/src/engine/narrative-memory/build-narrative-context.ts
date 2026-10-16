@@ -18,6 +18,9 @@ import { createStyleChannel } from "./channels/style-channel.js";
 import { listScenesByChapter, type NarrativeScene } from "./scene-store.js";
 import { createTimelineChannel } from "./channels/timeline-channel.js";
 import { buildKernelCards, type KernelChannelInput } from "./channels/kernel-channel.js";
+import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry-repo.js";
+import { normalizeCategory } from "../jingwei/unified-categories.js";
+import { stripParentheticalSuffix } from "./entity-dictionary.js";
 import { buildNarrativeRetrievalDiagnostics, formatNarrativeSections, persistNarrativeRetrievalLog } from "./diagnostics.js";
 import {
   applyWriteProfileCountCaps,
@@ -62,8 +65,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   voiceConstraints?: string;
   /** 与 voiceConstraints 同一份声线的结构化摘要（角色 + 已确认字段），只写进检索诊断日志，不进上下文卡片。 */
   readonly voiceProfiles?: readonly { readonly name: string; readonly confirmedFields: readonly string[] }[];
-  /** 正文在结算后被改过的章号（调用方由章节索引与结算台账现算）；这些章的摘要会被标注可能过期。 */
-  staleSummaryChapters?: readonly number[];
+  /** 正文在结算后被改过的章号（调用方由章节索引与结算台账现算）；这些章的摘要与机器事实会被标注可能过期。 */
+  staleSettlementChapters?: readonly number[];
   bookDesignText?: string;
   channelTimeoutMs?: number;
   retrievalLogId?: string;
@@ -234,6 +237,22 @@ function applyWaveMemory(
   };
 }
 
+/**
+ * 读取经纬中已确认（status=confirmed）的角色规范名，供角色内核的作者确认门控使用。
+ * 规范名与内核 characterId 同源：经纬标题剥离括号装饰后的名字。读取失败时返回空名单，
+ * 即内核一律不注入（宁可少注入，也不把未确认的内核带入写作上下文）。
+ */
+async function loadConfirmedCharacterNames(storage: StorageDatabase, bookId: string): Promise<string[]> {
+  try {
+    const entries = await createStoryJingweiEntryRepository(storage).listByBook(bookId);
+    return entries
+      .filter((entry) => normalizeCategory(entry.category).category === "characters" && entry.status === "confirmed")
+      .map((entry) => stripParentheticalSuffix(entry.title) || entry.title);
+  } catch {
+    return [];
+  }
+}
+
 export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeInput): Promise<NarrativeContextPackage> {
   const parsed = BuildNarrativeContextInputSchema.parse({
     bookId: input.bookId,
@@ -267,6 +286,11 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     maxTokens: parsed.maxTokens,
     ...(input.budgetPolicy ?? {}),
   }).style;
+
+  // 角色内核的作者确认门控：只在内核通道启用时读取经纬已确认角色名单。
+  const kernelConfig = input.characterKernelConfig;
+  const kernelEnabled = Boolean(kernelConfig?.enabled) && isOptionalChannelEnabled(input, "character-kernel");
+  const confirmedCharacterNames = kernelEnabled ? await loadConfirmedCharacterNames(input.storage, parsed.bookId) : [];
 
   const channelResults = await Promise.all([
     runChannel(createSceneSpecChannel(), { bookId: parsed.bookId, sceneSpec }, timeoutMs),
@@ -321,6 +345,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         sceneSpec,
         sceneText: parsed.sceneText,
         entities,
+        ...(input.staleSettlementChapters?.length ? { staleChapters: input.staleSettlementChapters } : {}),
       }, timeoutMs)
       : disabledChannelResult("facts"),
     isOptionalChannelEnabled(input, "semantic")
@@ -352,7 +377,8 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
       : disabledChannelResult("style"),
     // 角色内核通道：config.characterKernel.enabled 且本书 channels["character-kernel"] 未关闭时注入。
     // 字段集合由 config.characterKernel.fields 决定（空 = 内置默认），预算按 injectBudgetRatio 参与统一分配。
-    input.characterKernelConfig?.enabled && isOptionalChannelEnabled(input, "character-kernel")
+    // 仅注入经纬已确认角色的内核（作者确认门控）。
+    kernelConfig && kernelEnabled
       ? runChannel({
         name: "character-kernel",
         run: (kernelInput: KernelChannelInput) => ({
@@ -362,8 +388,9 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         storage: input.storage,
         bookId: parsed.bookId,
         characterIds: entities,
-        fields: input.characterKernelConfig.fields.length > 0 ? input.characterKernelConfig.fields : DEFAULT_KERNEL_FIELDS,
-        stateSummaryMaxChars: input.characterKernelConfig.stateSummaryMaxChars,
+        confirmedCharacterNames,
+        fields: kernelConfig.fields.length > 0 ? kernelConfig.fields : DEFAULT_KERNEL_FIELDS,
+        stateSummaryMaxChars: kernelConfig.stateSummaryMaxChars,
       }, timeoutMs)
       : disabledChannelResult("character-kernel"),
     // 近章手动剧情摘要通道：读经纬 chapter-summaries 类目，按章节号倒序注入最近几章，
@@ -374,7 +401,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         bookId: parsed.bookId,
         currentChapter,
         limit: writeProfileCaps.recentSummaries,
-        ...(input.staleSummaryChapters?.length ? { staleChapters: input.staleSummaryChapters } : {}),
+        ...(input.staleSettlementChapters?.length ? { staleChapters: input.staleSettlementChapters } : {}),
       }, timeoutMs)
       : disabledChannelResult("recent-summary"),
     // 知情边界通道（T4.3）：本章出场角色的「现状」（状态流水）与「写作禁忌」（他尚不知道从实推的

@@ -10,8 +10,10 @@
  */
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
-import { readChapterIndex } from "../writing-resource/chapter-layout.js";
-import { ensureSettlementLedgerSchema } from "./settlement-idempotency.js";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { listChapterFiles, readChapterIndex } from "../writing-resource/chapter-layout.js";
+import { chapterContentFingerprint, ensureSettlementLedgerSchema } from "./settlement-idempotency.js";
 
 export type ChapterSettlementFreshnessStatus = "fresh" | "stale" | "unsettled" | "unknown";
 
@@ -44,9 +46,16 @@ export async function readBookSettlementFreshness(
     .all(bookId);
   const settledByChapter = new Map(rows.map((row) => [row.chapter_number, row] as const));
 
-  const chapters = [...index]
+  // 指纹按磁盘正文现算，不信索引里的 contentHash：回退改了文件后索引仍可能是回退前的旧值（对账还没跑）。
+  // 按章号而非索引 fileName 找文件，使回退造成的改名或移动也能被识别；同号多份时取排序后的第一份，结果确定。
+  const diskFileByNumber = new Map<number, string>();
+  for (const file of await listChapterFiles(bookRoot)) {
+    if (!diskFileByNumber.has(file.number)) diskFileByNumber.set(file.number, join(bookRoot, file.relativePath));
+  }
+
+  const chapters = await Promise.all([...index]
     .sort((a, b) => a.number - b.number)
-    .map((entry): ChapterSettlementFreshness => {
+    .map(async (entry): Promise<ChapterSettlementFreshness> => {
       const settled = settledByChapter.get(entry.number);
       const base = {
         chapterNumber: entry.number,
@@ -54,16 +63,18 @@ export async function readBookSettlementFreshness(
         ...(entry.updatedAt ? { updatedAt: entry.updatedAt } : {}),
       };
       if (!settled) return { ...base, status: "unsettled" };
-      // 旧索引还没有指纹（对账补齐之前）：如实标「未知」，不冒充新鲜或过期。
-      if (typeof entry.contentHash !== "string" || !entry.contentHash) {
+      const diskPath = diskFileByNumber.get(entry.number);
+      const content = diskPath ? await readFile(diskPath, "utf8").catch(() => null) : null;
+      // 正文读不到（缺失或损坏）：如实标「未知」，不冒充新鲜或过期。
+      if (content === null) {
         return { ...base, status: "unknown", settledAt: settled.settled_at };
       }
       return {
         ...base,
-        status: entry.contentHash === settled.content_fingerprint ? "fresh" : "stale",
+        status: chapterContentFingerprint(content) === settled.content_fingerprint ? "fresh" : "stale",
         settledAt: settled.settled_at,
       };
-    });
+    }));
 
   return {
     chapters,
