@@ -41,6 +41,7 @@ import {
 import { CHAPTERS_DIRECTORY, readChapterIndex } from "../engine/writing-resource/chapter-layout.js";
 import { resolveChapterFile } from "../engine/writing-resource/chapter-path-guard.js";
 import { listPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import { listLedgerConflicts } from "../engine/jingwei/ledger-conflict-store.js";
 import { listStorylines } from "../engine/narrative-memory/scene-store.js";
 import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
 
@@ -287,6 +288,22 @@ function collectStorylineItems(storage: StorageDatabase, bookId: string): Pendin
     }));
 }
 
+/**
+ * 机器写入冲突（T-24）：后台结算/抽取带着读到的版本写条目，作者在它读取之后改过，
+ * 机器这一版就没落库，记在这里等作者核对。作者内容与机器一版都在经纬条目的历史里。
+ */
+function collectLedgerConflictItems(storage: StorageDatabase, bookId: string): PendingReviewItem[] {
+  return listLedgerConflicts(storage, bookId).map((conflict) => ({
+    id: `conflict:${conflict.id}`,
+    kind: "conflict" as const,
+    typeLabel: PENDING_REVIEW_LABELS.conflict,
+    location: `条目「${conflict.title || conflict.entryId}」`,
+    summary: `机器（${conflict.changedBy}）想写入 ${conflict.changedFields.join("、")}，但作者在它读取之后改过这一条；机器这一版没有落盘，请核对保留哪一版。`,
+    resolveAt: "本面板就地核对，或去经纬条目页看历史版本",
+    target: { kind: "ledger-conflict" as const, entryId: conflict.entryId },
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // 聚合
 // ---------------------------------------------------------------------------
@@ -310,9 +327,11 @@ export async function collectPendingReview(
   const { current: eventItems, earlier: factItems } = collectNarrativeEventItems(options.storage, options.bookId);
   const revisionItems = bookRoot ? await collectRevisionItems(bookRoot, preset, warnings) : [];
   const storylineItems = options.storage ? collectStorylineItems(options.storage, options.bookId) : [];
+  const conflictItems = options.storage ? collectLedgerConflictItems(options.storage, options.bookId) : [];
 
   const groups: PendingReviewGroup[] = (
     [
+      ["conflict", conflictItems],
       ["voice", voiceItems],
       ["styleRule", styleRuleItems],
       ["foreshadow", foreshadowItems],

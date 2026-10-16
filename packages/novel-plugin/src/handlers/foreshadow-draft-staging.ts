@@ -14,6 +14,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import { generateEntryKey, normalizeText } from "../engine/jingwei/entry-identity.js";
+import { recordLedgerConflict } from "../engine/jingwei/ledger-conflict-store.js";
 import { resolveEntity, stripParentheticalSuffix, type EntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
 import { upsertLedgerEntry } from "./jingwei-ledger-store.js";
@@ -30,6 +31,7 @@ interface ForeshadowRow {
   title: string;
   entryKey: string | null;
   deletedAt: number | null;
+  version?: number | null;
 }
 
 function loadAllForeshadowRows(storage: StorageDatabase, bookId: string): ForeshadowRow[] | null {
@@ -40,17 +42,17 @@ function loadAllForeshadowRows(storage: StorageDatabase, bookId: string): Foresh
   if (!table) return null;
   try {
     return storage.sqlite.prepare<ForeshadowRow>(`
-      SELECT id, title, entry_key AS entryKey, deleted_at AS deletedAt
+      SELECT id, title, entry_key AS entryKey, deleted_at AS deletedAt, COALESCE(version, 1) AS version
       FROM story_jingwei_entry
       WHERE book_id = ? AND category IN (${sqlInPlaceholders(categories)})
     `).all(bookId, ...categories);
   } catch {
-    // 旧库没有 entry_key 列时退回只按标题去重
-    return storage.sqlite.prepare<Omit<ForeshadowRow, "entryKey">>(`
+    // 旧库没有 entry_key/version 列时退回只按标题去重
+    return storage.sqlite.prepare<Omit<ForeshadowRow, "entryKey" | "version">>(`
       SELECT id, title, deleted_at AS deletedAt
       FROM story_jingwei_entry
       WHERE book_id = ? AND category IN (${sqlInPlaceholders(categories)})
-    `).all(bookId, ...categories).map((row) => ({ ...row, entryKey: null }));
+    `).all(bookId, ...categories).map((row) => ({ ...row, entryKey: null, version: 1 }));
   }
 }
 
@@ -81,7 +83,9 @@ export function stageForeshadowDrafts(
   const rows = loadAllForeshadowRows(storage, bookId);
   // 经纬表还没建好（旧书首次结算）时无处可写，跳过
   if (!rows) return [];
-  const liveIds = new Set(rows.filter((row) => row.deletedAt === null).map((row) => row.id));
+  // 本函数在结算事务里跑，读到的快照就是「结算开始时的版本」：
+  // 只要作者在这之后动过同名条目，下面的 expectedVersion 就会把它判成冲突（T-24）。
+  const liveIds = new Map(rows.filter((row) => row.deletedAt === null).map((row) => [row.id, row.version ?? 1]));
   const knownKeys = new Set<string>();
   for (const row of rows) {
     if (row.entryKey) knownKeys.add(row.entryKey);
@@ -99,6 +103,8 @@ export function stageForeshadowDrafts(
 
     const evidence = event.evidenceText.trim().slice(0, 400);
     const description = event.object.trim().slice(0, 400);
+    // 结算开始时这条还不存在（expectedVersion=0）：若作者在结算跑的过程中抢先建了同名条目，
+    // 结算这一版不覆盖作者那一条，冲突交待处理。
     const entry = upsertLedgerEntry(storage, {
       bookId,
       category: "foreshadowing",
@@ -118,9 +124,11 @@ export function stageForeshadowDrafts(
       changedBy: "chapter-settlement",
       entryKey: keys[0]!,
       sourceRefs: [{ chapterNumber: event.chapterNumber, excerpt: evidence || description || title }],
+      expectedVersion: 0,
+      onStaleWrite: (conflict) => { recordLedgerConflict(storage, bookId, conflict); },
     });
     for (const key of keys) knownKeys.add(key);
-    liveIds.add(entry.id);
+    liveIds.set(entry.id, entry.version);
     // 事件挂上草稿条目，作者确认后阶段派生可直接按 id 关联
     storage.sqlite.prepare(`
       UPDATE narrative_event SET subject_entry_id = ?

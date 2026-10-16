@@ -6,8 +6,9 @@ import { createStorageDatabase, runStorageMigrations, type StorageDatabase } fro
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
+import { listLedgerConflicts } from "../engine/jingwei/ledger-conflict-store.js";
 import { handleLoreProgress, handleLoreRelate } from "./lore-story-progress.js";
-import { upsertLedgerEntry } from "./jingwei-ledger-store.js";
+import { findLedgerEntryByTitle, upsertLedgerEntry } from "./jingwei-ledger-store.js";
 
 const tempDirs: string[] = [];
 const storages: StorageDatabase[] = [];
@@ -100,6 +101,51 @@ describe("handleLoreRelate", () => {
     expect(handleLoreRelate({ bookId: "book-1", sourceName: "林渊", targetName: "苏晴", relationType: "", storage }).ok).toBe(false);
     expect(handleLoreRelate({ bookId: "book-404", sourceName: "林渊", targetName: "苏晴", relationType: "结盟", storage }))
       .toMatchObject({ ok: false, error: "book-not-found" });
+  });
+});
+
+describe("handleLoreRelate 与作者手改并发（T-24）", () => {
+  it("作者改过关系条目之后，agent 带着旧版本再写关系不覆盖，冲突进待处理", async () => {
+    const storage = await createStorage();
+    handleLoreRelate({
+      bookId: "book-1", sourceName: "林渊", targetName: "苏晴", relationType: "结盟",
+      description: "初稿描述", chapterNumber: 12, reason: "第 12 章正文", storage,
+    });
+    const seen = findLedgerEntryByTitle(storage, "book-1", "relationships", "林渊 × 苏晴");
+    expect(seen).not.toBeNull();
+
+    // 作者在经纬里手改并保存
+    upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "relationships",
+      title: "林渊 × 苏晴",
+      contentMd: "作者手改的关系描述",
+      fields: { sourceName: "林渊", targetName: "苏晴", relationType: "结盟", description: "作者手改的描述" },
+      status: "confirmed",
+      changedBy: "user",
+    });
+
+    // agent 拿的是它之前读到的版本
+    const result = handleLoreRelate({
+      bookId: "book-1", sourceName: "林渊", targetName: "苏晴", relationType: "敌对",
+      description: "第 13 章反目", chapterNumber: 13, reason: "第 13 章正文", storage,
+      expectedVersion: seen!.version,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.summary).toContain("没有覆盖作者已改过的内容");
+
+    const row = storage.sqlite.prepare<{ content_md: string; fields_json: string; conflict_status: string }>(
+      `SELECT content_md, fields_json, conflict_status FROM story_jingwei_entry WHERE book_id = ? AND title = ?`,
+    ).get("book-1", "林渊 × 苏晴")!;
+    expect(row.content_md).toBe("作者手改的关系描述");
+    expect(JSON.parse(row.fields_json)).toMatchObject({ description: "作者手改的描述" });
+    expect(row.conflict_status).toBe("pending");
+
+    const conflicts = listLedgerConflicts(storage, "book-1");
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toMatchObject({ kind: "version-mismatch", changedBy: "lore.relate" });
+    expect(conflicts[0]!.expectedVersion).toBe(seen!.version);
   });
 });
 

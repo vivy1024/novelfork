@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
-import { softDeleteLedgerEntry, upsertLedgerEntry } from "./jingwei-ledger-store.js";
+import { softDeleteLedgerEntry, upsertLedgerEntry, type LedgerStaleWriteInfo } from "./jingwei-ledger-store.js";
 
 const tempDirs: string[] = [];
 const storages: StorageDatabase[] = [];
@@ -130,5 +130,135 @@ describe("Jingwei ledger revision authority", () => {
       { chapterNumber: 1, excerpt: "出处1" },
       { chapterNumber: 2, excerpt: "出处2" }
     ]);
+  });
+
+  it("后台写入不覆盖作者刚保存的内容：作者保存之后，结算带着旧版本写入时被拒绝，作者内容保留", async () => {
+    const storage = await setup();
+    const entry = upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "characters",
+      title: "韩立",
+      contentMd: "原设定",
+      fields: { realm: "炼气" },
+      now: () => new Date("2026-08-05T01:00:00.000Z"),
+    });
+    const seenVersion = storage.sqlite.prepare<{ version: number }>(`SELECT version FROM story_jingwei_entry WHERE id = ?`).get(entry.id)!.version;
+
+    upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "characters",
+      title: "韩立",
+      contentMd: "作者手改的设定",
+      fields: { realm: "筑基" },
+      expectedVersion: seenVersion,
+      now: () => new Date("2026-08-05T02:00:00.000Z"),
+    });
+
+    expect(() => upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "characters",
+      title: "韩立",
+      contentMd: "结算写入的内容",
+      fields: { realm: "金丹" },
+      expectedVersion: seenVersion,
+      changedBy: "auto-settle",
+      now: () => new Date("2026-08-05T03:00:00.000Z"),
+    })).toThrow(expect.objectContaining({ code: "ENTRY_VERSION_CONFLICT" }));
+
+    const row = storage.sqlite.prepare<{ content_md: string; fields_json: string }>(`SELECT content_md, fields_json FROM story_jingwei_entry WHERE id = ?`).get(entry.id)!;
+    expect(row.content_md).toBe("作者手改的设定");
+    expect(JSON.parse(row.fields_json)).toEqual({ realm: "筑基" });
+  });
+
+  it("机器只在自己读到的那一版上写：作者先保存后，带旧版本的机器写入不落库、原样保留作者内容并交给待处理", async () => {
+    const storage = await setup();
+    const entry = upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "characters",
+      title: "韩立",
+      contentMd: "机器初稿",
+      fields: { realm: "炼气" },
+      now: () => new Date("2026-08-05T01:00:00.000Z"),
+    });
+    // 结算开始时机器读到的版本
+    const snapshotVersion = entry.version;
+    // 结算跑的过程中，作者手改并保存
+    const saved = upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "characters",
+      title: "韩立",
+      contentMd: "作者手改的设定",
+      fields: { realm: "筑基" },
+      now: () => new Date("2026-08-05T02:00:00.000Z"),
+    });
+    expect(saved.version).toBe(snapshotVersion + 1);
+
+    const stale: LedgerStaleWriteInfo[] = [];
+    const reasons: string[] = [];
+    const result = upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "characters",
+      title: "韩立",
+      contentMd: "结算写入的内容",
+      fields: { realm: "金丹" },
+      expectedVersion: snapshotVersion,
+      changedBy: "auto-settle",
+      onStaleWrite: (conflict) => { reasons.push(conflict.reason); stale.push(conflict.info); },
+      now: () => new Date("2026-08-05T03:00:00.000Z"),
+    });
+
+    expect(stale).toHaveLength(1);
+    expect(stale[0]!.changedFields).toEqual(["title", "contentMd", "realm"]);
+    expect(stale[0]!.category).toBe("characters");
+    expect(stale[0]!.kind).toBe("version-mismatch");
+    expect(stale[0]!.entryId).toBe(entry.id);
+    expect(reasons[0]).toBe("ledger-upsert");
+    expect(result.contentMd).toBe("作者手改的设定");
+
+    const row = storage.sqlite.prepare<{ content_md: string; fields_json: string; version: number }>(
+      `SELECT content_md, fields_json, version FROM story_jingwei_entry WHERE id = ?`,
+    ).get(entry.id)!;
+    expect(row.content_md).toBe("作者手改的设定");
+    expect(JSON.parse(row.fields_json)).toEqual({ realm: "筑基" });
+    expect(row.version).toBe(snapshotVersion + 1);
+  });
+
+  it("机器读到「还没有条目」时才新建：作者已建同名条目时不覆盖，原条目保留并交给待处理", async () => {
+    const storage = await setup();
+    const author = upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "foreshadowing",
+      title: "小瓶",
+      contentMd: "作者写的伏笔",
+      fields: { status: "已埋设" },
+      now: () => new Date("2026-08-05T01:00:00.000Z"),
+    });
+
+    const stale: LedgerStaleWriteInfo[] = [];
+    const result = upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "foreshadowing",
+      title: "小瓶",
+      contentMd: "结算发现的伏笔",
+      fields: { status: "已埋设", plantedChapter: 3 },
+      expectedVersion: 0,
+      changedBy: "chapter-settlement",
+      onStaleWrite: (conflict) => { stale.push(conflict.info); },
+      now: () => new Date("2026-08-05T02:00:00.000Z"),
+    });
+
+    expect(stale).toHaveLength(1);
+    expect(stale[0]!.kind).toBe("created-after-read");
+    expect(stale[0]!.entryId).toBe(author.id);
+    expect(result.id).toBe(author.id);
+    expect(result.contentMd).toBe("作者写的伏笔");
+    expect(result.version).toBe(author.version);
+
+    const row = storage.sqlite.prepare<{ content_md: string; version: number }>(
+      `SELECT content_md, version FROM story_jingwei_entry WHERE id = ?`,
+    ).get(author.id)!;
+    expect(row.content_md).toBe("作者写的伏笔");
+    expect(row.version).toBe(author.version);
+    expect(storage.sqlite.prepare(`SELECT COUNT(*) AS n FROM story_jingwei_entry WHERE book_id = ? AND title = ?`).get("book-1", "小瓶")).toEqual({ n: 1 });
   });
 });

@@ -314,6 +314,117 @@ describe("story jingwei entry identity and source refs", () => {
   });
 });
 
+describe("story jingwei entry optimistic concurrency (T-24)", () => {
+  async function createTrackedEntry(storage: StorageDatabase) {
+    return createStoryJingweiEntryRepository(storage).create({
+      id: "entry-tracked",
+      bookId: "book-1",
+      sectionId: "section-1",
+      title: "林舟",
+      contentMd: "初版设定",
+      category: "characters",
+      fields: { role: "旧角色" },
+      tags: [],
+      aliases: [],
+      customFields: {},
+      relatedChapterNumbers: [],
+      relatedEntryIds: [],
+      visibilityRule: { type: "tracked" },
+      participatesInAi: true,
+      tokenBudget: null,
+      createdAt: new Date("2026-08-01T01:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T01:00:00.000Z"),
+    });
+  }
+
+  it("带当前版本的写入成功，并把版本推进一位", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    const created = await createTrackedEntry(storage);
+
+    const updated = await repo.update("book-1", "entry-tracked", {
+      contentMd: "作者改过的设定",
+      source: "user",
+      expectedVersion: created.version,
+    });
+
+    expect(updated?.contentMd).toBe("作者改过的设定");
+    expect(updated?.version).toBe(created.version + 1);
+  });
+
+  it("并发编辑冲突被检测：后台写入先改了条目，前端带旧版本的保存被拒绝且不覆盖", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    const created = await createTrackedEntry(storage);
+    // 前端在版本 created.version 时读到条目；此后后台结算先写入（不带版本，保持原行为）。
+    await repo.update("book-1", "entry-tracked", {
+      fieldsPatch: { role: "结算改出的角色" },
+      source: "auto-settle",
+    });
+
+    await expect(repo.update("book-1", "entry-tracked", {
+      contentMd: "前端基于旧版本的编辑",
+      source: "user",
+      expectedVersion: created.version,
+    })).rejects.toMatchObject({ code: "ENTRY_VERSION_CONFLICT" });
+
+    // 冲突时后台结算的结果必须保留，前端的过期编辑不得写入。
+    const stored = await repo.getById("book-1", "entry-tracked");
+    expect(stored?.fields).toEqual({ role: "结算改出的角色" });
+    expect(stored?.contentMd).toBe("初版设定");
+  });
+
+  it("冲突被拒时事务整体回滚：不留下多余的修订记录", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    const created = await createTrackedEntry(storage);
+    await repo.update("book-1", "entry-tracked", { fieldsPatch: { role: "结算改出的角色" }, source: "auto-settle" });
+    const revisionsBefore = storage.sqlite.prepare<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM "jingwei_revision" WHERE "entry_id" = ?`,
+    ).get("entry-tracked")!.n;
+
+    await expect(repo.update("book-1", "entry-tracked", {
+      contentMd: "前端基于旧版本的编辑",
+      source: "user",
+      expectedVersion: created.version,
+    })).rejects.toMatchObject({ code: "ENTRY_VERSION_CONFLICT" });
+
+    const revisionsAfter = storage.sqlite.prepare<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM "jingwei_revision" WHERE "entry_id" = ?`,
+    ).get("entry-tracked")!.n;
+    expect(revisionsAfter).toBe(revisionsBefore);
+  });
+
+  it("旧库中版本为 NULL 的条目按版本 1 处理：expectedVersion=1 的写入成功，不产生假冲突", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await createTrackedEntry(storage);
+    // 模拟旧库：version 列为 NULL（readEntry 把它按 1 返回）。
+    storage.sqlite.prepare(`UPDATE "story_jingwei_entry" SET "version" = NULL WHERE "id" = ?`).run("entry-tracked");
+
+    const updated = await repo.update("book-1", "entry-tracked", {
+      contentMd: "旧库条目的合法编辑",
+      source: "user",
+      expectedVersion: 1,
+    });
+
+    expect(updated?.contentMd).toBe("旧库条目的合法编辑");
+  });
+
+  it("不带 expectedVersion 的写入保持原行为，兼容既有调用方", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await createTrackedEntry(storage);
+
+    const updated = await repo.update("book-1", "entry-tracked", {
+      contentMd: "无版本写入",
+      source: "user",
+    });
+
+    expect(updated?.contentMd).toBe("无版本写入");
+  });
+});
+
 describe("story jingwei entry cross-book references (T-12)", () => {
   // book-1 / section-1 由 createStorage 建好；这里再建一本书 book-2 及其分区与条目，作为“别的书”。
   async function createTwoBookStorage(): Promise<StorageDatabase> {

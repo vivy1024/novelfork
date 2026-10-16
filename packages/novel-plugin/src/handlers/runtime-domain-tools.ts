@@ -23,6 +23,7 @@ import {
   softDeleteLedgerEntry,
   upsertLedgerEntry,
 } from "./jingwei-ledger-store.js";
+import { recordLedgerConflict } from "../engine/jingwei/ledger-conflict-store.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { handleChapterWrite } from "./chapter-write.js";
@@ -540,13 +541,19 @@ async function importChapters(
         };
       }).filter((volume) => Number.isFinite(volume.chapterRange.from) && Number.isFinite(volume.chapterRange.to));
       if (outlineVolumes.length > 0) {
-  upsertLedgerEntry(getStorageDatabase(), {
+        // T-24：导入卷纲只在经纬还没有「导入卷纲」条目时新建；作者已有就不覆盖，冲突交待处理。
+        const storage = getStorageDatabase();
+        const existingOutline = findLedgerEntryByTitle(storage, binding.bookId, "outline", "导入卷纲");
+        upsertLedgerEntry(storage, {
           bookId: binding.bookId,
           category: "outline",
           title: "导入卷纲",
           contentMd: "",
           fields: { volumes: outlineVolumes, importedFrom: sourceName },
           status: "confirmed",
+          changedBy: "chapter-settlement",
+          expectedVersion: existingOutline?.version ?? 0,
+          onStaleWrite: (conflict) => { recordLedgerConflict(storage, binding.bookId, conflict); },
         });
       }
     }

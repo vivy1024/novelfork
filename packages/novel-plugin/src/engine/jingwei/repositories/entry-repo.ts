@@ -10,6 +10,36 @@ import type {
   UpdateStoryJingweiEntryInput,
 } from "../types.js";
 import { resolveCategory } from "../read-model/category-map.js";
+
+/**
+ * 条目乐观并发冲突（T-24）：调用方带着过期的 expectedVersion 写入时抛出。
+ * 引擎层只表达领域事实（带 code），由路由层映射为 409，引擎不依赖 HTTP 层。
+ */
+export class EntryVersionConflictError extends Error {
+  readonly code = "ENTRY_VERSION_CONFLICT";
+  /** 后台写入被拒时的冲突详情（T-24）：由调用方补全后交给待处理队列。 */
+  staleWrite?: {
+    readonly reason: string;
+    readonly info: {
+      readonly kind: "version-mismatch" | "created-after-read";
+      readonly entryId: string;
+      readonly category: string;
+      readonly title: string;
+      readonly expectedVersion: number;
+      readonly currentVersion: number;
+      readonly changedBy: string;
+      readonly changedFields: readonly string[];
+    };
+  };
+  constructor(
+    readonly entryId: string,
+    readonly expectedVersion: number,
+    readonly currentVersion: number,
+  ) {
+    super(`条目 ${entryId} 已在别处更新：提交时的版本是 ${expectedVersion}，当前版本是 ${currentVersion}。`);
+    this.name = "EntryVersionConflictError";
+  }
+}
 import type {
   ConflictStatus,
   EntryRevision,
@@ -660,11 +690,19 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         }
         setClauses.push(`"source" = ?`, `"conflict_status" = ?`, `"conflict_detail" = ?`, `"version" = COALESCE("version", 1) + ?`, `"updated_at" = ?`);
         values.push(source, conflictStatus, conflictDetail, hasChanges ? 1 : 0, updatedAt.getTime(), bookId, id);
-        storage.sqlite.prepare(`
+        // 乐观并发（T-24）：带 expectedVersion 时把版本条件写进 WHERE，库中版本不符则一行都不写。
+        // 用 COALESCE 与 readEntry 的 row.version ?? 1 语义保持一致，避免旧库 NULL 版本被误判为冲突。
+        const versionGuard = updates.expectedVersion !== undefined;
+        if (versionGuard) values.push(updates.expectedVersion);
+        const result = storage.sqlite.prepare(`
           UPDATE "story_jingwei_entry"
           SET ${setClauses.join(", ")}
-          WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
+          WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL${versionGuard ? ` AND COALESCE("version", 1) = ?` : ""}
         `).run(...values);
+        if (versionGuard && result.changes === 0) {
+          // 在事务内抛出，整个写入（含上面已插入的修订记录）一并回滚，不留半截状态。
+          throw new EntryVersionConflictError(id, updates.expectedVersion!, current.version);
+        }
         const updated = readEntry(storage, bookId, id);
         if (updated) syncEntryFts(storage, toFtsFields(updated));
       });

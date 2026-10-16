@@ -191,6 +191,14 @@ function serializeEntry(entry: StoryJingweiEntryRecord) {
   };
 }
 
+/** 乐观并发版本号（T-24）：存在即必须是正整数；写错的版本号不能悄悄绕过并发校验，所以非法值直接 400。 */
+function parseExpectedVersion(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new ApiError(400, "JINGWEI_ENTRY_VERSION_INVALID", "expectedVersion 必须是正整数（读取条目时返回的 version）。");
+  }
+  return value;
+}
+
 function normalizeVisibilityType(value: unknown): JingweiVisibilityRule["type"] {
   return value === "global" || value === "nested" || value === "tracked" ? value : "tracked";
 }
@@ -260,6 +268,10 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     }
     const reference = referenceErrorResponse(error);
     if (reference) return c.json(reference.body, reference.status);
+    // 引擎层的乐观并发冲突（T-24）：按 code 识别而非 instanceof，不依赖动态 import 的模块同一性。
+    if (error instanceof Error && (error as { code?: unknown }).code === "ENTRY_VERSION_CONFLICT") {
+      return c.json(jsonError(new ApiError(409, "ENTRY_VERSION_CONFLICT", "条目已在别处更新，请重新载入后再保存。")), 409);
+    }
     return c.json(jsonError(error instanceof Error ? error : new Error(String(error))), 500);
   });
 
@@ -491,6 +503,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       ...(typeof body.summaryL0 === "string" || body.summaryL0 === null ? { summaryL0: optionalNullableText(body.summaryL0) } : {}),
       source: "user",
       updatedAt: new Date(),
+      ...(body.expectedVersion !== undefined ? { expectedVersion: parseExpectedVersion(body.expectedVersion) } : {}),
     });
     if (!entry) throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${c.req.param("entryId")}`);
     return c.json({ entry: serializeEntry(entry) });

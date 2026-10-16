@@ -89,6 +89,8 @@ export interface JingweiEntrySavePayload {
   visibleAfterChapter?: number | null;
   visibleUntilChapter?: number | null;
   fields?: Record<string, unknown>;
+  /** 乐观并发（T-24）：编辑器持有的条目版本。服务端发现库中版本已变（后台结算等先写入）时拒绝保存（409），不覆盖。 */
+  expectedVersion?: number;
 }
 
 export interface JingweiEntryEditorProps {
@@ -492,6 +494,8 @@ function JingweiEntryEditorForm({
         // 服务端会把 visibilityRule 整体重写，漏传就会把已有的窗口字段清掉。
         visibleAfterChapter: entry.visibleAfterChapter ?? null,
         visibleUntilChapter: entry.visibleUntilChapter ?? null,
+        // 乐观并发：只有拿到有效版本时才带上；缺失则走原有无版本路径，不传非法值。
+        ...(Number.isInteger(entry.version) && (entry.version as number) >= 1 ? { expectedVersion: entry.version } : {}),
       });
       setSavedTitle(title.trim());
       setSavedContent(content);

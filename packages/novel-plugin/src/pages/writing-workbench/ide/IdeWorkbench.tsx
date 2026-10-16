@@ -270,6 +270,33 @@ function findFileNodeBySubPath(
 
 // ── Main Component ──────────────────────────────────────
 
+/**
+ * 经纬条目保存的请求体（从 IdeWorkbench 的 onSave 抽出，便于单测）。
+ * 字段规则与抽出前逐行一致；expectedVersion（T-24）随保存回传，服务端据此拒绝覆盖别处的修改。
+ */
+export function buildJingweiEntryBody(payload: JingweiEntrySavePayload): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    title: payload.title,
+    contentMd: payload.contentMd,
+  };
+  if (payload.priorityTier !== undefined) body.priorityTier = payload.priorityTier;
+  if (payload.layer !== undefined) body.layer = payload.layer;
+  if (payload.status !== undefined) body.status = payload.status;
+  if (payload.category !== undefined) body.category = payload.category;
+  if (payload.aliases !== undefined) body.aliases = payload.aliases;
+  if (payload.relatedEntryIds !== undefined) body.relatedEntryIds = payload.relatedEntryIds;
+  if (payload.fields !== undefined) body.fields = payload.fields;
+  if (payload.visibility !== undefined || payload.visibleAfterChapter !== undefined || payload.visibleUntilChapter !== undefined) {
+    body.visibilityRule = {
+      type: payload.visibility ?? "tracked",
+      ...(payload.visibleAfterChapter != null ? { visibleAfterChapter: payload.visibleAfterChapter } : {}),
+      ...(payload.visibleUntilChapter != null ? { visibleUntilChapter: payload.visibleUntilChapter } : {}),
+    };
+  }
+  if (payload.expectedVersion !== undefined) body.expectedVersion = payload.expectedVersion;
+  return body;
+}
+
 export function IdeWorkbench({
   bookId,
   repositoryPath,
@@ -964,24 +991,7 @@ export function IdeWorkbench({
     if (!bookId) return undefined;
     return {
       onSave: async (entryId: string, payload: JingweiEntrySavePayload) => {
-        const body: Record<string, unknown> = {
-          title: payload.title,
-          contentMd: payload.contentMd,
-        };
-        if (payload.priorityTier !== undefined) body.priorityTier = payload.priorityTier;
-        if (payload.layer !== undefined) body.layer = payload.layer;
-        if (payload.status !== undefined) body.status = payload.status;
-        if (payload.category !== undefined) body.category = payload.category;
-        if (payload.aliases !== undefined) body.aliases = payload.aliases;
-        if (payload.relatedEntryIds !== undefined) body.relatedEntryIds = payload.relatedEntryIds;
-        if (payload.fields !== undefined) body.fields = payload.fields;
-        if (payload.visibility !== undefined || payload.visibleAfterChapter !== undefined || payload.visibleUntilChapter !== undefined) {
-          body.visibilityRule = {
-            type: payload.visibility ?? "tracked",
-            ...(payload.visibleAfterChapter != null ? { visibleAfterChapter: payload.visibleAfterChapter } : {}),
-            ...(payload.visibleUntilChapter != null ? { visibleUntilChapter: payload.visibleUntilChapter } : {}),
-          };
-        }
+        const body = buildJingweiEntryBody(payload);
         const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },

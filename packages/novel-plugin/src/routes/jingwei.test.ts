@@ -654,3 +654,35 @@ describe("Jingwei cross-book reference ownership (T-12)", () => {
     expect(entryRow("entry-a2")?.parent_id).toBe("entry-a");
   });
 });
+
+describe("Jingwei entry optimistic concurrency over HTTP (T-24)", () => {
+  // 路由没有单条 GET，读取统一走列表接口（serializeEntry 会带上 version）。
+  async function readEntryFromList(id: string): Promise<{ version: number; contentMd: string }> {
+    const list = await (await request("/entries")).json() as { entries: Array<{ id: string; version: number; contentMd: string }> };
+    const found = list.entries.find((entry) => entry.id === id);
+    if (!found) throw new Error(`列表里找不到条目 ${id}`);
+    return found;
+  }
+
+  it("返回 409 ENTRY_VERSION_CONFLICT 而不是 500，且不覆盖后台已写入的内容", async () => {
+    const created = await postEntry();
+    const v0 = (await readEntryFromList(created.id)).version;
+
+    // 后台结算先写入（不带版本）：版本从 v0 推进到 v0+1。这里直接用本文件注入给路由的同一个 storage。
+    storage.sqlite
+      .prepare(`UPDATE "story_jingwei_entry" SET "version" = COALESCE("version", 1) + 1, "content_md" = ? WHERE "id" = ?`)
+      .run("后台结算写入的正文", created.id);
+
+    // 前端仍拿着 v0 提交编辑：必须被拒绝为 409，而不是 500，也不能覆盖后台写入。
+    const response = await request(`/entries/${created.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contentMd: "前端基于旧版本的编辑", expectedVersion: v0 }),
+    });
+
+    expect(response.status).toBe(409);
+    const body = await response.json() as { error: { code: string } };
+    expect(body.error.code).toBe("ENTRY_VERSION_CONFLICT");
+    expect((await readEntryFromList(created.id)).contentMd).toBe("后台结算写入的正文");
+  });
+});

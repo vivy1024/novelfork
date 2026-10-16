@@ -18,6 +18,10 @@ import {
   mergeAliases,
   type EntrySourceRef,
 } from "../engine/jingwei/entry-identity.js";
+import { EntryVersionConflictError } from "../engine/jingwei/repositories/entry-repo.js";
+import type { LedgerStaleWrite, LedgerStaleWriteInfo } from "../engine/jingwei/ledger-conflict-store.js";
+
+export type { LedgerStaleWrite, LedgerStaleWriteInfo } from "../engine/jingwei/ledger-conflict-store.js";
 
 
 export function ensureJingweiLedgerSchema(storage: StorageDatabase): void {
@@ -99,6 +103,22 @@ export interface LedgerEntry {
   readonly layer: string;
   readonly status: string;
   readonly updatedAt: number;
+  /** 乐观并发版本（T-24）：读到的这一版必须原样回传 expectedVersion。 */
+  readonly version: number;
+}
+
+/**
+ * 冲突出口抛出的错误：与 entry-repo 的乐观并发错误同一个类型（都是 ENTRY_VERSION_CONFLICT），
+ * 额外带上机器这一版想写的内容，供路由层转成待处理项。
+ */
+export function createStaleWriteConflictError(pending: LedgerStaleWrite): EntryVersionConflictError {
+  const error = new EntryVersionConflictError(
+    pending.info.entryId,
+    pending.info.expectedVersion,
+    pending.info.currentVersion,
+  );
+  error.staleWrite = pending;
+  return error;
 }
 
 export interface LedgerWriteInput {
@@ -115,7 +135,13 @@ export interface LedgerWriteInput {
   readonly entryKey?: string;
   readonly aliases?: readonly string[];
   readonly sourceRefs?: readonly EntrySourceRef[];
-}
+  /** 乐观并发：调用方读到的条目版本。库中版本不符则视为作者已改过，不覆盖作者已保存的内容。 */
+  readonly expectedVersion?: number;
+  /**
+   * 后台自动写入的冲突出口（T-24）：库里版本与机器读到的不符时调用，
+   * 机器这一版不落库，由调用方把它放进待处理队列交给作者核对。传了它就不会抛冲突。
+   */
+  readonly onStaleWrite?: (conflict: LedgerStaleWrite) => void;}
 
 const CATEGORY_NAMES: Record<LedgerKind, string> = {
   outline: "卷纲/大纲",
@@ -261,9 +287,11 @@ export function listLedgerEntries(
   try {
     const categories = getJingweiCategoryAliases(category);
     const placeholders = sqlInPlaceholders(categories);
+    // 旧库可能还没有 version 列（迁移未覆盖的老书）：缺列时按 1 读，不能让整个查询崩掉。
+    const versionExpr = tableHasColumn(storage, "story_jingwei_entry", "version") ? `COALESCE(version, 1)` : `1`;
     const rows = storage.sqlite.prepare(`
       SELECT id, title, content_md AS contentMd, fields_json AS fieldsJson,
-             layer, status, updated_at AS updatedAt
+             layer, status, updated_at AS updatedAt, ${versionExpr} AS version
       FROM story_jingwei_entry
       WHERE book_id = ? AND category IN (${placeholders}) AND deleted_at IS NULL
       ORDER BY sort_order ASC, updated_at DESC
@@ -275,6 +303,7 @@ export function listLedgerEntries(
       layer: string | null;
       status: string | null;
       updatedAt: number | null;
+      version: number | null;
     }>;
     return rows.map((row) => ({
       id: row.id,
@@ -284,6 +313,7 @@ export function listLedgerEntries(
       layer: row.layer ?? "dynamic",
       status: row.status ?? "confirmed",
       updatedAt: row.updatedAt ?? 0,
+      version: row.version ?? 1,
     }));
   } catch {
     return [];
@@ -320,9 +350,10 @@ export function findLedgerEntryById(
   entryId: string,
 ): LedgerEntry | null {
   try {
+    const versionExpr = tableHasColumn(storage, "story_jingwei_entry", "version") ? `COALESCE(version, 1)` : `1`;
     const row = storage.sqlite.prepare(`
       SELECT id, title, content_md AS contentMd, fields_json AS fieldsJson,
-             layer, status, updated_at AS updatedAt
+             layer, status, updated_at AS updatedAt, ${versionExpr} AS version
       FROM story_jingwei_entry
       WHERE book_id = ? AND id = ? AND deleted_at IS NULL
     `).get(bookId, entryId) as {
@@ -333,6 +364,7 @@ export function findLedgerEntryById(
       layer: string | null;
       status: string | null;
       updatedAt: number | null;
+      version: number | null;
     } | undefined;
     if (!row) return null;
     return {
@@ -343,10 +375,42 @@ export function findLedgerEntryById(
       layer: row.layer ?? "dynamic",
       status: row.status ?? "confirmed",
       updatedAt: row.updatedAt ?? 0,
+      version: row.version ?? 1,
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * machine 写入的版本是否已经过期（T-24「VS Code 式」处理）。
+ *
+ * expectedVersion 是机器读到的版本：
+ * - 没传（undefined）表示调用方不做版本校对，一律放行；
+ * - 0 表示机器读到的是「还没有这条」，现在却已有条目 → 两边同时在建同一条（created-after-read）；
+ * - 想写的版本与库中版本不符 → 作者在机器读完之后改过，机器这一版作废（version-mismatch）。
+ */
+function staleWriteFor(
+  input: LedgerWriteInput,
+  currentVersion: number | undefined,
+  entryId: string,
+  title: string,
+): LedgerStaleWriteInfo | undefined {
+  const expectedVersion = input.expectedVersion;
+  if (expectedVersion === undefined) return undefined;
+  // 库里还没有条目、机器也不是在「新建」语义下（expectedVersion 非 0）：不是并发冲突，放行。
+  if (currentVersion === undefined && expectedVersion !== 0) return undefined;
+  if (currentVersion !== undefined && currentVersion === expectedVersion) return undefined;
+  return {
+    kind: expectedVersion === 0 ? "created-after-read" : "version-mismatch",
+    entryId,
+    category: input.category,
+    title,
+    expectedVersion,
+    currentVersion: currentVersion ?? 1,
+    changedBy: input.changedBy ?? "auto-settle",
+    changedFields: ["title", "contentMd", ...Object.keys(input.fields ?? {})],
+  };
 }
 
 /**
@@ -367,6 +431,16 @@ export function upsertLedgerEntry(
   const targetKey = resolveEntryKey({ entryKey: input.entryKey, category, title, fields: input.fields });
 
   if (existing) {
+    // 后台自动写入（T-24）：机器带着读到的版本进来，库里的版本已经变了就说明作者改过，
+    // 机器这一版不落库（VS Code 式：不覆盖作者内容），把冲突交给待处理队列由作者核对。
+    const stale = staleWriteFor(input, existing.version, existing.id, existing.title);
+    if (stale) {
+      const pending: LedgerStaleWrite = { reason: input.reason ?? "ledger-upsert", info: stale };
+      // 没有待处理队列的调用方（作者显式操作之外的路径）不能静默丢写入，照旧抛冲突。
+      if (!input.onStaleWrite) throw createStaleWriteConflictError(pending);
+      input.onStaleWrite(pending);
+      return { ...existing, version: stale.currentVersion };
+    }
     let finalKey = targetKey;
     let nextAliases = input.aliases ? mergeAliases([], input.aliases) : [];
     let nextSourceRefs = input.sourceRefs ? mergeSourceRefs([], input.sourceRefs) : [];
@@ -416,6 +490,15 @@ export function upsertLedgerEntry(
       updateValues.push(JSON.stringify(nextSourceRefs));
     }
     const run = storage.sqlite.transaction(() => {
+      if (input.expectedVersion !== undefined) {
+        const current = storage.sqlite.prepare<{ version: number | null }>(
+          `SELECT COALESCE(version, 1) AS version FROM story_jingwei_entry WHERE id = ? AND book_id = ?`,
+        ).get(existing.id, bookId);
+        const currentVersion = current?.version ?? 1;
+        if (currentVersion !== input.expectedVersion) {
+          throw new EntryVersionConflictError(existing.id, input.expectedVersion, currentVersion);
+        }
+      }
       recordLedgerRevision(storage, bookId, existing.id, {
         reason: input.reason ?? "ledger-upsert",
         changedBy: input.changedBy ?? "auto-settle",
@@ -428,7 +511,21 @@ export function upsertLedgerEntry(
       `).run(...updateValues, existing.id, bookId);
     });
     run();
-    return { ...existing, title: input.title ?? existing.title, contentMd: input.contentMd, fields: input.fields, status, updatedAt: now };
+    return { ...existing, title: input.title ?? existing.title, contentMd: input.contentMd, fields: input.fields, status, updatedAt: now, version: existing.version + 1 };
+  }
+
+  // 机器读到「还没有这条」时才新建：作者已经在库里建了同名条目说明两边都在动同一条，
+  // 机器不再插一条也不覆盖，把冲突交给待处理队列。
+  const createdAfterRead = staleWriteFor(input, undefined, "", title);
+  if (createdAfterRead) {
+    const current = findLedgerEntryByTitle(storage, bookId, category, title, input.entryKey);
+    if (current) {
+      const info = { ...createdAfterRead, entryId: current.id, title: current.title, currentVersion: current.version };
+      const pending: LedgerStaleWrite = { reason: input.reason ?? "ledger-upsert", info };
+      if (!input.onStaleWrite) throw createStaleWriteConflictError(pending);
+      input.onStaleWrite(pending);
+      return current;
+    }
   }
 
   const id = crypto.randomUUID();
@@ -499,6 +596,7 @@ export function upsertLedgerEntry(
     layer: "dynamic",
     status,
     updatedAt: now,
+    version: 1,
   };
 }
 

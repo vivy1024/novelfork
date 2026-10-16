@@ -23,7 +23,8 @@
 import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
 
 import { getCategoryDefaultLayer } from "../engine/jingwei/unified-categories.js";
-import { upsertLedgerEntry } from "./jingwei-ledger-store.js";
+import { recordLedgerConflict } from "../engine/jingwei/ledger-conflict-store.js";
+import { findLedgerEntryByTitle, upsertLedgerEntry } from "./jingwei-ledger-store.js";
 
 export type LoreRelateResult = Readonly<{
   ok: boolean;
@@ -45,6 +46,8 @@ export interface LoreRelateInput {
   readonly chapterNumber?: number;
   readonly reason?: string;
   readonly storage?: StorageDatabase;
+  /** agent 读过这条关系时的版本（lore.read/经纬条目读到的 version）；缺省由本函数现读一次。 */
+  readonly expectedVersion?: number;
 }
 
 /** 稳定关联键：同一对关系永远落到同一条目。 */
@@ -83,6 +86,12 @@ export function handleLoreRelate(input: LoreRelateInput): LoreRelateResult {
     ...(typeof input.chapterNumber === "number" ? ["", `最近变化章节：第 ${input.chapterNumber} 章`] : []),
   ].join("\n");
 
+  // T-24：机器写关系不覆盖作者已改过的那一版。调用方给了读到的版本就用它；
+  // 没给就现读一次当前版本——只要作者在这之后、本次写入之前又改过，仍然会被判为冲突。
+  const seen = findLedgerEntryByTitle(storage, bookId, "relationships", title);
+  const expectedVersion = input.expectedVersion ?? seen?.version ?? 0;
+  let staleConflict = false;
+
   const entry = upsertLedgerEntry(storage, {
     bookId,
     category: "relationships",
@@ -98,11 +107,15 @@ export function handleLoreRelate(input: LoreRelateInput): LoreRelateResult {
     status: "needs-review",
     reason: input.reason?.trim() || "lore.relate 关系写入",
     changedBy: "lore.relate",
+    expectedVersion,
+    onStaleWrite: (conflict) => { staleConflict = true; recordLedgerConflict(storage, bookId, conflict); },
   });
 
   return {
     ok: true,
-    summary: `已写入关系「${title}」（${relationType}），待作者在经纬确认。`,
+    summary: staleConflict
+      ? `关系「${title}」（${relationType}）的这次变化没有覆盖作者已改过的内容，已放进待确认交你核对。`
+      : `已写入关系「${title}」（${relationType}），待作者在经纬确认。`,
     entryId: entry.id,
     title: entry.title,
     category: "relationships",

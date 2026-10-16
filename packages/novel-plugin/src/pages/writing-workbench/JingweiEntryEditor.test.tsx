@@ -291,3 +291,53 @@ describe("JingweiEntryEditor 档案式阅读 / 编辑切换", () => {
     expect(screen.queryByRole("heading", { name: "未确认条目" })).toBeNull();
   });
 });
+
+describe("JingweiEntryEditor optimistic concurrency payload (T-24)", () => {
+  function stubRevisions() {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/revisions")) {
+        return new Response(JSON.stringify({ revisions: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ entries: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+  }
+
+  it("保存时把编辑器持有的条目版本作为 expectedVersion 带给 onSave", async () => {
+    const onSave = vi.fn(async () => undefined);
+    stubRevisions();
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "cc-1", title: "林舟", contentMd: "初版设定", sectionId: "sec-1", category: "characters", version: 7, fields: { role: "旧角色" } }}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.change(await screen.findByPlaceholderText("条目标题（如：角色名、地点名）"), { target: { value: "作者新改的设定" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave).toHaveBeenCalledWith("cc-1", expect.objectContaining({ expectedVersion: 7 }));
+  });
+
+  it("条目没有有效版本时不带 expectedVersion，走原有无版本路径，不传非法值", async () => {
+    const onSave = vi.fn(async () => undefined);
+    stubRevisions();
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "cc-2", title: "林舟", contentMd: "初版设定", sectionId: "sec-1", category: "characters", fields: { role: "旧角色" } }}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.change(await screen.findByPlaceholderText("条目标题（如：角色名、地点名）"), { target: { value: "无版本的编辑" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const payload = onSave.mock.calls[0]![1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("expectedVersion");
+  });
+});

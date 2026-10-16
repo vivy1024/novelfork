@@ -151,6 +151,8 @@ export type UpdateStoryJingweiEntryInput = Partial<Omit<CreateStoryJingweiEntryI
   changedBy?: string;
   /** 增量合并键值：只覆盖传入的字段，保留 fields_json 中其余字段（拖拽等局部更新用）。 */
   fieldsPatch?: Record<string, unknown>;
+  /** 乐观并发：调用方读到的条目版本。传入时，库中版本不符则拒绝写入（ENTRY_VERSION_CONFLICT），不覆盖别处的修改；不传则保持原行为。 */
+  expectedVersion?: number;
 };
 
 export type JingweiContextSource = "global" | "tracked" | "nested";

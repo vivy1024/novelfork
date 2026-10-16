@@ -91,6 +91,13 @@ function resolveAction(item: PendingReviewItem, props: PendingReviewPanelProps):
     }
     case "events":
       return hint(props.onOpenEvents);
+    // 机器写入冲突（T-24）：机器那一版没落库，去经纬条目页看两个版本再定。
+    case "ledger-conflict": {
+      const open = props.onOpenJingweiEntry
+        ? () => props.onOpenJingweiEntry?.(target.entryId)
+        : undefined;
+      return hint(open);
+    }
     case "vault": {
       const open = props.onOpenVault
         ? props.onOpenVault

@@ -173,6 +173,34 @@ describe("待确认聚合面板", () => {
     await vi.waitFor(() => expect(fetchSummary).toHaveBeenCalledTimes(2));
   });
 
+  it("机器写入冲突：行内说明机器没落库，可跳到经纬条目核对两个版本", async () => {
+    const onOpenJingweiEntry = vi.fn();
+    const conflictSummary = summaryWith({
+      total: 1,
+      groups: [{
+        kind: "conflict",
+        label: "机器写入冲突",
+        count: 1,
+        items: [{
+          id: "conflict:c1",
+          kind: "conflict",
+          typeLabel: "机器写入冲突",
+          location: "条目「韩立」",
+          summary: "机器（auto-settle）想写入 realm，但作者在它读取之后改过这一条；机器这一版没有落盘，请核对保留哪一版。",
+          resolveAt: "本面板就地核对，或去经纬条目页看历史版本",
+          target: { kind: "ledger-conflict", entryId: "e9" },
+        }],
+      }],
+    });
+    render(<PendingReviewPanel bookId="book-1" fetchSummary={async () => conflictSummary} onOpenJingweiEntry={onOpenJingweiEntry} />);
+    await screen.findByText("待确认 1 项");
+    expect(screen.getAllByText("机器写入冲突").length).toBeGreaterThan(0);
+    expect(screen.getByText("条目「韩立」")).toBeTruthy();
+    const button = await screen.findByRole("button", { name: /去处理/ });
+    fireEvent.click(button);
+    expect(onOpenJingweiEntry).toHaveBeenCalledWith("e9");
+  });
+
   it("部分分组有损坏告警时显示 warning，计数照常", async () => {
     const data = summaryWith({
       total: 1,

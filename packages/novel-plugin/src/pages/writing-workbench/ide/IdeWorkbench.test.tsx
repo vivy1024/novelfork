@@ -178,7 +178,7 @@ vi.mock("../lore-workspace-split", () => ({
 vi.mock("../../../engine/jingwei/unified-categories", () => ({ CATEGORY_META: [], normalizeCategory: (value: string) => value }));
 vi.mock("@/components/ui/toast", () => ({ toast: vi.fn() }));
 
-import { IdeWorkbench, ResourcesSidebarPanel, loadedFileKey, type IdeWorkbenchProps } from "./IdeWorkbench";
+import { IdeWorkbench, ResourcesSidebarPanel, buildJingweiEntryBody, loadedFileKey, type IdeWorkbenchProps } from "./IdeWorkbench";
 import { toast } from "@/components/ui/toast";
 
 function jsonResponse(payload: unknown): Response {
@@ -919,5 +919,33 @@ describe("IdeWorkbench 静默交互修复", () => {
       act(() => { saveHarness.writeView!.onOpenLorePanel!("characters"); });
       expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "jingwei-cat:characters" }));
     });
+  });
+});
+
+describe("buildJingweiEntryBody 乐观并发（T-24）", () => {
+  it("把编辑器读到的 expectedVersion 随保存回传到请求体", () => {
+    const body = buildJingweiEntryBody({ title: "林舟", contentMd: "设定", expectedVersion: 7 });
+
+    expect(body).toMatchObject({ title: "林舟", contentMd: "设定", expectedVersion: 7 });
+  });
+
+  it("没有 expectedVersion 时请求体不含该字段，走原有无版本路径", () => {
+    const body = buildJingweiEntryBody({ title: "林舟", contentMd: "设定" });
+
+    expect(body).not.toHaveProperty("expectedVersion");
+  });
+
+  it("抽取后其余字段规则不变：可见性窗口与分类仍按原条件写入", () => {
+    const body = buildJingweiEntryBody({
+      title: "林舟",
+      contentMd: "设定",
+      category: "characters",
+      visibility: "nested",
+      visibleAfterChapter: 3,
+      visibleUntilChapter: null,
+    });
+
+    expect(body.category).toBe("characters");
+    expect(body.visibilityRule).toEqual({ type: "nested", visibleAfterChapter: 3 });
   });
 });
