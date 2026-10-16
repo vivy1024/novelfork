@@ -28,14 +28,14 @@ const PRIVATE_TEMP_ROOT_RELATIVE = join(
 );
 const LOCK_FILE_NAME = "UPSTREAM.lock.json";
 const sha256Pattern = /^[0-9a-f]{64}$/i;
-const RUNTIME_FORK_REPOSITORY = "NarraFork/novelfork-runtime-private";
+const RUNTIME_FORK_REPOSITORY = "NarraFork/novelfork-runtime";
 const RUNTIME_FORK_BRANCH = "novelfork/integration-v0.5.23";
 const RUNTIME_FORK_MARKER_PATHS = [
 	"runtime-migrations/0000_fantastic_orphan.sql",
 ] as const;
 
 export interface RuntimeForkMarker {
-	readonly source: "novelfork-runtime-private";
+	readonly source: "novelfork-runtime";
 	readonly repository: typeof RUNTIME_FORK_REPOSITORY;
 	readonly branch: typeof RUNTIME_FORK_BRANCH;
 	readonly markerPaths: readonly string[];
@@ -204,23 +204,23 @@ export function validateRuntimeSourceIdentity(
 	const repository = repositoryName(input.remote).toLowerCase();
 	if (repository !== RUNTIME_FORK_REPOSITORY.toLowerCase()) {
 		throw new Error(
-			`source 不是 NovelFork Runtime fork：origin=${input.remote}；缺少 NarraFork/novelfork-runtime-private fork checkout（检测到的是 ${repositoryName(input.remote)}）`,
+			`source 不是 NovelFork Runtime fork：origin=${input.remote}；缺少 NarraFork/novelfork-runtime fork checkout（检测到的是 ${repositoryName(input.remote)}）`,
 		);
 	}
 	if (input.branch !== RUNTIME_FORK_BRANCH) {
 		throw new Error(
-			`source 必须位于 ${RUNTIME_FORK_BRANCH} 分支；检测到 ${input.branch}。请使用 NarraFork/novelfork-runtime-private fork checkout`,
+			`source 必须位于 ${RUNTIME_FORK_BRANCH} 分支；检测到 ${input.branch}。请使用 NarraFork/novelfork-runtime fork checkout`,
 		);
 	}
 	const tracked = new Set(input.trackedPaths);
 	const missing = RUNTIME_FORK_MARKER_PATHS.filter((path) => !tracked.has(path));
 	if (missing.length > 0) {
 		throw new Error(
-			`source 缺少 fork marker 文件：${missing.join(", ")}；请检出 NarraFork/novelfork-runtime-private fork checkout，而不是 NarraFork/narrafork-private upstream 裸 Runtime`,
+			`source 缺少 fork marker 文件：${missing.join(", ")}；请检出 NarraFork/novelfork-runtime fork checkout，而不是 NarraFork/narrafork-private upstream 裸 Runtime`,
 		);
 	}
 	return {
-		source: "novelfork-runtime-private",
+		source: "novelfork-runtime",
 		repository: RUNTIME_FORK_REPOSITORY,
 		branch: RUNTIME_FORK_BRANCH,
 		markerPaths: [...RUNTIME_FORK_MARKER_PATHS],

@@ -79,7 +79,7 @@
 | **OS** | Windows x64 / Linux x64 / Linux arm64 / macOS x64 / macOS arm64 | v3.6.0 提供七平台产物；Windows x64 为本机主要核验平台 |
 | **浏览器** | Chrome / Edge | 本地 Web 工作台 |
 
-> 从公开源码完整跑通本地产品，需要私有 Runtime fork 仓库 `NarraFork/novelfork-runtime-private` 的读权限。普通用户请使用 **Releases 中的 Windows EXE**。
+> 从公开源码完整跑通本地产品，需要 Runtime fork `NarraFork/novelfork-runtime`（公开，MPL-2.0）。普通用户请使用 **Releases 中的 Windows EXE**。
 
 ---
 
@@ -106,7 +106,7 @@ Windows 用户优先选择 `windows-x64.exe`；不支持 AVX2 的旧 CPU 或部�
 
 ### Option 2: 源码开发（维护者）
 
-需要私有仓库 `NarraFork/novelfork-runtime-private` 的访问权限（找维护者开通）。Runtime 不随本仓库 clone 提供，由 `pnpm runtime:sync` 按 `packages/narrafork-runtime-private/UPSTREAM.lock.json` 记录的分支与提交，从 fork 导出到 `packages/narrafork-runtime-private/`（Git 忽略）：
+Runtime 不随本仓库 clone 提供，由 `pnpm runtime:sync` 按 `packages/narrafork-runtime-private/UPSTREAM.lock.json` 记录的分支与提交，从公开 fork `NarraFork/novelfork-runtime` 导出到 `packages/narrafork-runtime-private/`（Git 忽略）：
 
 ```bash
 git clone https://github.com/vivy1024/novelfork.git

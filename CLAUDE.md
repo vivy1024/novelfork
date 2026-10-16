@@ -31,7 +31,7 @@ Runtime 源头权威（公开仓库，不在本仓库内）
    当前 fork 分支：novelfork/upgrade-0.8.3（内容 = 物化树 = MPL 快照 source/v0.0.4）
 
 本地辅助（均不提交）
-├─ packages/.narrafork-runtime-sync/          宿主 git 库：公开上游镜像 + fork 分支 + 私有血统完整历史，worktree 从这里开
+├─ packages/.narrafork-runtime-sync/          宿主 git 库：公开上游镜像 + 公开 fork 分支（worktree 从这里开）
 ├─ packages/.narrafork-runtime-fork-staging/  私有线时代的宿主库（留档，不再参与流程）
 └─ .runtime-backup-v0.7.12-20261008/          上一次物化目录备份（回滚用，当前唯一一份）
 ```
@@ -45,16 +45,15 @@ Runtime 源头权威（公开仓库，不在本仓库内）
 | `packages/narrafork-runtime-bridge/` | Studio/产品层与 Runtime 的窄契约 | 跟踪（公开） |
 | `packages/fitness-plugin/` | 示例/扩展插件 | 跟踪（公开） |
 | `packages/narrafork-runtime-private/` | 可运行的完整 Runtime 物化树（= 公开 fork 分支内容） | **ignore，仅本地**（例外：`UPSTREAM.lock.json` 作为来源元数据被跟踪） |
-| `packages/.narrafork-runtime-sync/` | 宿主 git 库：公开上游镜像 + fork 分支 + 私有血统完整历史 | **ignore，仅本地** |
+| `packages/.narrafork-runtime-sync/` | 宿主 git 库：公开上游镜像 + 公开 fork 分支 | **ignore，仅本地** |
 | `NarraFork/novelfork-runtime` | Runtime fork 权威仓库，当前分支 `novelfork/upgrade-0.8.3` | **独立公开仓库（MPL-2.0，不在本仓库内）** |
 
 ### 公开边界（硬约束）
 
 - 上游 Runtime 已开源（`NarraFork/NarraFork`，MPL-2.0，2026-02 起），我们的 Runtime 定制也全部公开在 fork `NarraFork/novelfork-runtime`——**「Runtime 源码不可公开」的时代已结束**，公开边界收敛为两条：
-  1. **单一权威源**：本仓库不得跟踪物化树（`packages/narrafork-runtime-private/` 仅 `UPSTREAM.lock.json` 例外）。Runtime 改动只能在 fork 分支落下、导出物化；两边同时长就是双权威。
-  2. **私有血统不进公开渠道**：上游开源前的未消毒提交与消毒集内容，只留在本地 sync 镜像与已归档私有仓，绝不推送到任何公开远端。
+  1. **单一权威源**：本仓库不得跟踪物化树（`packages/narrafork-runtime-private/` 仅 `UPSTREAM.lock.json` 例外）。Runtime 改动只能在 fork `NarraFork/novelfork-runtime` 的分支上落下、导出物化；两边同时长就是双权威。
 - 不提交密钥、Token、`.env`、用户数据；本地辅助目录（`packages/.narrafork-runtime-*`、`.runtime-backup-*`）不进入 Git。
-- `NarraFork/novelfork-runtime-private` 已于 2026-10-09 archive 只读封存，仅留档（历史教训：2026-09-26 曾误设公开并被 fork，09-27 改回；原仓库切换可见性时已有个人 fork 会脱离并保持原可见性）。
+- 历史遗留的 `NarraFork/novelfork-runtime-private` 已于 2026-10-09 archive 只读封存（**仍存在**：`gh api` 查得 `archived=true, private=true`，`git ls-remote` 仍可读到 HEAD），不再作为 Runtime 远端；`packages/.narrafork-runtime-sync` 的 `origin` 仍指向它，需要拉取/推送 Runtime 时先改指公开 fork。见「已知的假象与坑」。
 - 边界检查：`pnpm check:boundary`（当前文件）、`.githooks/`（提交 / 推送前，`git config core.hooksPath .githooks` 启用）、公开 CI（PR 的每个提交）共用 `scripts/check-public-boundary.mjs`。
 - 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 本地编译发布产物 + 用 Windows EXE 做功能核验（详见「多平台发版流程」）。
 
@@ -201,7 +200,7 @@ NarraFork/novelfork-runtime      公开 fork，分支 novelfork/upgrade-<版本>
         │ git archive（pnpm runtime:sync）
 本地物化 packages/narrafork-runtime-private/   fork 分支导出物（gitignore，只认 UPSTREAM.lock.json）
         ▲
-宿主库 packages/.narrafork-runtime-sync/   公开上游镜像 + fork 分支 + 私有血统完整历史，worktree 从这里开
+宿主库 packages/.narrafork-runtime-sync/   公开上游镜像 + 公开 fork 分支，worktree 从这里开
 ```
 
 - fork 层 = product-host SPI + runtime-migrations + 宿主组件 + 嵌入宿主接线；逐文件明细与移植记录见 `UPSTREAM.lock.json` 的 `provenance`。
@@ -228,10 +227,11 @@ NarraFork/novelfork-runtime      公开 fork，分支 novelfork/upgrade-<版本>
 - **宿主库 `git status` 会报约 2689 个"已修改"文件，是假的。** 内容哈希与索引、HEAD 三方一致，`git diff HEAD` 只有个位数真实改动；`update-index --really-refresh` 与 `git reset` 都清不掉，属文件系统层 stat 问题。以真实 `git diff` 为准。
 - **物化树的 tsgo typecheck 恒红**，源于 `frontend/routeTree.gen.ts`、`server/generated/embedded-licenses.ts` 等构建期 codegen 产物不在跟踪文件里（0.6.5 时代同样如此）。判断合并是否引入问题，要与**纯上游同版本基线**对照，不是看绝对错误数。
 - 上游 0.6.6 的 `bash-analyze.test.ts` 有一条假设 POSIX 路径解析的测试，在 Windows 上必然失败，非本地引入。
+- **`packages/.narrafork-runtime-sync` 的 `origin` 仍指向已 archive 的私有仓 `NarraFork/novelfork-runtime-private`（仓库仍在，archived+private）。** 只要 lock 里的提交已在本地缓存（`git cat-file -e <sha>` 成功），`pnpm runtime:sync` 就不需要 fetch，能正常跑完——2026-10-16 的 T-11 同步正是这样完成的。但**取新提交、或在没有这个本地缓存的机器上同步都会失败**。要用时先 `git -C packages/.narrafork-runtime-sync remote set-url origin https://github.com/NarraFork/novelfork-runtime.git`。
 
 ### 变迁历史（均已停用，仅历史排查参考）
 
-**私有线 fork 模式（2026-08-20 → 2026-10-08）**。Runtime 源头是私有 fork `NarraFork/novelfork-runtime-private`（分支 `novelfork/integration-v0.6.6` 起），宿主库为 `packages/.narrafork-runtime-fork-staging/`，升级 = 私有 fork 上 git merge 上游。上游 2026-02 开源（公开历史全量重写、与私有线不相交）后，0.8.3 起改走公开线（见上文流程）；私有仓已于 2026-10-09 archive 只读封存。fork 层原始出处 `42641a32`（2026-08-20 `feat(runtime): materialize`）；私有血统完整历史只留在本地 `packages/.narrafork-runtime-sync/` 与 `fork-staging/`（宿主机 git status 报数千假修改是这两库的文件系统层 stat 老毛病，以 `git diff` 为准）。
+**私有线 fork 模式（2026-08-20 → 2026-10-08，已停用）**。当时的 Runtime 源头是私有 fork `NarraFork/novelfork-runtime-private`（分支 `novelfork/integration-v0.6.6` 起），宿主库为 `packages/.narrafork-runtime-fork-staging/`，升级 = 私有 fork 上 git merge 上游。上游 2026-02 开源（公开历史全量重写、与私有线不相交）后，0.8.3 起改走公开线（见上文流程）。**私有仓已于 2026-10 删除**，仅作历史记录；fork 层原始出处 `42641a32`（2026-08-20 `feat(runtime): materialize`）。
 
 **archive+overlay 重放（更早期）**。当时以 `UPSTREAM.lock.json` 的 commit/tree 为哈希绑定基线、以 overlay manifest 的 SHA-256 精确补丁重放；fork 化后这些约束由 git 天然满足。`bun scripts/import-narrafork-runtime.ts --source <checkout> --report-only` 的影响报告仍可用于冲突预估，但它引用的 `packages/.narrafork-runtime-import/`（含 zstd 工具链）已在 2026-10-09 目录大扫除时删除，要用须重新准备工具链。该时代的残留缓存与 `packages/narrafork-runtime-overlay/` 已于 2026-09-17 清理，overlay 私有仓库同日删除。
 

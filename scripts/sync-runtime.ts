@@ -88,7 +88,7 @@ function ensureCommit(lock: RuntimeLock) {
       stdio: "inherit",
     });
     if (clone.status !== 0) {
-      fail("克隆 Runtime fork 失败", "多半是没有 NarraFork/novelfork-runtime-private 的访问权限，或网络 / 凭据问题", "找维护者开通仓库权限，确认 git 能用 HTTPS 访问 GitHub 后重跑");
+      fail("克隆 Runtime fork 失败", "多半是网络或凭据问题；lock 里的 remote 若已失效（例如仍然指向已删除的 NarraFork/novelfork-runtime-private），也要先改指公开 fork", "确认 git 能用 HTTPS 访问 GitHub；remote 失效时改为 https://github.com/NarraFork/novelfork-runtime.git 后重跑");
     }
     // 取原始字节：不做换行转换，Windows 上不因可执行位或长路径误判修改。
     for (const [key, value] of [["core.autocrlf", "false"], ["core.filemode", "false"], ["core.longpaths", "true"]]) {

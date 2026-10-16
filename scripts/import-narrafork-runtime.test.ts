@@ -88,7 +88,7 @@ async function createFixture(): Promise<Fixture> {
 			"remote",
 			"add",
 			"origin",
-			"git@github.com:NarraFork/novelfork-runtime-private.git",
+			"git@github.com:NarraFork/novelfork-runtime.git",
 		],
 		source,
 	);
@@ -143,13 +143,13 @@ describe("validateRuntimeSourceIdentity", () => {
 	test("接受 NovelFork Runtime fork 的 origin、集成分支和 marker", () => {
 		expect(
 			validateRuntimeSourceIdentity({
-				remote: "git@github.com:NarraFork/novelfork-runtime-private.git",
+				remote: "git@github.com:NarraFork/novelfork-runtime.git",
 				branch: "novelfork/integration-v0.5.23",
 				trackedPaths: validTrackedPaths,
 			}),
 		).toEqual({
-			source: "novelfork-runtime-private",
-			repository: "NarraFork/novelfork-runtime-private",
+			source: "novelfork-runtime",
+			repository: "NarraFork/novelfork-runtime",
 			branch: "novelfork/integration-v0.5.23",
 			markerPaths: [...validTrackedPaths],
 		});
@@ -162,20 +162,20 @@ describe("validateRuntimeSourceIdentity", () => {
 				branch: "novelfork/integration-v0.5.23",
 				trackedPaths: validTrackedPaths,
 			}),
-		).toThrow(/缺少 NarraFork\/novelfork-runtime-private fork checkout/);
+		).toThrow(/缺少 NarraFork\/novelfork-runtime fork checkout/);
 	});
 
 	test("拒绝非集成分支和错误 marker", () => {
 		expect(() =>
 			validateRuntimeSourceIdentity({
-				remote: "https://github.com/NarraFork/novelfork-runtime-private.git",
+				remote: "https://github.com/NarraFork/novelfork-runtime.git",
 				branch: "develop",
 				trackedPaths: validTrackedPaths,
 			}),
 		).toThrow(/novelfork\/integration-v0\.5\.23 分支/);
 		expect(() =>
 			validateRuntimeSourceIdentity({
-				remote: "https://github.com/NarraFork/novelfork-runtime-private.git",
+				remote: "https://github.com/NarraFork/novelfork-runtime.git",
 				branch: "novelfork/integration-v0.5.23",
 				trackedPaths: validTrackedPaths.slice(0, -1),
 			}),
@@ -201,7 +201,7 @@ describe("importNarraForkRuntime", () => {
 				target: fixture.target,
 				repositoryRoot: fixture.outer,
 			}),
-		).rejects.toThrow(/缺少 NarraFork\/novelfork-runtime-private fork checkout/);
+		).rejects.toThrow(/缺少 NarraFork\/novelfork-runtime fork checkout/);
 	});
 
 	test("真实 fork 形态允许 tracked source lock，但导入时重建目标 lock", async () => {
@@ -215,8 +215,8 @@ describe("importNarraForkRuntime", () => {
 			`${JSON.stringify(
 				{
 					schemaVersion: 1,
-					repository: "NarraFork/novelfork-runtime-private",
-					remote: "https://github.com/NarraFork/novelfork-runtime-private.git",
+					repository: "NarraFork/novelfork-runtime",
+					remote: "https://github.com/NarraFork/novelfork-runtime.git",
 					commit: sourceCommit,
 					tree: sourceTree,
 					branch: "novelfork/integration-v0.5.23",
@@ -385,8 +385,8 @@ describe("importNarraForkRuntime", () => {
 		) as UpstreamLock;
 		expect(lock).toMatchObject({
 			schemaVersion: 1,
-			repository: "NarraFork/novelfork-runtime-private",
-			remote: "git@github.com:NarraFork/novelfork-runtime-private.git",
+			repository: "NarraFork/novelfork-runtime",
+			remote: "git@github.com:NarraFork/novelfork-runtime.git",
 			version: "0.5.4",
 			trackedFileCount: 5,
 			importMethod: "git-archive",

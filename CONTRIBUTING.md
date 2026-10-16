@@ -17,7 +17,7 @@
 
 完整步骤见 [README「源码开发」](README.md#option-2-源码开发维护者)，要点：
 
-1. 需要私有仓库 `NarraFork/novelfork-runtime-private` 的访问权限（找维护者开通）。
+1. 不需要额外权限：Runtime fork `NarraFork/novelfork-runtime` 是公开仓库（MPL-2.0）。
 2. `git config core.hooksPath .githooks`：启用提交 / 推送前的公开边界检查。
 3. 根目录 `pnpm install`，再 `pnpm runtime:sync` 按 `packages/narrafork-runtime-private/UPSTREAM.lock.json` 从 fork 导出 Runtime 并在该目录 `bun install`。
 4. `pnpm typecheck` 确认五个包（core / bridge / novel-plugin / studio / product-runtime）全部 Done。
@@ -30,19 +30,19 @@ Runtime 目录与 fork 相关的硬约束（不得提交 Runtime 源码、Runtim
 
 ## 公开边界
 
-本仓库是公开仓库，Runtime 私有 fork 不是。以下内容不得进入本仓库的任何提交（包括之后又删掉的中间提交——公开历史收不回来）：
+本仓库是公开仓库。以下内容不得进入本仓库的任何提交（包括之后又删掉的中间提交——公开历史收不回来）：
 
-- `packages/narrafork-runtime-private/` 下除 `UPSTREAM.lock.json` 以外的任何文件，以及其他 Runtime 私有目录；
+- `packages/narrafork-runtime-private/` 下除 `UPSTREAM.lock.json` 以外的任何文件，以及其他 Runtime 物化目录；
 - `.env`、数据库文件、证书与私钥。
 
 `pnpm check:boundary` 检查当前文件；启用 `.githooks` 后提交与推送前自动检查；公开 CI 会对 PR 里的每个提交再查一遍。
 
 ## 修改 Runtime
 
-Runtime 改动提交到私有 fork `NarraFork/novelfork-runtime-private`，不进本仓库：
+Runtime 改动提交到公开 fork `NarraFork/novelfork-runtime` 的分支上，不进本仓库：
 
-1. 协作者在 fork 仓库**内部**建分支、提 PR（维护者会开通写入权限）。**不要把它 fork 到个人账号**：个人 fork 在原仓库切换公开 / 私有时会脱离并保持原状，可能让 Runtime 源码意外公开。
-2. PR 合入 fork 分支后，维护者更新本仓库的 `UPSTREAM.lock.json`（`commit` 指向新提交）。
+1. 在 fork 仓库**内部**建分支、提 PR（需要该仓库的写入权限）。不要 fork 到个人账号：个人 fork 与原仓库会各自独立演进，后续改动容易落到错的地方。
+2. PR 合入 fork 分支后，维护者更新本仓库的 `UPSTREAM.lock.json`（`commit`、`tree`、`trackedFileCount` 指向新提交）。
 3. 其他人 `git pull` 后执行 `pnpm runtime:sync` 即可对齐。
 
 ---
