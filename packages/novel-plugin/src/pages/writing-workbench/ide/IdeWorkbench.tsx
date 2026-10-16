@@ -56,6 +56,7 @@ import { useWorkbenchLeaveGuard } from "../use-workbench-leave-guard";
 import { toast } from "@/components/ui/toast";
 import {
   defaultIdePaneVisibility,
+  IDE_CHAT_PANE_MIN_WIDTH,
   ideLayoutModeFromWidth,
   ideLayoutSizesToArray,
   idePanesUseOverlay,
@@ -1896,7 +1897,7 @@ export function IdeWorkbench({
           </Allotment.Pane>
 
           {/* Chat Panel（右侧辅助栏，类似 VS Code AuxiliaryBar） */}
-          <Allotment.Pane minSize={200} preferredSize={320} visible={!overlayPanes && chatVisible}>
+          <Allotment.Pane minSize={IDE_CHAT_PANE_MIN_WIDTH} preferredSize={320} visible={!overlayPanes && chatVisible}>
             <div className="flex h-full flex-col border-l border-border bg-card">
               <ChatHeader
                 sessions={bookSessions}

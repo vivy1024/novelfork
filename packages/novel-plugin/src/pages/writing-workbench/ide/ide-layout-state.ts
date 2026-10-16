@@ -10,7 +10,16 @@ export interface IdeLayoutStorage {
 }
 
 const STORAGE_PREFIX = "nf:ide-layout:v1:";
-const MIN_SIZES: IdeLayoutSizes = { sidebar: 150, editor: 220, chat: 200 };
+/**
+ * 对话栏（叙述者 composer 所在）的最小宽度。
+ *
+ * 不能凭手感定：1280px 屏幕上容器只剩 1030px（扣掉 250px 壳层侧栏），三栏并排时对话栏会被压到下限。
+ * 实测（T-27，1280px 视口）内容盒 = 面板宽 - 247，而占位文字「发送消息...」自然宽 66.1px，
+ * 要单行放下内容盒须 ≥ 66.1，故面板最小宽须 ≥ 313.1 → 取 320（同时等于 FALLBACK_SIZES.chat）。
+ * 低于此值时输入框内容盒为 0，占位文字逐字换行、发送按钮被裁掉（下限 200 时实测溢出 31px）。
+ */
+export const IDE_CHAT_PANE_MIN_WIDTH = 320;
+const MIN_SIZES: IdeLayoutSizes = { sidebar: 150, editor: 220, chat: IDE_CHAT_PANE_MIN_WIDTH };
 const FALLBACK_SIZES: IdeLayoutSizes = { sidebar: 220, editor: 800, chat: 320 };
 
 /** 工作台容器宽度：三栏都能摊开。 */

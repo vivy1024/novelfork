@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   defaultIdePaneVisibility,
+  IDE_CHAT_PANE_MIN_WIDTH,
   ideLayoutModeFromWidth,
   ideLayoutSizesToArray,
   idePanesUseOverlay,
@@ -26,7 +27,9 @@ describe("ide layout state", () => {
 
   it("normalizes malformed and undersized values", () => {
     expect(normalizeIdeLayoutSizes([0, -1, Number.NaN])).toEqual({ sidebar: 220, editor: 800, chat: 320 });
-    expect(normalizeIdeLayoutSizes([180.4, 300.6, 240.2])).toEqual({ sidebar: 180, editor: 301, chat: 240 });
+    // chat 240 低于对话栏下限（IDE_CHAT_PANE_MIN_WIDTH，320）：下限提高后一律夹到 320，
+    // 否则恢复一个过窄的布局会把 composer 再挤回内容盒为 0 的状态。
+    expect(normalizeIdeLayoutSizes([180.4, 300.6, 240.2])).toEqual({ sidebar: 180, editor: 301, chat: 320 });
   });
 
   it("round-trips sizes per book", () => {
@@ -62,5 +65,17 @@ describe("ide layout state", () => {
     expect(initialIdeLayoutMode(828)).toBe("compact");
     expect(initialIdeLayoutMode(827)).toBe("narrow");
     expect(initialIdeLayoutMode(767)).toBe("narrow");
+  });
+
+  /**
+   * 对话栏最小宽度必须够 composer 用：1280px 屏幕上容器只剩 1030px（扣掉 250px 壳层侧栏），
+   * 三栏并排时对话栏会被压到下限。实测（T-27，1280px 视口）：
+   *   内容盒 = 面板宽 - 247；占位文字「发送消息...」自然宽 66.1px，要单行放下内容盒须 ≥ 66.1；
+   *   故面板最小宽须 ≥ 313.1。下限 200 时内容盒为 0，占位文字逐字换行成 7 行（实测）。
+   */
+  it("keeps the chat pane wide enough for the composer placeholder", () => {
+    expect(IDE_CHAT_PANE_MIN_WIDTH).toBeGreaterThanOrEqual(314);
+    // 兜底尺寸与下限不能互相矛盾：下限高于兜底时，恢复布局会把窗口撑到超过预设宽度。
+    expect(loadIdeLayoutSizes("book-a", undefined, storage).chat).toBeGreaterThanOrEqual(IDE_CHAT_PANE_MIN_WIDTH);
   });
 });
