@@ -1657,6 +1657,12 @@ export class NovelForkProductBookService {
 		});
 		const sourceStat = await stat(sourceRoot).catch(() => null);
 		if (!sourceStat?.isDirectory()) throw new ValidationError("所选路径不是目录");
+		// T-03②：源目录与任一已绑定书根重叠（相等、源在书内、或源包住书，cp 整目录会把书一起带走）时，
+		// 只允许该书的属主（或管理员）导入。对非属主返回与「路径不存在」完全相同的错误：不泄露书 id，
+		// 也不让调用方区分「目录不存在」与「目录属于他人」。
+		const overlapping = await bookRuntimeBindingService.listBindingRootsOverlapping(sourceRoot);
+		const foreign = overlapping.some((binding) => !ownsBookBinding(actor, binding.createdByUserId));
+		if (foreign) throw new ValidationError("所选作品目录不存在或无法读取");
 		const controlledRoot = resolve(getControlledBooksRoot());
 		const relativeToControlled = relative(controlledRoot, sourceRoot);
 		if (!relativeToControlled.startsWith("..") && !isAbsolute(relativeToControlled)) {

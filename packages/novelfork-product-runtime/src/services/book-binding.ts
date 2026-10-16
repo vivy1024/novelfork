@@ -30,6 +30,8 @@ export interface BookRuntimeBindingStore {
 	findByProjectId(runtimeProjectId: string): Promise<BookRuntimeBindingRecord | null>;
 	/** Optional for legacy test/adapter stores; production Drizzle store implements it. */
 	findByBookId?(bookId: string): Promise<BookRuntimeBindingRecord | null>;
+	/** Optional for legacy test/adapter stores; production Drizzle store implements it. T-03②：导入前判定源目录是否与已绑定的书根重叠。 */
+	listBindingRoots?(): Promise<Array<Pick<BookRuntimeBindingRecord, "bookId" | "bookRoot" | "createdByUserId">>>;
 	findByNarratorId(narratorId: string): Promise<BookRuntimeBindingRecord | null>;
 	projectExists(runtimeProjectId: string): Promise<boolean>;
 	bookBoundElsewhere(bookId: string, runtimeProjectId: string): Promise<boolean>;
@@ -40,6 +42,18 @@ export interface BookRuntimeBindingStore {
 function isContained(root: string, candidate: string): boolean {
 	const rel = relative(root, candidate);
 	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/**
+ * T-03②：按路径段判断 candidate 是否位于 root 之内（含相等）。
+ * 不能用 rel.startsWith("..")：名为 ..backup 的合法子目录会被误判为越界，从而漏判重叠。
+ */
+function isWithinByPathSegments(root: string, candidate: string): boolean {
+	const rel = relative(root, candidate);
+	if (rel === "") return true;
+	if (isAbsolute(rel)) return false;
+	const firstSegment = rel.split(/[\\/]/)[0];
+	return firstSegment !== "..";
 }
 
 /** Server-written marker required before a persisted external root is trusted. */
@@ -200,6 +214,14 @@ export class BookRuntimeBindingService {
 		return this.store.findByBookId?.(bookId) ?? Promise.resolve(null);
 	}
 
+	/** T-03②：列出与源目录重叠（相等、源在书内、或源包住书）的绑定根，供导入前的归属判定。 */
+	async listBindingRootsOverlapping(sourceRoot: string) {
+		const rows = (await this.store.listBindingRoots?.()) ?? [];
+		return rows.filter(
+			(row) => isWithinByPathSegments(row.bookRoot, sourceRoot) || isWithinByPathSegments(sourceRoot, row.bookRoot),
+		);
+	}
+
 	getByNarratorId(narratorId: string): Promise<BookRuntimeBindingRecord | null> {
 		return this.store.findByNarratorId(narratorId);
 	}
@@ -306,6 +328,16 @@ export const drizzleBookRuntimeBindingStore: BookRuntimeBindingStore = {
 				where: eq(bookRuntimeBindings.bookId, bookId),
 			})) ?? null
 		);
+	},
+	async listBindingRoots() {
+		const productDb = getNovelForkProductDatabase();
+		return productDb
+			.select({
+				bookId: bookRuntimeBindings.bookId,
+				bookRoot: bookRuntimeBindings.bookRoot,
+				createdByUserId: bookRuntimeBindings.createdByUserId,
+			})
+			.from(bookRuntimeBindings);
 	},
 	async findByNarratorId(narratorId) {
 		const [row] = await runtimeDb
