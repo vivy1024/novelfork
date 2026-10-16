@@ -135,6 +135,8 @@ export function createBunJUnitRunner(options: {
 		readonly scratch: string;
 		readonly errorLog: string;
 		readonly reportPath: string;
+		/** 本批的位置过滤项（空数组表示整树）。调用方据此判断「这批是不是跑完了」。 */
+		readonly testPaths: readonly string[];
 	}) => void;
 }): (index: 1 | 2, testPaths: readonly string[]) => Promise<string> {
 	return async (index, testPaths) => {
@@ -152,7 +154,7 @@ export function createBunJUnitRunner(options: {
 			env.PATH = [dirname(options.bunExecutable), env.PATH].filter(Boolean).join(delimiter);
 			// stderr 落盘而非丢弃：子进程在加载 preload 阶段被拒时不会写报告，stderr 是唯一的原因线索。
 			const errorLog = join(scratch, "bun-stderr.log");
-			options.onRunStart?.({ index, scratch, errorLog, reportPath });
+			options.onRunStart?.({ index, scratch, errorLog, reportPath, testPaths });
 			const proc = Bun.spawn(
 				[
 					options.bunExecutable,

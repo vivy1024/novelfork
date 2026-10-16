@@ -15,7 +15,7 @@
  * 每轮把各批报告合并成一份再判定，所以「必须两轮、每轮都必须跑完所有批次、第一轮失败不得短路」
  * 这些语义不变；批次只是执行与可观测性的切分，不参与豁免判定。
  */
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { REQUIRED_RUNTIME_BUN_VERSION } from "./lib/isolated-runtime-build.ts";
 import { createBunJUnitRunner } from "./lib/windows-ebusy-waiver-runner.ts";
@@ -51,6 +51,47 @@ function progress(line: string): void {
 		// 进度日志失败不能影响判定本身。
 	}
 	console.error(stamped);
+}
+
+/**
+ * 批次完成计数（T-34）。
+ *
+ * 两轮 × 五批 = 10 次「跑完」。本机实测单轮 84.3 分钟、两轮约 170 分钟，
+ * 远超调用方的 3000s 预算：这个门禁在本机永远跑不完，退出码 124 是预算不够而非失败。
+ * 所以「没跑完」必须自己说出来，否则调用方只看到一个静默的超时，无法区分
+ * 「门禁没过」和「根本没跑到判定那一步」。
+ */
+const TOTAL_BATCHES = 10;
+let completedBatches = 0;
+/** 正在跑的那一批，用于进程被打断时抢救它那份半成品 JUnit 报告。 */
+let activeRun: { readonly index: 1 | 2; readonly label: string; readonly reportPath: string } | undefined;
+let reportedBudgetShortfall = false;
+
+/**
+ * 进程被外部超时打断 / 正常退出但两轮没跑完时，明确报出「预算不足」并留下可分类的产物。
+ *
+ * 只能覆盖能被捕获的退出（正常退出、SIGTERM/SIGINT）；被强杀（TerminateProcess / SIGKILL）
+ * 时不会执行，这种情况仍以进度日志的最后一行判断跑到哪一批。
+ */
+function reportBudgetShortfall(): void {
+	if (reportedBudgetShortfall || completedBatches >= TOTAL_BATCHES) return;
+	reportedBudgetShortfall = true;
+	const lastLine = activeRun ? `第 ${activeRun.index} 轮 / ${activeRun.label} 进行中被打断` : "批次之间被打断";
+	progress(
+		`test:waiver 预算不足：只跑完 ${completedBatches}/${TOTAL_BATCHES} 个批次（${lastLine}），`
+		+ "两轮未跑完 ⇒ 豁免判定未产出，本次退出码不代表门禁结果。",
+	);
+	if (!activeRun) return;
+	// 半成品报告默认会随 runner 的 finally 一起删掉，这里先留一份供事后逐类判定（T-35）。
+	const destination = join(repositoryRoot, "tmp", `waiver-partial-run${activeRun.index}-${activeRun.label}.xml`);
+	try {
+		if (existsSync(activeRun.reportPath)) {
+			copyFileSync(activeRun.reportPath, destination);
+			progress(`已留档半成品报告：${destination}（可据此逐类判定失败，不必重跑）`);
+		}
+	} catch {
+		// 留档失败不影响主流程。
+	}
 }
 
 /**
@@ -136,10 +177,21 @@ const runSuite = createBunJUnitRunner({
 	bunExecutable,
 	cwd: runtimeRoot,
 	migrationsDir: migrationsRoot,
-	onRunStart: ({ index, scratch, errorLog }) => {
+	onRunStart: ({ index, scratch, errorLog, reportPath, testPaths }) => {
+		const label = batches.find((batch) => batch.testPaths.join("\u0000") === testPaths.join("\u0000"))?.label
+			?? (testPaths.length === 0 ? "全部" : testPaths.join(" "));
+		activeRun = { index, label, reportPath };
 		progress(`第 ${index} 轮启动子进程：scratch=${scratch} 实时日志=${errorLog}`);
 	},
 });
+
+// 被外部超时打断（SIGTERM/SIGINT）时也要把「跑不完」说清楚，而不是静默退出。
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+	process.on(signal, () => {
+		reportBudgetShortfall();
+		process.exit(1);
+	});
+}
 
 // 单批失败（例如子进程没写出报告）不终止整轮：把它变成一份带不可豁免失败的报告，
 // 其余批次照跑，两轮语义与「整树运行」保持一致，失败原因也留在最终判定里。
@@ -149,8 +201,9 @@ const runBatchedSuite = async (index: 1 | 2, testPaths: readonly string[]): Prom
 	try {
 		const xml = await runSuite(index, testPaths);
 		const counts = summarize(xml);
+		completedBatches += 1;
 		progress(
-			`第 ${index} 轮 / ${label} 完成：${((Date.now() - started) / 1000).toFixed(1)}s，用例 ${counts.total}，失败 ${counts.failed}，跳过 ${counts.skipped}`,
+			`第 ${index} 轮 / ${label} 完成：${((Date.now() - started) / 1000).toFixed(1)}s，用例 ${counts.total}，失败 ${counts.failed}，跳过 ${counts.skipped}（批次进度 ${completedBatches}/${TOTAL_BATCHES}）`,
 		);
 		return xml;
 	} catch (error) {
@@ -170,4 +223,6 @@ console.log(`EBUSY candidates (${evaluation.ebusyCandidates.length}) written to 
 progress(
 	`test:waiver 结束：退出码 ${evaluation.exitCode}，豁免 ${evaluation.waived.length}，未豁免 ${evaluation.unwaivedFailures.length}，EBUSY 候选 ${evaluation.ebusyCandidates.length}`,
 );
+// 走到这里通常是 10/10 跑完的正常结束；若因某轮提前退出而没跑满，reportBudgetShortfall 会补一句说明。
+reportBudgetShortfall();
 process.exit(evaluation.exitCode);
