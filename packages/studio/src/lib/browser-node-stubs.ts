@@ -20,11 +20,14 @@ function unavailable(name: string): () => never {
 
 // ── node:fs/promises ────────────────────────────────────────────────
 export const access = unavailable("fs/promises.access");
+export const appendFile = unavailable("fs/promises.appendFile");
 export const copyFile = unavailable("fs/promises.copyFile");
+export const cp = unavailable("fs/promises.cp");
 export const mkdir = unavailable("fs/promises.mkdir");
 export const open = unavailable("fs/promises.open");
 export const readdir = unavailable("fs/promises.readdir");
 export const readFile = unavailable("fs/promises.readFile");
+export const realpath = unavailable("fs/promises.realpath");
 export const rename = unavailable("fs/promises.rename");
 export const rm = unavailable("fs/promises.rm");
 export const stat = unavailable("fs/promises.stat");
@@ -32,22 +35,39 @@ export const unlink = unavailable("fs/promises.unlink");
 export const writeFile = unavailable("fs/promises.writeFile");
 
 // ── node:fs ─────────────────────────────────────────────────────────
+export const copyFileSync = unavailable("fs.copyFileSync");
 export const existsSync = unavailable("fs.existsSync") as unknown as (path: string) => boolean;
 export const mkdirSync = unavailable("fs.mkdirSync");
+export const mkdtempSync = unavailable("fs.mkdtempSync");
 export const readFileSync = unavailable("fs.readFileSync") as unknown as (path: string) => string;
 export const readdirSync = unavailable("fs.readdirSync");
+export const realpathSync = unavailable("fs.realpathSync") as unknown as (path: string) => string;
+export const rmSync = unavailable("fs.rmSync");
+export const statSync = unavailable("fs.statSync");
+export const unlinkSync = unavailable("fs.unlinkSync");
 
 // ── node:crypto ─────────────────────────────────────────────────────
+export const createCipheriv = unavailable("crypto.createCipheriv");
+export const createDecipheriv = unavailable("crypto.createDecipheriv");
 export const createHash = unavailable("crypto.createHash");
 export const createHmac = unavailable("crypto.createHmac");
+export const randomBytes = unavailable("crypto.randomBytes");
 export const randomUUID = unavailable("crypto.randomUUID") as unknown as () => string;
 
 // ── node:module ─────────────────────────────────────────────────────
 export const createRequire = unavailable("module.createRequire");
 
 // ── node:os ─────────────────────────────────────────────────────────
+// hostname 由书籍锁的「主机 + 进程」判活引入（core/state/manager.ts），
+// 经 core 根入口进入前端模块图；缺它会让整个产品构建硬崩。
+export const cpus = unavailable("os.cpus");
 export const homedir = unavailable("os.homedir") as unknown as () => string;
+export const hostname = unavailable("os.hostname") as unknown as () => string;
+export const platform = unavailable("os.platform") as unknown as () => string;
 export const tmpdir = unavailable("os.tmpdir") as unknown as () => string;
+// release / version 是常量而非函数：调用即抛错会掩盖真实语义，这里直接给字符串。
+export const release = "browser";
+export const version = "browser";
 
 // ── node:events ─────────────────────────────────────────────────────
 // MCP stdio/sse transport 经 core 根入口进入模块图；`extends EventEmitter`
@@ -59,4 +79,5 @@ export class EventEmitter {
 }
 
 // ── node:zlib ───────────────────────────────────────────────────────
+export const deflateRawSync = unavailable("zlib.deflateRawSync");
 export const inflateRawSync = unavailable("zlib.inflateRawSync") as unknown as (data: Uint8Array) => Uint8Array;
