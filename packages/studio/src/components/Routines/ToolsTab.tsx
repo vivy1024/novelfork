@@ -22,9 +22,7 @@ const AVAILABLE_TOOLS: Tool[] = [
   { name: "Edit", enabled: true, description: "编辑已有文件", loadCommand: "/load edit" },
   { name: "Grep", enabled: true, description: "搜索文件内容", loadCommand: "/load grep" },
   { name: "Glob", enabled: true, description: "按模式查找文件", loadCommand: "/load glob" },
-  // 工作区管理（默认开启）
-  { name: "EnterWorktree", enabled: true, description: "进入 Git 工作树", loadCommand: "/load enter_worktree" },
-  { name: "ExitWorktree", enabled: true, description: "退出 Git 工作树", loadCommand: "/load exit_worktree" },
+  // 任务管理（默认开启）
   { name: "TodoWrite", enabled: true, description: "维护待办清单", loadCommand: "/load todo_write" },
   // 联网工具（默认关闭，按需开启）
   { name: "WebFetch", enabled: false, description: "抓取网页内容", loadCommand: "/load web_fetch" },

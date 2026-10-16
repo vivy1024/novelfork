@@ -19,7 +19,7 @@ interface PermissionsTabProps {
 const COMMON_TOOLS = [
   "Bash", "Read", "Write", "Edit", "Grep", "Glob",
   "WebFetch", "WebSearch", "TeamCreate", "TeamDelete",
-  "EnterWorktree", "ExitWorktree", "TodoWrite"
+  "TodoWrite"
 ];
 
 const PERMISSION_LABELS: Record<PermissionBehavior, string> = {
