@@ -12,7 +12,8 @@ vi.mock("../../runtime-admin", () => ({
 vi.mock("../../runtime-admin/dependencies", () => ({
   createDependenciesClient: () => ({ checkAll: depsMocks.checkAll }),
 }));
-vi.mock("../runtime-settings-utils", () => ({
+vi.mock("../runtime-settings-utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../runtime-settings-utils")>()),
   buildRuntimeModelOptions: () => [],
 }));
 

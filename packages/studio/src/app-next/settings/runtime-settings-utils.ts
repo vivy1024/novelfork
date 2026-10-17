@@ -64,6 +64,76 @@ export interface RuntimeModelSettingsSource {
   readonly geminiModelsGrouped?: unknown;
   readonly openaiModelsGrouped?: unknown;
   readonly nugModelsGrouped?: unknown;
+  /** Codex 账号不在任何 *Providers 数组里：可用与否只看这个标志，模型来自 codexModels。 */
+  readonly codexAvailable?: unknown;
+  readonly codexModels?: unknown;
+}
+
+const CODEX_PREFIX = "codex";
+
+function disabledProviderPrefixes(settings: RuntimeModelSettingsSource): ReadonlySet<string> {
+  return new Set(
+    asArray(asRecord(settings.agent).disabledProviders).filter((value): value is string => typeof value === "string"),
+  );
+}
+
+/**
+ * 已配好、可用的供应商数量（向导第 2 步据此放行）。与 Runtime 原生向导的
+ * countConfiguredProviders 同口径：Runtime 读设置时已把 openai/anthropic/geminiProviders
+ * 并进 customApiProviders，所以只需看 customApiProviders、nugProviders 与 Codex；
+ * 被停用、在 agent.disabledProviders 里、没填密钥（NUG 还要地址）的都不算。
+ */
+export function countConfiguredProviders(settings: RuntimeModelSettingsSource | null | undefined): number {
+  if (!settings) return 0;
+  const disabled = disabledProviderPrefixes(settings);
+  const configured = new Set<string>();
+  const add = (kind: string, providers: unknown, requireBaseUrl: boolean) => {
+    for (const raw of asArray(providers)) {
+      const provider = asRecord(raw);
+      const prefix = readString(provider, ["prefix"]);
+      if (provider.disabled === true || (prefix && disabled.has(prefix))) continue;
+      if (!readString(provider, ["apiKey"])) continue;
+      if (requireBaseUrl && !readString(provider, ["baseUrl"])) continue;
+      configured.add(`${kind}:${readString(provider, ["id"]) || prefix}`);
+    }
+  };
+  add("custom", settings.customApiProviders, false);
+  add("nug", settings.nugProviders, true);
+  if (settings.codexAvailable === true && !disabled.has(CODEX_PREFIX)) configured.add(CODEX_PREFIX);
+  return configured.size;
+}
+
+/** Codex 模型组：账号可用且前缀未被禁用时才有。与 Runtime 原生 useAllModels 的做法一致。 */
+function codexModelGroup(
+  settings: RuntimeModelSettingsSource,
+  agentModels: RuntimeAgentModelState,
+  includeHidden: boolean,
+): RuntimeModelGroup | null {
+  if (settings.codexAvailable !== true || disabledProviderPrefixes(settings).has(CODEX_PREFIX)) return null;
+  const seen = new Set<string>();
+  const models = asArray(settings.codexModels)
+    .filter((id): id is string => typeof id === "string" && Boolean(id.trim()))
+    .flatMap((id): RuntimeModelOption[] => {
+      const modelId = id.trim();
+      const value = `${CODEX_PREFIX}:${modelId}`;
+      const hidden = agentModels.hiddenModels.includes(value);
+      if (seen.has(value) || (hidden && !includeHidden)) return [];
+      seen.add(value);
+      return [{
+        value,
+        label: modelId,
+        provider: CODEX_PREFIX,
+        providerId: CODEX_PREFIX,
+        providerLabel: "Codex",
+        modelId,
+        hidden,
+        custom: false,
+        contextWindow: agentModels.modelContextWindows[value],
+      }];
+    });
+  return models.length > 0
+    ? { id: CODEX_PREFIX, label: "Codex", prefix: CODEX_PREFIX, disabled: false, models }
+    : null;
 }
 
 export function asRecord(value: unknown): Record<string, unknown> {
@@ -204,7 +274,7 @@ export function buildRuntimeModelGroups(
   ];
   const agentModels = getRuntimeAgentModelState(settings);
 
-  return providerEntries.flatMap(({ arrayKey, provider }) => {
+  const providerGroups = providerEntries.flatMap(({ arrayKey, provider }): RuntimeModelGroup[] => {
     if (provider.disabled && !includeDisabled) return [];
     const discovered = groupedModelsForProvider(settings, provider, arrayKey)
       .map((raw) => modelOption(raw, provider, agentModels, false))
@@ -227,6 +297,8 @@ export function buildRuntimeModelGroups(
       models,
     }] : [];
   });
+  const codex = codexModelGroup(settings, agentModels, includeHidden);
+  return codex ? [...providerGroups, codex] : providerGroups;
 }
 
 export function buildRuntimeModelOptions(settings: RuntimeModelSettingsSource): RuntimeModelOption[] {

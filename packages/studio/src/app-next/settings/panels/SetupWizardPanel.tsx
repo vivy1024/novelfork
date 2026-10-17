@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { createDependenciesClient, type DependencyCheckResult } from "../../runtime-admin/dependencies";
 import { createSettingsClient, createUserPreferencesClient, type RuntimeSettings } from "../../runtime-admin";
-import { buildRuntimeModelOptions } from "../runtime-settings-utils";
+import { buildRuntimeModelOptions, countConfiguredProviders } from "../runtime-settings-utils";
 
 const settingsClient = createSettingsClient();
 const prefsClient = createUserPreferencesClient();
@@ -48,12 +48,7 @@ export function SetupWizardPanel({ onComplete, onGoToProviders }: SetupWizardPan
   const modelOptions = useMemo(() => settings ? buildRuntimeModelOptions(settings) : [], [settings]);
   const selectOptions = useMemo(() => modelOptions.filter((m) => !m.hidden).map((m) => ({ value: m.value, label: m.label || m.value })), [modelOptions]);
 
-  const providerCount = useMemo(() => {
-    if (!settings) return 0;
-    const custom = Array.isArray(settings.customApiProviders) ? settings.customApiProviders.filter((p: any) => !p.disabled && p.apiKey).length : 0;
-    const nug = Array.isArray(settings.nugProviders) ? settings.nugProviders.filter((p: any) => !p.disabled && p.apiKey && p.baseUrl).length : 0;
-    return custom + nug;
-  }, [settings]);
+  const providerCount = useMemo(() => countConfiguredProviders(settings), [settings]);
 
   const isNextDisabled = step === 2 && providerCount === 0 || step === 3 && (!defaultModel || !summaryModel);
 
