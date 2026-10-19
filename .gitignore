@@ -67,6 +67,7 @@ cockpit-tools/
 .kiro/
 .narrafork-reference/
 .narrafork/
+# 注意：CLAUDE.md 已在版本库中跟踪，这里的规则只对未跟踪的同名文件生效（force-add 状态，勿执行 git rm --cached）
 CLAUDE.md
 AGENTS.md
 legnacode-cli/
