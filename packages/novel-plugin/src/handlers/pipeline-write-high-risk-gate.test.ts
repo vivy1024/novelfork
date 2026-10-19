@@ -236,6 +236,8 @@ describe("pipeline.write 高风险待确认门禁（T-13）", () => {
     );
     if (!result.ok) throw new Error(`expected ok, got ${result.code}: ${result.error}`);
     expect(result.ok).toBe(true);
+    // 高风险待确认是硬门，不是成功结果里的提醒：highRiskPendingReminder 已从
+    // PipelineWriteSuccess 移除（它从来没有被赋值过），断言它不被重新加回来。
     expect(result).not.toHaveProperty("highRiskPendingReminder");
   });
 

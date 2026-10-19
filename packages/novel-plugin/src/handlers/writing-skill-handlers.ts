@@ -424,10 +424,14 @@ export async function handleWritingSkillsRecommend(
     const projectState = await resolveProjectWritingSkillState(options, skills);
     const projectSlugs = new Set(projectState.projectSkillSlugs);
 
+    // 启用状态只能由作者在写作台勾选：叙述者的 skills.write 已随 S-9 下线，
+    // 这里若仍写「用 skills.write 添加」会把模型指向一个并不存在的工具。
+    const enableHint = "这只是建议，启用状态只能由作者在写作台「技能文风 › 写作技能」里勾选。";
+
     return {
       ok: true,
       summary: recommended.length > 0
-        ? `按本书设定推荐 ${recommended.length} 个 Writing Skills${recommendation.matchedGenreCluster ? `（题材簇：${recommendation.matchedGenreCluster}）` : ""}。这只是建议，需你确认后再用 skills.write 添加到项目目录。`
+        ? `按本书设定推荐 ${recommended.length} 个 Writing Skills${recommendation.matchedGenreCluster ? `（题材簇：${recommendation.matchedGenreCluster}）` : ""}。${enableHint}`
         : "没有匹配到值得推荐的 Writing Skills；可在写作设置里手动挑选。",
       data: {
         bookId,

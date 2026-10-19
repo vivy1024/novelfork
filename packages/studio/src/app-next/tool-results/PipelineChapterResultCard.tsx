@@ -240,7 +240,6 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
   const otherPublishWarnings = publishWarnings.filter((warning) => !skillWarnings.includes(warning));
   const publishStatus = getString(publishHint?.status);
   const settlementError = getString(payload.settlementError);
-  const highRiskPendingReminder = getString(payload.highRiskPendingReminder);
   const lengthWarning = getString(payload.lengthWarning);
   const contextSources = readContextSources(payload.contextSources);
   const stages = readStages(payload.pipelineStages);
@@ -400,13 +399,6 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
                 {otherPublishWarnings.map((warning, index) => <li key={`publish-warning-${index}`}>{warning}</li>)}
               </ul>
             </AlertDescription>
-          </Alert>
-        )}
-
-        {highRiskPendingReminder && (
-          <Alert>
-            <AlertTitle>高风险待审事件</AlertTitle>
-            <AlertDescription className="whitespace-pre-wrap">{highRiskPendingReminder}</AlertDescription>
           </Alert>
         )}
 

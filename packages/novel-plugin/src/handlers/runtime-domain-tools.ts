@@ -1040,7 +1040,6 @@ async function pipelineWrite(
     chapterId: result.chapterId,
     narrativeSettlement: result.narrativeSettlement,
     settlementDispatch: result.settlementDispatch,
-    highRiskPendingReminder: result.highRiskPendingReminder,
     publishHint: result.publishHint,
     needsHumanReview: result.needsHumanReview,
     settlementError: result.settlementError,
@@ -1050,7 +1049,7 @@ async function pipelineWrite(
     artifact: result.artifact,
     ...(settlementFailed ? { code: "settlement-pending", needsSettlementRetry: true } : {}),
   };
-  const summary = `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}${result.revised ? "，已自动修订" : ""}。${settlementSummary}${result.highRiskPendingReminder ? `\n${result.highRiskPendingReminder}` : ""}`;
+  const summary = `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}${result.revised ? "，已自动修订" : ""}。${settlementSummary}`;
   return settlementFailed
     ? fail("settlement-pending", summary, resultData)
     : ok(summary, resultData);

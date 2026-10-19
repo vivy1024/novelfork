@@ -142,11 +142,6 @@ export interface PipelineWriteOutput {
   readonly reviseRounds?: number;
   /** 正式章节确认后的 Narrative Memory 自动结算摘要 */
   readonly narrativeSettlement?: ChapterSettlementResult;
-  /**
-   * @deprecated 2026-10-15 起存在高风险待确认事件就以 high-risk-pending 停写，成功结果不再带这条提醒。
-   * 字段只为兼容仍在读取它的调用方（runtime-domain-tools、Studio 结果卡）而保留，等它们下线后删除。
-   */
-  readonly highRiskPendingReminder?: string;
   /** 轻量投稿风险提示：只提供本地线索与人工复核建议，不阻断保存。 */
   readonly publishHint?: {
     readonly status: "ready" | "has-warnings" | "needs-review" | "skipped";
