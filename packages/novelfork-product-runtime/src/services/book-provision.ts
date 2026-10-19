@@ -157,7 +157,7 @@ export type GuidedSetupResult = {
 	 *
  * 只是建议：本接口不写项目 Skill 文件。启用的 Skill 正文会注入
  * 每一章的 style 通道，属于需要作者确认的决定；实际添加由叙述者调
- * `skills.write` 完成，走 Runtime 权限确认。
+ * 写作台「技能文风 › 写作技能」里勾选完成，由作者确认。
 	 */
 	recommendedWritingSkills: ReadonlyArray<{
 		id: string;
@@ -2235,7 +2235,7 @@ export class NovelForkProductBookService {
 
 		// 按答案挑 Writing Skills 建议。这里刻意不写项目 Skill 文件：
 		// 每个添加的 Skill 都会持续影响后续每一章的生成，需作者确认后再由
-		// 叙述者经 skills.write 同步到 `.novelfork/skills`（保留 Runtime 权限确认）。
+		// 作者在写作台「技能文风」勾选后同步到 `.novelfork/skills`。
 		const recommendation = await this.recommendWritingSkillsForGuidedSetup({
 			genre,
 			platform,
