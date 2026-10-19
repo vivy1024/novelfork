@@ -506,6 +506,11 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       ...(body.expectedVersion !== undefined ? { expectedVersion: parseExpectedVersion(body.expectedVersion) } : {}),
     });
     if (!entry) throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${c.req.param("entryId")}`);
+    // B1：这条路由只会是作者的保存（source 固定 "user"），即对冲突的裁决——保留作者这一版。
+    // 清掉「待确认」里的机器写入冲突记录，并把条目上的 pending 标记复位；
+    // 否则警示与面板条目会永久残留（update 不传 conflictStatus 时保留原值）。
+    const { resolveLedgerConflict } = await import("../engine/jingwei/ledger-conflict-store.js");
+    resolveLedgerConflict(storage, bookId, c.req.param("entryId"));
     return c.json({ entry: serializeEntry(entry) });
   });
 

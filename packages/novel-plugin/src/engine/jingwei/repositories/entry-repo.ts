@@ -637,6 +637,15 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
 
       let conflictStatus: ConflictStatus = updates.conflictStatus ?? current.conflictStatus ?? "none";
       let conflictDetail: string | null = updates.conflictDetail ?? current.conflictDetail ?? null;
+      // B1：作者的这次保存本身就是裁决。pending 只由机器写入撞车挂上，此前除 revert / retire /
+      // softDelete 没有任何清除路径，而作者手改不传 conflictStatus 时会保留原值——条目页的
+      // 「存在协同修改冲突」警示与「待确认」里的冲突项会永久残留。
+      // 作者读完警示再保存，等于确认「保留我这一版」，这里顺势复位；
+      // 真正把机器那一版落库的是下面的 revert，它本来就置 none。
+      if (source === "user" && conflictStatus === "pending") {
+        conflictStatus = "none";
+        conflictDetail = null;
+      }
       if ((source === "agent-write" || source === "auto-settle") && current.source === "user") {
         const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
         if (current.updatedAt.getTime() > fiveMinutesAgo) {

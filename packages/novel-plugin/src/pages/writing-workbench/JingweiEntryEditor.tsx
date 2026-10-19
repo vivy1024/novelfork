@@ -507,6 +507,10 @@ function JingweiEntryEditorForm({
       setSavedRelatedEntryIds(relatedEntryIds);
       setFields(nextFields);
       setSavedFields(nextFields);
+      // B1：作者保存即裁决——服务端会清掉机器写入冲突记录并复位 pending 标记，
+      // 本地状态同步跟上，警示条与「待确认」里的这一项立刻消失，不用等重新拉取。
+      setConflictStatus("none");
+      setConflictDetail(undefined);
       // 保存成功回到档案式阅读态。
       setIsEditing(false);
       setConfirmDiscard(false);

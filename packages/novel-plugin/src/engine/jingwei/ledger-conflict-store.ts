@@ -156,3 +156,32 @@ export function listLedgerConflicts(storage: StorageDatabase, bookId: string): L
   `).all(bookId) as Array<Record<string, unknown>>;
   return rows.map(rowToRecord);
 }
+
+/**
+ * 作者核对完一条冲突：清掉待处理记录与条目上的 pending 标记（B1）。
+ *
+ * 必须有这条路径：`recordLedgerConflict` 只负责**记**，此前除了 revert / retire / softDelete
+ * 没有任何地方清，作者在条目页核对完保存也消不掉——警示与「待确认」面板里的冲突项会永久
+ * 残留（`update` 不传 conflictStatus 时会保留原值）。作者这次保存本身即裁决：保留自己这一版。
+ *
+ * 返回清掉的记录条数。条目上的标记一并复位，即使表里已经没有对应行（例如记录被手工清理过）。
+ */
+export function resolveLedgerConflict(
+  storage: StorageDatabase,
+  bookId: string,
+  entryId: string,
+): number {
+  ensureLedgerConflictSchema(storage);
+  const run = storage.sqlite.transaction(() => {
+    const result = storage.sqlite.prepare(
+      `DELETE FROM "jingwei_ledger_conflict" WHERE book_id = ? AND entry_id = ?`,
+    ).run(bookId, entryId);
+    storage.sqlite.prepare(`
+      UPDATE "story_jingwei_entry"
+      SET "conflict_status" = 'none', "conflict_detail" = NULL
+      WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
+    `).run(bookId, entryId);
+    return Number(result.changes ?? 0);
+  });
+  return run();
+}

@@ -60,12 +60,6 @@ export async function applyChapterChanges(
       continue;
     }
 
-    const progId = `prog-${Date.now()}-${applied}`;
-    // 演变台账（可在经纬条目页回看「谁把什么字段从什么推进到什么」）
-    storage.sqlite.prepare(
-      "INSERT INTO jingwei_progressions (id, entry_id, field_key, old_value, new_value, chapter_number, description, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    ).run(progId, entry.id, change.fieldKey ?? change.type, change.oldValue ?? "", change.newValue ?? "", chapterNumber, change.description, Date.now());
-
     // Update fields_json if fieldKey provided
     if (change.fieldKey && change.newValue) {
       try {
@@ -112,6 +106,27 @@ export async function applyChapterChanges(
         } else {
           storage.sqlite.prepare(`UPDATE story_jingwei_entry SET ${setClauses.join(", ")} WHERE id = ?`).run(...values);
         }
+
+        // 演变台账（可在经纬条目页回看「谁把什么字段从什么推进到什么」）。
+        // 位置在版本校验**之后**：冲突时这次推进并没有发生，先落台账会让作者看到一次
+        // 从未生效的推进，而且与刚记下的冲突互相矛盾（B4）。
+        // book_id 是 NOT NULL（见 0012 迁移与 lore-story-progress 的建表），原先漏了它，
+        // 这条 INSERT 在真实库上必然抛 NOT NULL，整个函数跟着失败。
+        // id 用随机值：原先的 `prog-${Date.now()}-${applied}` 里 applied 只在成功末尾 +1，
+        // 同一批里连续两条被跳过/冲突的变化会算出同一个 id。
+        storage.sqlite.prepare(
+          "INSERT INTO jingwei_progressions (id, book_id, entry_id, field_key, old_value, new_value, chapter_number, description, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ).run(
+          `prog-${crypto.randomUUID()}`,
+          bookId,
+          entry.id,
+          change.fieldKey,
+          change.oldValue ?? "",
+          change.newValue,
+          chapterNumber,
+          change.description,
+          Date.now(),
+        );
       } catch { /* ignore parse errors */ }
     }
 
