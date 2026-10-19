@@ -16,6 +16,10 @@ import {
   saveChapterAiDraft,
   STYLE_VAULT_RELATIVE_DIR,
 } from "../engine/writing-layers/style-vault.js";
+import {
+  PENDING_REVIEW_KINDS,
+  PENDING_REVIEW_LABELS,
+} from "./pending-review-contract.js";
 import { createPendingReviewRouter, type PendingReviewSummary } from "./pending-review.js";
 
 const tempDirs: string[] = [];
@@ -142,6 +146,12 @@ describe("待确认聚合路由", () => {
     expect(summary.explanation).toContain("没有待处理项");
     expect(summary.explanation).toContain("声线");
     expect(summary.explanation).toContain("文风金库");
+    // 类别数必须与契约一致：这里原先写字面量「七类」，而实际是八类，
+    // 面板加载文案又写「六类」——三处数字各不相同。钉住它，防止再各写各的。
+    expect(summary.explanation).toContain(`${PENDING_REVIEW_KINDS.length} 类待确认来源`);
+    for (const kind of PENDING_REVIEW_KINDS) {
+      expect(summary.explanation).toContain(PENDING_REVIEW_LABELS[kind]);
+    }
   });
 
   it("聚合八类来源，计数、位置与一句话摘要齐全", async () => {

@@ -274,7 +274,7 @@ export function PendingReviewPanel(props: PendingReviewPanelProps) {
         {loading && !data && (
           <p className="flex items-center gap-1.5 text-2xs text-muted-foreground" role="status">
             <Loader2 className="size-3 animate-spin" />
-            正在汇总六类待确认来源…
+            正在汇总 {PENDING_REVIEW_KINDS.length} 类待确认来源…
           </p>
         )}
 

@@ -1,8 +1,9 @@
 /**
  * 「待确认」聚合查询（只读）。
  *
- * 有七类「需要作者确认才生效」的产物散在不同入口，作者不知道去哪确认。
- * 本路由把这七类一次聚齐：计数 + 每类前 N 条摘要。
+ * 有待作者确认才生效的产物散在不同入口，作者不知道去哪确认。
+ * 类别集合见 PENDING_REVIEW_KINDS（面板与路由同一份契约）。
+ * 本路由把它们一次聚齐：计数 + 每类前 N 条摘要。
  * 数据全部从现有权威源派生（经纬条目、narrative_event、narrative_storyline、
  * style_preset.json、style-vault 目录），不新建表、不落盘；审批动作仍走各自的原有入口。
  *
@@ -46,6 +47,7 @@ import { listStorylines } from "../engine/narrative-memory/scene-store.js";
 import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
 
 import {
+  PENDING_REVIEW_KINDS,
   PENDING_REVIEW_LABELS,
   type PendingReviewGroup,
   type PendingReviewItem,
@@ -348,16 +350,20 @@ export async function collectPendingReview(
   }));
   const total = groups.reduce((sum, group) => sum + group.count, 0);
 
+  const kindCount = PENDING_REVIEW_KINDS.length;
+  const kindList = PENDING_REVIEW_KINDS.map((kind) => PENDING_REVIEW_LABELS[kind]).join("、");
   const explanation = total > 0
     ? [
         "这些产物要作者确认后才生效：声线规则（确认前先不进对白约束）、文风规则（确认前不进写作指南）、",
         "伏笔草稿与待确认事件（确认前不进写作上下文）、改稿段（采纳后才成为范文）、剧情线草稿（确认后才进故事推进）。",
         "逐项去「去处理」列出的原有入口决定；剧情线草稿没有专属页面，在本面板就地确认。",
+        `各分类只列出前 ${limit} 条，标题上的合计是真实总数。`,
       ].join("")
     : [
-        "七类待确认来源都查过了，当前没有待处理项。",
-        "来源包括：角色声线（角色卡）、文风蒸馏规则（文风自动蒸馏/技能文风）、伏笔草稿（章后结算）、",
-        "待确认叙事事件（写作视图收尾/章后事实）、文风金库未采纳的改稿段与剧情线草稿（storyline.propose）。",
+        // 类别数从 PENDING_REVIEW_KINDS 推导：这里原先写字面量「七类」，而实际是八类
+        // （面板加载文案又写「六类」），三处数字各不相同，改一次要同时改三处。
+        `${kindCount} 类待确认来源都查过了，当前没有待处理项。`,
+        `来源包括：${kindList}；入口分别是角色卡、文风蒸馏、章后结算、写作视图收尾、文风金库与 storyline.propose。`,
         "以后机器生成的草稿会先在这里排队，确认入口不变。",
       ].join("");
 
