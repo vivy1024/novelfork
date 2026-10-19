@@ -77,6 +77,7 @@ import {
 	probeRuntimeProjectGitPath,
 	resolveTrustedBookRoot,
 } from "./book-binding";
+import { resolveRuntimeOwnerUserId } from "./book-project-owner";
 
 type ProvisionState =
 	| "reserved"
@@ -2940,6 +2941,9 @@ export class NovelForkProductBookService {
 			});
 		}
 		const timestamp = now();
+		// owner_user_id 是 users 外键：只有确实存在的用户才能落成 owner，否则整次建书会因为
+		// 外键失败退回 compensation-required。解析失败时留空，项目退回「管理员管理」。
+		const ownerUserId = await resolveRuntimeOwnerUserId(operation.actorUserId);
 		const project = await runtimeDb.query.projects.findFirst({ where: eq(projects.id, projectId) });
 		if (!project) {
 			await runtimeDb.insert(projects).values({
@@ -2950,10 +2954,27 @@ export class NovelForkProductBookService {
 				flowMode: "classic",
 				gitPath: root,
 				defaultBranch: "main",
+				// Runtime 的项目 ACL 是 owner / 显式授权制：visibility=public 只给「读」，
+				// 写（启用技能、改可选工具覆盖、提交、合并）只认 owner 或 acl_grants 里的 write。
+				// 产品建书必须把项目的 owner 落成本书的归属人，否则管理员以外的人打开写作台
+				// 的 Runtime 项目设置会只读，保存直接 404。owner 是 users 外键，取值前先确认
+				// 这个 id 在 Runtime 里真的是一个用户（见 resolveRuntimeOwnerUserId）。
+				ownerUserId,
+				// private 而非默认：一本书的项目不该因为 visibility=public 被同机其他用户读到。
+				// 归属人经 owner 判定通过，不依赖这条可见性。
+				visibility: "private" as const,
 				chapterSettings: { autoCreateNarrator: false },
 				createdAt: timestamp,
 				updatedAt: timestamp,
 			});
+		} else if (!project.ownerUserId && ownerUserId) {
+			// 本次修复前建的书，项目行没有 owner：只有管理员能在写作台的 Runtime 项目设置里
+			// 写数据。这里就地补上归属人，让老书与新书走同一条授权路径。operation.actorUserId
+			// 就是本书归属人（管理员代修别人的书时，它也仍是原作者，见 resume 的校验）。
+			await runtimeDb
+				.update(projects)
+				.set({ ownerUserId, updatedAt: timestamp })
+				.where(eq(projects.id, projectId));
 		}
 		const chapter = await runtimeDb.query.chapters.findFirst({ where: eq(chapters.id, chapterId) });
 		if (!chapter) {

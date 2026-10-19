@@ -35,6 +35,7 @@ import {
 	canAccessBoundPermissionFromUserId,
 } from "./services/narrator-access";
 import { migrateLegacySessions } from "./services/legacy-session-migration";
+import { reconcileBookProjectOwners } from "./services/book-project-owner";
 import { shouldBypassBookGuard } from "./services/book-guard-bypass";
 import {
 	isNovelForkProductNarrator,
@@ -99,6 +100,8 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 	initialize: async () => {
 		initializeNovelRuntimeStorage();
 		await migrateLegacySessions();
+		// 给本次修复前建的书补上 Runtime 项目 owner（幂等；只补 owner 仍为空的）。
+		await reconcileBookProjectOwners();
 	},
 	shutdown: closeNovelRuntimeStorage,
 	mountAuthenticatedGuards(app: Hono): void {
