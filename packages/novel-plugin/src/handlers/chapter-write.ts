@@ -11,6 +11,7 @@ import {
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
+import { checkHighRiskPendingBeforeWrite } from "./high-risk-pending-gate.js";
 import { createWritingResourceFileStore } from "../engine/writing-resource/file-store.js";
 import { applyChapterContentChange } from "../engine/writing-resource/chapter-change-effects.js";
 import { resolveChapterVolumeDirectory } from "./outline-volume.js";
@@ -29,10 +30,15 @@ export interface TrustedChapterWriteOptions {
   /** Absolute root supplied by the trusted Runtime resource binding. */
   bookRoot: string;
   /**
-   * Legacy trusted storage handle. Writing Skills compliance reads SKILL.md files
-   * under the bound book root, so this is no longer required for chapter writes.
+   * 本书的存储句柄。**所有调用方都必须传**（T-13 / T-29 起）。
+   *
+   * 它不再只是「技能合规读 SKILL.md」的旧参数：高风险待确认闸门要经它查
+   * `narrative_event`。省略时闸门无法确认是否存在未处理的高风险事件，按 fail-closed
+   * 阻断写入——也就是说省略 storage 会让写章一律失败，而不是「少一层检查」。
+   * 两个生产调用点（`runtime-contribution.ts` 的 chapter.write 分发、
+   * `routes/chapter-revision.ts` 的整章采用）都已传 `getStorageDatabase()`。
    */
-  storage?: StorageDatabase;
+  storage: StorageDatabase;
   /**
    * Internal-only write intent. Runtime tool input never exposes this field:
    * direct chapter.write defaults to a complete-chapter commit, while targeted
@@ -233,6 +239,29 @@ export async function handleChapterWrite(
     const length = toLengthData(wordCount, lengthSpec);
     const validation = await validateCompleteChapterWrite(input, options, length, lengthSpec);
     if (!Array.isArray(validation)) return validation;
+
+    // T-13 / T-29：高风险待确认事件门禁。pipeline.write 有这条闸门，chapter.write 此前没有——
+    // 模型被 pipeline 拦下后可以改用 chapter.write 覆盖同一章正文绕过它。
+    //
+    // 位置放在 CAS 与长度/技能校验之后：那些是「这次写入本身就不合法」的更具体原因，
+    // 先报出来比笼统的「有高风险待确认」更有用；而闸门在 fileStore.update 之前，
+    // 正文与索引仍然一个字节都没动。
+    //
+    // 局部改写（purpose: "revision"）同样受约束：改动会在未确认的高风险事件之上继续叠加。
+    // 存储取不到或读取失败一律 fail-closed（见 high-risk-pending-gate.ts）。
+    const highRisk = checkHighRiskPendingBeforeWrite(input.bookId, {
+      storage: options.storage,
+      chapterNumber: input.chapterNumber,
+      action: "写入",
+    });
+    if (highRisk) {
+      return {
+        ok: false,
+        error: highRisk.code,
+        summary: highRisk.summary,
+        explanation: highRisk.explanation,
+      };
+    }
 
     const previous = await fileStore.findAcceptedChapter(input.bookId, input.chapterNumber);
     const updatedAt = new Date().toISOString();

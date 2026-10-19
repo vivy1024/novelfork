@@ -723,9 +723,30 @@ async function executePipelineWriteUnlocked(
           item.code === "empty-recent-progress"
           || item.code === "book-not-found"
           || item.code === "high-risk-pending"
+          // book.json 存在却读不出或内容损坏：此前只有「state.loadBookConfig 直接抛错」那条路径
+          // 会阻断，而写前预检这条路径把它当软门放过，同一检查两条路径口径不一致（较松的那条是这里）。
+          // 读不出 book.json 时字数目标、硬范围、语言与写作技能全都无从判定，必须和另外三项同级阻断。
+          || item.code === "book-config-unreadable"
         ));
         if (hard.length > 0) {
           const summaryMsg = hard.map((item) => item.message).join("；");
+          // book.json 读不出单独返回 book-config-unreadable，与上面「loadBookConfig 抛错」那条路径
+          // 用同一个返回码：同一种故障不该因为被哪条内部路径抓到而报出两个码。
+          // 它排在 high-risk-pending 之前：配置读不出时，连字数目标/门禁开关都无从判定，
+          // 是更靠前的根因；先修它能避免作者解决完待确认事件后仍然写不下去。
+          const unreadableBlocker = hard.find((item) => item.code === "book-config-unreadable");
+          if (unreadableBlocker) {
+            const explanation = hard
+              .flatMap((item) => (item.explanation ? [formatAuthorExplanation(item.explanation)] : []))
+              .join("\n\n");
+            return {
+              ok: false,
+              code: "book-config-unreadable",
+              error: `${summaryMsg}\n${explanation}`,
+              summary: summaryMsg,
+              explanation,
+            };
+          }
           // 高风险待确认事件单独返回 high-risk-pending（不混成「近章记忆未就绪」），它的说明排最前：
           // 放行只走 NarraFork 的通道（AskUserQuestion → memory.events approve/reject，或「待确认」面板）。
           const highRiskBlocker = hard.find((item) => item.code === "high-risk-pending");

@@ -18,6 +18,7 @@ import { RuntimeAuthGate } from "./app-next/p0/RuntimeAuthGate";
 import { installRuntimeAuthenticatedFetch } from "./app-next/runtime/auth";
 import { RuntimeLocaleDocumentSync } from "./app-next/runtime/locale";
 import { initStyleTheme } from "./hooks/use-style-theme";
+import { initLocalPreferences } from "./hooks/use-local-preferences";
 import { initTheme } from "./hooks/use-theme";
 import { queryClient } from "./lib/query-client";
 
@@ -25,6 +26,7 @@ import { queryClient } from "./lib/query-client";
 // NovelFork same-origin API call through Runtime authentication.
 initTheme();
 initStyleTheme();
+initLocalPreferences();
 installRuntimeAuthenticatedFetch();
 
 // TanStack Router 接管 URL 监听与导航。

@@ -12,6 +12,8 @@ import {
 } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
+import { useLocalAppearanceEffects } from "@/hooks/use-local-preferences";
+
 import {
   createFetchJsonContractClient,
   createResourceClient,
@@ -693,6 +695,9 @@ function RouteMountPoint({
 
 export function StudioNextApp(_props: StudioNextAppProps) {
   const routerState = useRouterState();
+  // 本地外观偏好的执行者（OLED 纯黑、屏幕常亮）。挂在产品外壳而不是外观设置页：
+  // 开关在嵌入的 Runtime 外观页上，而该页只在打开设置页时挂载；执行者必须一直活着。
+  useLocalAppearanceEffects();
   const activeRoute: ShellRoute = parseShellRoute(
     routerState.location.href,
   );

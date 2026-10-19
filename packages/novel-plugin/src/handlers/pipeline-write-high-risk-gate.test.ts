@@ -6,7 +6,7 @@
  * 放行只走 NarraFork 的通道：作者经 AskUserQuestion 选择后由 memory.events 的 approve / reject 处理，
  * 这里直接用真实的 memory.events 处理器模拟这一步。
  */
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -310,5 +310,29 @@ describe("pipeline.write 高风险待确认门禁（T-13）", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe("book-not-found");
+  });
+
+  it("book.json 能解析但不是对象时阻断写章，正文一个字节都不动", async () => {
+    // 与上一条的区别：`[]` 能被 JSON.parse 解析成功，所以 state.loadBookConfig 不抛错，
+    // 「loadBookConfig 抛错 → isBookJsonUnreadable」那条早退路径根本走不到。
+    // 只有写前预检的 book-config-unreadable 能发现它——若这个阻断只当软门放过，
+    // 管线会拿一份不是配置的东西（没有字数目标、没有平台、没有门禁开关）继续写章。
+    await writeFile(join(bookRoot, "book.json"), "[]", "utf-8");
+    initStorage();
+    const chapterPath = join(bookRoot, "chapters", "卷01", "0001-test.md");
+    const before = await readFile(chapterPath, "utf-8");
+
+    const result = await executePipelineWrite(
+      { bookId: "book-1", sceneSpec, content: CHAPTER_TEXT },
+      { root, bookRoot, logger: silentLogger, dispatchToolCall: settled },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("book-config-unreadable");
+    expect(result.error).not.toContain("not found");
+    expect(result.explanation ?? "").toContain("发生了什么");
+    expect(result.explanation ?? "").toContain("建议怎么做");
+    expect(await readFile(chapterPath, "utf-8")).toBe(before);
   });
 });

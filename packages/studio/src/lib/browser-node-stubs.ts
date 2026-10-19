@@ -37,6 +37,7 @@ export const writeFile = unavailable("fs/promises.writeFile");
 // ── node:fs ─────────────────────────────────────────────────────────
 export const copyFileSync = unavailable("fs.copyFileSync");
 export const existsSync = unavailable("fs.existsSync") as unknown as (path: string) => boolean;
+export const lstatSync = unavailable("fs.lstatSync");
 export const mkdirSync = unavailable("fs.mkdirSync");
 export const mkdtempSync = unavailable("fs.mkdtempSync");
 export const readFileSync = unavailable("fs.readFileSync") as unknown as (path: string) => string;

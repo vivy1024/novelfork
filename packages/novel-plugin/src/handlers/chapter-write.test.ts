@@ -3,10 +3,29 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
+import {
+  closeStorageDatabase,
+  initializeStorageDatabase,
+  runStorageMigrations,
+  type StorageDatabase,
+} from "@vivy1024/novelfork-core";
 import { describe, expect, it, afterEach } from "vitest";
+import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { handleChapterWrite } from "./chapter-write.js";
 
 const tempDirs: string[] = [];
+
+/**
+ * `chapter.write` 自 T-13/T-29 起要求传 storage（高风险待确认闸门经它查 narrative_event），
+ * 所以每个用例都建一份隔离存储。这里不预置任何 narrative_event：没有高风险待确认事件，
+ * 闸门放行，用例验的是写入本身。
+ */
+function createStorage(dir: string): StorageDatabase {
+  const storage = initializeStorageDatabase({ databasePath: join(dir, "novelfork.db") });
+  runStorageMigrations(storage);
+  ensureNarrativeMemorySchema(storage);
+  return storage;
+}
 
 async function createBook(chapters: Array<{ number: number; content: string; title?: string }>) {
   const dir = join(tmpdir(), `novelfork-write-${crypto.randomUUID()}`);
@@ -43,6 +62,7 @@ async function createBook(chapters: Array<{ number: number; content: string; tit
 }
 
 afterEach(async () => {
+  closeStorageDatabase();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -50,6 +70,7 @@ describe("handleChapterWrite", () => {
   it("successfully writes a chapter with correct hash and retains volume layout", async () => {
     const content = "这是测试正文。".repeat(143); // 1001 字
     const bookRoot = await createBook([{ number: 1, content: "这是旧章节正文。".repeat(143) }]);
+    const storage = createStorage(bookRoot);
 
     const result = await handleChapterWrite(
       {
@@ -57,7 +78,7 @@ describe("handleChapterWrite", () => {
         chapterNumber: 1,
         content,
       },
-      { bookRoot },
+      { bookRoot, storage },
     );
 
     expect(result.ok).toBe(true);
@@ -82,6 +103,7 @@ describe("handleChapterWrite", () => {
   it("validates expectedHash CAS match before writing", async () => {
     const initialContent = "初始章节正文。".repeat(143); // 1001 字
     const bookRoot = await createBook([{ number: 1, content: initialContent }]);
+    const storage = createStorage(bookRoot);
     const currentHash = createHash("sha256").update(initialContent, "utf8").digest("hex");
 
     const newContent = "更新后的正文内容。".repeat(111); // 999 字
@@ -92,7 +114,7 @@ describe("handleChapterWrite", () => {
         content: newContent,
         expectedHash: currentHash,
       },
-      { bookRoot },
+      { bookRoot, storage },
     );
 
     expect(result.ok).toBe(true);
@@ -103,6 +125,7 @@ describe("handleChapterWrite", () => {
   it("returns chapter-concurrent-modification on expectedHash mismatch and does not overwrite disk", async () => {
     const initialContent = "初始章节正文。".repeat(143);
     const bookRoot = await createBook([{ number: 1, content: initialContent }]);
+    const storage = createStorage(bookRoot);
     const actualCurrentHash = createHash("sha256").update(initialContent, "utf8").digest("hex");
     const staleExpectedHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -114,7 +137,7 @@ describe("handleChapterWrite", () => {
         content: newContent,
         expectedHash: staleExpectedHash,
       },
-      { bookRoot },
+      { bookRoot, storage },
     );
 
     expect(result.ok).toBe(false);
