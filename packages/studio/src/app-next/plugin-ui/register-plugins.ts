@@ -2,41 +2,21 @@
  * 插件 UI 注册引导
  *
  * 在前端启动时把各插件贡献的 UI section 组件注册到 section-registry，
- * 并收集插件的 uiSections 元数据供宿主（套路页）消费。
+ * 并收集插件的 uiSections 元数据供宿主（套路页「本书设置」）消费。
  *
- * 注意：只从插件的 pages 入口（前端安全，无后端依赖）导入元数据，
- * 不导入完整 manifest——后者会牵连 Node 专用模块进浏览器 bundle。
+ * 当前没有插件贡献套路分区：写作配置已并入写作台的本书设置。扩展点保留，供将来的插件使用。
  */
-import { WRITING_CONFIG_UI_SECTION } from "@vivy1024/novelfork-novel-plugin/pages/writing-config";
 import type { PluginUISection } from "@vivy1024/novelfork-core";
-import { registerPluginSection } from "./section-registry";
-import { lazy } from "react";
 
-// 延迟加载：同步 import 会把 novel-plugin pages（含 skills 内联快照）
-// 拉进套路页首屏，拖垮测试与冷启动。
-const WritingConfigSection = lazy(() =>
-  import("@vivy1024/novelfork-novel-plugin/pages/writing-config").then((m) => ({
-    default: m.WritingConfigSection,
-  })),
-);
+const ALL_UI_SECTIONS: PluginUISection[] = [];
 
 let registered = false;
 
-/**
- * 幂等注册所有插件 section 组件。
- *
- * 模板市场已下线：写作方法统一走「写作配置 → 套路 skills」，
- * 不再并陈旧的 preset 模板市场入口（DoD：旧入口同步下线）。
- */
+/** 幂等注册所有插件 section 组件（当前无）。 */
 export function ensurePluginSectionsRegistered(): void {
   if (registered) return;
   registered = true;
-  registerPluginSection(WRITING_CONFIG_UI_SECTION.componentKey, WritingConfigSection);
 }
-
-const ALL_UI_SECTIONS: PluginUISection[] = [
-  WRITING_CONFIG_UI_SECTION,
-];
 
 /** 收集所有插件的 uiSections 元数据（按 order 排序）。 */
 export function getPluginUISections(mountPoint: PluginUISection["mountPoint"]): PluginUISection[] {

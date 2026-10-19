@@ -179,7 +179,7 @@ function buildToolOrchestrationSop(): string {
 - 动态剧情事实、时间线、状态变化、事件和关系余波：memory.read / memory.graph / memory.events；不要写进 Lore canon。
 - 伏笔的埋设、推进、兑现、到期检查：hooks.manage；不要用 cockpit.snapshot 代替伏笔变更。
 - 卷纲：outline.volume；角色成长弧：arc.character；角色连续性审查：character.check_consistency；角色声线：character.voice.read 查看，character.voice.draft 出待审草稿（确认只由作者在角色卡完成）。
-- Writing Skills：skills.read 查看，skills.recommend 推荐，skills.write 落库，skills.check_compliance 验收。
+- Writing Skills：skills.recommend 推荐，skills.check_compliance 验收；启用与停用由作者在写作台「技能文风」里勾选，模型不改启用状态。
 - Narrative Line 图谱：memory.read_line 查看，memory.propose_change 先出草案，memory.approve_change 才正式写入。
 - 正式章节结果的列出/归档/删除：resource.manage；范围废稿连同章域记忆清理：chapter.discard_range。两者不能混用。
 
@@ -215,9 +215,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：character.voice.read；何时：写重要对白前核对角色怎么说话、作者询问声线、或草稿前取 expectedVersion；前置：entryId 或精确角色名；失败回退：重名时改用 entryId，找不到角色时报告并建议先建卡，不臆造声线。
 - 工具：character.voice.draft；何时：作者要求整理或补全某角色声线；前置：先 character.voice.read 取 expectedVersion，可附该角色本人的对白样本；失败回退：版本冲突（409）时重新读取再调用，模型不可用或依据不足时如实转述 warnings 的 explanation；产物只是待审草稿，由作者在角色卡逐项确认，不替作者确认、不把待审项当设定。
 - 工具：hooks.manage；何时：埋设、推进、兑现、到期检查或列出伏笔；前置：list/check_due 先读，写入必须有 hook 目标、章节和具体证据；失败回退：重新 list 防重复，不确定时只报告/不变更；查询伏笔状态不能用 cockpit.snapshot 代替。
-- 工具：skills.read；何时：查看当前启用技能正文或可用 catalog；前置：明确 scope=enabled/available；失败回退：先 scope=available 再报告目录缺失，不自行复制一份技能文本。
-- 工具：skills.write；何时：启用/停用/创建/更新项目 .novelfork/skills 文件；前置：先 read，目标 slug 和冲突策略明确，写入遵守 Runtime 确认；失败回退：冲突不覆盖，保留旧文件并请用户选择；技能生效源以项目目录扫描为准。
-- 工具：skills.recommend；何时：根据建书题材、基调、平台、复杂度推荐技能；前置：书籍配置可读；只读推荐后必须由用户确认并转 skills.write；失败回退：返回候选不足，不臆造启用状态。
+- 工具：skills.recommend；何时：根据建书题材、基调、平台、复杂度推荐技能；前置：书籍配置可读；只读推荐后必须由用户确认，再让作者在写作台「技能文风 › 写作技能」里勾选启用（模型没有写启用状态的工具）；失败回退：返回候选不足，不臆造启用状态。
 - 工具：skills.check_compliance；何时：保存前或审修后按已启用技能 checks 检查正文；前置：正文和当前技能约束可读；失败回退：按返回的 rule/explanation 定点 rewrite/pipeline 修复，不能删技能、伪造引用或跳过硬性违规。
 - 工具：skills.import_legacy；何时：用户明确要求把旧 user_template Preset/Beat 迁移为项目技能；前置：显式扫描、冲突文件清单和迁移确认；失败回退：不覆盖冲突，保留旧数据并报告需人工合并。
 - 工具：pipeline.write；何时：用户明确要求生成正式章节，且 write.preflight 和 scene.spec 均通过；前置：有效 sceneSpec、正文输入、预算与可信书籍；失败回退：按具体 error 回到对应前置工具，禁止盲目重试或绕过 compliance/context/beat-budget 硬门。

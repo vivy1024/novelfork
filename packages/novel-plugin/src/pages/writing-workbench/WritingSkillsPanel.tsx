@@ -1,33 +1,32 @@
 /**
- * Writing Skills 面板。
+ * 写作技能面板（写作台 › 技能文风 › 写作技能）。
  *
- * 按分类筛选、开关启用、查看或编辑技能。内置技能编辑前会 fork 为作者副本，
- * 保存后写进 `~/.novelfork/skills/`，同名覆盖内置。
+ * 只做一件与 Runtime 不重复的事：**按书启用**。
  *
- * 项目生效态以当前作品目录 `.novelfork/skills/` 的实际文件为准；面板只对指定
- * catalog Skill 执行文件增删/刷新，不把选择状态写入 book.json。
+ * - NovelFork 自带的 21 个写作技能只存在于插件包里（`builtin-skills/`），不在磁盘上；
+ *   Runtime 的全局/项目技能页扫的是 `~/.novelfork/skills` 与 `<书>/.novelfork/skills`，
+ *   看不到它们。所以「把哪个技能物化进本书」只能由这里决定。
+ * - 技能的创建、改正文、删除交给 Runtime 的技能管理（写到同一批目录）。
+ *   这里只提供只读查看，避免两套编辑入口写同一份 SKILL.md。
  *
- * 内置只有 NovelFork 自研技能：声明了 `entry` 的是作者入口，固定排在最前；其余由叙述者
- * 按任务调用，默认折进「更多技能」。第三方技能不再内置，面板底部说明可选来源与安装方式。
+ * 生效态以当前作品目录 `.novelfork/skills/` 的实际文件为准；本面板只对指定
+ * catalog Skill 执行文件增删，不把选择状态写入 book.json。
  */
 
 import { useState, useEffect } from "react";
-import { OPTIONAL_SKILL_SOURCES } from "../../engine/writing-skills/third-party-sources";
-import { WRITING_SKILL_ENTRIES } from "../../engine/writing-skills/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Pencil, Eye, RotateCcw } from "lucide-react";
-import { useApi, fetchJson, putApi, postApi } from "@/hooks/use-api";
+import { Loader2, Eye } from "lucide-react";
+import { useApi, putApi, fetchJson } from "@/hooks/use-api";
+import { WRITING_SKILL_ENTRIES } from "../../engine/writing-skills/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,9 +64,6 @@ interface BookWritingSkillsResponse {
   readonly projectSkillSlugs?: readonly string[];
   readonly projectSkillsDirectory?: string;
   readonly skills?: readonly (WritingSkillItem & { readonly body?: string })[];
-  readonly migration?: {
-    readonly migratedSlugs?: readonly string[];
-  };
 }
 
 export interface WritingSkillsPanelProps {
@@ -95,103 +91,11 @@ export function kindLabel(kind: string): string {
   return KIND_LABELS[kind] ?? kind;
 }
 
-/** 把仓库地址收成 `owner/repo`，避免长 URL 撑破卡片。 */
-export function repoLabel(repo: string): string {
-  return repo.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$/, "") || repo;
-}
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-/** NovelFork 原生技能的出处标识。 */
-export const OWN_SOURCE_KEY = "novelfork";
-
-/** 技能的出处归属；项目范围由 WritingSkillScope 单独表达。 */
-export function sourceKeyOf(skill: WritingSkillItem): string {
-  return skill.provenance ? repoLabel(skill.provenance.repo) : OWN_SOURCE_KEY;
-}
-
-/** 出处标题：原生内容与上游仓库明确区分。 */
-export function sourceLabel(key: string): string {
-  return key === OWN_SOURCE_KEY ? "NovelFork 原生" : `上游 · ${key}`;
-}
-
-/**
- * 一个出处分区。
- *
- * 出处和作用范围是**两个平行维度**：
- *
- * - 「按出处浏览」：只统计全局 catalog 的原生/上游归属
- * - 「按作用范围浏览」：区分全局技能库与当前作品额外技能
- * - 「按分类/题材/搜索」：在当前作用范围内继续缩小结果
- */
-export interface SourceSection {
-  readonly key: string;
-  readonly label: string;
-  readonly count: number;
-  readonly license: string | null;
-  readonly repoUrl: string | null;
-  readonly skills: readonly WritingSkillItem[];
-}
-
-/** 把 skills 分格到各来源分区。自研分区固定排在最前，其余按数量倒序。 */
-export function groupBySource(
-  skills: readonly WritingSkillItem[],
-): ReadonlyArray<SourceSection> {
-  const buckets = new Map<string, WritingSkillItem[]>();
-  for (const skill of skills) {
-    const key = sourceKeyOf(skill);
-    const bucket = buckets.get(key);
-    if (bucket) bucket.push(skill);
-    else buckets.set(key, [skill]);
-  }
-
-  return [...buckets.entries()]
-    .map(([key, items]) => {
-      const sample = items.find((s) => s.provenance);
-      return {
-        key,
-        label: sourceLabel(key),
-        count: items.length,
-        license: sample?.provenance?.license ?? null,
-        repoUrl: sample?.provenance?.repo ?? null,
-        skills: items,
-      };
-    })
-    .sort((a, b) => {
-      // 自带的排最前 —— 那是产品保证可用的部分
-      if (a.key === OWN_SOURCE_KEY) return -1;
-      if (b.key === OWN_SOURCE_KEY) return 1;
-      return b.count - a.count || a.key.localeCompare(b.key);
-    });
-}
-
-/** 题材 tag 白名单。只有这些算题材，其余 tag 是普通标签。 */
-const GENRE_TAGS: ReadonlySet<string> = new Set([
-  "AI科幻",
-  "太空科幻",
-  "女频爱情",
-  "异能志怪",
-  "悬疑推理",
-  "赛博庞克",
-  "都市悬疑",
-  "都市职场",
-]);
-
-export function genreOf(skill: WritingSkillItem): string | null {
-  for (const tag of skill.tags ?? []) if (GENRE_TAGS.has(tag)) return tag;
-  return null;
-}
-
 const ENTRY_ORDER: ReadonlyMap<string, number> = new Map(
   WRITING_SKILL_ENTRIES.map((entry, index) => [entry, index] as const),
 );
 
-/**
- * 把技能分成作者入口与其余技能。入口按产品固定顺序排列（未知入口名不算入口），
- * 其余保持原顺序。
- */
+/** 入口技能按产品固定顺序排在最前；未知入口名不算入口。 */
 export function splitEntrySkills(skills: readonly WritingSkillItem[]): {
   readonly entries: readonly WritingSkillItem[];
   readonly others: readonly WritingSkillItem[];
@@ -209,241 +113,129 @@ export function splitEntrySkills(skills: readonly WritingSkillItem[]): {
 export const RETIRED_BUILTIN_EXPLANATION =
   "这个技能来自第三方仓库，曾随产品内置，现已移出内置。本书里的副本照常生效；关闭会删除本书副本，之后要再用需自行安装到作者技能目录。";
 
-export type WritingSkillScope = "all" | "global" | "project";
-
-export interface WritingSkillFilters {
-  readonly kind?: string | null;
-  readonly genre?: string | null;
-  readonly query?: string;
-}
-
-/**
- * 分区**内部**的筛选。
- *
- * 不含来源维度 —— 来源由分区隔开，这里只在已选定的分区里缩小范围。
- */
-export function applyWritingSkillFilters(
-  skills: readonly WritingSkillItem[],
-  filters: WritingSkillFilters,
-): readonly WritingSkillItem[] {
-  const needle = (filters.query ?? "").trim().toLowerCase();
-  return skills.filter((skill) => {
-    if (filters.kind && skill.kind !== filters.kind) return false;
-    if (filters.genre && genreOf(skill) !== filters.genre) return false;
-    if (needle) {
-      const haystack = `${skill.name} ${skill.description} ${(skill.tags ?? []).join(" ")}`;
-      if (!haystack.toLowerCase().includes(needle)) return false;
-    }
-    return true;
-  });
-}
-
-/**
- * 纯展示外壳。抽出来是为了能在不起网络的情况下验证：
- * 来源/分类/题材三层筛选、启用态、归属标记、空态文案。
- */
-export function WritingSkillsPanelShell({
-  skills,
-  enabledSlugs,
-  filterKind = null,
-  filterGenre = null,
-  activeSource = null,
-  query = "",
-}: {
-  readonly skills: readonly WritingSkillItem[];
-  readonly enabledSlugs: readonly string[];
-  readonly filterKind?: string | null;
-  readonly filterGenre?: string | null;
-  /** 已进入的来源分区；null 表示在全部 skill 里浏览。 */
-  readonly activeSource?: string | null;
-  readonly query?: string;
-}) {
-  const sections = groupBySource(skills);
-  // 分区与筛选是平行维度：进了分区就在该分区内容里筛，没进就在全部里筛。
-  const scope = activeSource
-    ? (sections.find((s) => s.key === activeSource)?.skills ?? [])
-    : skills;
-  const kinds = [...new Set(scope.map((s) => s.kind))];
-  const visible = applyWritingSkillFilters(scope, {
-    kind: filterKind,
-    genre: filterGenre,
-    query,
-  });
-
-  if (skills.length === 0) {
-    return (
-      <div className="text-xs text-muted-foreground py-4 space-y-1" data-testid="writing-skills-empty">
-        <p>{WRITING_SKILLS_EMPTY_HINT}</p>
-        <WritingSkillPathDetails />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3" data-testid="writing-skills-panel">
-      {/* 来源分区：按仓库陈列，与下方筛选各自独立生效 */}
-      {sections.length > 1 && (
-        <div className="flex flex-wrap gap-1" data-testid="writing-skills-source-sections">
-          <span className="text-2xs px-2 py-0.5 rounded-full border border-border text-muted-foreground">
-            全部 {skills.length}
-          </span>
-          {sections.map((section) => (
-            <span
-              key={section.key}
-              className="text-2xs px-2 py-0.5 rounded-full border border-border text-muted-foreground"
-              title={section.repoUrl ?? section.key}
-            >
-              {section.label} {section.count}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {kinds.length > 1 && (
-        <div className="flex flex-wrap gap-1">
-          <span className="text-2xs px-2 py-0.5 rounded-full border border-border text-muted-foreground">
-            全部
-          </span>
-          {kinds.map((kind) => (
-            <span
-              key={kind}
-              className="text-2xs px-2 py-0.5 rounded-full border border-border text-muted-foreground"
-            >
-              {kindLabel(kind)}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {visible.length === 0 && (
-        <p className="text-2xs text-muted-foreground py-2" data-testid="writing-skills-no-match">
-          没有匹配的写作技能。清掉搜索词或换个分类再看。
-        </p>
-      )}
-      <div className="grid grid-cols-1 gap-2">
-        {visible.map((skill) => (
-          <div
-            key={skill.id}
-            className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs font-medium">{skill.name}</span>
-                <Badge variant="secondary" className="text-2xs h-4">
-                  {kindLabel(skill.kind)}
-                </Badge>
-                {skill.source === "user" && (
-                  <Badge variant="outline" className="text-2xs h-4">
-                    已自定义
-                  </Badge>
-                )}
-                {/* 徽标与主面板同口径：已启用 / 入口技能未启用时明说「推荐启用」（推荐≠默认启用）。 */}
-                {enabledSlugs.includes(skill.slug) ? (
-                  <Badge variant="outline" className="text-2xs h-4">
-                    已启用
-                  </Badge>
-                ) : skill.entry ? (
-                  <Badge variant="secondary" className="text-2xs h-4">
-                    推荐启用
-                  </Badge>
-                ) : null}
-              </div>
-              <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-2">
-                {skill.description}
-              </p>
-              {skill.provenance && (
-                <p className="text-2xs text-muted-foreground/70 mt-0.5 truncate">
-                  来源 {repoLabel(skill.provenance.repo)} · {skill.provenance.license}
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /** 作者技能目录的说明文字；与 loader 的 authorWritingSkillsDir 保持一致。 */
 const AUTHOR_SKILLS_DIR_HINT = "作者技能目录（默认 ~/.novelfork/skills/；设置了 NOVELFORK_HOME 时为 <NOVELFORK_HOME>/skills/）";
 
-/** 空态引导文案：面向作者用「作者技能目录」，真实路径收进折叠细节。 */
-const WRITING_SKILLS_EMPTY_HINT = "还没有写作技能。内置写作技能随产品提供，你也可以在自己的作者技能目录里自建或安装（每个技能是一个带 SKILL.md 的文件夹）。";
-
 /**
- * 目录路径与命令行等技术细节。主界面只说「作者技能目录 / 当前作品」，
- * 真实路径留给需要手动放文件的人，折叠不摆出来。
+ * 目录路径与技术细节。主界面只说「当前作品」，真实路径留给需要手动放文件的人，
+ * 折叠不摆出来。
  */
 export function WritingSkillPathDetails() {
   return (
     <details className="text-2xs text-muted-foreground" data-testid="writing-skills-path-details">
       <summary className="cursor-pointer select-none">目录路径与技术细节</summary>
       <div className="mt-1 space-y-1">
-        <p>作品的启用副本在作品目录的 <code>.novelfork/skills/</code>；作者副本与自装技能在{AUTHOR_SKILLS_DIR_HINT}。</p>
-        <p>使用源码仓库时，也可以运行 <code>bun scripts/import-market-skills.ts</code>，从本地检出的参考仓库批量装进作者技能目录。</p>
+        <p>本书启用后的副本在作品目录的 <code>.novelfork/skills/</code>；作者副本与自装技能在{AUTHOR_SKILLS_DIR_HINT}。</p>
+        <p>技能的创建、改正文与删除在 Runtime 的「套路 › 项目技能」里做，两处写的是同一批文件。</p>
       </div>
     </details>
   );
 }
 
-/**
- * 可选技能来源说明。第三方技能不随产品内置，这里只列许可明确的仓库并说明安装方式；
- * 产品不做网络下载，未声明许可证或禁止商用的仓库不列出。
- */
-export function OptionalSkillSourcesNote() {
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+/** 一本书的技能清单卡片。`enabled` 为真时开关打开并可关闭，否则可启用。 */
+function SkillRow({
+  skill,
+  enabled,
+  busy,
+  onToggle,
+  onView,
+  suffix,
+}: {
+  readonly skill: WritingSkillItem;
+  readonly enabled: boolean;
+  readonly busy: boolean;
+  readonly onToggle: (checked: boolean) => void;
+  readonly onView: () => void;
+  readonly suffix?: string;
+}) {
   return (
-    <details className="rounded-lg border border-border p-2.5 text-2xs" data-testid="writing-skills-optional-sources">
-      <summary className="cursor-pointer font-medium text-foreground">可选技能来源（不随产品内置）</summary>
-      <div className="mt-2 space-y-2 text-muted-foreground">
-        <p>
-          内置只有 NovelFork 自研技能。下面这些第三方仓库许可明确，你可以自行下载，把技能目录（含 SKILL.md 的文件夹）
-          放进你的作者技能目录，刷新后就会出现在技能列表里，再按作品启用。
+    <div
+      className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5 hover:bg-muted/50 transition-colors"
+      data-testid={`writing-skill-card-${skill.slug}`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-medium">{skill.name}</span>
+          {skill.entry && (
+            <Badge variant="default" className="text-2xs h-4">
+              入口 · {skill.entry}
+            </Badge>
+          )}
+          {enabled ? (
+            <Badge variant="outline" className="text-2xs h-4">
+              已启用
+            </Badge>
+          ) : skill.entry ? (
+            // 纪律：入口技能是推荐≠默认启用，作者确认才点亮；没启用就明说「推荐启用」，不撒谎。
+            <Badge variant="secondary" className="text-2xs h-4">
+              推荐启用
+            </Badge>
+          ) : null}
+          <Badge variant="secondary" className="text-2xs h-4">
+            {kindLabel(skill.kind)}
+          </Badge>
+          {suffix && (
+            <Badge variant="outline" className="text-2xs h-4">
+              {suffix}
+            </Badge>
+          )}
+          {skill.retiredFromBuiltin && (
+            <Badge
+              variant="outline"
+              className="text-2xs h-4"
+              title={RETIRED_BUILTIN_EXPLANATION}
+              data-testid="writing-skill-retired-badge"
+            >
+              来源已移出内置
+            </Badge>
+          )}
+        </div>
+        <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-2">
+          {skill.description}
         </p>
-        <ul className="space-y-1">
-          {OPTIONAL_SKILL_SOURCES.map((source) => (
-            <li key={source.repo}>
-              <a
-                href={source.repo}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-foreground underline underline-offset-2"
-              >
-                {repoLabel(source.repo)}
-              </a>
-              <span> · {source.license}</span>
-              <span className="block">{source.note}</span>
-            </li>
-          ))}
-        </ul>
-        <WritingSkillPathDetails />
-        <p>未声明许可证或禁止商用的仓库不列出，也不提供安装。</p>
+        {skill.retiredFromBuiltin && (
+          <p className="text-2xs text-muted-foreground mt-0.5">{RETIRED_BUILTIN_EXPLANATION}</p>
+        )}
       </div>
-    </details>
+      <div className="flex items-center gap-1 shrink-0">
+        <Switch
+          checked={enabled}
+          disabled={skill.mode === "always" || busy}
+          onCheckedChange={onToggle}
+          aria-label={`${enabled ? "停用" : "启用"}写作技能 ${skill.name}`}
+          className="scale-75"
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={`查看写作技能 ${skill.name}`}
+          onClick={onView}
+        >
+          <Eye className="size-3" />
+        </Button>
+      </div>
+    </div>
   );
 }
 
 /**
- * 技能面板：内置 NovelFork 自研技能 + 作者技能目录，启用后物化到作品目录。
- * 不做网络下载；第三方技能由作者自行安装到作者技能目录。
+ * 写作技能面板：本书已启用的技能清单 + 可选技能，勾选即物化进当前作品目录。
+ * 不提供改正文与删除（那在 Runtime 的技能管理里）。
  */
 export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   const { data, loading, error, refetch } = useApi<WritingSkillsResponse>("/writing-skills");
   const [projectSlugs, setProjectSlugs] = useState<string[]>([]);
-  const [filterKind, setFilterKind] = useState<string | null>(null);
-  const [filterSource, setFilterSource] = useState<string | null>(null);
-  const [filterScope, setFilterScope] = useState<WritingSkillScope>("all");
-  const [filterGenre, setFilterGenre] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [viewing, setViewing] = useState<WritingSkillItem | null>(null);
-  const [draft, setDraft] = useState<string>("");
-  const [editing, setEditing] = useState(false);
+  const [readingBody, setReadingBody] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  /** 非入口技能默认折叠；作者展开后在本次浏览内保持展开。 */
   const [showOthers, setShowOthers] = useState(false);
-  /** 列表分页：作者目录与当前作品额外技能可能很多，默认先出 40 个。 */
-  const PAGE_SIZE = 40;
-  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
   // 生效态由可信书籍根目录 `.novelfork/skills` 扫描结果提供。
   const {
@@ -457,18 +249,18 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     setProjectSlugs([...bookWritingSkills.projectSkillSlugs]);
   }, [bookWritingSkills]);
 
-  async function handleToggle(skillSlug: string, enabled: boolean) {
-    const skill = skills.find((candidate) => candidate.slug === skillSlug);
-    if (skill?.mode === "always") return;
+  async function handleToggle(skill: WritingSkillItem, enabled: boolean) {
+    if (skill.mode === "always") return;
     const previous = projectSlugs;
     const nextSlugs = enabled
-      ? [...new Set([...projectSlugs, skillSlug])]
-      : projectSlugs.filter((slug) => slug !== skillSlug);
+      ? [...new Set([...projectSlugs, skill.slug])]
+      : projectSlugs.filter((slug) => slug !== skill.slug);
     setProjectSlugs(nextSlugs);
     setNotice(null);
+    setBusy(true);
     try {
-      if (!skill) throw new Error("找不到要操作的写作技能。");
       if (skill.source === "project") {
+        // 当前作品独有的技能：文件就在书里，关闭即删除该文件。
         if (enabled) throw new Error("项目独有技能只能由当前作品目录提供。");
         await fetchJson(`/books/${bookId}/writing-skills/${encodeURIComponent(skill.slug)}`, {
           method: "DELETE",
@@ -482,55 +274,23 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     } catch (toggleError) {
       setProjectSlugs(previous);
       setNotice(toggleError instanceof Error ? toggleError.message : String(toggleError));
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function openSkill(skill: WritingSkillItem, forEditing: boolean) {
+  /** 只读查看：作品目录的副本用书籍接口带来的原始正文，catalog 条目按 slug 取正文。 */
+  async function openSkill(skill: WritingSkillItem) {
     setViewing(skill);
-    setEditing(false);
+    setReadingBody(skill.body ?? skill.content ?? "");
     setNotice(null);
+    if (skill.body ?? skill.content) return;
     setBusy(true);
-    const slugPath = `/writing-skills/${encodeURIComponent(skill.slug)}`;
     try {
-      // 作品目录中的项目文件可能不在全局 catalog；书籍 API 已返回原始 SKILL.md，
-      // 直接使用它，避免把项目级技能误当成全局技能请求。
-      if (skill.source === "project" && skill.content) {
-        setDraft(forEditing ? skill.content : (skill.body ?? skill.content));
-        setEditing(forEditing);
-        return;
-      }
-      if (forEditing && !skill.editable) {
-        // 内置/远程技能只读：先 fork 到作者副本，再编辑。
-        await postApi(`${slugPath}/fork`, {});
-      }
-      const loadDetail = () =>
-        fetchJson<{ skill: { body?: string; content?: string | null } }>(slugPath);
-
-      let detail: { skill: { body?: string; content?: string | null } };
-      try {
-        detail = await loadDetail();
-      } catch (firstError) {
-        // 冷启动：列表刚返回时全量解析可能尚未进缓存，详情第一次会短暂失败。
-        // 自动重试一次，避免「第一次打开报不存在、再点又好了」。
-        await new Promise((resolve) => setTimeout(resolve, 120));
-        try {
-          detail = await loadDetail();
-        } catch {
-          throw firstError;
-        }
-      }
-
-      // 编辑必须用完整 SKILL.md（content）；预览用 body 即可。
-      // 以前只塞 body，保存时缺 frontmatter → 解析失败，看起来像「写作技能不存在」。
-      const nextDraft = forEditing
-        ? (detail.skill.content ?? detail.skill.body ?? "")
-        : (detail.skill.body ?? detail.skill.content ?? "");
-      if (!nextDraft.trim()) {
-        setNotice("写作技能正文为空，无法打开。请换一份或检查来源文件。");
-        return;
-      }
-      setDraft(nextDraft);
-      setEditing(forEditing);
+      const detail = await fetchJson<{ skill: { body?: string; content?: string | null } }>(
+        `/writing-skills/${encodeURIComponent(skill.slug)}`,
+      );
+      setReadingBody(detail.skill.body ?? detail.skill.content ?? "");
     } catch (openError) {
       setNotice(openError instanceof Error ? openError.message : String(openError));
     } finally {
@@ -538,206 +298,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     }
   }
 
-  async function handleSave() {
-    if (!viewing) return;
-    setBusy(true);
-    setNotice(null);
-    try {
-      if (viewing.source === "project") {
-        await putApi(`/books/${bookId}/writing-skills/${encodeURIComponent(viewing.slug)}`, {
-          content: draft,
-        });
-        setNotice("已保存到当前作品的 .novelfork/skills/，不会影响其它作品。");
-        refetchBook?.();
-      } else {
-        await putApi(`/writing-skills/${encodeURIComponent(viewing.slug)}`, {
-          content: draft,
-        });
-        // 作者副本保存后，已存在的当前项目文件立即刷新；未进入项目的 Skill 不提前物化。
-        if (projectSlugs.includes(viewing.slug)) {
-          await putApi(`/books/${bookId}/writing-skills`, {
-            refreshSkillIds: [viewing.id],
-          });
-        }
-        setNotice("已保存到我的写作技能；当前项目文件已同步。");
-        refetch?.();
-        refetchBook?.();
-      }
-      setEditing(false);
-    } catch (saveError) {
-      setNotice(saveError instanceof Error ? saveError.message : String(saveError));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleReset(skill: WritingSkillItem) {
-    setBusy(true);
-    setNotice(null);
-    try {
-      await fetchJson(`/writing-skills/${encodeURIComponent(skill.slug)}`, {
-        method: "DELETE",
-      });
-      // 恢复作者覆盖后，已存在的项目文件需要重新复制 catalog 版本；未进入项目的 Skill 不物化。
-      if (projectSlugs.includes(skill.slug)) {
-        await putApi(`/books/${bookId}/writing-skills`, {
-          refreshSkillIds: [skill.id],
-        });
-      }
-      setNotice("已恢复内置版本；当前项目文件已同步。");
-      setViewing(null);
-      refetch?.();
-      refetchBook?.();
-    } catch (resetError) {
-      setNotice(resetError instanceof Error ? resetError.message : String(resetError));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const catalogSkills = data?.skills ?? [];
-  const projectOnlySkills = (bookWritingSkills?.skills ?? []).filter(
-    (skill) => skill.source === "project"
-      && !catalogSkills.some((catalogSkill) => catalogSkill.slug === skill.slug),
-  );
-  const skills = [...catalogSkills, ...projectOnlySkills];
-  // 出处统计只基于全局 catalog，项目-only 技能通过作用范围单独浏览。
-  const sourceSections = groupBySource(catalogSkills);
-  const scopedSkills = filterScope === "global"
-    ? catalogSkills
-    : filterScope === "project"
-      ? projectOnlySkills
-      : skills;
-  // 选择出处时自动进入全局范围，避免项目副本再次污染出处统计。
-  const scope = filterSource
-    ? catalogSkills.filter((skill) => sourceKeyOf(skill) === filterSource)
-    : scopedSkills;
-  const kinds = [...new Set(scope.map((s) => s.kind))];
-  const genres = [...new Set(scope.map((s) => genreOf(s)).filter((g): g is string => g !== null))];
-  const visible = applyWritingSkillFilters(scope, {
-    kind: filterKind,
-    genre: filterGenre,
-    query,
-  });
-  const { entries: entrySkills, others: otherSkills } = splitEntrySkills(visible);
-  // 有筛选或搜索时作者在找具体技能，其余技能直接展开；否则默认折叠，先看入口。
-  const filtering = Boolean(query.trim() || filterKind || filterGenre || filterSource || filterScope === "project");
-  const othersExpanded = showOthers || filtering || entrySkills.length === 0;
-  const displayed = otherSkills.slice(0, displayCount);
-  const hasMore = otherSkills.length > displayCount;
-  const scopeOptions: ReadonlyArray<{ key: WritingSkillScope; label: string; count: number }> = [
-    { key: "all", label: "全部", count: skills.length },
-    { key: "global", label: "全局技能库", count: catalogSkills.length },
-    { key: "project", label: "当前作品额外", count: projectOnlySkills.length },
-  ];
-
-  function handleScopeChange(nextScope: WritingSkillScope) {
-    setFilterScope(nextScope);
-    if (nextScope !== "global") setFilterSource(null);
-  }
-
-  function handleSourceChange(nextSource: string) {
-    setFilterScope("global");
-    setFilterSource((current) => current === nextSource ? null : nextSource);
-  }
-
-  // 筛选条件变化时重置分页，避免旧 displayCount 把新结果截掉
-  useEffect(() => {
-    setDisplayCount(PAGE_SIZE);
-  }, [filterKind, filterGenre, filterScope, filterSource, query]);
-
-  function renderSkillCard(skill: WritingSkillItem) {
-    const enabled = skill.mode === "always" || projectSlugs.includes(skill.slug);
-    return (
-      <div
-        key={skill.id}
-        className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5 hover:bg-muted/50 transition-colors"
-        data-testid={`writing-skill-card-${skill.slug}`}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-medium">{skill.name}</span>
-            {skill.entry && (
-              <Badge variant="default" className="text-2xs h-4">
-                入口 · {skill.entry}
-              </Badge>
-            )}
-            {/* 纪律：入口技能是推荐≠默认启用，作者确认才点亮；没启用就明说「推荐启用」，不撒谎。 */}
-            {enabled ? (
-              <Badge variant="outline" className="text-2xs h-4">
-                已启用
-              </Badge>
-            ) : skill.entry ? (
-              <Badge variant="secondary" className="text-2xs h-4">
-                推荐启用
-              </Badge>
-            ) : null}
-            <Badge variant="secondary" className="text-2xs h-4">
-              {kindLabel(skill.kind)}
-            </Badge>
-            {skill.source === "user" && (
-              <Badge variant="outline" className="text-2xs h-4">
-                已自定义
-              </Badge>
-            )}
-            {skill.source === "project" && (
-              <Badge variant="outline" className="text-2xs h-4">
-                当前作品
-              </Badge>
-            )}
-            {skill.retiredFromBuiltin && (
-              <Badge
-                variant="outline"
-                className="text-2xs h-4"
-                title={RETIRED_BUILTIN_EXPLANATION}
-                data-testid="writing-skill-retired-badge"
-              >
-                来源已移出内置
-              </Badge>
-            )}
-          </div>
-          <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-2">
-            {skill.description}
-          </p>
-          {skill.provenance && (
-            <p className="text-2xs text-muted-foreground/70 mt-0.5 truncate">
-              来源 {repoLabel(skill.provenance.repo)} · {skill.provenance.license}
-            </p>
-          )}
-          {skill.retiredFromBuiltin && (
-            <p className="text-2xs text-muted-foreground mt-0.5">{RETIRED_BUILTIN_EXPLANATION}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <Switch
-            checked={skill.mode === "always" || projectSlugs.includes(skill.slug)}
-            disabled={skill.mode === "always" || busy}
-            onCheckedChange={(checked) => void handleToggle(skill.slug, checked)}
-            aria-label={`启用写作技能 ${skill.name}`}
-            className="scale-75"
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            aria-label={`查看写作技能 ${skill.name}`}
-            onClick={() => void openSkill(skill, false)}
-          >
-            <Eye className="size-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            aria-label={`编辑写作技能 ${skill.name}`}
-            onClick={() => void openSkill(skill, true)}
-          >
-            <Pencil className="size-3" />
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  const isEnabled = (skill: WritingSkillItem) => skill.mode === "always" || projectSlugs.includes(skill.slug);
 
   if (loading) {
     return (
@@ -752,198 +313,143 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     return <p className="text-xs text-destructive py-4">{error}</p>;
   }
 
-  if (skills.length === 0) {
+  const catalogSkills = data?.skills ?? [];
+  const projectOnlySkills = (bookWritingSkills?.skills ?? []).filter(
+    (skill) => skill.source === "project"
+      && !catalogSkills.some((catalogSkill) => catalogSkill.slug === skill.slug),
+  );
+  const allSkills = [...catalogSkills, ...projectOnlySkills];
+
+  // 本书已生效：书内副本（含 always 技能）为权威清单。
+  const enabledSkills = (bookWritingSkills?.skills ?? []).filter((skill) => isEnabled(skill));
+  // 可启用：catalog 里还没进本书的技能；项目独有技能已经在书里，不在此列。
+  const availableSkills = catalogSkills
+    .filter((skill) => !isEnabled(skill))
+    .filter((skill) => {
+      const needle = query.trim().toLowerCase();
+      if (!needle) return true;
+      return `${skill.name} ${skill.description} ${(skill.tags ?? []).join(" ")}`.toLowerCase().includes(needle);
+    });
+  const { entries: entrySkills, others: otherSkills } = splitEntrySkills(availableSkills);
+  const othersExpanded = showOthers || query.trim().length > 0;
+  const enabledNames = new Set(enabledSkills.map((skill) => skill.slug));
+
+  if (allSkills.length === 0) {
     return (
       <div className="text-xs text-muted-foreground py-4 space-y-1" data-testid="writing-skills-empty">
-        <p>{WRITING_SKILLS_EMPTY_HINT}</p>
+        <p>没有可用的写作技能。内置写作技能随产品提供；你也可以在自己的作者技能目录里自建或安装（每个技能是一个带 SKILL.md 的文件夹）。</p>
         <WritingSkillPathDetails />
       </div>
     );
   }
 
   return (
-    <div className="space-y-2" data-testid="writing-skills-panel">
+    <div className="space-y-3" data-testid="writing-skills-panel">
       {/*
-        作用域提示：这个面板也被「写作配置」复用，不只出现在书籍设置页。
-        技能 catalog/作者覆盖是全局来源，但启用态直接物化到当前项目目录，
-        必须就地说明取消勾选会删除项目副本，避免作者误以为是数据库开关。
-        路径术语收进折叠细节，主文案用面向作者的表述。
+        作用域提示：技能库是全局的，启用态只物化到当前作品目录，
+        必须就地说明取消勾选会删除作品副本，避免作者误以为是数据库开关。
       */}
       <div className="text-2xs text-muted-foreground space-y-1" data-testid="writing-skills-scope-hint">
         <p>
-          技能库与作者覆盖全局共享；<span className="text-foreground">启用态只对当前作品生效（当前目录已发现 {projectSlugs.length} 个）</span>
-          ——勾选会把技能复制到当前作品，取消勾选删除对应副本；项目额外技能原地编辑，技能库条目会存成你的作者副本并覆盖内置版本。
+          技能库与作者副本全局共享；<span className="text-foreground">启用态只对当前作品生效（当前已发现 {projectSlugs.length} 个）</span>
+          ——勾选会把技能复制到当前作品，取消勾选删除对应副本。技能的正文编辑与新建在 Runtime 的「套路 › 项目技能」里做。
         </p>
         <WritingSkillPathDetails />
       </div>
 
-      {/* 搜索：几百个 skill 平铺翻不动，先给关键词 */}
-      <div className="flex items-center gap-1.5">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={`搜索 ${skills.length} 个写作技能…`}
-          className="h-7 flex-1 rounded border border-border bg-background px-2 text-2xs outline-none focus:border-primary"
-          aria-label="搜索写作技能"
-          data-testid="writing-skills-search"
-        />
-        <span className="text-2xs text-muted-foreground shrink-0">{visible.length}</span>
-      </div>
+      {notice && <p className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1 text-2xs text-destructive">{notice}</p>}
 
-      {/* 作用范围：全局 catalog 与当前作品额外文件分开统计 */}
-      <div className="flex flex-wrap items-center gap-1" data-testid="writing-skills-scope-filter">
-        <span className="text-2xs text-muted-foreground mr-1">范围</span>
-        {scopeOptions.map((option) => (
-          <button
-            key={option.key}
-            type="button"
-            onClick={() => handleScopeChange(option.key)}
-            className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
-              filterScope === option.key
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-border text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {option.label} {option.count}
-          </button>
-        ))}
-      </div>
-
-      {/* 出处：只按全局 catalog 统计，项目-only 技能通过上面的范围筛选浏览 */}
-      {sourceSections.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1" data-testid="writing-skills-source-filter">
-          <span className="text-2xs text-muted-foreground mr-1">出处</span>
-          <button
-            type="button"
-            onClick={() => setFilterSource(null)}
-            className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
-              filterSource === null
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-border text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            全部
-          </button>
-          {sourceSections.map((section) => (
-            <button
-              key={section.key}
-              type="button"
-              title={section.repoUrl ?? section.key}
-              onClick={() => handleSourceChange(section.key)}
-              className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
-                filterSource === section.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {section.label} {section.count}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 第三层：题材（仅当前来源有题材标注时出现） */}
-      {genres.length > 1 && (
-        <div className="flex flex-wrap gap-1" data-testid="writing-skills-genre-filter">
-          {genres.map((genre) => (
-            <button
-              key={genre}
-              type="button"
-              onClick={() => setFilterGenre(genre === filterGenre ? null : genre)}
-              className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
-                filterGenre === genre
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {genre}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {kinds.length > 1 && (
-        <div className="flex flex-wrap gap-1">
-          <button
-            type="button"
-            onClick={() => setFilterKind(null)}
-            className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
-              filterKind === null
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-border text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            全部
-          </button>
-          {kinds.map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => setFilterKind(kind === filterKind ? null : kind)}
-              className={`text-2xs px-2 py-0.5 rounded-full border transition-colors ${
-                filterKind === kind
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {kindLabel(kind)}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {visible.length === 0 && (
-        <p className="text-2xs text-muted-foreground py-2" data-testid="writing-skills-no-match">
-          没有匹配的写作技能。换个来源或清掉搜索词再看。
-        </p>
-      )}
-
-      {entrySkills.length > 0 && (
-        <section className="space-y-1.5" data-testid="writing-skills-entries">
-          <p className="text-2xs font-medium text-foreground">作者入口 {entrySkills.length}</p>
+      <section className="space-y-1.5" data-testid="writing-skills-enabled">
+        <p className="text-2xs font-medium text-foreground">本书已启用 {enabledSkills.length}</p>
+        {enabledSkills.length === 0 ? (
+          <p className="text-2xs text-muted-foreground py-1" data-testid="writing-skills-enabled-empty">
+            还没有启用任何写作技能。启用后，相关要求会在写章前注入并作为成品校验依据。
+          </p>
+        ) : (
           <div className="grid grid-cols-1 gap-2">
-            {entrySkills.map(renderSkillCard)}
+            {enabledSkills.map((skill) => (
+              <SkillRow
+                key={skill.slug}
+                skill={skill}
+                enabled
+                busy={busy}
+                suffix={skill.source === "project" ? "当前作品" : undefined}
+                onToggle={(checked) => void handleToggle(skill, checked)}
+                onView={() => void openSkill(skill)}
+              />
+            ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
-      {otherSkills.length > 0 && (
-        <section className="space-y-1.5" data-testid="writing-skills-others">
-          {entrySkills.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowOthers((value) => !value)}
-              disabled={filtering}
-              aria-expanded={othersExpanded}
-              className="text-2xs text-muted-foreground hover:text-foreground disabled:hover:text-muted-foreground"
-              data-testid="writing-skills-others-toggle"
-            >
-              {othersExpanded ? "收起" : "展开"}更多技能（{otherSkills.length}）· 叙述者自己会调用，一般不必直接点
-            </button>
-          )}
-          {othersExpanded && (
-            <div className="grid grid-cols-1 gap-2">
-              {displayed.map(renderSkillCard)}
-            </div>
-          )}
-        </section>
-      )}
-
-      {othersExpanded && hasMore && (
-        <div className="flex justify-center pt-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-2xs h-6"
-            onClick={() => setDisplayCount((count) => count + PAGE_SIZE)}
-            data-testid="writing-skills-load-more"
-          >
-            加载更多（{displayed.length} / {otherSkills.length}）
-          </Button>
+      <section className="space-y-1.5" data-testid="writing-skills-available">
+        <p className="text-2xs font-medium text-foreground">可启用 {availableSkills.length}</p>
+        <div className="flex items-center gap-1.5">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={`搜索 ${catalogSkills.length} 个写作技能…`}
+            className="h-7 flex-1 rounded border border-border bg-background px-2 text-2xs outline-none focus:border-primary"
+            aria-label="搜索写作技能"
+            data-testid="writing-skills-search"
+          />
+          <span className="text-2xs text-muted-foreground shrink-0">{availableSkills.length}</span>
         </div>
-      )}
 
-      <OptionalSkillSourcesNote />
+        {availableSkills.length === 0 && (
+          <p className="text-2xs text-muted-foreground py-2" data-testid="writing-skills-no-match">
+            {query.trim() ? "没有匹配的写作技能，换个词再看看。" : "技能库里的技能都已在本作品启用。"}
+          </p>
+        )}
+
+        {entrySkills.length > 0 && (
+          <div className="space-y-1.5" data-testid="writing-skills-entries">
+            <p className="text-2xs text-muted-foreground">作者入口 {entrySkills.length}</p>
+            <div className="grid grid-cols-1 gap-2">
+              {entrySkills.map((skill) => (
+                <SkillRow
+                  key={skill.slug}
+                  skill={skill}
+                  enabled={enabledNames.has(skill.slug)}
+                  busy={busy}
+                  onToggle={(checked) => void handleToggle(skill, checked)}
+                  onView={() => void openSkill(skill)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {otherSkills.length > 0 && (
+          <div className="space-y-1.5" data-testid="writing-skills-others">
+            {entrySkills.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowOthers((value) => !value)}
+                aria-expanded={othersExpanded}
+                className="text-2xs text-muted-foreground hover:text-foreground"
+                data-testid="writing-skills-others-toggle"
+              >
+                {othersExpanded ? "收起" : "展开"}其余技能（{otherSkills.length}）· 叙述者会按任务自行调用
+              </button>
+            )}
+            {othersExpanded && (
+              <div className="grid grid-cols-1 gap-2">
+                {otherSkills.map((skill) => (
+                  <SkillRow
+                    key={skill.slug}
+                    skill={skill}
+                    enabled={enabledNames.has(skill.slug)}
+                    busy={busy}
+                    onToggle={(checked) => void handleToggle(skill, checked)}
+                    onView={() => void openSkill(skill)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
         <DialogContent className="max-w-2xl">
@@ -951,53 +457,19 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
             <DialogTitle className="text-sm">{viewing?.name}</DialogTitle>
             <DialogDescription className="text-xs">{viewing?.description}</DialogDescription>
           </DialogHeader>
-
           {busy ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
             </div>
-          ) : editing ? (
-            <Textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              className="font-mono text-xs min-h-[320px]"
-              aria-label="写作技能正文"
-            />
           ) : (
-            <pre className="max-h-[380px] overflow-auto rounded-md bg-muted p-3 text-2xs whitespace-pre-wrap">
-              {draft}
+            <pre
+              className="max-h-[380px] overflow-auto rounded-md bg-muted p-3 text-2xs whitespace-pre-wrap"
+              aria-label="写作技能正文"
+            >
+              {readingBody}
             </pre>
           )}
-
           {notice && <p className="text-2xs text-muted-foreground">{notice}</p>}
-
-          <DialogFooter className="gap-2">
-            {viewing?.source === "user" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => viewing && void handleReset(viewing)}
-              >
-                <RotateCcw className="size-3 mr-1" />
-                恢复内置
-              </Button>
-            )}
-            {editing ? (
-              <Button size="sm" disabled={busy} onClick={() => void handleSave()}>
-                保存
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => viewing && void openSkill(viewing, true)}
-              >
-                编辑
-              </Button>
-            )}
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -544,24 +544,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "action"],
     additionalProperties: false,
   },
-  "skills.read": {
-    type: "object",
-    properties: {
-      scope: enumSchema(["enabled", "available"], "enabled=当前项目 `.novelfork/skills/` 中生效的 Writing Skills（含正文）；available=全部可用 Writing Skills（含项目目录标记）。默认 available。"),
-    },
-    required: [],
-    additionalProperties: false,
-  },
-  "skills.write": {
-    type: "object",
-    properties: {
-      addSkillIds: arraySchema("将指定 catalog Writing Skill 物化到当前项目 `.novelfork/skills/`；不影响其它已存在的项目 Skill。", { type: "string" }),
-      removeSkillIds: arraySchema("删除当前项目 `.novelfork/skills/` 中指定 catalog Writing Skill 的文件夹。", { type: "string" }),
-      refreshSkillIds: arraySchema("用 catalog 原文刷新当前项目中指定 Writing Skill；作者已修改的项目文件不会自动刷新。", { type: "string" }),
-    },
-    required: [],
-    additionalProperties: false,
-  },
   "skills.recommend": {
     type: "object",
     properties: {

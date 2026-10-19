@@ -68,8 +68,6 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "character.voice.read",
   "character.voice.draft",
   "hooks.manage",
-  "skills.read",
-  "skills.write",
   "skills.recommend",
   "skills.check_compliance",
   "skills.import_legacy",
@@ -461,34 +459,16 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
     scope: "novel",
   }),
   // --- Writing Skills 工具组 ---
-  sessionTool({
-    name: "skills.read",
-    description: "读取当前项目的 Writing Skills。scope=enabled 返回 `.novelfork/skills/` 中自动发现的完整正文；scope=available 返回 catalog 与项目文件的合并视图。",
-    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["skills.read"]),
-    risk: "read",
-    renderer: "writing-skills.list",
-    enabledForModes: ALL_SESSION_PERMISSION_MODES,
-    scope: "novel",
-  }),
-  sessionTool({
-    name: "skills.write",
-    description: "管理当前项目 `.novelfork/skills/` 中的 Writing Skill 文件；项目目录扫描结果是唯一生效来源。",
-    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["skills.write"]),
-    risk: "confirmed-write",
-    renderer: "writing-skills.list",
-    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
-    scope: "novel",
-  }),
   // 只读推荐：按本书已落库的建书答案（题材/基调/平台/复杂度/AI 味容忍度）
-  // 从内置 Skills 里挑出候选并给出理由。不写 book.json —— 启用仍走
-  // skills.write，保留 Runtime 权限确认。
+  // 从内置 Skills 里挑出候选并给出理由。不写 book.json —— 启用由作者在
+  // 写作台「技能文风 › 写作技能」里勾选（那里直接写 `.novelfork/skills`）。
   // renderer 显式声明为 "generic"：Studio 侧没有专用卡片，由
   // GenericToolResultRenderer 兜底（registry.tsx 的 resolveToolResultRendererKey
   // 对未登记键同样回落 generic）。推荐结果是扁平的 name+kind+reason 列表，
   // generic 卡片足够；真正需要作者交互的是随后的 AskUserQuestion，那由 Runtime 渲染。
   sessionTool({
     name: "skills.recommend",
-    description: "按本书建书答案推荐应启用的 Writing Skills，返回候选与推荐理由。只读，不修改启用状态；确认后请用 skills.write 落库。",
+    description: "按本书建书答案推荐应启用的 Writing Skills，返回候选与推荐理由。只读，不修改启用状态；确认后由作者在写作台「技能文风」里启用。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["skills.recommend"]),
     risk: "read",
     renderer: "generic",

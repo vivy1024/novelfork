@@ -63,8 +63,6 @@ const CANONICAL_READY_TOOL_NAMES = [
   "character.voice.read",
   "character.voice.draft",
   "hooks.manage",
-  "skills.read",
-  "skills.write",
   "skills.recommend",
   "skills.check_compliance",
   "skills.import_legacy",
@@ -211,9 +209,6 @@ describe("NovelRuntimeAdapter", () => {
 		expect(
 			definitions.find((tool) => tool.name === toRuntimeToolName("memory.events"))?.metadata?.runtimeRisk,
 		).toBe("draft-write");
-		expect(definitions.find((tool) => tool.name === toRuntimeToolName("skills.write"))?.metadata?.runtimeRisk).toBe(
-			"confirmed-write",
-		);
 		for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write", "style.distill_adopt"]) {
 			expect(definitions.find((tool) => tool.name === toRuntimeToolName(name))?.metadata?.runtimeRisk).toBe("confirmed-write");
 		}
@@ -239,18 +234,10 @@ describe("NovelRuntimeAdapter", () => {
 		}).success).toBe(true);
 		expect(loreWrite?.parameters.safeParse({ title: "设定", tags: [{ key: "灵觉" }] }).success).toBe(false);
 		expect(chapterImport?.parameters.safeParse({ filePath: "C:/secret.txt" }).success).toBe(false);
-		// Writing Skills 只接受对项目文件的增删/刷新；模型不能塞入任意规则正文或未知字段。
-		const writingSkillsWrite = definitions.find((tool) => tool.name === toRuntimeToolName("skills.write"));
-		expect(writingSkillsWrite?.parameters.safeParse({
-			addSkillIds: ["writing-skill-opening-hooks"],
-		}).success).toBe(true);
-		expect(writingSkillsWrite?.parameters.safeParse({
-			addSkillIds: ["writing-skill-opening-hooks"],
-			promptInjection: "禁止：总而言之",
-		}).success).toBe(false);
-		expect(writingSkillsWrite?.parameters.safeParse({
-			enabledWritingSkillIds: ["writing-skill-opening-hooks"],
-		}).success).toBe(false);
+		// 叙述者侧不再有技能的读写工具：技能启用只由作者在写作台「技能文风」勾选，
+		// 走产品路由而不是模型工具（见 writing-skill-handlers 的启用/停用闭环用例）。
+		expect(definitions.some((tool) => tool.name === toRuntimeToolName("skills.read"))).toBe(false);
+		expect(definitions.some((tool) => tool.name === toRuntimeToolName("skills.write"))).toBe(false);
 		expect(chapterRead?.parameters.safeParse({ chapterNumber: 1, extra: true }).success).toBe(false);
 		expect(
 			chapterRead?.parameters.safeParse({ bookId: "book-a", chapterNumber: 1 }).success,
@@ -481,38 +468,9 @@ RUNTIME_WRITING_SKILL_MARKER
 			expect(loreReadResult.isError).toBe(false);
 			expect(loreReadResult.output).toContain("wire alias lore");
 
-			// Writing Skills 的内容权威源是 SKILL.md 文件；这里只验证可信绑定下的
-			// 书籍级启用读写闭环，不再有第二套 Preset/Beat 存储。
-			const skillsAvailable = await adapter.execute("skills.read", {}, "narrator-a");
-			expect(skillsAvailable.isError).toBe(false);
-			const availablePayload = JSON.parse(skillsAvailable.output) as {
-				data?: { skills?: Array<{ id: string; slug: string; mode?: string }> };
-			};
-			const selectableSkill = availablePayload.data?.skills?.find((skill) => skill.mode !== "always");
-			expect(selectableSkill).toBeTruthy();
-			if (!selectableSkill) throw new Error("No selectable Writing Skill in catalog");
-
-			const skillsWriteResult = await adapter.execute(
-				"skills.write",
-				{ addSkillIds: [selectableSkill.id] },
-				"narrator-a",
-			);
-			expect(skillsWriteResult.isError).toBe(false);
-			expect(JSON.parse(skillsWriteResult.output)).toMatchObject({
-				ok: true,
-				data: { bookId: "book-a", projectSkillSlugs: [selectableSkill.slug] },
-			});
-
-			const skillsEnabledResult = await adapter.execute(
-				"skills.read",
-				{ scope: "enabled" },
-				"narrator-a",
-			);
-			expect(skillsEnabledResult.isError).toBe(false);
-			expect(JSON.parse(skillsEnabledResult.output)).toMatchObject({
-				ok: true,
-				data: { projectSkillSlugs: [selectableSkill.slug] },
-			});
+			// 技能启用不再经叙述者工具：模型调不到 skills.read / skills.write。
+			expect(adapter.toolDefinitions().some((tool) => tool.name === "skills_read")).toBe(false);
+			expect(adapter.toolDefinitions().some((tool) => tool.name === "skills_write")).toBe(false);
 
 			const resourcesResult = await adapter.execute(
 				"resource.manage",

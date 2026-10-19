@@ -3,8 +3,11 @@
  *
  * 纪律与 write-request.ts 一致：前端不自己编排工具执行，也不静默写 book.json。
  * 它只把已落库的建书答案与推荐清单交给叙述者，由 Runtime 的 Agent Loop 依次
- * 执行 skills.recommend / AskUserQuestion / skills.write / lore.write，
- * 权限确认与问答渲染都留在 Runtime 侧。
+ * 执行 skills.recommend / AskUserQuestion / lore.write，权限确认与问答渲染都留在
+ * Runtime 侧。
+ *
+ * 技能启用不在这里落库：模型没有写启用状态的工具（叙述者的 skills.write 已随
+ * S-9 下线），启用只在写作台「技能文风 › 写作技能」里由作者勾选。
  */
 
 export interface OnboardingRecommendedSkill {
@@ -50,12 +53,12 @@ export function buildOnboardingRequestMessage(payload: OnboardingRequestPayload 
   lines.push(
     "",
     "请按顺序执行：",
-    "1. 调用 skills.recommend 拿完整推荐清单，并用 skills.read 核对当前启用状态。",
-    "2. 用 AskUserQuestion 让我确认要启用哪些（推荐项默认勾选，我可以增删），我确认后再用 skills.write 落库。",
+    "1. 调用 skills.recommend 拿完整推荐清单，用你的结论告诉我当前已启用哪些（启用状态只能由我在写作台「技能文风 › 写作技能」里看，你无法读取或修改它）。",
+    "2. 用 AskUserQuestion 让我确认要启用哪些（推荐项默认勾选，我可以增删）；确认后把清单写成一句话，让我去写作台「技能文风 › 写作技能」按清单勾选——不要试图自己落库。",
     `3. 再用 AskUserQuestion 就以下方面追问我，每次一组、问完等我回答：${FOLLOW_UP_TOPICS.map((topic, index) => `\n   ${index + 1}) ${topic}`).join("")}`,
     "4. 把我的回答用 lore.write 写进经纬，统一 layer=dynamic、status=needs-review；等我确认后再升 canon。",
     "",
-    "不要跳过第 2 步直接启用，也不要在我没回答前替我编造设定。",
+    "不要跳过第 2 步，也不要在我没回答前替我编造设定。技能启用只由我在写作台勾选完成。",
   );
 
   return lines.join("\n");

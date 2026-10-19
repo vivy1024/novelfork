@@ -47,10 +47,10 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "storyline.proposal",
   "resource.manage",
   "tool.rewrite-apply",
-  // Writing Skills 迁移后的四个工具暫走 generic；H-3 提供专属卡后从这里删除。
+  // Writing Skills 迁移后的工具暫走 generic；H-3 提供专属卡后从这里删除。
+  // writing-skills.list 已随 S-9 下线（写作技能面板降级为本书清单，叙述者的技能浏览工具删除）。
   "writing-skills.compliance",
   "writing-skills.import",
-  "writing-skills.list",
   // skills.recommend 直接把 renderer 声明成 "generic"：推荐结果是扁平的
   // name/kind/reason 列表，generic 卡足够；作者真正的交互发生在随后的
   // AskUserQuestion（由 Runtime 原生渲染）。

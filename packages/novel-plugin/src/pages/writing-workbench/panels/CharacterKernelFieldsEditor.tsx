@@ -6,8 +6,8 @@
  * 因此编辑器初始展示内置默认集，首次改动即固化为显式配置。
  */
 
-import type { CharacterKernelConfig, KernelFieldSpec } from "../../engine/narrative-memory/types";
-import { DEFAULT_KERNEL_FIELDS } from "../../engine/narrative-memory/types";
+import type { CharacterKernelConfig, KernelFieldSpec } from "../../../engine/narrative-memory/types";
+import { DEFAULT_KERNEL_FIELDS } from "../../../engine/narrative-memory/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

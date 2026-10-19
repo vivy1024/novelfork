@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
-import { NarrativeMemorySettingsSection } from "../../writing-config/WritingConfigSection";
+import { NarrativeMemorySettingsSection } from "./NarrativeMemorySettingsPanel";
 import type { ForeshadowDebtThresholds } from "../../../engine/narrative-taxonomy/foreshadow-debts";
 import { dispatchWritingProgress } from "../writing-progress-event";
 import { ForeshadowThresholdField } from "./ForeshadowThresholdField";

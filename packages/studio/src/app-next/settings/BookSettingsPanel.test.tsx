@@ -9,7 +9,7 @@ vi.mock("@/hooks/use-api", () => ({
   fetchJson: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
-vi.mock("../../../../novel-plugin/src/pages/writing-config/WritingConfigSection", () => ({
+vi.mock("../../../../novel-plugin/src/pages/writing-workbench/panels/NarrativeMemorySettingsPanel", () => ({
   NarrativeMemorySettingsSection: () => <div data-testid="narrative-memory-section">Mock Narrative Memory</div>,
 }));
 

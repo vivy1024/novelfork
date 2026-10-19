@@ -393,7 +393,7 @@ export async function handleProjectWritingSkillDelete(
  *
  * 只读：答案取自 book.json（建书十一问由 applyGuidedSetup 写入），
  * 不修改项目 Skill 文件。添加或移除必须由作者确认后走
- * `skills.write`，保留 Runtime 的权限确认。
+ * 产品路由 `PUT /api/books/:bookId/writing-skills`（写作台「技能文风」勾选即走它）。
  */
 export async function handleWritingSkillsRecommend(
   input: WritingSkillsRecommendInput,

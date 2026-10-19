@@ -53,8 +53,6 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "hooks.manage", serviceKey: "inline", method: "manageHooks" },
 
   // Writing Skills tools
-  { toolName: "skills.read", serviceKey: "direct", method: "handleWritingSkillsRead" },
-  { toolName: "skills.write", serviceKey: "direct", method: "handleWritingSkillsWrite" },
   { toolName: "skills.recommend", serviceKey: "direct", method: "handleWritingSkillsRecommend" },
   { toolName: "skills.check_compliance", serviceKey: "direct", method: "handleWritingSkillsCheckCompliance" },
   { toolName: "skills.import_legacy", serviceKey: "direct", method: "handleWritingSkillsImportLegacy" },

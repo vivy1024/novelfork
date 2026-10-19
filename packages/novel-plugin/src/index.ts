@@ -141,8 +141,6 @@ const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "scene.spec": "场景蓝图校验",
   "character.check_consistency": "检查角色一致性",
   "hooks.manage": "管理伏笔",
-  "skills.read": "读取 Writing Skills",
-  "skills.write": "设置 Writing Skills",
   "skills.recommend": "推荐 Writing Skills",
   "skills.check_compliance": "检查 Writing Skills 合规",
   "skills.import_legacy": "导入旧 Preset/Beat 为 Writing Skills",
@@ -171,17 +169,7 @@ export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
   projectType: "novel",
   tools: NOVEL_TOOL_DEFINITIONS,
   routes: [],
-  uiSections: [
-    {
-      id: "novel-writing-config",
-      label: "写作配置",
-      icon: "PenLine",
-      mountPoint: "routines",
-      requiresBook: true,
-      order: 100,
-      componentKey: "novel-writing-config",
-    },
-  ],
+  uiSections: [],
   systemPromptExtensions: [],
 };
 

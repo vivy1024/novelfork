@@ -225,7 +225,7 @@ function pickPlotSkill(
  * 按十一问答案给出推荐清单。
  *
  * 纯函数：不读文件、不写 book.json。启用与否由作者确认后经
- * `skills.write` 落库（Runtime 权限确认在那一步）。
+ * 写作台「技能文风 › 写作技能」里由作者勾选启用（模型没有写启用状态的工具）。
  */
 export function recommendWritingSkills(
   input: WritingSkillRecommendationInput,

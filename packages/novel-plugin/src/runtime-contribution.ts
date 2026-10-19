@@ -41,9 +41,7 @@ import {
   handleMemoryUpdate,
   handleWritingSkillsCheckCompliance,
   handleWritingSkillsImportLegacy,
-  handleWritingSkillsRead,
   handleWritingSkillsRecommend,
-  handleWritingSkillsWrite,
   handleMarketQuery,
   handleMarketRanks,
   handleMarketSamplePublicChapters,
@@ -126,8 +124,6 @@ type CustomReadyRuntimeToolName =
   | "memory.read_line"
   | "memory.propose_change"
   | "memory.approve_change"
-  | "skills.read"
-  | "skills.write"
   | "skills.recommend"
   | "skills.check_compliance"
   | "skills.import_legacy"
@@ -630,28 +626,6 @@ async function executeReadyToolImpl(
         summary: result.applied ? "叙事线变更已应用。" : "叙事线变更已驳回，并记入审批台账。",
         data: { ...result, preview: toModelSafePreview(result.preview) },
       });
-    }
-    if (matchesToolName(tool.name, "skills.read")) {
-      return toRuntimeToolResult(await handleWritingSkillsRead({
-        bookId: binding.bookId,
-        ...(injectedInput.scope === "available" || injectedInput.scope === "enabled"
-          ? { scope: injectedInput.scope }
-          : {}),
-      }, { bookRoot: binding.root }));
-    }
-    if (matchesToolName(tool.name, "skills.write")) {
-      return toRuntimeToolResult(await handleWritingSkillsWrite({
-        bookId: binding.bookId,
-        ...(Array.isArray(injectedInput.addSkillIds)
-          ? { addSkillIds: injectedInput.addSkillIds.filter((id): id is string => typeof id === "string") }
-          : {}),
-        ...(Array.isArray(injectedInput.removeSkillIds)
-          ? { removeSkillIds: injectedInput.removeSkillIds.filter((id): id is string => typeof id === "string") }
-          : {}),
-        ...(Array.isArray(injectedInput.refreshSkillIds)
-          ? { refreshSkillIds: injectedInput.refreshSkillIds.filter((id): id is string => typeof id === "string") }
-          : {}),
-      }, { bookRoot: binding.root }));
     }
     if (matchesToolName(tool.name, "skills.recommend")) {
       return toRuntimeToolResult(await handleWritingSkillsRecommend({

@@ -130,7 +130,6 @@ export default defineConfig({
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/ide/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/writing-progress-event": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/writing-progress-event.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/index.ts"),
-      "@vivy1024/novelfork-novel-plugin/pages/writing-config": resolve(__dirname, "../novel-plugin/src/pages/writing-config/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages": resolve(__dirname, "../novel-plugin/src/pages/index.ts"),
       "@vivy1024/novelfork-core/storage": resolve(__dirname, "../core/src/storage/index.ts"),
       "@vivy1024/novelfork-core/utils/length-metrics": resolve(__dirname, "../core/src/utils/length-metrics.ts"),

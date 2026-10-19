@@ -8,7 +8,7 @@ vi.mock("@/hooks/use-api", () => ({
 }));
 
 // 叙事记忆分区有自己的保存链路，本文件只测书籍设置三条保存路径。
-vi.mock("../../writing-config/WritingConfigSection", () => ({
+vi.mock("./NarrativeMemorySettingsPanel", () => ({
   NarrativeMemorySettingsSection: () => null,
 }));
 

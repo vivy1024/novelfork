@@ -2,15 +2,18 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { AlertCircle, BrainCircuit, Loader2, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { AlertCircle, BrainCircuit, Loader2 } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
-import { WritingSkillsPanel } from "../writing-workbench/WritingSkillsPanel";
 import { CharacterKernelFieldsEditor, effectiveKernelFields } from "./CharacterKernelFieldsEditor";
-import type { KernelFieldSpec } from "../../engine/narrative-memory/types";
+import type { KernelFieldSpec } from "../../../engine/narrative-memory/types";
 
-// 「辅助工具」页签已下线：它向不存在的会话接口发 toolPolicy，从未生效；工具启用由 NarraFork 的「套路 › 可选工具」负责。
-type ConfigTab = "skills" | "memory";
+/**
+ * 叙事记忆设置（写作台 › 本书设置 › 叙事记忆）。
+ *
+ * 曾经还有一个「写作配置」外壳，把本面板与写作技能列表包成两个页签挂在套路页；
+ * 那种双入口已经下线——写作技能只在写作台侧栏「技能文风」里出现，
+ * 本书设置只放这一个面板，不再复制第二份技能入口。
+ */
 
 type NarrativeMemorySettings = {
   version: 1;
@@ -317,40 +320,6 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
           {saving && <Loader2 className="mr-1 size-3.5 animate-spin" />}
           保存叙事记忆设置
         </Button>
-      </div>
-    </div>
-  );
-}
-
-const TABS: ReadonlyArray<{ id: ConfigTab; label: string; icon: typeof Sparkles }> = [
-  { id: "skills", label: "写作技能", icon: Sparkles },
-  { id: "memory", label: "叙事记忆", icon: BrainCircuit },
-];
-
-export function WritingConfigSection({ bookId }: { bookId?: string }) {
-  const [activeTab, setActiveTab] = useState<ConfigTab>("skills");
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-1 border-b border-border">
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-            active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-          )}><Icon className="size-3.5" />{tab.label}</button>;
-        })}
-      </div>
-      <div>
-        {!bookId ? (
-          <div className="flex flex-col items-center justify-center py-8 gap-2"><AlertCircle className="size-6 text-muted-foreground/50" /><p className="text-sm text-muted-foreground">请先选择书籍</p></div>
-        ) : (
-          <>
-            {activeTab === "skills" && <WritingSkillsPanel bookId={bookId} />}
-            {activeTab === "memory" && <NarrativeMemorySettingsSection bookId={bookId} />}
-          </>
-        )}
       </div>
     </div>
   );

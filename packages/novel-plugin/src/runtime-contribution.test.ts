@@ -147,8 +147,6 @@ describe("novel Runtime contribution", () => {
       "outline.volume",
       "arc.character",
       "publish.check",
-      "skills.read",
-      "skills.write",
       "skills.check_compliance",
       "skills.import_legacy",
     ]));
@@ -174,9 +172,7 @@ describe("novel Runtime contribution", () => {
     expect(skillToolNames).toEqual([
       "skills.check_compliance",
       "skills.import_legacy",
-      "skills.read",
       "skills.recommend",
-      "skills.write",
     ]);
     expect(definitions.has("presets.read")).toBe(false);
     expect(definitions.has("presets.write")).toBe(false);
@@ -184,17 +180,8 @@ describe("novel Runtime contribution", () => {
     expect(definitions.has("beat.read")).toBe(false);
     expect(definitions.has("beat.write")).toBe(false);
 
-    const readSchema = definitions.get("skills.read")?.inputSchema as Record<string, unknown>;
-    const writeSchema = definitions.get("skills.write")?.inputSchema as Record<string, unknown>;
     const complianceSchema = definitions.get("skills.check_compliance")?.inputSchema as Record<string, unknown>;
     const importSchema = definitions.get("skills.import_legacy")?.inputSchema as Record<string, unknown>;
-    expect((readSchema.properties as Record<string, unknown>).scope).toBeDefined();
-    const writeProperties = writeSchema.properties as Record<string, unknown>;
-    expect(writeProperties.addSkillIds).toBeDefined();
-    expect(writeProperties.removeSkillIds).toBeDefined();
-    expect(writeProperties.refreshSkillIds).toBeDefined();
-    expect(writeProperties.enabledWritingSkillIds).toBeUndefined();
-    expect(writeSchema.required).toEqual([]);
     expect((complianceSchema.properties as Record<string, unknown>).content).toBeDefined();
     expect(complianceSchema.required).toEqual(["content"]);
     expect(importSchema.properties).toEqual({});
@@ -598,7 +585,7 @@ describe("novel Runtime contribution", () => {
       expect(await readFile(join(trusted.bookRoot, "chapters", "卷01", "0001-test.md"), "utf8")).toContain("青铜铃骤然响起。");
 
       // 内部调模型的 rewrite.segment / style.import / outline.suggest_next 已下线，
-      // 由当前 Runtime Agent 自行生成结果后直接 rewrite.apply / skills.write 落盘。
+      // 由当前 Runtime Agent 自行生成结果后直接 rewrite.apply 落盘。
       expect(NOVEL_READY_RUNTIME_TOOL_NAMES).not.toEqual(expect.arrayContaining([
         "rewrite.segment",
         "style.import",

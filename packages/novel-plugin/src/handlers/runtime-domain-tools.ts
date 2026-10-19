@@ -621,7 +621,7 @@ async function importChapters(
         nextActions: [
           "write.preflight",
           "book.dissect",
-          "skills.write",
+          "skills.recommend",
           "scene.spec",
         ],
       },
