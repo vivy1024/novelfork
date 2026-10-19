@@ -44,4 +44,16 @@ describe("AppearancePanel 书房主题", () => {
     expect(screen.queryByText("终端字号")).toBeNull();
     expect(screen.queryByText("Enter 键行为")).toBeNull();
   });
+
+  it("不重复 Runtime 外观页已有的开关：OLED、全屏、常亮、动画都留在 Runtime 那一份", async () => {
+    render(<AppearancePanel />);
+
+    expect(await screen.findByRole("radiogroup", { name: "书房主题" })).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "OLED 纯黑模式" })).toBeNull();
+    expect(screen.queryByText("忽略安全区并全屏")).toBeNull();
+    expect(screen.queryByText("保持屏幕唤醒")).toBeNull();
+    expect(screen.queryByText("高级动画")).toBeNull();
+    expect(screen.queryByText("Narrator 消息渲染器")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "外观与界面" })).toBeNull();
+  });
 });

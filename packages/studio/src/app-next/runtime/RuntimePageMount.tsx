@@ -2,6 +2,8 @@ import { lazy, Suspense, useCallback } from "react";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
+import type { EmbeddedSettingsExtension } from "@vivy1024/narrafork-runtime-bridge/frontend/runtime-page";
+
 import { RUNTIME_PAGE_SECTIONS, runtimePathInSection, type RuntimePageSection } from "./runtime-page-sections";
 
 const EmbeddedRuntimePageHost = lazy(() =>
@@ -18,9 +20,11 @@ export interface RuntimePageMountProps {
   readonly onPathChange: (path: string) => void;
   /** 页面要去别处（叙述者、别的原页……）：由 Studio 外壳决定去哪。 */
   readonly onNavigateOutside: (path: string) => void;
+  /** 只有设置页传：产品设置并入 Runtime 设置侧栏。 */
+  readonly hostExtension?: EmbeddedSettingsExtension;
 }
 
-export function RuntimePageMount({ section, path, onPathChange, onNavigateOutside }: RuntimePageMountProps) {
+export function RuntimePageMount({ section, path, onPathChange, onNavigateOutside, hostExtension }: RuntimePageMountProps) {
   const colorScheme = useColorScheme();
   const isEmbeddedPath = useCallback((pathname: string) => runtimePathInSection(section, pathname), [section]);
   return (
@@ -33,6 +37,7 @@ export function RuntimePageMount({ section, path, onPathChange, onNavigateOutsid
           onPathChange={onPathChange}
           onNavigateOutside={onNavigateOutside}
           colorScheme={colorScheme}
+          hostExtension={hostExtension}
         />
       </Suspense>
     </div>

@@ -34,43 +34,38 @@ describe("Agent Shell route parsing", () => {
     expect(toShellPath({ kind: "learn" })).toBe("/next/learn");
   });
 
-  it("套路页：通用部分是 Runtime 原页的子路径，NovelFork 面板单独占 /novelfork/ 一段", () => {
+  it("套路页：只有 Runtime 原页子路径；老地址 /novelfork/… 一律收回套路页", () => {
     expect(parseShellRoute("/next/routines/tool-permissions")).toEqual({ kind: "routines", path: "/routines/tool-permissions" });
-    expect(parseShellRoute("/next/routines/novelfork/book")).toEqual({ kind: "routines", panel: "book" });
-    expect(parseShellRoute("/next/routines/novelfork/subagent-tools?x=1")).toEqual({ kind: "routines", panel: "subagent-tools" });
-    // 未知面板回到套路页通用部分，不把它当成 Runtime 路径交给原页
+    // 已删的 NovelFork 面板：段名保留只为把老地址收回来，不产生任何面板路由
+    expect(parseShellRoute("/next/routines/novelfork/book")).toEqual({ kind: "routines" });
+    expect(parseShellRoute("/next/routines/novelfork/subagent-tools?x=1")).toEqual({ kind: "routines" });
     expect(parseShellRoute("/next/routines/novelfork/unknown")).toEqual({ kind: "routines" });
-    expect(toShellPath({ kind: "routines", panel: "book" })).toBe("/next/routines/novelfork/book");
     expect(toShellPath({ kind: "routines", path: "/routines/tool-permissions" })).toBe("/next/routines/tool-permissions");
-    for (const href of ["/next/routines", "/next/routines/tool-permissions", "/next/routines/novelfork/book", "/next/routines/novelfork/subagent-tools"]) {
+    for (const href of ["/next/routines", "/next/routines/tool-permissions"]) {
       expect(toShellPath(parseShellRoute(href))).toBe(href);
     }
   });
 
-  it("设置页：通用部分是 Runtime 原页的子路径，NovelFork 面板单独占 /novelfork/ 一段，旧地址映射进新结构", () => {
+  it("设置页：所有地址都是 Runtime 设置页的子路径；旧的 embedding 地址映射进产品侧栏页", () => {
     expect(parseShellRoute("/next/settings")).toEqual({ kind: "settings" });
     expect(parseShellRoute("/next/settings/profile")).toEqual({ kind: "settings", path: "/settings/profile" });
     expect(parseShellRoute("/next/settings/providers?tab=custom")).toEqual({ kind: "settings", path: "/settings/providers?tab=custom" });
     expect(parseShellRoute("/next/settings/plugins/some.plugin")).toEqual({ kind: "settings", path: "/settings/plugins/some.plugin" });
-    expect(parseShellRoute("/next/settings/novelfork/embedding")).toEqual({ kind: "settings", panel: "embedding" });
-    expect(parseShellRoute("/next/settings/novelfork/appearance")).toEqual({ kind: "settings", panel: "appearance" });
-    expect(parseShellRoute("/next/settings/novelfork/users")).toEqual({ kind: "settings", panel: "users" });
-    expect(parseShellRoute("/next/settings/novelfork/about")).toEqual({ kind: "settings", panel: "about" });
-    // 未知面板回到设置页通用部分，不把它当成 Runtime 路径交给原页
-    expect(parseShellRoute("/next/settings/novelfork/unknown")).toEqual({ kind: "settings" });
-    // 没有 Runtime 同名子页的 NovelFork 面板旧地址（Embedding）仍直达对应面板
-    expect(parseShellRoute("/next/settings/embedding")).toEqual({ kind: "settings", panel: "embedding" });
-    // Runtime 有同名子页的段（外观 / 用户 / 关于）直通 Runtime 原页，产品面板走 novelfork 段
+    // 外观 / 用户 / 关于 是 Runtime 原页自己的子页，直通
     expect(parseShellRoute("/next/settings/appearance")).toEqual({ kind: "settings", path: "/settings/appearance" });
     expect(parseShellRoute("/next/settings/users")).toEqual({ kind: "settings", path: "/settings/users" });
     expect(parseShellRoute("/next/settings/about")).toEqual({ kind: "settings", path: "/settings/about" });
+    // 旧的 NovelFork 面板段已取消，不再有特殊含义，按 Runtime 路径直通
+    expect(parseShellRoute("/next/settings/novelfork/embedding")).toEqual({ kind: "settings", path: "/settings/novelfork/embedding" });
+    // 旧的 embedding 地址映射到侧栏「小说」分组里的向量模型页
+    expect(parseShellRoute("/next/settings/embedding")).toEqual({ kind: "settings", path: "/settings/host/embedding" });
     // 旧版 Studio 子页地址映射到 Runtime 原页路径
     expect(parseShellRoute("/next/settings/agents")).toEqual({ kind: "settings", path: "/settings/agent" });
     expect(parseShellRoute("/next/settings/data")).toEqual({ kind: "settings", path: "/settings/storage" });
     expect(parseShellRoute("/next/settings/resources")).toEqual({ kind: "settings", path: "/settings/runtime" });
-    expect(toShellPath({ kind: "settings", panel: "embedding" })).toBe("/next/settings/novelfork/embedding");
     expect(toShellPath({ kind: "settings", path: "/settings/profile" })).toBe("/next/settings/profile");
-    for (const href of ["/next/settings", "/next/settings/profile", "/next/settings/plugins/some.plugin", "/next/settings/novelfork/embedding"]) {
+    expect(toShellPath({ kind: "settings", path: "/settings/host/embedding" })).toBe("/next/settings/host/embedding");
+    for (const href of ["/next/settings", "/next/settings/profile", "/next/settings/plugins/some.plugin", "/next/settings/host/embedding"]) {
       expect(toShellPath(parseShellRoute(href))).toBe(href);
     }
   });

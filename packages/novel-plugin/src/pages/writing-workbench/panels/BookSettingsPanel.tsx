@@ -29,16 +29,24 @@ interface BookWritingLayers {
 }
 
 /** 可被外部直接定位的分区（写作视图一键修用）。 */
-export type BookSettingsSection = "basic" | "writing-skills" | "narrative-memory" | "writing-layers";
+export type BookSettingsSection = "basic" | "writing-skills" | "narrative-memory" | "writing-layers" | "runtime-project";
 
 /** 本面板实际存在的、可被滚动定位的分区。 */
-const KNOWN_SECTIONS: readonly BookSettingsSection[] = ["basic", "writing-layers", "narrative-memory"];
+const KNOWN_SECTIONS: readonly BookSettingsSection[] = ["basic", "writing-layers", "narrative-memory", "runtime-project"];
 
 export interface BookSettingsPanelProps {
   bookId: string;
   onBack: () => void;
   /** 打开时滚动定位到指定分区；缺省停在顶部。 */
   initialSection?: BookSettingsSection;
+  /**
+   * 宿主（Studio）注入的 Runtime 项目设置界面（技能、可选工具）。
+   *
+   * 插件不能反向依赖宿主，所以 Runtime 的界面只能从这里进来；缺省（独立运行或本书
+   * 尚未绑定 Runtime 项目）时该分区整块不渲染。Runtime 仍是这些设置的唯一实现方，
+   * 插件只负责给它一个位置。
+   */
+  projectSettingsSlot?: ReactNode;
 }
 
 const PLATFORM_OPTIONS = [
@@ -65,7 +73,7 @@ function useDebounce<T extends (...args: never[]) => unknown>(fn: T, delay: numb
   }, [delay]) as unknown as T;
 }
 
-export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettingsPanelProps) {
+export function BookSettingsPanel({ bookId, onBack, initialSection, projectSettingsSlot }: BookSettingsPanelProps) {
   const [config, setConfig] = useState<BookConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -299,6 +307,23 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
             </label>
           </div>
         </section>
+
+        {projectSettingsSlot ? (
+          <section
+            className="space-y-3"
+            data-settings-section="runtime-project"
+            ref={(node) => { sectionRefs.current["runtime-project"] = node; }}
+          >
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Runtime 项目设置</h2>
+              <p className="text-xs text-muted-foreground">
+                这本书对应一个 Runtime 项目，技能与可选工具在 Runtime 自己的界面里按项目设置；这里嵌的就是它。
+                MCP 权限、钩子与规则文件 Runtime 目前只有全局界面，本书级暂不可改。
+              </p>
+            </div>
+            {projectSettingsSlot}
+          </section>
+        ) : null}
 
         <section
           className="space-y-3 pb-6"

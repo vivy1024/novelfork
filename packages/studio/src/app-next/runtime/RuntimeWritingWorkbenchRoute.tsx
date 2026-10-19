@@ -17,6 +17,7 @@ import {
 } from "./product-contract";
 import type { ToolResultArtifact } from "../tool-results/types";
 import { RuntimeNarratorPanelMount } from "./RuntimeNarratorPanelMount";
+import { RuntimeProjectSettingsMount } from "./RuntimeProjectSettingsMount";
 import { useWorkbenchNavigationGuard } from "./use-workbench-navigation-guard";
 
 export interface RuntimeWritingWorkbenchRouteProps {
@@ -266,6 +267,9 @@ export function RuntimeWritingWorkbenchRoute({
   const [selectionCandidate, setSelectionCandidate] = useState<SelectionCandidate | null>(null);
   const [narrators, setNarrators] = useState<Awaited<ReturnType<RuntimeProductClient["listNarrators"]>>>([]);
   const [activeNarratorId, setActiveNarratorId] = useState<string | null>(null);
+  // 本书绑定的 Runtime 项目：写作台 › 本书设置要嵌入 Runtime 自己的项目设置界面（技能、可选工具）。
+  // 没有绑定（建书尚未走完）时为 null，那时不渲染该分区，而不是猜一个项目标识。
+  const [runtimeProjectId, setRuntimeProjectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creatingSession, setCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -315,6 +319,7 @@ export function RuntimeWritingWorkbenchRoute({
       const readableNarrators = narrators.filter((candidate) => candidate.capabilities.read === true);
       const defaultNarrator = readableNarrators.find((candidate) => candidate.status !== "archived") ?? readableNarrators[0];
       setNodes(nextNodes);
+      setRuntimeProjectId(workspace.book.runtimeProjectId ?? null);
       setNarrators(readableNarrators);
       setActiveNarratorId((current) =>
         current && readableNarrators.some((candidate) => candidate.id === current)
@@ -578,6 +583,9 @@ export function RuntimeWritingWorkbenchRoute({
           onBeforeLeaveChange={registerBeforeLeave}
           runtimeProductMode
           runtimeFetch={handleRuntimeFetch}
+          {...(runtimeProjectId
+            ? { bookSettingsSlot: <RuntimeProjectSettingsMount projectId={runtimeProjectId} /> }
+            : {})}
           chatSlot={activeNarrator ? (
             <RuntimeNarratorPanelMount
               key={activeNarrator.id}

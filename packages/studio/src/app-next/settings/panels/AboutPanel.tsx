@@ -28,11 +28,6 @@ export function AboutPanel() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-2xl font-bold text-foreground">关于</h2>
-        <p className="mt-1 text-sm text-muted-foreground">查看 NovelFork 的版本信息、产品说明和项目链接。</p>
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Info className="size-4 text-primary" />NovelFork Studio</CardTitle>
@@ -50,7 +45,7 @@ export function AboutPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><CircuitBoard className="size-4 text-primary" />运行时构建标识</CardTitle>
           <CardDescription>
-            当前正在服务本产品的 NarraFork Runtime 构建信息。反馈问题时请附上这里的版本与提交号。
+            当前正在服务本产品的 Runtime 构建信息。反馈问题时请附上这里的版本与提交号。
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">

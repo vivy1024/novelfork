@@ -11,6 +11,31 @@ export interface EmbeddedRuntimePageHostProps {
 	readonly loadingFallback?: unknown;
 	/** Host-resolved color scheme: the embedded page follows the host's light/dark switch. */
 	readonly colorScheme?: "light" | "dark";
+	/**
+	 * Product settings merged into the native settings page: extra sidebar groups, the
+	 * product's own appearance section and about body. Only the settings page reads it.
+	 */
+	readonly hostExtension?: EmbeddedSettingsExtension;
+}
+
+/** Minimal structural shape of the product settings extension (no Runtime types leak out). */
+export interface EmbeddedSettingsExtension {
+	readonly groups?: ReadonlyArray<{
+		readonly id: string;
+		readonly label: string;
+		readonly pages: ReadonlyArray<{
+			readonly id: string;
+			readonly label: string;
+			readonly Icon: unknown;
+			readonly Component: unknown;
+			readonly adminOnly?: boolean;
+		}>;
+	}>;
+	readonly AppearanceSection?: unknown;
+	readonly hidePluginThemes?: boolean;
+	readonly About?: unknown;
+	/** 套路页：插件贡献、可供自定义子代理勾选的额外工具名。 */
+	readonly subagentTools?: ReadonlyArray<string>;
 }
 
 /**

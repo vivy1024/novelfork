@@ -180,6 +180,11 @@ export interface IdeWorkbenchProps {
   onGuideComplete?: (outcome?: GuidedSetupOutcome) => void;
   chapterActions?: ChapterActionHandlers;
   chatSlot?: ReactNode;
+  /**
+   * 「本书设置」里的宿主插槽：宿主（Studio）把 Runtime 自己的项目设置界面挂进来。
+   * 插件不能反向依赖宿主，Runtime 界面只能由宿主动态注入；缺省时不渲染该分区。
+   */
+  bookSettingsSlot?: ReactNode;
   onSwitchToAgent?: () => void;
   /** 写作视图的「生成蓝图 / 直接写章」：把已确认的指示交给当前叙述者执行。 */
   onSendToNarrator?: (message: string) => Promise<void> | void;
@@ -311,6 +316,7 @@ export function IdeWorkbench({
   onGuideComplete,
   chapterActions,
   chatSlot,
+  bookSettingsSlot,
   onSwitchToAgent,
   onSendToNarrator,
   bookSessions,
@@ -1787,6 +1793,7 @@ export function IdeWorkbench({
                           bookId={bookId}
                           onBack={() => { setShowSettings(false); setSettingsSection(undefined); }}
                           {...(settingsSection ? { initialSection: settingsSection } : {})}
+                          {...(bookSettingsSlot ? { projectSettingsSlot: bookSettingsSlot } : {})}
                         />
                       </div>
                     ) : activeView === "skills-style" && bookId ? (

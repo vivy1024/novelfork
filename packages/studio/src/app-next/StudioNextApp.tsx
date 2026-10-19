@@ -83,7 +83,6 @@ import {
   type RuntimeNarratorClient,
 } from "./runtime/runtime-narrator-client";
 import { useRuntimeShellData } from "./runtime/useRuntimeShellData";
-import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
 import {
   GettingStartedChecklist,
   type GettingStartedStatus,
@@ -628,9 +627,6 @@ function RouteMountPoint({
               route={route}
               onNavigate={onNavigate}
               onNavigateRuntimePath={onNavigateRuntimePath}
-              books={books}
-              selectedBook={selectedBook}
-              onSelectBook={onSelectBook}
             />
           </Suspense>
         </LazyErrorBoundary>
@@ -734,34 +730,10 @@ export function StudioNextApp(_props: StudioNextAppProps) {
     [books, selectedBookId],
   );
 
-  // 首次运行检测：没有 localStorage 标记 且 没有已有数据时才显示
-  const [showFirstRun, setShowFirstRun] = useState(() => {
-    try {
-      return !localStorage.getItem("novelfork:first-run-dismissed");
-    } catch {
-      return false;
-    }
-  });
-  const shouldShowFirstRun =
-    showFirstRun && !loading && books.length === 0 && sessions.length === 0;
-
-  const dismissFirstRun = useCallback(() => {
-    try {
-      localStorage.setItem("novelfork:first-run-dismissed", "1");
-    } catch {
-      /* ignore */
-    }
-    setShowFirstRun(false);
-    setTourActive(true);
-  }, []);
-
-  // Guided tour state: activates after first-run dialog is dismissed
+  // 首页导览：没完成过就启动。原先由「新手指导」弹窗关闭后才启动，弹窗已删，改为独立判断。
   const [tourActive, setTourActive] = useState(() => {
     try {
-      return (
-        localStorage.getItem("novelfork:first-run-dismissed") === "1" &&
-        !localStorage.getItem("novelfork:tour-home-completed")
-      );
+      return !localStorage.getItem("novelfork:tour-home-completed");
     } catch {
       return false;
     }
@@ -919,27 +891,10 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         onSelectBook={setSelectedBookId}
         onNavigateRuntimePath={navigateRuntimePath}
       />
-      <FirstRunDialog
-        open={shouldShowFirstRun}
-        onOpenChange={setShowFirstRun}
-        onConfigureModel={() => {
-          dismissFirstRun();
-          navigate({ kind: "settings" });
-        }}
-        onCreateBook={() => {
-          dismissFirstRun();
-          navigate({ kind: "home" });
-        }}
-        onOpenLearnCenter={() => {
-          dismissFirstRun();
-          navigate({ kind: "learn" });
-        }}
-        onDismiss={dismissFirstRun}
-      />
       <GuidedTour
         steps={HOME_TOUR_STEPS}
         storageKey="novelfork:tour-home-completed"
-        active={tourActive && !shouldShowFirstRun}
+        active={tourActive}
         onComplete={() => setTourActive(false)}
       />
       <ToastContainer />

@@ -10,6 +10,8 @@ import {
 export interface RuntimeShellBookItem {
   readonly id: string;
   readonly title: string;
+  /** Runtime project bound to this book; the workbench embeds Runtime's project settings with it. */
+  readonly runtimeProjectId?: string | null;
 }
 
 /** A Runtime narrator represented in the ShellSessionItem shape. */
@@ -85,7 +87,13 @@ export function mapRuntimeBootstrapToShellData(
 ): RuntimeShellData {
   const books = bootstrap.books
     .filter((book) => book.capabilities.read === true)
-    .map((book): RuntimeShellBookItem => ({ id: book.id, title: book.title }));
+    .map((book): RuntimeShellBookItem => ({
+      id: book.id,
+      title: book.title,
+      // 只在确有绑定时带上：null 与「字段缺失」对调用方是同一件事，多写一个 null 只会让
+      // 每个 book 字面量比较都要跟着改。
+      ...(book.runtimeProjectId ? { runtimeProjectId: book.runtimeProjectId } : {}),
+    }));
   const bookNames = new Map(books.map((book) => [book.id, book.title]));
 
   const bookSessions = bootstrap.narrators

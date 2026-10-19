@@ -148,16 +148,37 @@ describe("legacy source retirement", () => {
     expect(scripts.build).toBe("vite build");
   });
 
-  it("套路页的通用部分只嵌 Runtime 原页，不再在 Studio 里实现全局套路的读写", () => {
+  it("套路页只嵌 Runtime 原页，Studio 里不再有第二套套路读写", () => {
     const routinesDir = join(process.cwd(), "src", "app-next", "routines");
     const page = readFileSync(join(routinesDir, "RoutinesNextPage.tsx"), "utf-8");
     expect(page).toContain('section="routines"');
     // 全局命令、工具权限、全局技能、全局提示词与全局钩子的客户端只该出现在 Runtime 原页里
     const globalClients = /create(?:UserPreferences|Settings|Skills|Hooks|Routines)Client|listGlobal|putGlobalPrompt/;
-    const offenders = ["RoutinesNextPage.tsx", "BookRoutineSettingsPanel.tsx", "SubagentNovelToolsPanel.tsx", "routines-shared.tsx"]
-      .concat(["BookHooksPanel.tsx", "BookMcpOverridesPanel.tsx", "BookRoutineOverridesPanel.tsx", "BookRulesPanel.tsx", "BookSkillsPanel.tsx"].map((file) => join("book", file)))
+    const offenders = ["RoutinesNextPage.tsx", "novelfork-routines-extension.ts"]
       .filter((file) => globalClients.test(readFileSync(join(routinesDir, file), "utf-8")));
     expect(offenders).toEqual([]);
+  });
+
+  it("按书设置只剩写作台一个入口：Studio 的按书面板与套路页「本书设置」都已删除", () => {
+    const routinesDir = join(process.cwd(), "src", "app-next", "routines");
+    // 这套面板是 Runtime 已按项目提供的能力的 Studio 副本；写作台改为嵌入 Runtime 自己的
+    // 项目设置界面（RuntimeProjectSettingsMount），这里不该再长出第二套。
+    for (const file of [
+      "BookRoutineSettingsPanel.tsx",
+      "routines-shared.tsx",
+      join("book", "BookHooksPanel.tsx"),
+      join("book", "BookMcpOverridesPanel.tsx"),
+      join("book", "BookRoutineOverridesPanel.tsx"),
+      join("book", "BookRulesPanel.tsx"),
+      join("book", "BookSkillsPanel.tsx"),
+    ]) {
+      expect(existsSync(join(routinesDir, file))).toBe(false);
+    }
+    const page = readFileSync(join(routinesDir, "RoutinesNextPage.tsx"), "utf-8");
+    expect(page).not.toContain("BookRoutineSettingsPanel");
+    // 页面上不再有那个页签；正文里指向写作台的说明文字不算。
+    expect(page).not.toContain('label: "本书设置"');
+    expect(page).not.toContain("role=\"tablist\"");
   });
 
   it("设置页的通用部分只嵌 Runtime 原页，不再在 Studio 里实现通用设置的读写", () => {
@@ -165,9 +186,9 @@ describe("legacy source retirement", () => {
     const page = readFileSync(join(settingsDir, "SettingsNextPage.tsx"), "utf-8");
     expect(page).toContain('section="settings"');
     // 个人资料、供应商、模型、AI 代理、搜索、代理、容器、服务器、认证、终端、设备、存储、使用历史
-    // 与它们的管理客户端只该出现在 Runtime 原页里；SetupWizardPanel 写初始模型与监听地址是产品向导，豁免。
+    // 与它们的管理客户端只该出现在 Runtime 原页里。
     const generalClients = /create(?:AccountProfile|Authentication|Gateway|NotificationSounds|SearchSettings|ProxyOverrides|ChapterContainerSettings|TerminalsAdmin|Devices|Storage|UsageHistory|RuntimeMaintenance|ProviderModels|PlatformProviders|Skills)Client/;
-    const offenders = ["SettingsNextPage.tsx", "panels/AppearancePanel.tsx", "panels/EmbeddingSettingsPanel.tsx", "panels/UsersPanel.tsx", "panels/AboutPanel.tsx", "panels/SetupWizardPanel.tsx"]
+    const offenders = ["SettingsNextPage.tsx", "panels/AppearancePanel.tsx", "panels/EmbeddingSettingsPanel.tsx", "panels/AboutPanel.tsx"]
       .filter((file) => generalClients.test(readFileSync(join(settingsDir, file), "utf-8")));
     expect(offenders).toEqual([]);
   });

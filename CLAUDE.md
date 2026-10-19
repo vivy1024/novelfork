@@ -372,7 +372,7 @@ NOVELFORK_HOME="$(mktemp -d)" NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-
 | 画布 | 三张画布统一用 React Flow：工作流画布、因果画布（故事树 › 因果树：剧情线 × 场景泳道，场景只画一次、拖动换主剧情线、伏笔回收线）、其余故事树（tidy 自动排版不变，换引擎后有小地图、适应视图、展开自动平移）。视口按「作品 + 视图」记在浏览器里，节点坐标不存（工作流方案的节点位置除外，存在方案里）。叙述者结果卡「在画布打开」可打开对应章节 |
 | 接口安全 | 场景挂载 / 摘除接口核对场景与剧情线属于路径上的书（此前可跨书改挂载）；新增 `PUT …/scenes/:sceneId/primary-storyline` |
 | 协作者贡献 | 产品数据目录由 `NOVELFORK_HOME` 决定；NUG 等未填默认模型的配置不再判为未配置；Runtime 全局技能跟随 `NOVELFORK_HOME`（fork `dda73094`） |
-| 主题 | 三套书房主题（绿格稿纸默认 / 书函藏青 / 夜更烛光），各含浅色深色，在「设置 › 外观与界面」切换，嵌入的 Runtime 界面一同切换（`runtime-host-theme.css` 把 `--mantine-*` 接到 Studio 令牌，明暗经 fork 层 `colorScheme` 参数强制跟随）。令牌唯一权威源是根 `DESIGN.md`（Google DESIGN.md 格式，`designmd lint` 零告警），`pnpm --dir packages/studio run design:tokens` 生成 `novelfork-themes.css`，测试校验一致；纹样（稿面格线 / 烛光、书封、函套）在 `novelfork-motifs.css`，全部写成 `--nf-*` 变量。字体随产品打包（思源宋体、站酷小薇、JetBrains Mono），界面文字用系统字体。顺带修复：Tailwind 带透明度的令牌色（`bg-primary/10` 等）此前从不生成；OLED 纯黑重启后失效 |
+| 主题 | 三套书房主题（绿格稿纸默认 / 书函藏青 / 夜更烛光），各含浅色深色，在「设置 › 书房主题」切换，嵌入的 Runtime 界面一同切换（`runtime-host-theme.css` 把 `--mantine-*` 接到 Studio 令牌，明暗经 fork 层 `colorScheme` 参数强制跟随）。令牌唯一权威源是根 `DESIGN.md`（Google DESIGN.md 格式，`designmd lint` 零告警），`pnpm --dir packages/studio run design:tokens` 生成 `novelfork-themes.css`，测试校验一致；纹样（稿面格线 / 烛光、书封、函套）在 `novelfork-motifs.css`，全部写成 `--nf-*` 变量。字体随产品打包（思源宋体、站酷小薇、JetBrains Mono），界面文字用系统字体。顺带修复：Tailwind 带透明度的令牌色（`bg-primary/10` 等）此前从不生成；OLED 纯黑重启后失效 |
 | 工程 | react / react-dom 统一 19.2.5（修复全新安装下的双 React）；公开边界检查（脚本 + `.githooks` + 公开 CI）；`pnpm runtime:sync`；公开 CI 跑 core / novel-plugin（装 bun 仅供测试）；`NOTICE` 写明许可证边界 |
 | 仓库历史 | 2026-09-27 改写了本仓库全部分支与标签的历史，清除不应公开的本地资料。**此前的提交号全部失效**：旧 clone 不要再推送，请重新 clone；查历史以新提交号为准 |
 

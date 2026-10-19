@@ -187,6 +187,15 @@ export type ProductBookSummary = {
   id: string;
   title: string;
   status: string;
+  /**
+   * The Runtime project this book is bound to, when provisioning has got that far.
+   *
+   * Exposed on purpose: the writing workbench embeds Runtime's own project settings
+   * surface (skills, optional tools) for this book, and Runtime addresses those by
+   * project id. It grants nothing by itself — every write still passes Runtime's own
+   * project ACL, which is owner/grant based (see books' projects rows).
+   */
+  runtimeProjectId?: string | null;
   platform?: "tomato" | "feilu" | "qidian" | "other";
   chapterWordCount?: number;
   language?: "zh" | "en";
@@ -2678,6 +2687,7 @@ export class NovelForkProductBookService {
 			id: operation.bookId,
 			title: operation.title,
 			status: READY_STATE,
+			runtimeProjectId: operation.runtimeProjectId ?? null,
 			...getProductBookWritingConfig(config),
 			updatedAt: operation.updatedAt,
 			capabilities: bookCapabilities(),

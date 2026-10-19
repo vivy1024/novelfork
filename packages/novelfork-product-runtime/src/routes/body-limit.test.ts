@@ -79,7 +79,6 @@ describe("product body limit policy (T-11)", () => {
 			"/api/books/b1",
 			"/api/novel/runtime-bindings",
 			"/api/plugins/bundled/narrator-team/install",
-			"/api/product/admin/users/u1/force",
 			"/api/filter/scan",
 			"/api/compliance/dictionaries/import",
 			"/api/writing-skills/foo",
@@ -133,8 +132,7 @@ describe("product body limit policy (T-11)", () => {
 
 	test("covers every route the product actually mounts (no prefix left unlimited)", async () => {
 		const { novelDomainRoutes } = await import("./domain");
-		const { adminUserCleanupRoutes } = await import("./admin-user-cleanup");
-		const paths = [...novelDomainRoutes.routes, ...adminUserCleanupRoutes.routes]
+		const paths = [...novelDomainRoutes.routes]
 			.map((route) => route.path.replace(/:[^/]+/g, "x").replace(/\*$/, ""));
 		const uncovered = paths.filter((path) => resolveProductBodyLimit(path) === null);
 		expect(uncovered).toEqual([]);

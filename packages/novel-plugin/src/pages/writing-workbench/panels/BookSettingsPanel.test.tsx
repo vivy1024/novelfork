@@ -72,3 +72,30 @@ describe("BookSettingsPanel 保存状态", () => {
     expect(errorBadge.textContent).toContain("服务不可用");
   }, 15000);
 });
+
+describe("BookSettingsPanel 的宿主插槽", () => {
+  it("宿主注入项目设置时渲染该分区，说明 Runtime 只覆盖技能与可选工具", async () => {
+    render(
+      <BookSettingsPanel
+        bookId="book-1"
+        onBack={vi.fn()}
+        projectSettingsSlot={<div data-testid="project-settings-stub">Runtime 项目设置</div>}
+      />,
+    );
+
+    expect(await screen.findByTestId("project-settings-stub")).not.toBeNull();
+    const section = document.querySelector('[data-settings-section="runtime-project"]');
+    expect(section).not.toBeNull();
+    // 读者要知道 MCP / 钩子 / 规则这一轮为什么不在本书级。
+    expect(section?.textContent).toContain("MCP");
+    expect(section?.textContent).toContain("钩子");
+  });
+
+  it("没有宿主插槽时整块不渲染，不留空壳分区", async () => {
+    render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} />);
+
+    await screen.findByPlaceholderText("输入书名");
+    expect(document.querySelector('[data-settings-section="runtime-project"]')).toBeNull();
+    expect(screen.queryByText("Runtime 项目设置")).toBeNull();
+  });
+});

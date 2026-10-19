@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hostMocks = vi.hoisted(() => ({
@@ -7,11 +7,8 @@ const hostMocks = vi.hoisted(() => ({
     isEmbeddedPath: (pathname: string) => boolean;
     onPathChange?: (path: string) => void;
     onNavigateOutside?: (path: string) => void;
+    hostExtension?: unknown;
   }>,
-}));
-
-const prefsMocks = vi.hoisted(() => ({
-  get: vi.fn(),
 }));
 
 vi.mock("@vivy1024/narrafork-runtime-bridge/frontend/runtime-page", () => ({
@@ -21,41 +18,14 @@ vi.mock("@vivy1024/narrafork-runtime-bridge/frontend/runtime-page", () => ({
   },
 }));
 
-vi.mock("../runtime-admin", async () => {
-  const actual = await vi.importActual<typeof import("../runtime-admin")>("../runtime-admin");
-  return { ...actual, createUserPreferencesClient: () => ({ get: prefsMocks.get }) };
-});
 
-// 产品面板换成桩组件：各自的行为有独立测试，这里只验证页签与挂载。
-vi.mock("./panels/AppearancePanel", () => ({
-  AppearancePanel: () => <div data-testid="appearance-panel-stub" />,
-}));
-vi.mock("./panels/EmbeddingSettingsPanel", () => ({
-  EmbeddingSettingsPanel: () => <div data-testid="embedding-panel-stub" />,
-}));
-vi.mock("./panels/UsersPanel", () => ({
-  UsersPanel: () => <div data-testid="users-panel-stub" />,
-}));
-vi.mock("./panels/AboutPanel", () => ({
-  AboutPanel: () => <div data-testid="about-panel-stub" />,
-}));
-vi.mock("./panels/SetupWizardPanel", () => ({
-  SetupWizardPanel: ({ onComplete, onGoToProviders }: { onComplete: () => void; onGoToProviders?: () => void }) => (
-    <div>
-      <button type="button" data-testid="setup-wizard-stub" onClick={onComplete}>向导弹幕</button>
-      {onGoToProviders && (
-        <button type="button" data-testid="setup-wizard-jump" onClick={onGoToProviders}>去「设置 › AI 供应商」配置</button>
-      )}
-    </div>
-  ),
-}));
 
 import { SettingsNextPage, type SettingsNextPageProps } from "./SettingsNextPage";
+import { NOVELFORK_SETTINGS_EXTENSION } from "./novelfork-settings-extension";
 
 beforeEach(() => {
   vi.clearAllMocks();
   hostMocks.hostProps.length = 0;
-  prefsMocks.get.mockResolvedValue({});
 });
 
 afterEach(() => {
@@ -73,22 +43,26 @@ function renderPage(overrides: Partial<SettingsNextPageProps> = {}) {
   return { ...view, props, rerenderWith: (next: Partial<SettingsNextPageProps>) => view.rerender(<SettingsNextPage {...props} {...next} />) };
 }
 
-function pageTab(name: string) {
-  return within(screen.getByRole("tablist", { name: "设置页签" })).getByRole("tab", { name });
-}
-
-describe("设置页：通用部分嵌入 Runtime 原页", () => {
-  it("默认打开 Runtime 原生设置页，Studio 不再有自己的通用分区", async () => {
+describe("设置页：只有一层导航，Runtime 原页是唯一的设置界面", () => {
+  it("默认打开 Runtime 原生设置页，Studio 不再叠加页签栏", async () => {
     renderPage();
 
     expect((await screen.findByTestId("runtime-page-host-mock")).getAttribute("data-path")).toBe("/settings");
-    expect(pageTab("通用设置").getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("tablist", { name: "设置页签" })).toBeNull();
     const { isEmbeddedPath } = hostMocks.hostProps.at(-1)!;
     expect(isEmbeddedPath("/settings/providers")).toBe(true);
-    expect(isEmbeddedPath("/settings/plugins/some.plugin")).toBe(true);
+    expect(isEmbeddedPath("/settings/host/embedding")).toBe(true);
     expect(isEmbeddedPath("/routines")).toBe(false);
-    // 旧复制品的分区（个人资料、AI 供应商侧边导航……）不再由 Studio 渲染
-    expect(screen.queryByRole("navigation", { name: "设置分区" })).toBeNull();
+  });
+
+  it("把「小说」分组（向量模型）并入 Runtime 侧栏，而不是另起一排页签", async () => {
+    renderPage();
+    await screen.findByTestId("runtime-page-host-mock");
+
+    expect(hostMocks.hostProps.at(-1)!.hostExtension).toBe(NOVELFORK_SETTINGS_EXTENSION);
+    const groups = NOVELFORK_SETTINGS_EXTENSION.groups ?? [];
+    expect(groups.map((group) => group.label)).toEqual(["小说"]);
+    expect(groups[0]!.pages.map((page) => page.label)).toEqual(["向量模型"]);
   });
 
   it("原页内跳转同步进 Studio 地址，跳出范围的链接交给外壳", async () => {
@@ -100,74 +74,5 @@ describe("设置页：通用部分嵌入 Runtime 原页", () => {
     expect(props.onNavigate).toHaveBeenCalledWith({ kind: "settings", path: "/settings/profile" });
     host.onNavigateOutside?.("/routines");
     expect(props.onNavigateRuntimePath).toHaveBeenCalledWith("/routines");
-  });
-
-  it("切到 NovelFork 面板时原页只是藏起来，切回去回到原来的子页", async () => {
-    const view = renderPage({ route: { kind: "settings", path: "/settings/providers" } });
-    await screen.findByTestId("runtime-page-host-mock");
-
-    fireEvent.click(pageTab("Embedding 供应商"));
-    expect(view.props.onNavigate).toHaveBeenLastCalledWith({ kind: "settings", panel: "embedding" });
-
-    view.rerenderWith({ route: { kind: "settings", panel: "embedding" } });
-    expect(screen.getByTestId("settings-runtime-page").hidden).toBe(true);
-    expect(screen.getByTestId("runtime-page-host-mock").getAttribute("data-path")).toBe("/settings/providers");
-    expect(pageTab("Embedding 供应商").getAttribute("aria-selected")).toBe("true");
-
-    fireEvent.click(pageTab("通用设置"));
-    expect(view.props.onNavigate).toHaveBeenLastCalledWith({ kind: "settings", path: "/settings/providers" });
-  });
-
-  it("直接打开 NovelFork 面板时不加载 Runtime 原页", () => {
-    renderPage({ route: { kind: "settings", panel: "appearance" } });
-    expect(screen.queryByTestId("runtime-page-host-mock")).toBeNull();
-    expect(screen.getByTestId("appearance-panel-stub")).toBeTruthy();
-  });
-
-  it("四个 NovelFork 面板按地址挂载：外观、Embedding、用户、关于", () => {
-    const one = renderPage({ route: { kind: "settings", panel: "embedding" } });
-    expect(screen.getByTestId("embedding-panel-stub")).toBeTruthy();
-    one.unmount();
-    const two = renderPage({ route: { kind: "settings", panel: "users" } });
-    expect(screen.getByTestId("users-panel-stub")).toBeTruthy();
-    two.unmount();
-    const three = renderPage({ route: { kind: "settings", panel: "about" } });
-    expect(screen.getByTestId("about-panel-stub")).toBeTruthy();
-    three.unmount();
-  });
-});
-
-describe("设置页：初始向导", () => {
-  it("setupWizardCompleted 为 false 时整页换成向导，两个世界的内容都不渲染", async () => {
-    prefsMocks.get.mockResolvedValue({ setupWizardCompleted: false });
-    renderPage({ route: { kind: "settings", path: "/settings/providers" } });
-
-    expect(await screen.findByTestId("setup-wizard-stub")).toBeTruthy();
-    expect(screen.queryByTestId("runtime-page-host-mock")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("setup-wizard-stub"));
-    await waitFor(() => expect(screen.queryByTestId("setup-wizard-stub")).toBeNull());
-    expect(await screen.findByTestId("runtime-page-host-mock")).toBeTruthy();
-  });
-
-  it("偏好读取失败时不拦设置页", async () => {
-    prefsMocks.get.mockRejectedValue(new Error("offline"));
-    renderPage();
-    expect(await screen.findByTestId("runtime-page-host-mock")).toBeTruthy();
-    expect(screen.queryByTestId("setup-wizard-stub")).toBeNull();
-  });
-
-  it("向导的供应商步有出口：跳去真正的 AI 供应商设置（此前整页替换向导让新用户无路可去）", async () => {
-    prefsMocks.get.mockResolvedValue({ setupWizardCompleted: false });
-    const view = renderPage();
-
-    const jump = await screen.findByTestId("setup-wizard-jump");
-    fireEvent.click(jump);
-    expect(view.props.onNavigate).toHaveBeenCalledWith({ kind: "settings", path: "/settings/providers" });
-
-    // 父组件按新地址重渲染后：向导暂停（偏好未改写），Runtime 原页落在供应商子页
-    view.rerenderWith({ route: { kind: "settings", path: "/settings/providers" } });
-    await waitFor(() => expect(screen.queryByTestId("setup-wizard-stub")).toBeNull());
-    expect((await screen.findByTestId("runtime-page-host-mock")).getAttribute("data-path")).toBe("/settings/providers");
   });
 });

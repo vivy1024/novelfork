@@ -95,6 +95,11 @@ export interface RuntimeBookSummary {
   readonly id: string;
   readonly title: string;
   readonly status?: string;
+  /**
+   * The Runtime project this book is bound to. The writing workbench embeds Runtime's own
+   * project settings for it; it grants nothing by itself.
+   */
+  readonly runtimeProjectId?: string | null;
   readonly platform?: "tomato" | "feilu" | "qidian" | "other";
   readonly totalChapters?: number;
   readonly totalWords?: number;
@@ -378,6 +383,9 @@ function mapBook(value: unknown): RuntimeBookSummary | null {
     id,
     title,
     ...(asString(record?.status) ? { status: asString(record?.status) } : {}),
+    // Absent and explicit null both mean "no Runtime project bound (yet)"; the workbench
+    // then leaves Runtime's project settings surface out instead of guessing an id.
+    runtimeProjectId: asString(record?.runtimeProjectId) ?? null,
     ...(record?.platform === "tomato" || record?.platform === "feilu" || record?.platform === "qidian" || record?.platform === "other"
       ? { platform: record.platform }
       : {}),

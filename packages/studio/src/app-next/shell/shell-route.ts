@@ -9,8 +9,6 @@ export type ShellRoute =
   | { readonly kind: "book"; readonly bookId: string }
   | { readonly kind: "sessions"; readonly create?: boolean }
   | RuntimePageRoute
-  | RoutinesNovelPanelRoute
-  | SettingsNovelPanelRoute
   | { readonly kind: "market" };
 
 /**
@@ -21,43 +19,19 @@ export type RuntimePageRoute = {
   readonly [Section in RuntimePageSection]: { readonly kind: Section; readonly path?: string };
 }[RuntimePageSection];
 
-/** 套路页里 NovelFork 自己的面板（Runtime 原页没有的小说专属设置）。 */
-export const ROUTINES_NOVEL_PANELS = ["book", "subagent-tools"] as const;
-export type RoutinesNovelPanel = (typeof ROUTINES_NOVEL_PANELS)[number];
-
 /**
- * 这些面板不在 Runtime 路由树里，地址单独占 `/next/routines/novelfork/…` 一段，
- * 免得与 Runtime 套路页的子路径（如 `/routines/tool-permissions`）混在一起。
+ * 旧版 `/next/routines/novelfork/…` 的段名。
+ *
+ * 套路页曾经有 Studio 自己的「本书设置」面板，那一层已经删掉（按书的设置只剩写作台 › 本书设置，
+ * 那里嵌的是 Runtime 自己的项目设置）。这个段名保留下来只是为了把老地址收回套路页，不再有合法面板。
  */
 export const ROUTINES_NOVEL_PANEL_SEGMENT = "novelfork";
 
-export interface RoutinesNovelPanelRoute {
-  readonly kind: "routines";
-  readonly panel: RoutinesNovelPanel;
-}
-
 /**
- * 设置页里 NovelFork 自己的面板（Runtime 原页没有的小说专属或产品级设置）：
- * embedding 向量模型、appearance 书房主题与明暗、users 用户管理（带删除兜底）、about 产品版本。
+ * 旧的 Studio 设置面板地址（段名即原面板 id）映射到产品侧栏页的 Runtime 路径。
  */
-export const SETTINGS_NOVEL_PANELS = ["embedding", "appearance", "users", "about"] as const;
-export type SettingsNovelPanel = (typeof SETTINGS_NOVEL_PANELS)[number];
-
-/** 与套路页同理：产品面板地址单独占 `/next/settings/novelfork/…`，免得撞 Runtime 设置子路径。 */
-export const SETTINGS_NOVEL_PANEL_SEGMENT = "novelfork";
-
-export interface SettingsNovelPanelRoute {
-  readonly kind: "settings";
-  readonly panel: SettingsNovelPanel;
-}
-
-/**
- * v0.0.4 起 Embedding 就是独立子页（Runtime 没有同名路径），旧地址继续直达产品面板；
- * appearance / users / about 的旧地址让给 Runtime 原页的同名子页，
- * 产品面板经「设置」页签或 `/next/settings/novelfork/<panel>` 到达。
- */
-export const LEGACY_SETTINGS_PANEL_IDS: Readonly<Record<string, SettingsNovelPanel>> = {
-  embedding: "embedding",
+export const LEGACY_SETTINGS_HOST_PATHS: Readonly<Record<string, string>> = {
+  embedding: "/settings/host/embedding",
 };
 
 /**
@@ -83,25 +57,24 @@ export function runtimePageRoute(section: RuntimePageSection, path?: string): Ru
   return (path === undefined ? { kind: section } : { kind: section, path }) as RuntimePageRoute;
 }
 
-/** 套路入口：通用部分是 Runtime 原页（带 Runtime 子路径），或 NovelFork 自己的面板。 */
+/** 套路入口：只有 Runtime 原页一层（按书的设置已归写作台 › 本书设置）。 */
 export type RoutinesRoute = Extract<ShellRoute, { readonly kind: "routines" }>;
 
-/** 设置入口：通用部分是 Runtime 原页（带 Runtime 子路径），或 NovelFork 自己的面板。 */
+/** 设置入口：Runtime 原页（带 Runtime 子路径）；产品设置并入其侧栏，不另设地址。 */
 export type SettingsRoute = Extract<ShellRoute, { readonly kind: "settings" }>;
-
-function isRoutinesNovelPanel(value: string | undefined): value is RoutinesNovelPanel {
-  return (ROUTINES_NOVEL_PANELS as readonly string[]).includes(value ?? "");
-}
-
-function isSettingsNovelPanel(value: string | undefined): value is SettingsNovelPanel {
-  return (SETTINGS_NOVEL_PANELS as readonly string[]).includes(value ?? "");
-}
 
 export type ShellRouteKind = ShellRoute["kind"];
 
 export interface ShellBookItem {
   readonly id: string;
   readonly title: string;
+  /**
+   * The Runtime project this book is bound to, when provisioning has got that far.
+   *
+   * Carried through so the writing workbench can embed Runtime's own project settings
+   * for this book; it grants nothing by itself.
+   */
+  readonly runtimeProjectId?: string | null;
 }
 
 export interface ShellSessionItem {
@@ -172,19 +145,15 @@ export function parseShellRoute(href = globalThis.location?.pathname ?? STUDIO_N
 
   const [, section, id] = parts;
   if (!section) return { kind: "home" };
-  if (section === "routines" && id === ROUTINES_NOVEL_PANEL_SEGMENT) {
-    const panel = decodeSegment(parts[3] ?? "");
-    return isRoutinesNovelPanel(panel) ? { kind: "routines", panel } : { kind: "routines" };
-  }
+  // 老地址 `/next/routines/novelfork/<已删面板>` 收回套路页本身。
+  if (section === "routines" && id === ROUTINES_NOVEL_PANEL_SEGMENT) return { kind: "routines" };
   if (section === "settings") {
-    if (id === SETTINGS_NOVEL_PANEL_SEGMENT) {
-      const panel = decodeSegment(parts[3] ?? "");
-      return isSettingsNovelPanel(panel) ? { kind: "settings", panel } : { kind: "settings" };
-    }
     const decodedId = id ? decodeSegment(id) : undefined;
-    // 没有 Runtime 同名子页的 NovelFork 面板旧地址（仅 Embedding）仍直达对应面板。
-    const legacyPanel = decodedId ? LEGACY_SETTINGS_PANEL_IDS[decodedId] : undefined;
-    if (legacyPanel !== undefined) return { kind: "settings", panel: legacyPanel };
+    const legacyHostPath = decodedId ? LEGACY_SETTINGS_HOST_PATHS[decodedId] : undefined;
+    if (legacyHostPath !== undefined) {
+      const suffix = href.slice(href.search(/[?#]|$/u));
+      return runtimePageRoute("settings", `${legacyHostPath}${suffix}`);
+    }
     const legacyPath = decodedId ? LEGACY_SETTINGS_SECTION_PATHS[decodedId] : undefined;
     if (legacyPath !== undefined) {
       const suffix = href.slice(href.search(/[?#]|$/u));
@@ -218,14 +187,8 @@ export function toShellPath(route: ShellRoute): string {
     case "sessions":
       return route.create ? `${STUDIO_NEXT_BASE_PATH}/sessions/new` : `${STUDIO_NEXT_BASE_PATH}/sessions`;
     case "routines":
-      if ("panel" in route) {
-        return `${STUDIO_NEXT_BASE_PATH}/routines/${ROUTINES_NOVEL_PANEL_SEGMENT}/${encodeSegment(route.panel)}`;
-      }
       return `${STUDIO_NEXT_BASE_PATH}${route.path ?? "/routines"}`;
     case "settings":
-      if ("panel" in route) {
-        return `${STUDIO_NEXT_BASE_PATH}/settings/${SETTINGS_NOVEL_PANEL_SEGMENT}/${encodeSegment(route.panel)}`;
-      }
       return `${STUDIO_NEXT_BASE_PATH}${route.path ?? "/settings"}`;
     case "search":
     case "knowledge":
