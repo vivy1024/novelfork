@@ -161,8 +161,12 @@ interface NarrativeMemoryPanelShellProps {
   onBulkApprove?: (eventIds: readonly string[]) => Promise<void>;
   /** 待确认队列批量丢弃（软删除：搬进回收站，可撤销）。 */
   onBulkDelete?: (eventIds: readonly string[]) => Promise<void>;
-  /** 撤销丢弃：把回收站里的事件搬回待确认队列。 */
-  onRestoreTrashed?: (eventIds: readonly string[]) => Promise<void>;
+  /** 撤销丢弃：把回收站里的事件搬回待确认队列。返回逐项结果，供调用方如实报告部分成功。 */
+  onRestoreTrashed?: (eventIds: readonly string[]) => Promise<{
+    readonly restored: readonly string[];
+    readonly skipped: readonly string[];
+    readonly missing: readonly string[];
+  }>;
   onSearchEntryOpen?: (entry: MemoryEntry) => void;
   onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   onCorrectFact?: (fact: EntityFact, newObject: string) => void;
@@ -1296,8 +1300,14 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, curr
   }, [bookId, load]);
 
   const restoreTrashed = useCallback(async (eventIds: readonly string[]) => {
-    await restoreTrashedPendingEvents(bookId, eventIds);
+    // 返回逐项结果而不是丢弃：撤销可能只成功一部分，调用方要能如实报告（D5）。
+    const result = await restoreTrashedPendingEvents(bookId, eventIds);
     await load();
+    return {
+      restored: result.restored ?? [],
+      skipped: result.skipped ?? [],
+      missing: result.missing ?? [],
+    };
   }, [bookId, load]);
 
   return (
@@ -1483,9 +1493,34 @@ export function NarrativeMemoryPanelShell({
     setBulkLoading("restore");
     setBulkError(null);
     try {
-      await onRestoreTrashed?.(lastDiscarded);
-      setLastDiscarded([]);
+      const result = await onRestoreTrashed?.(lastDiscarded);
+      // D5：撤销是逐条的，可能只成功一部分。此前无视返回体、直接清空 lastDiscarded，
+      // 于是「8 条里只有 3 条回到队列」与「8 条全部回来了」在界面上完全一样：
+      // 撤销入口消失、没有提示，剩下的 5 条留在回收站而作者以为已经全部撤销。
+      // 服务端本来就返回 restored/skipped/missing，这里如实区分三种情况。
+      const restored = result?.restored ?? [];
+      const skipped = result?.skipped ?? [];
+      const missing = result?.missing ?? [];
+      const failed = skipped.length + missing.length;
+      if (failed === 0) {
+        setLastDiscarded([]);
+        return;
+      }
+      if (restored.length === 0) {
+        setLastDiscarded([]);
+        setBulkError(`撤销没有生效：${failed} 条都没能回到待确认队列（${missing.length} 条已不在回收站，${skipped.length} 条同 id 已在队列里）。`);
+        return;
+      }
+      // 部分成功：保留未恢复的那批，让撤销入口继续可用；已经回来的不再重复请求。
+      setLastDiscarded([...skipped, ...missing]);
+      const parts = [
+        `${restored.length} 条已回到待确认队列`,
+        missing.length > 0 ? `${missing.length} 条已不在回收站（可能超过保留期或被彻底删除）` : "",
+        skipped.length > 0 ? `${skipped.length} 条同 id 已在队列里` : "",
+      ].filter(Boolean);
+      setBulkError(`撤销部分完成：${parts.join("；")}。可再点一次「撤销」重试剩下的。`);
     } catch (cause) {
+      // 整批失败：保留 lastDiscarded，作者还能重试。
       setBulkError(cause instanceof Error ? cause.message : "撤销丢弃失败");
     } finally {
       setBulkLoading(null);

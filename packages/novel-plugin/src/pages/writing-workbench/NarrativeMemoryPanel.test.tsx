@@ -435,7 +435,7 @@ describe("NarrativeMemoryPanelShell", () => {
    */
   it("cancels the discard confirmation and undoes a finished bulk discard", async () => {
     const onBulkDelete = vi.fn(async () => undefined);
-    const onRestoreTrashed = vi.fn(async () => undefined);
+    const onRestoreTrashed = vi.fn(async () => ({ restored: ["e-1", "e-2"], skipped: [], missing: [] }));
     render(
       <NarrativeMemoryPanelShell
         bookId="book-1"
@@ -469,6 +469,86 @@ describe("NarrativeMemoryPanelShell", () => {
     // 丢弃成功后给出撤销入口，点它调恢复通道。
     fireEvent.click(await screen.findByRole("button", { name: "撤销" }));
     await waitFor(() => expect(onRestoreTrashed).toHaveBeenCalledWith(["e-1", "e-2"]));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "撤销" })).toBeNull());
+  });
+
+  /**
+   * D5：撤销是逐条的，可能只成功一部分。此前调用方无视返回体、直接清空 lastDiscarded，
+   * 于是「8 条里只有 3 条回到队列」与「8 条全部回来」在界面上完全一样：撤销入口消失、
+   * 没有任何提示，剩下的留在回收站而作者以为已经全部撤销。
+   */
+  it("撤销部分成功时如实报告，并保留撤销入口重试剩下的", async () => {
+    const onBulkDelete = vi.fn(async () => undefined);
+    const onRestoreTrashed = vi.fn(async () => ({
+      restored: ["e-1"],
+      skipped: ["e-2"],
+      missing: ["e-3"],
+    }));
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[
+          { id: "e-1", eventType: "location_changed", entity: "韩立", confidence: 0.8, risk: "low", chapterNumber: 12 },
+          { id: "e-2", eventType: "location_changed", entity: "厉飞雨", confidence: 0.8, risk: "low", chapterNumber: 12 },
+          { id: "e-3", eventType: "location_changed", entity: "南宫婉", confidence: 0.8, risk: "low", chapterNumber: 12 },
+        ]}
+        onBulkApprove={vi.fn(async () => undefined)}
+        onBulkDelete={onBulkDelete}
+        onRestoreTrashed={onRestoreTrashed}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前筛选下的待确认事件" }));
+    fireEvent.click(await screen.findByRole("button", { name: "批量丢弃" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认丢弃 3 条" }));
+    await waitFor(() => expect(onBulkDelete).toHaveBeenCalledWith(["e-1", "e-2", "e-3"]));
+
+    fireEvent.click(await screen.findByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(onRestoreTrashed).toHaveBeenCalledWith(["e-1", "e-2", "e-3"]));
+
+    // 说清哪部分成了、哪部分没成，而不是一句「撤销失败」。
+    const notice = await screen.findByText(/撤销部分完成/);
+    expect(notice.textContent).toContain("1 条已回到待确认队列");
+    expect(notice.textContent).toContain("1 条已不在回收站");
+    expect(notice.textContent).toContain("1 条同 id 已在队列里");
+    // 撤销入口仍在，且只剩没回来的那两条——已恢复的不会被重复请求。
+    const undoAgain = await screen.findByRole("button", { name: "撤销" });
+    expect(screen.getByText(/已丢弃 2 条/)).toBeTruthy();
+
+    onRestoreTrashed.mockResolvedValueOnce({ restored: ["e-2"], skipped: [], missing: ["e-3"] });
+    fireEvent.click(undoAgain);
+    await waitFor(() => expect(onRestoreTrashed).toHaveBeenLastCalledWith(["e-2", "e-3"]));
+  });
+
+  it("撤销一条都没恢复时不留撤销入口，并说明原因", async () => {
+    const onBulkDelete = vi.fn(async () => undefined);
+    const onRestoreTrashed = vi.fn(async () => ({ restored: [], skipped: [], missing: ["e-1"] }));
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[{ id: "e-1", eventType: "location_changed", entity: "韩立", confidence: 0.8, risk: "low", chapterNumber: 12 }]}
+        onBulkApprove={vi.fn(async () => undefined)}
+        onBulkDelete={onBulkDelete}
+        onRestoreTrashed={onRestoreTrashed}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前筛选下的待确认事件" }));
+    fireEvent.click(await screen.findByRole("button", { name: "批量丢弃" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认丢弃 1 条" }));
+    await waitFor(() => expect(onBulkDelete).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: "撤销" }));
+    expect(await screen.findByText(/撤销没有生效/)).toBeTruthy();
+    // 一条都没回来：留给作者一个按不动的撤销入口没有意义。
     await waitFor(() => expect(screen.queryByRole("button", { name: "撤销" })).toBeNull());
   });
 
