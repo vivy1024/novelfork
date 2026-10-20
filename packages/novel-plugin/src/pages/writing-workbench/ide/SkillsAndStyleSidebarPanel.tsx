@@ -164,6 +164,13 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
   const [presetRefreshKey, setPresetRefreshKey] = useState(0);
   const [presetBusy, setPresetBusy] = useState(false);
   const [pendingReviewTotal, setPendingReviewTotal] = useState<number | null>(null);
+  /**
+   * 读取待确认合计失败。必须与 `total === 0` 区分开（D4）：
+   * 原先 catch 只把 total 置回 null，而横幅的显示条件是 `total !== null && total > 0`——
+   * 于是「读失败」与「确实没有待确认」在界面上完全一样，都是什么都不显示。
+   * 作者刚经历了接口故障，却被界面告知一切正常。
+   */
+  const [pendingReviewUnavailable, setPendingReviewUnavailable] = useState(false);
   const [showPendingReview, setShowPendingReview] = useState(false);
   const mounted = useRef(false);
   const profileRequest = useRef(0);
@@ -174,8 +181,8 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
     return () => { mounted.current = false; profileRequest.current += 1; pendingReviewRequest.current += 1; };
   }, []);
 
-  // 「待确认」横幅：聚合六类待处理来源的合计（声线/文风规则/伏笔/待审事件/事实/金库改稿）。
-  // 只读计数；点开看清单。接口或书籍环境给不出合计时静默不显示，不伪装成功。
+  // 「待确认」横幅：聚合各类待处理来源的合计（类别集合见 PENDING_REVIEW_KINDS）。
+  // 只读计数；点开看清单。接口或书籍环境给不出合计时如实说明读不到，不伪装成「没有待确认」。
   const loadPendingReviewTotal = useCallback(async () => {
     const request = ++pendingReviewRequest.current;
     try {
@@ -184,9 +191,13 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
       );
       if (mounted.current && request === pendingReviewRequest.current) {
         setPendingReviewTotal(typeof data.total === "number" ? data.total : null);
+        setPendingReviewUnavailable(false);
       }
     } catch {
-      if (mounted.current && request === pendingReviewRequest.current) setPendingReviewTotal(null);
+      if (mounted.current && request === pendingReviewRequest.current) {
+        setPendingReviewTotal(null);
+        setPendingReviewUnavailable(true);
+      }
     }
   }, [bookId]);
 
@@ -318,7 +329,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
         />
       )}
 
-      {/* 待确认入口：六类「不确认就没生效」的产物的唯一汇总口。只在确有需要处理时提示。 */}
+      {/* 待确认入口：「不确认就没生效」的产物的唯一汇总口。只在确有需要处理时提示。 */}
       {pendingReviewTotal !== null && pendingReviewTotal > 0 && !showPendingReview && (
         <button
           type="button"
@@ -327,6 +338,19 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
         >
           <ClipboardList className="size-3.5 shrink-0" />
           <span className="flex-1">待确认 {pendingReviewTotal} 项：声线、文风规则、伏笔、事件与改稿等待你决定，不确认不生效。</span>
+        </button>
+      )}
+
+      {/* 读取失败：明确说「读不到」，而不是静默得像「没有待确认」。
+          仍然给「重试」，但不自动跳进面板——计数没拿到，进去也可能是空列表。 */}
+      {pendingReviewUnavailable && !showPendingReview && (
+        <button
+          type="button"
+          onClick={() => void loadPendingReviewTotal()}
+          className="mx-2 mt-2 flex shrink-0 items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-left text-2xs text-destructive transition-colors hover:bg-destructive/10"
+        >
+          <AlertTriangle className="size-3.5 shrink-0" />
+          <span className="flex-1">待确认清单读取失败：无法确认是否还有待你决定的产物。点此重试。</span>
         </button>
       )}
 

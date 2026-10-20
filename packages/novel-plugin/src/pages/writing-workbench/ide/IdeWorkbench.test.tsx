@@ -807,6 +807,53 @@ describe("IdeWorkbench 静默交互修复", () => {
     expect(screen.queryByTitle("关闭分屏")).toBeNull();
   });
 
+  /**
+   * D6：建书收尾发给叙述者失败时必须让作者看见。
+   *
+   * 原先末尾是 `.catch(() => undefined)`：四步编排（推荐技能、确认启用、追问设定、写入经纬）
+   * 被静默丢弃，而工作台已经刷新、设定也已经落库，界面上看不出任何区别——
+   * 作者以为已经交给叙述者了。这里钉住「失败要 toast 说明，并且说清去哪补」。
+   */
+  it("建书收尾发送失败时提示作者，不静默丢弃编排步骤", async () => {
+    // renderPanels 关着时 canvas 仍会被 mock 记录到 saveHarness.canvases（其余用例依赖这一点），
+    // 所以这里不需要真渲染面板，用 book:1 这个节点取回 props 即可。
+    const node: WorkbenchResourceNode = {
+      id: "book:1", kind: "book", title: "测试书", content: "",
+      capabilities: { open: true, readonly: false, unsupported: false, edit: false, delete: false, apply: false },
+    };
+    makeTabs({ id: "book:1", kind: "book", view: "resources" });
+    const onSendToNarrator = vi.fn().mockRejectedValue(new Error("叙述者会话已断开"));
+    render(<IdeWorkbench bookId="book-1" nodes={[node]} selectedNode={node} onOpen={vi.fn()} onSave={vi.fn()} onSendToNarrator={onSendToNarrator} />);
+
+    const canvas = saveHarness.canvases.get("book:1")!;
+    expect(canvas.onGuideComplete).toBeTypeOf("function");
+    act(() => { canvas.onGuideComplete!({ bookTitle: "测试书" } as never); });
+
+    await waitFor(() => expect(onSendToNarrator).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalled());
+    const [message, level] = vi.mocked(toast).mock.calls.at(-1)!;
+    expect(level).toBe("error");
+    expect(String(message)).toContain("建书设定已保存");
+    expect(String(message)).toContain("叙述者会话已断开");
+    // 说清去哪补，而不是只报错。
+    expect(String(message)).toContain("手动");
+  });
+
+  it("建书收尾发送成功时不弹任何提示", async () => {
+    const node: WorkbenchResourceNode = {
+      id: "book:1", kind: "book", title: "测试书", content: "",
+      capabilities: { open: true, readonly: false, unsupported: false, edit: false, delete: false, apply: false },
+    };
+    makeTabs({ id: "book:1", kind: "book", view: "resources" });
+    const onSendToNarrator = vi.fn().mockResolvedValue(undefined);
+    render(<IdeWorkbench bookId="book-1" nodes={[node]} selectedNode={node} onOpen={vi.fn()} onSave={vi.fn()} onSendToNarrator={onSendToNarrator} />);
+
+    act(() => { saveHarness.canvases.get("book:1")!.onGuideComplete!({ bookTitle: "测试书" } as never); });
+
+    await waitFor(() => expect(onSendToNarrator).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(toast)).not.toHaveBeenCalled();
+  });
+
   it("按章号跳转找不到章文件时 toast 提示，不再静默 miss；找得到时照常打开", async () => {
     const chapter: WorkbenchResourceNode = {
       id: "chapter:1",

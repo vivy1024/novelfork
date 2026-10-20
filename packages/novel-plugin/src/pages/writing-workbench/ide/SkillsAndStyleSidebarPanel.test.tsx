@@ -267,14 +267,57 @@ describe("技能与文风侧栏", () => {
     expect(screen.queryByRole("button", { name: "收起" })).toBeNull();
   });
 
-  it("待确认合计拿不到时不显示横幅，也不打扰原功能", async () => {
+  /**
+   * D4：读取失败必须与「确实没有待确认」区分开。
+   *
+   * 原先 catch 只把 total 置回 null，而横幅条件是 `total !== null && total > 0`——
+   * 于是「接口挂了」和「一切正常」在界面上完全一样：什么都不显示。
+   * 作者刚经历一次读取失败，却被告知一切正常，这比不给提示更糟。
+   */
+  it("待确认合计拿不到时如实说明读不到，不伪装成「没有待确认」，也不打扰原功能", async () => {
     request.mockImplementation(async (path) => {
       if (path.includes("/pending-review")) throw new Error("接口不可用");
       return { preset: createStylePreset(), revision: "r1", source: "preset", guideText: "" };
     });
     render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
     await waitFor(() => expect(request.mock.calls.some(([path]) => path.includes("/pending-review"))).toBe(true));
-    expect(screen.queryByRole("button", { name: /待确认/ })).toBeNull();
+
+    // 明确告知读不到，且带上重试入口。
+    const failure = await screen.findByRole("button", { name: /待确认清单读取失败/ });
+    expect(failure.textContent).toContain("无法确认");
+    // 但不是那条「待确认 N 项」的横幅——计数没拿到，不该编一个数字出来。
+    expect(screen.queryByRole("button", { name: /待确认 \d+ 项/ })).toBeNull();
     expect(screen.getByText("技能列表")).toBeTruthy();
+  });
+
+  it("读失败后重试成功：失败提示换成真实计数横幅", async () => {
+    let fail = true;
+    request.mockImplementation(async (path) => {
+      if (path.includes("/pending-review")) {
+        if (fail) throw new Error("接口不可用");
+        return { bookId: "book-a", total: 3, groups: [], explanation: "", warnings: [] };
+      }
+      return { preset: createStylePreset(), revision: "r1", source: "preset", guideText: "" };
+    });
+    render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
+    const failure = await screen.findByRole("button", { name: /待确认清单读取失败/ });
+
+    fail = false;
+    fireEvent.click(failure);
+
+    expect(await screen.findByRole("button", { name: /待确认 3 项/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /待确认清单读取失败/ })).toBeNull();
+  });
+
+  it("确实没有待确认时没有横幅、也没有失败提示", async () => {
+    request.mockImplementation(async (path) => {
+      if (path.includes("/pending-review")) return { bookId: "book-a", total: 0, groups: [], explanation: "", warnings: [] };
+      return { preset: createStylePreset(), revision: "r1", source: "preset", guideText: "" };
+    });
+    render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
+    await waitFor(() => expect(request.mock.calls.some(([path]) => path.includes("/pending-review"))).toBe(true));
+
+    expect(screen.queryByRole("button", { name: /待确认 \d+ 项/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /待确认清单读取失败/ })).toBeNull();
   });
 });

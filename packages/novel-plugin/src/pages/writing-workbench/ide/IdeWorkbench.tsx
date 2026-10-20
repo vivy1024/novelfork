@@ -1141,13 +1141,20 @@ export function IdeWorkbench({
   const handleGuideCompleteWithOnboarding = useCallback((outcome?: GuidedSetupOutcome) => {
     onGuideComplete?.(outcome);
     if (!onSendToNarrator) return;
+    // D6：发送失败必须让作者看见。此前是 `.catch(() => undefined)`——建书收尾的四步编排
+    // （推荐技能、确认启用、追问设定、写入经纬）会被静默丢弃，作者以为已经交给叙述者，
+    // 实际什么都没发生，而且没有任何地方能看出区别。
+    // 此刻工作台已刷新、设定已落库，所以只报「这一步没发出去」，并说明去哪补。
     void Promise.resolve(onSendToNarrator(buildOnboardingRequestMessage({
       ...(bookRoot?.title ? { bookTitle: bookRoot.title } : {}),
       ...(outcome?.recommendedWritingSkills
         ? { recommendedWritingSkills: outcome.recommendedWritingSkills.map((skill) => ({ name: skill.name, reason: skill.reason })) }
         : {}),
       ...(outcome?.matchedGenreCluster !== undefined ? { matchedGenreCluster: outcome.matchedGenreCluster } : {}),
-    }))).catch(() => undefined);
+    }))).catch((error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      toast(`建书设定已保存，但收尾步骤没能发给叙述者：${detail}。请在会话里手动让它接着做（推荐并确认写作技能、追问设定）。`, "error");
+    });
   }, [bookRoot?.title, onGuideComplete, onSendToNarrator]);
 
   /**
