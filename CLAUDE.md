@@ -357,7 +357,7 @@ NOVELFORK_HOME="$(mktemp -d)" NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-
 
 已知限制：非 Windows 产物在本机只能验证交叉编译成功与目标格式（Mach-O / ELF），真实运行行为需要在对应系统上核验。上游 Runtime 的 `latest*.yml` 自动更新清单与二进制签名不属于 NovelFork 发版流程——产品层未接自动更新服务，不要顺手引入。
 
-## 当前方向与近期改动（快照：2026-09-28）
+## 当前方向与近期改动（快照：2026-10-20）
 
 本节是状态快照，便于协作者对齐。「后续方向」须经当前用户确认后才执行，不自动构成待办；与当前指令冲突时以当前指令为准。内容过时后直接改写本节，不追加历史。
 
@@ -375,6 +375,7 @@ NOVELFORK_HOME="$(mktemp -d)" NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-
 | 主题 | 三套书房主题（绿格稿纸默认 / 书函藏青 / 夜更烛光），各含浅色深色，在「设置 › 书房主题」切换，嵌入的 Runtime 界面一同切换（`runtime-host-theme.css` 把 `--mantine-*` 接到 Studio 令牌，明暗经 fork 层 `colorScheme` 参数强制跟随）。令牌唯一权威源是根 `DESIGN.md`（Google DESIGN.md 格式，`designmd lint` 零告警），`pnpm --dir packages/studio run design:tokens` 生成 `novelfork-themes.css`，测试校验一致；纹样（稿面格线 / 烛光、书封、函套）在 `novelfork-motifs.css`，全部写成 `--nf-*` 变量。字体随产品打包（思源宋体、站酷小薇、JetBrains Mono），界面文字用系统字体。顺带修复：Tailwind 带透明度的令牌色（`bg-primary/10` 等）此前从不生成；OLED 纯黑重启后失效 |
 | 工程 | react / react-dom 统一 19.2.5（修复全新安装下的双 React）；公开边界检查（脚本 + `.githooks` + 公开 CI）；`pnpm runtime:sync`；公开 CI 跑 core / novel-plugin（装 bun 仅供测试）；`NOTICE` 写明许可证边界 |
 | 仓库历史 | 2026-09-27 改写了本仓库全部分支与标签的历史，清除不应公开的本地资料。**此前的提交号全部失效**：旧 clone 不要再推送，请重新 clone；查历史以新提交号为准 |
+| 第二轮审计（v0.0.5 之后） | 冲突只在作者显式裁决时解除，move / 批量 / 自动回写不替作者清冲突；回收站撤销把「已在队列」视为成功；演变台账与字段更新同事务；高风险闸门共用且计数取真实总数；章节正文与索引原子写；启动完整性告警记录但不阻断启动 |
 
 ### 后续方向
 
