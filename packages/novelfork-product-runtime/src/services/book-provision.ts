@@ -375,7 +375,7 @@ function assertMutableWorkspacePath(relativePath: string): void {
 		throw new ValidationError(
 			[
 				`发生了什么：${relativePath} 位于作品目录的 .git 版本库里，工作台文件网关不能改动它。`,
-				"为什么要看：.git 由 git 和 NarraFork Runtime 管理，改动其中的配置或钩子会破坏版本记录，甚至让 Runtime 执行 git 时运行意外的命令。",
+				"为什么要看：.git 由 git 和 NovelFork Runtime 管理，改动其中的配置或钩子会破坏版本记录，甚至让 Runtime 执行 git 时运行意外的命令。",
 				"建议怎么做：作品内容请在 chapters、story 等目录里编辑；确实需要调整版本库时，请在终端里用 git 命令操作。",
 			].join("\n"),
 		);
@@ -1164,7 +1164,7 @@ async function initializeControlledBookGit(
 		code: "BOOK_GIT_INIT_FAILED",
 		explanation: [
 			`发生了什么：作品目录 ${root} 没能初始化为 git 仓库（${BOOK_GIT_FAILURE_LABEL[result.reason]}：${result.detail}）。作品本身已经建好，可以正常写作。`,
-			"为什么要看：NarraFork Runtime 把每个项目当作 git 仓库管理，这本书在 Runtime 里的版本记录、分支对比等 git 功能不可用；删除这本书不受影响，会自动兜底。",
+			"为什么要看：NovelFork Runtime 把每个项目当作 git 仓库管理，这本书在 Runtime 里的版本记录、分支对比等 git 功能不可用；删除这本书不受影响，会自动兜底。",
 			"建议怎么做：安装 git 并确认运行 NovelFork 的进程能在 PATH 里找到它；如果只用 NovelFork 写作，可以忽略这条提示。",
 		].join("\n"),
 	};
@@ -1224,7 +1224,7 @@ async function deleteRuntimeProjectExplained(projectId: string): Promise<void> {
 		if (!(error instanceof AppError) || !RUNTIME_RESOURCE_PROTECTION_CODES.has(error.code)) throw error;
 		throw new AppError(
 			[
-				`发生了什么：NarraFork Runtime 拒绝删除这本书对应的 Runtime 项目（${error.message}）。`,
+				`发生了什么：NovelFork Runtime 拒绝删除这本书对应的 Runtime 项目（${error.message}）。`,
 				"为什么要看：Runtime 发现这本书的工作区还被占用，或无法确认没有被占用；为了不误删正在使用的内容，删除在第一步就停下了，书、章节和目录都原样保留。",
 				"建议怎么做：先停掉这本书正在运行的叙述者，关闭在 Runtime 里打开的终端或分支工作区，然后再删一次；仍然失败时，请把这条信息和 Runtime 日志一起反馈。",
 			].join("\n"),

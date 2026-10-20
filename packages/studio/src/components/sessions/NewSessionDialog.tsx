@@ -132,7 +132,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, busy = false }:
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>新建独立叙述者</DialogTitle>
           <DialogDescription>
-            创建由 NarraFork Runtime 持久化的长期叙述者。书籍内叙述者仍由写作工作台管理。
+            创建由 NovelFork Runtime 持久化的长期叙述者。书籍内叙述者仍由写作工作台管理。
           </DialogDescription>
         </DialogHeader>
 

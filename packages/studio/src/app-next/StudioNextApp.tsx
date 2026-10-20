@@ -89,8 +89,6 @@ import {
   GettingStartedChecklist,
   type GettingStartedStatus,
 } from "../components/onboarding/GettingStartedChecklist";
-import { GuidedTour } from "../components/onboarding/GuidedTour";
-import { HOME_TOUR_STEPS } from "../components/onboarding/tour-steps";
 import { useApi, fetchJson } from "../hooks/use-api";
 import { ToastContainer } from "../components/ui/toast";
 import {
@@ -735,15 +733,6 @@ export function StudioNextApp(_props: StudioNextAppProps) {
     [books, selectedBookId],
   );
 
-  // 首页导览：没完成过就启动。原先由「新手指导」弹窗关闭后才启动，弹窗已删，改为独立判断。
-  const [tourActive, setTourActive] = useState(() => {
-    try {
-      return !localStorage.getItem("novelfork:tour-home-completed");
-    } catch {
-      return false;
-    }
-  });
-
   const navigate = useCallback(
     (route: ShellRoute) => {
       const href = toShellPath(route);
@@ -895,12 +884,6 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         selectedBook={selectedBook}
         onSelectBook={setSelectedBookId}
         onNavigateRuntimePath={navigateRuntimePath}
-      />
-      <GuidedTour
-        steps={HOME_TOUR_STEPS}
-        storageKey="novelfork:tour-home-completed"
-        active={tourActive}
-        onComplete={() => setTourActive(false)}
       />
       <ToastContainer />
     </AgentShell>

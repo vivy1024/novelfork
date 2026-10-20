@@ -40,7 +40,7 @@ export function RoutinesNextPage({
 				<div className="mx-auto flex w-full max-w-[960px] flex-col gap-2 px-4">
 					<h1 className="sr-only">套路</h1>
 					<p className="text-sm text-muted-foreground">
-						NarraFork Runtime 自带的套路页，全局生效：命令、可选工具（手动 / 自动 / 常驻）、工具权限、技能、子代理、提示词、MCP 与钩子，对所有作品和叙述者都起作用。
+						NovelFork Runtime 自带的套路页，全局生效：命令、可选工具（手动 / 自动 / 常驻）、工具权限、技能、子代理、提示词、MCP 与钩子，对所有作品和叙述者都起作用。
 						按书的设置请看写作台 › 本书设置。
 					</p>
 				</div>

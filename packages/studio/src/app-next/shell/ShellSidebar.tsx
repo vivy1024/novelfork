@@ -370,7 +370,7 @@ export function ShellSidebar({
         {/* Content */}
         <div className={cn("flex flex-1 flex-col overflow-y-auto", isCollapsed ? "items-center gap-2 overflow-x-hidden py-2" : "gap-4 px-1.5 py-3")}>
           {/* Books section */}
-          <section className={cn("flex flex-col", isCollapsed ? "items-center gap-0.5" : "gap-1")} aria-label="叙事线（书籍）" data-tour-id="sidebar-books">
+          <section className={cn("flex flex-col", isCollapsed ? "items-center gap-0.5" : "gap-1")} aria-label="叙事线（书籍）">
             {!isCollapsed && (
               <button
                 type="button"
@@ -413,7 +413,7 @@ export function ShellSidebar({
           </section>
 
           {/* Narrators section */}
-          <section className={cn("flex flex-col", isCollapsed ? "items-center gap-0.5" : "gap-1")} aria-label="叙述者" data-tour-id="sidebar-narrators">
+          <section className={cn("flex flex-col", isCollapsed ? "items-center gap-0.5" : "gap-1")} aria-label="叙述者">
             {!isCollapsed && (
               <div className="flex items-center justify-between px-2">
                 <h2 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
@@ -536,7 +536,6 @@ export function ShellSidebar({
                 className="w-full justify-start gap-2 aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
                 onClick={() => onNavigate(item.route)}
                 onContextMenu={(e) => { e.preventDefault(); toggleItemCollapsed(item.id); }}
-                data-tour-id={item.route.kind === "learn" ? "sidebar-learn" : undefined}
               >
                 <Icon data-icon="inline-start" />
                 {item.label}
