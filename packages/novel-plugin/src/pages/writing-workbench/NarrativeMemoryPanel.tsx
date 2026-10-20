@@ -1490,37 +1490,25 @@ export function NarrativeMemoryPanelShell({
 
   const undoDiscard = useCallback(async () => {
     if (lastDiscarded.length === 0) return;
+    if (!onRestoreTrashed) {
+      // 生产入口必传该回调；缺回调说明宿主接线不完整，不能当成功处理。
+      setBulkError("当前界面未接入撤销能力，无法把丢弃的事件搬回待确认队列。");
+      return;
+    }
     setBulkLoading("restore");
     setBulkError(null);
     try {
-      const result = await onRestoreTrashed?.(lastDiscarded);
-      // D5：撤销是逐条的，可能只成功一部分。此前无视返回体、直接清空 lastDiscarded，
-      // 于是「8 条里只有 3 条回到队列」与「8 条全部回来了」在界面上完全一样：
-      // 撤销入口消失、没有提示，剩下的 5 条留在回收站而作者以为已经全部撤销。
-      // 服务端本来就返回 restored/skipped/missing，这里如实区分三种情况。
-      const restored = result?.restored ?? [];
-      const skipped = result?.skipped ?? [];
-      const missing = result?.missing ?? [];
-      const failed = skipped.length + missing.length;
-      if (failed === 0) {
-        setLastDiscarded([]);
-        return;
-      }
-      if (restored.length === 0) {
-        setLastDiscarded([]);
-        setBulkError(`撤销没有生效：${failed} 条都没能回到待确认队列（${missing.length} 条已不在回收站，${skipped.length} 条同 id 已在队列里）。`);
-        return;
-      }
-      // 部分成功：保留未恢复的那批，让撤销入口继续可用；已经回来的不再重复请求。
-      setLastDiscarded([...skipped, ...missing]);
-      const parts = [
-        `${restored.length} 条已回到待确认队列`,
-        missing.length > 0 ? `${missing.length} 条已不在回收站（可能超过保留期或被彻底删除）` : "",
-        skipped.length > 0 ? `${skipped.length} 条同 id 已在队列里` : "",
-      ].filter(Boolean);
-      setBulkError(`撤销部分完成：${parts.join("；")}。可再点一次「撤销」重试剩下的。`);
+      const { restored, skipped, missing } = await onRestoreTrashed(lastDiscarded);
+      // D5：服务端逐条返回 restored/skipped/missing。skipped 表示同 id 活跃行已存在，
+      // 即事件已经在待确认队列里，等价成功；missing 表示不在回收站，重试永远失败。
+      // 因此只要请求成功返回就撤掉撤销入口，只有 missing 需要如实告知且不可重试。
+      setLastDiscarded([]);
+      if (missing.length === 0) return;
+      setBulkError(
+        `${restored.length} 条已回到待确认队列，${skipped.length} 条已在待确认队列中，${missing.length} 条已不在回收站（可能超过保留期或被彻底删除），无法恢复。`,
+      );
     } catch (cause) {
-      // 整批失败：保留 lastDiscarded，作者还能重试。
+      // 请求本身失败（网络/服务端错误）：作者仍可再点一次撤销。
       setBulkError(cause instanceof Error ? cause.message : "撤销丢弃失败");
     } finally {
       setBulkLoading(null);

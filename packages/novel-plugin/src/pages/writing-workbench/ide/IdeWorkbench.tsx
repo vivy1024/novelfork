@@ -1524,7 +1524,13 @@ export function IdeWorkbench({
               await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodedEntry}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ fields: nextFields, source: "user", revisionReason: "promote-outline" }),
+                body: JSON.stringify({
+                  fields: nextFields,
+                  source: "user",
+                  revisionReason: "promote-outline",
+                  // 自动回写目标章号不是冲突裁决：不要顺手清掉作者还没核对的机器写入冲突。
+                  resolveConflict: false,
+                }),
               }),
               "回写大纲目标章号失败",
             );

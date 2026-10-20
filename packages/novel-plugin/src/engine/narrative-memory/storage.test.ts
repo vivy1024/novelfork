@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   NARRATIVE_RETRIEVAL_LOG_RETENTION_PER_CHAPTER,
   NARRATIVE_SETTLEMENT_ARTIFACT_RETENTION_PER_CHAPTER,
+  countHighRiskPendingNarrativeEvents,
   ensureNarrativeMemorySchema,
   getLatestChapterRetrievalLog,
   insertNarrativeEvent,
@@ -316,6 +317,33 @@ describe("Narrative Memory storage", () => {
       const highRisk = listHighRiskPendingNarrativeEvents(storage, { bookId: "book-1", limit: 50 });
 
       expect(highRisk.map((item) => item.id)).toEqual(["high-old"]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("counts high-risk pending events without truncating at the list limit", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      for (let index = 0; index < 55; index += 1) {
+        insertNarrativeEvent(storage, event({
+          id: `high-${index}`,
+          subject: "山门",
+          predicate: "规则",
+          object: `规则-${index}`,
+          riskLevel: "high",
+          createdAt: `2026-06-22T00:00:00.${String(index).padStart(3, "0")}Z`,
+        }));
+      }
+      // 非 high 与非 pending 的行都不计入。
+      insertNarrativeEvent(storage, event({ id: "medium", subject: "山门", predicate: "规则", object: "中风险", riskLevel: "medium" }));
+      insertNarrativeEvent(storage, event({ id: "applied-high", subject: "山门", predicate: "规则", object: "已应用", riskLevel: "high", status: "applied" }));
+
+      expect(countHighRiskPendingNarrativeEvents(storage, "book-1")).toBe(55);
+      expect(countHighRiskPendingNarrativeEvents(storage, "book-2")).toBe(0);
+      // 列表仍按既有 limit 夹取；总数不再拿列表长度冒充。
+      expect(listHighRiskPendingNarrativeEvents(storage, { bookId: "book-1", limit: 50 })).toHaveLength(50);
     } finally {
       storage.close();
     }

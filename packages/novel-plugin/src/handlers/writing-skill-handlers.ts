@@ -432,7 +432,7 @@ export async function handleWritingSkillsRecommend(
       ok: true,
       summary: recommended.length > 0
         ? `按本书设定推荐 ${recommended.length} 个 Writing Skills${recommendation.matchedGenreCluster ? `（题材簇：${recommendation.matchedGenreCluster}）` : ""}。${enableHint}`
-        : "没有匹配到值得推荐的 Writing Skills；可在写作设置里手动挑选。",
+        : "没有匹配到值得推荐的 Writing Skills；可在写作台「技能文风 › 写作技能」里手动挑选。",
       data: {
         bookId,
         matchedGenreCluster: recommendation.matchedGenreCluster,

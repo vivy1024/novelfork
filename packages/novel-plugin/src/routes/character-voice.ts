@@ -35,6 +35,7 @@ import {
 import { modelJsonFailureAdvice } from "../engine/model-output/lenient-json.js";
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
+import { resolveLedgerConflict } from "../engine/jingwei/ledger-conflict-store.js";
 import { normalizeCategory } from "../engine/jingwei/unified-categories.js";
 import type { StoryJingweiEntryRecord } from "../engine/jingwei/types.js";
 import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
@@ -506,6 +507,8 @@ export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOp
       const updated = await createStoryJingweiEntryRepository(storage).update(bookId, entryId, {
         fieldsPatch: { voice: serializeCharacterVoice(next) },
         source: "user",
+        // 作者确认声线是内容裁决（B1）：复位条目上的 pending，并删掉待确认台账行。
+        resolveConflict: true,
         revisionReason: "character-voice-confirm",
         changedBy: "user",
         updatedAt: now(),
@@ -513,6 +516,7 @@ export function createCharacterVoiceRouter(options: CreateCharacterVoiceRouterOp
       if (!updated) throw new VoiceRouteError(404, "JINGWEI_ENTRY_NOT_FOUND", `找不到条目：${entryId}`, explain(
         "写入时角色卡已被删除。", "条目不存在时声线无处存放。", "刷新经纬列表后重新打开角色卡。",
       ));
+      resolveLedgerConflict(storage, bookId, entryId);
       return c.json(serializeVoiceResponse(updated, next));
     } catch (error) {
       return sendError(c, error);

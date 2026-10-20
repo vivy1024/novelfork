@@ -20,7 +20,7 @@ import { closeStorageDatabase, initializeStorageDatabase, runStorageMigrations }
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const gate = vi.hoisted(() => ({ failQuery: false, calls: 0 }));
+const gate = vi.hoisted(() => ({ failQuery: false, failCount: false, calls: 0, countCalls: 0 }));
 
 vi.mock("../engine/narrative-memory/storage.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../engine/narrative-memory/storage.js")>();
@@ -30,6 +30,11 @@ vi.mock("../engine/narrative-memory/storage.js", async (importOriginal) => {
       gate.calls += 1;
       if (gate.failQuery) throw new Error("simulated high-risk query failure");
       return actual.listHighRiskPendingNarrativeEvents(...args);
+    },
+    countHighRiskPendingNarrativeEvents: (...args: Parameters<typeof actual.countHighRiskPendingNarrativeEvents>) => {
+      gate.countCalls += 1;
+      if (gate.failCount) throw new Error("simulated high-risk count failure");
+      return actual.countHighRiskPendingNarrativeEvents(...args);
     },
   };
 });
@@ -81,6 +86,24 @@ function seedHighRiskPending(): void {
     .run();
 }
 
+/** 插入任意条数的 pending + high 事件，用于验证超过列表上限时的真实计数。 */
+function seedManyHighRiskPending(count: number): void {
+  const insert = storage.sqlite.prepare(
+    `INSERT INTO narrative_event (
+      id, book_id, chapter_number, event_type, subject, predicate, object,
+      evidence_text, confidence, source, status, risk_level, created_at
+    ) VALUES (?, 'book-1', 1, 'world_fact_introduced', '山门', '规则', ?, ?, 0.6, 'settle', 'pending', 'high', ?)`,
+  );
+  for (let index = 0; index < count; index += 1) {
+    insert.run(
+      `pending-high-${index}`,
+      `规则-${index}`,
+      `第${index}条依据。`,
+      `2026-08-07T00:00:00.${String(index).padStart(3, "0")}Z`,
+    );
+  }
+}
+
 /** 拦截说明必须交代 NarraFork 的放行通道，且不许回到「本书设置 / 继续参数」的旧口径。 */
 function expectReleaseFlow(text: string | undefined): void {
   const value = text ?? "";
@@ -94,7 +117,9 @@ function expectReleaseFlow(text: string | undefined): void {
 
 beforeEach(async () => {
   gate.failQuery = false;
+  gate.failCount = false;
   gate.calls = 0;
+  gate.countCalls = 0;
   root = await mkdtemp(join(tmpdir(), "novelfork-chapter-write-gate-"));
   bookRoot = join(root, "books", "book-1");
   await mkdir(join(bookRoot, "chapters", "卷01"), { recursive: true });
@@ -131,6 +156,45 @@ describe("chapter.write 高风险待确认门禁", () => {
     // 闸门在写入之前：磁盘上的正文必须还是旧的那一版。
     const onDisk = await readFile(join(bookRoot, "chapters", "卷01", "0001_第一章.md"), "utf8");
     expect(onDisk).toBe(CHAPTER_ONE_OLD);
+  });
+
+  it("待确认事件超过列表上限时，summary 与说明报真实总数而不是截断值", async () => {
+    seedManyHighRiskPending(55);
+
+    const result = await handleChapterWrite(
+      { bookId: "book-1", chapterNumber: 1, content: CHAPTER_ONE_NEW },
+      { bookRoot, storage },
+    );
+
+    expect(gate.calls).toBeGreaterThan(0);
+    expect(gate.countCalls).toBeGreaterThan(0);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("high-risk-pending");
+    expect(result.summary).toContain("55 条");
+    expect(result.summary).not.toContain("50 条");
+    // 说明里的总数同样不能被 50 条预览上限截断（预览仍只列 5 条 + 其余条数）。
+    expect(result.explanation).toContain("本书有 55 条");
+    expect(result.explanation).toContain("另外还有 50 条");
+  });
+
+  it("高风险计数本身抛错时阻断（fail-closed）", async () => {
+    seedHighRiskPending();
+    gate.failCount = true;
+
+    const result = await handleChapterWrite(
+      { bookId: "book-1", chapterNumber: 1, content: CHAPTER_ONE_NEW },
+      { bookRoot, storage },
+    );
+
+    expect(gate.countCalls).toBeGreaterThan(0);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("high-risk-pending");
+    expect(result.summary).toContain("simulated high-risk count failure");
+    expect(result.explanation).toContain("发生了什么");
+    expect(result.explanation).toContain("为什么要看");
+    expect(result.explanation).toContain("建议怎么做");
   });
 
   it("局部改写（purpose: revision）同样被拦下", async () => {

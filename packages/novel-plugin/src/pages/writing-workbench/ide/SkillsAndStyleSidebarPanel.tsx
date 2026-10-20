@@ -190,8 +190,11 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
         `/api/books/${encodeURIComponent(bookId)}/pending-review?limit=1`,
       );
       if (mounted.current && request === pendingReviewRequest.current) {
-        setPendingReviewTotal(typeof data.total === "number" ? data.total : null);
-        setPendingReviewUnavailable(false);
+        // 成功响应但 total 不是数字，说明接口返回了异常结构：与「确实没有待确认」不同，
+        // 必须标明读不到并保留重试入口，不能把异常伪装成 0。
+        const total = typeof data.total === "number" ? data.total : null;
+        setPendingReviewTotal(total);
+        setPendingReviewUnavailable(total === null);
       }
     } catch {
       if (mounted.current && request === pendingReviewRequest.current) {

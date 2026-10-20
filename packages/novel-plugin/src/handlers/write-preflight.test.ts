@@ -453,6 +453,22 @@ describe("write.preflight：高风险待确认事件一律阻断，放行只走 
     expect(released.ok).toBe(true);
   });
 
+  it("待确认事件超过预览上限时，blocker 文案报真实总数而不是 20", async () => {
+    for (let index = 0; index < 55; index += 1) {
+      insertNarrativeEvent(activeStorage!, pendingHighRiskEvent(`e-hr-many-${index}`, 3));
+    }
+
+    const result = await preflight();
+
+    expect(result.ok).toBe(false);
+    const blocker = result.blockers.find((item) => item.code === "high-risk-pending");
+    expect(blocker?.message).toContain("55 条");
+    expect(blocker?.message).not.toContain("20 条");
+    expect(blocker?.explanation?.whatHappened).toContain("本书有 55 条");
+    // 预览仍只列 5 条，其余只报数量。
+    expect(blocker?.explanation?.whatHappened).toContain("另外还有 50 条");
+  });
+
   it("没有高风险待确认事件时照常放行", async () => {
     const bookRoot = await bookRootWithJson({});
     const result = await preflight(bookRoot);

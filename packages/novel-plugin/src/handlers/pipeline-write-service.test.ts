@@ -102,7 +102,9 @@ describe("pipeline.write canonical result contract", () => {
   it("checks high-risk pending events before persisting and always blocks without a per-book switch", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
 
-    expect(source.indexOf("listHighRiskPendingNarrativeEvents")).toBeGreaterThan(-1);
+    // 判定统一收在 high-risk-pending-gate，管线不再自己查列表 / 数条数。
+    expect(source).toContain("checkHighRiskPendingBeforeWrite");
+    expect(source).not.toContain("listHighRiskPendingNarrativeEvents");
     // 2026-10-15：删掉本书开关，存在高风险待确认事件就停写；放行只走 NarraFork 的通道（行为见 pipeline-write-high-risk-gate.test.ts）。
     expect(source).not.toContain("blockWriteOnHighRiskPending");
     expect(source).not.toContain("blockOnHighRiskPending");

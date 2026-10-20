@@ -502,15 +502,18 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       ...(typeof body.importance === "number" ? { importance: body.importance } : {}),
       ...(typeof body.summaryL0 === "string" || body.summaryL0 === null ? { summaryL0: optionalNullableText(body.summaryL0) } : {}),
       source: "user",
+      // B1：条目页/结果卡的作者保存是显式裁决；自动回写（如章节提拔后写目标章号）传 false，
+      // 只改字段，不替作者清掉还没核对的机器冲突。
+      resolveConflict: body.resolveConflict !== false,
       updatedAt: new Date(),
       ...(body.expectedVersion !== undefined ? { expectedVersion: parseExpectedVersion(body.expectedVersion) } : {}),
     });
     if (!entry) throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${c.req.param("entryId")}`);
-    // B1：这条路由只会是作者的保存（source 固定 "user"），即对冲突的裁决——保留作者这一版。
-    // 清掉「待确认」里的机器写入冲突记录，并把条目上的 pending 标记复位；
-    // 否则警示与面板条目会永久残留（update 不传 conflictStatus 时保留原值）。
-    const { resolveLedgerConflict } = await import("../engine/jingwei/ledger-conflict-store.js");
-    resolveLedgerConflict(storage, bookId, c.req.param("entryId"));
+    // 条目上的 pending 已在 update 中按 resolveConflict 复位；台账行只在这条写入确实是裁决时删。
+    if (body.resolveConflict !== false) {
+      const { resolveLedgerConflict } = await import("../engine/jingwei/ledger-conflict-store.js");
+      resolveLedgerConflict(storage, bookId, c.req.param("entryId"));
+    }
     return c.json({ entry: serializeEntry(entry) });
   });
 

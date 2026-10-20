@@ -13,9 +13,21 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleWritingSkillsRecommend } from "./writing-skill-handlers.js";
+
+// 内置技能快照恒非空，正常输入几乎总能命中推荐。这里只在需要「零推荐」的用例里
+// 把技能目录临时清空，其余用例仍走真实的 loader。
+const loaderState = vi.hoisted(() => ({ emptyCatalog: false }));
+vi.mock("../engine/writing-skills/loader.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../engine/writing-skills/loader.js")>();
+  return {
+    ...actual,
+    loadWritingSkills: async (home?: string) =>
+      loaderState.emptyCatalog ? [] : actual.loadWritingSkills(home),
+  };
+});
 
 const TMP_ROOT = join(process.cwd(), "tmp", "writing-skill-recommend");
 
@@ -24,6 +36,7 @@ let home: string;
 let bookRoot: string;
 
 beforeEach(async () => {
+  loaderState.emptyCatalog = false;
   tempDir = join(TMP_ROOT, crypto.randomUUID());
   home = join(tempDir, "home");
   bookRoot = join(tempDir, "books", "book-1");
@@ -94,6 +107,21 @@ describe("skills.recommend 的文案（E1）", () => {
 
     expect(result.ok).toBe(true);
     expect(result.summary ?? "").not.toContain("skills.write");
+  });
+
+  it("没有推荐时指向写作台「技能文风 › 写作技能」，不再提已删除的写作设置页", async () => {
+    loaderState.emptyCatalog = true;
+
+    const result = await handleWritingSkillsRecommend({ bookId: "book-1" }, { home, bookRoot });
+
+    expect(result.ok).toBe(true);
+    const recommended = (result.data as { recommended?: unknown[] } | undefined)?.recommended ?? [];
+    expect(recommended).toHaveLength(0);
+    const summary = result.summary ?? "";
+    // 入口名与有推荐分支的 enableHint 保持一致，且真实存在。
+    expect(summary).toContain("技能文风 › 写作技能");
+    // 写作设置页已随 S-9 删除，旧文案不能再指过去。
+    expect(summary).not.toContain("写作设置");
   });
 
   it("扫描器式红测：把旧文案塞回去时断言确实会红", async () => {

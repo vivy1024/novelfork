@@ -614,7 +614,9 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         : current.relatedEntryIds;
 
       const source: EntrySource = updates.source ?? "user";
-      const changedFields = Object.keys(updates).filter((key) => !["source", "updatedAt", "revisionReason", "changedBy"].includes(key));
+      const changedFields = Object.keys(updates).filter(
+        (key) => !["source", "updatedAt", "revisionReason", "changedBy", "resolveConflict"].includes(key),
+      );
       const hasChanges = changedFields.length > 0;
       const fields = resolveFields(updates, current.fields);
       const nextStatus = updates.status ?? current.status;
@@ -637,12 +639,12 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
 
       let conflictStatus: ConflictStatus = updates.conflictStatus ?? current.conflictStatus ?? "none";
       let conflictDetail: string | null = updates.conflictDetail ?? current.conflictDetail ?? null;
-      // B1：作者的这次保存本身就是裁决。pending 只由机器写入撞车挂上，此前除 revert / retire /
-      // softDelete 没有任何清除路径，而作者手改不传 conflictStatus 时会保留原值——条目页的
-      // 「存在协同修改冲突」警示与「待确认」里的冲突项会永久残留。
-      // 作者读完警示再保存，等于确认「保留我这一版」，这里顺势复位；
-      // 真正把机器那一版落库的是下面的 revert，它本来就置 none。
-      if (source === "user" && conflictStatus === "pending") {
+      // B1：只有**显式裁决**（作者在条目页保存、声线确认）才复位 pending。机器写入撞车挂上的
+      // pending 必须由那条「作者确认保留自己这一版」的写入路径主动传 resolveConflict，
+      // 不能把任何 source=user 的更新都当成裁决——单条 move、批量移动/改状态、正文导入
+      // 都没有碰冲突字段，不能替作者把「待确认」里的冲突项清掉。
+      // 真正的裁决还要由路由调用 resolveLedgerConflict 删掉台账行（本仓储不反向依赖那条存储）。
+      if (updates.resolveConflict === true) {
         conflictStatus = "none";
         conflictDetail = null;
       }

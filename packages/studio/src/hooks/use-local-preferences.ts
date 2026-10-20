@@ -13,9 +13,10 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
  * 只在那两个 Layout 里运行。开关能点，但没人执行——开关亮着却没有任何效果。
  *
  * 为什么需要 setItem 广播：同标签页内的 `localStorage.setItem` **不会**触发 `storage` 事件
- * （Web 标准：storage 事件只发给其他文档）。Runtime 的 `useLocalPref` 又只通知它自己模块内的
- * 订阅者。跨包的同标签页偏好同步没有标准机制，所以这里包装一次 `setItem` 来补上这个缺口——
- * 这是本文件唯一"有魔法"的地方，且只旁听、不改写值、不拦截任何调用。
+ * （Web 标准：storage 事件只发给其他文档），而 Studio 自己的订阅者需要即时知道变化。所以这里
+ * 包装一次 `setItem` 来广播自定义事件——这是本文件唯一"有魔法"的地方，且只旁听、不改写值、
+ * 不拦截任何调用。注意：该广播只覆盖 Studio 自己的订阅者，跨包的同标签页同步并未接上
+ * （见 `useLocalBooleanPreference` 的说明）。
  */
 
 export type LocalBooleanPreferenceKey = "narrafork_oled" | "narrafork_wakelock";
@@ -100,8 +101,13 @@ function subscribe(listener: () => void): () => void {
 }
 
 /**
- * 订阅一个本地布尔偏好。返回 `[value, setValue]`；写入会广播给所有订阅者
- * （包括嵌入的 Runtime 组件，如果它同时读同一个 key）。
+ * 订阅一个本地布尔偏好。返回 `[value, setValue]`；写入会通知 Studio 自己的所有订阅者
+ * （经自定义事件 `novelfork:local-preference-change`）。
+ *
+ * 注意：这个自定义事件不会同步到嵌入的 Runtime 组件。Runtime 的 `useLocalPref` 只监听
+ * 原生 `storage` 事件和它自己模块内的 notify，并不监听该事件，跨包的同标签页同步并未接上。
+ * 当前 Studio 从不写这两个 key，所以没有可见影响；将来若 Studio 要写这两个 key，需要另行
+ * 接上 Runtime 的订阅。
  */
 export function useLocalBooleanPreference(
   key: LocalBooleanPreferenceKey,

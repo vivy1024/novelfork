@@ -9,6 +9,10 @@
  *
  * 作者的这次保存本身就是裁决（保留自己这一版），因此这条路由要顺手复位。
  *
+ * B1 回归：这个复位必须是**显式**的，只能由「作者保存内容」的路径触发。单条 move、
+ * 批量移动 / 改状态只是整理条目，不代表作者核对过机器那一版；它们既不能复位条目上的
+ * pending，也不能删台账行，否则「待确认」里的冲突项会被偷偷清掉。
+ *
  * 临时目录放在仓库内被忽略的 `packages/novel-plugin/tmp/`：本仓库约定测试不在仓库外
  * 路径写文件。
  */
@@ -26,6 +30,7 @@ import {
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "../engine/jingwei/repositories/section-repo.js";
+import { createCharacterVoiceRouter } from "./character-voice.js";
 import { createJingweiRouter } from "./jingwei.js";
 
 const TMP_ROOT = join(process.cwd(), "tmp", "jingwei-conflict-resolve");
@@ -193,6 +198,93 @@ describe("经纬冲突的解除路径（B1）", () => {
 
     expect(await readConflictStatus(entryId)).toBe("pending");
     expect(listLedgerConflicts(storage, "book-1")).toHaveLength(1);
+  });
+});
+
+describe("整理动作不替作者裁决冲突（B1 回归）", () => {
+  it("单条 move 只改位置：条目仍挂 pending，台账行保留", async () => {
+    const entryId = await seedPendingConflict();
+
+    const response = await request(`/entries/${entryId}/move`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentId: null }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await readConflictStatus(entryId)).toBe("pending");
+    expect(listLedgerConflicts(storage, "book-1")).toHaveLength(1);
+  });
+
+  it("bulk move 只改分类：条目仍挂 pending，台账行保留", async () => {
+    const entryId = await seedPendingConflict();
+
+    const response = await request("/bulk", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "move", entryIds: [entryId], target: "characters" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, affected: 1 });
+    expect(await readConflictStatus(entryId)).toBe("pending");
+    expect(listLedgerConflicts(storage, "book-1")).toHaveLength(1);
+  });
+
+  it("bulk set-status 只改状态：条目仍挂 pending，台账行保留", async () => {
+    const entryId = await seedPendingConflict();
+
+    const response = await request("/bulk", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "set-status", entryIds: [entryId], target: "draft" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, affected: 1 });
+    expect(await readConflictStatus(entryId)).toBe("pending");
+    expect(listLedgerConflicts(storage, "book-1")).toHaveLength(1);
+  });
+
+  it("自动回写传 resolveConflict=false：字段照写，但不替作者裁决冲突", async () => {
+    const entryId = await seedPendingConflict();
+
+    // 章节提拔后的大纲目标章号回写走同一个 PUT，但它不是作者在核对冲突。
+    const response = await request(`/entries/${entryId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        fields: { targetChapterNumber: 2 },
+        revisionReason: "promote-outline",
+        resolveConflict: false,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const entry = await createStoryJingweiEntryRepository(storage).getById("book-1", entryId);
+    expect(entry?.fields.targetChapterNumber).toBe(2);
+    expect(await readConflictStatus(entryId)).toBe("pending");
+    expect(listLedgerConflicts(storage, "book-1")).toHaveLength(1);
+  });
+
+  it("声线确认是作者的内容裁决：条目复位为 none，台账清空", async () => {
+    const entryId = await seedPendingConflict();
+
+    const response = await createCharacterVoiceRouter({ storage }).request(
+      `http://localhost/api/books/book-1/jingwei/entries/${entryId}/voice`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedVersion: 1,
+          fields: { positioning: { value: "话少", status: "confirmed" } },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await readConflictStatus(entryId)).toBe("none");
+    expect(listLedgerConflicts(storage, "book-1")).toEqual([]);
   });
 });
 

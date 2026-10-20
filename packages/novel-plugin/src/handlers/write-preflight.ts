@@ -11,7 +11,7 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { RuntimeLoadedSkill } from "@vivy1024/novelfork-core/plugins";
 
-import { ensureNarrativeMemorySchema, listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import { countHighRiskPendingNarrativeEvents, ensureNarrativeMemorySchema, listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
 import { ensureJingweiLedgerSchema } from "./jingwei-ledger-store.js";
 import { listStaleChapters } from "./audit-freshness.js";
@@ -362,19 +362,24 @@ const HIGH_RISK_PENDING_PREVIEW_LIMIT = 5;
 /**
  * 高风险待确认事件拦截的三段式说明，write.preflight 的 blocker 与 pipeline.write 的停写结果共用。
  * 只列章号、事件内容与正文依据，不列内部 id（叙述者用 memory.events 的 list 取 id）。
+ * `events` 是用于预览的列表（可能有 limit）；`totalCount` 是真实总数，省略时退回列表长度。
  */
-export function explainHighRiskPendingBlock(events: readonly NarrativeEvent[]): DiagnosticExplanation {
+export function explainHighRiskPendingBlock(
+  events: readonly NarrativeEvent[],
+  totalCount?: number,
+): DiagnosticExplanation {
   const highRisk = events.filter((event) => event.status === "pending" && event.riskLevel === "high");
+  const total = Math.max(totalCount ?? highRisk.length, highRisk.length);
   const items = highRisk.slice(0, HIGH_RISK_PENDING_PREVIEW_LIMIT).map((event) => [
     `- 第${event.chapterNumber}章：${event.subject} ${event.predicate} ${event.object}`,
     event.evidenceText ? `  正文依据：${event.evidenceText}` : "",
   ].filter(Boolean).join("\n"));
-  const more = highRisk.length > HIGH_RISK_PENDING_PREVIEW_LIMIT
-    ? [`……另外还有 ${highRisk.length - HIGH_RISK_PENDING_PREVIEW_LIMIT} 条。`]
+  const more = total > HIGH_RISK_PENDING_PREVIEW_LIMIT
+    ? [`……另外还有 ${total - Math.min(highRisk.length, HIGH_RISK_PENDING_PREVIEW_LIMIT)} 条。`]
     : [];
   return {
     whatHappened: [
-      `本书有 ${highRisk.length} 条章后结算抽出的高风险事件还在待确认，写章已停。`,
+      `本书有 ${total} 条章后结算抽出的高风险事件还在待确认，写章已停。`,
       ...items,
       ...more,
     ].join("\n"),
@@ -686,12 +691,14 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
 
   // 高风险待确认事件一律阻断（作者的决定）：没有本书开关，也不读任何配置；放行只走 NarraFork 的通道，
   // 处理办法见 HIGH_RISK_PENDING_RELEASE_STEPS。
+  // 预览列表只取 20 条；文案里的条数必须用 COUNT(*) 的真实总数，不能拿列表长度冒充。
   const highRisk = listHighRiskPendingNarrativeEvents(storage, { bookId, limit: 20 });
   if (highRisk.length > 0) {
+    const total = Math.max(countHighRiskPendingNarrativeEvents(storage, bookId), highRisk.length);
     blockers.push(makeBlocker(
       "high-risk-pending",
-      `存在 ${highRisk.length} 条高风险待确认事件未处理，需作者逐条批准或驳回后才能写章。`,
-      explainHighRiskPendingBlock(highRisk),
+      `存在 ${total} 条高风险待确认事件未处理，需作者逐条批准或驳回后才能写章。`,
+      explainHighRiskPendingBlock(highRisk, total),
     ));
   }
   let blockOnOverdueHooks = false;

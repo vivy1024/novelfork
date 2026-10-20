@@ -153,6 +153,12 @@ export type UpdateStoryJingweiEntryInput = Partial<Omit<CreateStoryJingweiEntryI
   fieldsPatch?: Record<string, unknown>;
   /** 乐观并发：调用方读到的条目版本。传入时，库中版本不符则拒绝写入（ENTRY_VERSION_CONFLICT），不覆盖别处的修改；不传则保持原行为。 */
   expectedVersion?: number;
+  /**
+   * 显式裁决（B1）：作者保存内容时置 true，更新把条目的 conflict_status 复位为 none。
+   * 默认 false——move / 批量操作 / 导入等只是改元数据或批量导入，不代表作者核对过冲突。
+   * 传 true 的路由仍需自行调用 resolveLedgerConflict 删除 jingwei_ledger_conflict 台账行。
+   */
+  resolveConflict?: boolean;
 };
 
 export type JingweiContextSource = "global" | "tracked" | "nested";

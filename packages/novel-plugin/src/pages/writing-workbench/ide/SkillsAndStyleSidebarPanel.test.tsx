@@ -320,4 +320,28 @@ describe("技能与文风侧栏", () => {
     expect(screen.queryByRole("button", { name: /待确认 \d+ 项/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /待确认清单读取失败/ })).toBeNull();
   });
+
+  /**
+   * D4（续）：HTTP 成功、但响应体里的 total 不是数字，同样属于「读不到」。
+   * 不能把它当作「确实没有待确认」而静默隐藏，否则异常响应会伪装成一切正常。
+   */
+  it("成功响应但 total 不是数字时，仍如实说明读不到并保留重试入口", async () => {
+    request.mockImplementation(async (path) => {
+      // 结构异常的成功响应：没有数字 total。
+      if (path.includes("/pending-review")) return { bookId: "book-a", groups: [], explanation: "", warnings: [] };
+      return { preset: createStylePreset(), revision: "r1", source: "preset", guideText: "" };
+    });
+    render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
+    await waitFor(() => expect(request.mock.calls.some(([path]) => path.includes("/pending-review"))).toBe(true));
+
+    const failure = await screen.findByRole("button", { name: /待确认清单读取失败/ });
+    expect(failure.textContent).toContain("无法确认");
+    // 不编造计数，也不显示「待确认 N 项」。
+    expect(screen.queryByRole("button", { name: /待确认 \d+ 项/ })).toBeNull();
+
+    // 重试入口可用：点击后重新发起待确认请求，而不是把入口做成摆设。
+    fireEvent.click(failure);
+    await waitFor(() => expect(request.mock.calls.filter(([path]) => path.includes("/pending-review"))).toHaveLength(2));
+    expect(await screen.findByRole("button", { name: /待确认清单读取失败/ })).toBeTruthy();
+  });
 });

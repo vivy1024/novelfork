@@ -19,7 +19,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core";
 
 import { explainHighRiskPendingBlock } from "./write-preflight.js";
 import { formatAuthorExplanation } from "./diagnostic-explanation.js";
-import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import { countHighRiskPendingNarrativeEvents, listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
 
 export interface HighRiskPendingBlocker {
@@ -74,9 +74,12 @@ export function checkHighRiskPendingBeforeWrite(
   }
 
   let pending: NarrativeEvent[];
+  let total: number;
   try {
+    // 列表只取最多 50 条用于说明/预览；总数单独 COUNT(*)，不能拿 pending.length 冒充。
     pending = listHighRiskPendingNarrativeEvents(storage, { bookId, limit: 50 })
       .filter((event) => event.status === "pending" && event.riskLevel === "high");
+    total = countHighRiskPendingNarrativeEvents(storage, bookId);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     options.logger?.error("[high-risk-gate] high-risk pending check failed closed", { bookId, detail });
@@ -90,15 +93,16 @@ export function checkHighRiskPendingBeforeWrite(
       ].join("\n"),
     };
   }
-  if (pending.length === 0) return null;
+  const totalCount = Math.max(total, pending.length);
+  if (totalCount === 0) return null;
 
   const action = options.action ?? "落盘";
   const where = options.chapterNumber === undefined ? "本次写入" : `第${options.chapterNumber}章`;
-  const summary = `${where}没有${action}：本书有 ${pending.length} 条高风险待确认事件未处理，需作者逐条批准或驳回后才能继续。`;
-  options.logger?.warn("[high-risk-gate] blocked by high-risk pending events", { bookId, count: pending.length });
+  const summary = `${where}没有${action}：本书有 ${totalCount} 条高风险待确认事件未处理，需作者逐条批准或驳回后才能继续。`;
+  options.logger?.warn("[high-risk-gate] blocked by high-risk pending events", { bookId, count: totalCount });
   return {
     code: "high-risk-pending",
     summary,
-    explanation: formatAuthorExplanation(explainHighRiskPendingBlock(pending)),
+    explanation: formatAuthorExplanation(explainHighRiskPendingBlock(pending, totalCount)),
   };
 }

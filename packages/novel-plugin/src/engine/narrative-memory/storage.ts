@@ -1431,6 +1431,20 @@ export function listHighRiskPendingNarrativeEvents(storage: StorageDatabase, inp
   return rows.map(eventRowToRecord);
 }
 
+/**
+ * 本书未处理的高风险待确认事件总数。过滤条件与 listHighRiskPendingNarrativeEvents 完全一致，
+ * 但直接 COUNT(*) 取真实总数：列表有 limit，超过上限时拿列表长度报数会少报。
+ */
+export function countHighRiskPendingNarrativeEvents(storage: StorageDatabase, bookId: string): number {
+  ensureNarrativeMemorySchema(storage);
+  const row = storage.sqlite.prepare<{ count: number }>(`
+    SELECT COUNT(*) AS count
+    FROM narrative_event
+    WHERE book_id = ? AND status = 'pending' AND risk_level = 'high'
+  `).get(bookId);
+  return row?.count ?? 0;
+}
+
 export function queryNarrativeContextVectors(storage: StorageDatabase, input: QueryNarrativeContextVectorsInput): QueryNarrativeContextVectorsResult {
   ensureNarrativeMemorySchema(storage);
   const parsed = QueryNarrativeContextVectorsInputSchema.parse(input);

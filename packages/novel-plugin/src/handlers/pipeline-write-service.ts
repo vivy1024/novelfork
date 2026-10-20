@@ -36,7 +36,6 @@ import { readBookSettlementFreshness } from "../engine/narrative-memory/settleme
 import { saveChapterAiDraft } from "../engine/writing-layers/style-vault.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
-import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import { persistChapterAuditLog } from "../engine/tools/health/audit-log-persist.js";
 import { replaceChapterScenes, sceneFromSpec } from "../engine/narrative-memory/scene-store.js";
 import { selectDueHooks, type DueHookInput } from "../engine/narrative-memory/foreshadow-phase.js";
@@ -50,7 +49,7 @@ import type { StyleSnippet } from "../engine/narrative-memory/channels/style-cha
 import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
 import { formatAuthorExplanation, isAuthorFacingDetail } from "./diagnostic-explanation.js";
 import { isBookJsonUnreadable } from "./book-config-readable.js";
-import { explainHighRiskPendingBlock } from "./write-preflight.js";
+import { checkHighRiskPendingBeforeWrite } from "./high-risk-pending-gate.js";
 
 export interface PipelineCanvasArtifact {
   readonly id: string;
@@ -827,17 +826,21 @@ async function executePipelineWriteUnlocked(
 
     logger?.info(`[pipeline.write] Starting for book=${bookId} chapter=${chapterNumber}`);
 
-    // 高风险待确认事件门禁：存在就停写——没有本书开关，也不读模型传入的任何继续参数。
-    // skipContextGate 跳过写前预检时同样经过这里。放行只走 NarraFork 的通道（AskUserQuestion 请作者选择 →
-    // memory.events approve/reject，或「待确认」面板）；是否自动作答、自动执行由 Runtime 的权限模式与问题反思决定，这里不判断。
-    let highRiskPending: NarrativeEvent[];
+    // 高风险待确认事件门禁：判定统一收在 high-risk-pending-gate（与 chapter.write 共用），这里只映射返回结构。
+    // 存在就停写——没有本书开关，也不读模型传入的任何继续参数。skipContextGate 跳过写前预检时同样经过这里。
+    // 放行只走 NarraFork 的通道（AskUserQuestion 请作者选择 → memory.events approve/reject，或「待确认」面板）；
+    // 是否自动作答、自动执行由 Runtime 的权限模式与问题反思决定，这里不判断。
+    let highRisk: ReturnType<typeof checkHighRiskPendingBeforeWrite>;
     try {
       const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-      highRiskPending = listHighRiskPendingNarrativeEvents(getStorageDatabase(), { bookId, limit: 50 })
-        .filter((event) => event.status === "pending" && event.riskLevel === "high");
+      highRisk = checkHighRiskPendingBeforeWrite(bookId, {
+        storage: getStorageDatabase(),
+        chapterNumber,
+        action: "生成",
+        logger,
+      });
     } catch (err) {
-      // T-13②：高风险待处理的检查本身读取失败时，无法确认是否存在高风险事件，按失败即关闭阻断写章。
-      // 不再静默跳过（此前只记 debug 日志就继续写，等于在门禁读不到时放行）。
+      // 取存储本身失败：无法确认是否存在高风险事件，按失败即关闭阻断写章。
       const detail = err instanceof Error ? err.message : String(err);
       logger?.error(`[pipeline.write] High-risk pending check failed closed: ${detail}`);
       return {
@@ -852,16 +855,14 @@ async function executePipelineWriteUnlocked(
         ].join("\n"),
       };
     }
-    if (highRiskPending.length > 0) {
-      const summary = `第${chapterNumber}章没有生成：本书有 ${highRiskPending.length} 条高风险待确认事件未处理，需作者逐条批准或驳回后才能写。`;
-      const explanation = formatAuthorExplanation(explainHighRiskPendingBlock(highRiskPending));
-      logger?.warn(`[pipeline.write] ${summary}`);
+    if (highRisk) {
+      logger?.warn(`[pipeline.write] ${highRisk.summary}`);
       return {
         ok: false,
-        code: "high-risk-pending",
-        error: `${summary}\n${explanation}`,
-        summary,
-        explanation,
+        code: highRisk.code,
+        error: `${highRisk.summary}\n${highRisk.explanation}`,
+        summary: highRisk.summary,
+        explanation: highRisk.explanation,
       };
     }
 

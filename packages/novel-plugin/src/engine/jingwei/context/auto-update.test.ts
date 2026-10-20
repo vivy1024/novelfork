@@ -123,14 +123,25 @@ describe("章后变化抽取的演变台账（B4）", () => {
 
   it("更新没落库时不留演变记录（B4 的核心不变式）", async () => {
     await createEntry("entry-1", "韩立", { realm: "炼气" });
-    // 让这次更新必然失败：fields_json 不是合法 JSON，内层 JSON.parse 抛错被 catch 吞掉。
-    // 修复前的次序是「先 INSERT 台账，再走更新」，所以这条推进会在没落到任何字段的情况下
-    // 留在台账里——作者回看演变史会看到一次从未发生的推进。
+    // 让这次更新必然失败：fields_json 不是合法 JSON。窄 try 只包解析，这一条应
+    // 计入 skipped（不抛错、不计 applied），也不写台账。
     storage.sqlite.prepare(`UPDATE "story_jingwei_entry" SET "fields_json" = ? WHERE "id" = ?`)
       .run("{ 不是 JSON", "entry-1");
 
-    await applyChapterChanges("book-1", 12, [realmChange]);
+    const result = await applyChapterChanges("book-1", 12, [realmChange]);
 
+    expect(result).toEqual({ applied: 0, skipped: 1, conflicted: 0 });
+    expect(listProgressions()).toEqual([]);
+  });
+
+  it("fields_json 是合法 JSON 但不是对象：同样跳过，不计 applied", async () => {
+    await createEntry("entry-1", "韩立", { realm: "炼气" });
+    storage.sqlite.prepare(`UPDATE "story_jingwei_entry" SET "fields_json" = ? WHERE "id" = ?`)
+      .run("[]", "entry-1");
+
+    const result = await applyChapterChanges("book-1", 12, [realmChange]);
+
+    expect(result).toEqual({ applied: 0, skipped: 1, conflicted: 0 });
     expect(listProgressions()).toEqual([]);
   });
 
@@ -180,6 +191,59 @@ describe("章后变化抽取的演变台账（B4）", () => {
     const result = await applyChapterChanges("book-1", 12, [realmChange]);
 
     expect(result).toEqual({ applied: 0, skipped: 1, conflicted: 0 });
+    expect(listProgressions()).toEqual([]);
+  });
+
+  it("版本冲突：计 conflicted，不写台账也不计 applied，条目版本保持原值", async () => {
+    await createEntry("entry-1", "韩立", { realm: "炼气" });
+    const before = await createStoryJingweiEntryRepository(storage).getById("book-1", "entry-1");
+
+    // 模拟「作者在机器读取之后手改保存」：让带版本条件的 UPDATE 一行都不写。
+    // RAISE(IGNORE) 只命中 version 1 → 2 的那条字段更新；冲突台账回写 conflict_status
+    // 不改版本号，不受这个触发器影响。
+    storage.sqlite.exec(`
+      CREATE TRIGGER "simulate_author_edit"
+      BEFORE UPDATE ON "story_jingwei_entry"
+      WHEN OLD."version" = 1 AND NEW."version" = 2
+      BEGIN
+        SELECT RAISE(IGNORE);
+      END;
+    `);
+
+    let result: Awaited<ReturnType<typeof applyChapterChanges>>;
+    try {
+      result = await applyChapterChanges("book-1", 12, [realmChange]);
+    } finally {
+      storage.sqlite.exec(`DROP TRIGGER "simulate_author_edit"`);
+    }
+
+    expect(result).toEqual({ applied: 0, skipped: 0, conflicted: 1 });
+    const after = await createStoryJingweiEntryRepository(storage).getById("book-1", "entry-1");
+    expect(after?.version).toBe(before?.version);
+    expect((after?.fields as Record<string, unknown>).realm).toBe("炼气");
+    const conflicts = listLedgerConflicts(storage, "book-1");
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.kind).toBe("version-mismatch");
+    expect(conflicts[0]?.expectedVersion).toBe(before?.version);
+    expect(conflicts[0]?.currentVersion).toBe(before?.version);
+    expect(listProgressions()).toEqual([]);
+  });
+
+  it("演变台账 INSERT 失败：字段 UPDATE 回滚、错误上抛、不计 applied", async () => {
+    await createEntry("entry-1", "韩立", { realm: "炼气" });
+    const before = await createStoryJingweiEntryRepository(storage).getById("book-1", "entry-1");
+
+    storage.sqlite.exec(`ALTER TABLE "jingwei_progressions" RENAME TO "jingwei_progressions_unavailable"`);
+    try {
+      await expect(applyChapterChanges("book-1", 12, [realmChange]))
+        .rejects.toThrow(/jingwei_progressions/);
+    } finally {
+      storage.sqlite.exec(`ALTER TABLE "jingwei_progressions_unavailable" RENAME TO "jingwei_progressions"`);
+    }
+
+    const after = await createStoryJingweiEntryRepository(storage).getById("book-1", "entry-1");
+    expect(after?.version).toBe(before?.version);
+    expect((after?.fields as Record<string, unknown>).realm).toBe("炼气");
     expect(listProgressions()).toEqual([]);
   });
 });
