@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
 	closeNovelRuntimeStorage,
+	getStorageIntegrityAlert,
 	initializeNovelRuntimeStorage,
 	resolveNovelRuntimeStoragePath,
 } from "./storage";
@@ -48,5 +49,23 @@ describe("Novel Runtime storage bootstrap", () => {
 		process.env.NOVELFORK_SESSION_STORE_DIR = root;
 
 		expect(resolveNovelRuntimeStoragePath()).toBe(resolve(root, "novelfork.db"));
+	});
+
+	// B2：启动时算出的完整性检查结果必须被产品侧真正消费（此前只有 core 写、无人读）。
+	test("exposes the startup integrity result through the product storage adapter", async () => {
+		await mkdtemp(join(tmpdir(), "novel-runtime-integrity-")).then((root) => {
+			roots.push(root);
+			process.env.NOVELFORK_STORAGE_DB_PATH = join(root, "novelfork.db");
+			delete process.env.NOVELFORK_SESSION_STORE_DIR;
+		});
+
+		const storage = initializeNovelRuntimeStorage();
+		// 健康库：不产生告警（不能把正常启动报成故障）。
+		expect(storage.startupIntegrity).toBe("ok");
+		expect(getStorageIntegrityAlert()).toBeNull();
+
+		closeNovelRuntimeStorage();
+		// 关闭后告警状态必须清空，不能把上一次启动的结论留给下一次。
+		expect(getStorageIntegrityAlert()).toBeNull();
 	});
 });

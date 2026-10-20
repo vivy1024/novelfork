@@ -6,6 +6,7 @@ import {
   resolveChapterFilePaths,
 } from "../state/state-bootstrap.js";
 import { StateManager } from "../state/manager.js";
+import { writeFileAtomic } from "../utils/atomic-write.js";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import type {
@@ -91,17 +92,21 @@ export class FileSystemStorageAdapter implements StorageAdapter {
     const volumeDir = join(chaptersDir, DEFAULT_VOLUME_DIRECTORY);
     await mkdir(volumeDir, { recursive: true });
 
-    // Remove every legacy or volume-layout file for this chapter number.
-    const existingPaths = await resolveChapterFilePaths(chaptersDir, num);
-    await Promise.all(existingPaths.map((path) => unlink(path).catch(() => undefined)));
-
     const paddedNum = String(num).padStart(4, "0");
     const safeTitle = (meta.title || "untitled")
       .replace(/[\/\\?%*:|"<>]/g, "_")
       .slice(0, 80);
     const fileName = `${paddedNum}_${safeTitle}.md`;
     const chapterRelativePath = `${DEFAULT_VOLUME_DIRECTORY}/${fileName}`;
-    await writeFile(join(chaptersDir, chapterRelativePath), content, "utf-8");
+    const targetPath = join(chaptersDir, chapterRelativePath);
+
+    // 顺序不能反：先原子写入新正文，成功之后才清理这一章的旧布局 / 重复文件。
+    // 反过来（先删后写）在写入失败时就只剩删除结果——作者的正文被删掉、新正文又没落盘。
+    // 原子替换本身保证「要么旧版、要么新版」，清理失败也只是留下重复文件，不会丢内容。
+    await writeFileAtomic(targetPath, content);
+    const obsoletePaths = (await resolveChapterFilePaths(chaptersDir, num))
+      .filter((path) => path !== targetPath);
+    await Promise.all(obsoletePaths.map((path) => unlink(path).catch(() => undefined)));
 
     // Update the chapter index. ChapterMeta predates fileName, so keep the
     // layout metadata as an additive JSON field without widening the model.
@@ -255,7 +260,8 @@ export class FileSystemStorageAdapter implements StorageAdapter {
         case "update": {
           const dir = fullPath.replace(/[\\/][^\\/]+$/, "");
           await mkdir(dir, { recursive: true });
-          await writeFile(fullPath, op.content ?? "", "utf-8");
+          // 原子替换：变更集里的正文/状态文件写坏时保留旧版本。
+          await writeFileAtomic(fullPath, op.content ?? "");
           break;
         }
         case "delete": {

@@ -105,6 +105,7 @@ export {
 export { createLLMClient, chatCompletion, chatWithTools, createEmbeddings, createStreamMonitor, PartialResponseError, type LLMClient, type LLMResponse, type LLMMessage, type EmbeddingResult, type ToolDefinition, type ToolCall, type AgentMessage, type ChatWithToolsResult, type StreamProgress, type OnStreamProgress } from "./llm/provider.js";
 
 // Utils
+export { writeFileAtomic } from "./utils/atomic-write.js";
 export { fetchUrl, searchWeb } from "./utils/web-search.js";
 export { filterHooks, filterSummaries, filterSubplots, filterEmotionalArcs, filterCharacterMatrix } from "./utils/context-filter.js";
 export { extractPOVFromOutline, filterMatrixByPOV, filterHooksByPOV } from "./utils/pov-filter.js";

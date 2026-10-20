@@ -5,6 +5,7 @@ import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
+import { writeFileAtomic } from "../utils/atomic-write.js";
 import {
   bootstrapStructuredStateFromMarkdown,
   listChapterFiles,
@@ -613,10 +614,10 @@ export class StateManager {
   ): Promise<void> {
     const chaptersDir = join(bookDir, "chapters");
     await mkdir(chaptersDir, { recursive: true });
-    await writeFile(
+    // 原子替换：索引被写坏时整本书的章节都会失联，必须与正文一样「要么旧版、要么新版」。
+    await writeFileAtomic(
       join(chaptersDir, "index.json"),
       JSON.stringify(index, null, 2),
-      "utf-8",
     );
   }
 
