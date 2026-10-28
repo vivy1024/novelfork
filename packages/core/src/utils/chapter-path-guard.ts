@@ -72,46 +72,87 @@ function resolveRealRoot(root: string): RealRoot {
   }
 }
 
-/**
- * 对候选路径向上找到第一个已存在的祖先，取其 realpath，判断它是否仍在章节目录的
- * realpath 之下。文件本身可以不存在（新建章节），所以只校验祖先。
- */
-function realpathStaysInside(root: string, realRoot: RealRoot, candidate: string): boolean {
-  if (realRoot.kind === "missing") return true;
-  if (realRoot.kind === "broken") return false;
-  let probe = candidate;
-  for (;;) {
-    // 走到章节目录本身：它的真实路径已经算过，直接视为在内。
-    if (probe === root) return true;
-    try {
-      const real = fs.realpathSync(probe);
-      return real === realRoot.path || real.startsWith(realRoot.path + sep);
-    } catch (error) {
-      // ELOOP、EACCES、ENOTDIR 等：无法确认真实落点，拒绝。
-      if (errorCode(error) !== "ENOENT") return false;
-      // ENOENT 但目录项存在：这是悬空链接，拒绝（不上溯放行）。
-      if (entryExists(probe)) return false;
-      const parent = dirname(probe);
-      if (parent === probe) return false;
-      probe = parent;
-    }
-  }
+function isInsideRealRoot(real: string, realRootPath: string): boolean {
+  return real === realRootPath || real.startsWith(realRootPath + sep);
 }
 
 /**
- * 为一个章节目录创建解析器。章节目录的 realpath 只在第一次判定时算一次并缓存，
- * 适合一次读索引逐条过滤的热路径（readChapterIndex）；不要跨请求长期持有。
+ * 判断候选路径的真实落点是否仍在章节目录的 realpath 之下。文件本身可以不存在（新建章节），
+ * 这时由最近的已存在祖先决定。
+ *
+ * 热路径优化（长篇一卷几百章共用一个卷目录）：
+ * - 已存在的普通文件（lstat 显示不是链接）：真实落点 = 父目录真实落点 + 自身名字，只需确认父目录；
+ *   lstat 不跟随最后一段，所以「文件名本身是链接」会落到下面的 realpath 分支，不会被这条放过。
+ * - 目录与一切链接：单独 realpath 一次，确认在内后记进 `confirmedDirs`，同一解析器内不再重算。
+ * 读一次索引的同步 IO 从 O(章数) 次 realpath 降到 O(卷数) 次 realpath + O(章数) 次 lstat。
+ * 悬空链接（目录项存在、realpath 报 ENOENT）照旧拒绝，不上溯放行。
+ */
+function realpathStaysInside(
+  root: string,
+  realRoot: RealRoot,
+  candidate: string,
+  confirmedDirs: Set<string>,
+): boolean {
+  if (realRoot.kind === "missing") return true;
+  if (realRoot.kind === "broken") return false;
+  const realRootPath = realRoot.path;
+
+  function staysInside(probe: string): boolean {
+    // 走到章节目录本身：它的真实路径已经算过，直接视为在内。
+    if (probe === root) return true;
+    if (confirmedDirs.has(probe)) return true;
+
+    let stats: import("node:fs").Stats;
+    try {
+      stats = fs.lstatSync(probe);
+    } catch (error) {
+      // 无法确认目录项状态（EACCES、ENOTDIR 等）：拒绝。
+      if (errorCode(error) !== "ENOENT") return false;
+      // 目录项不存在（新建章节 / 新卷目录）：真实落点由最近的已存在祖先决定。
+      const parent = dirname(probe);
+      if (parent === probe) return false;
+      return staysInside(parent);
+    }
+
+    // 普通文件（不是链接）：真实落点 = 父目录真实落点 + 自身名字，确认父目录即可（父目录会被缓存）。
+    // 注意不能直接信任文件：lstat 只对最后一段不跟随链接，父目录若是联接，lstat 看到的已是书外文件。
+    if (stats.isFile()) {
+      const parent = dirname(probe);
+      return parent !== probe && staysInside(parent);
+    }
+
+    // 目录与一切链接（符号链接 / 目录联接 / 其他重解析点）：单独 realpath 一次。
+    // 目录也照算，不只依赖 lstat 识别联接——每个目录只算一次，代价随卷数而不是章数增长。
+    try {
+      const real = fs.realpathSync(probe);
+      if (!isInsideRealRoot(real, realRootPath)) return false;
+      if (stats.isDirectory() || stats.isSymbolicLink()) confirmedDirs.add(probe);
+      return true;
+    } catch {
+      // ENOENT 但目录项存在：悬空链接，拒绝（不上溯放行）；ELOOP、EACCES 等同样拒绝。
+      return false;
+    }
+  }
+
+  return staysInside(candidate);
+}
+
+/**
+ * 为一个章节目录创建解析器。章节目录与各卷目录的 realpath 只在第一次判定时算一次并缓存，
+ * 适合一次读索引逐条过滤的热路径（readChapterIndex）；不要跨请求长期持有——
+ * 缓存不会察觉解析器存活期间有人把卷目录换成链接。
  */
 export function createChapterFileResolver(chaptersDir: string): (fileName: string) => string | null {
   const root = resolve(chaptersDir);
   let realRoot: RealRoot | undefined;
+  const confirmedDirs = new Set<string>();
   return (fileName) => {
     const segments = safeSegments(fileName);
     if (!segments) return null;
     const candidate = resolve(root, normalize(segments.join(sep)));
     if (candidate !== root && !candidate.startsWith(root + sep)) return null;
     realRoot ??= resolveRealRoot(root);
-    if (!realpathStaysInside(root, realRoot, candidate)) return null;
+    if (!realpathStaysInside(root, realRoot, candidate, confirmedDirs)) return null;
     return join(root, ...segments);
   };
 }

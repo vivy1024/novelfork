@@ -26,6 +26,8 @@ export interface AgentShellProps {
   readonly onMoveRecentTab?: (tab: ShellRecentTabItem, target: ShellRecentTabItem) => void;
   readonly onClearInactiveRecentTabs?: () => void;
   readonly onLogout?: () => void;
+  /** 应用级横幅（如产品库完整性告警），固定在主区域顶部，不随路由切换消失。 */
+  readonly banner?: ReactNode;
   readonly children: ReactNode;
 }
 
@@ -110,6 +112,7 @@ export function AgentShell({
   onMoveRecentTab,
   onClearInactiveRecentTabs,
   onLogout,
+  banner,
   children,
 }: AgentShellProps) {
   const [collapsed, setCollapsed] = useState(() => route.kind === "book");
@@ -220,6 +223,7 @@ export function AgentShell({
           </Button>
         </header>
 
+        {banner}
         <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden" data-testid="shell-main">
           {children}
         </main>

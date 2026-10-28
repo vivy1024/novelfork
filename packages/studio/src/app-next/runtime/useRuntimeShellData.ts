@@ -21,6 +21,7 @@ const EMPTY_DATA: RuntimeShellData = {
   recentTabs: [],
   providerSummary: null,
   providerStatus: { hasUsableModel: false, label: "正在连接 Runtime" },
+  storageIntegrity: null,
   error: null,
 };
 

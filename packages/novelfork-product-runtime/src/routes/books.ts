@@ -15,11 +15,13 @@ import {
 	type ProductBookBasicSettingsPatch,
 	type ProductBookImportInput,
 	type ProductBookInput,
+	WORKSPACE_FILE_WRITE_MODES,
 } from "../services/book-provision";
 import type { BoundNarratorActor } from "../services/narrator-access";
 import { resolveDomainBookRoot } from "./domain";
 import { forwardErrorsToParent } from "./forward-errors";
 import { getProductBootstrapContract } from "../services/product-contract";
+import { getPublicStorageIntegrityAlert } from "../adapters/storage";
 
 const guidedSetupAnswerSchema = z
 	.object({
@@ -106,7 +108,14 @@ const workspaceResourceSaveSchema = z.object({ content: z.string().max(2_000_000
 const workspaceChapterCreateSchema = z
 	.object({ title: z.string().trim().min(1).max(200).optional() })
 	.strict();
-const workspaceFileWriteSchema = z.object({ path: z.string().trim().min(1).max(2_000), content: z.string().max(2_000_000) }).strict();
+// mode：create 用于文件树新建与复制粘贴，目标已存在时拒绝；缺省为 overwrite（编辑器保存）。
+const workspaceFileWriteSchema = z
+	.object({
+		path: z.string().trim().min(1).max(2_000),
+		content: z.string().max(2_000_000),
+		mode: z.enum(WORKSPACE_FILE_WRITE_MODES).optional(),
+	})
+	.strict();
 const workspacePathSchema = z.object({ path: z.string().trim().min(1).max(2_000) }).strict();
 const workspaceRenameSchema = z.object({ from: z.string().trim().min(1).max(2_000), to: z.string().trim().min(1).max(2_000) }).strict();
 const bookNarratorCreateSchema = z
@@ -156,6 +165,8 @@ novelForkProductBooksRoutes.get("/bootstrap", async (c) => {
 		books,
 		narrators,
 		model: getProductModelStatus(),
+		// 启动完整性告警：健康时为 null；损坏时只带三段式说明与报告摘要，不含本机绝对路径。
+		storageIntegrity: getPublicStorageIntegrityAlert(),
 	});
 });
 
@@ -418,7 +429,7 @@ bookDomainRoutes.put("/files", async (c) => {
 	const parsed = workspaceFileWriteSchema.safeParse(await c.req.json());
 	if (!parsed.success) throw new ValidationError(parsed.error.message);
 	return c.json(await novelForkProductBookService.writeWorkspaceFile(
-		requiredParam(c, "bookId"), parsed.data.path, parsed.data.content, actor(c),
+		requiredParam(c, "bookId"), parsed.data.path, parsed.data.content, actor(c), parsed.data.mode ?? "overwrite",
 	));
 });
 

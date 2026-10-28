@@ -132,6 +132,42 @@ describe("createChapterFileResolver：一次批量解析只 realpath 章节目�
     const rootCalls = fsCalls.realpath.filter((path) => resolve(path) === resolve(chaptersDir));
     expect(rootCalls).toHaveLength(1);
   });
+
+  it("同卷的已存在文件按父目录缓存 realpath：同步 IO 次数不随条目数增长（长篇热路径）", () => {
+    const base = tempBase("core-guard-parent-cache-");
+    const chaptersDir = join(base, "chapters");
+    mkdirSync(join(chaptersDir, "卷01"), { recursive: true });
+    mkdirSync(join(chaptersDir, "卷02"), { recursive: true });
+    for (let number = 1; number <= 60; number += 1) {
+      const volume = number <= 30 ? "卷01" : "卷02";
+      writeFileSync(join(chaptersDir, volume, `${String(number).padStart(4, "0")}_x.md`), "# x", "utf8");
+    }
+    const resolver = createChapterFileResolver(chaptersDir);
+    fsCalls.realpath.length = 0;
+    for (let number = 1; number <= 60; number += 1) {
+      const volume = number <= 30 ? "卷01" : "卷02";
+      expect(resolver(`${volume}/${String(number).padStart(4, "0")}_x.md`)).not.toBeNull();
+    }
+    // 章节目录 1 次 + 两个卷目录各 1 次；普通文件不逐个 realpath。
+    expect(fsCalls.realpath.length).toBeLessThanOrEqual(3);
+  });
+
+  it("父目录缓存不放过卷目录里指向书外的文件级链接", () => {
+    const base = tempBase("core-guard-file-link-");
+    const chaptersDir = join(base, "chapters");
+    mkdirSync(join(chaptersDir, "卷01"), { recursive: true });
+    writeFileSync(join(chaptersDir, "卷01", "0001_x.md"), "# 正常", "utf8");
+    const outside = join(base, "outside");
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, "victim.md"), "OUTSIDE", "utf8");
+    // 卷01/0002_x.md 是指向书外文件的硬链接以外的唯一可无权限创建的链接：目录联接只能指目录，
+    // 所以这里把一个「看起来像章节文件名的目录项」做成指向书外目录的联接。
+    symlinkSync(outside, join(chaptersDir, "卷01", "0002_x.md"), "junction");
+    const resolver = createChapterFileResolver(chaptersDir);
+    // 先解析同卷正常文件，把卷01 的 realpath 放进缓存；缓存不能让后面的链接项蹭过检查。
+    expect(resolver("卷01/0001_x.md")).not.toBeNull();
+    expect(resolver("卷01/0002_x.md")).toBeNull();
+  });
 });
 
 describe("state-bootstrap 的索引路径解析与 novel-plugin 共用同一守卫", () => {

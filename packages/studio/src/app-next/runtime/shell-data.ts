@@ -1,4 +1,8 @@
-import { createRuntimeProductClient, type RuntimeBootstrap } from "./product-contract";
+import {
+  createRuntimeProductClient,
+  type RuntimeBootstrap,
+  type RuntimeStorageIntegrityAlert,
+} from "./product-contract";
 import {
   createRuntimeNarratorClient,
   type RuntimeNarratorClient,
@@ -40,6 +44,8 @@ export interface RuntimeShellData {
   readonly recentTabs: readonly RuntimeRecentTab[];
   readonly providerSummary: null;
   readonly providerStatus: RuntimeShellProviderStatus;
+  /** 启动完整性告警（来自 bootstrap）；健康时为 null。 */
+  readonly storageIntegrity: RuntimeStorageIntegrityAlert | null;
   readonly error: null;
 }
 
@@ -123,6 +129,7 @@ export function mapRuntimeBootstrapToShellData(
       hasUsableModel: !bootstrap.model.setupRequired,
       label: modelLabel(bootstrap),
     },
+    storageIntegrity: bootstrap.storageIntegrity ?? null,
     error: null,
   };
 }

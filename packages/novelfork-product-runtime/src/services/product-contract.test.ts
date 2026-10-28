@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { FOLLOW_DEFAULT_MODEL, settings } from "@vivy1024/narrafork-runtime-bridge";
-import { canSendToConfiguredModel, getProductModelStatus } from "./book-provision";
+import { canSendToConfiguredModel, getProductModelStatus, getProductNarratorModel } from "./book-provision";
 import {
 	getProductBootstrapCapabilities,
 	getProductBootstrapContract,
@@ -148,6 +148,17 @@ describe("product model status", () => {
 		// 叙述者自己选了 like 的完整模型 ID 时仍可发送；全局默认模型的供应商不存在则不行
 		expect(canSendToConfiguredModel("like:antigravity:gemini-3.8-flash-high")).toBe(true);
 		expect(canSendToConfiguredModel(null)).toBe(false);
+	});
+
+	test("prefixes a NUG default model that carries a gateway channel (kiro:… is not a provider)", () => {
+		// NUG 的默认模型是「网关通道:模型」（如 kiro:claude-opus-5.5），冒号属于通道名，不是供应商前缀；
+		// 不补供应商前缀，新叙述者会拿到 kiro:claude-opus-5.5，Runtime 按 kiro 找供应商而报「未配置」。
+		settings.nugProviders = [nugProvider({ defaultModel: "kiro:claude-opus-5.5" })];
+		expect(getProductModelStatus()).toEqual({ setupRequired: false, label: "已配置：like" });
+		expect(getProductNarratorModel()).toBe("like:kiro:claude-opus-5.5");
+		// 已经带本供应商前缀的完整 ID 原样保留，不重复加前缀。
+		settings.nugProviders = [nugProvider({ defaultModel: "like:kiro:claude-opus-5.5" })];
+		expect(getProductNarratorModel()).toBe("like:kiro:claude-opus-5.5");
 	});
 
 	test("does not let a provider without credentials send", () => {

@@ -102,6 +102,7 @@ import {
 import { RuntimePageMount } from "./runtime/RuntimePageMount";
 import { runtimePageSectionOf, type RuntimePageSection } from "./runtime/runtime-page-sections";
 import { runtimePageRoute } from "./shell/shell-route";
+import { StorageIntegrityBanner } from "./shell/StorageIntegrityBanner";
 
 const RUNTIME_PAGE_LABELS: Record<Exclude<RuntimePageSection, "routines" | "settings">, string> = {
   search: "搜索",
@@ -712,6 +713,7 @@ export function StudioNextApp(_props: StudioNextAppProps) {
     recentTabs = [],
     providerSummary,
     providerStatus,
+    storageIntegrity,
     loading,
     error: runtimeShellError,
     reload: reloadRuntimeShell,
@@ -865,6 +867,12 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         void clearInactiveRecentTabs();
       }}
       onLogout={() => clearRuntimeAuthentication("logout")}
+      banner={
+        <StorageIntegrityBanner
+          alert={storageIntegrity}
+          onOpenBooks={() => navigate({ kind: "books" })}
+        />
+      }
     >
       <RouteMountPoint
         route={activeRoute}

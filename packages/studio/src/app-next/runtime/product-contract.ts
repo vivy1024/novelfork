@@ -163,6 +163,22 @@ export interface RuntimeBootstrap {
   readonly narrators: readonly RuntimeNarratorSummary[];
   readonly model: RuntimeModelStatus;
   readonly capabilities: RuntimeProductCapabilities;
+  /** 启动时产品库完整性检查的告警；健康或服务端未提供时为 null。 */
+  readonly storageIntegrity: RuntimeStorageIntegrityAlert | null;
+}
+
+/** 服务端给出的三段式说明（发生了什么 / 为什么要看 / 建议怎么做），前端原样展示。 */
+export interface RuntimeStorageIntegrityAlert {
+  readonly code: string;
+  /** 库文件名（不含路径）。 */
+  readonly storageFile: string | null;
+  /** SQLite 报告的首行摘要。 */
+  readonly reportSummary: string | null;
+  readonly explanation: {
+    readonly whatHappened: string;
+    readonly whyItMatters: string;
+    readonly suggestedAction: string;
+  };
 }
 
 export interface RuntimeWorkspaceResource {
@@ -611,6 +627,26 @@ export function mapRuntimeBootstrap(value: unknown): RuntimeBootstrap {
       narrators: mapEntityCapabilities(capabilities?.narrators),
       workspace: mapEntityCapabilities(capabilities?.workspace),
     },
+    storageIntegrity: mapStorageIntegrityAlert(root.storageIntegrity),
+  };
+}
+
+/**
+ * 只接受带完整三段式说明的告警；缺任何一段就视为没有可展示的告警，
+ * 前端不按 code 自造文案。
+ */
+function mapStorageIntegrityAlert(value: unknown): RuntimeStorageIntegrityAlert | null {
+  const record = asRecord(value);
+  const explanation = asRecord(record?.explanation);
+  const whatHappened = asString(explanation?.whatHappened);
+  const whyItMatters = asString(explanation?.whyItMatters);
+  const suggestedAction = asString(explanation?.suggestedAction);
+  if (!record || !whatHappened || !whyItMatters || !suggestedAction) return null;
+  return {
+    code: asString(record.code) ?? "STORAGE_INTEGRITY_DAMAGED",
+    storageFile: asString(record.storageFile) ?? null,
+    reportSummary: asString(record.reportSummary) ?? null,
+    explanation: { whatHappened, whyItMatters, suggestedAction },
   };
 }
 

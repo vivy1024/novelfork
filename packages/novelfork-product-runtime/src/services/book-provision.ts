@@ -47,6 +47,11 @@ import {
 import { createWritingResourceService } from "../../../novel-plugin/src/engine/writing-resource/service";
 import { listChapterFiles, parseChapterFileName } from "../../../novel-plugin/src/engine/writing-resource/chapter-layout";
 import { writeFileAtomic } from "../../../novel-plugin/src/engine/writing-resource/atomic-write";
+import {
+	BookConfigUnreadableError,
+	updateBookConfig,
+	withBookConfigLock,
+} from "../../../novel-plugin/src/engine/book-config/book-config-lock";
 import { resolveChapterVolumeDirectory } from "../../../novel-plugin/src/handlers/outline-volume";
 import type { WritingResource } from "../../../novel-plugin/src/engine/writing-resource/types";
 import { loadWritingSkills } from "../../../novel-plugin/src/engine/writing-skills/loader";
@@ -173,7 +178,7 @@ export type GuidedSetupResult = {
 const READY_STATE: ProvisionState = "ready";
 const ROOT_CHAPTER_TITLE = "小说主线";
 const NOVELIST_PROMPT =
-	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 scene.spec 建立蓝图，再使用 pipeline.write；它会执行本书的字数、预设、节拍和审校治理。没有可用文本模型时必须如实说明阻塞，绝不能用 chapter.write 写入短文本充当新章节。chapter.write 仅用于覆盖已存在的完整章节，局部改写使用 rewrite.apply；所有写入都遵守 Runtime 权限确认。通用文件、命令、搜索等工具可以正常使用；但写章节正文请用 chapter.write / pipeline.write，改设定请用 lore.* 工具，这样字数、结算和审计才会正确记录。";
+	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 write.preflight 拿到本章写前召回包，再用 scene.spec 建立蓝图，按召回包写好正文后用 pipeline.write 提交；它会执行本书的字数、预设、节拍和审校治理。没有可用文本模型时必须如实说明阻塞，绝不能用 chapter.write 写入短文本充当新章节。chapter.write 仅用于覆盖已存在的完整章节，局部改写使用 rewrite.apply；所有写入都遵守 Runtime 权限确认。通用文件、命令、搜索等工具可以正常使用；但写章节正文请用 chapter.write / pipeline.write，改设定请用 lore.* 工具，这样字数、结算和审计才会正确记录。";
 
 export type RuntimeEntityCapabilities = {
 	read: boolean;
@@ -367,6 +372,24 @@ function isWorkspaceGitPath(relativePath: string): boolean {
 	return relativePath.split("/")[0]?.toLowerCase() === WORKSPACE_GIT_DIR;
 }
 
+/** IDE 文件网关写文件的显式意图：编辑器保存为 overwrite，文件树新建 / 复制粘贴为 create。 */
+export const WORKSPACE_FILE_WRITE_MODES = ["create", "overwrite"] as const;
+export type WorkspaceFileWriteMode = (typeof WORKSPACE_FILE_WRITE_MODES)[number];
+
+/** create 意图遇到已存在的目标：409，带三段式说明。 */
+function workspacePathExistsError(relativePath: string): AppError {
+	return new AppError(
+		[
+			`发生了什么：${relativePath} 已经存在，这次新建 / 粘贴没有写入。`,
+			"为什么要看：继续写入会用新内容（新建时是空内容）覆盖这个文件，里面已有的正文或设定会丢失。",
+			"建议怎么做：换一个文件名再试；确实要替换时，先打开原文件确认内容，再手动编辑或删除后重建。",
+		].join("\n"),
+		409,
+		"WORKSPACE_PATH_EXISTS",
+		{ path: relativePath },
+	);
+}
+
 function assertMutableWorkspacePath(relativePath: string): void {
 	if (PROTECTED_WORKSPACE_FILES.has(relativePath)) {
 		throw new ValidationError(`${relativePath} is managed by NovelFork and cannot be changed from the IDE file tree`);
@@ -457,7 +480,10 @@ type ConfiguredProductProvider = CredentialedProductProvider & { model: string }
 function resolveProviderModel(prefix: string, defaultModel: string | undefined): string | null {
 	const own = defaultModel?.trim();
 	if (own && own !== FOLLOW_DEFAULT_MODEL && !own.endsWith(`:${FOLLOW_DEFAULT_MODEL}`)) {
-		return own.includes(":") ? own : `${prefix}:${own}`;
+		// 只认「本供应商前缀」：NUG 的默认模型常是「网关通道:模型」（kiro:claude-opus-5.5），
+		// 里面的冒号是通道名而不是供应商前缀；见到冒号就原样返回，新叙述者会拿到 kiro:…，
+		// Runtime 按 kiro 找供应商而报「Provider "kiro" is not configured」。
+		return own.startsWith(`${prefix}:`) ? own : `${prefix}:${own}`;
 	}
 	const globalDefault = settings.agent.defaultModel?.trim() ?? "";
 	return globalDefault.startsWith(`${prefix}:`) ? globalDefault : null;
@@ -525,7 +551,7 @@ export function canSendToConfiguredModel(model: string | null): boolean {
 	);
 }
 
-function getProductNarratorModel(): string | null {
+export function getProductNarratorModel(): string | null {
 	return getConfiguredProductProviders()[0]?.model ?? null;
 }
 
@@ -679,6 +705,28 @@ function workspaceAlreadyABookError(workspaceRoot: string, marker: string): Vali
 }
 
 /**
+ * 建书指定的 bookId 在受控书籍根下已有同名目录。建书只会在全新目录里落脚手架，
+ * 已有的目录（尤其是没有建书记录、没有绑定的旧书）不能被建书沿用：那等于让任何带上这个
+ * bookId 的人把别人的书收进自己的书架。旧书只能由管理员走「认领」接入。
+ */
+function controlledBookRootOccupiedError(bookId: string, isBook: boolean, isAdmin: boolean): ValidationError {
+	const what = isBook
+		? `发生了什么：作品 ID「${bookId}」在受控作品目录里已经有一本作品，新建作品被拒绝，本次没有写入任何内容。`
+		: `发生了什么：作品 ID「${bookId}」在受控作品目录里已经有同名目录，新建作品被拒绝，本次没有写入任何内容。`;
+	const why = "为什么要看：新建作品不会接管已有目录，以免把别人的书或其他内容收进你的书架。";
+	const advice = isAdmin && isBook
+		? "建议怎么做：如需接入这本旧书，请对它执行「认领」；要新建作品，请换一个作品 ID 或留空让系统生成。"
+		: "建议怎么做：请换一个作品 ID，或留空让系统生成；如果这是你以前的书，请联系管理员认领。";
+	return new ValidationError([what, why, advice].join("\n"), "BOOK_ROOT_ALREADY_EXISTS");
+}
+
+/** 这条建书记录是否由 create() 发起（区别于认领、修复、导入接入已有目录的记录）。 */
+function isCreateOperation(operation: ProvisionOperation): boolean {
+	const input = operation.inputJson as { provisionOrigin?: unknown } | null;
+	return input?.provisionOrigin === "create";
+}
+
+/**
  * 数据安全检查（不是权限限制）：source=new 指向的目录若已经是一本作品，建书前拒绝，
  * 不留任何记录。其余非空目录允许（与 NarraFork 一样接受已有目录），
  * 脚手架只写不存在的文件，见 `writeBookScaffold`。
@@ -794,40 +842,41 @@ function parseChapterResourceId(resourceId: string): number {
 	return number;
 }
 
-async function readChapterIndex(bookRoot: string): Promise<Record<string, unknown>[]> {
-	const raw = await readFile(join(bookRoot, "chapters", "index.json"), "utf8").catch(() => "[]");
-	let parsed: unknown;
+/**
+ * 锁内读改写 book.json（见 book-config-lock.ts）。读不出或解析失败时转成带三段式说明的
+ * ValidationError，不把损坏的 book.json 当成空对象覆盖掉。
+ */
+async function updateBookConfigExplained(
+	bookRoot: string,
+	mutate: (current: Record<string, unknown>) => Record<string, unknown> | null,
+): Promise<Record<string, unknown> | null> {
 	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		throw new ValidationError("Book chapter index is invalid");
+		return await updateBookConfig(bookRoot, (current) => {
+			if (!current) throw new ValidationError("Book does not have a readable book.json");
+			return mutate(current);
+		});
+	} catch (error) {
+		if (error instanceof BookConfigUnreadableError) throw new ValidationError(error.message);
+		throw error;
 	}
-	if (!Array.isArray(parsed)) throw new ValidationError("Book chapter index is invalid");
-	return parsed.filter(
-		(entry): entry is Record<string, unknown> =>
-			Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
-	);
 }
 
-async function writeChapterIndex(
-	bookRoot: string,
-	index: readonly Record<string, unknown>[],
-): Promise<void> {
-	await writeFile(
-		join(bookRoot, "chapters", "index.json"),
-		`${JSON.stringify(index, null, 2)}\n`,
-		"utf8",
-	);
-}
-
-async function updateBookTimestamp(
-	bookRoot: string,
-	config: Record<string, unknown>,
-): Promise<void> {
-	await writeFileAtomic(
-		join(bookRoot, "book.json"),
-		`${JSON.stringify({ ...config, updatedAt: now() }, null, 2)}\n`,
-	);
+/**
+ * 章节保存、新建章、章节对账后刷新书籍时间戳：锁内重读最新 book.json，只改 updatedAt。
+ * 不接收调用方在请求开始时读到的配置，否则会把期间别处对设置的修改整份冲掉。
+ * 正文已经写成功，时间戳只是附带动作：book.json 不存在或读不出时记一条日志并跳过，
+ * 不把一次成功的保存报成失败。
+ */
+async function updateBookTimestamp(bookRoot: string): Promise<void> {
+	try {
+		await updateBookConfig(bookRoot, (current) => (current ? { ...current, updatedAt: now() } : null));
+	} catch (error) {
+		if (!(error instanceof BookConfigUnreadableError)) throw error;
+		logger.warn("Skipped book.json timestamp refresh: book.json is unreadable", {
+			bookRoot,
+			detail: error.message,
+		});
+	}
 }
 
 /**
@@ -1028,14 +1077,19 @@ async function writeBookConfig(
 	options?: { readonly exclusive?: boolean },
 ): Promise<void> {
 	const content = `${JSON.stringify(config, null, 2)}\n`;
+	// 与其他 book.json 写入方共用按书锁（book-config-lock.ts），不与它们交错。
 	// 覆盖更新走原子写（临时文件 + fsync + rename）：写入中断时 book.json 只会是旧版或新版，
 	// 不留半截配置导致整本书不可读。独占新建（wx）不能用 rename 覆盖，保持原语义，
 	// 以免覆盖用户目录里已有的 book.json。
-	if (options?.exclusive) {
-		await writeFile(join(bookRoot, "book.json"), content, { encoding: "utf8", flag: "wx" });
-		return;
-	}
-	await writeFileAtomic(join(bookRoot, "book.json"), content);
+	// 覆盖写会整份替换文件：只用于调用方已在同一把锁里重读过最新内容的场景；
+	// 修改已有书的字段请用 updateBookConfigExplained。
+	await withBookConfigLock(bookRoot, async () => {
+		if (options?.exclusive) {
+			await writeFile(join(bookRoot, "book.json"), content, { encoding: "utf8", flag: "wx" });
+			return;
+		}
+		await writeFileAtomic(join(bookRoot, "book.json"), content);
+	});
 }
 
 async function initializeExternalBookConfig(
@@ -1395,7 +1449,7 @@ export class NovelForkProductBookService {
 					bookCountingMode(config),
 				).reconcileChapters(bookId);
 				if (changes.length === 0) return [];
-				await updateBookTimestamp(root, config);
+				await updateBookTimestamp(root);
 				this.invalidateWorkspaceFileTree(bookId);
 				const summaries = changes.map((change) => ({
 					chapterNumber: change.chapterNumber,
@@ -1622,6 +1676,20 @@ export class NovelForkProductBookService {
 		});
 		if (alreadyReserved)
 			throw new ValidationError("A provision operation already exists for this bookId");
+		// 受控根下同名目录已经存在（多半是没有建书记录的旧书）：建书不能沿用它，否则谁带上这个
+		// bookId 谁就把别人的书收进自己的书架。没有绑定的旧书只能由管理员走 claim 认领。
+		// 必须在写建书记录、Runtime 项目之前拒绝，不留半成品；promoteFilesystem 另有兜底。
+		if (!isExternalBookWorkspace(input.projectInit)) {
+			const controlledRoot = await realpath(getControlledBooksRoot()).catch(() => null);
+			const targetRoot = controlledRoot ? deriveBookRoot(controlledRoot, bookId) : null;
+			if (targetRoot && (await pathExists(targetRoot))) {
+				throw controlledBookRootOccupiedError(
+					bookId,
+					await pathExists(join(targetRoot, "book.json")),
+					actor.role === "admin",
+				);
+			}
+		}
 
 		const operation: ProvisionOperation = {
 			id: generateId(),
@@ -1629,7 +1697,9 @@ export class NovelForkProductBookService {
 			idempotencyKey: key,
 			bookId,
 			title: input.title,
-			inputJson: input,
+			// provisionOrigin 只由服务端写入（路由的请求体校验是 strict，客户端带不进来），
+			// promoteFilesystem 据此只对「建书」发起的记录收紧已存在目录的沿用条件。
+			inputJson: { ...input, provisionOrigin: "create" },
 			state: "reserved",
 			runtimeProjectId: null,
 			runtimeChapterId: null,
@@ -2026,27 +2096,30 @@ export class NovelForkProductBookService {
 
 		// Persist the external marker so resolveTrustedBookRoot continues to honor
 		// this absolute path after the binding is rewritten.
-		const existingRaw = await readFile(join(root, "book.json"), "utf8").catch(() => null);
-		const existingConfig: Record<string, unknown> | null = existingRaw
-			? (() => {
-					try {
-						return JSON.parse(existingRaw) as Record<string, unknown>;
-					} catch {
-						return null;
-					}
-				})()
-			: null;
-		const nextConfig: Record<string, unknown> = {
-			...(existingConfig && typeof existingConfig === "object" ? existingConfig : config),
-			id: normalizedBookId,
-			title:
-				(typeof existingConfig?.title === "string" && existingConfig.title) ||
-				(typeof config.title === "string" && config.title) ||
-				operation.title,
-			[EXTERNAL_BOOK_WORKSPACE_MARKER]: true,
-			updatedAt: now(),
-		};
-		await writeFileAtomic(join(root, "book.json"), `${JSON.stringify(nextConfig, null, 2)}\n`);
+		// 读改写放在 book.json 按书锁里，锁内重读，不与其他写入方交错。
+		await withBookConfigLock(root, async () => {
+			const existingRaw = await readFile(join(root, "book.json"), "utf8").catch(() => null);
+			const existingConfig: Record<string, unknown> | null = existingRaw
+				? (() => {
+						try {
+							return JSON.parse(existingRaw) as Record<string, unknown>;
+						} catch {
+							return null;
+						}
+					})()
+				: null;
+			const nextConfig: Record<string, unknown> = {
+				...(existingConfig && typeof existingConfig === "object" ? existingConfig : config),
+				id: normalizedBookId,
+				title:
+					(typeof existingConfig?.title === "string" && existingConfig.title) ||
+					(typeof config.title === "string" && config.title) ||
+					operation.title,
+				[EXTERNAL_BOOK_WORKSPACE_MARKER]: true,
+				updatedAt: now(),
+			};
+			await writeFileAtomic(join(root, "book.json"), `${JSON.stringify(nextConfig, null, 2)}\n`);
+		});
 
 		const updatedBinding = await bookRuntimeBindingService.upsert(
 			operation.runtimeProjectId,
@@ -2136,18 +2209,22 @@ export class NovelForkProductBookService {
 		patch: ProductBookBasicSettingsPatch,
 		actor: ProductActor,
 	): Promise<Record<string, unknown>> {
-		const { operation, root, config } = await this.getReadyBookRoot(bookId, actor);
-		const nextConfig: Record<string, unknown> = {
-			...config,
-			...patch,
-			updatedAt: now(),
-		};
-		if (patch.targetChapters === null) delete nextConfig.targetChapters;
-		if (patch.foreshadowDebtThresholds === null) delete nextConfig.foreshadowDebtThresholds;
-		const title = typeof nextConfig.title === "string" ? nextConfig.title.trim() : "";
-		if (!title) throw new ValidationError("Book title must not be empty");
-		nextConfig.title = title;
-		await writeBookConfig(root, nextConfig);
+		const { operation, root } = await this.getReadyBookRoot(bookId, actor);
+		// 锁内重读最新 book.json 再套用补丁，不用请求开始时读到的旧配置整份写回。
+		const nextConfig = (await updateBookConfigExplained(root, (current) => {
+			const next: Record<string, unknown> = {
+				...current,
+				...patch,
+				updatedAt: now(),
+			};
+			if (patch.targetChapters === null) delete next.targetChapters;
+			if (patch.foreshadowDebtThresholds === null) delete next.foreshadowDebtThresholds;
+			const nextTitle = typeof next.title === "string" ? next.title.trim() : "";
+			if (!nextTitle) throw new ValidationError("Book title must not be empty");
+			next.title = nextTitle;
+			return next;
+		})) as Record<string, unknown>;
+		const title = nextConfig.title as string;
 
 		const input = operation.inputJson as ProductBookInput;
 		const nextInput: ProductBookInput = {
@@ -2193,33 +2270,37 @@ export class NovelForkProductBookService {
 		input: GuidedSetupInput,
 		actor: ProductActor,
 	): Promise<GuidedSetupResult> {
-		const { root, config } = await this.getReadyBookRoot(bookId, actor);
+		const { root } = await this.getReadyBookRoot(bookId, actor);
 		const answers = normalizeGuidedSetupAnswers(input.answers);
-		const genre = guidedAnswerText(answers.genre) ?? String(config.genre ?? "未分类");
-		const template = getGenreTemplate(genre);
-		const chapterWordCount =
-			parseGuidedChapterWordCount(guidedAnswerText(answers.chapterWordCount)) ??
-			(typeof config.chapterWordCount === "number" ? config.chapterWordCount : 3000);
-		const platform = mapGuidedPlatform(guidedAnswerText(answers.platform)) ??
-			(typeof config.platform === "string" ? config.platform : "other");
-
-		const nextConfig: Record<string, unknown> = {
-			...config,
-			genre,
-			platform,
-			chapterWordCount,
-			complexity: template.complexity,
-			status: config.status === "incubating" ? "outlining" : config.status,
-			updatedAt: now(),
-		};
 		const aiTaste = guidedAnswerText(answers.aiTasteLevel);
-		if (aiTaste) nextConfig.aiTasteLevel = aiTaste;
 		const writingPhilosophy = guidedAnswerText(answers.writingPhilosophy);
-		if (writingPhilosophy) nextConfig.writingPhilosophy = writingPhilosophy;
 		const tone = guidedAnswerText(answers.tone);
-		if (tone) nextConfig.tone = tone;
 
-		await writeBookConfig(root, nextConfig);
+		// 锁内重读最新 book.json，答案缺省的字段沿用锁内读到的当前值。
+		const nextConfig = (await updateBookConfigExplained(root, (config) => {
+			const genre = guidedAnswerText(answers.genre) ?? String(config.genre ?? "未分类");
+			const chapterWordCount =
+				parseGuidedChapterWordCount(guidedAnswerText(answers.chapterWordCount)) ??
+				(typeof config.chapterWordCount === "number" ? config.chapterWordCount : 3000);
+			const platform = mapGuidedPlatform(guidedAnswerText(answers.platform)) ??
+				(typeof config.platform === "string" ? config.platform : "other");
+			const next: Record<string, unknown> = {
+				...config,
+				genre,
+				platform,
+				chapterWordCount,
+				complexity: getGenreTemplate(genre).complexity,
+				status: config.status === "incubating" ? "outlining" : config.status,
+				updatedAt: now(),
+			};
+			if (aiTaste) next.aiTasteLevel = aiTaste;
+			if (writingPhilosophy) next.writingPhilosophy = writingPhilosophy;
+			if (tone) next.tone = tone;
+			return next;
+		})) as Record<string, unknown>;
+		const genre = nextConfig.genre as string;
+		const platform = nextConfig.platform as string;
+		const template = getGenreTemplate(genre);
 
 		// Best-effort story notes so the workbench has human-readable seeds even when
 		// SQLite jingwei is empty or later re-imported.
@@ -2473,7 +2554,19 @@ export class NovelForkProductBookService {
 		return { path: target.relativePath, content: await readFile(target.absolutePath, "utf8") };
 	}
 
-	async writeWorkspaceFile(bookId: string, rawPath: string, content: string, actor: ProductActor): Promise<{ path: string }> {
+	/**
+	 * IDE 文件网关写文件。`mode` 是调用方的显式意图：
+	 * - `overwrite`（默认，编辑器保存）：覆盖已有文件；
+	 * - `create`（文件树新建、复制粘贴）：目标已存在就以 409 拒绝，绝不清空或覆盖作者已有的文件。
+	 * 写入走原子写：中断时目标只会是旧版或新版。
+	 */
+	async writeWorkspaceFile(
+		bookId: string,
+		rawPath: string,
+		content: string,
+		actor: ProductActor,
+		mode: WorkspaceFileWriteMode = "overwrite",
+	): Promise<{ path: string }> {
 		const contentBytes = typeof content === "string" ? Buffer.byteLength(content, "utf8") : 0;
 		if (typeof content !== "string" || contentBytes > MAX_WORKSPACE_FILE_BYTES) {
 			const sizeKb = Math.ceil(contentBytes / 1024);
@@ -2491,7 +2584,26 @@ export class NovelForkProductBookService {
 		const info = await stat(target.absolutePath).catch(() => null);
 		if (info && !info.isFile()) throw new ValidationError("workspace path must identify a file");
 		await mkdir(dirname(target.absolutePath), { recursive: true });
-		await writeFile(target.absolutePath, content, "utf8");
+		if (mode === "create") {
+			if (info) throw workspacePathExistsError(target.relativePath);
+			// 先用独占新建（wx）占住文件名：并发的另一次新建会在这里拿到 EEXIST，而不是互相覆盖。
+			try {
+				await writeFile(target.absolutePath, "", { encoding: "utf8", flag: "wx" });
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "EEXIST") throw workspacePathExistsError(target.relativePath);
+				throw error;
+			}
+			if (content !== "") {
+				try {
+					await writeFileAtomic(target.absolutePath, content);
+				} catch (error) {
+					await rm(target.absolutePath, { force: true }).catch(() => undefined);
+					throw error;
+				}
+			}
+		} else {
+			await writeFileAtomic(target.absolutePath, content);
+		}
 		this.invalidateWorkspaceFileTree(operation.bookId);
 		// 文件网关直接写章节文件，不经过写作资源服务，立即对账补上附带动作。
 		if (isChapterPath(target.relativePath)) {
@@ -2614,7 +2726,7 @@ export class NovelForkProductBookService {
 			}
 			return service.update(bookId, current.id, { content });
 		});
-		await updateBookTimestamp(root, config);
+		await updateBookTimestamp(root);
 		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { resource: toWorkspaceWritingResource(updated) };
 	}
@@ -2646,7 +2758,7 @@ export class NovelForkProductBookService {
 				metadata: {},
 			});
 		});
-		await updateBookTimestamp(root, config);
+		await updateBookTimestamp(root);
 		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { resource: toWorkspaceWritingResource(resource) };
 	}
@@ -2852,7 +2964,18 @@ export class NovelForkProductBookService {
 				await writeBookScaffold(root, operation);
 				return;
 			}
-			await readBookConfig(root, operation.bookId);
+			const config = await readBookConfig(root, operation.bookId).catch((error) => {
+				if (isCreateOperation(operation)) {
+					throw controlledBookRootOccupiedError(operation.bookId, true, false);
+				}
+				throw error;
+			});
+			// 兜底：建书发起的记录只沿用它自己上次转正的目录。脚手架在暂存目录写完后整体 rename，
+			// book.json 里的 createdAt 就是这条记录的 createdAt；对不上说明目录不是本次建书写的
+			// （例如预检之后才出现的旧书），不能沿用。认领、修复、导入的记录本来就是接入已有目录，不受影响。
+			if (isCreateOperation(operation) && config.createdAt !== operation.createdAt) {
+				throw controlledBookRootOccupiedError(operation.bookId, true, false);
+			}
 			return;
 		}
 		if (external) {

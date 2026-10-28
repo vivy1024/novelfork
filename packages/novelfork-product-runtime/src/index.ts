@@ -38,6 +38,10 @@ import { migrateLegacySessions } from "./services/legacy-session-migration";
 import { reconcileBookProjectOwners } from "./services/book-project-owner";
 import { shouldBypassBookGuard } from "./services/book-guard-bypass";
 import {
+	assertBookProjectMutationAllowed,
+	isBookProjectMutation,
+} from "./services/book-project-protection";
+import {
 	isNovelForkProductNarrator,
 	resolveNovelForkNarratorCwd,
 } from "./narrator-profile";
@@ -89,6 +93,19 @@ async function guardRawNarratorRoute(c: Context, next: Next): Promise<void> {
 }
 
 /**
+ * Runtime 的 /api/projects/:id 写端点（删除、PATCH、成员、可见性、转让、Ruler、备份……）
+ * 对书的项目一律拒绝，改走产品入口。先判断是不是写请求、再查绑定，读请求不多查一次库。
+ * 产品自己的 deleteBook 在进程内调用 deleteProjectById，不经过 HTTP，不受影响。
+ */
+async function guardRuntimeProjectRoute(c: Context, next: Next): Promise<void> {
+	const projectId = c.req.param("id");
+	if (projectId && isBookProjectMutation(c.req.method, c.req.path, projectId)) {
+		await assertBookProjectMutationAllowed(actorFromContext(c), projectId);
+	}
+	await next();
+}
+
+/**
  * T0 NovelFork product adapter. It runs in the same trusted process as the
  * Runtime, but stays outside the Runtime source tree so upstream syncs do not
  * overwrite product behavior.
@@ -116,6 +133,8 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 		});
 		app.use("/api/narrators/:id", guardRawNarratorRoute);
 		app.use("/api/narrators/:id/*", guardRawNarratorRoute);
+		app.use("/api/projects/:id", guardRuntimeProjectRoute);
+		app.use("/api/projects/:id/*", guardRuntimeProjectRoute);
 	},
 	mountAuthenticatedRoutes(app: Hono): void {
 		app.route("/api/novelfork", novelForkProductBooksRoutes);
