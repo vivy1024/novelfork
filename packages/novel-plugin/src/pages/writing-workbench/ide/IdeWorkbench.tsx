@@ -1375,7 +1375,8 @@ export function IdeWorkbench({
         await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: dir ? `${dir}/${name}` : name, content: "" }),
+          // create 意图：重名时服务端以 409 拒绝并给出说明，不清空已有文件。
+          body: JSON.stringify({ path: dir ? `${dir}/${name}` : name, content: "", mode: "create" }),
         }), "创建文件失败");
         refreshFileTree();
       } catch (err) {
@@ -1426,7 +1427,8 @@ export function IdeWorkbench({
           await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: destination, content: read.content ?? "" }),
+            // create 意图：目标已有同名文件时服务端拒绝，不覆盖。
+            body: JSON.stringify({ path: destination, content: read.content ?? "", mode: "create" }),
           }), "复制文件失败");
         }
         refreshFileTree();

@@ -14,9 +14,8 @@ function json(body: unknown, status = 200) {
 }
 
 function createFetch() {
-  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  return vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const path = input.toString();
-    const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {};
     if (path === "/api/books/book%2F1/inline-write") {
       return json({ mode: "prompt-preview", promptPreview: "请继续写", reason: "no-session-llm" });
     }
@@ -25,9 +24,6 @@ function createFetch() {
     }
     if (path === "/api/books/book%2F1/hooks/generate") {
       return json({ gate: { ok: false, reason: "model-not-configured" }, error: { code: "MODEL_NOT_CONFIGURED", message: "未配置模型" } }, 409);
-    }
-    if (path === "/api/books/book%2F1/hooks/apply") {
-      return json({ persisted: true, file: "pending_hooks.md", hookId: body.hookId ?? "hook-1" });
     }
     if (path === "/api/books/book%2F1/audit/1") {
       return json({ passed: false, issues: [{ type: "continuity", message: "时间线冲突" }] });
@@ -70,7 +66,6 @@ describe("writing action contract adapter", () => {
       "ai.write-next.async",
       "writing-modes.preview",
       "hooks.generate",
-      "hooks.apply",
       "ai.audit",
       "ai.detect",
     ]);
@@ -114,19 +109,19 @@ describe("writing action contract adapter", () => {
     expect(unsupported).toMatchObject({ kind: "unsupported", formalChapterWrite: false, error: { error: { code: "unsupported-model" } }, nextStep: "show-provider-or-tool-error" });
   });
 
-  it("preserves hooks gate 409, explicit hook apply, and audit/detect metrics", async () => {
+  it("preserves hooks gate 409 and audit/detect metrics; hook apply is no longer offered", async () => {
     const adapter = createWritingActionAdapter({
       writing: createWritingActionClient(createContractClient({ fetch: createFetch() })),
       sessions: createSessionClient(createContractClient({ fetch: createFetch() })),
     });
 
     const hookGate = await adapter.generateHooks("book/1", { chapterNumber: 1 });
-    const hookApply = await adapter.applyHook("book/1", { chapterNumber: 1, hookId: "hook-1", hook: { text: "门外脚步声" } });
     const audit = await adapter.auditChapter("book/1", 1);
     const detect = await adapter.detectChapter("book/1", 1);
 
     expect(hookGate).toMatchObject({ kind: "gate-blocked", formalChapterWrite: false, gate: { ok: false, reason: "model-not-configured" }, nextStep: "show-gate" });
-    expect(hookApply).toMatchObject({ kind: "analysis", formalChapterWrite: false, analysis: { persisted: true, file: "pending_hooks.md", hookId: "hook-1" } });
+    // hooks/apply 只写导出物 pending_hooks.md 却报 persisted:true，已随路由一起下线。
+    expect("applyHook" in adapter).toBe(false);
     expect(audit).toMatchObject({ kind: "analysis", formalChapterWrite: false, analysis: { passed: false } });
     expect(detect).toMatchObject({ kind: "analysis", formalChapterWrite: false, analysis: { aiTasteScore: null, metrics: [{ name: "unknown", value: null }] } });
   });

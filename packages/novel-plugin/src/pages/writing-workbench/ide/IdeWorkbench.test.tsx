@@ -807,6 +807,66 @@ describe("IdeWorkbench 静默交互修复", () => {
     expect(screen.queryByTitle("关闭分屏")).toBeNull();
   });
 
+  /** 文件树新建与复制粘贴以 create 意图写入：重名时服务端拒绝，界面原样展示服务端说明，不覆盖已有文件。 */
+  describe("文件树新建 / 复制粘贴不覆盖已有文件", () => {
+    const existsExplanation = "发生了什么：notes/a.md 已经存在，这次新建 / 粘贴没有写入。\n为什么要看：……\n建议怎么做：换一个文件名再试";
+    const dirNode: WorkbenchResourceNode = {
+      id: "dir:notes",
+      kind: "file",
+      title: "notes",
+      capabilities: { open: false, readonly: false, unsupported: false, edit: false, delete: false, apply: false },
+      metadata: { isDirectory: true, filePath: "notes" },
+    };
+    const fileNode: WorkbenchResourceNode = {
+      id: "file:story/a.md",
+      kind: "file",
+      title: "a.md",
+      capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false },
+      metadata: { isFile: true, filePath: "story/a.md" },
+    };
+
+    function stubFilesGateway(conflict: boolean) {
+      stubHostWidth(1440);
+      saveHarness.renderPanels = true;
+      vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/books/book-1/files") && init?.method === "PUT") {
+          return conflict
+            ? new Response(JSON.stringify({ code: "WORKSPACE_PATH_EXISTS", error: existsExplanation }), { status: 409, headers: { "content-type": "application/json" } })
+            : jsonResponse({ path: "ok" });
+        }
+        if (url.includes("/files/read")) return jsonResponse({ path: "story/a.md", content: "源文件正文" });
+        return jsonResponse({ content: "", entries: [], facts: [], changes: [] });
+      });
+    }
+
+    function putBodies(): Array<Record<string, unknown>> {
+      return vi.mocked(globalThis.fetch).mock.calls
+        .filter(([input, init]) => String(input).endsWith("/api/books/book-1/files") && init?.method === "PUT")
+        .map(([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>);
+    }
+
+    it("新建文件带 create 意图；重名时弹出服务端说明", async () => {
+      stubFilesGateway(true);
+      render(<IdeWorkbench bookId="book-1" nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} />);
+      await screen.findByTestId("ide-workbench");
+      const treeProps = saveHarness.resourceTrees.at(-1)!;
+      await act(async () => { await treeProps.onAction!({ type: "create-file", node: dirNode, name: "a.md" }); });
+      expect(putBodies()).toEqual([{ path: "notes/a.md", content: "", mode: "create" }]);
+      expect(saveHarness.alert).toHaveBeenCalledWith(expect.objectContaining({ title: "操作失败", description: existsExplanation }));
+    });
+
+    it("复制粘贴带 create 意图，目标重名时不覆盖", async () => {
+      stubFilesGateway(true);
+      render(<IdeWorkbench bookId="book-1" nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} />);
+      await screen.findByTestId("ide-workbench");
+      await act(async () => { await saveHarness.resourceTrees.at(-1)!.onAction!({ type: "copy", node: fileNode }); });
+      await act(async () => { await saveHarness.resourceTrees.at(-1)!.onAction!({ type: "paste", node: dirNode }); });
+      expect(putBodies()).toEqual([{ path: "notes/a.md", content: "源文件正文", mode: "create" }]);
+      expect(saveHarness.alert).toHaveBeenCalledWith(expect.objectContaining({ title: "操作失败", description: existsExplanation }));
+    });
+  });
+
   /**
    * D6：建书收尾发给叙述者失败时必须让作者看见。
    *

@@ -11,10 +11,6 @@ export function createWritingActionClient(contract: ContractClient) {
       contract.post<T>(buildBookApiPath(bookId, "hooks", "generate"), payload, {
         capability: { id: "hooks.generate", status: "current" },
       }),
-    applyHook: <T = unknown>(bookId: string, payload: unknown) =>
-      contract.post<T>(buildBookApiPath(bookId, "hooks", "apply"), payload, {
-        capability: { id: "hooks.apply", status: "current" },
-      }),
     auditChapter: <T = unknown>(bookId: string, chapterNumber: number | string) =>
       contract.post<T>(buildBookApiPath(bookId, "audit", chapterNumber), undefined, {
         capability: { id: "ai.audit", status: "current" },

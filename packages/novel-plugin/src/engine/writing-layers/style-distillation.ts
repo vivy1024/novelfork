@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
 import { splitChapters, type SplitChapter } from "@vivy1024/novelfork-core";
 import { distillStyleProfile, type DistilledStyleProfile } from "../tools/import/style-distiller.js";
 import type { DissectKnowledgePack, DissectSourceChapter } from "../../handlers/dissect-knowledge.js";
+import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 import {
   extractKnowledgePack,
 } from "../../handlers/dissect-knowledge.js";
@@ -537,14 +538,9 @@ export async function saveStyleDistillationJob(bookRoot: string, job: StyleDisti
   const file = jobPath(bookRoot, parsed.jobId);
   const dir = join(resolve(bookRoot), STYLE_DISTILLATIONS_RELATIVE_DIR);
   await mkdir(dir, { recursive: true });
-  const temporary = join(dir, `.style-distillation-${randomUUID()}.tmp`);
   const raw = `${JSON.stringify(parsed, null, 2)}\n`;
-  try {
-    await writeFile(temporary, raw, "utf8");
-    await rename(temporary, file);
-  } finally {
-    await unlink(temporary).catch(() => undefined);
-  }
+  // 原子写（fsync + rename，Windows 瞬时占用自动重试）：任务状态写入中断时只会是旧版或新版。
+  await writeFileAtomic(file, raw);
   return parsed;
 }
 
@@ -634,13 +630,7 @@ export async function saveStyleDistillationSourceSnapshot(
   });
   const dir = join(resolve(bookRoot), STYLE_DISTILLATIONS_RELATIVE_DIR);
   await mkdir(dir, { recursive: true });
-  const temporary = join(dir, `.style-distillation-source-${randomUUID()}.tmp`);
-  try {
-    await writeFile(temporary, `${JSON.stringify(snapshot)}\n`, "utf8");
-    await rename(temporary, sourceSnapshotPath(bookRoot, jobId));
-  } finally {
-    await unlink(temporary).catch(() => undefined);
-  }
+  await writeFileAtomic(sourceSnapshotPath(bookRoot, jobId), `${JSON.stringify(snapshot)}\n`);
 }
 
 /** 读取来源快照并核对指纹；缺失或被改动都拒绝恢复，避免拿错文本继续抽取。 */

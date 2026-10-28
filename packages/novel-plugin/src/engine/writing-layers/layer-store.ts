@@ -1,5 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 import { loadStylePreset } from "./style-preset-store.js";
 import type { StylePreset } from "./style-preset.js";
 
@@ -45,6 +47,148 @@ async function tryReadFile(path: string): Promise<string> {
   }
 }
 
+/** 作者可在书籍设置里编辑的层字段。卷纲不在其中：它的权威在经纬 outline 条目，volume_outline.md 只是导出物。 */
+export type EditableWritingLayerField = "authorIntent" | "currentFocus" | "bookRulesRaw";
+
+export const EDITABLE_WRITING_LAYER_PATHS: Record<EditableWritingLayerField, string> = {
+  authorIntent: BOOK_DESIGN_RELATIVE_PATHS.authorIntent,
+  currentFocus: BOOK_DESIGN_RELATIVE_PATHS.currentFocus,
+  bookRulesRaw: BOOK_RULES_RELATIVE_PATH,
+};
+
+export type WritingLayerRevisions = Record<EditableWritingLayerField, string>;
+
+export interface WritingLayerExplanation {
+  readonly whatHappened: string;
+  readonly whyItMatters: string;
+  readonly suggestedAction: string;
+}
+
+export type WritingLayerSaveErrorCode = "WRITING_LAYER_REVISION_CONFLICT" | "VOLUME_OUTLINE_READ_ONLY" | "WRITING_LAYER_UNREADABLE";
+
+/** 书籍设计 / 规则保存被拒绝。路由按 statusCode 返回，并原样带上 explanation。 */
+export class WritingLayerSaveError extends Error {
+  constructor(
+    readonly code: WritingLayerSaveErrorCode,
+    readonly statusCode: 409 | 422 | 503,
+    readonly explanation: WritingLayerExplanation,
+    readonly details: { readonly fields?: readonly EditableWritingLayerField[]; readonly revisions?: Partial<WritingLayerRevisions> } = {},
+  ) {
+    super(explanation.whatHappened);
+    this.name = "WritingLayerSaveError";
+  }
+}
+
+const FIELD_LABELS: Record<EditableWritingLayerField, string> = {
+  authorIntent: "作者意图",
+  currentFocus: "当前聚焦",
+  bookRulesRaw: "书籍硬规则",
+};
+
+/** 内容 revision：文件内容的 sha256 前 16 位；文件不存在记为 "missing"。 */
+export function writingLayerRevision(content: string | null): string {
+  return content === null ? "missing" : createHash("sha256").update(content, "utf8").digest("hex").slice(0, 16);
+}
+
+async function readLayerFileForRevision(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** 读取三份可编辑层文件的 revision，供前端保存时带回做乐观并发。 */
+export async function loadWritingLayerRevisions(bookRoot: string): Promise<WritingLayerRevisions> {
+  const entries = await Promise.all((Object.keys(EDITABLE_WRITING_LAYER_PATHS) as EditableWritingLayerField[]).map(async (field) => {
+    const content = await readLayerFileForRevision(join(bookRoot, EDITABLE_WRITING_LAYER_PATHS[field])).catch(() => null);
+    return [field, writingLayerRevision(content)] as const;
+  }));
+  return Object.fromEntries(entries) as WritingLayerRevisions;
+}
+
+function withTrailingNewline(content: string): string {
+  return content.endsWith("\n") ? content : `${content}\n`;
+}
+
+/** 按书串行的层文件读改写；同书的两次保存不会在「校验 revision → 写入」之间交错。 */
+const layerLockTails = new Map<string, Promise<void>>();
+
+async function withWritingLayerLock<T>(bookRoot: string, task: () => Promise<T>): Promise<T> {
+  const absolute = resolve(bookRoot);
+  const key = process.platform === "win32" ? absolute.toLowerCase() : absolute;
+  const previous = layerLockTails.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((resolveRelease) => { release = resolveRelease; });
+  const tail = previous.then(() => mine);
+  layerLockTails.set(key, tail);
+  await previous;
+  try {
+    return await task();
+  } finally {
+    release();
+    if (layerLockTails.get(key) === tail) layerLockTails.delete(key);
+  }
+}
+
+/**
+ * 保存作者在书籍设置里改过的层字段（只提交真正改了的字段）。
+ *
+ * - 乐观并发：每个字段带上读取时拿到的 revision；与磁盘当前内容不一致说明别处（叙述者、
+ *   另一个窗口、外部编辑器）改过，整次保存拒绝，不覆盖。不带 revision 的字段视为无条件写（兼容旧调用方）。
+ * - 原子写：各文件 tmp + fsync + rename，不留半截。
+ * - 卷纲不可经此写入：见 EditableWritingLayerField。
+ */
+export async function saveWritingLayerFields(
+  bookRoot: string,
+  patch: Partial<Record<EditableWritingLayerField, string>>,
+  baseRevisions: Partial<WritingLayerRevisions> = {},
+): Promise<{ readonly saved: readonly EditableWritingLayerField[]; readonly revisions: WritingLayerRevisions }> {
+  const fields = (Object.keys(patch) as EditableWritingLayerField[])
+    .filter((field) => field in EDITABLE_WRITING_LAYER_PATHS && typeof patch[field] === "string");
+  return withWritingLayerLock(bookRoot, async () => {
+    const conflicts: EditableWritingLayerField[] = [];
+    const current: Partial<WritingLayerRevisions> = {};
+    for (const field of fields) {
+      let content: string | null;
+      try {
+        content = await readLayerFileForRevision(join(bookRoot, EDITABLE_WRITING_LAYER_PATHS[field]));
+      } catch (error) {
+        throw new WritingLayerSaveError("WRITING_LAYER_UNREADABLE", 503, {
+          whatHappened: `读取 ${EDITABLE_WRITING_LAYER_PATHS[field].replaceAll("\\", "/")} 失败（${error instanceof Error ? error.message : String(error)}），本次没有保存任何字段。`,
+          whyItMatters: "读不到当前内容就无法确认别处是否改过；直接写入可能覆盖别人刚保存的内容。",
+          suggestedAction: "多半是文件被同步盘或编辑器临时占用，稍后再改一下内容触发保存即可。",
+        });
+      }
+      current[field] = writingLayerRevision(content);
+      const base = baseRevisions[field];
+      if (base !== undefined && base !== current[field]) conflicts.push(field);
+    }
+    if (conflicts.length > 0) {
+      const labels = conflicts.map((field) => FIELD_LABELS[field]).join("、");
+      throw new WritingLayerSaveError("WRITING_LAYER_REVISION_CONFLICT", 409, {
+        whatHappened: `「${labels}」在你打开设置之后已经被别处改过（叙述者、另一个窗口或外部编辑器），这次保存已拒绝，磁盘上的内容没有被覆盖。`,
+        whyItMatters: "直接保存会用你手上的旧版本覆盖别处刚写入的内容。",
+        suggestedAction: "先复制你这次的改动，重新载入书籍设置看到最新内容后，再把改动合并进去。",
+      }, { fields: conflicts, revisions: current });
+    }
+    for (const field of fields) {
+      await writeFileAtomic(join(bookRoot, EDITABLE_WRITING_LAYER_PATHS[field]), withTrailingNewline(patch[field]!));
+    }
+    return { saved: fields, revisions: await loadWritingLayerRevisions(bookRoot) };
+  });
+}
+
+/** 卷纲写入被拒绝时的统一说明：服务端拦截与前端只读提示共用这份文案来源。 */
+export function volumeOutlineReadOnlyError(): WritingLayerSaveError {
+  return new WritingLayerSaveError("VOLUME_OUTLINE_READ_ONLY", 422, {
+    whatHappened: "分卷大纲不能在书籍设置里修改，这次请求里的卷纲内容没有保存（其余字段也未保存）。",
+    whyItMatters: "卷纲的唯一权威在经纬「卷纲/大纲」条目；story/volume_outline.md 只是它的导出物，下次导出会整份覆盖，在这里改的内容会丢失。",
+    suggestedAction: "到经纬的「卷纲/大纲」分类里编辑卷纲，或让叙述者生成/调整卷纲；保存后这里会显示最新导出。",
+  });
+}
+
 function nonEmpty(value: string | undefined | null): string {
   return value?.trim() ?? "";
 }
@@ -60,9 +204,7 @@ export async function loadBookRules(bookRoot: string): Promise<ParsedBookRules |
 }
 
 export async function saveBookRules(bookRoot: string, content: string): Promise<void> {
-  const path = join(bookRoot, BOOK_RULES_RELATIVE_PATH);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, content.endsWith("\n") ? content : `${content}\n`, "utf8");
+  await saveWritingLayerFields(bookRoot, { bookRulesRaw: content });
 }
 
 export async function loadBookDesign(bookRoot: string): Promise<BookDesignDocuments> {
@@ -83,29 +225,16 @@ async function loadBookDesignWithPreset(bookRoot: string): Promise<{ design: Boo
   return { design, preset: style.source === "preset" ? style.preset : null };
 }
 
+/** 保存作者意图 / 当前聚焦（原子写）。卷纲不经此写入：见 volumeOutlineReadOnlyError。 */
 export async function saveBookDesign(
   bookRoot: string,
-  patch: Partial<Pick<BookDesignDocuments, "authorIntent" | "currentFocus" | "volumeOutline">>,
+  patch: Partial<Pick<BookDesignDocuments, "authorIntent" | "currentFocus">>,
 ): Promise<BookDesignDocuments> {
-  const current = await loadBookDesign(bookRoot);
-  const next: BookDesignDocuments = {
-    ...current,
-    authorIntent: patch.authorIntent ?? current.authorIntent,
-    currentFocus: patch.currentFocus ?? current.currentFocus,
-    volumeOutline: patch.volumeOutline ?? current.volumeOutline,
-    styleProfileRaw: current.styleProfileRaw,
-  };
-  await mkdir(join(bookRoot, "story"), { recursive: true });
-  if (patch.authorIntent !== undefined) {
-    await writeFile(join(bookRoot, BOOK_DESIGN_RELATIVE_PATHS.authorIntent), next.authorIntent.endsWith("\n") ? next.authorIntent : `${next.authorIntent}\n`, "utf8");
-  }
-  if (patch.currentFocus !== undefined) {
-    await writeFile(join(bookRoot, BOOK_DESIGN_RELATIVE_PATHS.currentFocus), next.currentFocus.endsWith("\n") ? next.currentFocus : `${next.currentFocus}\n`, "utf8");
-  }
-  if (patch.volumeOutline !== undefined) {
-    await writeFile(join(bookRoot, BOOK_DESIGN_RELATIVE_PATHS.volumeOutline), next.volumeOutline.endsWith("\n") ? next.volumeOutline : `${next.volumeOutline}\n`, "utf8");
-  }
-  return next;
+  await saveWritingLayerFields(bookRoot, {
+    ...(patch.authorIntent !== undefined ? { authorIntent: patch.authorIntent } : {}),
+    ...(patch.currentFocus !== undefined ? { currentFocus: patch.currentFocus } : {}),
+  });
+  return loadBookDesign(bookRoot);
 }
 
 export function formatBookDesignForInjection(design: BookDesignDocuments): string {

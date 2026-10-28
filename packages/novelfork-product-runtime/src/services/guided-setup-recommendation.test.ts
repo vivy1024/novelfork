@@ -49,7 +49,8 @@ describe("applyGuidedSetup 的 Writing Skills 边界", () => {
 
 	test("仍然完成建书主产物：book.json 与经纬条目", () => {
 		const executable = executableOnly(guidedSetupBody());
-		expect(executable).toContain("writeBookConfig");
+		// book.json 经按书锁内的读改写落盘（updateBookConfigExplained），不再拿请求开始时的旧配置整份写回。
+		expect(executable).toContain("updateBookConfigExplained");
 		expect(executable).toContain("createJingweiEntriesFromGuide");
 	});
 

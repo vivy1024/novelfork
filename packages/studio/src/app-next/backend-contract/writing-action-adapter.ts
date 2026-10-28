@@ -110,14 +110,6 @@ const DESCRIPTORS: readonly WritingActionDescriptor[] = [
     capability: normalizeCapability({ id: "hooks.generate", status: "current" }),
   },
   {
-    id: "hooks.apply",
-    label: "应用伏笔到 pending_hooks.md",
-    entry: "POST /api/books/:bookId/hooks/apply",
-    outputBoundary: "analysis",
-    writesFormalChapter: false,
-    capability: normalizeCapability({ id: "hooks.apply", status: "current", metadata: { file: "pending_hooks.md" } }),
-  },
-  {
     id: "ai.audit",
     label: "连续性审校",
     entry: "POST /api/books/:id/audit/:chapter",
@@ -148,7 +140,6 @@ export function createWritingActionAdapter(input: CreateWritingActionAdapterInpu
   return {
     previewWritingMode: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.previewWritingMode(bookId, payload)),
     generateHooks: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.generateHooks(bookId, payload)),
-    applyHook: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.applyHook(bookId, payload)),
     auditChapter: async (bookId: string, chapterNumber: number) => normalizeWritingActionResult(await input.writing.auditChapter(bookId, chapterNumber)),
     detectChapter: async (bookId: string, chapterNumber: number) => normalizeWritingActionResult(await input.writing.detectChapter(bookId, chapterNumber)),
     listSessionNativeConfirmations: async (sessionId: string): Promise<NormalizedWritingActionResult> => {

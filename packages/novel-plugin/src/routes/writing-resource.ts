@@ -4,6 +4,7 @@ import {
   createWritingResourceService,
   type CreateServiceInput,
 } from "../engine/writing-resource/service.js";
+import type { ChapterStoreErrorCode, ChapterStoreExplanation } from "../engine/writing-resource/chapter-layout.js";
 import { resolveChapterVolumeDirectory } from "../handlers/outline-volume.js";
 import type {
   ListWritingResourcesFilter,
@@ -15,8 +16,39 @@ export interface WritingResourceRouterOptions {
   resolveBookDir?: (bookId: string) => string;
 }
 
+const CHAPTER_STORE_ERROR_CODES: ReadonlySet<string> = new Set<ChapterStoreErrorCode>([
+  "CHAPTER_INDEX_UNREADABLE",
+  "CHAPTER_INDEX_CORRUPT",
+  "CHAPTER_FILE_DELETE_FAILED",
+]);
+
+/**
+ * 章节存储拒绝继续时（索引读不到 / 已损坏 / 正文删不掉）返回带 explanation 的错误体，
+ * 结构与 routes/jingwei.ts 一致：{ error: { code, message }, explanation }。
+ * 按 code 识别而非 instanceof，不依赖模块同一性；其它错误原样抛给父应用。
+ */
+function chapterStoreErrorResponse(error: unknown): {
+  status: 409 | 503;
+  body: { error: { code: string; message: string }; explanation: ChapterStoreExplanation };
+} | null {
+  if (!(error instanceof Error)) return null;
+  const { code, explanation, statusCode } = error as { code?: unknown; explanation?: unknown; statusCode?: unknown };
+  if (typeof code !== "string" || !CHAPTER_STORE_ERROR_CODES.has(code)) return null;
+  if (!explanation || typeof explanation !== "object") return null;
+  return {
+    status: statusCode === 503 ? 503 : 409,
+    body: { error: { code, message: error.message }, explanation: explanation as ChapterStoreExplanation },
+  };
+}
+
 export function createWritingResourceRouter(options: WritingResourceRouterOptions = {}): Hono {
   const app = new Hono();
+
+  app.onError((error, c) => {
+    const chapterStore = chapterStoreErrorResponse(error);
+    if (chapterStore) return c.json(chapterStore.body, chapterStore.status);
+    throw error;
+  });
 
   function serviceForRequest() {
     const storage = getStorageDatabase();
@@ -54,6 +86,8 @@ export function createWritingResourceRouter(options: WritingResourceRouterOption
       const resource = await serviceForRequest().create(bookId, parseCreateInput(body));
       return c.json({ resource }, 201);
     } catch (cause) {
+      const chapterStore = chapterStoreErrorResponse(cause);
+      if (chapterStore) return c.json(chapterStore.body, chapterStore.status);
       return c.json({ error: cause instanceof Error ? cause.message : "Writing resource create failed" }, 400);
     }
   });

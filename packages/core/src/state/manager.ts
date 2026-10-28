@@ -839,11 +839,16 @@ export class StateManager {
     return discarded;
   }
 
+  /**
+   * 只在文件确实不存在时创建默认模板：wx 由操作系统原子判定「不存在才创建」。
+   * 已存在（EEXIST）直接跳过；其它错误（EBUSY/EPERM 等）抛出，绝不拿默认模板覆盖作者写的内容。
+   */
   private async writeIfMissing(path: string, content: string): Promise<void> {
     try {
-      await stat(path);
-    } catch {
-      await writeFile(path, content, "utf-8");
+      await writeFile(path, content, { encoding: "utf-8", flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | undefined)?.code === "EEXIST") return;
+      throw error;
     }
   }
 }

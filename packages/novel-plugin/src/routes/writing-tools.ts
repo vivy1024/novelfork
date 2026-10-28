@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Hono } from "hono";
@@ -26,15 +26,6 @@ import type { RouterContext } from "./context.js";
 import { chapterWordCount, listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
 
 type JsonContext = { readonly req: { json: <T>() => Promise<T> } };
-
-type GeneratedHookPayload = {
-  readonly id: string;
-  readonly style: string;
-  readonly text: string;
-  readonly rationale: string;
-  readonly retentionEstimate: string;
-  readonly relatedHookIds?: readonly string[];
-};
 
 type MeasuredMetric = {
   readonly status: "measured";
@@ -116,27 +107,8 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     return c.json({ hooks });
   });
 
-  app.post("/api/books/:bookId/hooks/apply", async (c) => {
-    const body = await readJsonBody(c);
-    const bookId = c.req.param("bookId");
-    await ctx.state.loadBookConfig(bookId);
-
-    const chapterNumber = readPositiveInteger(body.chapterNumber);
-    if (chapterNumber === undefined) {
-      return c.json({ error: "Invalid chapter number" }, 400);
-    }
-
-    const hook = normalizeGeneratedHook(body.hook);
-    if (!hook) {
-      return c.json({ error: "Invalid hook payload" }, 400);
-    }
-
-    const storyDir = join(ctx.state.bookDir(bookId), "story");
-    await mkdir(storyDir, { recursive: true });
-    await appendFile(join(storyDir, "pending_hooks.md"), formatPendingHookEntry(hook, chapterNumber), "utf-8");
-
-    return c.json({ persisted: true, file: "pending_hooks.md", hookId: hook.id });
-  });
+  // POST /hooks/apply 已下线：它只往 pending_hooks.md（伏笔的导出物）追加，下次导出整份重生成就丢了，
+  // 却返回 persisted:true。没有任何 UI 调用它。伏笔的唯一权威是经纬 foreshadowing 条目。
 
   app.get("/api/books/:bookId/pov", async (c) => {
     const bookId = c.req.param("bookId");
@@ -290,53 +262,6 @@ function buildHealthWarnings(sensitiveWordCount: number): BookHealthWarning[] {
     warnings.push({ type: "敏感词", message: `检测到 ${sensitiveWordCount} 处敏感词命中` });
   }
   return warnings;
-}
-
-function normalizeGeneratedHook(value: unknown): GeneratedHookPayload | null {
-  if (!isRecord(value)) return null;
-  const id = readRequiredText(value.id);
-  const text = readRequiredText(value.text);
-  if (!id || !text) return null;
-  const style = readRequiredText(value.style) ?? "unknown";
-  const rationale = readRequiredText(value.rationale) ?? "未提供";
-  const retentionEstimate = readRequiredText(value.retentionEstimate) ?? "unknown";
-  const relatedHookIds = Array.isArray(value.relatedHookIds)
-    ? value.relatedHookIds.map((item) => typeof item === "string" ? normalizeLine(item) : "").filter(Boolean)
-    : undefined;
-
-  return {
-    id,
-    style,
-    text,
-    rationale,
-    retentionEstimate,
-    ...(relatedHookIds && relatedHookIds.length > 0 ? { relatedHookIds } : {}),
-  };
-}
-
-function formatPendingHookEntry(hook: GeneratedHookPayload, chapterNumber: number): string {
-  return [
-    "",
-    "",
-    `## ${hook.id}`,
-    "- status: open",
-    `- chapter: ${chapterNumber}`,
-    `- style: ${hook.style}`,
-    `- retention: ${hook.retentionEstimate}`,
-    `- text: ${hook.text}`,
-    `- rationale: ${hook.rationale}`,
-    ...(hook.relatedHookIds?.length ? [`- related: ${hook.relatedHookIds.join(", ")}`] : []),
-  ].join("\n");
-}
-
-function readRequiredText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const text = normalizeLine(value);
-  return text ? text : null;
-}
-
-function normalizeLine(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
 }
 
 async function readChapter(ctx: RouterContext, bookId: string, chapterNumber: number): Promise<ChapterLookup | null> {

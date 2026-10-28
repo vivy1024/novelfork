@@ -73,6 +73,70 @@ describe("BookSettingsPanel 保存状态", () => {
   }, 15000);
 });
 
+describe("BookSettingsPanel 书籍层保存（只提交改动字段 + revision）", () => {
+  function layersResponse() {
+    return {
+      bookDesign: { authorIntent: "原意图", currentFocus: "原聚焦", volumeOutline: "第一卷：经纬导出" },
+      bookRulesRaw: "原规则",
+      revisions: { authorIntent: "rev-intent", currentFocus: "rev-focus", bookRulesRaw: "rev-rules" },
+    };
+  }
+
+  it("改当前聚焦时 PUT 只带 currentFocus 及其 revision，不带卷纲和其它字段", async () => {
+    fetchJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") return { revisions: { currentFocus: "rev-focus-2" } };
+      if (url.includes("/writing-layers")) return layersResponse();
+      return { book: { title: "测试书" } };
+    });
+    render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} />);
+
+    const focus = await screen.findByDisplayValue("原聚焦");
+    fireEvent.change(focus, { target: { value: "新聚焦" } });
+
+    await waitFor(() => {
+      expect(fetchJson.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT")).toBe(true);
+    }, { timeout: 4000 });
+    const put = fetchJson.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
+    expect(String(put[0])).toContain("/writing-layers");
+    expect(JSON.parse(String((put[1] as RequestInit).body))).toEqual({
+      bookDesign: { currentFocus: "新聚焦" },
+      revisions: { currentFocus: "rev-focus" },
+    });
+  }, 15000);
+
+  it("卷纲只读显示，并引导到经纬「卷纲/大纲」编辑", async () => {
+    fetchJson.mockImplementation(async (url: string) => (url.includes("/writing-layers") ? layersResponse() : { book: { title: "测试书" } }));
+    render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} />);
+
+    const outline = await screen.findByDisplayValue("第一卷：经纬导出");
+    expect(outline.hasAttribute("readonly")).toBe(true);
+    expect(screen.getByTestId("volume-outline-readonly").textContent).toContain("卷纲/大纲");
+  });
+
+  it("revision 冲突时提示作者重新载入，点按钮后重新读取", async () => {
+    let layerReads = 0;
+    fetchJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        const error = new Error("「作者意图」在你打开设置之后已经被别处改过") as Error & { code?: string };
+        error.code = "WRITING_LAYER_REVISION_CONFLICT";
+        throw error;
+      }
+      if (url.includes("/writing-layers")) { layerReads += 1; return layersResponse(); }
+      return { book: { title: "测试书" } };
+    });
+    render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} />);
+
+    fireEvent.change(await screen.findByDisplayValue("原意图"), { target: { value: "我的改动" } });
+
+    const banner = await screen.findByTestId("writing-layers-conflict", undefined, { timeout: 4000 });
+    expect(banner.textContent).toContain("被别处改过");
+    const before = layerReads;
+    fireEvent.click(screen.getByRole("button", { name: "重新载入最新内容" }));
+    await waitFor(() => expect(layerReads).toBe(before + 1));
+    await waitFor(() => expect(screen.queryByTestId("writing-layers-conflict")).toBeNull());
+  }, 15000);
+});
+
 describe("BookSettingsPanel 的宿主插槽", () => {
   it("宿主注入项目设置时渲染该分区，说明 Runtime 只覆盖技能与可选工具", async () => {
     render(

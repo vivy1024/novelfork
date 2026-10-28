@@ -802,7 +802,8 @@ export function StoryProgressBoard({
         await fetchJson(`${base}/jingwei/entries/${encodeURIComponent(entryId)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "paid_off" }),
+          // 只改状态，不代作者裁决机器冲突（路由默认把保存当作裁决，见 routes/jingwei.ts）。
+          body: JSON.stringify({ status: "paid_off", resolveConflict: false }),
         });
         setOpFeedback(`伏笔已标记为回收`);
       } else {

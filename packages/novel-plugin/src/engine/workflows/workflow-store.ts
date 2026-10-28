@@ -1,6 +1,7 @@
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
+
+import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 
 import {
   NOVEL_BUILTIN_WORKFLOWS,
@@ -527,16 +528,9 @@ async function writeRecipesFile(bookRoot: string, recipes: readonly NovelWorkflo
   const dir = dirname(filePath);
   await mkdir(dir, { recursive: true });
 
-  const tempPath = join(dir, `.${randomUUID()}.tmp`);
   const content = JSON.stringify(recipes, null, 2);
-
-  await writeFile(tempPath, `${content}\n`, "utf8");
-  try {
-    await rename(tempPath, filePath);
-  } catch (error) {
-    await unlink(tempPath).catch(() => undefined);
-    throw error;
-  }
+  // 原子写（fsync + rename，Windows 瞬时占用自动重试）：写坏时不覆盖原文件。
+  await writeFileAtomic(filePath, `${content}\n`);
 }
 
 /**

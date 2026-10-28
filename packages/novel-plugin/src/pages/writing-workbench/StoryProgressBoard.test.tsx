@@ -259,6 +259,41 @@ describe("StoryProgressBoard 故事推进章节网格", () => {
     expect(fetchJson.mock.calls[0][0]).toContain("/api/books/book-single/narrative-structure");
   });
 
+  it("伏笔格子「标记回收」只改状态，PUT body 显式带 resolveConflict:false，不代作者裁决机器冲突", async () => {
+    fetchJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") return { entry: { id: "fs-1" } };
+      if (url.includes("/narrative-structure")) {
+        return {
+          ok: true,
+          bookId: "book-paid",
+          currentChapter: 2,
+          volumes: [],
+          chapters: [{ number: 1, title: "雨夜", status: "accepted", wordCount: 2000 }],
+          scenes: [],
+          storylines: [],
+          mounts: [],
+          foreshadows: [
+            { id: "debt:fs-1", title: "停摆的钟", entryId: "fs-1", plantedChapter: 1, status: "planted", chaptersPending: 1, urgency: "watch", reason: "埋于第 1 章" },
+          ],
+          entities: [],
+        };
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+
+    render(<StoryProgressBoard bookId="book-paid" currentChapter={2} />);
+
+    const payoff = await screen.findByLabelText("标记回收 停摆的钟");
+    fireEvent.click(payoff);
+
+    await waitFor(() => {
+      const put = fetchJson.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+      expect(put).toBeDefined();
+      expect(String(put![0])).toContain("/jingwei/entries/fs-1");
+      expect(JSON.parse(String((put![1] as RequestInit).body))).toEqual({ status: "paid_off", resolveConflict: false });
+    });
+  });
+
   it("未来章列头点击「去写」进写作视图；已写章列头仍跳章节", async () => {
     const onOpenWriteView = vi.fn();
     const onOpenChapter = vi.fn();

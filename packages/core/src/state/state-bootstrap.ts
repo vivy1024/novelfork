@@ -1,5 +1,6 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, readdir, rename, stat } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { writeFileAtomic } from "../utils/atomic-write.js";
 import {
   ChapterSummariesStateSchema,
   CurrentStateStateSchema,
@@ -112,7 +113,8 @@ export async function bootstrapStructuredStateFromMarkdown(params: {
     ]),
   });
 
-  await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+  // 读路径（GET /state、写章前 bootstrap）每次都会走到这里：内容没变就不写 manifest。
+  await writeJsonIfChanged(manifestPath, manifest);
   if (!existingManifest) {
     createdFiles.push("manifest.json");
   }
@@ -164,11 +166,12 @@ export async function rewriteStructuredStateFromMarkdown(params: {
     ]),
   });
 
+  // 显式重建：四份文件各自原子替换。
   await Promise.all([
-    writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf-8"),
-    writeFile(currentStatePath, JSON.stringify(currentState, null, 2), "utf-8"),
-    writeFile(hooksPath, JSON.stringify(hooksState, null, 2), "utf-8"),
-    writeFile(summariesPath, JSON.stringify(summariesState, null, 2), "utf-8"),
+    writeFileAtomic(manifestPath, JSON.stringify(manifest, null, 2)),
+    writeFileAtomic(currentStatePath, JSON.stringify(currentState, null, 2)),
+    writeFileAtomic(hooksPath, JSON.stringify(hooksState, null, 2)),
+    writeFileAtomic(summariesPath, JSON.stringify(summariesState, null, 2)),
   ]);
 
   return {
@@ -220,8 +223,9 @@ async function loadOrBootstrapCurrentState(params: {
   const currentState = params.clampChapter !== undefined && bootstrapped.chapter > params.clampChapter
     ? clampChapterValue(bootstrapped, params.clampChapter, params.warnings)
     : bootstrapped;
+  // 走到这里说明文件不存在（ENOENT）或无效且已留底；读错误已在 loadJsonIfValid 抛出。
   const existed = await pathExists(params.statePath);
-  await writeFile(params.statePath, JSON.stringify(currentState, null, 2), "utf-8");
+  await writeFileAtomic(params.statePath, JSON.stringify(currentState, null, 2));
   if (!existed) {
     params.createdFiles.push("current_state.json");
   }
@@ -256,7 +260,7 @@ async function clampCurrentStateChapter(params: {
     return params.currentState;
   }
   const clamped = clampChapterValue(params.currentState, limit, params.warnings);
-  await writeFile(params.statePath, JSON.stringify(clamped, null, 2), "utf-8");
+  await writeFileAtomic(params.statePath, JSON.stringify(clamped, null, 2));
   return clamped;
 }
 
@@ -285,7 +289,7 @@ async function loadOrBootstrapHooks(params: {
     warnings: params.warnings,
   });
   const existed = await pathExists(params.statePath);
-  await writeFile(params.statePath, JSON.stringify(hooksState, null, 2), "utf-8");
+  await writeFileAtomic(params.statePath, JSON.stringify(hooksState, null, 2));
   if (!existed) {
     params.createdFiles.push("hooks.json");
   }
@@ -312,7 +316,7 @@ async function loadOrBootstrapSummaries(params: {
       const dedupedExisting = deduplicateSummaryRows(existing.rows);
       if (dedupedExisting.length < existing.rows.length) {
         const repaired = ChapterSummariesStateSchema.parse({ rows: dedupedExisting });
-        await writeFile(params.statePath, JSON.stringify(repaired, null, 2), "utf-8");
+        await writeFileAtomic(params.statePath, JSON.stringify(repaired, null, 2));
         return repaired;
       }
       return existing;
@@ -321,7 +325,7 @@ async function loadOrBootstrapSummaries(params: {
 
   const summariesState = params.bootstrapState ?? await loadMarkdownSummariesState(params.storyDir);
   const existed = await pathExists(params.statePath);
-  await writeFile(params.statePath, JSON.stringify(summariesState, null, 2), "utf-8");
+  await writeFileAtomic(params.statePath, JSON.stringify(summariesState, null, 2));
   if (!existed) {
     params.createdFiles.push("chapter_summaries.json");
   }
@@ -585,20 +589,89 @@ export async function resolveDurableStoryProgress(params: {
   return Math.max(durableArtifactProgress, explicitFallback);
 }
 
+/** 与产品层 DiagnosticExplanation 同形：发生了什么 / 为什么要看 / 建议怎么做。 */
+export interface RuntimeStateFileExplanation {
+  readonly whatHappened: string;
+  readonly whyItMatters: string;
+  readonly suggestedAction: string;
+}
+
+/**
+ * 结构化状态文件（story/state/*.json）读不到：不是「不存在」，而是 EBUSY/EPERM 这类 IO 错误。
+ * 此时绝不能当成缺失去按 markdown 重建覆写，直接抛出，由调用方带 explanation 交代给作者。
+ */
+export class RuntimeStateFileError extends Error {
+  readonly code = "RUNTIME_STATE_FILE_UNREADABLE";
+  readonly statusCode = 503;
+
+  constructor(
+    readonly path: string,
+    readonly explanation: RuntimeStateFileExplanation,
+    options?: { cause?: unknown },
+  ) {
+    super(explanation.whatHappened, options);
+    this.name = "RuntimeStateFileError";
+  }
+}
+
+function errnoCode(error: unknown): string | undefined {
+  return error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : undefined;
+}
+
+/** 内容没变就不写：GET /state 这类读路径每次都会走 bootstrap，不应每次都改文件。 */
+async function writeJsonIfChanged(path: string, value: unknown): Promise<boolean> {
+  const next = JSON.stringify(value, null, 2);
+  const current = await readFile(path, "utf-8").catch((error: unknown) => {
+    if (errnoCode(error) === "ENOENT") return null;
+    throw error;
+  });
+  if (current === next) return false;
+  await writeFileAtomic(path, next);
+  return true;
+}
+
+/** 坏文件改名留底（<name>.corrupt-<时间戳>），返回留底文件名；改名失败抛错，原文件不动。 */
+async function quarantineInvalidStateFile(path: string, fileLabel: string, reason: string): Promise<string> {
+  const backupName = `${basename(path)}.corrupt-${new Date().toISOString().replace(/[:.]/gu, "-")}`;
+  try {
+    await rename(path, join(dirname(path), backupName));
+  } catch (error) {
+    throw new RuntimeStateFileError(path, {
+      whatHappened: `结构化状态文件 story/state/${fileLabel} 内容无效（${reason}），尝试改名留底也失败了（${String(error)}），文件保持原样。`,
+      whyItMatters: "这份文件无效时需要按 markdown 重建；不先留底就重建，会覆盖掉文件里可能还能找回的内容。",
+      suggestedAction: `关闭可能占用 story/state/${fileLabel} 的编辑器或同步盘后重试；或手动把它改名备份后重试。`,
+    }, { cause: error });
+  }
+  return backupName;
+}
+
 async function loadJsonIfValid<T>(
   path: string,
   schema: { parse(value: unknown): T },
   warnings: string[],
   fileLabel: string,
 ): Promise<T | null> {
+  let raw: string;
   try {
-    const raw = await readFile(path, "utf-8");
+    raw = await readFile(path, "utf-8");
+  } catch (error) {
+    // 只有「确实不存在」才交给调用方创建；其它读错误一律抛出，不覆写。
+    if (errnoCode(error) === "ENOENT") return null;
+    throw new RuntimeStateFileError(path, {
+      whatHappened: `读取结构化状态文件 story/state/${fileLabel} 失败（${String(error)}），本次没有改动任何状态文件。`,
+      whyItMatters: "读不到时如果当成不存在，会按 markdown 重建并覆盖这份文件，已结算的状态（伏笔、章摘要、当前状态）可能被旧内容替换。",
+      suggestedAction: "多半是文件被同步盘、杀毒软件或编辑器临时占用；稍后重试。反复出现时检查该文件的权限与占用进程。",
+    }, { cause: error });
+  }
+  try {
     return schema.parse(JSON.parse(raw));
   } catch (error) {
-    const message = String(error);
-    if (!/ENOENT/.test(message)) {
-      appendWarning(warnings, `${fileLabel} invalid, rebuilt from markdown`);
-    }
+    // 内容无效：先改名留底，再交给调用方按 markdown 重建，告警里写明留底文件名，不静默丢弃。
+    const reason = error instanceof SyntaxError ? `JSON 解析失败：${error.message}` : "字段结构不符合预期";
+    const backupName = await quarantineInvalidStateFile(path, fileLabel, reason);
+    appendWarning(warnings, `${fileLabel} invalid (${reason}); original kept as ${backupName}, rebuilt from markdown`);
     return null;
   }
 }
@@ -682,8 +755,9 @@ async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return false;
+    throw error;
   }
 }
 

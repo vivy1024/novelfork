@@ -297,4 +297,23 @@ describe("pipeline.import_chapters 读旧索引的兼容回退也经路径守卫
       [2, "正义", "卷01/0002_正义.md"],
     ]);
   });
+
+  it("索引是坏 JSON：导入拒绝，原索引留底，不被「当成空」覆写成只剩新章", async () => {
+    const original = "[{\"number\":1,\"title\":\"旧章\",\"status\":\"approved\"";
+    await writeFile(indexPath(), original, "utf8");
+
+    await expect(executeRuntimeDomainTool(
+      "pipeline.import_chapters",
+      { content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      binding,
+      {} as never,
+    )).rejects.toMatchObject({ code: "CHAPTER_INDEX_CORRUPT" });
+
+    // 坏索引被改名留底（内容原样），没有写出一份只含新导入章的 index.json。
+    const entries = await readdir(join(testDir, "chapters"));
+    const backup = entries.find((name) => name.startsWith("index.json.corrupt-"));
+    expect(backup).toBeDefined();
+    expect(await readFile(join(testDir, "chapters", backup!), "utf8")).toBe(original);
+    expect(entries).not.toContain("index.json");
+  });
 });

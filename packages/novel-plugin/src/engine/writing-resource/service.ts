@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { LengthCountingMode, StorageDatabase } from "@vivy1024/novelfork-core";
 import { createWritingResourceFileStore, type WritingResourceFileStore } from "./file-store.js";
 import { applyChapterContentChange } from "./chapter-change-effects.js";
-import { volumeDirectoryName, type ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
+import { ChapterStoreError, volumeDirectoryName, type ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
 import { reconcileChapterFiles, type ReconciledChapterFile } from "./chapter-reconcile.js";
 import { createWritingResourceRepository, type WritingResourceRepository } from "./repository.js";
 import type {
@@ -93,8 +93,9 @@ export function createWritingResourceService(input: {
     const formalDatabaseResources = fileStore
       ? await Promise.all(databaseResources.map((resource) => materializeAcceptedChapter(bookId, resource)))
       : databaseResources;
+    // 索引读不到 / 已损坏（ChapterStoreError）必须报给作者，不能当成「没有章节」返回空列表。
     const fileResources = fileStore
-      ? await fileStore.list(bookId, filter).catch(() => [])
+      ? await fileStore.list(bookId, filter).catch(rethrowChapterStoreError(() => []))
       : [];
     return mergeResources(formalDatabaseResources, fileResources, filter);
   }
@@ -106,7 +107,7 @@ export function createWritingResourceService(input: {
     if (!fileStore || resource.type !== "chapter" || resource.status !== "accepted" || !resource.chapterNumber) {
       return resource;
     }
-    const existing = await fileStore.findAcceptedChapter(bookId, resource.chapterNumber).catch(() => null);
+    const existing = await fileStore.findAcceptedChapter(bookId, resource.chapterNumber).catch(rethrowChapterStoreError(() => null));
     if (existing) return existing;
     return fileStore.create(bookId, {
       ...resource,
@@ -125,7 +126,7 @@ export function createWritingResourceService(input: {
 
   async function findAcceptedChapter(bookId: string, chapterNumber: number): Promise<WritingResource | null> {
     const fileResource = fileStore
-      ? await fileStore.findAcceptedChapter(bookId, chapterNumber).catch(() => null)
+      ? await fileStore.findAcceptedChapter(bookId, chapterNumber).catch(rethrowChapterStoreError(() => null))
       : null;
     if (fileResource) return fileResource;
     const databaseResource = repository.findAcceptedChapter(bookId, chapterNumber);
@@ -213,6 +214,14 @@ export function createWritingResourceService(input: {
       if (repository.getById(bookId, id)) return repository.getHistory(bookId, id);
       return fileStore ? fileStore.getHistory(bookId, id) : [];
     },
+  };
+}
+
+/** 其它读错误维持原来的兜底；章节索引不可读 / 损坏的错误原样抛出，由 HTTP 层带 explanation 返回。 */
+function rethrowChapterStoreError<T>(fallback: () => T): (error: unknown) => T {
+  return (error) => {
+    if (error instanceof ChapterStoreError) throw error;
+    return fallback();
   };
 }
 

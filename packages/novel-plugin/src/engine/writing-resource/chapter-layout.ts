@@ -112,16 +112,88 @@ export async function listChapterFiles(bookRoot: string): Promise<ChapterFileEnt
   return result.sort((left, right) => left.number - right.number || left.chapterRelativePath.localeCompare(right.chapterRelativePath, "zh-CN"));
 }
 
+export interface ChapterStoreExplanation {
+  readonly whatHappened: string;
+  readonly whyItMatters: string;
+  readonly suggestedAction: string;
+}
+
+export type ChapterStoreErrorCode =
+  | "CHAPTER_INDEX_UNREADABLE"
+  | "CHAPTER_INDEX_CORRUPT"
+  | "CHAPTER_FILE_DELETE_FAILED";
+
+/**
+ * 章节存储拒绝继续的错误：读写半途不安全时直接抛出，不按空处理、不覆写。
+ * HTTP 层（routes/writing-resource.ts）按 statusCode 返回，并原样带上 explanation。
+ */
+export class ChapterStoreError extends Error {
+  readonly code: ChapterStoreErrorCode;
+  readonly statusCode: number;
+  readonly explanation: ChapterStoreExplanation;
+
+  constructor(code: ChapterStoreErrorCode, statusCode: number, explanation: ChapterStoreExplanation, options?: { cause?: unknown }) {
+    super(explanation.whatHappened, options);
+    this.name = "ChapterStoreError";
+    this.code = code;
+    this.statusCode = statusCode;
+    this.explanation = explanation;
+  }
+}
+
+export function errnoCode(error: unknown): string | undefined {
+  return error && typeof error === "object" && "code" in error && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : undefined;
+}
+
+export function describeFsError(error: unknown): string {
+  const code = errnoCode(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return code && !message.includes(code) ? `${code}: ${message}` : message;
+}
+
+/** 坏索引改名留底：index.json → index.json.corrupt-<时间戳>，之后的对账从空索引重建也不会抹掉原文件。 */
+async function quarantineCorruptIndex(indexPath: string, reason: string): Promise<never> {
+  const backupName = `${CHAPTER_INDEX_FILE}.corrupt-${new Date().toISOString().replace(/[:.]/gu, "-")}`;
+  const backupPath = join(dirname(indexPath), backupName);
+  try {
+    await rename(indexPath, backupPath);
+  } catch (renameError) {
+    throw new ChapterStoreError("CHAPTER_INDEX_CORRUPT", 409, {
+      whatHappened: `章节索引 chapters/${CHAPTER_INDEX_FILE} 无法解析（${reason}），尝试改名留底也失败了（${describeFsError(renameError)}），文件保持原样。`,
+      whyItMatters: "索引里记着每章的状态、导入来源和审计问题；在它修好之前继续读写章节，这些元数据可能被重建的空索引覆盖。",
+      suggestedAction: `关闭可能占用该文件的编辑器或同步盘后重试；或手动把 chapters/${CHAPTER_INDEX_FILE} 改名备份，NovelFork 会按磁盘上的章节文件重建索引。`,
+    }, { cause: renameError });
+  }
+  throw new ChapterStoreError("CHAPTER_INDEX_CORRUPT", 409, {
+    whatHappened: `章节索引 chapters/${CHAPTER_INDEX_FILE} 无法解析（${reason}），原文件已改名留底为 chapters/${backupName}。`,
+    whyItMatters: "索引里记着每章的状态、导入来源和审计问题。下次打开章节时会按磁盘上的章节正文重建索引，正文不受影响，但这些元数据只保存在留底文件里。",
+    suggestedAction: `需要找回章节状态或审计记录时，打开 chapters/${backupName} 修好 JSON 后改回 ${CHAPTER_INDEX_FILE}；不需要的话直接重试，索引会自动重建。`,
+  });
+}
+
 export async function readChapterIndex(bookRoot: string): Promise<ChapterIndexRecord[]> {
   const indexPath = join(bookRoot, CHAPTERS_DIRECTORY, CHAPTER_INDEX_FILE);
-  const raw = await readFile(indexPath, "utf8").catch(() => "[]");
+  let raw: string;
+  try {
+    raw = await readFile(indexPath, "utf8");
+  } catch (error) {
+    // 只有「文件确实不存在」才等于空索引；EBUSY/EPERM 等读不到的情况必须抛出，否则对账会把空索引写回去。
+    if (errnoCode(error) === "ENOENT") return [];
+    throw new ChapterStoreError("CHAPTER_INDEX_UNREADABLE", 503, {
+      whatHappened: `读取章节索引 chapters/${CHAPTER_INDEX_FILE} 失败（${describeFsError(error)}），本次操作已中止，索引没有被改动。`,
+      whyItMatters: "读不到索引时如果当成空继续，章节状态、导入来源和审计问题等元数据会被覆盖丢失。",
+      suggestedAction: "多半是文件被同步盘、杀毒软件或其他编辑器临时占用；稍后重试即可。反复出现时检查该文件的权限与占用进程。",
+    }, { cause: error });
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch {
-    return [];
+  } catch (error) {
+    return quarantineCorruptIndex(indexPath, `JSON 解析失败：${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) return quarantineCorruptIndex(indexPath, "顶层不是数组");
   // S1.1：fileName 越出章节目录的条目视为无效，既不读也不写回（见 chapter-path-guard.ts）。
   // 整份索引共用一个解析器：章节目录的 realpath 只算一次，不随条目数重复同步 IO（T-01）。
   const resolveChapterFile = createChapterFileResolver(join(bookRoot, CHAPTERS_DIRECTORY));

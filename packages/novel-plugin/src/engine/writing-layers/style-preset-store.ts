@@ -1,6 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+
+import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 import {
   composeStyleGuide, createStylePreset, StyleFingerprintSchema, StylePresetSchema,
   type StyleFingerprint, type StylePreset,
@@ -77,14 +79,9 @@ async function withStyleWrite<T>(bookRoot: string, operation: () => Promise<T>):
 async function writePreset(bookRoot: string, preset: StylePreset): Promise<LoadedStylePreset> {
   const dir = join(bookRoot, "story");
   await mkdir(dir, { recursive: true });
-  const temporary = join(dir, `.style-preset-${randomUUID()}.tmp`);
   const raw = `${JSON.stringify(preset, null, 2)}\n`;
-  try {
-    await writeFile(temporary, raw, "utf8");
-    await rename(temporary, join(bookRoot, STYLE_PRESET_RELATIVE_PATH));
-  } finally {
-    await unlink(temporary).catch(() => undefined);
-  }
+  // 原子写（fsync + rename，Windows 瞬时占用自动重试）：写入中断时文风预设只会是旧版或新版。
+  await writeFileAtomic(join(bookRoot, STYLE_PRESET_RELATIVE_PATH), raw);
   return { preset, revision: revision(raw), source: "preset", guideText: composeStyleGuide(preset) };
 }
 

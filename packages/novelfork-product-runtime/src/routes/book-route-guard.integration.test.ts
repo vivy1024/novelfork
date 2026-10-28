@@ -54,13 +54,8 @@ beforeAll(async () => {
 });
 
 describe("书路由守卫：用户 B 不能动用户 A 的书", () => {
-	test("B 调 A 的 hooks/apply 与 hooks/generate 被拒，A 的 pending_hooks.md 不变", async () => {
+	test("B 调 A 的 hooks/generate 与未知 hooks 子路由被拒，A 的 pending_hooks.md 不变", async () => {
 		const b = productApp(userB);
-		const apply = await b.request(
-			`/api/books/${bookId}/hooks/apply`,
-			json("POST", { chapterNumber: 1, hook: { id: "b-injected", text: "B 注入的钩子" } }),
-		);
-		expect(apply.status).toBe(404);
 		const generate = await b.request(`/api/books/${bookId}/hooks/generate`, json("POST", { chapterNumber: 1, chapterContent: "正文" }));
 		expect(generate.status).toBe(404);
 		const unknownHookAction = await b.request(`/api/books/${bookId}/hooks/some-new-action`, json("POST", {}));
@@ -97,16 +92,24 @@ describe("书路由守卫：用户 B 不能动用户 A 的书", () => {
 		}
 	});
 
-	test("A 自己照常可用：能力路由可读，hooks/apply 能写入（证明上面的 404 来自归属校验而非路由不存在）", async () => {
+	test("A 自己照常可用：能力路由可读，hooks/generate 走到路由本身（证明上面的 404 来自归属校验而非路由不存在）", async () => {
 		const a = productApp(userA);
 		expect((await a.request(`/api/books/${bookId}/skills`)).status).toBe(200);
+		// 测试环境没有配置模型：路由存在并执行到模型门禁，返回 409 MODEL_NOT_CONFIGURED，而不是归属守卫的 404。
+		const generate = await a.request(`/api/books/${bookId}/hooks/generate`, json("POST", { chapterNumber: 1, chapterContent: "正文" }));
+		const body = await generate.clone().text();
+		expect({ status: generate.status, body }).toMatchObject({ status: 409 });
+		expect(body).toContain("MODEL_NOT_CONFIGURED");
+		expect(await readFile(pendingHooksPath, "utf8")).toBe(ORIGINAL_HOOKS);
+	});
+
+	test("hooks/apply 已下线：A 自己调用也不再写 pending_hooks.md", async () => {
+		const a = productApp(userA);
 		const apply = await a.request(
 			`/api/books/${bookId}/hooks/apply`,
 			json("POST", { chapterNumber: 1, hook: { id: "a-own", text: "A 自己的钩子" } }),
 		);
-		expect({ status: apply.status, body: await apply.clone().text() }).toMatchObject({ status: 200 });
-		const after = await readFile(pendingHooksPath, "utf8");
-		expect(after.startsWith(ORIGINAL_HOOKS)).toBe(true);
-		expect(after).toContain("A 自己的钩子");
+		expect(apply.status).toBe(404);
+		expect(await readFile(pendingHooksPath, "utf8")).toBe(ORIGINAL_HOOKS);
 	});
 });

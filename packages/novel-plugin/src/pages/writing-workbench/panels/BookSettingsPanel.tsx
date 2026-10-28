@@ -28,6 +28,19 @@ interface BookWritingLayers {
   bookRulesRaw: string;
 }
 
+/** 可编辑的层字段。卷纲只读：权威在经纬「卷纲/大纲」条目，volume_outline.md 只是导出物。 */
+type EditableLayerField = "authorIntent" | "currentFocus" | "bookRulesRaw";
+
+function readRevisions(value: unknown): Partial<Record<EditableLayerField, string>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = value as Record<string, unknown>;
+  const result: Partial<Record<EditableLayerField, string>> = {};
+  for (const field of ["authorIntent", "currentFocus", "bookRulesRaw"] as const) {
+    if (typeof record[field] === "string") result[field] = record[field] as string;
+  }
+  return result;
+}
+
 /** 可被外部直接定位的分区（写作视图一键修用）。 */
 export type BookSettingsSection = "basic" | "writing-skills" | "narrative-memory" | "writing-layers" | "runtime-project";
 
@@ -87,6 +100,12 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
     volumeOutline: "",
     bookRulesRaw: "",
   });
+  // 防抖保存读这几个 ref：保存时只取「改过的字段」的最新值和读取时拿到的 revision。
+  const layersRef = useRef<BookWritingLayers>(layers);
+  const layerRevisionsRef = useRef<Partial<Record<EditableLayerField, string>>>({});
+  const dirtyLayerFieldsRef = useRef<Set<EditableLayerField>>(new Set());
+  const [layerConflict, setLayerConflict] = useState(false);
+  const [layersReloadToken, setLayersReloadToken] = useState(0);
   const sectionRefs = useRef<Partial<Record<BookSettingsSection, HTMLElement | null>>>({});
 
   // 从写作视图「一键修」跳进来时，直接滚到目标分区；
@@ -129,22 +148,26 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
     let cancelled = false;
     fetchJson<Record<string, unknown>>(`/api/books/${encodeURIComponent(bookId)}/writing-layers`)
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled || !data) return;
         const design = data.bookDesign && typeof data.bookDesign === "object" ? data.bookDesign as Record<string, unknown> : {};
-        setLayers({
+        const next: BookWritingLayers = {
           authorIntent: typeof design.authorIntent === "string" ? design.authorIntent : "",
           currentFocus: typeof design.currentFocus === "string" ? design.currentFocus : "",
           volumeOutline: typeof design.volumeOutline === "string" ? design.volumeOutline : "",
           bookRulesRaw: typeof data.bookRulesRaw === "string"
             ? data.bookRulesRaw
             : typeof data.bookRulesText === "string" ? data.bookRulesText : "",
-        });
+        };
+        layersRef.current = next;
+        layerRevisionsRef.current = readRevisions(data.revisions);
+        dirtyLayerFieldsRef.current = new Set();
+        setLayers(next);
       })
       .catch(() => {
         // 存量书可能还没有独立层文件，保持空表单。
       });
     return () => { cancelled = true; };
-  }, [bookId]);
+  }, [bookId, layersReloadToken]);
 
   const saveConfig = useCallback(async (partial: Partial<BookConfig>) => {
     setSaveStatus({ state: "saving" });
@@ -184,34 +207,51 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
     void debouncedSave({ [key]: value });
   }, [debouncedSave]);
 
-  const saveLayers = useDebounce(async (next: BookWritingLayers) => {
+  // 只提交真正改过的字段，并带上读取时的 revision；服务端发现别处改过就拒绝，不覆盖。
+  const flushLayers = useCallback(async () => {
+    const fields = [...dirtyLayerFieldsRef.current];
+    if (fields.length === 0) return;
+    dirtyLayerFieldsRef.current = new Set();
+    const values = layersRef.current;
+    const design: Partial<Record<"authorIntent" | "currentFocus", string>> = {};
+    if (fields.includes("authorIntent")) design.authorIntent = values.authorIntent;
+    if (fields.includes("currentFocus")) design.currentFocus = values.currentFocus;
+    const revisions = Object.fromEntries(fields
+      .filter((field) => layerRevisionsRef.current[field] !== undefined)
+      .map((field) => [field, layerRevisionsRef.current[field]]));
     setSaveStatus({ state: "saving" });
     try {
-      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/writing-layers`, {
+      const response = await fetchJson<Record<string, unknown> | undefined>(`/api/books/${encodeURIComponent(bookId)}/writing-layers`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          bookDesign: {
-            authorIntent: next.authorIntent,
-            currentFocus: next.currentFocus,
-            volumeOutline: next.volumeOutline,
-          },
-          bookRulesRaw: next.bookRulesRaw,
+          ...(Object.keys(design).length > 0 ? { bookDesign: design } : {}),
+          ...(fields.includes("bookRulesRaw") ? { bookRulesRaw: values.bookRulesRaw } : {}),
+          revisions,
         }),
       });
+      layerRevisionsRef.current = { ...layerRevisionsRef.current, ...readRevisions(response?.revisions) };
       setSaveStatus({ state: "saved" });
       setTimeout(() => setSaveStatus({ state: "idle" }), 1500);
     } catch (cause) {
+      // 失败的字段仍算未保存，下次改动时一并重试；冲突时保留作者手上的内容，等作者决定重新载入。
+      for (const field of fields) dirtyLayerFieldsRef.current.add(field);
+      if ((cause as { code?: unknown } | null)?.code === "WRITING_LAYER_REVISION_CONFLICT") setLayerConflict(true);
       setSaveStatus({ state: "error", message: cause instanceof Error ? cause.message : "未知错误" });
     }
-  }, 1000);
-  const updateLayers = useCallback((key: keyof BookWritingLayers, value: string) => {
-    setLayers((current) => {
-      const next = { ...current, [key]: value };
-      void saveLayers(next);
-      return next;
-    });
+  }, [bookId]);
+  const saveLayers = useDebounce(flushLayers, 1000);
+  const updateLayers = useCallback((key: EditableLayerField, value: string) => {
+    dirtyLayerFieldsRef.current.add(key);
+    layersRef.current = { ...layersRef.current, [key]: value };
+    setLayers(layersRef.current);
+    void saveLayers();
   }, [saveLayers]);
+  const reloadLayers = useCallback(() => {
+    setLayerConflict(false);
+    setSaveStatus({ state: "idle" });
+    setLayersReloadToken((token) => token + 1);
+  }, []);
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -264,6 +304,16 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
             <h2 className="text-sm font-semibold text-foreground">书籍层与规则层</h2>
             <p className="text-xs text-muted-foreground">书籍设计属于本书立项与推进；书籍规则属于强制约束与禁忌。</p>
           </div>
+          {layerConflict && (
+            <div role="alert" data-testid="writing-layers-conflict" className="flex items-start gap-2 rounded-lg border border-destructive/40 p-3 text-xs">
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+              <div className="space-y-2">
+                <p className="text-foreground">这部分内容在你打开设置后被别处改过，刚才的改动没有保存，磁盘上的内容也没有被覆盖。</p>
+                <p className="text-muted-foreground">先复制你的改动，再重新载入查看最新内容后合并进去。</p>
+                <Button type="button" size="sm" variant="outline" onClick={reloadLayers}>重新载入最新内容</Button>
+              </div>
+            </div>
+          )}
           <div className="space-y-3 rounded-lg border border-border p-4">
             <label className="block space-y-1 text-xs text-muted-foreground">
               <span>作者意图（长期创作方向）</span>
@@ -285,16 +335,20 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
                 placeholder="接下来几章必须优先解决的冲突、揭示或推进目标。"
               />
             </label>
-            <label className="block space-y-1 text-xs text-muted-foreground">
-              <span>分卷大纲摘要</span>
+            <div className="space-y-1 text-xs text-muted-foreground" data-testid="volume-outline-readonly">
+              <span>分卷大纲摘要（只读）</span>
               <Textarea
+                aria-describedby="volume-outline-hint"
                 aria-label="分卷大纲摘要"
                 value={layers.volumeOutline}
-                onChange={(event) => updateLayers("volumeOutline", event.target.value)}
-                className="min-h-20"
-                placeholder="按卷记录的核心目标与阶段性收束。"
+                readOnly
+                className="min-h-20 bg-muted/40"
+                placeholder="还没有卷纲。"
               />
-            </label>
+              <p id="volume-outline-hint">
+                这里显示的是经纬「卷纲/大纲」条目的导出内容，在此处修改会在下次导出时被覆盖。要调整卷纲，请到经纬的「卷纲/大纲」分类里编辑，或让叙述者生成卷纲。
+              </p>
+            </div>
             <label className="block space-y-1 text-xs text-muted-foreground">
               <span>书籍硬规则与禁忌（book_rules.md）</span>
               <Textarea

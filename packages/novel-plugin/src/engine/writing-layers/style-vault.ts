@@ -10,8 +10,8 @@
  *   供作者确认后采纳为本书范文（采纳走文风预设的既有保存路径，不在这里写预设）。
  */
 
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readdir, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
 
@@ -19,6 +19,7 @@ import { CHAPTERS_DIRECTORY, readChapterIndex } from "../writing-resource/chapte
 import { resolveChapterFile } from "../writing-resource/chapter-path-guard.js";
 import { createStylePreset, STYLE_SCENE_TYPES, type StylePreset } from "./style-preset.js";
 import { loadStylePreset, saveStylePreset, type LoadedStylePreset } from "./style-preset-store.js";
+import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 
 export const STYLE_VAULT_RELATIVE_DIR = join("story", "style-vault");
 
@@ -50,14 +51,8 @@ export async function saveChapterAiDraft(
     source: input.source,
     createdAt: (input.now ?? new Date()).toISOString(),
   };
-  const temporary = join(dir, `.draft-${randomUUID()}.tmp`);
-  try {
-    await writeFile(temporary, `${JSON.stringify(draft, null, 2)}\n`, "utf8");
-    await rename(temporary, join(dir, draftFileName(input.chapterNumber)));
-  } catch (error) {
-    await unlink(temporary).catch(() => undefined);
-    throw error;
-  }
+  // 原子写（fsync + rename，Windows 瞬时占用自动重试）：写入中断时 AI 草稿只会是旧版或新版。
+  await writeFileAtomic(join(dir, draftFileName(input.chapterNumber)), `${JSON.stringify(draft, null, 2)}\n`);
 }
 
 /** 没有原稿返回 null；原稿损坏时抛错，调用方如实报告，不当作「没有 AI 参与」。 */

@@ -1,5 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, rename } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+
+import { writeFileAtomic } from "../engine/writing-resource/atomic-write.js";
 
 import type { ChapterMeta, StorageDatabase } from "@vivy1024/novelfork-core";
 import {
@@ -83,6 +85,30 @@ export interface NarrativeLineApplyResult {
 
 const FORESHADOW_DUE_GAP = 10;
 const STALLED_CONFLICT_GAP = 5;
+const NARRATIVE_LINE_FILE = "narrative_line.json";
+
+/**
+ * 叙事线文件的按书串行锁（进程内）。写入方都在产品进程里，排队即可；
+ * 写法同 engine/writing-resource/chapter-index-lock.ts，但锁的是另一份文件，单独一条队列。
+ */
+const narrativeLineLockTails = new Map<string, Promise<void>>();
+
+async function withNarrativeLineLock<T>(storePath: string, task: () => Promise<T>): Promise<T> {
+  const absolute = resolve(storePath);
+  const key = process.platform === "win32" ? absolute.toLowerCase() : absolute;
+  const previous = narrativeLineLockTails.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((resolveRelease) => { release = resolveRelease; });
+  const tail = previous.then(() => mine);
+  narrativeLineLockTails.set(key, tail);
+  await previous;
+  try {
+    return await task();
+  } finally {
+    release();
+    if (narrativeLineLockTails.get(key) === tail) narrativeLineLockTails.delete(key);
+  }
+}
 
 export function createNarrativeLineService(options: NarrativeLineServiceOptions): NarrativeLineService {
   return new NarrativeLineService(options);
@@ -203,6 +229,18 @@ export class NarrativeLineService {
     readonly confirmationId?: string;
     readonly reason?: string;
   }): Promise<NarrativeLineApplyResult> {
+    // 读改写整份 narrative_line.json：按书串行，防止两个 apply 交错时后写的抹掉先写的。
+    return withNarrativeLineLock(this.storePath(input.bookId), () => this.applyChangeLocked(input));
+  }
+
+  private async applyChangeLocked(input: {
+    readonly bookId: string;
+    readonly preview: NarrativeLineMutationPreview;
+    readonly decision: "approved" | "rejected";
+    readonly sessionId?: string;
+    readonly confirmationId?: string;
+    readonly reason?: string;
+  }): Promise<NarrativeLineApplyResult> {
     const preview = normalizePreviewForBook(input.bookId, input.preview);
     const store = await this.loadStore(input.bookId);
 
@@ -298,28 +336,47 @@ export class NarrativeLineService {
     }
   }
 
+  /**
+   * 读叙事线存储。只有文件不存在才当空；读不到（EBUSY/EPERM）直接抛错；
+   * 内容坏了先改名留底（narrative_line.json.corrupt-<时间戳>）再抛错——当空处理的话，
+   * 下一次 apply 会用「空 + 新节点」整份覆盖，作者的全部节点与审批台账都会消失。
+   */
   private async loadStore(bookId: string): Promise<NarrativeLineStore> {
-    const raw = await this.readStoryFile(bookId, "narrative_line.json");
-    if (!raw) return emptyStore();
+    const path = this.storePath(bookId);
+    let raw: string;
     try {
-      return normalizeStore(JSON.parse(raw) as unknown, bookId);
-    } catch {
-      return emptyStore();
+      raw = await readFile(path, "utf-8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return emptyStore();
+      throw new Error(`读取 story/${NARRATIVE_LINE_FILE} 失败（${error instanceof Error ? error.message : String(error)}），文件没有被改动。多半是被同步盘或编辑器临时占用，稍后重试即可`, { cause: error });
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch (error) {
+      return this.quarantineCorruptStore(path, `JSON 解析失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!isRecord(parsed)) return this.quarantineCorruptStore(path, "顶层不是对象");
+    return normalizeStore(parsed, bookId);
+  }
+
+  private async quarantineCorruptStore(path: string, reason: string): Promise<never> {
+    const backupName = `${NARRATIVE_LINE_FILE}.corrupt-${this.now().toISOString().replace(/[:.]/gu, "-")}`;
+    try {
+      await rename(path, join(dirname(path), backupName));
+    } catch (error) {
+      throw new Error(`story/${NARRATIVE_LINE_FILE} 内容无效（${reason}），改名留底也失败了（${error instanceof Error ? error.message : String(error)}），文件保持原样。请先手动备份该文件再重试`, { cause: error });
+    }
+    throw new Error(`story/${NARRATIVE_LINE_FILE} 内容无效（${reason}），原文件已留底为 story/${backupName}，本次没有写入。需要找回作者节点与审批台账时修好该文件的 JSON 后改回原名；不需要的话直接重试，会从空的叙事线开始`);
   }
 
   private async writeStore(bookId: string, store: NarrativeLineStore): Promise<void> {
-    const storyDir = join(this.state.bookDir(bookId), "story");
-    await mkdir(storyDir, { recursive: true });
-    await writeFile(join(storyDir, "narrative_line.json"), `${JSON.stringify(store, null, 2)}\n`, "utf-8");
+    // 原子替换：中途失败只会留下旧版本或新版本，不留半截 JSON。
+    await writeFileAtomic(this.storePath(bookId), `${JSON.stringify(store, null, 2)}\n`);
   }
 
-  private async readStoryFile(bookId: string, fileName: string): Promise<string | null> {
-    try {
-      return await readFile(join(this.state.bookDir(bookId), "story", fileName), "utf-8");
-    } catch {
-      return null;
-    }
+  private storePath(bookId: string): string {
+    return join(this.state.bookDir(bookId), "story", NARRATIVE_LINE_FILE);
   }
 
   private async resolveStorage(): Promise<StorageDatabase | null> {

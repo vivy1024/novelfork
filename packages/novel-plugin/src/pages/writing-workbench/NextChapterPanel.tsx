@@ -129,7 +129,8 @@ export function NextChapterPanel({
       await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(debt.entryId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fieldsPatch: { status: "paid_off", payoffChapter: plan.nextChapter - 1 } }),
+        // 只改状态，不代作者裁决机器冲突（路由默认把保存当作裁决，见 routes/jingwei.ts）。
+        body: JSON.stringify({ fieldsPatch: { status: "paid_off", payoffChapter: plan.nextChapter - 1 }, resolveConflict: false }),
       });
       setNote(`伏笔「${debt.title}」已按第 ${plan.nextChapter - 1} 章标记为已回收。`);
       setVersion((value) => value + 1);

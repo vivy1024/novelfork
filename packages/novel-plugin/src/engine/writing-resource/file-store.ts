@@ -4,8 +4,7 @@
  * 正式章节文件落在 {bookDir}/chapters/卷NN/*.md；chapters/index.json
  * 保存相对于 chapters/ 的 fileName，candidate/draft 不进入文件存储。
  */
-import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
+import { mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { LengthCountingMode } from "@vivy1024/novelfork-core";
@@ -22,8 +21,12 @@ import type {
 } from "./types.js";
 import {
   CHAPTERS_DIRECTORY,
+  ChapterStoreError,
   DEFAULT_VOLUME_DIRECTORY,
+  describeFsError as describeError,
+  errnoCode,
   type ChapterIndexRecord,
+  type ChapterStoreExplanation,
   type ChapterVolumeDirectoryResolver,
   chapterRelativePath,
   chapterWordCount,
@@ -33,6 +36,16 @@ import {
   volumeDirectoryName,
   writeChapterIndex,
 } from "./chapter-layout.js";
+
+export interface ChapterStoreWarning {
+  readonly code: "CHAPTER_OLD_FILE_NOT_REMOVED";
+  readonly explanation: ChapterStoreExplanation;
+}
+
+/** 写入已成功但有收尾告警时挂在 metadata.warnings 上，调用方原样转给作者。 */
+function withWarnings(resource: WritingResource, warnings: readonly ChapterStoreWarning[]): WritingResource {
+  return warnings.length ? { ...resource, metadata: { ...resource.metadata, warnings } } : resource;
+}
 
 function chapterId(number: number): string {
   return `chapter:${number}`;
@@ -70,6 +83,36 @@ export function createWritingResourceFileStore(
   async function observedModifiedAt(path: string): Promise<number | undefined> {
     const info = await stat(path).catch(() => null);
     return info ? Math.floor(info.mtimeMs) : undefined;
+  }
+
+  /** 读正文：不存在返回 undefined；其他读错误（EBUSY/EPERM）抛出，不当成空正文写回。 */
+  async function readChapterBody(path: string): Promise<string | undefined> {
+    try {
+      return await readFile(path, "utf-8");
+    } catch (error) {
+      if (errnoCode(error) === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+
+  /** 新正文与索引都落盘后删旧文件名的正文；失败只告警不回滚，返回带 explanation 的告警交给调用方。 */
+  async function removeSupersededFile(bookId: string, oldFileName: string, nextFileName: string): Promise<ChapterStoreWarning[]> {
+    try {
+      await unlink(chapterPath(bookId, oldFileName));
+      return [];
+    } catch (error) {
+      if (errnoCode(error) === "ENOENT") return [];
+      const warning: ChapterStoreWarning = {
+        code: "CHAPTER_OLD_FILE_NOT_REMOVED",
+        explanation: {
+          whatHappened: `章节已改存为 chapters/${normalizeChapterRelativePath(nextFileName)}，但旧文件 chapters/${normalizeChapterRelativePath(oldFileName)} 没能删除（${describeError(error)}）。`,
+          whyItMatters: "新正文和索引都已保存，内容不会丢；旧文件留在磁盘上，同一章在文件夹里会看到两个文件。",
+          suggestedAction: "关闭占用旧文件的编辑器或同步盘后，手动删除这个旧文件即可。",
+        },
+      };
+      console.warn(`[chapter-store] ${warning.explanation.whatHappened}`);
+      return [warning];
+    }
   }
 
   function chaptersDir(bookId: string) {
@@ -157,11 +200,12 @@ export function createWritingResourceFileStore(
       const volumeDirectory = normalizeChapterRelativePath(await resolveVolumeDirectory(bookId, chapterNumber)) || DEFAULT_VOLUME_DIRECTORY;
       const fileName = chapterRelativePath(volumeDirectory, chapterNumber, input.title);
       const previous = index.find((entry) => entry.number === chapterNumber);
-      if (previous && normalizeChapterRelativePath(previous.fileName) !== fileName) {
-        await unlink(chapterPath(bookId, previous.fileName)).catch(() => undefined);
-      }
+      const supersededFileName = previous && normalizeChapterRelativePath(previous.fileName) !== fileName
+        ? previous.fileName
+        : null;
       await mkdir(dirname(chapterPath(bookId, fileName)), { recursive: true });
-      // 正文原子替换后再写索引；正文与索引各自 tmp+fsync+rename，两个文件层面不追求事务。
+      // 顺序：新正文原子写 → 索引原子写 → 两步都成功才删旧文件名的正文。
+      // 任何一步失败都还留着旧正文；删旧文件失败只告警不回滚（对账会把残留文件按章号合并，不会丢正文）。
       await writeFileAtomic(chapterPath(bookId, fileName), content);
       const now = new Date(input.updatedAt ?? Date.now()).toISOString();
       const fileModifiedAt = await observedModifiedAt(chapterPath(bookId, fileName));
@@ -178,7 +222,8 @@ export function createWritingResourceFileStore(
       nextIndex.push(record);
       nextIndex.sort((a, b) => a.number - b.number);
       await writeChapterIndex(bookRoot, nextIndex);
-      return chapterToResource(bookId, record, content);
+      const warnings = supersededFileName ? await removeSupersededFile(bookId, supersededFileName, fileName) : [];
+      return withWarnings(await chapterToResource(bookId, record, content), warnings);
       });
     },
 
@@ -192,33 +237,36 @@ export function createWritingResourceFileStore(
       const idx = index.findIndex((entry) => entry.number === chapterNumber);
       if (idx === -1) return null;
       const entry = { ...index[idx]! };
-      const oldPath = chapterPath(bookId, entry.fileName);
-      let content = input.content;
-      if (content !== undefined) {
-        await mkdir(dirname(oldPath), { recursive: true });
-        await writeFileAtomic(oldPath, content);
-      }
+      const oldFileName = entry.fileName;
+      const oldPath = chapterPath(bookId, oldFileName);
+      let nextFileName = oldFileName;
       if (input.title !== undefined) {
         const oldVolume = normalizeChapterRelativePath(dirname(entry.fileName));
         const volumeDirectory = oldVolume && oldVolume !== "." ? oldVolume : normalizeChapterRelativePath(await resolveVolumeDirectory(bookId, chapterNumber)) || DEFAULT_VOLUME_DIRECTORY;
-        const nextFileName = chapterRelativePath(volumeDirectory, chapterNumber, input.title);
-        const nextPath = chapterPath(bookId, nextFileName);
-        entry.fileName = nextFileName;
-        entry.title = input.title;
-        if (oldPath !== nextPath && existsSync(oldPath)) {
-          await mkdir(dirname(nextPath), { recursive: true });
-          await rename(oldPath, nextPath);
-        }
+        nextFileName = chapterRelativePath(volumeDirectory, chapterNumber, input.title);
       }
-      content = content ?? await readFile(chapterPath(bookId, entry.fileName), "utf-8").catch(() => "");
+      const nextPath = chapterPath(bookId, nextFileName);
+      const moving = nextPath !== oldPath;
+      // 改标题换文件名不再用 rename 搬旧文件：先把正文原子写进新文件名，再写索引，最后删旧文件。
+      // 只改标题时正文取自旧文件；旧文件不存在就只改索引（与此前行为一致），读不到（EBUSY 等）直接抛出。
+      let content = input.content;
+      if (content === undefined && moving) content = await readChapterBody(oldPath);
+      if (content !== undefined) {
+        await mkdir(dirname(nextPath), { recursive: true });
+        await writeFileAtomic(nextPath, content);
+      }
+      entry.fileName = nextFileName;
+      if (input.title !== undefined) entry.title = input.title;
+      content = content ?? await readChapterBody(nextPath) ?? "";
       entry.wordCount = input.wordCount ?? chapterWordCount(content, countingMode);
       entry.contentHash = chapterContentFingerprint(content);
       entry.updatedAt = new Date(input.updatedAt ?? Date.now()).toISOString();
-      const fileModifiedAt = await observedModifiedAt(chapterPath(bookId, entry.fileName));
+      const fileModifiedAt = await observedModifiedAt(nextPath);
       if (fileModifiedAt !== undefined) entry.fileModifiedAt = fileModifiedAt;
       index[idx] = entry;
       await writeChapterIndex(bookRoot, index);
-      return chapterToResource(bookId, entry, content);
+      const warnings = moving ? await removeSupersededFile(bookId, oldFileName, nextFileName) : [];
+      return withWarnings(await chapterToResource(bookId, entry, content), warnings);
       });
     },
 
@@ -231,8 +279,20 @@ export function createWritingResourceFileStore(
       const index = await readChapterIndex(bookRoot);
       const entry = index.find((item) => item.number === chapterNumber);
       if (!entry) return null;
+      // 先删正文再改索引：正文删不掉时索引保持原样并抛错，避免「索引里没了、文件还在，下次对账又被收录回来」。
+      // 留底由调用方负责（chapter-discard-range.ts 在调用前已把正文复制进 chapters/_discarded）。
+      try {
+        await unlink(chapterPath(bookId, entry.fileName));
+      } catch (error) {
+        if (errnoCode(error) !== "ENOENT") {
+          throw new ChapterStoreError("CHAPTER_FILE_DELETE_FAILED", 409, {
+            whatHappened: `删除第 ${chapterNumber} 章正文 chapters/${normalizeChapterRelativePath(entry.fileName)} 失败（${describeError(error)}），章节索引没有改动，这一章仍然保留。`,
+            whyItMatters: "如果只从索引里去掉而文件还在，下次打开章节列表时这一章会被重新收录，看起来像删了又回来。",
+            suggestedAction: "关闭正在打开该文件的编辑器、同步盘或杀毒软件后重试删除；仍失败时检查文件权限。",
+          }, { cause: error });
+        }
+      }
       await writeChapterIndex(bookRoot, index.filter((item) => item.number !== chapterNumber));
-      try { await unlink(chapterPath(bookId, entry.fileName)); } catch { /* ignore */ }
       return { ...(await chapterToResource(bookId, entry, "")), status: "archived" };
       });
     },

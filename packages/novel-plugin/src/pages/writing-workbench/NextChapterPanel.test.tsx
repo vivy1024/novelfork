@@ -174,7 +174,7 @@ describe("下一章默认页（全书走势 + 下一章双栏）", () => {
     expect(message).toContain("已悬置 11 章");
   });
 
-  it("「标记已回收」走 PUT fieldsPatch，不整包改数据", async () => {
+  it("「标记已回收」走 PUT fieldsPatch，不整包改数据，且显式不裁决机器冲突", async () => {
     const { calls } = installFetch();
     render(<NextChapterPanel bookId={BOOK.id} />);
 
@@ -185,7 +185,7 @@ describe("下一章默认页（全书走势 + 下一章双栏）", () => {
       const puts = calls.filter((c) => c.init?.method === "PUT" && c.url.includes("/jingwei/entries/f1"));
       expect(puts).toHaveLength(1);
       const body = JSON.parse(puts[0]!.init!.body as string);
-      expect(body).toEqual({ fieldsPatch: { status: "paid_off", payoffChapter: 12 } });
+      expect(body).toEqual({ fieldsPatch: { status: "paid_off", payoffChapter: 12 }, resolveConflict: false });
     });
     await waitFor(() => expect(screen.getByTestId("next-hook-note").textContent).toContain("已按第 12 章标记为已回收"));
   });
