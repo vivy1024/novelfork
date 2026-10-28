@@ -1,6 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveForeshadowStates, resolveForeshadowPhase } from "./foreshadow-states.js";
+import { deriveForeshadowStates, resolveForeshadowPhase, toOpenForeshadowSnapshots } from "./foreshadow-states.js";
+
+describe("toOpenForeshadowSnapshots（伏笔台账注入抽取）", () => {
+  it("只保留未回收伏笔，按埋设章升序，带 key/entryId/阶段/触发条件", () => {
+    const snapshots = toOpenForeshadowSnapshots([
+      { entryId: "b", label: "山门试炼", phase: "triggered", setupChapter: 3, triggerCondition: "拿到令牌" },
+      { entryId: "a", label: "铃身刻字", phase: "planted", setupChapter: 1 },
+      { entryId: "c", label: "旧债", phase: "paid_off", setupChapter: 1 },
+      { entryId: "d", label: "废线", phase: "abandoned", setupChapter: 2 },
+      { entryId: "e", label: "无章号", phase: "unknown" },
+    ]);
+    expect(snapshots).toEqual([
+      { key: "铃身刻字", entryId: "a", phase: "planted", setupChapter: 1 },
+      { key: "山门试炼", entryId: "b", phase: "triggered", setupChapter: 3, triggerCondition: "拿到令牌" },
+      { key: "无章号", entryId: "e", phase: "unknown" },
+    ]);
+  });
+
+  it("超过上限时截断，保留最早埋设的（最容易被遗忘）", () => {
+    const states = Array.from({ length: 5 }, (_, i) => ({ entryId: `e${i}`, label: `伏笔${i}`, phase: "planted" as const, setupChapter: 5 - i }));
+    expect(toOpenForeshadowSnapshots(states, { limit: 2 }).map((item) => item.key)).toEqual(["伏笔4", "伏笔3"]);
+  });
+});
 
 describe("resolveForeshadowPhase", () => {
   it("认中英两套状态写法", () => {
@@ -34,7 +56,21 @@ describe("deriveForeshadowStates", () => {
       setupChapter: 3,
       triggerChapter: 8,
       triggerCondition: "药园试验开始",
+      lastProgressChapter: 9,
     });
+  });
+
+  it("lastProgressChapter：取最近一次埋设/推进/触发事件的章；回收事件与未审核事件不算推进", () => {
+    const [state] = deriveForeshadowStates([{ ...entry, fields: { status: "已埋设", plantedChapter: 5 } }], [
+      { chapterNumber: 40, eventType: "hook_progressed", subject: "小瓶", subjectEntryId: "entry-bottle", status: "applied" },
+      { chapterNumber: 60, eventType: "hook_resolved", subject: "小瓶", subjectEntryId: "entry-bottle", status: "applied" },
+      { chapterNumber: 70, eventType: "hook_progressed", subject: "小瓶", subjectEntryId: "entry-bottle", status: "pending" },
+    ]);
+    expect(state?.lastProgressChapter).toBe(40);
+    const [bare] = deriveForeshadowStates([{ ...entry, fields: { status: "已埋设", plantedChapter: 5 } }], []);
+    expect(bare?.lastProgressChapter).toBe(5);
+    const [unknown] = deriveForeshadowStates([entry], []);
+    expect(unknown?.lastProgressChapter).toBeUndefined();
   });
 
   it("回收事件只作证据：终态只看条目，作者拖回已埋设后不再显示已回收", () => {

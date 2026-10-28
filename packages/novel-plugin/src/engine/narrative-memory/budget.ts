@@ -6,12 +6,13 @@ import type { NarrativeContextCard, NarrativeContextChannel } from "./types.js";
 const DETAIL_LEVELS: readonly JingweiBudgetDetailLevel[] = ["full", "normal", "summary", "brief"];
 
 // 口径说明（T4.7）：预算表按 CJK 感知估算尺定标，各通道数值为旧英文尺 ×3，
-// 保住原表约 4k/3k/2k… 中文字的真实容量；总和 65100 > 全局默认 24000，
+// 保住原表约 4k/3k/2k… 中文字的真实容量；总和（含层级前情档）68100 > 全局默认 24000，
 // 常规写作走 scaleBudgets 比例缩放（hard 份额 ≈4400 ≈ 旧尺 4000）。
 export const DEFAULT_NARRATIVE_CHANNEL_BUDGETS: Readonly<Record<NarrativeContextChannel, number>> = {
   hard: 12000,
   state: 12000,
-  timeline: 9000,
+  // 原 9000 拆出 4500 给层级前情档（DEFAULT_STORY_ARC_BUDGET），总和不变，hard 等通道的缩放份额不变。
+  timeline: 4500,
   hooks: 6000,
   facts: 6000,
   style: 3000,
@@ -22,9 +23,20 @@ export const DEFAULT_NARRATIVE_CHANNEL_BUDGETS: Readonly<Record<NarrativeContext
   knowledge: 3000,
 };
 
+/**
+ * 层级前情档位（本卷前情 / 前卷卷摘要 / 全书梗概，见 story-arc.ts）。
+ * 卡片挂在 timeline 分段，但单独装箱：不和前章尾部、Runtime 时间线抢 timeline 份额，
+ * 档内按 priority 降档/丢弃（本卷前情 > 前卷近→远 > 全书梗概）。近章在 recent-summary 通道，不在本档。
+ * 与各通道一起参与 maxTokens 等比缩放；它是可丢弃档，永远不挤 hard。
+ */
+export const DEFAULT_STORY_ARC_BUDGET = 4500;
+const STORY_ARC_TAG = "story-arc";
+
 export type NarrativeBudgetPolicy = Readonly<{
   maxTokens?: number;
   channelBudgets?: Partial<Record<NarrativeContextChannel, number>>;
+  /** 层级前情档位预算；缺省时：给了 channelBudgets 就跟随其 timeline 份额（没给 timeline 即 0），否则用默认值。 */
+  storyArcBudget?: number;
 }>;
 
 export type PackedNarrativeContextCard = Readonly<{
@@ -47,6 +59,8 @@ export type NarrativeBudgetResult = Readonly<{
   totalEstimatedTokens: number;
   injectedTokensByChannel: Readonly<Partial<Record<NarrativeContextChannel, number>>>;
   channelBudgets: Readonly<Record<NarrativeContextChannel, number>>;
+  /** 层级前情档位的最终预算（已缩放）。 */
+  storyArcBudget: number;
   warnings: readonly string[];
 }>;
 
@@ -63,34 +77,54 @@ function normalizeTokenBudget(value: number | undefined): number {
   return Math.max(0, Math.floor(value));
 }
 
-function scaleBudgets(budgets: Readonly<Record<NarrativeContextChannel, number>>, maxTokens?: number): Record<NarrativeContextChannel, number> {
+type ResolvedBudgets = { channels: Record<NarrativeContextChannel, number>; storyArc: number };
+
+function scaleBudgets(budgets: Readonly<Record<NarrativeContextChannel, number>>, storyArc: number, maxTokens?: number): ResolvedBudgets {
   const normalizedMax = normalizeTokenBudget(maxTokens);
-  const total = Object.values(budgets).reduce((sum, value) => sum + normalizeTokenBudget(value), 0);
-  if (normalizedMax <= 0 || total <= normalizedMax) return { ...budgets };
+  const total = Object.values(budgets).reduce((sum, value) => sum + normalizeTokenBudget(value), 0) + storyArc;
+  if (normalizedMax <= 0 || total <= normalizedMax) return { channels: { ...budgets }, storyArc };
 
   const scale = normalizedMax / total;
   const scaled = Object.fromEntries(Object.entries(budgets).map(([channel, value]) => [channel, Math.floor(normalizeTokenBudget(value) * scale)])) as Record<NarrativeContextChannel, number>;
-  const allocated = Object.values(scaled).reduce((sum, value) => sum + value, 0);
+  const scaledArc = Math.floor(storyArc * scale);
+  const allocated = Object.values(scaled).reduce((sum, value) => sum + value, 0) + scaledArc;
   let remainder = normalizedMax - allocated;
   for (const channel of ["hard", "state", "timeline", "recent-summary", "hooks", "facts", "character-kernel", "knowledge", "semantic", "relationship", "style"] satisfies readonly NarrativeContextChannel[]) {
     if (remainder <= 0) break;
     scaled[channel] += 1;
     remainder -= 1;
   }
-  return scaled;
+  return { channels: scaled, storyArc: scaledArc };
 }
 
 /** 各通道最终预算（含 maxTokens 缩放）；召回前通道据此自裁，与打包时用的是同一份数字。 */
 export function resolveNarrativeChannelBudgets(policy: NarrativeBudgetPolicy = {}): Record<NarrativeContextChannel, number> {
-  return resolveChannelBudgets(policy);
+  return resolveBudgets(policy).channels;
 }
 
-function resolveChannelBudgets(policy: NarrativeBudgetPolicy): Record<NarrativeContextChannel, number> {
+function resolveBudgets(policy: NarrativeBudgetPolicy): ResolvedBudgets {
   const source = policy.channelBudgets
     ? Object.fromEntries(Object.keys(DEFAULT_NARRATIVE_CHANNEL_BUDGETS).map((channel) => [channel, policy.channelBudgets?.[channel as NarrativeContextChannel] ?? 0])) as Record<NarrativeContextChannel, number>
     : { ...DEFAULT_NARRATIVE_CHANNEL_BUDGETS };
   const normalized = Object.fromEntries(Object.entries(source).map(([channel, value]) => [channel, normalizeTokenBudget(value)])) as Record<NarrativeContextChannel, number>;
-  return scaleBudgets(normalized, policy.maxTokens);
+  // 层级前情挂在 timeline 分段：调用方圈定通道（channelBudgets）时，跟随 timeline 是否被圈定。
+  const storyArc = normalizeTokenBudget(policy.storyArcBudget ?? (policy.channelBudgets ? policy.channelBudgets.timeline ?? 0 : DEFAULT_STORY_ARC_BUDGET));
+  return scaleBudgets(normalized, storyArc, policy.maxTokens);
+}
+
+function isStoryArcCard(card: NarrativeContextCard): boolean {
+  return card.tags.includes(STORY_ARC_TAG);
+}
+
+/**
+ * 本章出场实体的 canon 设定（state 通道，标 entity-canon）：可降档，但在同通道里最后才动，
+ * 全局裁剪时也排在可丢弃卡的最后；真被裁掉时由 packNarrativeContext 写进 warnings 点名，不静默。
+ */
+const ENTITY_CANON_TAG = "entity-canon";
+const ENTITY_CANON_PRIORITY_LIFT = 1000;
+
+function isEntityCanonCard(card: NarrativeContextCard): boolean {
+  return card.tags.includes(ENTITY_CANON_TAG);
 }
 
 function contentAtLevel(card: NarrativeContextCard, level: JingweiBudgetDetailLevel): string {
@@ -155,7 +189,7 @@ function packDroppableChannel(cards: readonly NarrativeContextCard[], channelBud
   const itemById = new Map(ordered.map((card) => [card.id, card]));
   const result = applyTokenBudgetWithDegradation(ordered.map((card) => ({
     id: card.id,
-    priority: card.priority + (card.score ?? 0),
+    priority: card.priority + (card.score ?? 0) + (isEntityCanonCard(card) ? ENTITY_CANON_PRIORITY_LIFT : 0),
     initialLevel: "full" as const,
     levels: DETAIL_LEVELS.map((detailLevel) => ({ detailLevel, estimatedTokens: tokenAtLevel(card, detailLevel) })),
   })), channelBudget);
@@ -165,6 +199,25 @@ function packDroppableChannel(cards: readonly NarrativeContextCard[], channelBud
   const dropped = ordered.filter((card) => droppedIds.has(card.id));
   const degraded = packed.map((item) => recordDegradation(item.card, item.detailLevel)).filter((item): item is DegradedNarrativeCard => Boolean(item));
   return { packed, dropped, degraded };
+}
+
+/** 层级前情档：严格按 priority 降档/丢弃（不掺 score），保证「本卷前情 > 前卷 > 全书梗概」的次序可预期。 */
+function packStoryArcTier(cards: readonly NarrativeContextCard[], budget: number): { packed: PackedNarrativeContextCard[]; dropped: NarrativeContextCard[]; degraded: DegradedNarrativeCard[] } {
+  const ordered = [...cards].sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
+  const itemById = new Map(ordered.map((card) => [card.id, card]));
+  const result = applyTokenBudgetWithDegradation(ordered.map((card) => ({
+    id: card.id,
+    priority: card.priority,
+    initialLevel: "full" as const,
+    levels: DETAIL_LEVELS.map((detailLevel) => ({ detailLevel, estimatedTokens: tokenAtLevel(card, detailLevel) })),
+  })), budget);
+  const packed = result.items.map((item) => packCard(itemById.get(item.id)!, item.detailLevel));
+  const droppedIds = new Set(result.droppedEntryIds);
+  return {
+    packed,
+    dropped: ordered.filter((card) => droppedIds.has(card.id)),
+    degraded: packed.map((item) => recordDegradation(item.card, item.detailLevel)).filter((item): item is DegradedNarrativeCard => Boolean(item)),
+  };
 }
 
 function dropGloballyIfNeeded(
@@ -177,7 +230,7 @@ function dropGloballyIfNeeded(
   let total = packed.reduce((sum, item) => sum + item.estimatedTokens, 0);
   const dropOrder = [...packed]
     .filter((item) => item.card.channel !== "hard")
-    .sort((a, b) => a.card.priority - b.card.priority || (a.card.score ?? 0) - (b.card.score ?? 0) || b.estimatedTokens - a.estimatedTokens || a.card.id.localeCompare(b.card.id));
+    .sort((a, b) => Number(isEntityCanonCard(a.card)) - Number(isEntityCanonCard(b.card)) || a.card.priority - b.card.priority || (a.card.score ?? 0) - (b.card.score ?? 0) || b.estimatedTokens - a.estimatedTokens || a.card.id.localeCompare(b.card.id));
   const dropped: NarrativeContextCard[] = [];
   for (const item of dropOrder) {
     if (total <= budget) break;
@@ -195,14 +248,25 @@ function isAgedDown(card: NarrativeContextCard): boolean {
 }
 
 export function packNarrativeContext(cards: readonly NarrativeContextCard[], policy: NarrativeBudgetPolicy = {}): NarrativeBudgetResult {
-  const channelBudgets = resolveChannelBudgets(policy);
+  const resolved = resolveBudgets(policy);
+  const channelBudgets = resolved.channels;
   const warnings: string[] = [];
   const degradedCards: DegradedNarrativeCard[] = [];
   const droppedCards: NarrativeContextCard[] = [];
   const packedCards: PackedNarrativeContextCard[] = [];
 
-  for (const channel of uniqueChannels(cards)) {
-    const channelCards = cards.filter((card) => card.channel === channel);
+  // hard 卡永远走 hard 装箱；层级前情卡（非 hard）单独成档。
+  const arcCards = cards.filter((card) => card.channel !== "hard" && isStoryArcCard(card));
+  const channelPool = cards.filter((card) => card.channel === "hard" || !isStoryArcCard(card));
+  if (arcCards.length > 0) {
+    const tier = packStoryArcTier(arcCards, resolved.storyArc);
+    packedCards.push(...tier.packed);
+    droppedCards.push(...tier.dropped);
+    degradedCards.push(...tier.degraded);
+  }
+
+  for (const channel of uniqueChannels(channelPool)) {
+    const channelCards = channelPool.filter((card) => card.channel === channel);
     if (channel === "hard") {
       const result = packHardChannel(channelCards, channelBudgets[channel] ?? 0);
       packedCards.push(...result.packed);
@@ -219,6 +283,11 @@ export function packNarrativeContext(cards: readonly NarrativeContextCard[], pol
   const global = dropGloballyIfNeeded(packedCards, policy.maxTokens);
   const globalDroppedIds = new Set(global.dropped.map((card) => card.id));
   droppedCards.push(...global.dropped.filter((card) => !droppedCards.some((dropped) => dropped.id === card.id)));
+
+  const droppedEntityCanon = droppedCards.filter(isEntityCanonCard);
+  if (droppedEntityCanon.length > 0) {
+    warnings.push(`本章出场实体设定未能注入：发生了什么：${droppedEntityCanon.length} 条出场实体的 canon 设定（${droppedEntityCanon.map((card) => card.title).join("、")}）降到最简档后仍装不进召回预算，被裁掉。为什么要看：模型写这些角色/地点时看不到它们的设定，可能写走样。建议怎么做：调高本书召回预算（retrieval.maxTokens），或精简这些条目的正文与摘要。`);
+  }
 
   // 可解释：新近变动加权（子项2）让长期未变动的旧内容在同配额竞争中吃负加权，
   // 因而更容易被降级/丢弃。这里点名「谁因为旧而落选」，便于诊断与作者复查。
@@ -249,6 +318,7 @@ export function packNarrativeContext(cards: readonly NarrativeContextCard[], pol
     totalEstimatedTokens,
     injectedTokensByChannel,
     channelBudgets,
+    storyArcBudget: resolved.storyArc,
     warnings,
   };
 }

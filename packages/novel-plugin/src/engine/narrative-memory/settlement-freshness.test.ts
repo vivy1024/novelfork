@@ -2,12 +2,27 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { stat, utimes } from "node:fs/promises";
+
 import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// 包一层 readFile 计数：只统计读章节正文（.md）的次数，其余照常走真实实现
+const readCounter = vi.hoisted(() => ({ paths: [] as string[] }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  const overrides = {
+    readFile: (async (path: Parameters<typeof actual.readFile>[0], ...rest: unknown[]) => {
+      if (typeof path === "string" && path.endsWith(".md")) readCounter.paths.push(path);
+      return (actual.readFile as (...args: unknown[]) => Promise<unknown>)(path, ...rest);
+    }) as typeof actual.readFile,
+  };
+  return { ...actual, ...overrides, default: { ...actual, ...overrides } };
+});
 
 import { chapterRelativePath, writeChapterIndex } from "../writing-resource/chapter-layout.js";
 import { chapterContentFingerprint, ensureSettlementLedgerSchema } from "./settlement-idempotency.js";
-import { readBookSettlementFreshness } from "./settlement-freshness.js";
+import { clearSettlementFreshnessCache, readBookSettlementFreshness } from "./settlement-freshness.js";
 
 let storage: StorageDatabase;
 let bookRoot: string;
@@ -38,6 +53,8 @@ beforeEach(async () => {
   await mkdir(bookRoot, { recursive: true });
   await writeFile(join(bookRoot, "book.json"), JSON.stringify({ id: "book-1", title: "回退" }), "utf8");
   storage = createStorageDatabase({ databasePath: join(tempDir, "novelfork.db") });
+  clearSettlementFreshnessCache();
+  readCounter.paths.length = 0;
 });
 
 afterEach(async () => {
@@ -100,5 +117,95 @@ describe("readBookSettlementFreshness after a file revert (T-20)", () => {
 
     expect(freshness.chapters[0]?.status).toBe("unknown");
     expect(freshness.staleChapters).toEqual([]);
+  });
+});
+
+describe("readBookSettlementFreshness 指纹缓存（长篇每章写作不再重读全书）", () => {
+  const CHAPTERS = 20;
+  const body = (number: number) => `第${number}章正文。${"雨".repeat(40)}`;
+
+  async function seedSettledBook() {
+    const entries = [];
+    const paths = new Map<number, string>();
+    for (let number = 1; number <= CHAPTERS; number += 1) {
+      const relative = await writeChapterFile(number, `章${number}`, body(number));
+      const fileName = relative.replace(/^chapters[\\/]/u, "");
+      paths.set(number, join(bookRoot, "chapters", fileName));
+      entries.push({ number, title: `章${number}`, fileName, wordCount: 40, updatedAt: "2026-10-01T00:00:00.000Z", contentHash: chapterContentFingerprint(body(number)) });
+      recordSettlement(number, body(number));
+    }
+    await writeChapterIndex(bookRoot, entries);
+    return paths;
+  }
+
+  it("首次读全部；之后只重读最近 3 章，没改的章不读", async () => {
+    await seedSettledBook();
+    const first = await readBookSettlementFreshness(storage, "book-1", bookRoot);
+    expect(first.staleChapters).toEqual([]);
+    expect(readCounter.paths).toHaveLength(CHAPTERS);
+
+    readCounter.paths.length = 0;
+    const second = await readBookSettlementFreshness(storage, "book-1", bookRoot);
+    expect(second.chapters.every((chapter) => chapter.status === "fresh")).toBe(true);
+    expect(readCounter.paths).toHaveLength(3);
+    expect(readCounter.paths.every((path) => /00(18|19|20)_/u.test(path))).toBe(true);
+  });
+
+  it("改了较早的一章：只重读它（加上最近 3 章），并判为过期", async () => {
+    const paths = await seedSettledBook();
+    await readBookSettlementFreshness(storage, "book-1", bookRoot);
+
+    await writeFile(paths.get(5)!, `${body(5)}改写了结尾。`, "utf8");
+    readCounter.paths.length = 0;
+    const freshness = await readBookSettlementFreshness(storage, "book-1", bookRoot);
+    expect(freshness.staleChapters).toEqual([5]);
+    expect(readCounter.paths).toHaveLength(4);
+    expect(readCounter.paths.some((path) => path.includes("0005_"))).toBe(true);
+  });
+
+  it("回退成等长内容并把修改时间改回原值，仍判为过期（状态变更时间会前进）", async () => {
+    const paths = await seedSettledBook();
+    const target = paths.get(2)!;
+    const before = await stat(target);
+    await readBookSettlementFreshness(storage, "book-1", bookRoot);
+
+    // 等长替换：大小不变；再用 utimes 把 mtime 拨回旧值，模拟回退工具保留时间戳
+    const reverted = body(2).replace("雨", "雪");
+    expect(Buffer.byteLength(reverted)).toBe(Buffer.byteLength(body(2)));
+    await writeFile(target, reverted, "utf8");
+    await utimes(target, before.atime, before.mtime);
+    const after = await stat(target);
+    expect(after.size).toBe(before.size);
+    // utimes 只能写到毫秒（Windows 上还会四舍五入），拨回后与原值相差不到 1ms——
+    // 只看「秒级修改时间 + 大小」的缓存会被骗过
+    expect(Math.abs(after.mtimeMs - before.mtimeMs)).toBeLessThan(1);
+    expect(Math.floor(after.mtimeMs / 1000)).toBe(Math.floor(before.mtimeMs / 1000));
+
+    const freshness = await readBookSettlementFreshness(storage, "book-1", bookRoot);
+    expect(freshness.staleChapters).toEqual([2]);
+  });
+
+  it("换成新文件（删掉再建、改名）也能识别；文件消失判为未知", async () => {
+    const paths = await seedSettledBook();
+    await readBookSettlementFreshness(storage, "book-1", bookRoot);
+
+    await rm(paths.get(7)!);
+    await writeFile(paths.get(7)!, `${body(7)}重写`, "utf8");
+    await rm(paths.get(9)!);
+    const freshness = await readBookSettlementFreshness(storage, "book-1", bookRoot);
+    expect(freshness.staleChapters).toEqual([7]);
+    expect(freshness.chapters.find((chapter) => chapter.chapterNumber === 9)?.status).toBe("unknown");
+  });
+
+  it("结果与不带缓存的逐章重读完全一致", async () => {
+    const paths = await seedSettledBook();
+    await readBookSettlementFreshness(storage, "book-1", bookRoot);
+    await writeFile(paths.get(3)!, "完全不同的正文", "utf8");
+    await writeFile(paths.get(11)!, body(11), "utf8");
+    const cached = await readBookSettlementFreshness(storage, "book-1", bookRoot);
+    clearSettlementFreshnessCache();
+    const uncached = await readBookSettlementFreshness(storage, "book-1", bookRoot);
+    expect(cached).toEqual(uncached);
+    expect(cached.staleChapters).toEqual([3]);
   });
 });

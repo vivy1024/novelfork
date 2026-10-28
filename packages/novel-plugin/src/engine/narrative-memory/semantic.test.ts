@@ -12,7 +12,7 @@ import {
   upsertNarrativeContextVector,
 } from "./storage.js";
 import { createSemanticChannel, exactCosineSimilarity, type NarrativeEmbeddingProvider } from "./channels/semantic-channel.js";
-import type { NarrativeContextCard, NarrativeContextVector } from "./types.js";
+import { DEFAULT_SEMANTIC_MIN_SIMILARITY, SemanticChannelConfigSchema, type NarrativeContextCard, type NarrativeContextVector } from "./types.js";
 
 const tempDirs: string[] = [];
 
@@ -194,6 +194,27 @@ describe("Semantic vector storage and channel", () => {
       const seen = [...firstPage.vectors, ...secondPage.vectors].map((item) => item.cardId);
       expect(new Set(seen).size).toBe(20);
       expect(firstPage.nextCursor).toBeDefined();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("默认阈值按原始余弦的实测分布标定：强相关（0.615）命中，中位数（0.256）与无关（0.20）不命中", async () => {
+    expect(SemanticChannelConfigSchema.parse({}).minSimilarity).toBe(DEFAULT_SEMANTIC_MIN_SIMILARITY);
+    expect(DEFAULT_SEMANTIC_MIN_SIMILARITY).toBe(0.45);
+    const storage = await createStorage();
+    try {
+      // 与查询向量 [1, 0] 的余弦恰为 c 的单位向量：[c, sqrt(1 - c²)]
+      const at = (c: number) => [c, Math.sqrt(1 - c * c)];
+      const provider: NarrativeEmbeddingProvider = { modelId: "fake-embedding-v1", dim: 2, embed: () => [1, 0] };
+      upsertNarrativeContextVector(storage, vector({ cardId: "close", vector: at(0.615) }));
+      upsertNarrativeContextVector(storage, vector({ cardId: "median", vector: at(0.256) }));
+      upsertNarrativeContextVector(storage, vector({ cardId: "far", vector: at(0.2) }));
+      expect(exactCosineSimilarity([1, 0], at(0.615))).toBeCloseTo(0.615, 6);
+
+      // 不传 minSimilarity：走默认值（通道内与 schema 同一常量）
+      const result = await createSemanticChannel().run({ storage, bookId: "book-1", queryText: "薛行之", provider, config: { enabled: true } });
+      expect(result.cards.map((item) => item.id)).toEqual(["close"]);
     } finally {
       storage.close();
     }

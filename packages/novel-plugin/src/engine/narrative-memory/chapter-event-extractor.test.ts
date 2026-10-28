@@ -82,6 +82,84 @@ describe("chapter event extractor", () => {
     expect(systemPrompt).not.toMatch(/状态类变化（[^）]*关系/u);
   });
 
+  it("伏笔台账：prompt 单列未回收伏笔清单，并要求后续事件的 subject 用清单里的伏笔名作 key", async () => {
+    let systemPrompt = "";
+    let userPrompt = "";
+    const extractor = createRuntimeChapterEventExtractor(async ({ messages }) => {
+      systemPrompt = messages.find((message) => message.role === "system")?.content ?? "";
+      userPrompt = messages.find((message) => message.role === "user")?.content ?? "";
+      return { text: JSON.stringify({ events: [], mentionedEntities: [] }) };
+    });
+    await extractor({
+      ...baseInput,
+      openForeshadows: [
+        { key: "铃身刻字", phase: "planted", setupChapter: 1 },
+        { key: "山门试炼", phase: "triggered", setupChapter: 1, triggerCondition: "林舟拿到试炼令牌" },
+      ],
+    });
+
+    expect(userPrompt).toContain("本书未回收伏笔");
+    expect(userPrompt).toContain("- 铃身刻字（已埋设，第1章埋）");
+    expect(userPrompt).toContain("- 山门试炼（已触发，第1章埋；触发条件：林舟拿到试炼令牌）");
+    expect(systemPrompt).toContain("subject 必须原样写清单里的伏笔名");
+  });
+
+  it("伏笔台账：没有未回收伏笔时不注入清单", async () => {
+    let userPrompt = "";
+    const extractor = createRuntimeChapterEventExtractor(async ({ messages }) => {
+      userPrompt = messages.find((message) => message.role === "user")?.content ?? "";
+      return { text: JSON.stringify({ events: [], mentionedEntities: [] }) };
+    });
+    await extractor({ ...baseInput, openForeshadows: [] });
+    expect(userPrompt).not.toContain("本书未回收伏笔");
+  });
+
+  it("伏笔台账：后续事件按 key 挂到伏笔条目；对不上任何已知伏笔时保留草案并告警", async () => {
+    const content = "铃身内侧的刻字又亮了一下。那枚丹药终于被人认了出来。";
+    const result = await extractNarrativeEventsFromChapter({
+      ...baseInput,
+      content,
+      openForeshadows: [{ key: "铃身刻字", entryId: "fs-1", phase: "planted", setupChapter: 1 }],
+      llmExtractor: async () => [
+        { eventType: "hook_progressed", subject: "铃身刻字", predicate: "再次显现", object: "刻字发光", evidenceText: "铃身内侧的刻字又亮了一下", confidence: 0.8, source: "settle" },
+        { eventType: "hook_resolved", subject: "神秘丹药", predicate: "揭晓", object: "被人认出", evidenceText: "那枚丹药终于被人认了出来", confidence: 0.8, source: "settle" },
+      ],
+    });
+
+    expect(result.drafts).toHaveLength(2);
+    const progressed = result.drafts.find((draft) => draft.eventType === "hook_progressed");
+    expect(progressed?.subjectEntryId).toBe("fs-1");
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("「神秘丹药」");
+    expect(result.warnings[0]).toContain("未回收伏笔");
+  });
+
+  it("伏笔台账：同批先 hook_planted 再推进同名伏笔，不告警", async () => {
+    const content = "他在铃底摸到一道裂纹。裂纹里渗出了血。";
+    const result = await extractNarrativeEventsFromChapter({
+      ...baseInput,
+      content,
+      openForeshadows: [],
+      llmExtractor: async () => [
+        { eventType: "hook_planted", subject: "铃底裂纹", predicate: "埋设", object: "铃底有裂纹", evidenceText: "他在铃底摸到一道裂纹", confidence: 0.8, source: "settle" },
+        { eventType: "hook_progressed", subject: "铃底裂纹", predicate: "渗血", object: "裂纹渗血", evidenceText: "裂纹里渗出了血", confidence: 0.8, source: "settle" },
+      ],
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("伏笔台账：未提供 openForeshadows 时不做 key 校验（旧调用方行为不变）", async () => {
+    const content = "那枚丹药终于被人认了出来。";
+    const result = await extractNarrativeEventsFromChapter({
+      ...baseInput,
+      content,
+      llmExtractor: async () => [
+        { eventType: "hook_resolved", subject: "神秘丹药", predicate: "揭晓", object: "被人认出", evidenceText: "那枚丹药终于被人认了出来", confidence: 0.8, source: "settle" },
+      ],
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
   it("模型把中文引号写成未转义的 ASCII 引号时照样解析出事件（2026-09-30 真模型基准）", async () => {
     let maxTokens: number | undefined;
     const extractor = createRuntimeChapterEventExtractor(async (request) => {

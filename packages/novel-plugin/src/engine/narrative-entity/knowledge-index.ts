@@ -18,6 +18,8 @@
  * 本模块还承载「第 N 章时某角色知道什么 / 还不知道什么」的查询，供路由与写作注入复用。
  */
 
+import { createHash } from "node:crypto";
+
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 
 import { ensureNarrativeMemorySchema } from "../narrative-memory/storage.js";
@@ -57,6 +59,20 @@ function toChapter(value: unknown): number | null {
   return value !== null && value !== undefined && Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+/** 派生行 id 的长度上限（与历史上的截断长度一致，短 id 保持原样不变）。 */
+export const DERIVED_ROW_ID_MAX_LENGTH = 240;
+
+/**
+ * 派生行 id：超长时保留可读前缀并接上整串的 sha256 摘要。
+ * 不能直接截断：事实 id 本身常超过 240 字符（event-fact:<书>:<章>:<类型>:<主体>:<谓词>:<对象>），
+ * 截断后同一事实的不同实体会落到同一个 id 上——知情行撞主键让整本重建失败，边与状态被 ON CONFLICT 静默吞掉。
+ */
+export function derivedRowId(raw: string): string {
+  if (raw.length <= DERIVED_ROW_ID_MAX_LENGTH) return raw;
+  const digest = createHash("sha256").update(raw, "utf8").digest("hex");
+  return `${raw.slice(0, DERIVED_ROW_ID_MAX_LENGTH - digest.length - 1)}#${digest}`;
+}
+
 /**
  * 事实是否属于「已确认 / 已应用」的知情来源。
  * event 来源必须来源事件已应用（待审不算）；作者权威来源（manual / import / jingwei / runtime-state）直接算。
@@ -83,7 +99,7 @@ export function knowledgeRowsForFact(fact: KnowledgeFactRef, knowerEntityIds: re
     if (seen.has(entityId)) continue;
     seen.add(entityId);
     rows.push({
-      id: `know:${fact.factId}:${entityId}`.slice(0, 240),
+      id: derivedRowId(`know:${fact.factId}:${entityId}`),
       entityId,
       factRef: fact.factId,
       knowsFrom: fact.chapter,

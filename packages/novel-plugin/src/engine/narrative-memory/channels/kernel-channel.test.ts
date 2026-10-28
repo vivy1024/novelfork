@@ -132,4 +132,18 @@ describe("character-kernel channel author confirmation gate", () => {
       storage.close();
     }
   });
+
+  it("修旧章：内核只有一份「最新」值，结算章晚于可见章时不注入（避免未来心理状态泄漏）", async () => {
+    const storage = await createStorage();
+    try {
+      await createCharacter(storage, "confirmed");
+      seedKernel(storage); // updatedChapter = 3
+      const base = { storage, bookId: "book-1", characterIds: ["薛行之"], confirmedCharacterNames: ["薛行之"], fields: DEFAULT_KERNEL_FIELDS, stateSummaryMaxChars: 200 };
+      expect(buildKernelCards({ ...base, currentChapter: 3 })).toEqual([]);
+      expect(buildKernelCards({ ...base, currentChapter: 4 })).toHaveLength(1);
+      expect(buildKernelCards(base)).toHaveLength(1);
+    } finally {
+      storage.close();
+    }
+  });
 });

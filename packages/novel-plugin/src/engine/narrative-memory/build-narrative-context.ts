@@ -14,6 +14,7 @@ import { createRecentSummaryChannel } from "./channels/recent-summary-channel.js
 import { createSceneSpecChannel } from "./channels/scene-spec-channel.js";
 import { createSemanticChannel, type NarrativeEmbeddingProvider } from "./channels/semantic-channel.js";
 import { createStateChannel } from "./channels/state-channel.js";
+import { createStoryArcChannel } from "./channels/story-arc-channel.js";
 import { createStyleChannel } from "./channels/style-channel.js";
 import { listScenesByChapter, type NarrativeScene } from "./scene-store.js";
 import { createTimelineChannel } from "./channels/timeline-channel.js";
@@ -82,9 +83,19 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   namedEntities?: readonly string[];
   /** 写前七栏条目上限；缺省为 6/8/3。 */
   writeProfileCaps?: Partial<WriteProfileCaps>;
+  /**
+   * 层级前情（本卷前情 / 前卷卷摘要 / 全书梗概）。默认开启，跟随 timeline 通道开关；
+   * priorVolumeCards 为单独出卡的前卷数（默认 5），更早的并入全书梗概。
+   */
+  storyArc?: Readonly<{ enabled?: boolean; priorVolumeCards?: number }>;
+  /**
+   * 休眠长线伏笔提醒：thresholdChapters 章没推进的未回收伏笔出提醒卡（缺省 30），最多 limit 条（缺省 3，0 = 关闭）。
+   * 调用方通常传 memoryConfig.retrieval.dormantHookChapters / dormantHookLimit。
+   */
+  dormantHooks?: Readonly<{ thresholdChapters?: number; limit?: number }>;
 }>;
 
-function disabledChannelResult(channel: NarrativeContextChannel): ChannelResult {
+function disabledChannelResult(channel: NarrativeContextChannel | "story-arc"): ChannelResult {
   return {
     channel,
     status: "skipped",
@@ -292,6 +303,8 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   const kernelEnabled = Boolean(kernelConfig?.enabled) && isOptionalChannelEnabled(input, "character-kernel");
   const confirmedCharacterNames = kernelEnabled ? await loadConfirmedCharacterNames(input.storage, parsed.bookId) : [];
 
+  const storyArcEnabled = input.storyArc?.enabled !== false && isOptionalChannelEnabled(input, "timeline");
+
   const channelResults = await Promise.all([
     runChannel(createSceneSpecChannel(), { bookId: parsed.bookId, sceneSpec }, timeoutMs),
     runChannel(createHardChannel(), {
@@ -324,6 +337,8 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         sceneText: parsed.sceneText,
         entities,
         limit: Math.max(DEFAULT_WRITE_PROFILE_CAPS.activeHooks * 4, 24),
+        ...(input.dormantHooks?.thresholdChapters !== undefined ? { dormantThresholdChapters: input.dormantHooks.thresholdChapters } : {}),
+        ...(input.dormantHooks?.limit !== undefined ? { dormantLimit: input.dormantHooks.limit } : {}),
       }, timeoutMs)
       : disabledChannelResult("hooks"),
     isOptionalChannelEnabled(input, "timeline")
@@ -391,9 +406,21 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         confirmedCharacterNames,
         fields: kernelConfig.fields.length > 0 ? kernelConfig.fields : DEFAULT_KERNEL_FIELDS,
         stateSummaryMaxChars: kernelConfig.stateSummaryMaxChars,
+        ...(currentChapter !== undefined ? { currentChapter } : {}),
       }, timeoutMs)
       : disabledChannelResult("character-kernel"),
-    // 近章手动剧情摘要通道：读经纬 chapter-summaries 类目，按章节号倒序注入最近几章，
+    // 层级前情（story-arc）：当前卷里近章之前的部分 / 前卷卷摘要 / 全书梗概，由经纬章摘要按卷纲现场派生，
+    // 卡片挂 timeline 分段，预算走 budget.ts 的层级前情档。只用 currentChapter 之前的章。
+    storyArcEnabled
+      ? runChannel(createStoryArcChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        currentChapter,
+        recentChapterCount: writeProfileCaps.recentSummaries,
+        ...(input.storyArc?.priorVolumeCards !== undefined ? { priorVolumeCards: input.storyArc.priorVolumeCards } : {}),
+      }, timeoutMs)
+      : disabledChannelResult("story-arc"),
+    // 近章手动剧情摘要通道：读经纬 chapter-summaries 类目，按章节号倒序注入 currentChapter 之前最近几章，
     // 保证作者手动维护的前情摘要进入写作上下文。
     isOptionalChannelEnabled(input, "recent-summary")
       ? runChannel(createRecentSummaryChannel(), {
@@ -427,10 +454,13 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   } catch {
     projection = emptyChapterStateProjection();
   }
+  // 实体型 canon（state 通道按出场相关性召回的设定卡）视同点名：写前七栏的条数上限不裁它们，
+  // 本章出场了谁就保谁的设定；预算紧时只在打包层降档。
+  const entityCanonNames = uniqueStrings(wave.cards.filter((card) => card.tags.includes("entity-canon")).map((card) => card.title));
   const writeProfile = buildWriteProfile({
     projection,
     cards: wave.cards,
-    namedEntities,
+    namedEntities: uniqueStrings([...namedEntities, ...entityCanonNames]),
     currentChapter,
     caps: writeProfileCaps,
   });
@@ -443,9 +473,11 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   // 剧情线状态卡（宏观层轻量版）：从当前章有效事实按主体聚合现状，
   // prepend 到 state section，让 Agent 写前看到每条剧情线停在哪。
   try {
+    // 与其它通道同一可见章口径：写/修第 N 章时只看第 N-1 章末的状态
+    // （此前传 N，会把本章旧稿结算出的事实当成「前情」带进来）。
     const storylineCard = buildStorylineStateCard(input.storage, {
       bookId: parsed.bookId,
-      chapterNumber: currentChapter,
+      chapterNumber: currentChapter === undefined ? undefined : Math.max(0, currentChapter - 1),
     });
     if (storylineCard) {
       sections.state = sections.state.trim()

@@ -209,11 +209,23 @@ export type NarrativeEvent = Readonly<{
 export const NarrativeChannelStatusSchema = z.enum(["ok", "skipped", "timeout", "error"]);
 export type NarrativeChannelStatus = z.infer<typeof NarrativeChannelStatusSchema>;
 
+/**
+ * 语义通道的命中阈值，口径是**原始余弦相似度**（semantic-channel 的 exactCosineSimilarity，未做任何
+ * center/width 变换；bellGain 的钟形增益只用于 wave 共现图，不参与这里的筛选）。
+ *
+ * 实测分布（bge-m3，真实书实体抽样，见 embedding-provider.ts 的 NOVEL_ENTITY_SEMANTIC_GAIN 注释）：
+ *   无关实体对 ≈0.20，中位数 ≈0.256，同族近亲（薛行之↔薛建国）0.615。
+ * 旧默认 0.72 高于实测的强相关对，等于几乎召回不到任何东西。
+ * 0.45 ≈ 中位数 + 一个钟形宽度（0.26 + 0.22×0.86）：明显高于噪声带，又低于真正相关的实体对。
+ * 换用其它 embedding 模型时分布会变，作者可在 semanticConfig.minSimilarity 覆盖。
+ */
+export const DEFAULT_SEMANTIC_MIN_SIMILARITY = 0.45;
+
 export const SemanticChannelConfigSchema = z.object({
   enabled: z.boolean().default(false),
   maxCandidates: positiveInteger.max(500).default(80),
   topK: positiveInteger.max(50).default(8),
-  minSimilarity: z.number().min(-1).max(1).default(0.72),
+  minSimilarity: z.number().min(-1).max(1).default(DEFAULT_SEMANTIC_MIN_SIMILARITY),
 });
 export type SemanticChannelConfig = Readonly<{
   enabled: boolean;

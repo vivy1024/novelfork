@@ -2,7 +2,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import type { ChannelRunResult, NarrativeRetrievalChannel } from "../channels.js";
 import { queryNarrativeContextVectors } from "../storage.js";
-import { SemanticChannelConfigSchema, type NarrativeContextCard, type SemanticChannelConfig } from "../types.js";
+import { DEFAULT_SEMANTIC_MIN_SIMILARITY, SemanticChannelConfigSchema, type NarrativeContextCard, type SemanticChannelConfig } from "../types.js";
 
 export interface NarrativeEmbeddingProvider {
   readonly modelId: string;
@@ -74,7 +74,8 @@ export function createSemanticChannel(): NarrativeRetrievalChannel<SemanticChann
         enabled: false,
         maxCandidates: 80,
         topK: 8,
-        minSimilarity: 0.72,
+        // 原始余弦口径，见 DEFAULT_SEMANTIC_MIN_SIMILARITY 的标定说明
+        minSimilarity: DEFAULT_SEMANTIC_MIN_SIMILARITY,
         ...(input.config ?? {}),
       });
       if (!config.enabled) {

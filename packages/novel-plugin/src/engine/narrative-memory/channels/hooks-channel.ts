@@ -9,6 +9,8 @@ import { estimateTokens } from "../../jingwei/context/token-budget.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
 import { hookToContextCard, jingweiEntryToContextCard } from "../context-card.js";
 import { stripParentheticalSuffix } from "../entity-dictionary.js";
+import { DEFAULT_DORMANT_HOOK_CHAPTERS, DEFAULT_DORMANT_HOOK_LIMIT, selectDormantHooks, type DormantHook } from "../foreshadow-phase.js";
+import { loadForeshadowStates, type ForeshadowState } from "../../narrative-taxonomy/foreshadow-states.js";
 import { NarrativeContextCardSchema, type NarrativeContextCard } from "../types.js";
 
 export interface HooksChannelInput {
@@ -21,7 +23,14 @@ export interface HooksChannelInput {
   readonly sceneText?: string;
   readonly entities?: readonly string[];
   readonly limit?: number;
+  /** 休眠长线伏笔阈值（章）：超过这么多章没推进的未回收伏笔出提醒卡。默认 30。 */
+  readonly dormantThresholdChapters?: number;
+  /** 休眠提醒最多几条，默认 3；0 = 关闭。 */
+  readonly dormantLimit?: number;
 }
+
+/** 休眠长线伏笔提醒卡的标签。 */
+export const DORMANT_HOOK_TAG = "dormant-hook";
 
 interface ScoredHookCard {
   readonly card: NarrativeContextCard;
@@ -90,9 +99,21 @@ function entryLooksLikeHook(entry: StoryJingweiEntryRecord, section?: StoryJingw
     || entry.tags.some((tag) => /伏笔|hook|foreshadow|线索|clue/u.test(tag));
 }
 
+function positiveChapter(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && /^\d+$/u.test(value.trim()) ? Number(value) : NaN;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * 修旧章时不注入「未来」才埋下的伏笔：埋设章（fields.plantedChapter）在可见章之后的不可见；
+ * 没记埋设章时退回 relatedChapterNumbers 里任一章可见即可（老口径）。
+ */
 function entryVisible(entry: StoryJingweiEntryRecord, currentChapter?: number): boolean {
   const visibleChapter = visibleChapterFor(currentChapter);
-  if (visibleChapter === undefined || entry.relatedChapterNumbers.length === 0) return true;
+  if (visibleChapter === undefined) return true;
+  const planted = positiveChapter(entry.fields.plantedChapter);
+  if (planted !== undefined) return planted <= visibleChapter;
+  if (entry.relatedChapterNumbers.length === 0) return true;
   return entry.relatedChapterNumbers.some((chapter) => chapter <= visibleChapter);
 }
 
@@ -122,6 +143,70 @@ function pendingHookCard(input: HooksChannelInput, hookText: string, index: numb
     reason: `调用方提供的 pending hook，需要在本章写作中保持连续性。${EVIDENCE_NOTE}`,
     estimatedTokens: Math.max(1, estimateTokens(hookText)),
   });
+}
+
+function dormantHookCard(input: HooksChannelInput, hook: DormantHook & { readonly entryId: string }): NarrativeContextCard {
+  const seed = hook.seedText?.replace(/\s+/gu, " ").trim();
+  const content = [
+    `长线伏笔「${hook.title}」埋于第 ${hook.setupChapter} 章，已 ${hook.idleChapters} 章没有推进（${hook.lastProgressChapter !== undefined && hook.lastProgressChapter > hook.setupChapter ? `最近一次推进在第 ${hook.lastProgressChapter} 章` : "埋下后没有推进记录"}）。`,
+    seed ? `原文承诺：${seed}` : "",
+    "提醒：不必本章回收，但别让读者忘了它——可以安排一次轻提及或推进。",
+  ].filter(Boolean).join("\n");
+  return NarrativeContextCardSchema.parse({
+    id: `dormant-hook:${input.bookId}:${hook.entryId}`,
+    bookId: input.bookId,
+    sourceType: "jingwei",
+    sourceId: hook.entryId,
+    channel: "hooks",
+    title: `长线伏笔提醒：${hook.title}`,
+    content,
+    brief: `长线伏笔「${hook.title}」已 ${hook.idleChapters} 章未推进`,
+    tags: ["hook", DORMANT_HOOK_TAG],
+    entities: [hook.title],
+    priority: 80,
+    importance: Math.max(70, hook.importance ?? 40),
+    accessCount: 0,
+    reason: `休眠长线伏笔：经纬伏笔条目未回收，按推进记录（经纬条目 + 已应用的 hook 事件，现场派生）已 ${hook.idleChapters} 章未推进，超过阈值。`,
+    estimatedTokens: Math.max(1, estimateTokens(content)),
+  });
+}
+
+/** 从派生阶段读模型挑休眠伏笔；读不到只跳过提醒，不影响其它伏笔卡。 */
+function collectDormantHooks(
+  input: HooksChannelInput,
+  entryById: ReadonlyMap<string, StoryJingweiEntryRecord>,
+): Array<DormantHook & { readonly entryId: string }> {
+  const limit = input.dormantLimit ?? DEFAULT_DORMANT_HOOK_LIMIT;
+  if (input.currentChapter === undefined || limit <= 0) return [];
+  let states: ForeshadowState[];
+  try {
+    states = loadForeshadowStates(input.storage, input.bookId, { beforeChapter: input.currentChapter });
+  } catch {
+    return [];
+  }
+  const candidates = states.flatMap((state) => {
+    const entry = entryById.get(state.entryId);
+    // 只提醒参与 AI 的已确认条目（与 hooks 通道其余经纬伏笔卡同口径）
+    if (!entry || !entry.participatesInAi || entry.status !== "confirmed") return [];
+    if (state.phase === "paid_off" || state.phase === "abandoned") return [];
+    const target = entry.fields.targetChapter;
+    return [{
+      entryId: state.entryId,
+      title: state.label,
+      status: state.phase,
+      ...(state.setupChapter !== undefined ? { setupChapter: state.setupChapter } : {}),
+      ...(state.lastProgressChapter !== undefined ? { lastProgressChapter: state.lastProgressChapter } : {}),
+      ...(typeof target === "number" ? { targetChapter: target } : {}),
+      importance: entry.importance ?? 40,
+      seedText: (entry.contentMd || entry.summaryMd || "").slice(0, 120),
+    }];
+  });
+  const picked = selectDormantHooks(candidates, input.currentChapter, {
+    thresholdChapters: input.dormantThresholdChapters ?? DEFAULT_DORMANT_HOOK_CHAPTERS,
+    limit,
+  });
+  const idByTitle = new Map(candidates.map((candidate) => [candidate.title, candidate.entryId]));
+  return picked.map((hook) => ({ ...hook, entryId: idByTitle.get(hook.title) ?? hook.title }));
 }
 
 export function createHooksChannel(): NarrativeRetrievalChannel<HooksChannelInput> {
@@ -168,7 +253,17 @@ export function createHooksChannel(): NarrativeRetrievalChannel<HooksChannelInpu
       // pending hook 与 hook fact 只作证据补充剩余名额。与已选经纬条目同名的证据卡视为同一条伏笔的
       // 重复表达，不再单独注入。
       const byScore = (a: ScoredHookCard, b: ScoredHookCard) => b.score - a.score || a.card.sourceId.localeCompare(b.card.sourceId);
-      const authoritative = scored.filter((item) => item.card.sourceType === "jingwei").sort(byScore).map((item) => item.card).slice(0, limit);
+      // 休眠长线伏笔：提醒卡替换同一条目的完整伏笔卡（同一伏笔只留一份表达），并优先占名额。
+      const dormant = collectDormantHooks(input, new Map(entries.map((entry) => [entry.id, entry])));
+      const dormantEntryIds = new Set(dormant.map((hook) => hook.entryId));
+      const dormantCards = dormant.map((hook) => dormantHookCard(input, hook));
+      const authoritative = [
+        ...dormantCards,
+        ...scored
+          .filter((item) => item.card.sourceType === "jingwei" && !dormantEntryIds.has(item.card.sourceId))
+          .sort(byScore)
+          .map((item) => item.card),
+      ].slice(0, limit);
       const authoritativeNames = new Set(authoritative.flatMap((card) => cardNames(card)));
       const evidence = scored
         .filter((item) => item.card.sourceType !== "jingwei")
@@ -180,7 +275,14 @@ export function createHooksChannel(): NarrativeRetrievalChannel<HooksChannelInpu
       if (cards.length === 0) {
         return { status: "skipped", cards: [], warnings: ["hooks channel 为空：未找到 runtime hooks、pending hooks 或伏笔经纬条目。"] };
       }
-      return { cards, warnings: [] };
+      return {
+        cards,
+        warnings: [],
+        diagnostics: {
+          dormantHooks: dormant.map((hook) => ({ entryId: hook.entryId, title: hook.title, setupChapter: hook.setupChapter, idleChapters: hook.idleChapters })),
+          dormantThresholdChapters: input.dormantThresholdChapters ?? DEFAULT_DORMANT_HOOK_CHAPTERS,
+        },
+      };
     },
   };
 }

@@ -186,6 +186,34 @@ describe("rebuildNarrativeEntityIndex", () => {
     ]);
   });
 
+  it("真实长度的事实 id 不会让派生行 id 截断后撞车（同一事实的多条边 / 状态 / 知情行都保留）", async () => {
+    // 产品里事实 id 形如 event-fact:<书 id>:<章>:<类型>:<主体>:<谓词>:<对象>，每段带 URL 编码前缀与摘要，
+    // 中文名下整串远超 240 字符；旧实现把 rel:/st:/know: 前缀拼上去后直接截到 240，
+    // 同一事实的不同实体落到同一个 id：边与状态被 ON CONFLICT 静默吞掉，知情行直接撞主键让整本重建失败。
+    const a = await entry("薛行之", "characters");
+    const b = await entry("方工", "characters");
+    const c = await entry("林舟", "characters");
+    const longFactId = `event-fact:book-1:12:relationship_changed:${"%E8%96%9B".repeat(16)}-0123456789abcdef:${"%E7%BB%93".repeat(16)}-0123456789abcdef:${"%E5%8D%8F".repeat(16)}-0123456789abcdef`;
+    expect(longFactId.length).toBeGreaterThan(240);
+    fact(longFactId, 12, "薛行之、方工与林舟", "结盟", "协作", "relationship");
+    fact(`${longFactId}-state`, 13, "薛行之与方工", "境界", "筑基", "character_state");
+    // 作者来源的事实直接算已确认，会产生知情行
+    storage.sqlite.prepare("UPDATE narrative_fact SET source_type = 'manual' WHERE book_id = 'book-1'").run();
+
+    const result = rebuildNarrativeEntityIndex(storage, "book-1");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // 三人两两结盟：3 条边
+    expect(count("narrative_relation")).toBe(3);
+    expect(count("narrative_state_change")).toBe(2);
+    // 关系事实 3 个知情人 + 状态事实 2 个知情人
+    expect(count("narrative_knowledge")).toBe(5);
+    const ids = storage.sqlite.prepare<{ id: string }>("SELECT id FROM narrative_relation WHERE book_id = 'book-1' UNION ALL SELECT id FROM narrative_state_change WHERE book_id = 'book-1' UNION ALL SELECT id FROM narrative_knowledge WHERE book_id = 'book-1'").all();
+    expect(ids.every((row) => row.id.length <= 240)).toBe(true);
+    expect(new Set(ids.map((row) => row.id)).size).toBe(ids.length);
+    void [a, b, c];
+  });
+
   it("没有 0032 表时跳过并说明原因", () => {
     const bare = createStorageDatabase({ databasePath: join(tempDir, "bare.db") });
     ensureNarrativeMemorySchema(bare);

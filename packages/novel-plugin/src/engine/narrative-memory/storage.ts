@@ -377,6 +377,7 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_predicate ON narrative_fact(book_id, predicate);
     CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_layer ON narrative_fact(book_id, layer);
     CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_source_chapter ON narrative_fact(book_id, source_chapter);
+    CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_source_id ON narrative_fact(book_id, source_id);
     CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_validity ON narrative_fact(book_id, valid_from_chapter, valid_until_chapter);
 
     CREATE TABLE IF NOT EXISTS narrative_event (

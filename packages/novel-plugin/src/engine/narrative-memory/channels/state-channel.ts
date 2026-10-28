@@ -5,6 +5,7 @@ import type { SceneSpec } from "../../../handlers/scene-spec-handler.js";
 import { createStoryJingweiEntryRepository } from "../../jingwei/repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "../../jingwei/repositories/section-repo.js";
 import type { StoryJingweiEntryRecord, StoryJingweiSectionRecord } from "../../jingwei/types.js";
+import { classifyCanonScope, isEntityCanonRelevant } from "../canon-scope.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
 import { jingweiEntryToContextCard, runtimeStateToContextCards } from "../context-card.js";
 import { factToContextCard, searchFactsByEntities } from "../facts.js";
@@ -84,6 +85,9 @@ function matchScore(entry: StoryJingweiEntryRecord, section: StoryJingweiSection
   return score;
 }
 
+/** 实体型 canon 卡：本章出场实体的设定。标 entity-canon，写前裁剪与预算打包都按「点名保留、只降档不丢」处理。 */
+export const ENTITY_CANON_TAG = "entity-canon";
+
 function asStateCard(card: NarrativeContextCard, reason?: string): NarrativeContextCard {
   return {
     ...card,
@@ -104,6 +108,42 @@ export function createStateChannel(): NarrativeRetrievalChannel<StateChannelInpu
       const sections = await createStoryJingweiSectionRepository(input.storage).listEnabledForAi(input.bookId);
       const sectionById = new Map(sections.map((section) => [section.id, section]));
       const entries = await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
+
+      // 实体型 canon（角色 / 势力 / 地点 / 道具；hard 通道已不再全量注入）：只取本章出场的。
+      // 出场 = sceneSpec 角色/地点 + 点名实体 + 正文/计划文本里出现的条目名或别名。
+      // 这些卡不占 limit 名额（出场的实体一个都不能少），预算紧时由打包层降档。
+      const entityCanonCards: NarrativeContextCard[] = [];
+      let entityCanonTotal = 0;
+      for (const entry of entries) {
+        if (!entry.participatesInAi || entry.status !== "confirmed") continue;
+        if (entry.lifecycle && entry.lifecycle !== "active") continue;
+        const section = sectionById.get(entry.sectionId);
+        if (classifyCanonScope(entry, section) !== "entity") continue;
+        entityCanonTotal += 1;
+        // 与下方 dynamic 经纬同一可见章口径：修第 N 章时，只关联到 N 章之后的条目（后面才登场的角色）不注入。
+        if (!isVisibleEntry(entry, input.currentChapter)) continue;
+        if (!isEntityCanonRelevant(entry, queryEntities, input.sceneText)) continue;
+        const card = jingweiEntryToContextCard({
+          entry,
+          sectionKey: section?.key,
+          sectionName: section?.name,
+          reason: "state channel 注入本章出场实体的 canon 设定（实体型 canon 按出场相关性召回，可降档；不再全量进 hard）。",
+        });
+        entityCanonCards.push({
+          ...asStateCard(card),
+          tags: [...card.tags, ENTITY_CANON_TAG, "canon"],
+          entities: [...new Set([...card.entities, entry.title, ...entry.aliases])],
+          priority: Math.max(card.priority, 90),
+          importance: Math.max(card.importance, 85),
+        });
+      }
+      const entityCanonDiagnostics = {
+        total: entityCanonTotal,
+        injected: entityCanonCards.length,
+        filteredOut: entityCanonTotal - entityCanonCards.length,
+        injectedTitles: entityCanonCards.map((card) => card.title),
+      };
+
       const scoredEntries = entries
         .filter((entry) => entry.participatesInAi && entry.status === "confirmed" && isVisibleEntry(entry, input.currentChapter))
         .map((entry) => ({ entry, section: sectionById.get(entry.sectionId), category: entryCategory(entry, sectionById.get(entry.sectionId)) }))
@@ -151,14 +191,15 @@ export function createStateChannel(): NarrativeRetrievalChannel<StateChannelInpu
       const reserved = authoritative.slice(0, limit);
       const remainingSlots = Math.max(0, limit - reserved.length);
       const chosenIds = new Set([...reserved, ...fallback.slice(0, remainingSlots)].map((card) => card.id));
-      const result = ordered.filter((card) => chosenIds.has(card.id)).slice(0, limit);
+      const result = [...entityCanonCards, ...ordered.filter((card) => chosenIds.has(card.id)).slice(0, limit)];
+      const diagnostics = { entityCanon: entityCanonDiagnostics };
 
       if (result.length === 0) {
         warnings.push("state channel 为空：未找到当前场景相关 dynamic 经纬、RuntimeState 或可见 narrative facts。");
-        return { status: "skipped", cards: [], warnings };
+        return { status: "skipped", cards: [], warnings, diagnostics };
       }
 
-      return { cards: result, warnings };
+      return { cards: result, warnings, diagnostics };
     },
   };
 }

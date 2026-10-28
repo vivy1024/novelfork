@@ -3,7 +3,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { SceneSpec } from "../../../handlers/scene-spec-handler.js";
 import { createStoryJingweiEntryRepository } from "../../jingwei/repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "../../jingwei/repositories/section-repo.js";
-import type { StoryJingweiSectionRecord } from "../../jingwei/types.js";
+import { classifyCanonScope } from "../canon-scope.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
 import { jingweiEntryToContextCard, sceneSpecToContextCards } from "../context-card.js";
 import { NarrativeContextCardSchema, type NarrativeContextCard } from "../types.js";
@@ -15,11 +15,6 @@ export interface HardChannelInput {
   readonly sceneSpec?: SceneSpec;
   readonly bookRulesText?: string;
   readonly complianceRules?: readonly string[];
-}
-
-function isHardEntryCategory(section?: StoryJingweiSectionRecord): boolean {
-  const marker = `${section?.key ?? ""} ${section?.builtinKind ?? ""} ${section?.name ?? ""}`.toLowerCase();
-  return /rule|rules|canon|premise|world|book_rules|硬规则|规则|基线|世界/u.test(marker);
 }
 
 function createHardTextCard(input: {
@@ -56,6 +51,7 @@ export function createHardChannel(): NarrativeRetrievalChannel<HardChannelInput>
     async run(input) {
       const cards: NarrativeContextCard[] = [];
       const warnings: string[] = [];
+      const diagnostics: Record<string, unknown> = {};
 
       if (input.sceneSpec) {
         cards.push(...sceneSpecToContextCards({ bookId: input.bookId, sceneSpec: input.sceneSpec }).filter((card) => card.channel === "hard"));
@@ -64,20 +60,33 @@ export function createHardChannel(): NarrativeRetrievalChannel<HardChannelInput>
       const sections = await createStoryJingweiSectionRepository(input.storage).listEnabledForAi(input.bookId);
       const sectionById = new Map(sections.map((section) => [section.id, section]));
       const entries = await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
+      // 只有「全书硬规则」（故事基线 / 世界模型 / 能力体系 / 写作规则）全量进 hard；
+      // 实体型 canon（角色 / 势力 / 地点 / 道具）交给 state 通道按本章出场相关性召回（可降档），
+      // 否则长篇几百条人设会把不可丢弃的 hard 撑爆，触发超预算拒写。分类只看经纬分类表态。
+      let entityCanonDeferred = 0;
+      const deferredByCategory: Record<string, number> = {};
       for (const entry of entries) {
+        if (!entry.participatesInAi || entry.status !== "confirmed") continue;
+        if (entry.lifecycle && entry.lifecycle !== "active") continue;
         const section = sectionById.get(entry.sectionId);
-        const category = typeof entry.customFields.category === "string" ? entry.customFields.category.toLowerCase() : "";
-        const isCanon = entry.layer === "canon" || entry.priorityTier === "core";
-        const isRule = isHardEntryCategory(section) || /rule|rules|canon|book_rules|premise|world/u.test(category) || entry.tags.some((tag) => /rule|canon|book_rules|硬规则|规则/u.test(tag));
-        if (!entry.participatesInAi || entry.status !== "confirmed" || (!isCanon && !isRule)) continue;
+        const scope = classifyCanonScope(entry, section);
+        if (scope === "entity") {
+          entityCanonDeferred += 1;
+          deferredByCategory[entry.category] = (deferredByCategory[entry.category] ?? 0) + 1;
+          continue;
+        }
+        if (scope !== "book-rule") continue;
         const card = jingweiEntryToContextCard({
           entry,
           sectionKey: section?.key,
           sectionName: section?.name,
-          reason: "hard channel 读取 canon/core 经纬或书籍硬规则，作为不可直接丢弃约束。",
+          reason: "hard channel 读取全书硬规则（故事基线 / 世界模型 / 能力体系 / 写作规则），作为不可直接丢弃约束。",
         });
         cards.push({ ...card, channel: "hard", priority: Math.max(card.priority, 95), importance: Math.max(card.importance, 90) });
       }
+      diagnostics.entityCanonDeferred = entityCanonDeferred;
+      diagnostics.entityCanonDeferredByCategory = deferredByCategory;
+      diagnostics.note = "实体型 canon（角色/势力/地点/道具）不进 hard，由 state 通道按本章出场相关性召回；见 state 通道的 entityCanon 诊断。";
 
       if (input.bookRulesText?.trim()) {
         cards.push(createHardTextCard({
@@ -104,10 +113,10 @@ export function createHardChannel(): NarrativeRetrievalChannel<HardChannelInput>
       }
 
       if (cards.length === 0) {
-        warnings.push("hard channel 为空：未找到 canon 经纬、书籍规则、SceneSpec constraints 或合规硬规则。");
+        warnings.push("hard channel 为空：未找到全书硬规则经纬、书籍规则、SceneSpec constraints 或合规硬规则。");
       }
 
-      return { cards, warnings };
+      return { cards, warnings, diagnostics };
     },
   };
 }

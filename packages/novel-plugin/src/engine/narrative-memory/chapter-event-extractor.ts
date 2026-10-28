@@ -22,6 +22,20 @@ export type CurrentLedgerFactSnapshot = Readonly<{
 /** 实体字典的传输形态（handler 层构建后传入，extractor 只读）。 */
 export type EntityDictionaryInput = EntityDictionary;
 
+/**
+ * 伏笔台账里一条未回收伏笔（来自经纬 foreshadowing 条目的派生阶段）。
+ * key 是伏笔的展示名：抽取时后续事件（progressed/triggered/resolved）的 subject 必须原样写它，
+ * 结算才能把事件挂回同一条伏笔，而不是每章各起一个名字、台账越记越碎。
+ */
+export type OpenForeshadowSnapshot = Readonly<{
+  key: string;
+  /** 经纬条目 id；提供时按 key 命中的事件直接回填 subjectEntryId。 */
+  entryId?: string;
+  phase: "planted" | "reinforced" | "triggered" | "unknown";
+  setupChapter?: number;
+  triggerCondition?: string;
+}>;
+
 export type ChapterEventExtractorInput = Readonly<{
   bookId: string;
   chapterNumber: number;
@@ -36,7 +50,12 @@ export type ChapterEventExtractorInput = Readonly<{
    * 缺省时行为与旧版一致（不做注入与归一化）。
    */
   entityDictionary?: EntityDictionaryInput;
-  llmExtractor?: (input: Readonly<{ bookId: string; chapterNumber: number; title?: string; content: string; currentLedger?: readonly CurrentLedgerFactSnapshot[]; entityDictionary?: EntityDictionaryInput }>) => Promise<unknown>;
+  /**
+   * 本书未回收伏笔（伏笔台账）。提供时：prompt 单列清单并要求后续事件用其中的 key；
+   * 抽取结果里对不上任何已知伏笔、也不是本批新埋的后续事件会告警。缺省时不做这层校验。
+   */
+  openForeshadows?: readonly OpenForeshadowSnapshot[];
+  llmExtractor?: (input: Readonly<{ bookId: string; chapterNumber: number; title?: string; content: string; currentLedger?: readonly CurrentLedgerFactSnapshot[]; entityDictionary?: EntityDictionaryInput; openForeshadows?: readonly OpenForeshadowSnapshot[] }>) => Promise<unknown>;
 }>;
 
 export type ChapterEventExtractionResult = Readonly<{
@@ -136,12 +155,33 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   "对人物状态类变化（修为/位置/情绪/伤势等），subject+predicate 标识状态槽位，object 是本章后的新值；同一槽位的新值会由系统自动作废旧值，你只需给出新值。",
   "对关系变化（relationship_changed）：subject 与 object 都只写一方的名字（人物或势力，优先用官方实体名单里的名字），predicate 写两人之间的关系或变化，如「救下」「结为师徒」「反目」「暗中提防」。object 不要写描述句，经过与细节放进 evidenceText。一件事牵涉多人时拆成多条，每条一对。",
   "对伏笔：本章新埋用 hook_planted；已有伏笔被提及/推进但触发条件尚未满足用 hook_progressed；触发条件已出现、该兑现但尚未兑现用 hook_triggered（object 写触发条件）；被揭晓/回收用 hook_resolved。同一条伏笔的后续事件 causedBy 必须指向它更早的 planted/progressed/triggered。",
+  "伏笔的 subject 就是它的 key：若用户消息提供了「本书未回收伏笔」，推进/触发/回收其中某条时 subject 必须原样写清单里的伏笔名，不要换说法；本章新埋的伏笔起一个简短、以后能沿用的名字作 subject。清单里的伏笔本章没有动静就不要输出。",
 ].join("\n");
 
 function formatCurrentLedger(ledger: readonly CurrentLedgerFactSnapshot[]): string {
   if (ledger.length === 0) return "（空）";
   return ledger
     .map((fact) => `- [${fact.category}] ${fact.subject} / ${fact.predicate} / ${fact.object}`)
+    .join("\n");
+}
+
+const FORESHADOW_PHASE_LABEL: Record<OpenForeshadowSnapshot["phase"], string> = {
+  planted: "已埋设",
+  reinforced: "推进中",
+  triggered: "已触发",
+  unknown: "状态未知",
+};
+
+function formatOpenForeshadows(foreshadows: readonly OpenForeshadowSnapshot[]): string {
+  return foreshadows
+    .map((item) => {
+      const facts = [FORESHADOW_PHASE_LABEL[item.phase]];
+      if (item.setupChapter !== undefined) facts.push(`第${item.setupChapter}章埋`);
+      const head = facts.join("，");
+      return item.triggerCondition
+        ? `- ${item.key}（${head}；触发条件：${item.triggerCondition}）`
+        : `- ${item.key}（${head}）`;
+    })
     .join("\n");
 }
 
@@ -152,7 +192,10 @@ function buildExtractorUserPrompt(input: ChapterEventExtractorInput): string {
   const entityBlock = formatEntityDictionaryForPrompt(input.entityDictionary)
     ? `\n\n${formatEntityDictionaryForPrompt(input.entityDictionary)}`
     : "";
-  return `bookId: ${input.bookId}\nchapterNumber: ${input.chapterNumber}\ntitle: ${input.title ?? ""}${entityBlock}${ledgerBlock}\n\n正式章节正文：\n${input.content.slice(0, 20_000)}`;
+  const foreshadowBlock = input.openForeshadows && input.openForeshadows.length > 0
+    ? `\n\n本书未回收伏笔（推进/触发/回收时 subject 原样写下列伏笔名）：\n${formatOpenForeshadows(input.openForeshadows)}`
+    : "";
+  return `bookId: ${input.bookId}\nchapterNumber: ${input.chapterNumber}\ntitle: ${input.title ?? ""}${entityBlock}${foreshadowBlock}${ledgerBlock}\n\n正式章节正文：\n${input.content.slice(0, 20_000)}`;
 }
 
 /**
@@ -284,6 +327,46 @@ function normalizeDraftEntities(draft: NarrativeEventDraft, dictionary: EntityDi
  * 结算表达为失败（agent 重试工具调用），绝不静默降级为规则兜底 —— 兜底会以
  * 「抽到 0 条 / 抽偏」的假成功写进结算台账，下回同章幂等跳过，漏抽就再也补不回来。
  */
+const FOLLOW_UP_HOOK_TYPES = new Set(["hook_progressed", "hook_triggered", "hook_resolved"]);
+
+function foreshadowKey(value: string): string {
+  return value.replace(/\s+/gu, "").toLowerCase();
+}
+
+/**
+ * 伏笔台账的 key 校验：推进/触发/回收事件的 subject 应是某条未回收伏笔的名字，或本批刚埋的伏笔。
+ * - 命中清单：改写为清单里的原名，并在还没挂上条目时回填 entryId；
+ * - 都对不上：保留草案（可能是作者没录进经纬的旧伏笔），但告警——否则这条进展挂不到任何伏笔上，
+ *   伏笔看板和休眠提醒都看不见它。
+ * 未提供清单（旧调用方）时原样返回。
+ */
+function linkForeshadowKeys(
+  drafts: readonly NarrativeEventDraft[],
+  openForeshadows: readonly OpenForeshadowSnapshot[] | undefined,
+  warnings: string[],
+): NarrativeEventDraft[] {
+  if (!openForeshadows) return [...drafts];
+  const known = new Map(openForeshadows.map((item) => [foreshadowKey(item.key), item]));
+  const plantedThisBatch = new Set(
+    drafts.filter((draft) => draft.eventType === "hook_planted").map((draft) => foreshadowKey(draft.subject)),
+  );
+  return drafts.map((draft) => {
+    if (!FOLLOW_UP_HOOK_TYPES.has(draft.eventType)) return draft;
+    const key = foreshadowKey(draft.subject);
+    const hit = known.get(key);
+    if (hit) {
+      return {
+        ...draft,
+        subject: hit.key,
+        ...(hit.entryId && !draft.subjectEntryId ? { subjectEntryId: hit.entryId } : {}),
+      };
+    }
+    if (!plantedThisBatch.has(key) && !draft.subjectEntryId) {
+      warnings.push(`伏笔事件「${draft.subject}」（${draft.eventType}）对不上本书任何未回收伏笔，也不是本章新埋的；它挂不到伏笔看板上。审核时可改成已有伏笔的名字，或先在经纬里建这条伏笔。`);
+    }
+    return draft;
+  });
+}
 export async function extractNarrativeEventsFromChapter(input: ChapterEventExtractorInput): Promise<ChapterEventExtractionResult> {
   if (!input.llmExtractor) {
     throw new Error("当前会话没有可用的 LLM 抽取器（generateText 缺失），无法抽取叙事事件。");
@@ -299,7 +382,8 @@ export async function extractNarrativeEventsFromChapter(input: ChapterEventExtra
     content: input.content,
     currentLedger: input.currentLedger,
     entityDictionary: input.entityDictionary,
-  }));
+    ...(input.openForeshadows ? { openForeshadows: input.openForeshadows } : {}),
+    }));
   for (const raw of llmPayload.events) {
     const draft = parseUnknownDraft(raw);
     if (draft) rawDrafts.push(draft);
@@ -319,7 +403,7 @@ export async function extractNarrativeEventsFromChapter(input: ChapterEventExtra
     }
   }
 
-  const deduped = dedupeDrafts(validDrafts);
+  const deduped = dedupeDrafts(linkForeshadowKeys(validDrafts, input.openForeshadows, warnings));
   const mentionedEntities = collectChapterMentions({
     content: input.content,
     dictionary: input.entityDictionary,

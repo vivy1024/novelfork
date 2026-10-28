@@ -20,8 +20,9 @@ import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embeddin
 import { scoreAndPersistNarrativeStructure } from "../engine/narrative-memory/structure-score.js";
 import { ensureNarrativeMemorySchema, insertNarrativeEvent, pruneSettlementArtifacts, replaceChapterMentions, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
+import { loadOpenForeshadowSnapshots } from "../engine/narrative-taxonomy/foreshadow-states.js";
 import { stageForeshadowDrafts } from "./foreshadow-draft-staging.js";
-import { rebuildNarrativeEntityIndex } from "../engine/narrative-entity/entity-index.js";
+import { refreshNarrativeEntityIndex } from "../engine/narrative-entity/entity-index.js";
 import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
 import { foreshadowPhase } from "../engine/narrative-memory/foreshadow-phase.js";
@@ -500,6 +501,70 @@ function retireStaleMachineFacts(
   return { retired: stale.length, reopened, unknownProvenance: 0 };
 }
 
+type CausalHistoryRow = Readonly<{
+  id: string;
+  chapterNumber: number;
+  eventType: string;
+  subject: string;
+  predicate: string;
+  object: string;
+}>;
+
+const HOOK_EVENT_TYPES = ["hook_planted", "hook_progressed", "hook_triggered", "hook_resolved"] as const;
+
+/** 与 JS 正则 \s 等价的空白字符集合（GLOB 字符类用）。 */
+const WHITESPACE_GLOB = `*[${" \t\n\v\f\r\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"}]*`;
+
+function normalizeRefText(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * 因果前驱解析需要的历史事件。
+ *
+ * 只有两处用到它，结果都只取决于其中一部分：
+ * - inferHookCausalLinks 只看伏笔类事件（hook_*），且自带完整排序（章号、阶段、id）；
+ * - resolveCausedByRefs 按「事件 id」「主体」「主体|谓词」三种写法匹配，序号写法只指本批草案；
+ *   多条命中时用 earlierThan（章号、阶段、id 的全序）取最近一条。
+ * 两处都与历史行的先后无关，所以只读这两类行：全部伏笔事件，加上 id 或主体能与本批 causedBy 对上的事件
+ * （主体含空白的行先取出、再按同一折叠规则在这里筛）。输出与读整本历史完全相同，
+ * 而每章结算不再把全书全部事件读进内存。
+ */
+function loadCausalHistory(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number,
+  drafts: readonly NarrativeEventDraft[],
+): CausalHistoryRow[] {
+  const refTexts = new Set<string>();
+  for (const draft of drafts) {
+    for (const ref of draft.causedBy ?? []) {
+      const text = normalizeRefText(ref);
+      if (!text) continue;
+      refTexts.add(text);
+      if (text.includes("|")) {
+        const subject = normalizeRefText(text.split("|", 2)[0] ?? "");
+        if (subject) refTexts.add(subject);
+      }
+    }
+  }
+  const refs = [...refTexts];
+  const hookPlaceholders = HOOK_EVENT_TYPES.map(() => "?").join(", ");
+  const refClause = refs.length > 0
+    ? ` OR id IN (${refs.map(() => "?").join(", ")}) OR subject IN (${refs.map(() => "?").join(", ")}) OR subject GLOB ?`
+    : "";
+  const rows = storage.sqlite.prepare<CausalHistoryRow>(`
+    SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object
+    FROM narrative_event
+    WHERE book_id = ? AND chapter_number <= ?
+      AND (event_type IN (${hookPlaceholders})${refClause})
+    ORDER BY chapter_number ASC, created_at ASC, id ASC
+  `).all(bookId, chapterNumber, ...HOOK_EVENT_TYPES, ...(refs.length > 0 ? [...refs, ...refs, WHITESPACE_GLOB] : []));
+  if (refs.length === 0) return rows;
+  const hookTypes = new Set<string>(HOOK_EVENT_TYPES);
+  return rows.filter((row) => hookTypes.has(row.eventType) || refTexts.has(row.id) || refTexts.has(normalizeRefText(row.subject)));
+}
+
 function skipped(
   input: ChapterSettlementInput,
   warning: string,
@@ -677,6 +742,9 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
 
   let extraction: ChapterEventExtractionResult;
   const entityDictionary = buildEntityDictionary(storage, input.bookId);
+  // 伏笔台账：把本章之前仍未回收的伏笔（经纬条目 + 已应用事件派生的阶段）交给抽取器，
+  // 让推进/触发/回收事件沿用伏笔名作 key，并挂回同一条目。
+  const openForeshadows = loadOpenForeshadowSnapshots(storage, input.bookId, input.chapterNumber);
   try {
     // 实体身份链：结算前从经纬构建实体字典，注入抽取 prompt 并在写入端归一化。
     // 字典为空（书还没有实体条目/表未建）时 extractNarrativeEventsFromChapter 内部按无字典降级。
@@ -687,6 +755,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
       content: input.content,
       currentLedger,
       entityDictionary,
+      openForeshadows,
       llmExtractor: options.llmExtractor,
     });
   } catch (error) {
@@ -777,19 +846,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
 
   const events: NarrativeEvent[] = [];
-  const historyEvents = storage.sqlite.prepare<{
-    id: string;
-    chapterNumber: number;
-    eventType: string;
-    subject: string;
-    predicate: string;
-    object: string;
-  }>(`
-    SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object
-    FROM narrative_event
-    WHERE book_id = ? AND chapter_number <= ?
-    ORDER BY chapter_number ASC, created_at ASC
-  `).all(input.bookId, input.chapterNumber);
+  const historyEvents = loadCausalHistory(storage, input.bookId, input.chapterNumber, draftPool);
   const pendingDrafts: NarrativeEventDraft[] = [];
   const pendingDecisions: SettlementRiskDecision[] = [];
 
@@ -1060,8 +1117,9 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   const { persisted, applied, eventResults, downgradedPendingIds, record, stateRevision, stateFingerprint } = commit;
 
   // 实体索引（参与者 / 关系边 / 状态流水）由经纬 + 记忆整本派生；失败不影响已提交的结算。
+  // 推导与整本重建相同，只把变化的行写回：结算之外的写入（审批、手工改事实、回收站恢复）也在这里一并追上。
   try {
-    const entityIndex = rebuildNarrativeEntityIndex(storage, input.bookId);
+    const entityIndex = refreshNarrativeEntityIndex(storage, input.bookId);
     if (entityIndex.ok && entityIndex.duplicateEntryIds.length > 0) {
       warnings.push(`作品基础里有 ${entityIndex.duplicateEntryIds.length} 个条目与其他条目同名（去掉括号注释后），没有进入实体索引，关系图里不会出现。建议合并重复条目或改成可区分的名字。`);
     }

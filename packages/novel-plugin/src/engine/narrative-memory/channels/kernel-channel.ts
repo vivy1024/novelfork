@@ -22,6 +22,11 @@ export interface KernelChannelInput {
   readonly fields: readonly KernelFieldSpec[];
   readonly stateSummaryMaxChars: number;
   readonly defaultPriority?: number;
+  /**
+   * 写/修第 N 章。内核表每角色只存最新一份（无历史行），结算章 updatedChapter ≥ N 的内核
+   * 反映的是本章或之后的心理状态，修旧章时不注入（宁缺勿错）。缺省不过滤。
+   */
+  readonly currentChapter?: number;
 }
 
 function truncateText(text: string, maxChars: number): string {
@@ -68,6 +73,7 @@ export function buildKernelCards(input: KernelChannelInput): NarrativeContextCar
   for (const kernel of kernels) {
     if (kernel.entryStatus !== "active") continue;
     if (!confirmed.has(kernel.characterId)) continue;
+    if (input.currentChapter !== undefined && kernel.updatedChapter >= input.currentChapter) continue;
     const { summary } = renderKernelFields(kernel.fields, input.fields);
     const trimmed = truncateText(summary, Math.max(input.stateSummaryMaxChars, 120));
     if (!trimmed) continue;

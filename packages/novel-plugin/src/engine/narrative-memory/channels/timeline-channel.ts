@@ -4,6 +4,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { SceneSpec } from "../../../handlers/scene-spec-handler.js";
 import { createStoryJingweiEntryRepository } from "../../jingwei/repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "../../jingwei/repositories/section-repo.js";
+import { resolveJingweiReadCategory } from "../../jingwei/read-model/category-map.js";
 import type { StoryJingweiEntryRecord, StoryJingweiSectionRecord } from "../../jingwei/types.js";
 import { estimateTokens } from "../../jingwei/context/token-budget.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
@@ -32,14 +33,14 @@ function entryChapter(entry: StoryJingweiEntryRecord): number | undefined {
   return titleMatch?.[1] ? Number(titleMatch[1]) : undefined;
 }
 
-function isSummarySection(section?: StoryJingweiSectionRecord): boolean {
-  const marker = `${section?.key ?? ""} ${section?.builtinKind ?? ""} ${section?.name ?? ""}`.toLowerCase();
-  return /chapter-summary|chapter-summaries|summary|timeline|章节摘要|时间线/u.test(marker);
-}
-
-function isSummaryEntry(entry: StoryJingweiEntryRecord, section?: StoryJingweiSectionRecord): boolean {
-  const category = typeof entry.customFields.category === "string" ? entry.customFields.category.toLowerCase() : "";
-  return isSummarySection(section) || /chapter-summary|chapter-summaries|summary|timeline/u.test(category);
+/**
+ * 时间线通道只收经纬「时间线」分类的条目。
+ * 章摘要（chapter-summaries）由 recent-summary 通道（近章）与 story-arc 层级前情（卷/全书）负责：
+ * 此前这里也按「summary」正则把章摘要再注入一份，同一章出现两张卡、预算重复计算；按单一权威源
+ * 「发现重复表达时删掉弱的一方」，章摘要不再从这里进。分类按经纬读模型解析，不靠正则猜。
+ */
+function isTimelineEntry(entry: StoryJingweiEntryRecord, section?: StoryJingweiSectionRecord): boolean {
+  return resolveJingweiReadCategory(entry, section) === "timeline";
 }
 
 function isVisibleChapter(chapter: number | undefined, currentChapter?: number): boolean {
@@ -99,7 +100,7 @@ export function createTimelineChannel(): NarrativeRetrievalChannel<TimelineChann
       const summaryEntries = entries
         .filter((entry) => entry.participatesInAi && entry.status === "confirmed")
         .map((entry) => ({ entry, section: sectionById.get(entry.sectionId), chapter: entryChapter(entry) }))
-        .filter(({ entry, section, chapter }) => isSummaryEntry(entry, section) && isVisibleChapter(chapter, input.currentChapter))
+        .filter(({ entry, section, chapter }) => isTimelineEntry(entry, section) && isVisibleChapter(chapter, input.currentChapter))
         .filter(({ chapter }) => minRecentChapter === undefined || chapter === undefined || chapter >= minRecentChapter)
         .sort((a, b) => (b.chapter ?? 0) - (a.chapter ?? 0) || b.entry.updatedAt.getTime() - a.entry.updatedAt.getTime());
 

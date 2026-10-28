@@ -1,48 +1,21 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
-import { getJingweiCategoryAliases, sqlInPlaceholders } from "../../jingwei/category-compat.js";
 import { estimateTokens } from "../../jingwei/context/token-budget.js";
+import { loadConfirmedChapterSummaries } from "../chapter-summary-source.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
 import { NarrativeContextCardSchema, type NarrativeContextCard } from "../types.js";
 
 export interface RecentSummaryChannelInput {
   readonly storage: StorageDatabase;
   readonly bookId: string;
+  /** 写/修第 N 章：只注入 N 之前的章摘要（从 N-1 往前取），不混入「未来」章节。 */
   readonly currentChapter?: number;
   /** 注入最近 N 章的手动摘要，默认 3。 */
   readonly limit?: number;
+  /** 下限（含）：层级摘要启用时传当前卷起始章，近章只在本卷内取，卷外由卷摘要卡承担。 */
+  readonly minChapter?: number;
   /** 正文在结算后又被改过的章：摘要照样注入，但标明可能过期、以正文为准。 */
   readonly staleChapters?: readonly number[];
-}
-
-interface RawSummaryRow {
-  readonly id: string;
-  readonly title: string;
-  readonly fields_json: string;
-  readonly updated_at: number;
-}
-
-function parseFieldsJson(raw: string): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(raw || "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
-  } catch {
-    return {};
-  }
-}
-
-/** chapterNumber 容错：数字或字符串数字均可；缺失时回退到标题「第N章」提取。 */
-function toChapterNumber(value: unknown, fallbackTitle: string): number | undefined {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (/^\d+$/u.test(trimmed)) {
-      const parsed = Number(trimmed);
-      if (Number.isInteger(parsed) && parsed >= 0) return parsed;
-    }
-  }
-  const titleMatch = /第\s*(\d+)\s*章/u.exec(fallbackTitle);
-  return titleMatch?.[1] ? Number(titleMatch[1]) : undefined;
 }
 
 /** 去掉标题里重复的「第N章」前缀，避免渲染成「第25章《第25章 xxx》」。 */
@@ -73,28 +46,17 @@ export function createRecentSummaryChannel(): NarrativeRetrievalChannel<RecentSu
     async run(input) {
       try {
         const limit = Math.max(1, input.limit ?? 3);
-        const categories = getJingweiCategoryAliases("chapter-summaries");
-        // fields_json 里才有 chapterNumber，无法在 SQL 精确排序；
-        // 先按 updated_at 倒序粗筛一批，再在 JS 里按章节号精确排序。
-        const rows = input.storage.sqlite.prepare(
-          `SELECT id, title, fields_json, updated_at FROM story_jingwei_entry
-           WHERE book_id = ?
-             AND category IN (${sqlInPlaceholders(categories)})
-             AND deleted_at IS NULL
-             AND COALESCE(status, 'confirmed') = 'confirmed'
-             AND participates_in_ai = 1
-           ORDER BY updated_at DESC LIMIT 50`
-        ).all(input.bookId, ...categories) as Array<RawSummaryRow>;
+        const rows = loadConfirmedChapterSummaries(input.storage, input.bookId, {
+          ...(input.currentChapter !== undefined ? { beforeChapter: input.currentChapter } : {}),
+          ...(input.minChapter !== undefined ? { minChapter: input.minChapter } : {}),
+          limit,
+        });
 
         const cards: NarrativeContextCard[] = [];
         for (const row of rows) {
-          const fields = parseFieldsJson(row.fields_json);
-          const chapter = toChapterNumber(fields.chapterNumber ?? fields.chapter_number, row.title);
-          const summary = typeof fields.summary === "string" ? fields.summary.trim() : "";
-          // 解析不出章号或摘要为空的条目跳过，不产出半残卡片。
-          if (chapter === undefined || !summary) continue;
+          const { chapter, summary } = row;
 
-          const rawTitle = typeof fields.title === "string" && fields.title.trim() ? fields.title.trim() : row.title;
+          const rawTitle = row.fieldTitle || row.title;
           const built = buildSummaryTitleAndContent(chapter, rawTitle, summary);
           const stale = input.staleChapters?.includes(chapter) ?? false;
           const title = built.title;

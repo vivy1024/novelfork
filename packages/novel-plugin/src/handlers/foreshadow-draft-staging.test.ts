@@ -135,6 +135,47 @@ describe("章后结算的新伏笔草稿", () => {
     }
   });
 
+  it("伏笔台账：结算把本章前未回收的伏笔交给抽取器，推进事件按 key 挂回条目", async () => {
+    const storage = await createStorage();
+    try {
+      const entry = upsertLedgerEntry(storage, {
+        bookId: "book-1",
+        category: "foreshadowing",
+        title: "铃身刻字",
+        contentMd: "铃身内侧刻着一个林舟不认识的字",
+        fields: { status: "已埋设", plantedChapter: 1 },
+      });
+      upsertLedgerEntry(storage, {
+        bookId: "book-1",
+        category: "foreshadowing",
+        title: "旧账",
+        contentMd: "已经收掉的线",
+        fields: { status: "已回收", plantedChapter: 1 },
+      });
+
+      let seen: unknown;
+      const content = "铃身内侧的刻字又亮了一下。";
+      const result = await settleConfirmedChapter({ bookId: "book-1", chapterNumber: 4, content }, {
+        storage,
+        llmExtractor: async (input) => {
+          seen = input.openForeshadows;
+          return [{ eventType: "hook_progressed", subject: " 铃身 刻字", predicate: "再次显现", object: "刻字发光", evidenceText: content, confidence: 0.9, source: "settle" }];
+        },
+      });
+
+      expect(result.status).toBe("completed");
+      expect(seen).toEqual([
+        expect.objectContaining({ key: "铃身刻字", entryId: entry.id, phase: "planted", setupChapter: 1 }),
+      ]);
+      const event = storage.sqlite.prepare<{ subject: string; subjectEntryId: string | null }>(
+        "SELECT subject, subject_entry_id AS subjectEntryId FROM narrative_event WHERE event_type = 'hook_progressed' LIMIT 1",
+      ).get();
+      expect(event).toEqual({ subject: "铃身刻字", subjectEntryId: entry.id });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("作者确认草稿后才进入伏笔阶段派生", async () => {
     const storage = await createStorage();
     try {

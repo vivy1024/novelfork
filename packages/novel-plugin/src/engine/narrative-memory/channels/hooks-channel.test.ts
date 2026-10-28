@@ -137,6 +137,53 @@ describe("hooks channel", () => {
     }
   });
 
+  it("休眠长线伏笔：第 5 章埋下、无 targetChapter、与本章无关，写第 300 章时仍被提醒；修第 4 章时不提醒", async () => {
+    const storage = await createStorage();
+    try {
+      const sections = createStoryJingweiSectionRepository(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      await sections.create({ id: "sec-hooks", bookId: "book-1", key: "foreshadowing", name: "伏笔", description: "", icon: null, order: 1, enabled: true, showInSidebar: true, participatesInAi: true, defaultVisibility: "tracked", fieldsJson: [], builtinKind: "foreshadowing", sourceTemplate: null, createdAt: now, updatedAt: now });
+      await entries.create({ id: "hook-jade", bookId: "book-1", sectionId: "sec-hooks", title: "玉佩来历", contentMd: "老者留下的玉佩背面刻着一个「秦」字。", summaryMd: null, tags: [], aliases: [], customFields: {}, relatedChapterNumbers: [5], relatedEntryIds: [], visibilityRule: { type: "tracked" }, participatesInAi: true, tokenBudget: null, priorityTier: "relevant", importance: 0, summaryL0: null, createdAt: now, updatedAt: now, category: "foreshadowing", fields: { status: "已埋设", plantedChapter: 5 } });
+      await entries.create({ id: "hook-fresh", bookId: "book-1", sectionId: "sec-hooks", title: "新埋伏笔", contentMd: "第290章刚埋。", summaryMd: null, tags: [], aliases: [], customFields: {}, relatedChapterNumbers: [290], relatedEntryIds: [], visibilityRule: { type: "tracked" }, participatesInAi: true, tokenBudget: null, priorityTier: "relevant", importance: 0, summaryL0: null, createdAt: now, updatedAt: now, category: "foreshadowing", fields: { status: "已埋设", plantedChapter: 290 } });
+
+      const result = await createHooksChannel().run({ storage, bookId: "book-1", currentChapter: 300, entities: ["韩立"] });
+      const dormant = result.cards.filter((card) => card.tags.includes("dormant-hook"));
+      expect(dormant.map((card) => card.sourceId)).toEqual(["hook-jade"]);
+      expect(dormant[0]?.content).toContain("埋于第 5 章");
+      expect(dormant[0]?.content).toContain("已 295 章没有推进");
+      expect(dormant[0]?.content).toContain("「秦」字");
+      // 同一条伏笔只留提醒卡一份表达
+      expect(result.cards.filter((card) => card.sourceId === "hook-jade")).toHaveLength(1);
+      expect(result.diagnostics).toMatchObject({ dormantHooks: [expect.objectContaining({ entryId: "hook-jade", idleChapters: 295 })] });
+
+      const tight = await createHooksChannel().run({ storage, bookId: "book-1", currentChapter: 300, entities: ["韩立"], dormantThresholdChapters: 500 });
+      expect(tight.cards.some((card) => card.tags.includes("dormant-hook"))).toBe(false);
+
+      const revise = await createHooksChannel().run({ storage, bookId: "book-1", currentChapter: 4, entities: ["韩立"] });
+      expect(revise.cards.some((card) => card.tags.includes("dormant-hook"))).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("修旧章：埋设章在当前章之后的经纬伏笔不注入（条目没填 relatedChapterNumbers、只在 fields.plantedChapter 记章号时也一样）", async () => {
+    const storage = await createStorage();
+    try {
+      const sections = createStoryJingweiSectionRepository(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      await sections.create({ id: "sec-hooks", bookId: "book-1", key: "foreshadowing", name: "伏笔", description: "", icon: null, order: 1, enabled: true, showInSidebar: true, participatesInAi: true, defaultVisibility: "tracked", fieldsJson: [], builtinKind: "foreshadowing", sourceTemplate: null, createdAt: now, updatedAt: now });
+      await entries.create({ id: "hook-future", bookId: "book-1", sectionId: "sec-hooks", title: "小瓶真相", contentMd: "第250章才埋下的小瓶真相。", summaryMd: null, tags: ["小瓶"], aliases: [], customFields: {}, relatedChapterNumbers: [], relatedEntryIds: [], visibilityRule: { type: "tracked" }, participatesInAi: true, tokenBudget: null, priorityTier: "relevant", importance: 80, summaryL0: null, createdAt: now, updatedAt: now, category: "foreshadowing", fields: { status: "已埋设", plantedChapter: 250 } });
+      await entries.create({ id: "hook-past", bookId: "book-1", sectionId: "sec-hooks", title: "小瓶异响", contentMd: "第10章埋下的小瓶异响。", summaryMd: null, tags: ["小瓶"], aliases: [], customFields: {}, relatedChapterNumbers: [], relatedEntryIds: [], visibilityRule: { type: "tracked" }, participatesInAi: true, tokenBudget: null, priorityTier: "relevant", importance: 80, summaryL0: null, createdAt: now, updatedAt: now, category: "foreshadowing", fields: { status: "已埋设", plantedChapter: 10 } });
+
+      const result = await createHooksChannel().run({ storage, bookId: "book-1", currentChapter: 20, entities: ["小瓶"] });
+      const ids = result.cards.map((card) => card.sourceId);
+      expect(ids).toContain("hook-past");
+      expect(ids).not.toContain("hook-future");
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns skipped warning when no hooks are available", async () => {
     const storage = await createStorage();
     try {

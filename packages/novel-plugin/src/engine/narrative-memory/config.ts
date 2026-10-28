@@ -1,6 +1,8 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+
+import { updateBookConfig } from "../book-config/book-config-lock.js";
 
 import {
   CharacterKernelConfigSchema,
@@ -86,6 +88,10 @@ const RetrievalConfigSchema = z.object({
   waveEnabled: z.boolean().default(DEFAULT_RETRIEVAL_CONFIG.waveEnabled),
   /** Enables the embedding-backed semantic channel when that channel is switched on. */
   semanticEnabled: z.boolean().default(DEFAULT_RETRIEVAL_CONFIG.semanticEnabled),
+  /** 休眠长线伏笔提醒阈值（章）：未回收伏笔超过这么多章没推进就在写前提醒；缺省 30（DEFAULT_DORMANT_HOOK_CHAPTERS）。 */
+  dormantHookChapters: z.number().int().min(1).max(1000).optional(),
+  /** 休眠长线伏笔每次最多提醒几条；0 = 关闭；缺省 3（DEFAULT_DORMANT_HOOK_LIMIT）。 */
+  dormantHookLimit: z.number().int().min(0).max(20).optional(),
   /** 写前七栏条目上限：角色 / 伏笔 / 近章。点名实体仍可超过上限保留。 */
   writeProfile: WriteProfileCapsSchema,
 }).default(DEFAULT_RETRIEVAL_CONFIG);
@@ -176,6 +182,11 @@ export async function loadNarrativeMemoryConfig(
     throw new Error("book.json does not match the trusted book binding.");
   }
 
+  return storedNarrativeMemoryConfig(book);
+}
+
+/** 从 book.json 对象里取出叙事记忆配置并补齐默认值（含 T4.7 口径迁移）。 */
+function storedNarrativeMemoryConfig(book: Record<string, unknown>): NarrativeMemoryConfig {
   const stored = book.narrativeMemory;
   if (!isPlainObject(stored)) return { ...DEFAULT_NARRATIVE_MEMORY_CONFIG };
 
@@ -202,21 +213,23 @@ export async function saveNarrativeMemoryConfig(
   if (!normalizedBookId) throw new Error("bookId 必填。");
   if (!bookRoot.trim()) throw new Error("bookRoot 必填。");
 
-  const book = await readBookJson(bookRoot);
-  if (typeof book.id === "string" && book.id.trim() && book.id.trim() !== normalizedBookId) {
-    throw new Error("book.json does not match the trusted book binding.");
-  }
-
-  const current = await loadNarrativeMemoryConfig(normalizedBookId, bookRoot);
-  const next = deepMergeConfig(current, patch);
-  const payload = {
-    ...book,
-    id: typeof book.id === "string" && book.id.trim() ? book.id : normalizedBookId,
-    narrativeMemory: next,
-    updatedAt: new Date().toISOString(),
-  };
-  await writeFile(bookConfigPath(bookRoot), `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  return next;
+  // 锁内重读最新 book.json 再合并写回（原子写），不与书籍设置、章节保存等其他写入方互相冲掉字段。
+  // 读不出或解析失败时直接报错，不把损坏的 book.json 覆盖成只剩叙事记忆配置的残缺内容。
+  let next: NarrativeMemoryConfig | undefined;
+  await updateBookConfig(bookRoot, (book) => {
+    const current = book ?? {};
+    if (typeof current.id === "string" && current.id.trim() && current.id.trim() !== normalizedBookId) {
+      throw new Error("book.json does not match the trusted book binding.");
+    }
+    next = deepMergeConfig(storedNarrativeMemoryConfig(current), patch);
+    return {
+      ...current,
+      id: typeof current.id === "string" && current.id.trim() ? current.id : normalizedBookId,
+      narrativeMemory: next,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  return next as NarrativeMemoryConfig;
 }
 
 export function parseNarrativeMemoryConfigPatch(raw: unknown): NarrativeMemoryConfigPatch {

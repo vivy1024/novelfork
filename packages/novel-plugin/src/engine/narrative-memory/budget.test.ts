@@ -137,3 +137,47 @@ describe("packNarrativeContext", () => {
     expect(result.warnings.some((w) => w.includes("state-fresh"))).toBe(false);
   });
 });
+
+describe("层级前情档位与实体型 canon（长篇）", () => {
+  it("层级前情档单独装箱：按 priority 先降档、后丢弃最低档（全书梗概先走），不占 timeline 份额", () => {
+    const arc = (id: string, priority: number) => card({
+      id, channel: "timeline", title: id, content: "长".repeat(400), summary: "短".repeat(60), brief: "简".repeat(30),
+      tags: ["story-arc"], priority, estimatedTokens: 400,
+    });
+    const tail = card({ id: "tail", channel: "timeline", title: "前章尾部", content: "尾".repeat(100), brief: "尾", priority: 88, estimatedTokens: 100 });
+    const result = packNarrativeContext([arc("current", 56), arc("vol-5", 48), arc("synopsis", 12), tail], {
+      channelBudgets: { timeline: 100 },
+      storyArcBudget: 50,
+    });
+    expect(result.storyArcBudget).toBe(50);
+    // timeline 自己的份额照常装前章尾部
+    expect(result.cards.map((item) => item.card.id)).toContain("tail");
+    // 全降到 brief 仍超：先丢全书梗概，再丢最远前卷，本卷前情保住
+    expect(result.droppedCards.map((item) => item.id).sort()).toEqual(["synopsis", "vol-5"]);
+    expect(result.cards.find((item) => item.card.id === "current")?.detailLevel).toBe("brief");
+  });
+
+  it("默认预算表里层级前情档从 timeline 拆出，hard 的缩放份额不变", () => {
+    const result = packNarrativeContext([], { maxTokens: 24000 });
+    // 改前：hard 12000 / 总表 68100 × 24000 → 4229 + 余数 1 = 4230；timeline 9000 → 3171
+    expect(result.channelBudgets.hard).toBe(4230);
+    expect(result.channelBudgets.timeline + result.storyArcBudget).toBeGreaterThanOrEqual(3170);
+  });
+
+  it("出场实体的 canon 设定在 state 通道里最后才动：先丢其它 state 卡，只降档不丢", () => {
+    const result = packNarrativeContext([
+      card({ id: "canon-a", channel: "state", title: "角色甲", content: "甲".repeat(200), brief: "甲".repeat(40), tags: ["entity-canon"], priority: 90, estimatedTokens: 200 }),
+      card({ id: "other", channel: "state", title: "别的状态", content: "乙".repeat(200), brief: "乙".repeat(40), priority: 95, score: 200, estimatedTokens: 200 }),
+    ], { channelBudgets: { state: 60 } });
+    expect(result.cards.map((item) => item.card.id)).toEqual(["canon-a"]);
+    expect(result.droppedCards.map((item) => item.id)).toEqual(["other"]);
+  });
+
+  it("出场实体的 canon 设定真被裁掉时，warnings 点名，不静默", () => {
+    const result = packNarrativeContext([
+      card({ id: "canon-a", channel: "state", title: "角色甲", content: "甲".repeat(200), brief: "甲".repeat(50), tags: ["entity-canon"], priority: 90, estimatedTokens: 200 }),
+    ], { channelBudgets: { state: 10 } });
+    expect(result.droppedCards.map((item) => item.id)).toEqual(["canon-a"]);
+    expect(result.warnings.some((warning) => warning.includes("出场实体设定未能注入") && warning.includes("角色甲"))).toBe(true);
+  });
+});

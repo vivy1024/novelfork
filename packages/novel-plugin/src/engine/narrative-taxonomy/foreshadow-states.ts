@@ -15,6 +15,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../jingwei/category-compat.js";
 import { buildEntityDictionary, resolveEntity } from "../narrative-memory/entity-dictionary.js";
+import type { OpenForeshadowSnapshot } from "../narrative-memory/chapter-event-extractor.js";
 
 export type ForeshadowPhase = "planted" | "reinforced" | "triggered" | "paid_off" | "abandoned" | "unknown";
 
@@ -46,6 +47,12 @@ export interface ForeshadowState {
   readonly triggerChapter?: number;
   readonly triggerCondition?: string;
   readonly payoffChapter?: number;
+  /**
+   * 最近一次被推进的章（派生，不落库）：关联的已应用 hook_planted / hook_progressed / hook_triggered
+   * 事件里最大的章号，与条目上的 plantedChapter / triggerChapter 取较大者。都没有时缺省。
+   * 用于「多少章没推进」的休眠提醒。
+   */
+  readonly lastProgressChapter?: number;
   /** 最近一条关联事件的正文依据。 */
   readonly evidenceText?: string;
 }
@@ -151,6 +158,14 @@ export function deriveForeshadowStates(
       || undefined;
     const payoffChapter = toChapter(fields.payoffChapter);
     const evidenceText = clean(linked.at(-1)?.evidenceText).slice(0, 400) || undefined;
+    const progressChapters = [
+      ...linked
+        .filter((event) => !isTerminal(EVENT_PHASE[clean(event.eventType)]!))
+        .map((event) => toChapter(event.chapterNumber)),
+      toChapter(fields.plantedChapter),
+      toChapter(fields.triggerChapter),
+    ].filter((chapter): chapter is number => chapter !== undefined);
+    const lastProgressChapter = progressChapters.length > 0 ? Math.max(...progressChapters) : undefined;
 
     return {
       entryId: entry.id,
@@ -160,6 +175,7 @@ export function deriveForeshadowStates(
       ...(triggerChapter !== undefined ? { triggerChapter } : {}),
       ...(triggerCondition ? { triggerCondition } : {}),
       ...(payoffChapter !== undefined ? { payoffChapter } : {}),
+      ...(lastProgressChapter !== undefined ? { lastProgressChapter } : {}),
       ...(evidenceText ? { evidenceText } : {}),
     };
   });
@@ -230,12 +246,60 @@ function loadHookEvents(storage: StorageDatabase, bookId: string): ForeshadowHoo
   }
 }
 
-/** 从库里读条目与事件，派生本书每条伏笔的当前阶段。 */
-export function loadForeshadowStates(storage: StorageDatabase, bookId: string): ForeshadowState[] {
+/** 抽取 prompt 里伏笔清单的默认条数上限：长书的伏笔池会很大，清单只是给 key，不必全列。 */
+export const DEFAULT_OPEN_FORESHADOW_LIMIT = 60;
+
+/**
+ * 伏笔台账投影：派生阶段 → 章后结算抽取用的「未回收伏笔」清单。
+ * 终态（已回收 / 已废弃）不进清单；按埋设章升序（没章号的排最后），超出上限保留最早埋设的——
+ * 越早埋的越容易被遗忘，也越需要后续事件准确挂回去。
+ */
+export function toOpenForeshadowSnapshots(
+  states: readonly ForeshadowState[],
+  options: { readonly limit?: number } = {},
+): OpenForeshadowSnapshot[] {
+  const limit = Math.max(0, options.limit ?? DEFAULT_OPEN_FORESHADOW_LIMIT);
+  return states
+    .filter((state): state is ForeshadowState & { phase: OpenForeshadowSnapshot["phase"] } => !isTerminal(state.phase))
+    .map((state, index) => ({ state, index }))
+    .sort((left, right) =>
+      (left.state.setupChapter ?? Number.MAX_SAFE_INTEGER) - (right.state.setupChapter ?? Number.MAX_SAFE_INTEGER)
+      || left.index - right.index)
+    .slice(0, limit)
+    .map(({ state }) => ({
+      key: state.label,
+      entryId: state.entryId,
+      phase: state.phase,
+      ...(state.setupChapter !== undefined ? { setupChapter: state.setupChapter } : {}),
+      ...(state.triggerCondition ? { triggerCondition: state.triggerCondition } : {}),
+    }));
+}
+
+/** 本章结算前仍未回收的伏笔清单（只看本章之前的事件，重结算旧章不受未来章影响）。 */
+export function loadOpenForeshadowSnapshots(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number,
+): OpenForeshadowSnapshot[] {
+  return toOpenForeshadowSnapshots(loadForeshadowStates(storage, bookId, { beforeChapter: chapterNumber }));
+}
+
+/**
+ * 从库里读条目与事件，派生本书每条伏笔的当前阶段。
+ * options.beforeChapter（可选）：只让该章之前的事件参与推导（修旧章时，未来章的推进不算数）。
+ */
+export function loadForeshadowStates(
+  storage: StorageDatabase,
+  bookId: string,
+  options: { readonly beforeChapter?: number } = {},
+): ForeshadowState[] {
   const entries = loadForeshadowEntries(storage, bookId);
   if (entries.length === 0) return [];
   const dictionary = buildEntityDictionary(storage, bookId);
-  return deriveForeshadowStates(entries, loadHookEvents(storage, bookId), {
+  const before = options.beforeChapter;
+  const events = loadHookEvents(storage, bookId)
+    .filter((event) => before === undefined || (event.chapterNumber ?? 0) < before);
+  return deriveForeshadowStates(entries, events, {
     resolveEntryId: (subject) => resolveEntity(dictionary, subject)?.entry.entryId,
   });
 }
