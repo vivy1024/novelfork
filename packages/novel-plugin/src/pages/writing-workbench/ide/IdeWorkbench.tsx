@@ -11,7 +11,7 @@ import "allotment/dist/style.css";
 import {
   FolderTree, Settings, X,
   Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, ChevronDown, MessageSquare, PenLine,
-  BookOpen, Route, LayoutDashboard, TriangleAlert,
+  BookOpen, Route, LayoutDashboard, TriangleAlert, Maximize2, Minimize2,
   type LucideIcon,
 } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
@@ -66,6 +66,7 @@ import {
   saveIdeLayoutSizes,
   type IdeLayoutMode,
 } from "./ide-layout-state";
+import { enterFocusMode, exitFocusMode, FOCUS_MODE_IDLE, type FocusModeState } from "./focus-mode";
 
 /**
  * T3 · 提拔回写的大纲 fields 合并：保留 volumeNumber/goal 等既有字段，
@@ -334,6 +335,10 @@ export function IdeWorkbench({
   const [layoutMode, setLayoutMode] = useState<IdeLayoutMode>(() => initialIdeLayoutMode());
   const [sidebarVisible, setSidebarVisible] = useState(() => defaultIdePaneVisibility(initialIdeLayoutMode()).sidebar);
   const [chatVisible, setChatVisible] = useState(() => defaultIdePaneVisibility(initialIdeLayoutMode()).chat);
+  const sidebarVisibleRef = useRef(sidebarVisible);
+  sidebarVisibleRef.current = sidebarVisible;
+  const chatVisibleRef = useRef(chatVisible);
+  chatVisibleRef.current = chatVisible;
   const [showSettings, updateShowSettings] = useState(false);
   const layoutStorageId = bookId ?? "global";
   const initialLayoutSizes = useMemo(() => loadIdeLayoutSizes(layoutStorageId), [layoutStorageId]);
@@ -1068,7 +1073,32 @@ export function IdeWorkbench({
     setSidebarVisible(true);
     if (idePanesUseOverlay(layoutModeRef.current)) setChatVisible(false);
   }, [activeView, sidebarVisible, showPanel]);
+  // 专注模式：只留稿面；再按一次恢复进入前的开合（不碰存好的三栏宽度）。
+  // 专注中作者自己点开某栏，就算退出专注：以作者当下的操作为准，不再强行恢复。
+  const [focusMode, setFocusMode] = useState<FocusModeState>(FOCUS_MODE_IDLE);
+  const focusModeRef = useRef(focusMode);
+  focusModeRef.current = focusMode;
+  const toggleFocusMode = useCallback(() => {
+    const current = focusModeRef.current;
+    if (current.active) {
+      const exited = exitFocusMode(current);
+      setFocusMode(exited.state);
+      if (exited.panes) {
+        setSidebarVisible(exited.panes.sidebar);
+        setChatVisible(exited.panes.chat);
+      }
+      return;
+    }
+    const entered = enterFocusMode(current, { sidebar: sidebarVisibleRef.current, chat: chatVisibleRef.current });
+    setFocusMode(entered.state);
+    setSidebarVisible(entered.panes.sidebar);
+    setChatVisible(entered.panes.chat);
+  }, []);
+  const leaveFocusModeWithoutRestore = useCallback(() => {
+    if (focusModeRef.current.active) setFocusMode(FOCUS_MODE_IDLE);
+  }, []);
   const handleChatToggle = useCallback(() => {
+    leaveFocusModeWithoutRestore();
     setChatVisible((visible) => {
       const next = !visible;
       if (next && idePanesUseOverlay(layoutModeRef.current)) setSidebarVisible(false);
@@ -1224,6 +1254,7 @@ export function IdeWorkbench({
       if (tabId) void handleCloseTab(tabId);
     },
     toggleSidebar: () => {
+      leaveFocusModeWithoutRestore();
       setSidebarVisible((visible) => {
         const next = !visible;
         if (next && idePanesUseOverlay(layoutModeRef.current)) setChatVisible(false);
@@ -1231,6 +1262,7 @@ export function IdeWorkbench({
       });
     },
     toggleChat: handleChatToggle,
+    toggleFocusMode,
     nextTab: () => {
       const { tabs, activeTabId, activateTab } = ideTabsRef.current;
       if (tabs.length <= 1) return;
@@ -1257,7 +1289,7 @@ export function IdeWorkbench({
       setPaletteMode("files");
       setPaletteOpen(true);
     },
-  }), [handleChatToggle, handleCloseTab, setShowSettings, showPanel]);
+  }), [handleChatToggle, handleCloseTab, leaveFocusModeWithoutRestore, setShowSettings, showPanel, toggleFocusMode]);
   useIdeKeybindings(keybindingActions);
 
   // ── 命令面板 ──
@@ -1638,6 +1670,12 @@ export function IdeWorkbench({
           ))}
         </div>
         <div className="flex flex-col items-center gap-0.5 pb-2">
+          <ActivityBarItem
+            icon={focusMode.active ? Minimize2 : Maximize2}
+            label={focusMode.active ? "退出专注" : "专注"}
+            active={focusMode.active}
+            onClick={toggleFocusMode}
+          />
           <ActivityBarItem
             icon={MessageSquare}
             label="AI 对话"
@@ -2107,7 +2145,7 @@ function ResourcesSection({ title, children }: { title: string; children: ReactN
         aria-expanded={open}
         aria-controls={contentId}
         onClick={() => setOpen((value) => !value)}
-        className="flex h-7 w-full items-center gap-1 px-2 text-2xs font-semibold tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+        className="flex h-7 w-full items-center gap-1 px-2 text-xs font-semibold tracking-wide text-muted-foreground transition-colors hover:text-foreground"
       >
         <Chevron className="size-3.5 shrink-0" />
         <span>{title}</span>
@@ -2190,7 +2228,7 @@ function ChatHeader({
             ) : filtered.map((s) => (
               <button key={s.id} type="button"
                 className={`flex w-full items-center justify-between px-3 py-1.5 text-xs transition-colors ${
-                  s.id === activeSessionId ? "bg-green-100 dark:bg-green-900/30 text-foreground font-medium" : "text-foreground hover:bg-muted/50"
+                  s.id === activeSessionId ? "bg-success/10 text-foreground font-medium" : "text-foreground hover:bg-muted/50"
                 }`}
                 onClick={() => { onSwitchSession?.(s.id); setShowHistory(false); }}>
                 <span className="truncate">{s.title || "Untitled"}</span>
@@ -2243,7 +2281,7 @@ function ChatEmptyTip() {
   const [tip] = useState(() => EMPTY_TIPS[Math.floor(Math.random() * EMPTY_TIPS.length)]);
   return (
     <div className="flex items-start gap-2 max-w-[260px] rounded-md bg-muted/40 px-3 py-2">
-      <Lightbulb className="size-3.5 shrink-0 mt-0.5 text-amber-500" />
+      <Lightbulb className="size-3.5 shrink-0 mt-0.5 text-warning" />
       <p className="text-xs text-muted-foreground leading-relaxed">{tip.text}</p>
     </div>
   );
@@ -2518,7 +2556,7 @@ function SearchPanel({ nodes, fileNodes, jingweiSections, memorySections, onOpen
             className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
           />
         </div>
-        <p className="mt-1 px-1 text-2xs leading-relaxed text-muted-foreground">
+        <p className="mt-1 px-1 text-xs leading-relaxed text-muted-foreground">
           范围：章节正文、工作区资源、作品基础和故事推进
         </p>
       </div>

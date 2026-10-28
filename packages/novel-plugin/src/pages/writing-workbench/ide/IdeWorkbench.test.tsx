@@ -319,11 +319,35 @@ describe("IdeWorkbench 宿主打开请求", () => {
     const workbench = await screen.findByTestId("ide-workbench");
     const rail = workbench.querySelector("[data-nf-surface='rail']") as HTMLElement;
     const labels = [...rail.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"));
-    expect(labels).toEqual(["写作", "资源", "搜索", "作品基础", "故事推进", "技能文风", "AI 对话", "写作设置"]);
+    expect(labels).toEqual(["写作", "资源", "搜索", "作品基础", "故事推进", "技能文风", "专注", "AI 对话", "写作设置"]);
     expect(screen.queryByRole("button", { name: "资源管理器" })).toBeNull();
     expect(screen.queryByRole("button", { name: "分析工具" })).toBeNull();
     // 初始就在「资源」视图
     expect(screen.getByRole("button", { name: "资源" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("专注模式：一键收起侧栏与对话，再按恢复进入前的开合；专注中手动开栏即退出专注", async () => {
+    stubHostWidth(1440);
+    renderWorkbench();
+    const workbench = await screen.findByTestId("ide-workbench");
+    expect(workbench.getAttribute("data-sidebar-visible")).toBe("true");
+    expect(workbench.getAttribute("data-chat-visible")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "专注" }));
+    expect(workbench.getAttribute("data-sidebar-visible")).toBe("false");
+    expect(workbench.getAttribute("data-chat-visible")).toBe("false");
+    expect(screen.getByRole("button", { name: "退出专注" }).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "退出专注" }));
+    expect(workbench.getAttribute("data-sidebar-visible")).toBe("true");
+    expect(workbench.getAttribute("data-chat-visible")).toBe("true");
+
+    // 再进专注，然后作者自己点开对话：按作者当下的操作走，专注随之结束，侧栏不被强行恢复
+    fireEvent.click(screen.getByRole("button", { name: "专注" }));
+    fireEvent.click(screen.getByRole("button", { name: "AI 对话" }));
+    expect(workbench.getAttribute("data-chat-visible")).toBe("true");
+    expect(workbench.getAttribute("data-sidebar-visible")).toBe("false");
+    expect(screen.getByRole("button", { name: "专注" }).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("接入页头的面板不叠公共标题条；未接入的资源与搜索保留公共标题条", async () => {

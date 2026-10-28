@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // 缩略图与选中浮层依赖浏览器布局/tippy，jsdom 跑不起来；正文仍用真实 TipTap。
 vi.mock("./resource-viewers/EditorMinimap", () => ({ EditorMinimap: () => null }));
@@ -94,6 +94,52 @@ function editTiptap(label: string, text: string): HTMLElement {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+describe("WorkbenchCanvas 本章上下文栏", () => {
+  beforeEach(() => {
+    const map = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => map.get(key) ?? null,
+      setItem: (key: string, value: string) => { map.set(key, value); },
+      removeItem: (key: string) => { map.delete(key); },
+      clear: () => map.clear(),
+    });
+  });
+  const chapterNode = () => node({ metadata: { isChapter: true, chapterNumber: 1 } });
+
+  it("栏宽可拖动、按书记住，收起后重新打开章节仍是收起", async () => {
+    const { unmount } = render(<WorkbenchCanvas node={chapterNode()} bookId="book-rail" onSave={vi.fn()} />);
+    const rail = await screen.findByTestId("chapter-context-rail-pane");
+    expect(rail.style.width).toBe("280px");
+
+    const handle = screen.getByRole("separator", { name: "调整本章上下文宽度" });
+    fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 440, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 440, pointerId: 1 });
+    // 往左拖 60px，栏变宽 60px
+    expect(rail.style.width).toBe("340px");
+
+    fireEvent.click(screen.getByTestId("chapter-context-collapse"));
+    expect(screen.getByTestId("chapter-context-expand")).toBeTruthy();
+    unmount();
+
+    render(<WorkbenchCanvas node={chapterNode()} bookId="book-rail" onSave={vi.fn()} />);
+    expect(await screen.findByTestId("chapter-context-expand")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("chapter-context-expand"));
+    expect((await screen.findByTestId("chapter-context-rail-pane")).style.width).toBe("340px");
+  });
+
+  it("分隔条支持键盘：方向键每次调 16px", async () => {
+    render(<WorkbenchCanvas node={chapterNode()} bookId="book-rail-kb" onSave={vi.fn()} />);
+    const rail = await screen.findByTestId("chapter-context-rail-pane");
+    const handle = screen.getByRole("separator", { name: "调整本章上下文宽度" });
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    expect(rail.style.width).toBe("296px");
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(rail.style.width).toBe("264px");
+  });
 });
 
 describe("WorkbenchCanvas", () => {

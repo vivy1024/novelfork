@@ -26,6 +26,15 @@ import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 
 import { JingweiEntryEditor, type JingweiEntrySavePayload } from "./JingweiEntryEditor";
 import { ChapterContextRail } from "./ChapterContextRail";
+import {
+  CHAPTER_CONTEXT_RAIL_DEFAULT_WIDTH,
+  CHAPTER_CONTEXT_RAIL_MAX_WIDTH,
+  CHAPTER_CONTEXT_RAIL_MIN_WIDTH,
+  clampChapterContextRailWidth,
+  defaultChapterContextRailOpen,
+  loadChapterContextRailState,
+  saveChapterContextRailState,
+} from "./chapter-context-rail-state";
 import { NewBookGuide, type GuidedSetupOutcome } from "./NewBookGuide";
 import { containsChapterNode, markNewBookGuideCompleted, useNewBookGuideCompleted } from "./new-book-guide-state";
 import { StatusBar } from "./StatusBar";
@@ -328,7 +337,47 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   const [sceneSpecLoading, setSceneSpecLoading] = useState(false);
   // 蓝图生成的可见报错槽（请求失败 / 拿到空蓝图都写这里，不静默）。
   const [sceneSpecError, setSceneSpecError] = useState<string | null>(null);
-  const [contextRailOpen, setContextRailOpen] = useState(true);
+  // 本章上下文栏：开合与宽度按书记住（见 chapter-context-rail-state.ts）。没存过时先按展开渲染，
+  // 量到编辑区宽度后再按「稿面放不放得下」决定默认开合，作者一旦动过就以作者为准。
+  const storedRail = useMemo(() => (bookId ? loadChapterContextRailState(bookId) : null), [bookId]);
+  const [contextRailOpen, setContextRailOpenState] = useState(storedRail?.open ?? true);
+  const [contextRailWidth, setContextRailWidth] = useState(storedRail?.width ?? CHAPTER_CONTEXT_RAIL_DEFAULT_WIDTH);
+  const railTouchedRef = useRef(storedRail !== null);
+  const persistRail = useCallback((open: boolean, width: number) => {
+    railTouchedRef.current = true;
+    if (bookId) saveChapterContextRailState(bookId, { open, width });
+  }, [bookId]);
+  const setContextRailOpen = useCallback((open: boolean) => {
+    setContextRailOpenState(open);
+    persistRail(open, contextRailWidth);
+  }, [contextRailWidth, persistRail]);
+  const railDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const handleRailPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    railDragRef.current = { startX: event.clientX, startWidth: contextRailWidth };
+    const onMove = (move: PointerEvent) => {
+      const drag = railDragRef.current;
+      if (!drag) return;
+      // 分隔条在栏的左边：往左拖栏变宽
+      setContextRailWidth(clampChapterContextRailWidth(drag.startWidth + (drag.startX - move.clientX)));
+    };
+    const onUp = (up: PointerEvent) => {
+      const drag = railDragRef.current;
+      railDragRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (drag) persistRail(true, clampChapterContextRailWidth(drag.startWidth + (drag.startX - up.clientX)));
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [contextRailWidth, persistRail]);
+  const handleRailKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const next = clampChapterContextRailWidth(contextRailWidth + (event.key === "ArrowLeft" ? 16 : -16));
+    setContextRailWidth(next);
+    persistRail(true, next);
+  }, [contextRailWidth, persistRail]);
   // 已启用预设提供写法指南；尚未升级的旧书继续兼容统计摘要。
   const [styleProfileSummary, setStyleProfileSummary] = useState<string | undefined>(undefined);
   const isChapterNode = Boolean(node && isChapterWorkflowNode(node));
@@ -381,7 +430,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
     setSceneSpec(null);
     setSceneSpecOpen(false);
     setSceneSpecError(null);
-    setContextRailOpen(true);
+    // 本章上下文栏的开合是作者偏好（按书记住），换章节不重置。
   }, [resourceKey]);
 
   useEffect(() => {
@@ -446,6 +495,14 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
     // 注意：不更新 prevIsActiveRef，由上方 useLayoutEffect 统一管理
   }, [isActive, node]);
 
+  // 作者没动过上下文栏时：量一次编辑区宽度，稿面放不下约 36 字再加这条栏，就默认收起。
+  // 必须放在下面各个提前 return 之前，保证每次渲染 hook 数量一致。
+  const railEligible = Boolean(bookId) && Boolean(node && isChapterWorkflowNode(node));
+  useLayoutEffect(() => {
+    if (!railEligible || railTouchedRef.current) return;
+    const width = containerRef.current?.getBoundingClientRect().width ?? 0;
+    if (!defaultChapterContextRailOpen(width)) setContextRailOpenState(false);
+  }, [railEligible]);
   if (!node) {
     if (bookId) {
       return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} currentChapter={resolveCurrentChapter(nodes)} onGuideComplete={onGuideComplete} onJumpToChapter={onJumpToChapter} />;
@@ -629,7 +686,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
               <h2 className="text-sm font-semibold truncate">{node.title}</h2>
               <Badge variant="secondary" className="text-2xs shrink-0">{resourceTypeLabel(node.kind)}</Badge>
               {readonly && <Badge variant="outline" className="text-2xs shrink-0">只读</Badge>}
-              {dirty && <Badge className="text-2xs shrink-0 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
+              {dirty && <Badge className="text-2xs shrink-0 bg-warning/10 text-warning border-warning/20">未保存</Badge>}
               {!dirty && !needsHydration && !readonly && <span className="text-2xs text-muted-foreground">已保存</span>}
             </div>
             {toolbarButtons}
@@ -652,7 +709,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
 
       {/* Alerts */}
       {needsHydration && (
-        <div role="alert" className="shrink-0 flex items-center gap-2 bg-yellow-50 dark:bg-yellow-900/10 px-4 py-2 text-xs text-yellow-700 dark:text-yellow-300">
+        <div role="alert" className="shrink-0 flex items-center gap-2 bg-warning/10 px-4 py-2 text-xs text-warning">
           <Loader2 className="size-3.5 animate-spin" />
           章节详情未加载，正在加载内容...
         </div>
@@ -794,12 +851,29 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
 
         {showContextRail ? (
           contextRailOpen ? (
-            <div className="relative flex min-h-0 shrink-0 border-l border-border">
+            <div
+              className="relative flex min-h-0 shrink-0 border-l border-border"
+              style={{ width: `${contextRailWidth}px` }}
+              data-testid="chapter-context-rail-pane"
+            >
+              {/* 分隔条：拖动或方向键调栏宽，松手后按书记住 */}
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="调整本章上下文宽度"
+                aria-valuenow={contextRailWidth}
+                aria-valuemin={CHAPTER_CONTEXT_RAIL_MIN_WIDTH}
+                aria-valuemax={CHAPTER_CONTEXT_RAIL_MAX_WIDTH}
+                tabIndex={0}
+                onPointerDown={handleRailPointerDown}
+                onKeyDown={handleRailKeyDown}
+                className="absolute inset-y-0 left-0 z-10 w-1.5 -translate-x-1/2 cursor-col-resize touch-none hover:bg-primary/30 focus-visible:bg-primary/40 focus-visible:outline-none"
+              />
               <ChapterContextRail
                 bookId={bookId!}
                 chapterNumber={contextChapterNumber}
                 onOpenJingweiEntry={onOpenJingweiEntry}
-                className="border-0"
+                className="w-full border-0"
               />
               <button
                 type="button"
@@ -1056,7 +1130,7 @@ function CockpitOverview({ bookId }: { bookId: string }) {
       <section className="rounded-lg border border-border bg-card p-3">
         <h3 className="mb-2 text-xs font-semibold text-foreground">近期章节结果</h3>
         {chapterResults.length === 0 ? (
-          <p className="text-2xs text-muted-foreground">暂无章节结果。让 AI 写一章后会出现在这里。</p>
+          <p className="text-xs text-muted-foreground">暂无章节结果。让 AI 写一章后会出现在这里。</p>
         ) : (
           <ul className="space-y-2">
             {chapterResults.map(item => (
@@ -1073,12 +1147,12 @@ function CockpitOverview({ bookId }: { bookId: string }) {
       <section className="rounded-lg border border-border bg-card p-3">
         <h3 className="mb-2 text-xs font-semibold text-foreground">待处理伏笔</h3>
         {hooks.length === 0 ? (
-          <p className="text-2xs text-muted-foreground">暂无待回收伏笔。</p>
+          <p className="text-xs text-muted-foreground">暂无待回收伏笔。</p>
         ) : (
           <ul className="space-y-1">
             {hooks.map((h) => (
               <li key={h.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/40">
-                <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
+                <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-warning" />
                 <span className="line-clamp-2 flex-1 text-muted-foreground">{(h.text || "").replace(/^pending hooks：/, "").trim() || "（空）"}</span>
               </li>
             ))}

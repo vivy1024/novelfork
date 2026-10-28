@@ -6,6 +6,7 @@
  * - Ctrl+W  关闭当前 Tab
  * - Ctrl+B  切换 Sidebar
  * - Ctrl+J  切换 Chat Panel
+ * - Ctrl+Shift+Enter  专注模式（只留稿面；再按恢复原布局）
  * - Ctrl+\  分屏（预留）
  * - Ctrl+Tab / Ctrl+Shift+Tab  切换 Tab
  * - Ctrl+1/2/3  切换到 资源/作品基础/故事推进 视图
@@ -28,6 +29,7 @@ export interface IdeKeybindingActions {
   closeTab: () => void;
   toggleSidebar: () => void;
   toggleChat: () => void;
+  toggleFocusMode?: () => void;
   nextTab: () => void;
   prevTab: () => void;
   switchView: (view: ViewId) => void;
@@ -55,6 +57,13 @@ export function useIdeKeybindings(actions: IdeKeybindingActions) {
       "$mod+KeyJ": (e) => {
         e.preventDefault();
         actions.toggleChat();
+      },
+      // 写正文时也要能用，所以不判 isEditingContext；Enter 本身不会被吞（带了修饰键）
+      // 带修饰键，写正文时按也不会插入换行。
+      "$mod+Shift+Enter": (e) => {
+        if (!actions.toggleFocusMode) return;
+        e.preventDefault();
+        actions.toggleFocusMode();
       },
       "$mod+Tab": (e) => {
         if (isEditingContext()) return;
