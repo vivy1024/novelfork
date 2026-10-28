@@ -147,6 +147,13 @@ const publicWorkspaceFilters = [
 // the short Runtime junction alive for public packages too, because they import
 // Runtime modules through the canonical product path.
 const runtimeExecutionRoot = prepareRuntimeExecutionRoot(runtimeRoot);
+// Runtime 的 PostgreSQL 迁移/Kit 测试把夹具建在仓库内 `<runtime>/.narrafork/pg-*`（生产代码要求 stage
+// 目录位于仓库内，不能挪到系统临时目录）。该目录在上游被 gitignore，物化树经 git archive 导出时不会带上，
+// 缺失时这些测试在 mkdtemp 处整片 ENOENT。由运行器补建；只清理本次运行自己建出的目录，
+// 已存在的（开发者手工跑 db:generate:pg 留下的 stage）一律不动。
+const runtimeScratchRoot = join(runtimeRoot, ".narrafork");
+const createdRuntimeScratchRoot = !existsSync(runtimeScratchRoot);
+if (createdRuntimeScratchRoot) mkdirSync(runtimeScratchRoot, { recursive: true });
 let publicExitCode = 1;
 let runtimeExitCode = 0;
 try {
@@ -184,6 +191,15 @@ try {
 	}
 } finally {
 	runtimeExecutionRoot.cleanup();
+	if (createdRuntimeScratchRoot) {
+		// 目录是本次运行建的，里面只可能是测试夹具（Windows 上 symlink EPERM 的用例会残留
+		// pg-kit-test-*）；整棵清掉，否则下次运行会把它当成既有目录而永不回收。
+		try {
+			rmSync(runtimeScratchRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+		} catch (error) {
+			console.warn(`Runtime scratch directory left in place: ${runtimeScratchRoot} (${String(error)})`);
+		}
+	}
 	rmSync(workspaceTestTempRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
 }
 if (publicExitCode !== 0) process.exit(publicExitCode);
