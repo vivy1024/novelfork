@@ -34,13 +34,22 @@ export default {
         "accent-foreground": token("accent-foreground"),
         destructive: token("destructive"),
         "destructive-foreground": token("destructive-foreground"),
+        // 状态色：警告 / 成功 / 信息。每套主题、每种明暗各自取值，文字与底色都读它们，
+        // 不再写 text-amber-600 dark:text-amber-400 这类随主题不变的原生色。
+        warning: token("warning"),
+        success: token("success"),
+        info: token("info"),
         border: token("border"),
         input: token("input"),
         ring: token("ring"),
       },
-      fontSize: {
-        "2xs": ["var(--text-2xs)", { lineHeight: "var(--text-2xs--line-height)" }],
-      },
+      // 界面字号阶梯：值来自 DESIGN.md 的 typography.scale-*（生成到 novelfork-themes.css）。
+      fontSize: Object.fromEntries(
+        ["2xs", "xs", "sm", "base", "lg"].map((step) => [
+          step,
+          [`var(--text-${step})`, { lineHeight: `var(--text-${step}--line-height)` }],
+        ]),
+      ),
       fontFamily: {
         sans: ["var(--font-sans)"],
         serif: ["var(--font-serif)"],

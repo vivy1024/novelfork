@@ -131,8 +131,8 @@
   border: 1px solid var(--nf-cover-slip-border);
   background: var(--nf-cover-slip-bg);
   color: var(--nf-cover-slip-ink);
-  font-family: var(--font-display);
-  font-weight: var(--font-display-weight);
+  font-family: var(--font-cover);
+  font-weight: var(--font-cover-weight);
   font-size: 0.7rem;
   line-height: 1.1;
   letter-spacing: 0.08em;

@@ -15,6 +15,9 @@ colors:
   accent: "#e3ece5"
   destructive: "#b3261e"
   destructive-foreground: "#ffffff"
+  warning: "#9a5400"
+  success: "#1f7a4d"
+  info: "#1b6aa0"
   border: "#d3dbd2"
   input: "#dde3db"
   paper: "#fbfbf8"
@@ -31,6 +34,9 @@ colors:
   dark-accent: "#22302a"
   dark-destructive: "#f06a6a"
   dark-destructive-foreground: "#1c0b0b"
+  dark-warning: "#f0b45a"
+  dark-success: "#6fd09a"
+  dark-info: "#74b9ea"
   dark-border: "#28342c"
   dark-input: "#253029"
   dark-paper: "#151c17"
@@ -47,6 +53,9 @@ colors:
   shuhan-accent: "#e3e9f3"
   shuhan-destructive: "#b3261e"
   shuhan-destructive-foreground: "#ffffff"
+  shuhan-warning: "#9a5400"
+  shuhan-success: "#1f7a4d"
+  shuhan-info: "#1b6aa0"
   shuhan-border: "#d2d8e1"
   shuhan-input: "#d9dee6"
   shuhan-paper: "#f9fafb"
@@ -71,6 +80,9 @@ colors:
   shuhan-dark-accent: "#22304f"
   shuhan-dark-destructive: "#f06a6a"
   shuhan-dark-destructive-foreground: "#1c0b0b"
+  shuhan-dark-warning: "#f0b45a"
+  shuhan-dark-success: "#6fd09a"
+  shuhan-dark-info: "#74b9ea"
   shuhan-dark-border: "#26324b"
   shuhan-dark-input: "#243049"
   shuhan-dark-paper: "#141c2c"
@@ -95,6 +107,9 @@ colors:
   yegeng-accent: "#efe6d3"
   yegeng-destructive: "#b3261e"
   yegeng-destructive-foreground: "#ffffff"
+  yegeng-warning: "#9a5400"
+  yegeng-success: "#1f7a4d"
+  yegeng-info: "#1b6aa0"
   yegeng-border: "#d9d4c9"
   yegeng-input: "#e0dbd1"
   yegeng-paper: "#f9f8f5"
@@ -111,6 +126,9 @@ colors:
   yegeng-dark-accent: "#332c20"
   yegeng-dark-destructive: "#f06a6a"
   yegeng-dark-destructive-foreground: "#1c0b0b"
+  yegeng-dark-warning: "#f0b45a"
+  yegeng-dark-success: "#6fd09a"
+  yegeng-dark-info: "#74b9ea"
   yegeng-dark-border: "#322d24"
   yegeng-dark-input: "#2e2921"
   yegeng-dark-paper: "#1b1813"
@@ -123,20 +141,46 @@ typography:
     lineHeight: 1.6
   label-sm:
     fontFamily: System Sans
-    fontSize: 10px
+    fontSize: 11px
     fontWeight: 500
     lineHeight: 1.4
+  # ── 界面字号阶梯：Tailwind text-2xs / xs / sm / base / lg 读这 5 档 ──
+  scale-2xs:
+    fontFamily: System Sans
+    fontSize: 11px
+    lineHeight: 1.45
+  scale-xs:
+    fontFamily: System Sans
+    fontSize: 12px
+    lineHeight: 1.5
+  scale-sm:
+    fontFamily: System Sans
+    fontSize: 14px
+    lineHeight: 1.5
+  scale-base:
+    fontFamily: System Sans
+    fontSize: 15px
+    lineHeight: 1.6
+  scale-lg:
+    fontFamily: System Sans
+    fontSize: 18px
+    lineHeight: 1.5
   code:
     fontFamily: JetBrains Mono
     fontSize: 13px
     fontWeight: 400
     lineHeight: 1.5
   headline-display:
-    fontFamily: ZCOOL XiaoWei
+    fontFamily: Noto Serif SC
     fontSize: 36px
-    fontWeight: 400
+    fontWeight: 600
     lineHeight: 1.25
-    letterSpacing: 0.02em
+    letterSpacing: 0.04em
+  # 书封题签的字体：绿格稿纸保留站酷小薇的手写感，只用在书封上
+  cover:
+    fontFamily: ZCOOL XiaoWei
+    fontWeight: 400
+    letterSpacing: 0.08em
   prose:
     fontFamily: Noto Serif SC
     fontSize: 16px
@@ -428,7 +472,7 @@ NovelFork 是网文作者的长期工作台：一天在里面坐几个小时，�
 
 三套主题对应三种写作心境，作者在「设置 › 外观与界面 › 书房主题」里切换，每套都有浅色与深色：
 
-- **绿格稿纸**（默认）：方格稿纸的淡绿格线与墨绿主色，标题用站酷小薇的手写感。清爽、耐看，适合日常码字。
+- **绿格稿纸**（默认）：方格稿纸的淡绿格线与墨绿主色，页面标题用思源宋体中粗，书封题签保留站酷小薇的手写感。清爽、耐看，适合日常码字。
 - **书函藏青**：线装书函的藏青函套、米黄题签与金色点缀，标题用思源宋体粗体。庄重，适合做设定、理大纲。
 - **夜更烛光**：暖纸色与一盏烛光，标题用思源宋体细体，稿面上方有一圈柔光。适合夜里写。
 
@@ -457,10 +501,22 @@ NovelFork 是网文作者的长期工作台：一天在里面坐几个小时，�
 
 - **界面文字**用系统无衬线字体（`System Sans`：Windows 为微软雅黑，macOS 为苹方），不打包，保证密集界面的清晰度与体积。
 - **正文稿面**用思源宋体（Noto Serif SC），随产品打包，离线可用。
-- **标题**随主题变化：绿格稿纸用站酷小薇（ZCOOL XiaoWei），书函藏青用思源宋体 900，夜更烛光用思源宋体 300 加宽字距。标题字体只用于 `h1`、`h2` 与书封，不用于按钮、表单与小标题。
+- **标题**随主题变化：绿格稿纸用思源宋体 600，书函藏青用思源宋体 900，夜更烛光用思源宋体 300 加宽字距。标题字体只用于 `h1`、`h2` 与书封，不用于按钮、表单与小标题。
+- **书封题签**读 `--font-cover`：绿格稿纸用站酷小薇（ZCOOL XiaoWei）保留手写感，其他主题沿用各自的标题字体。站酷小薇只出现在书封上，不进页面标题。
 - **等宽**用 JetBrains Mono，随产品打包。
 - 中文字面不加负字距；标题的字距只往宽里调。
-- 字号基准：正文 15px / 行高 1.6，小字 12–13px，按钮 14px，角标 10–12px（`text-2xs`），代码 13px。稿面按主题令牌（`--prose-size`、`--prose-line-height`）。
+- **界面字号阶梯**（`typography.scale-*`，生成为 `--text-*`，Tailwind 同名类读它们）：
+
+  | 类 | 字号 | 用途 |
+  |---|---|---|
+  | `text-2xs` | 11px | 只用于角标、计数、快捷键提示这类不需要读的标记 |
+  | `text-xs` | 12px | 次要说明、元信息、表格辅助列 |
+  | `text-sm` | 14px | 面板里的列表项、表单标签、按钮 |
+  | `text-base` | 15px | 面板正文、卡片主文字（与页面正文同号） |
+  | `text-lg` | 18px | 面板标题、需要强调的数字 |
+
+  需要读的信息不用 `text-2xs`；页面大标题（`h1`、`h2`）另按标题字体。
+- 页面正文 15px / 行高 1.6（`body-md`），代码 13px。稿面按主题令牌（`--prose-size`、`--prose-line-height`）。
 
 ## Layout
 

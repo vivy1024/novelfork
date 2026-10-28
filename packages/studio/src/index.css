@@ -10,9 +10,7 @@
 @tailwind utilities;
 
 :root {
-  /* 密集界面字号令牌（10px / 0.625rem） */
-  --text-2xs: 0.625rem;
-  --text-2xs--line-height: 1.4;
+  /* 界面字号阶梯（--text-2xs … --text-lg）由 DESIGN.md 生成，见 styles/novelfork-themes.css */
 
   /* 阴影：只用于浮层 */
   --shadow-sm: 0 1px 2px oklch(0.13 0.02 60 / 0.05);
@@ -261,13 +259,16 @@ h3 { font-size: 1.25rem; }
   overflow: hidden;
 }
 
+/*
+  稿面：整页随外层 .chapter-editor-wrapper 滚动（小地图与滚动位置恢复都认那一层），
+  这里不再另设 70vh 的内层滚动框——两层滚动会让正文缩在一个小框里。
+  行宽：36em ≈ 每行 36 字（DESIGN.md「稿面限宽居中，每行 36 字左右」）。
+*/
 .chapter-editor__content .tiptap {
   min-height: 400px;
-  max-height: 70vh;
-  overflow-y: auto;
-  max-width: 40em;
+  max-width: 36em;
   margin-inline: auto;
-  padding: 1.5rem 1.25rem;
+  padding: 2rem 1.25rem 30vh;
   outline: none;
   font-family: var(--font-prose);
   font-weight: var(--font-prose-weight);

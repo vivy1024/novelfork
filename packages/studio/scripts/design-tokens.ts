@@ -41,6 +41,9 @@ const REQUIRED_COLORS = [
   "accent",
   "destructive",
   "destructive-foreground",
+  "warning",
+  "success",
+  "info",
   "border",
   "input",
   "paper",
@@ -192,8 +195,12 @@ function themeTypeDeclarations(model: DesignModel, theme: StyleThemeId): Array<[
   const prefix = themePrefix(theme);
   const display = typographyToken(model, `${prefix}headline-display`);
   const prose = typographyToken(model, `${prefix}prose`);
+  // 书封题签的字体：有 typography.<前缀>cover 就用它（默认主题保留站酷小薇的手写感），没有就沿用标题字体。
+  const cover = model.typography[`${prefix}cover`] ?? display;
   return [
     ["--font-display", fontStack(display.fontFamily, `typography.${prefix}headline-display`)],
+    ["--font-cover", fontStack(cover.fontFamily, `typography.${prefix}cover`)],
+    ["--font-cover-weight", String(cover.fontWeight ?? display.fontWeight ?? 400)],
     ["--font-display-weight", String(display.fontWeight ?? 400)],
     ["--font-display-tracking", display.letterSpacing ?? "0"],
     ["--display-line-height", String(display.lineHeight ?? 1.25)],
@@ -209,10 +216,29 @@ function themeTypeDeclarations(model: DesignModel, theme: StyleThemeId): Array<[
   ];
 }
 
+/**
+ * 界面字号阶梯：DESIGN.md 的 typography.scale-<档>，生成为 --text-<档> 与 --text-<档>--line-height，
+ * Tailwind 的 text-2xs / xs / sm / base / lg 读这些变量（见 tailwind.config.js）。不随主题变化。
+ */
+export const TYPE_SCALE_STEPS = ["2xs", "xs", "sm", "base", "lg"] as const;
+
+function typeScaleDeclarations(model: DesignModel): Array<[string, string]> {
+  return TYPE_SCALE_STEPS.flatMap((step): Array<[string, string]> => {
+    const key = `scale-${step}`;
+    const token = model.typography[key];
+    if (!token?.fontSize) throw new Error(`DESIGN.md 缺少字号阶梯令牌 typography.${key}（需要 fontSize）`);
+    return [
+      [`--text-${step}`, token.fontSize],
+      [`--text-${step}--line-height`, String(token.lineHeight ?? 1.5)],
+    ];
+  });
+}
+
 export function renderThemeCss(model: DesignModel): string {
   const colorsByVariant = variantColors(model);
   const body = typographyToken(model, "body-md");
   const code = typographyToken(model, "code");
+  const scale = typeScaleDeclarations(model);
   const blocks: string[] = [
     [
       "/*",
@@ -228,6 +254,7 @@ export function renderThemeCss(model: DesignModel): string {
         entries.push(
           ["--font-sans", fontStack(body.fontFamily, "typography.body-md")],
           ["--font-mono", fontStack(code.fontFamily, "typography.code")],
+          ...scale,
         );
       }
       entries.push(...themeTypeDeclarations(model, variant.theme));
