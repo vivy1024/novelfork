@@ -4,6 +4,8 @@
  * 蓝图必须由外层 Runtime Agent 显式提交；本工具只做确定性校验，不隐藏调用模型。
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { checkBeatBudget, parseBeatBudget, type BeatBudgetItem, type BeatBudgetReport } from "./beat-budget.js";
 import {
   EMPTY_WRITING_SKILL_CONSTRAINT_DIGEST,
@@ -171,10 +173,25 @@ export function parseSceneSpecValue(value: unknown, chapterNumber: number, wordT
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function extractWordTarget(cockpitSnapshot?: Record<string, unknown>): number {
-  if (!cockpitSnapshot) return 3000;
-  const bookConfig = cockpitSnapshot.bookConfig as { chapterWordCount?: number } | undefined;
-  return bookConfig?.chapterWordCount ?? 3000;
+/**
+ * 字数目标：cockpitSnapshot.bookConfig > bookRoot/book.json > 3000。
+ * Runtime 派发 scene.spec 时只带 bookRoot、不带 cockpitSnapshot，不读书配置就会把
+ * 2200 字的书报成「目标 3000」，与 write.preflight、chapter.audit 的口径不一致。
+ */
+async function extractWordTarget(cockpitSnapshot?: Record<string, unknown>, bookRoot?: string): Promise<number> {
+  const bookConfig = cockpitSnapshot?.bookConfig as { chapterWordCount?: number } | undefined;
+  if (typeof bookConfig?.chapterWordCount === "number") return bookConfig.chapterWordCount;
+  if (bookRoot?.trim()) {
+    try {
+      const book = JSON.parse(await readFile(join(bookRoot, "book.json"), "utf8")) as { chapterWordCount?: unknown };
+      if (typeof book.chapterWordCount === "number" && Number.isSafeInteger(book.chapterWordCount) && book.chapterWordCount > 0) {
+        return book.chapterWordCount;
+      }
+    } catch {
+      // book.json 缺失/损坏不阻断蓝图校验，交回默认值
+    }
+  }
+  return 3000;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -307,7 +324,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     };
   }
 
-  const wordTarget = extractWordTarget(enrichedCockpit ?? cockpitSnapshot);
+  const wordTarget = await extractWordTarget(enrichedCockpit ?? cockpitSnapshot, input.bookRoot);
   const sceneSpec = parseSceneSpecValue(input.sceneSpec, chapterNumber, wordTarget);
   if (!sceneSpec) {
     return {

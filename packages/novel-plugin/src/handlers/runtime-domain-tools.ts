@@ -40,6 +40,7 @@ import { executeCharacterVoiceTool } from "./character-voice-tools.js";
 import { proposeSelectionCandidate } from "./selection-candidate-tools.js";
 import { handleStorylinePropose } from "./storyline-tools.js";
 import {
+  ChapterStoreError,
   DEFAULT_VOLUME_DIRECTORY,
   chapterRelativePath,
   readChapterIndex as readChapterLayoutIndex,
@@ -141,8 +142,11 @@ async function readChapterIndex(binding: TrustedRuntimeBookBinding): Promise<Cha
       resolveBookDir: () => binding.root,
     });
     await service.list(binding.bookId, { type: "chapter", status: "accepted" });
-  } catch {
-    // 兼容读取继续走文件索引；写入路径会显式报告落盘错误。
+  } catch (error) {
+    // 物化失败可以跳过，兼容读取继续走文件索引；但索引读不出 / 已损坏（ChapterStoreError）必须抛出：
+    // 损坏的索引此时已被改名留底，吞掉它会让下面读到 ENOENT 当成空索引，导入再把空索引 + 新章写回，
+    // 正是 C 轨道要堵住的「读失败当空、再整份写回」。
+    if (error instanceof ChapterStoreError) throw error;
   }
   const indexed = await readChapterLayoutIndex(binding.root);
   if (indexed.length > 0) return indexed;
@@ -152,13 +156,17 @@ async function readChapterIndex(binding: TrustedRuntimeBookBinding): Promise<Cha
   // T-01：回退分支同样经路径守卫。importChapters 会把这里的结果原样写回索引，
   // 不过滤就会把越界 fileName 持久化下去。带 fileName 的条目必须落在章节目录内，否则丢弃；
   // 没有 fileName 的旧条目不指向任何文件，照旧保留。
-  const raw = await readFile(join(binding.root, "chapters", "index.json"), "utf8").catch(() => "[]");
-  let parsed: unknown;
+  // 走到这里说明标准解析器已读到合法、但没有标准条目的索引（读失败与坏 JSON 它都会抛 ChapterStoreError）。
+  // 只有文件确实不存在才等于空；其它读错误照样抛出——importChapters 会把这里的结果整份写回索引，
+  // 把「暂时读不到」当成空，就会抹掉已有章节的元数据。
+  let raw: string;
   try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return [];
+    raw = await readFile(join(binding.root, "chapters", "index.json"), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
+  const parsed = JSON.parse(raw) as unknown;
   if (!Array.isArray(parsed)) return [];
   const resolveChapterFile = createChapterFileResolver(join(binding.root, "chapters"));
   return parsed.filter((entry): entry is ChapterIndexRecord => {
@@ -1002,6 +1010,8 @@ async function pipelineWrite(
       // 凡是走 booksDir 的下游就会拼出 <bookRoot>/books/<bookId> 而找不到 book.json。
       root: context.projectRoot || binding.root,
       bookRoot: binding.root,
+      // 写前召回记录按叙述者会话查：会话 id 由宿主可信传入，不走模型参数。
+      ...(context.sessionId ? { sessionId: context.sessionId } : {}),
       onStream: context.emitOutput,
       llmExtractor,
       // 正文落盘后由管线显式发起 memory.settle_chapter，使结算在叙述者面板可见且可重试。

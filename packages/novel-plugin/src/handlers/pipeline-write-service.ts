@@ -15,24 +15,21 @@ import type { RuntimeLoadedSkill } from "@vivy1024/novelfork-core/plugins";
 import type { AuditResult } from "../engine/agents/continuity.js";
 import { evaluateGate, selectFactContinuityIssues } from "../engine/agents/severity-gate.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
+import { withChapterIndexLock } from "../engine/writing-resource/chapter-index-lock.js";
+import { verifyWriteRecall } from "./recall-token.js";
+import { buildWriteChapterRecall } from "./write-recall.js";
 import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { renderBeatBudget, checkBeatBudget } from "./beat-budget.js";
-import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
+import { handleChapterAuditV2, loadChapterCanonEntries, type AuditCanonEntry } from "./chapter-audit-v2.js";
 import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
 import type { WritingSkillAcknowledgement } from "./writing-skill-acknowledgement.js";
-import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { PIPELINE_RECALL_TAGS, wrapRecallData } from "../engine/narrative-memory/diagnostics.js";
 import { findHardOverflowWarning, hardOverflowExplanation } from "../engine/narrative-memory/overflow-guard.js";
 import { preserveLatestWritingInjection } from "../engine/narrative-memory/writing-injection-preserve.js";
-import { createSiliconFlowEmbeddingProvider } from "../engine/narrative-memory/embedding-provider.js";
-import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
-import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
-import { loadSceneVoiceConstraints } from "../engine/writing-layers/character-voice-context.js";
-import { readBookSettlementFreshness } from "../engine/narrative-memory/settlement-freshness.js";
 import { saveChapterAiDraft } from "../engine/writing-layers/style-vault.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
@@ -112,7 +109,7 @@ export interface PipelineWriteInput {
   /** 更明确的兼容别名；与 expectedHash/expectedVersion 二选一即可。 */
   readonly expectedChapterHash?: string;
   readonly expectedChapterVersion?: number;
-}
+  }
 
 export interface PipelineAuditIssueCategories {
   readonly critical: number;
@@ -206,6 +203,7 @@ export interface PipelineWriteError {
     | "volume-range-violation"
     | "chapter-conflict"
     | "memory-budget-overflow"
+    | "recall-required"
     | "book-locked";
   readonly error: string;
   readonly summary?: string;
@@ -235,6 +233,11 @@ export interface PipelineWriteOptions {
   readonly root: string;
   /** Trusted bound book root; required for external workspace bindings. */
   readonly bookRoot?: string;
+  /**
+   * 叙述者会话 id（宿主可信传入）。保存前按「会话 + 书 + 章」查 write.preflight 记下的写前召回记录；
+   * 放在 options 而不是 input，模型无法伪造。
+   */
+  readonly sessionId?: string;
   readonly onStream?: (chunk: string) => void;
   readonly logger?: Logger;
   /** LLM 章后事件抽取器；由 Runtime host 的 generateText 能力构造，缺省时回退规则兜底。 */
@@ -444,6 +447,75 @@ function nonEmpty(value: string | undefined): string | undefined {
   return text ? text : undefined;
 }
 
+async function createPipelineResourceService(bookId: string, bookDir: string) {
+  const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+  const storage = getStorageDatabase();
+  return createWritingResourceService({
+    storage,
+    resolveBookDir: (requestedBookId: string) => {
+      if (requestedBookId !== bookId) throw new Error("Writing resource book binding mismatch");
+      return bookDir;
+    },
+    resolveChapterVolumeDirectory: (requestedBookId, requestedChapterNumber) => resolveChapterVolumeDirectory(
+      storage,
+      requestedBookId,
+      requestedChapterNumber,
+    ),
+  });
+}
+
+/**
+ * 正式稿指纹：正文 sha256 + 标题 + 版本号。
+ * 文件权威源的 version 恒为 1，不能单靠它判断改没改，所以以正文 hash 为主，标题、版本同时参与。
+ * 没有正式稿时返回 null（「原本没有这一章」本身也是基线）。
+ */
+type ChapterFingerprint = { readonly hash: string; readonly title: string; readonly version: number } | null;
+
+function chapterFingerprint(chapter: { readonly content: string; readonly title: string; readonly version: number } | null): ChapterFingerprint {
+  if (!chapter) return null;
+  return {
+    hash: createHash("sha256").update(chapter.content, "utf8").digest("hex"),
+    title: chapter.title,
+    version: chapter.version,
+  };
+}
+
+function sameChapterFingerprint(left: ChapterFingerprint, right: ChapterFingerprint): boolean {
+  if (!left || !right) return left === right;
+  return left.hash === right.hash && left.title === right.title && left.version === right.version;
+}
+
+/**
+ * - stale：正式稿已不是开头读到的那一版（被保存过 / 调用方的 expected 已过期）；
+ * - missing：开头有正式稿，现在没了（被删）；
+ * - appeared：开头还没有这一章，生成期间有人新建了同号章。
+ */
+type ChapterConflictKind = "stale" | "missing" | "appeared";
+
+function chapterConflictError(chapterNumber: number, kind: ChapterConflictKind): PipelineWriteError {
+  const reason = kind === "missing"
+    ? "你要覆盖的这一章已经不在正式稿里（可能被删或尚未保存成功）。"
+    : kind === "appeared"
+      ? "写这一章的过程中，同号章已经被另一处新建并保存了。"
+      : "这一章的正式稿在本次生成开始后又被改过，当前提交基于的是旧稿。";
+  const what = kind === "missing"
+    ? `第${chapterNumber}章当前没有正式稿可覆盖。`
+    : kind === "appeared"
+      ? `第${chapterNumber}章开始写时还没有正式稿，保存前发现已经有了一份。`
+      : `第${chapterNumber}章的正式稿已不是本次生成开始时读到的那一版。`;
+  return {
+    ok: false,
+    code: "chapter-conflict",
+    error: `第${chapterNumber}章没有保存。${reason}重新打开这一章看最新正文，确认后再提交。`,
+    summary: "章节已被更新，未覆盖保存。",
+    explanation: [
+      `发生了什么：${what}`,
+      "为什么要看：直接覆盖会丢掉作者或别处刚改的句子，或把已删除的章节写回去。",
+      "建议怎么做：重新读取这一章，核对最新正文后再决定是否重写；作者正在写作台编辑时先等作者保存。",
+    ].join("\n"),
+  };
+}
+
 /**
  * Writing Skills 正文不由管线注入上下文：启用即物化到作品 `.novelfork/skills/`，
  * 由 Runtime 的 Skill 机制交给正在调用工具的 agent 自主选择读取。
@@ -650,45 +722,20 @@ async function executePipelineWriteUnlocked(
     const memoryConfig = await loadNarrativeMemoryConfig(bookId, bookDir).catch(() => null);
     const chapterNumber = sceneSpec.chapter ?? await state.getNextChapterNumber(bookId);
 
-    // 已有章节覆盖采用可选的乐观保护：旧调用方不传 hash/version 时保持兼容，
-    // 传入时必须仍指向同一份正文/版本，避免并发编辑静默覆盖新稿。
+    // 并发保护基线：开头读到的正式稿（含「本来没有这一章」）就是本次写入的前提。
+    // 写入点在章节索引锁内重读再比，任何变化（作者在生成期间保存、新建同号章、删章）都拒写。
+    const resourceService = await createPipelineResourceService(bookId, bookDir);
+    const baselineChapter = await resourceService.findAcceptedChapter(bookId, chapterNumber);
+    const baseline = chapterFingerprint(baselineChapter);
+
+    // 调用方显式给了 expectedHash/expectedVersion：保持原语义，开头就要与之相符。
     const expectedHash = nonEmpty(input.expectedHash) ?? nonEmpty(input.expectedChapterHash);
     const expectedVersion = input.expectedVersion ?? input.expectedChapterVersion;
     if (expectedHash !== undefined || expectedVersion !== undefined) {
-      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-      const storage = getStorageDatabase();
-      const guardedResourceService = createWritingResourceService({
-        storage,
-        resolveBookDir: (requestedBookId: string) => {
-          if (requestedBookId !== bookId) throw new Error("Writing resource book binding mismatch");
-          return bookDir;
-        },
-        resolveChapterVolumeDirectory: (requestedBookId, requestedChapterNumber) => resolveChapterVolumeDirectory(
-          storage,
-          requestedBookId,
-          requestedChapterNumber,
-        ),
-      });
-      const existing = await guardedResourceService.findAcceptedChapter(bookId, chapterNumber);
-      const actualHash = existing ? createHash("sha256").update(existing.content, "utf8").digest("hex") : undefined;
-      const versionMismatch = expectedVersion !== undefined && existing?.version !== expectedVersion;
-      const hashMismatch = expectedHash !== undefined && actualHash !== expectedHash;
-      if (!existing || versionMismatch || hashMismatch) {
-        const missing = !existing;
-        const reason = missing
-          ? "你要覆盖的这一章已经不在正式稿里（可能被删或尚未保存成功）。"
-          : "这一章的正式稿在你提交后又被改过，当前提交基于的是旧稿。";
-        return {
-          ok: false,
-          code: "chapter-conflict",
-          error: `第${chapterNumber}章没有保存。${reason}重新打开这一章看最新正文，确认后再提交。`,
-          summary: "章节已被更新，未覆盖保存。",
-          explanation: [
-            `发生了什么：第${chapterNumber}章${missing ? "当前没有正式稿可覆盖" : "的正式稿已不是你刚才读到的那一版"}。`,
-            "为什么要看：直接覆盖会丢掉别人刚改的句子，或把已删除的章节写回去。",
-            "建议怎么做：重新读取这一章，核对最新正文后再提交。",
-          ].join("\n"),
-        };
+      const versionMismatch = expectedVersion !== undefined && baselineChapter?.version !== expectedVersion;
+      const hashMismatch = expectedHash !== undefined && baseline?.hash !== expectedHash;
+      if (!baselineChapter || versionMismatch || hashMismatch) {
+        return chapterConflictError(chapterNumber, baselineChapter ? "stale" : "missing");
       }
     }
 
@@ -777,6 +824,21 @@ async function executePipelineWriteUnlocked(
           error: `写前上下文预检执行失败：${detail}`,
           summary: "写前上下文预检失败，已阻止生成。",
           explanation: "预检依赖未能可靠读取，继续写作可能导致章节脱离当前正史上下文；请修复存储或上下文后重试。",
+        };
+      }
+
+      // 写前召回：正文必须在 write.preflight 拿到召回包之后生成。服务端按「会话 + 书 + 章」查 preflight 记下的记录，
+      // 模型不传任何凭证。排在上面的硬门之后：高风险待确认、book.json 损坏这类更靠前的根因先报。
+      // skipContextGate（只给测试/迁移）同时豁免。
+      const recall = verifyWriteRecall({ sessionId: options.sessionId, bookId, chapterNumber });
+      if (!recall.ok) {
+        logger?.warn(`[pipeline.write] write recall missing: ${recall.reason}`);
+        return {
+          ok: false,
+          code: "recall-required",
+          error: `第${chapterNumber}章没有保存：${recall.message}`,
+          summary: "本章还没有做写前召回，未保存。",
+          explanation: formatAuthorExplanation(recall.explanation),
         };
       }
     }
@@ -869,57 +931,17 @@ async function executePipelineWriteUnlocked(
     if (!narrativeContext) {
       try {
         const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-        const storage = getStorageDatabase();
-        const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir).catch(() => undefined);
-        const writingLayers = await resolveWritingLayers({ bookRoot: bookDir }).catch(() => null);
-        // 结算后又被改过的章：其摘要与机器事实注入时标注可能过期（现算，读失败不阻断写作）。
-        const staleSettlementChapters = await readBookSettlementFreshness(storage, bookId, bookDir)
-          .then((freshness) => freshness.staleChapters)
-          .catch(() => [] as readonly number[]);
-        // 角色声线：只注入本章出场角色、作者已确认的字段；读取失败不阻断写作。
-        const sceneVoices = await loadSceneVoiceConstraints({
-          storage,
+        // 与 write.preflight 的写前召回同一份口径（write-recall.ts），保证 Agent 看到的召回包与这里判定的一致。
+        narrativeContext = await buildWriteChapterRecall({
+          storage: getStorageDatabase(),
           bookId,
-          characterNames: sceneSpec.scenes.flatMap((scene) => scene.characters),
-        }).catch((err: unknown) => {
-          logger?.warn(`[pipeline.write] 角色声线读取失败，本章不注入声线：${err instanceof Error ? err.message : String(err)}`);
-          return null;
-        });
-        if (sceneVoices && sceneVoices.corruptedIds.length > 0) {
-          logger?.warn(`[pipeline.write] 角色声线数据损坏，未注入：${sceneVoices.corruptedIds.join(", ")}。请在角色卡的「声线」区块重新确认。`);
-        }
-        narrativeContext = await buildNarrativeContext({
-          storage,
-          bookId,
-          purpose: "write_chapter",
+          bookRoot: bookDir,
           chapterNumber,
           sceneSpec,
-          sceneText: sceneSpec.scenes.map((scene) => [scene.location, scene.conflict, scene.outcome, ...scene.characters].join(" ")).join("\n"),
-          entities: sceneSpec.scenes.flatMap((scene) => [...scene.characters, scene.location, ...scene.hooks_used, ...scene.hooks_planted]),
-          // 估算口径已 CJK 感知（budget 注释）：旧 16_000 英文口径 ≈ 新 24_000 真实容量。
-          maxTokens: memoryConfig?.retrieval.maxTokens ?? 24_000,
           previousChapterTail,
-          runtimeSnapshot,
-          enabledChannels: memoryConfig?.retrieval.channels,
-          waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
-          semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
-          ...(memoryConfig?.retrieval.semanticEnabled
-            ? await (async () => {
-              const embeddingConfig = await loadEmbeddingConfig(storage);
-              return embeddingConfig ? { semanticProvider: createSiliconFlowEmbeddingProvider(embeddingConfig) } : {};
-            })()
-            : {}),
-          ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
-          ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
-          ...(writingLayers?.stylePreset ? { stylePreset: writingLayers.stylePreset } : {}),
-          ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),
-          // 结构化声线摘要随文本一起下传：只进检索诊断日志，回答「这章注入了谁的哪些声线字段」。
-          ...(sceneVoices?.profiles.length ? { voiceProfiles: sceneVoices.profiles } : {}),
-          ...(staleSettlementChapters.length > 0 ? { staleSettlementChapters } : {}),
-          ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
-          // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
-          ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
-          ...(memoryConfig?.retrieval.writeProfile ? { writeProfileCaps: memoryConfig.retrieval.writeProfile } : {}),
+          memoryConfig,
+          logger,
+          logPrefix: "[pipeline.write]",
         });
       } catch (err) {
         logger?.warn(`[pipeline.write] Failed to build NarrativeContextPackage, falling back to legacy context: ${err instanceof Error ? err.message : String(err)}`);
@@ -1057,25 +1079,28 @@ async function executePipelineWriteUnlocked(
     const lengthWarning: string | undefined = undefined;
     logger?.info(`[pipeline.write] Runtime Agent content received: "${writeOutput.title}"`);
 
-    // 2.5. Pre-audit: zero-cost hard constraint check (H2 canon + H7 POV + soft constraints)
-    const preAudit = handleChapterAuditV2({
-      bookId,
-      chapterNumber,
-      content: governedContent,
-      sceneSpec,
-      wordTarget: book.chapterWordCount,
-    });
-    if (!preAudit.passed && preAudit.hardViolations.length > 0) {
-      logger?.warn(`[pipeline.write] Pre-audit hard violations: ${preAudit.hardViolations.map((v) => v.ruleId).join(", ")}`);
+    // 3. 确定性审计（H2 canon + H7 POV + 软约束）：同一 Runtime Agent 已提交正文，工具只检查，
+    // 不另开 Auditor/Reviser 模型。此前这里先跑一次参数完全相同的 preAudit 再跑一次，已合并为一次。
+    // H2 需要本章相关的 canon/规则条目；取数失败只告警（H2 本身只出 soft 提醒，不拒存）。
+    let canonEntries: AuditCanonEntry[] = [];
+    try {
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      canonEntries = await loadChapterCanonEntries(
+        getStorageDatabase(),
+        bookId,
+        governedContent,
+        sceneSpec.scenes.flatMap((scene) => scene.characters),
+      );
+    } catch (err) {
+      logger?.warn(`[pipeline.write] 本章 canon 条目读取失败，设定一致性检查（H2）本次未运行：${err instanceof Error ? err.message : String(err)}`);
     }
-
-    // 3. 确定性审计：同一 Runtime Agent 已提交正文，工具只检查，不另开 Auditor/Reviser 模型。
     const auditV2 = handleChapterAuditV2({
       bookId,
       chapterNumber,
       content: governedContent,
       sceneSpec,
       wordTarget: book.chapterWordCount,
+      canonEntries,
     });
     const auditResult: AuditResult = {
       passed: auditV2.passed,
@@ -1105,7 +1130,9 @@ async function executePipelineWriteUnlocked(
     // 门禁：剩余 S1（致命）→ 阻断采纳送人工复核；S2 也未清完同样需复核
     const finalGate = evaluateGate(auditResult.issues);
     const auditIssueCategories = summarizeAuditIssueCategories(auditResult.issues);
-    const needsHumanReview = finalGate.hasRevisable;
+    // H2（canon 设定一致性）命中只是关键词级粗筛：按 warning 记、不拒存，但一律送人工复核。
+    const canonReviewHits = auditV2.softViolations.filter((issue) => issue.ruleId === "H2");
+    const needsHumanReview = finalGate.hasRevisable || canonReviewHits.length > 0;
     if (needsHumanReview) {
       logger?.warn(`[pipeline.write] ${reviseRounds} round(s) exhausted, S1=${finalGate.counts.S1} S2=${finalGate.counts.S2} remain → needs human review`);
     }
@@ -1188,7 +1215,11 @@ async function executePipelineWriteUnlocked(
 
     // 4.1. 平台发布向单章轻检（保存前）：默认只 warn；仅当 profile 要求且存在 block 级敏感命中时拒绝保存。
     const publishWarnings: string[] = [];
-    if (needsHumanReview) publishWarnings.push("审计仍有必须先改或建议修订的问题，建议人工复核后再发布。");
+    if (finalGate.hasRevisable) publishWarnings.push("审计仍有必须先改或建议修订的问题，建议人工复核后再发布。");
+    if (canonReviewHits.length > 0) {
+      publishWarnings.push(`正文可能与经纬设定冲突（${canonReviewHits.length} 处，关键词级提示，请人工核对）：`);
+      publishWarnings.push(...canonReviewHits.map((issue) => `${issue.location ?? "Canon"}：${issue.description}`));
+    }
     if (factCheckRevised) publishWarnings.push("已执行事实/连续性专项修订，请抽查关键事实。");
     if (writingSkillWarnings.length > 0) {
       // 逐条列出违反了哪个技能的哪条要求：只报数量作者无法据此改稿。
@@ -1254,20 +1285,6 @@ async function executePipelineWriteUnlocked(
     try {
       const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
       const storage = getStorageDatabase();
-      const resourceService = createWritingResourceService({
-        storage,
-        resolveBookDir: (requestedBookId: string) => {
-          if (requestedBookId !== bookId) {
-            throw new Error("Writing resource book binding mismatch");
-          }
-          return bookDir;
-        },
-        resolveChapterVolumeDirectory: (requestedBookId, requestedChapterNumber) => resolveChapterVolumeDirectory(
-          storage,
-          requestedBookId,
-          requestedChapterNumber,
-        ),
-      });
       const metadata = {
         sceneSpec,
         ...(buildPipelineChapterResultMetadata({ narrativeContext }) ? { narrativeMemoryDiagnostics: buildPipelineChapterResultMetadata({ narrativeContext }) } : {}),
@@ -1293,20 +1310,33 @@ async function executePipelineWriteUnlocked(
         ...(narrativeEvents.length > 0 ? { narrativeEvents } : {}),
         generatedAt: new Date().toISOString(),
       };
-      const existing = await resourceService.findAcceptedChapter(bookId, chapterNumber);
-      if (existing) {
-        await resourceService.update(bookId, existing.id, { title: writeOutput.title, content: finalContent, metadata });
-      } else {
-        await resourceService.create(bookId, {
-          id: chapterId,
-          type: "chapter",
-          status: "accepted",
-          title: writeOutput.title,
-          content: finalContent,
-          chapterNumber,
-          source: "pipeline.write",
-          metadata,
-        });
+      // 「重读 → 比对 → 写入」整段持章节索引锁：作者侧保存/新建章（file-store 的 create/update）
+      // 同样要拿这把锁，于是比对通过后到写完之间不会插进别的写入。锁可重入，内部 create/update 不会自锁。
+      const conflict = await withChapterIndexLock(bookDir, async () => {
+        const existing = await resourceService.findAcceptedChapter(bookId, chapterNumber);
+        const current = chapterFingerprint(existing);
+        if (!sameChapterFingerprint(baseline, current)) {
+          return baseline ? (current ? "stale" as const : "missing" as const) : "appeared" as const;
+        }
+        if (existing) {
+          await resourceService.update(bookId, existing.id, { title: writeOutput.title, content: finalContent, metadata });
+        } else {
+          await resourceService.create(bookId, {
+            id: chapterId,
+            type: "chapter",
+            status: "accepted",
+            title: writeOutput.title,
+            content: finalContent,
+            chapterNumber,
+            source: "pipeline.write",
+            metadata,
+          });
+        }
+        return null;
+      });
+      if (conflict) {
+        logger?.warn(`[pipeline.write] 第 ${chapterNumber} 章在生成期间被改动（${conflict}），拒绝覆盖。`);
+        return chapterConflictError(chapterNumber, conflict);
       }
 
       // 文风金库：留一份 AI 原稿，作者之后的修改与它逐句比对得出人工占比。失败不影响已落盘正文。

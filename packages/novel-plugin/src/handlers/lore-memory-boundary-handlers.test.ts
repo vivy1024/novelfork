@@ -25,7 +25,9 @@ const emptyProjection = {
   knowledge: [],
 };
 
-vi.mock("@vivy1024/novelfork-core", () => ({
+// 保留 core 的真实导出（writeFileAtomic 等）：整包替换会让保留件写盘静默失败，只落成一条 warning。
+vi.mock("@vivy1024/novelfork-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@vivy1024/novelfork-core")>()),
   getStorageDatabase: () => {
     if (!activeStorage) throw new Error("test storage not initialized");
     return activeStorage;

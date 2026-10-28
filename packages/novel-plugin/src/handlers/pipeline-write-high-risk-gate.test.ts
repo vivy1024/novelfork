@@ -35,6 +35,15 @@ vi.mock("../engine/narrative-memory/storage.js", async (importOriginal) => {
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { handleMemoryEvents } from "./lore-memory-boundary-handlers.js";
 import { executePipelineWrite, type PipelineToolCallDispatcher } from "./pipeline-write-service.js";
+import { recordWriteRecall, resetWriteRecallsForTest } from "./recall-token.js";
+
+/**
+ * 本文件只验证高风险门禁：在服务端预先记一笔本章写前召回（preflight 记录路径见 pipeline-write-guards.test.ts）。
+ * 这里的调用不带会话 id，记录与核对都落在同一个匿名会话键上。
+ */
+function recallDone(chapterNumber = 2): void {
+  recordWriteRecall({ bookId: "book-1", chapterNumber, packageFingerprint: "test" });
+}
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -150,6 +159,8 @@ beforeEach(async () => {
   gate.failCount = false;
   gate.calls = 0;
   gate.countCalls = 0;
+  resetWriteRecallsForTest();
+  recallDone();
   root = await mkdtemp(join(tmpdir(), "novelfork-t13-gate-"));
   bookRoot = join(root, "books", "book-1");
   await mkdir(join(bookRoot, "chapters", "卷01"), { recursive: true });

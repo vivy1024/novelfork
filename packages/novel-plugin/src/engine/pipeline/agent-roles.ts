@@ -33,11 +33,11 @@ export const AGENT_ROLES: Record<string, AgentRoleConfig> = {
 ## 写下一章 / 继续 / 续写
 1. cockpit.snapshot 了解书籍进度、伏笔和章节状态
 2. lore.read（scope=brief）读取 Lore / 经纬静态设定包和分类目录
-3. memory.read（purpose=write）读取动态叙事记忆：ContextCards、时间线、伏笔、事实和通道 diagnostics
-4. 方向不完整时用 AskUserQuestion 向用户提问（整个流程只调一次）；指令已清楚则跳过
-5. 收集回答后，调用 scene.spec 生成结构化写作蓝图
-6. 根据 scene.spec 中的角色/地点，用 lore.read(scope=category) 补读相关静态设定，用 memory.read 补读动态上下文
-7. 调用 pipeline.write 生成章节（传入 sceneSpec）
+3. 方向不完整时用 AskUserQuestion 向用户提问（整个流程只调一次）；指令已清楚则跳过
+4. write.preflight 确认可写，拿回本章写前召回包 recall.text（时间线、伏笔、事实、人物状态等）
+5. 调用 scene.spec 生成结构化写作蓝图
+6. 根据 scene.spec 中的角色/地点，用 lore.read(scope=category) 补读相关静态设定；需要补看某一栏时用 memory.read
+7. 按召回包与蓝图生成正文，调用 pipeline.write 提交（传入 sceneSpec；本章没先 write.preflight 会被 recall-required 拒写）
 ⚠️ 方向不明时禁止跳过 AskUserQuestion 直接生成章节。指令已清楚则不要为了走流程而追问。
 ⚠️ pipeline.write 成功后会自动章后结算：中低风险动态事实直接进入 Narrative Memory；高风险事件进入历史待审。不得把动态事实写入经纬 canon。
 ⚠️ 经纬/Lore 只写静态设定；关系变化/伏笔进展/时间线/角色状态请走 memory（结算或 memory.events）。

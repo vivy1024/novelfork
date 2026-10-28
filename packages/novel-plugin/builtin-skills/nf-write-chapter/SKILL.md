@@ -53,10 +53,10 @@ checks:
 
 ## 操作（NovelFork）
 
-1. `write.preflight` 确认可写；用 Skill 读取相关写作技能。
-2. `lore.read` 查出场角色/地点/规则；`memory.read` 查近章事实与状态——写前必查，禁止现编设定。
-3. 提交 `scene.spec` 蓝图（含 beatBudget），校验通过后生成本章正文。
-4. `pipeline.write` 提交正文：落盘、审计、章后结算由工具完成。
+1. `write.preflight` 确认可写，拿回本章写前召回包（返回里 recall 的 text）；用 Skill 读取相关写作技能。
+2. `lore.read` 查出场角色/地点/规则；需要补看某一栏（如某角色的近况）时再用 `memory.read`——写前必查，禁止现编设定。
+3. 提交 `scene.spec` 蓝图（含 beatBudget），校验通过后**以写前召回包为前情依据**生成本章正文。
+4. `pipeline.write` 提交正文：落盘、审计（含经纬设定核对）、章后结算由工具完成。这一章没先做第 1 步、或召回已超过 30 分钟，会被 `recall-required` 拦下，回第 1 步重新 preflight；返回 `chapter-conflict` 说明这一章在你写的时候被作者改过，先重新读这一章，不要硬覆盖。
 5. 写后同轮清零：结算失败（settlementError）时 `memory.settle_range` 补；新角色/新设定用 `lore.write` 落经纬待作者确认。
 
 ## 禁止

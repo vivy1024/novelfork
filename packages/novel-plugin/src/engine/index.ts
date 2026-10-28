@@ -3,7 +3,7 @@
  *
  * Subdirectories:
  * - pipeline/ — writing pipeline, scheduling, detection
- * - agents/ — planner, composer, writer, auditor, reviser, etc.
+ * - agents/ — auditor, reviser, length normalizer, radar, etc.
  * - jingwei/ — worldbuilding, causal chains
  * - filter/ — AI taste detection, Zhuque integration
  * - writing-skills/ — file-based writing skill loading and validation
@@ -20,8 +20,6 @@ export type { AgentRoleConfig } from "./pipeline/agent-roles.js";
 // ─── Agents ──────────────────────────────────────────────────────────────────
 export { BaseAgent } from "./agents/base.js";
 export type { AgentContext } from "./agents/base.js";
-export { WriterAgent } from "./agents/writer.js";
-export type { WriteChapterInput, WriteChapterOutput, TokenUsage } from "./agents/writer.js";
 export { LengthNormalizerAgent } from "./agents/length-normalizer.js";
 export type { NormalizeLengthInput, NormalizeLengthOutput } from "./agents/length-normalizer.js";
 export { ContinuityAuditor } from "./agents/continuity.js";
@@ -41,7 +39,6 @@ export {
   resolveWritingLayers,
 } from "./writing-layers/layer-store.js";
 export type { BookDesignDocuments, ResolvedWritingLayers } from "./writing-layers/layer-store.js";
-export { buildWriterSystemPrompt } from "./agents/writer-prompts.js";
 export { analyzeAITells } from "./agents/ai-tells.js";
 export type { AITellResult, AITellIssue } from "./agents/ai-tells.js";
 export { analyzeSensitiveWords } from "./agents/sensitive-words.js";
@@ -49,16 +46,8 @@ export type { SensitiveWordResult, SensitiveWordMatch } from "./agents/sensitive
 export { analyzeStyle } from "./agents/style-analyzer.js";
 export { validatePostWrite, detectParagraphLengthDrift, detectParagraphShapeWarnings, detectDuplicateTitle } from "./agents/post-write-validator.js";
 export type { PostWriteViolation } from "./agents/post-write-validator.js";
-export { parseWriterOutput, parseCreativeOutput } from "./agents/writer-parser.js";
-export type { ParsedWriterOutput, CreativeOutput } from "./agents/writer-parser.js";
-export { buildSettlerSystemPrompt, buildSettlerUserPrompt } from "./agents/settler-prompts.js";
-export { parseSettlementOutput } from "./agents/settler-parser.js";
-export type { SettlementOutput } from "./agents/settler-parser.js";
-export { parseSettlerDeltaOutput } from "./agents/settler-delta-parser.js";
-export type { SettlerDeltaOutput } from "./agents/settler-delta-parser.js";
 export { getFanficDimensionConfig, FANFIC_DIMENSIONS } from "./agents/fanfic-dimensions.js";
 export type { FanficDimensionConfig } from "./agents/fanfic-dimensions.js";
-export { buildFanficCanonSection, buildCharacterVoiceProfiles, buildFanficModeInstructions } from "./agents/fanfic-prompt-sections.js";
 export { StateValidatorAgent } from "./agents/state-validator.js";
 
 // Workflows

@@ -130,7 +130,8 @@ export const ZHIHU_SHORT_STORY_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph
       kind: "context-load",
       label: "加载短篇核心核与情绪档案",
       enabled: true,
-      tools: ["cockpit.snapshot", "memory.read"],
+      // write.preflight 记下本章写前召回；没有它，收尾的 pipeline.write 会被 recall-required 拒写。
+      tools: ["cockpit.snapshot", "write.preflight", "memory.read"],
       onFailure: "stop",
     },
     {

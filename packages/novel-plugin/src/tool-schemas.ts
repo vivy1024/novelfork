@@ -152,6 +152,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       userDirectives: stringSchema("用户一句本章写作指示（可选；空时尝试用 currentFocus 生成默认句）。"),
       acceptFocusDefault: booleanSchema("仅有 focus 默认目标时是否接受继续（默认 false，会 needsUserConfirm）。"),
       acknowledgedSkills: acknowledgedSkillsSchema,
+      sceneSpec: { ...sceneSpecSchema, description: "可选：已有 scene.spec 蓝图时传入，写前召回按蓝图的角色/地点/伏笔取前情（与 pipeline.write 同口径）；不传则按本章指示召回。" },
     },
     required: ["bookId"],
     additionalProperties: false,

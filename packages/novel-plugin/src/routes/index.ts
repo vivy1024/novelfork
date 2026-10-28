@@ -1,7 +1,7 @@
 /**
  * Novel-domain route factories — moved from studio to novel-plugin (Batch 3).
  * These routes handle AI writing, pipeline, jingwei, filter, compliance,
- * writing-modes, writing-tools, and context-manager.
+ * writing-modes, and writing-tools.
  */
 
 export {
@@ -27,7 +27,6 @@ export { createPipelineRouter, createPipelineRun, updatePipelineStage, completeP
 export { createFilterRouter, type CreateFilterRouterOptions } from "./filter.js";
 export { createComplianceRouter } from "./compliance.js";
 export { createWritingToolsRouter } from "./writing-tools.js";
-export { createContextManagerRouter } from "./context-manager.js";
 export { createQualityTrendRouter } from "./quality-trend.js";
 export { createWritingSkillsRouter, type CreateWritingSkillsRouterOptions } from "./writing-skills.js";
 export { createWritingLayersRouter, type CreateWritingLayersRouterOptions } from "./writing-layers.js";

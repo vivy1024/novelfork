@@ -18,15 +18,31 @@ import {
   runStorageMigrations,
 } from "@vivy1024/novelfork-core";
 import type { ToolExecutionContext } from "@vivy1024/novelfork-core/plugins";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { executeRuntimeDomainTool } from "./runtime-domain-tools.js";
 import { executePipelineWrite, type PipelineToolCallDispatcher } from "./pipeline-write-service.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { SETTLE_CHAPTER_TOOL_NAME } from "./memory-settle-chapter.js";
+import { recordWriteRecall, resetWriteRecallsForTest } from "./recall-token.js";
+
+/**
+ * 本文件只验证结算派发：每条用例前在服务端预先记下第 4、5 章的写前召回
+ * （preflight 记录路径见 pipeline-write-guards.test.ts）。这里的调用不带会话 id，记录与核对落在同一个匿名会话键上。
+ */
+function recallDone(...chapterNumbers: number[]): void {
+  for (const chapterNumber of chapterNumbers) {
+    recordWriteRecall({ bookId: "trusted", chapterNumber, packageFingerprint: "test" });
+  }
+}
 
 const roots: string[] = [];
+
+beforeEach(() => {
+  resetWriteRecallsForTest();
+  recallDone(4, 5);
+});
 
 afterEach(async () => {
   closeStorageDatabase();

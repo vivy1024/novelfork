@@ -445,6 +445,8 @@ async function executeReadyToolImpl(
       const preflight = await handleWritePreflight({
         bookId: binding.bookId,
         bookRoot: binding.root,
+        // 写前召回记录按叙述者会话记在服务端；pipeline.write 用同一会话核对，模型不传凭证。
+        ...(context.sessionId ? { sessionId: context.sessionId } : {}),
         cockpitState: createBoundNovelState(binding),
         ...(typeof injectedInput.chapterNumber === "number" ? { chapterNumber: injectedInput.chapterNumber } : {}),
         ...(typeof injectedInput.userDirectives === "string" ? { userDirectives: injectedInput.userDirectives } : {}),
@@ -458,6 +460,11 @@ async function executeReadyToolImpl(
         ...(typeof injectedInput.userDirectives === "string"
           ? { taskText: injectedInput.userDirectives }
           : {}),
+        // 工具入口才装配写前召回包并记下召回记录；其他共用本 handler 的内部路径不开。
+        buildRecall: true,
+        ...(injectedInput.sceneSpec && typeof injectedInput.sceneSpec === "object" && !Array.isArray(injectedInput.sceneSpec)
+          ? { sceneSpec: injectedInput.sceneSpec as never }
+          : {}),
       });
       const blockerText = preflight.blockers.length > 0
         ? ` blockers=${preflight.blockers.map((item) => item.code).join(",")}`
@@ -465,7 +472,7 @@ async function executeReadyToolImpl(
       return toRuntimeToolResult({
         ok: preflight.ok,
         summary: preflight.ok
-          ? `写前上下文就绪：第${preflight.chapterNumber}章，近章 ${preflight.recentChapters.length} 条。`
+          ? `写前上下文就绪：第${preflight.chapterNumber}章，近章 ${preflight.recentChapters.length} 条。${preflight.recall ? `已召回写前资料约 ${preflight.recall.estimatedTokens} tokens；按 recall.text 生成正文，再调用 pipeline.write 保存（不需要传凭证）。` : ""}`
           : `写前上下文未就绪：${preflight.blockers.map((item) => item.message).join("；") || "存在 blockers"}${blockerText}`,
         ...(preflight.ok ? {} : { error: "context-not-ready" }),
         data: preflight,

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { handleSceneSpec } from "./scene-spec-handler.js";
 
 const spec = (chapter: number, title: string, beatBudget: unknown) => ({
@@ -16,6 +19,31 @@ const spec = (chapter: number, title: string, beatBudget: unknown) => ({
     hooks_planted: [],
   }],
   constraints: [],
+});
+
+describe("scene.spec word target", () => {
+  it("没有 cockpitSnapshot 时按 bookRoot/book.json 的 chapterWordCount 定目标，不回落硬编码 3000", async () => {
+    // 真模型实测：Runtime 派发 scene.spec 只带 bookRoot，不带 cockpitSnapshot；
+    // 之前直接回落 3000，2200 字的书被报「目标 3000」，模型只好去书目录里翻来源。
+    const root = await mkdtemp(join(tmpdir(), "scene-spec-word-"));
+    try {
+      await writeFile(join(root, "book.json"), JSON.stringify({ id: "book-1", chapterWordCount: 2200 }), "utf8");
+      const result = await handleSceneSpec({
+        bookId: "book-1",
+        chapterNumber: 1,
+        userDirectives: "林舟在镇口听见青铜铃白日自鸣",
+        skipContextGate: true,
+        bookRoot: root,
+        sceneSpec: { ...spec(1, "白日铃", []), wordTarget: 2200 },
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.summary).toContain("目标 2200 字");
+      expect(result.summary).not.toContain("3000");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("scene.spec deterministic contract", () => {

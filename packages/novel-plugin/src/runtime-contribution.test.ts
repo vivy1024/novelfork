@@ -13,6 +13,7 @@ import {
   NOVEL_RUNTIME_TOOL_CATALOG,
 } from "./handlers/tool-registry.js";
 import { executeRuntimeDomainTool } from "./handlers/runtime-domain-tools.js";
+import { recordWriteRecall, verifyWriteRecall } from "./handlers/recall-token.js";
 import { createBookRepository } from "./engine/jingwei/repositories/book-repo.js";
 import { ensureNarrativeMemorySchema } from "./engine/narrative-memory/storage.js";
 import { NOVEL_RUNTIME_CONTRIBUTION } from "./runtime-contribution.js";
@@ -368,9 +369,14 @@ describe("novel Runtime contribution", () => {
       generateText: pipelineGenerator("过短正文"),
     };
     try {
+      // 本用例只验证字数硬门：先按本会话记一笔第 2 章写前召回（完整 preflight 路径见下方端到端用例）。
+      recordWriteRecall({ sessionId: "session-1", bookId: "trusted", chapterNumber: 2, packageFingerprint: "test" });
       const result = await executeRuntimeDomainTool(
         "pipeline.write",
-        { sceneSpec: pipelineSceneSpec, content: "过短正文" },
+        {
+          sceneSpec: pipelineSceneSpec,
+          content: "过短正文",
+        },
         { bookId: "trusted", root: trusted.bookRoot },
         trustedContext,
       );
@@ -650,10 +656,16 @@ describe("novel Runtime contribution", () => {
         `).run();
       }
 
-      expect(await tool("write.preflight").handler(
+      const readyPreflight = await tool("write.preflight").handler(
         { chapterNumber: 4, userDirectives: "让林舟进入山门试炼，先过守门人这一关。" },
         trustedContext,
-      )).toMatchObject({ ok: true });
+      );
+      expect(readyPreflight).toMatchObject({ ok: true });
+      // 工具入口通过时返回写前召回包，并按本会话记下召回记录；pipeline.write 不传凭证。
+      const recall = (readyPreflight.data as { recall?: { text?: string } } | undefined)?.recall;
+      expect(recall).not.toHaveProperty("recallToken");
+      expect(verifyWriteRecall({ sessionId: "session-1", bookId: "trusted", chapterNumber: 4 }).ok).toBe(true);
+      expect(recall?.text).toContain("第 4 章写前召回包");
 
       const submittedSpec = { ...pipelineSceneSpec, chapter: 4, title: "铃声之后" };
       const sceneSpecResult = await tool("scene.spec").handler(
@@ -774,6 +786,7 @@ describe("novel Runtime contribution", () => {
       generateText: pipelineGenerator(content),
     };
     try {
+      recordWriteRecall({ sessionId: "session-1", bookId: "trusted", chapterNumber: 2, packageFingerprint: "test" });
       const written = await tool("pipeline.write").handler({
         sceneSpec: { ...pipelineSceneSpec, chapter: 2 },
         content,

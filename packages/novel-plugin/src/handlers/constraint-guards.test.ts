@@ -16,7 +16,7 @@ describe("constraint-driven v2 guards", () => {
       expect(result.hardViolations).toHaveLength(0);
     });
 
-    it("detects canon violation (H2) when content contradicts forbidden rule", () => {
+    it("detects canon violation (H2) when content contradicts forbidden rule — 只出 soft 提醒，不判未通过", () => {
       const result = handleChapterAuditV2({
         bookId: "test",
         chapterNumber: 5,
@@ -25,9 +25,20 @@ describe("constraint-driven v2 guards", () => {
           { title: "世界规则", contentMd: "禁止飞行法术。不能使用飞行。", category: "world-rules" },
         ],
       });
-      expect(result.hardViolations.length).toBeGreaterThan(0);
-      expect(result.hardViolations.some((v) => v.ruleId === "H2")).toBe(true);
-      expect(result.passed).toBe(false);
+      // H2 是关键词级粗筛，误报率高：命中只送人工复核，不作为拒存/未通过依据。
+      expect(result.softViolations.some((v) => v.ruleId === "H2")).toBe(true);
+      expect(result.hardViolations.some((v) => v.ruleId === "H2")).toBe(false);
+      expect(result.passed).toBe(true);
+    });
+
+    it("H2 不再接受裸「不」开头的叙述句（误报主要来源）", () => {
+      const result = handleChapterAuditV2({
+        bookId: "test",
+        chapterNumber: 5,
+        content: "不久之后，韩立回到洞府。",
+        canonEntries: [{ title: "旧事", contentMd: "不久之后，七玄门覆灭。" }],
+      });
+      expect(result.softViolations.some((v) => v.ruleId === "H2")).toBe(false);
     });
 
     it("detects soft violation (S1) when word count is too low", () => {
