@@ -66,7 +66,7 @@ export const LoreProposalCard: ToolResultRenderer = (context: ToolResultRenderer
       {reason && <p className="text-xs text-foreground" data-testid="lore-update-reason">改动原因：{reason}</p>}
       <ul className="flex flex-col gap-1" data-testid="lore-update-fields">
         {keys.map((key) => (
-          <li key={key} className="rounded border border-border/60 bg-background/60 px-2 py-1 text-2xs">
+          <li key={key} className="rounded border border-border/60 bg-background/60 px-2 py-1 text-xs">
             <div className="font-medium text-foreground">{key}</div>
             <div className="text-muted-foreground">改前：{show(before[key])}</div>
             <div className="text-foreground">改后：{show(fieldsPatch[key])}</div>
@@ -74,20 +74,20 @@ export const LoreProposalCard: ToolResultRenderer = (context: ToolResultRenderer
         ))}
       </ul>
       {note ? (
-        <p className={`text-2xs ${note.tone === "ok" ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`} data-testid="lore-update-note">
+        <p className={`text-xs ${note.tone === "ok" ? "text-success" : "text-destructive"}`} data-testid="lore-update-note">
           {note.text}
         </p>
       ) : null}
       {!applied ? (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-2xs text-muted-foreground">只合并这几个字段；条目其他字段原样保留。</p>
+          <p className="text-xs text-muted-foreground">只合并这几个字段；条目其他字段原样保留。</p>
           <Button size="sm" disabled={busy} onClick={() => void apply()} data-testid="lore-update-apply">
             {busy ? <Loader2 className="size-3 animate-spin" /> : null}
             采用候选
           </Button>
         </div>
       ) : (
-        <p className="text-2xs text-emerald-700 dark:text-emerald-300" data-testid="lore-update-applied">已采用</p>
+        <p className="text-xs text-success" data-testid="lore-update-applied">已采用</p>
       )}
     </ToolResultSurface>
   );

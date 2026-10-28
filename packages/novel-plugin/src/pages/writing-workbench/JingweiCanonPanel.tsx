@@ -204,7 +204,7 @@ export function JingweiSchemaField({
           className="h-8 text-xs"
         />
       )}
-      {field.helpText ? <p className="mt-1 text-2xs text-muted-foreground">{field.helpText}</p> : null}
+      {field.helpText ? <p className="mt-1 text-xs text-muted-foreground">{field.helpText}</p> : null}
     </div>
   );
 }
@@ -385,7 +385,7 @@ export function JingweiCanonPanel({
             <div className="flex flex-wrap items-center gap-1.5">
               <Badge variant="secondary" className="text-2xs">{getCategorySchema(values.category)?.name ?? values.category}</Badge>
               {values.status === "needs-review" ? (
-                <Badge variant="outline" className="text-2xs border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">待确认</Badge>
+                <Badge variant="outline" className="text-xs border-warning/40 bg-warning/10 text-warning">待确认</Badge>
               ) : (
                 <Badge variant="outline" className="text-2xs">{READ_STATUS_LABELS[values.status] ?? values.status}</Badge>
               )}
@@ -632,7 +632,7 @@ export function JingweiCanonPanel({
                             {SOURCE_LABELS[revision.changed_by] ?? revision.changed_by}
                           </Badge>
                         </div>
-                        {revision.reason ? <p className="text-2xs text-muted-foreground mt-0.5">{revision.reason}</p> : null}
+                        {revision.reason ? <p className="text-xs text-muted-foreground mt-0.5">{revision.reason}</p> : null}
                       </div>
                       {!readOnly && (
                         <Button

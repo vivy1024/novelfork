@@ -21,15 +21,15 @@ export interface WorkflowProgressCardProps {
 function StepIcon({ status }: { status: WorkflowStepStatus }) {
   switch (status) {
     case "success":
-      return <CheckCircle className="size-4 text-green-500" />;
+      return <CheckCircle className="size-4 text-success" />;
     case "running":
-      return <Loader2 className="size-4 text-blue-500 animate-spin" />;
+      return <Loader2 className="size-4 text-info animate-spin" />;
     case "failed":
-      return <XCircle className="size-4 text-red-500" />;
+      return <XCircle className="size-4 text-destructive" />;
     case "skipped":
       return <Circle className="size-4 text-muted-foreground/40" />;
     case "approval-pending":
-      return <Pause className="size-4 text-yellow-500" />;
+      return <Pause className="size-4 text-warning" />;
     case "pending":
     default:
       return <Clock className="size-4 text-muted-foreground/40" />;
@@ -51,11 +51,11 @@ const statusLabels: Record<WorkflowProgressCardProps["status"], string> = {
 };
 
 const statusColors: Record<WorkflowProgressCardProps["status"], string> = {
-  completed: "text-green-600",
+  completed: "text-success",
   stopped: "text-muted-foreground",
-  "approval-pending": "text-yellow-600",
-  failed: "text-red-600",
-  running: "text-blue-600",
+  "approval-pending": "text-warning",
+  failed: "text-destructive",
+  running: "text-info",
 };
 
 export function WorkflowProgressCard({ title, steps, status, completedCount, totalCount }: WorkflowProgressCardProps) {
@@ -74,7 +74,7 @@ export function WorkflowProgressCard({ title, steps, status, completedCount, tot
       {/* Progress bar */}
       <div className="h-1.5 rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${status === "failed" ? "bg-red-500" : status === "running" ? "bg-blue-500" : "bg-green-500"}`}
+          className={`h-full rounded-full transition-all ${status === "failed" ? "bg-destructive" : status === "running" ? "bg-info" : "bg-success"}`}
           style={{ width: `${progress}%` }}
         />
       </div>

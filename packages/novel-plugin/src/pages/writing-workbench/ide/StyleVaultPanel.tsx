@@ -69,11 +69,11 @@ export function ChapterRevisions({ bookId, chapterNumber, onAdopted }: { readonl
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ readonly tone: "ok" | "error"; readonly text: string } | null>(null);
 
-  if (loading) return <p className="px-2 py-1 text-2xs text-muted-foreground">读取改稿…</p>;
-  if (error) return <p className="px-2 py-1 text-2xs text-destructive">{String(error)}</p>;
+  if (loading) return <p className="px-2 py-1 text-xs text-muted-foreground">读取改稿…</p>;
+  if (error) return <p className="px-2 py-1 text-xs text-destructive">{String(error)}</p>;
   const pairs = data?.revisionPairs ?? [];
   if (pairs.length === 0) {
-    return <p className="px-2 py-1 text-2xs text-muted-foreground">这一章还没有「改过但认得出」的段落：要么原样保留了 AI 原稿，要么整段重写了。</p>;
+    return <p className="px-2 py-1 text-xs text-muted-foreground">这一章还没有「改过但认得出」的段落：要么原样保留了 AI 原稿，要么整段重写了。</p>;
   }
 
   const toggle = (index: number) => setSelected((current) => {
@@ -127,7 +127,7 @@ export function ChapterRevisions({ bookId, chapterNumber, onAdopted }: { readonl
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 text-2xs">
+            <label className="flex items-center gap-1.5 text-xs">
               <input
                 type="checkbox"
                 checked={selected.has(index)}
@@ -136,7 +136,7 @@ export function ChapterRevisions({ bookId, chapterNumber, onAdopted }: { readonl
               />
               采纳这段
             </label>
-            <label className="flex items-center gap-1 text-2xs text-muted-foreground">
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
               场景
               <select
                 className="rounded border border-border bg-background px-1 py-0.5 text-2xs"
@@ -197,7 +197,7 @@ export function StyleVaultPanel({ bookId }: { readonly bookId: string }) {
                 {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
                 <span className="min-w-0 flex-1 truncate">第 {chapter.chapterNumber} 章 · {chapter.title}</span>
                 {chapter.error ? (
-                  <span className="text-2xs text-destructive">{chapter.error}</span>
+                  <span className="text-xs text-destructive">{chapter.error}</span>
                 ) : chapter.share ? (
                   <span className="flex items-center gap-1.5 text-2xs text-muted-foreground">
                     <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted" aria-hidden>

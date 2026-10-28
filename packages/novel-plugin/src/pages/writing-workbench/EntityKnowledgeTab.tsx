@@ -68,7 +68,7 @@ function FactListRow({ fact, tone }: { fact: KnowledgeFactRow; tone: "knows" | "
   return (
     <li
       className={`rounded-lg border p-2 text-xs shadow-xs ${
-        tone === "unaware" ? "border-amber-500/30 bg-amber-500/[0.04]" : "border-border/70 bg-card"
+        tone === "unaware" ? "border-warning/30 bg-warning/[0.04]" : "border-border/70 bg-card"
       }`}
       data-testid={`knowledge-${tone}-row`}
     >
@@ -128,11 +128,11 @@ export function EntityKnowledgeTab({ bookId, entryId, resolving, entityName, cur
   if (state.status === "error") {
     return (
       <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-2 text-destructive" data-testid="knowledge-error">
-        <p className="text-2xs">{state.message}</p>
+        <p className="text-xs">{state.message}</p>
         <button
           type="button"
           onClick={() => setNonce((value) => value + 1)}
-          className="rounded border border-destructive/40 px-2 py-1 text-2xs hover:bg-destructive/10"
+          className="rounded border border-destructive/40 px-2 py-1 text-xs hover:bg-destructive/10"
         >
           重试
         </button>
@@ -159,7 +159,7 @@ export function EntityKnowledgeTab({ bookId, entryId, resolving, entityName, cur
         <button
           type="button"
           onClick={() => setNonce((value) => value + 1)}
-          className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground"
+          className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
           aria-label="刷新"
         >
           <RefreshCw className="size-3" />
@@ -169,7 +169,7 @@ export function EntityKnowledgeTab({ bookId, entryId, resolving, entityName, cur
       <section className="space-y-1.5">
         <h3 className="text-xs font-semibold flex items-center gap-1.5 px-0.5">现状</h3>
         {states.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border/80 p-3 text-center text-2xs text-muted-foreground bg-muted/10">
+          <p className="rounded-lg border border-dashed border-border/80 p-3 text-center text-xs text-muted-foreground bg-muted/10">
             还没有状态流水。
           </p>
         ) : (
@@ -191,7 +191,7 @@ export function EntityKnowledgeTab({ bookId, entryId, resolving, entityName, cur
           他知道<span className="text-2xs font-normal text-muted-foreground">（{knows.length} 条）</span>
         </h3>
         {knows.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border/80 p-3 text-center text-2xs text-muted-foreground bg-muted/10">
+          <p className="rounded-lg border border-dashed border-border/80 p-3 text-center text-xs text-muted-foreground bg-muted/10">
             还没有知情记录。
           </p>
         ) : (
@@ -203,11 +203,11 @@ export function EntityKnowledgeTab({ bookId, entryId, resolving, entityName, cur
 
       <section className="space-y-1.5">
         <h3 className="text-xs font-semibold flex items-center gap-1.5 px-0.5">
-          <Ban className="size-3 text-amber-600 dark:text-amber-400" />
+          <Ban className="size-3 text-warning" />
           他还不知道<span className="text-2xs font-normal text-muted-foreground">（写作禁忌，{unaware.length} 条）</span>
         </h3>
         {unaware.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border/80 p-3 text-center text-2xs text-muted-foreground bg-muted/10">
+          <p className="rounded-lg border border-dashed border-border/80 p-3 text-center text-xs text-muted-foreground bg-muted/10">
             {anchor}没有他缺席的关键剧情。
           </p>
         ) : (

@@ -38,7 +38,7 @@ export function SceneSpecPanel({ spec }: SceneSpecPanelProps) {
           <Badge variant="secondary" className="text-2xs">第{spec.chapter}章</Badge>
           <span className="text-sm font-semibold">{spec.title}</span>
         </div>
-        <p className="text-2xs text-muted-foreground">目标字数：{spec.wordTarget.toLocaleString()}</p>
+        <p className="text-xs text-muted-foreground">目标字数：{spec.wordTarget.toLocaleString()}</p>
       </div>
 
       {/* 场景卡片列表 */}
@@ -54,7 +54,7 @@ export function SceneSpecPanel({ spec }: SceneSpecPanelProps) {
 
             {/* 角色 */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Users className="size-3 text-blue-500 shrink-0" />
+              <Users className="size-3 text-info shrink-0" />
               {scene.characters.map((char) => (
                 <Badge key={char} variant="secondary" className="text-2xs">{char}</Badge>
               ))}
@@ -62,7 +62,7 @@ export function SceneSpecPanel({ spec }: SceneSpecPanelProps) {
 
             {/* 地点 */}
             <div className="flex items-center gap-1.5 text-2xs">
-              <MapPin className="size-3 text-green-500 shrink-0" />
+              <MapPin className="size-3 text-success shrink-0" />
               <span className="text-muted-foreground">{scene.location}</span>
             </div>
 
@@ -82,12 +82,12 @@ export function SceneSpecPanel({ spec }: SceneSpecPanelProps) {
             {(scene.hooks_used.length > 0 || scene.hooks_planted.length > 0) && (
               <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border">
                 {scene.hooks_used.map((hook) => (
-                  <Badge key={`used-${hook}`} variant="outline" className="text-2xs border-emerald-500/30 text-emerald-600">
+                  <Badge key={`used-${hook}`} variant="outline" className="text-2xs border-success/30 text-success">
                     <Eye className="size-2.5 mr-0.5" />{hook}
                   </Badge>
                 ))}
                 {scene.hooks_planted.map((hook) => (
-                  <Badge key={`plant-${hook}`} variant="outline" className="text-2xs border-amber-500/30 text-amber-600">
+                  <Badge key={`plant-${hook}`} variant="outline" className="text-xs border-warning/30 text-warning">
                     <EyeOff className="size-2.5 mr-0.5" />{hook}
                   </Badge>
                 ))}
@@ -100,10 +100,10 @@ export function SceneSpecPanel({ spec }: SceneSpecPanelProps) {
       {/* 约束 */}
       {spec.constraints.length > 0 && (
         <div className="rounded-lg border border-border bg-muted/20 p-3">
-          <p className="text-2xs font-medium text-muted-foreground mb-1">写作约束</p>
+          <p className="text-xs font-medium text-muted-foreground mb-1">写作约束</p>
           <ul className="space-y-0.5">
             {spec.constraints.map((c, i) => (
-              <li key={i} className="text-2xs text-muted-foreground">• {c}</li>
+              <li key={i} className="text-xs text-muted-foreground">• {c}</li>
             ))}
           </ul>
         </div>

@@ -69,7 +69,7 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
         </Button>
       </div>
       {fields.length === 0 && (
-        <p className="rounded-md border border-dashed border-border px-3 py-2 text-2xs text-muted-foreground">
+        <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
           未定义任何字段：内核将不会生成也不会注入。
         </p>
       )}
@@ -148,9 +148,9 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
         </table>
       </div>
       {duplicated.size > 0 && (
-        <p className="text-2xs text-destructive">存在重复字段键：{[...duplicated].join("、")}。重复键会导致内核取值互相覆盖。</p>
+        <p className="text-xs text-destructive">存在重复字段键：{[...duplicated].join("、")}。重复键会导致内核取值互相覆盖。</p>
       )}
-      <p className="text-2xs text-muted-foreground">优先级越小越先被预算裁剪；关闭「LLM 提取」的字段仅作者可填，不会被结算覆盖。</p>
+      <p className="text-xs text-muted-foreground">优先级越小越先被预算裁剪；关闭「LLM 提取」的字段仅作者可填，不会被结算覆盖。</p>
     </div>
   );
 }

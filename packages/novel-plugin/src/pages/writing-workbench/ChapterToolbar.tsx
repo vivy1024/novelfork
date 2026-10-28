@@ -85,7 +85,7 @@ function evidenceKey(evidence: ComplianceEvidence): string {
 
 function EvidenceList({ evidence }: { evidence: readonly ComplianceEvidence[] }) {
   const unique = [...new Map(evidence.map((item) => [evidenceKey(item), item])).values()];
-  if (unique.length === 0) return <p className="text-2xs text-muted-foreground">未发现可定位证据。</p>;
+  if (unique.length === 0) return <p className="text-xs text-muted-foreground">未发现可定位证据。</p>;
   return (
     <div className="max-h-36 space-y-1 overflow-y-auto">
       {unique.slice(0, 12).map((item) => (
@@ -99,7 +99,7 @@ function EvidenceList({ evidence }: { evidence: readonly ComplianceEvidence[] })
           {item.suggestion && <p className="mt-1 text-muted-foreground">建议：{item.suggestion}</p>}
         </div>
       ))}
-      {unique.length > 12 && <p className="text-2xs text-muted-foreground">另有 {unique.length - 12} 条证据。</p>}
+      {unique.length > 12 && <p className="text-xs text-muted-foreground">另有 {unique.length - 12} 条证据。</p>}
     </div>
   );
 }
@@ -120,12 +120,12 @@ function PublishReadinessSummary({ report, chapterNumber }: { report: PublishRea
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <p className={report.status === "ready" ? "font-medium text-emerald-600" : "font-medium text-destructive"}>
+        <p className={report.status === "ready" ? "font-medium text-success" : "font-medium text-destructive"}>
           {readinessStatusLabel(report.status)}
         </p>
         <span className="text-2xs text-muted-foreground">平台：{report.platform}</span>
       </div>
-      <p className="rounded border border-border/60 bg-muted/30 p-2 text-2xs text-muted-foreground">
+      <p className="rounded border border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground">
         本次检查扫描全书 {report.formatCheck.chapterCount} 章，不是只检查当前章；当前章节仅用于置顶本章证据。
       </p>
       <div className="grid grid-cols-3 gap-1 text-2xs text-muted-foreground">
@@ -140,7 +140,7 @@ function PublishReadinessSummary({ report, chapterNumber }: { report: PublishRea
       </div>
       {currentEvidence.length > 0 && (
         <div className="space-y-1 border-t border-border pt-2">
-          <p className="text-2xs font-medium">本章证据（第 {chapterNumber} 章）</p>
+          <p className="text-xs font-medium">本章证据（第 {chapterNumber} 章）</p>
           <EvidenceList evidence={currentEvidence} />
         </div>
       )}
@@ -435,7 +435,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="font-medium">人味润色（本地规则去 AI 味）</p>
-                  <p className="text-2xs text-muted-foreground">0 模型调用：删套词、去否定翻转、规范标点；需语义判断的项只标注。</p>
+                  <p className="text-xs text-muted-foreground">0 模型调用：删套词、去否定翻转、规范标点；需语义判断的项只标注。</p>
                 </div>
                 <Button
                   variant="outline"
@@ -450,14 +450,14 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
               </div>
               {humanizeError && <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-destructive">{humanizeError}</p>}
               {handedOff && (
-                <p className="rounded border border-border bg-muted/40 p-2 text-2xs text-muted-foreground">
+                <p className="rounded border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
                   已把语义项交给叙述者，在对话面板查看结果。
                 </p>
               )}
               {humanizeOutcome && (
                 <div className="space-y-2">
                   <div className="rounded border border-border bg-muted/40 p-2.5 space-y-1.5">
-                    <div className="flex items-center gap-1 text-2xs font-medium text-emerald-600">
+                    <div className="flex items-center gap-1 text-2xs font-medium text-success">
                       <CheckCircle2 className="size-3" />
                       <span>规则已改 {humanizeOutcome.autoEditCount} 处</span>
                     </div>
@@ -483,8 +483,8 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                     )}
                   </div>
                   {humanizeOutcome.manualFlags.length > 0 && (
-                    <div className="rounded border border-amber-500/30 bg-amber-500/5 p-2 space-y-1">
-                      <div className="text-2xs font-medium text-amber-700 dark:text-amber-400">
+                    <div className="rounded border border-warning/30 bg-warning/5 p-2 space-y-1">
+                      <div className="text-xs font-medium text-warning">
                         {humanizeOutcome.manualFlags.length} 处需语义判断，规则未改
                       </div>
                       <div className="max-h-20 space-y-0.5 overflow-y-auto">
@@ -510,7 +510,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="font-medium">叙事审计（九项风险卡）</p>
-                  <p className="text-2xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     由不知道大纲与你意图的零继承子代理只读正文，查「用结论替代过程」与「叙事过满」。
                   </p>
                 </div>
@@ -536,7 +536,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                 </p>
               )}
               {narrativeSent && (
-                <p className="rounded border border-border bg-muted/40 p-2 text-2xs text-muted-foreground">
+                <p className="rounded border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
                   已交给叙述者。它会开一个零继承子代理只读本章正文，结果在对话面板查看。
                 </p>
               )}
@@ -547,7 +547,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="font-medium">多视角对抗式审查</p>
-                  <p className="text-2xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     由主叙述者根据作品创作工作流装配的角色与规则，对本章进行并发审查。
                   </p>
                 </div>
@@ -568,7 +568,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                 </p>
               )}
               {adversarialSent && (
-                <p className="rounded border border-border bg-muted/40 p-2 text-2xs text-muted-foreground">
+                <p className="rounded border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
                   已唤起主叙述者执行对抗审查，请在主对话面板查看审查官会审结果。
                 </p>
               )}
@@ -577,12 +577,12 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                   <p className="font-medium text-purple-700 dark:text-purple-300">A. 连续性审查官</p>
                   <p className="mt-0.5 text-muted-foreground">带工具查证前文，严查战力崩塌、时间线冲突与角色OOC</p>
                 </div>
-                <div className="rounded border border-blue-500/20 bg-blue-500/5 p-2">
-                  <p className="font-medium text-blue-700 dark:text-blue-300">B. 叙事质量审查官</p>
+                <div className="rounded border border-info/20 bg-info/5 p-2">
+                  <p className="font-medium text-info">B. 叙事质量审查官</p>
                   <p className="mt-0.5 text-muted-foreground">黄金三章节奏模型，查流水账、读者期待与配角工具人化</p>
                 </div>
-                <div className="rounded border border-emerald-500/20 bg-emerald-500/5 p-2">
-                  <p className="font-medium text-emerald-700 dark:text-emerald-300">C. 文本风控审查官</p>
+                <div className="rounded border border-success/20 bg-success/5 p-2">
+                  <p className="font-medium text-success">C. 文本风控审查官</p>
                   <p className="mt-0.5 text-muted-foreground">专项过滤AI套词、句式段落等长、词汇疲劳与敏感词</p>
                 </div>
               </div>
@@ -592,14 +592,14 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
             <div className="space-y-2 py-1 text-xs" data-testid="chapter-audit-issues">
               <div>
                 <p className="font-medium">本章审稿意见</p>
-                <p className="text-2xs text-muted-foreground">定位原文高亮编辑器选区；可自动修的条目生成修订提案交给叙述者，不直接覆盖正文。</p>
+                <p className="text-xs text-muted-foreground">定位原文高亮编辑器选区；可自动修的条目生成修订提案交给叙述者，不直接覆盖正文。</p>
               </div>
-              {issuesStale ? <p className="text-2xs text-amber-600 dark:text-amber-400">正文在审计后改过，意见可能过期。</p> : null}
-              {issuesLoading ? <p className="text-2xs text-muted-foreground">正在读取审稿记录…</p> : null}
-              {issuesError ? <p role="alert" className="text-2xs text-destructive">{issuesError}</p> : null}
-              {issueNote ? <p className="text-2xs text-muted-foreground">{issueNote}</p> : null}
+              {issuesStale ? <p className="text-xs text-warning">正文在审计后改过，意见可能过期。</p> : null}
+              {issuesLoading ? <p className="text-xs text-muted-foreground">正在读取审稿记录…</p> : null}
+              {issuesError ? <p role="alert" className="text-xs text-destructive">{issuesError}</p> : null}
+              {issueNote ? <p className="text-xs text-muted-foreground">{issueNote}</p> : null}
               {!issuesLoading && issues.length === 0 && !issuesError ? (
-                <p className="text-2xs text-muted-foreground">本章还没有落盘的审稿意见。先跑叙事审计或写章管线。</p>
+                <p className="text-xs text-muted-foreground">本章还没有落盘的审稿意见。先跑叙事审计或写章管线。</p>
               ) : null}
               <ul className="space-y-1.5">
                 {issues.map((issue, index) => {
@@ -615,7 +615,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                         <span className="text-2xs font-medium text-foreground">{issue.category ?? "审稿"}</span>
                         <span className="text-2xs text-muted-foreground">{issue.severity ?? "warning"}</span>
                       </div>
-                      <p className="mt-0.5 text-2xs leading-5 text-muted-foreground">{issue.description}</p>
+                      <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{issue.description}</p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         <Button
                           size="xs"
@@ -670,7 +670,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="font-medium">全书发布检查</p>
-                  <p className="text-2xs text-muted-foreground">扫描本书全部章节的敏感词、格式与连续性门禁，不修改正文。</p>
+                  <p className="text-xs text-muted-foreground">扫描本书全部章节的敏感词、格式与连续性门禁，不修改正文。</p>
                 </div>
                 <Button
                   variant="outline"

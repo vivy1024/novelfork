@@ -233,7 +233,7 @@ export function CollaborationVersionPanel({ bookId, repositoryPath }: { bookId: 
                   <div key={worktree.path} className="relative rounded-md border border-border bg-card px-3 py-2 before:absolute before:-left-[15px] before:top-1/2 before:h-px before:w-[14px] before:bg-border">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-sm font-medium">{worktree.branch || "detached HEAD"}</span>
-                      <span className={`text-xs ${changes ? "text-amber-600" : "text-emerald-600"}`}>{changes ? `有改动 · ${changes}` : "干净"}</span>
+                      <span className={`text-xs ${changes ? "text-warning" : "text-success"}`}>{changes ? `有改动 · ${changes}` : "干净"}</span>
                     </div>
                     <p className="mt-1 break-all text-xs text-muted-foreground">{worktree.path}</p>
                   </div>

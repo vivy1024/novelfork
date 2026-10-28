@@ -55,7 +55,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
   return (
     <div className="flex flex-col gap-1.5" data-testid="beat-budget-editor">
       {beats.length === 0 && (
-        <p className="text-2xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           还没有情节点。不拆点时只有「本章总字数」一个约束，容易平均用力。
         </p>
       )}
@@ -145,7 +145,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
         type="button"
         disabled={disabled}
         onClick={() => onChange([...beats, newBeat()])}
-        className="flex items-center justify-center gap-1 rounded border border-dashed border-border px-2 py-1 text-2xs text-muted-foreground hover:bg-accent disabled:opacity-40"
+        className="flex items-center justify-center gap-1 rounded border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent disabled:opacity-40"
         data-testid="beat-editor-add"
       >
         <Plus className="size-3" />
@@ -153,12 +153,12 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
       </button>
 
       {report === null ? (
-        <p className="text-2xs text-muted-foreground" data-testid="beat-editor-budget-line">
+        <p className="text-xs text-muted-foreground" data-testid="beat-editor-budget-line">
           未知本章目标字数，无法校验预算。
         </p>
       ) : (
         <p
-          className={`text-2xs ${report.ok ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400"}`}
+          className={`text-xs ${report.ok ? "text-muted-foreground" : "text-warning"}`}
           data-testid="beat-editor-budget-line"
         >
           {report.budgetLine}
@@ -170,7 +170,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
           {report.findings.map((finding, index) => (
             <li
               key={`${finding.code}-${index}`}
-              className={`text-2xs ${finding.severity === "block" ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}
+              className={`text-xs ${finding.severity === "block" ? "text-destructive" : "text-warning"}`}
               data-testid="beat-editor-finding"
             >
               {finding.whatHappened}

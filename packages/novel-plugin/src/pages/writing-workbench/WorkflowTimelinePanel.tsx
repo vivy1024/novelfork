@@ -149,11 +149,11 @@ function record(value: unknown): Record<string, unknown> | null {
 function StepIcon({ status }: { status: StepStatus }) {
   switch (status) {
     case "done":
-      return <CheckCircle2 className="size-4 text-emerald-500" />;
+      return <CheckCircle2 className="size-4 text-success" />;
     case "running":
       return <Loader2 className="size-4 animate-spin text-primary" />;
     case "awaiting_approval":
-      return <Pause className="size-4 text-amber-500" />;
+      return <Pause className="size-4 text-warning" />;
     case "failed":
       return <XCircle className="size-4 text-destructive" />;
     case "skipped":
@@ -167,7 +167,7 @@ function StepIcon({ status }: { status: StepStatus }) {
 function ExplanationBlock({ note, tone }: { note: Explanation; tone: "warn" | "error" }) {
   const color = tone === "error"
     ? "border-destructive/40 bg-destructive/5 text-destructive"
-    : "border-amber-400/60 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300";
+    : "border-warning/60 bg-warning/10 text-warning";
   return (
     <div className={`space-y-0.5 rounded-md border p-2 text-xs ${color}`}>
       <div className="font-medium">{note.what}</div>
@@ -214,7 +214,7 @@ function CandidatePreview({ candidate }: { candidate: CandidateView }) {
     const issues = Array.isArray(payload.issues) ? payload.issues.map(record).filter(Boolean) as Record<string, unknown>[] : [];
     return (
       <div className="space-y-1 text-xs" data-testid="workflow-candidate-audit">
-        <div className={payload.passed === true ? "text-emerald-600" : "text-destructive"}>
+        <div className={payload.passed === true ? "text-success" : "text-destructive"}>
           {payload.passed === true ? "审查通过" : "审查未通过"}：{typeof payload.summary === "string" ? payload.summary : ""}
         </div>
         {issues.length > 0 ? (
@@ -616,7 +616,7 @@ export function WorkflowTimelinePanel({
       </div>
 
       {teamPlugin.status === "inactive" || teamPlugin.status === "installing" ? (
-        <div className="flex items-center gap-3 rounded-lg border border-sky-400/60 bg-sky-50 p-3 text-xs text-sky-800 dark:bg-sky-950/20 dark:text-sky-200" data-testid="workflow-team-plugin-banner">
+        <div className="flex items-center gap-3 rounded-lg border border-info/60 bg-info/10 p-3 text-xs text-info" data-testid="workflow-team-plugin-banner">
           <Users className="size-4 shrink-0" />
           <span className="flex-1">
             团队编排还没启用。委派工序（起草、对抗审查）需要 narrator-team 插件把活儿派给工人叙述者；现在未启用时会退回老式子代理。
@@ -625,7 +625,7 @@ export function WorkflowTimelinePanel({
             <button
               type="button"
               onClick={() => void handleEnableTeamPlugin()}
-              className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 font-medium text-white hover:bg-sky-700"
+              className="shrink-0 rounded-lg bg-info px-3 py-1.5 font-medium text-white hover:bg-info/85"
               data-testid="workflow-enable-team-plugin"
             >
               一键启用{teamPlugin.version ? `（内置 v${teamPlugin.version}）` : ""}
@@ -640,14 +640,14 @@ export function WorkflowTimelinePanel({
       ) : null}
 
       {teamNotice ? (
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-400/60 bg-emerald-50 p-3 text-xs text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300" data-testid="workflow-team-notice">
+        <div className="flex items-center gap-2 rounded-lg border border-success/60 bg-success/10 p-3 text-xs text-success" data-testid="workflow-team-notice">
           <CheckCircle2 className="size-4 shrink-0" />
           <span>{teamNotice}</span>
         </div>
       ) : null}
 
       {!narratorId ? (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-300" data-testid="workflow-no-narrator">
+        <div className="flex items-center gap-2 rounded-lg border border-warning/60 bg-warning/10 p-3 text-xs text-warning" data-testid="workflow-no-narrator">
           <AlertCircle className="size-4 shrink-0" />
           <span>还没有打开本书的叙述者会话。工作流由叙述者执行，请先在写作页打开或新建叙述者会话再启动。</span>
         </div>
@@ -659,7 +659,7 @@ export function WorkflowTimelinePanel({
             <AlertCircle className="size-4 shrink-0" />
             <span>{loadError}</span>
           </div>
-          <button type="button" onClick={() => void load()} className="rounded border border-destructive/30 px-2 py-1 text-2xs font-medium hover:bg-destructive/10">
+          <button type="button" onClick={() => void load()} className="rounded border border-destructive/30 px-2 py-1 text-xs font-medium hover:bg-destructive/10">
             重试
           </button>
         </div>
@@ -686,7 +686,7 @@ export function WorkflowTimelinePanel({
                 <button
                   type="button"
                   onClick={() => setShowRunGraph((value) => !value)}
-                  className="flex items-center gap-1 rounded border px-2 py-1 text-2xs text-muted-foreground hover:bg-muted"
+                  className="flex items-center gap-1 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
                 >
                   {showRunGraph ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
                   流程图
@@ -715,7 +715,7 @@ export function WorkflowTimelinePanel({
                 {step.outcome ? <span className="rounded bg-primary/10 px-1 text-2xs text-primary">结果：{step.outcome}</span> : null}
                 {step.status === "bypassed" ? <span className="text-2xs text-muted-foreground">分支未走到</span> : null}
                 {step.status === "skipped" ? <span className="text-2xs text-muted-foreground">已跳过</span> : null}
-                {step.requiresApproval ? <ShieldCheck className="size-3.5 text-amber-500" aria-label="需要确认" /> : null}
+                {step.requiresApproval ? <ShieldCheck className="size-3.5 text-warning" aria-label="需要确认" /> : null}
                 {step.attempt > 1 ? <span className="text-2xs text-muted-foreground">第 {step.attempt} 次</span> : null}
               </li>
             ))}
@@ -739,7 +739,7 @@ export function WorkflowTimelinePanel({
                 <button
                   type="button"
                   onClick={() => void onSendToNarrator(buildWorkflowKickoffMessage(detail.run.recipeName, detail.run.chapterNumber))}
-                  className="rounded border px-2 py-1 text-2xs text-muted-foreground hover:bg-muted"
+                  className="rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
                 >
                   叙述者没动静？提醒它继续
                 </button>
@@ -750,7 +750,7 @@ export function WorkflowTimelinePanel({
           {attentionSteps.map((step) => (
             <div
               key={step.stepId}
-              className={`space-y-2 rounded-md border p-3 ${step.status === "failed" ? "border-destructive/40" : "border-amber-400/60"}`}
+              className={`space-y-2 rounded-md border p-3 ${step.status === "failed" ? "border-destructive/40" : "border-warning/60"}`}
               data-testid={step.status === "failed" ? "workflow-blocked-card" : "workflow-approval-card"}
             >
               {step.status === "failed" ? (

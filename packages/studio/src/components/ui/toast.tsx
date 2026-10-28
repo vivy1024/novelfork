@@ -14,10 +14,10 @@ export function toast(message: string, type: ToastItem["type"] = "info"): void {
 }
 
 const TYPE_STYLES: Record<ToastItem["type"], string> = {
-  info: "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-200",
-  success: "border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950/50 dark:text-green-200",
-  warning: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200",
-  error: "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200",
+  info: "border-info/30 bg-info/10 text-info",
+  success: "border-success/30 bg-success/10 text-success",
+  warning: "border-warning/30 bg-warning/10 text-warning",
+  error: "border-destructive/30 bg-destructive/10 text-destructive",
 };
 
 /** Toast 容器组件 — 放在 App 根部 */

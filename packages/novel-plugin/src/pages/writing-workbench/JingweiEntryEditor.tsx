@@ -242,7 +242,7 @@ function JingweiSchemaField({
           className="h-8 text-xs"
         />
       )}
-      {field.helpText ? <p className="mt-1 text-2xs text-muted-foreground">{field.helpText}</p> : null}
+      {field.helpText ? <p className="mt-1 text-xs text-muted-foreground">{field.helpText}</p> : null}
     </div>
   );
 }
@@ -656,7 +656,7 @@ function JingweiEntryEditorForm({
         </div>
       )}
       {conflictStatus === "pending" && (
-        <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300" role="alert">
+        <div className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning" role="alert">
           <strong>存在协同修改冲突。</strong>{conflictDetail ? ` ${conflictDetail}` : " 请确认当前内容是否应保留。"}
         </div>
       )}
@@ -814,7 +814,7 @@ function JingweiEntryEditorForm({
             <div className="flex flex-wrap items-center gap-1.5">
               {categoryLabel && <Badge variant="secondary" className="text-2xs">{categoryLabel}</Badge>}
               {status === "needs-review" ? (
-                <Badge variant="outline" className="text-2xs border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">待确认</Badge>
+                <Badge variant="outline" className="text-xs border-warning/40 bg-warning/10 text-warning">待确认</Badge>
               ) : (
                 <Badge variant="outline" className="text-2xs">{ENTRY_STATUS_LABELS[status] ?? status}</Badge>
               )}
@@ -929,7 +929,7 @@ function JingweiEntryEditorForm({
                 <SelectItem value="reference">参考（仅 full 模式）</SelectItem>
               </SelectContent>
             </Select>
-            <p className="mt-1 text-2xs text-muted-foreground">核心条目始终被 Agent 看到；参考条目仅在 full 模式下注入。</p>
+            <p className="mt-1 text-xs text-muted-foreground">核心条目始终被 Agent 看到；参考条目仅在 full 模式下注入。</p>
           </div>
 
           {isJingweiEntry && (
@@ -1016,7 +1016,7 @@ function JingweiEntryEditorForm({
                     className="h-6 w-28 text-2xs border-none bg-transparent px-1 focus-visible:ring-0"
                   />
                 </div>
-                <p className="mt-1 text-2xs text-muted-foreground">别名用于经纬检索召回，多个别名回车分隔。</p>
+                <p className="mt-1 text-xs text-muted-foreground">别名用于经纬检索召回，多个别名回车分隔。</p>
               </div>
             </>
           )}
@@ -1028,7 +1028,7 @@ function JingweiEntryEditorForm({
               保存
             </Button>
 
-            {dirty && <Badge className="text-2xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
+            {dirty && <Badge className="text-2xs bg-warning/10 text-warning border-warning/20">未保存</Badge>}
 
             {confirmDiscard ? (
               <span className="flex items-center gap-1">

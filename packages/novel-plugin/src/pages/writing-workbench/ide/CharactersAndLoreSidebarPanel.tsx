@@ -386,7 +386,7 @@ export function CharactersAndLoreSidebarPanel({
             </Button>
           </div>
           {createError ? (
-            <p role="alert" className="text-2xs text-destructive" data-testid="lore-create-error">{createError}</p>
+            <p role="alert" className="text-xs text-destructive" data-testid="lore-create-error">{createError}</p>
           ) : null}
         </div>
       )}
@@ -421,7 +421,7 @@ export function CharactersAndLoreSidebarPanel({
           <button
             type="button"
             onClick={() => setWorldCategoryFilter("all")}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-2xs transition-colors ${
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs transition-colors ${
               worldCategoryFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -434,7 +434,7 @@ export function CharactersAndLoreSidebarPanel({
                 key={meta.id}
                 type="button"
                 onClick={() => setWorldCategoryFilter(meta.id)}
-                className={`shrink-0 rounded-full px-2 py-0.5 text-2xs transition-colors ${
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs transition-colors ${
                   worldCategoryFilter === meta.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -455,7 +455,7 @@ export function CharactersAndLoreSidebarPanel({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={activeTab === "characters" ? "搜索角色名、性格、口癖…" : "搜索世界设定、门派、体系…"}
             aria-label={activeTab === "characters" ? "搜索角色" : "搜索世界设定"}
-            className="w-full bg-transparent text-2xs outline-none placeholder:text-muted-foreground/60"
+            className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/60"
           />
           {searchQuery && (
             <button type="button" onClick={() => setSearchQuery("")} className="text-muted-foreground hover:text-foreground">
@@ -481,7 +481,7 @@ export function CharactersAndLoreSidebarPanel({
             <p className="text-xs font-medium text-foreground">
               {searchQuery ? "没有找到匹配的条目" : activeTab === "characters" ? "还没有角色卡。" : "还没有世界设定。"}
             </p>
-            <p className="text-2xs text-muted-foreground max-w-xs">
+            <p className="text-xs text-muted-foreground max-w-xs">
               {searchQuery
                 ? "换个关键词，或清空搜索后重试。"
                 : activeTab === "characters"
@@ -885,7 +885,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
         <span className="text-xs font-semibold">导入设定 / 酒馆角色卡</span>
         <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
-      <p className="text-2xs text-muted-foreground leading-relaxed">
+      <p className="text-xs text-muted-foreground leading-relaxed">
         支持粘贴 Markdown（按 ## 拆分）或酒馆角色卡 JSON（自动转换为多维人物档案）。
       </p>
       <select
@@ -921,7 +921,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
       </div>
       {result && (
         <p
-          className={`text-2xs font-medium ${result.kind === "error" ? "text-destructive" : "text-emerald-600"}`}
+          className={`text-xs font-medium ${result.kind === "error" ? "text-destructive" : "text-success"}`}
           data-testid={`lore-import-result-${result.kind}`}
         >
           {result.message}

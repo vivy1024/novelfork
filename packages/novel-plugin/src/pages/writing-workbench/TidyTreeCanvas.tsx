@@ -161,7 +161,7 @@ function TreeNodeView({ id, data, positionAbsoluteX, positionAbsoluteY }: NodePr
   const hasChildren = node.children.length > 0;
   return (
     <div
-      className={`relative flex items-center overflow-hidden rounded-md border bg-card shadow-sm ${selected ? "border-primary ring-1 ring-primary" : matched ? "border-amber-500/70 ring-1 ring-amber-400/60" : "border-border"}`}
+      className={`relative flex items-center overflow-hidden rounded-md border bg-card shadow-sm ${selected ? "border-primary ring-1 ring-primary" : matched ? "border-warning/70 ring-1 ring-warning/60" : "border-border"}`}
       style={{ width: TIDY_NODE_WIDTH, height: TIDY_NODE_HEIGHT }}
       data-testid={`tidy-tree-row-${id}`}
       data-x={positionAbsoluteX.toFixed(1)}
@@ -402,7 +402,7 @@ export function TidyTreeCanvas(props: TidyTreeCanvasProps) {
         data-kind={props.forest.kind}
       >
         <p className="text-xs font-medium">这张图还是空的</p>
-        <p className="max-w-sm text-2xs leading-relaxed text-muted-foreground">
+        <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
           {props.forest.emptyReason ?? "没有可显示的节点。"}
         </p>
       </div>

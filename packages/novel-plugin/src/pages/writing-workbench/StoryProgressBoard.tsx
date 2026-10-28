@@ -110,7 +110,7 @@ interface GraphPayload {
 
 const DEBT_TONE: Record<ForeshadowDebt["urgency"], string> = {
   overdue: "border-rose-500/50 bg-rose-500/[0.08] text-rose-700 dark:text-rose-300",
-  watch: "border-amber-500/50 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300",
+  watch: "border-warning/50 bg-warning/[0.08] text-warning",
   ok: "border-border/70 bg-muted/40 text-muted-foreground",
 };
 
@@ -262,7 +262,7 @@ function EmptyState({
       </div>
       <div className="space-y-1">
         <p className="text-xs font-medium text-foreground">{title}</p>
-        <p className="max-w-md text-2xs leading-relaxed text-muted-foreground">{detail}</p>
+        <p className="max-w-md text-xs leading-relaxed text-muted-foreground">{detail}</p>
       </div>
       <div className="flex items-center gap-2">
         {onSendToNarrator ? (
@@ -376,7 +376,7 @@ function FocusCard({
         <span className="text-sm font-semibold">第 {focus.chapterNumber} 章</span>
         <button
           type="button"
-          className="ml-1 text-2xs text-muted-foreground hover:text-foreground"
+          className="ml-1 text-xs text-muted-foreground hover:text-foreground"
           title="收起"
           aria-label="收起焦点卡"
           data-testid="story-progress-focus-collapse"
@@ -413,12 +413,12 @@ function FocusCard({
 
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
         <div>
-          <p className="text-2xs font-medium text-muted-foreground">该收的债（{focus.dueDebts.length}）</p>
+          <p className="text-xs font-medium text-muted-foreground">该收的债（{focus.dueDebts.length}）</p>
           {focus.dueDebts.length > 0 ? (
             <ul className="mt-1 space-y-1">
               {focus.dueDebts.map((debt) => (
-                <li key={debt.id} className="flex items-start gap-1 text-2xs leading-snug">
-                  <TriangleAlert className={`mt-0.5 size-3 shrink-0 ${debt.urgency === "overdue" ? "text-rose-500" : "text-amber-500"}`} />
+                <li key={debt.id} className="flex items-start gap-1 text-xs leading-snug">
+                  <TriangleAlert className={`mt-0.5 size-3 shrink-0 ${debt.urgency === "overdue" ? "text-rose-500" : "text-warning"}`} />
                   <span title={debt.reason}>
                     <span className="font-medium">{debt.title}</span>
                     <span className="text-muted-foreground"> · {debt.reason}</span>
@@ -427,15 +427,15 @@ function FocusCard({
               ))}
             </ul>
           ) : (
-            <p className="mt-1 text-2xs text-muted-foreground">没有到期伏笔。</p>
+            <p className="mt-1 text-xs text-muted-foreground">没有到期伏笔。</p>
           )}
         </div>
         <div>
-          <p className="text-2xs font-medium text-muted-foreground">断档的线（{focus.stalledLanes.length}）</p>
+          <p className="text-xs font-medium text-muted-foreground">断档的线（{focus.stalledLanes.length}）</p>
           {focus.stalledLanes.length > 0 ? (
             <ul className="mt-1 space-y-1">
               {focus.stalledLanes.map((lane) => (
-                <li key={lane.id} className="flex items-center gap-1 text-2xs">
+                <li key={lane.id} className="flex items-center gap-1 text-xs">
                   <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: lane.color }} />
                   <span className="font-medium">{lane.title}</span>
                   <span className="text-muted-foreground">{lane.chaptersSinceLastBeat} 章未推进</span>
@@ -443,7 +443,7 @@ function FocusCard({
               ))}
             </ul>
           ) : (
-            <p className="mt-1 text-2xs text-muted-foreground">所有线都在推进。</p>
+            <p className="mt-1 text-xs text-muted-foreground">所有线都在推进。</p>
           )}
         </div>
       </div>
@@ -466,7 +466,7 @@ function DebtLedger({
 
   if (debts.length === 0) {
     return (
-      <p className="px-1 py-2 text-2xs text-muted-foreground" data-testid="story-progress-debts-empty">
+      <p className="px-1 py-2 text-xs text-muted-foreground" data-testid="story-progress-debts-empty">
         没有伏笔条目。埋点后这里会列出未回收的债。
       </p>
     );
@@ -621,12 +621,12 @@ function LaneRow({
       >
         <div className="min-w-0">
           <p className="truncate text-xs font-medium" title={lane.title}>{lane.title}</p>
-          <p className="text-2xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {LANE_KIND_LABEL[lane.kind]}
             {lane.stalled ? ` · 停滞 ${lane.chaptersSinceLastBeat} 章` : ""}
           </p>
         </div>
-        {lane.stalled ? <TriangleAlert className="ml-auto size-3 shrink-0 text-amber-500" /> : null}
+        {lane.stalled ? <TriangleAlert className="ml-auto size-3 shrink-0 text-warning" /> : null}
         {onAddBeat ? (
           <Button
             size="icon-xs"
@@ -865,7 +865,7 @@ export function StoryProgressBoard({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="story-progress-error">
         <AlertCircle className="size-6 text-destructive" />
-        <p className="max-w-sm text-2xs text-muted-foreground">{state.message}</p>
+        <p className="max-w-sm text-xs text-muted-foreground">{state.message}</p>
         <Button size="xs" variant="outline" className="h-7 gap-1 text-xs" onClick={reload}>
           <RefreshCw className="size-3" /> 重试
         </Button>
@@ -880,19 +880,19 @@ export function StoryProgressBoard({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2" data-testid="story-progress-board">
       {state.data.degraded.length > 0 ? (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-2xs text-amber-700 dark:text-amber-300" data-testid="story-progress-degraded">
+        <p className="rounded-md border border-warning/40 bg-warning/[0.06] px-2 py-1 text-xs text-warning" data-testid="story-progress-degraded">
           这些数据没读到：{state.data.degraded.join(" / ")}。下面只画读到的部分。
         </p>
       ) : null}
 
       {board.explanation ? (
-        <div className="rounded-md border border-blue-500/30 bg-blue-500/[0.05] p-2 text-xs space-y-1" data-testid="story-progress-explanation">
-          <div className="flex items-center justify-between font-medium text-blue-700 dark:text-blue-300">
+        <div className="rounded-md border border-info/30 bg-info/[0.05] p-2 text-xs space-y-1" data-testid="story-progress-explanation">
+          <div className="flex items-center justify-between font-medium text-info">
             <span>{board.explanation.title}</span>
             <span className="text-2xs text-muted-foreground font-normal">兼容提示</span>
           </div>
-          <p className="text-2xs text-muted-foreground">{board.explanation.what}</p>
-          <p className="text-2xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">{board.explanation.what}</p>
+          <p className="text-xs text-muted-foreground">
             <strong className="font-semibold text-foreground">建议：</strong>{board.explanation.action}
           </p>
         </div>
@@ -912,7 +912,7 @@ export function StoryProgressBoard({
           <span className="font-semibold text-foreground">新建剧情线：</span>
           <input
             placeholder="剧情线名称（如：感情线/宗门暗斗）"
-            className="h-6 w-48 rounded border bg-background px-2 text-2xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+            className="h-6 w-48 rounded border bg-background px-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
             value={newStorylineName}
             onChange={(e) => setNewStorylineName(e.target.value)}
             data-testid="story-progress-storyline-name-input"
@@ -1042,7 +1042,7 @@ export function StoryProgressBoard({
           </div>
 
           {board.collapsedCharacterLanes > 0 ? (
-            <p className="mt-2 px-1 text-2xs text-muted-foreground" data-testid="story-progress-collapsed">
+            <p className="mt-2 px-1 text-xs text-muted-foreground" data-testid="story-progress-collapsed">
               另有 {board.collapsedCharacterLanes} 个出场较少的角色线未展示（避免行数过多）。
             </p>
           ) : null}

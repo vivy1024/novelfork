@@ -62,20 +62,20 @@ export const ChapterRevisionCard: ToolResultRenderer = (context: ToolResultRende
       meta="未采用前不会写入正文"
     >
       {reason && <p className="text-xs text-foreground" data-testid="chapter-revision-reason">改动原因：{reason}</p>}
-      <p className="text-2xs text-muted-foreground" data-testid="chapter-revision-stats">
+      <p className="text-xs text-muted-foreground" data-testid="chapter-revision-stats">
         原 {getNumber(stats.originalChars) ?? 0} 字 → 新 {getNumber(stats.newChars) ?? chars(newText)} 字 ·
         保持一致 {getNumber(stats.unchangedParagraphs) ?? 0} 段 · 删 {getNumber(stats.removedParagraphs) ?? 0} 段 · 增 {getNumber(stats.addedParagraphs) ?? 0} 段
         {originalExists ? "" : "（该章原本不存在，按新建处理）"}
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
-          <p className="text-2xs text-muted-foreground">原文（前 600 字）</p>
+          <p className="text-xs text-muted-foreground">原文（前 600 字）</p>
           <p className="mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap rounded bg-muted/50 p-2 text-xs" data-testid="chapter-revision-original">
             {originalPreview || "（无正文）"}
           </p>
         </div>
         <div>
-          <p className="text-2xs text-muted-foreground">候选（前 600 字）</p>
+          <p className="text-xs text-muted-foreground">候选（前 600 字）</p>
           <p className="mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap rounded bg-primary/10 p-2 text-xs" data-testid="chapter-revision-new">
             {newPreview || newText.slice(0, 600)}
           </p>
@@ -83,7 +83,7 @@ export const ChapterRevisionCard: ToolResultRenderer = (context: ToolResultRende
       </div>
       {note ? (
         <p
-          className={`text-2xs ${note.tone === "ok" ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}
+          className={`text-xs ${note.tone === "ok" ? "text-success" : "text-destructive"}`}
           data-testid="chapter-revision-note"
         >
           {note.text}
@@ -91,14 +91,14 @@ export const ChapterRevisionCard: ToolResultRenderer = (context: ToolResultRende
       ) : null}
       {!applied ? (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-2xs text-muted-foreground">采用那一刻的正文必须还是候选生成时的版本；不一致会被拒。</p>
+          <p className="text-xs text-muted-foreground">采用那一刻的正文必须还是候选生成时的版本；不一致会被拒。</p>
           <Button size="sm" disabled={busy} onClick={() => void apply()} data-testid="chapter-revision-apply">
             {busy ? <Loader2 className="size-3 animate-spin" /> : null}
             采用候选
           </Button>
         </div>
       ) : (
-        <p className="text-2xs text-emerald-700 dark:text-emerald-300" data-testid="chapter-revision-applied">已采用</p>
+        <p className="text-xs text-success" data-testid="chapter-revision-applied">已采用</p>
       )}
     </ToolResultSurface>
   );

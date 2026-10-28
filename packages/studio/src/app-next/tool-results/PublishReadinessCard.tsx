@@ -3,16 +3,16 @@ import { AlertTriangle, CheckCircle2, FileSearch } from "lucide-react";
 import { asRecord, getNumber, getString, getStringArray, getToolResultData, type ToolResultRenderer, type ToolResultRendererContext } from "./types";
 
 const STATUS_META: Record<string, { label: string; tone: string; icon: typeof CheckCircle2 }> = {
-  ready: { label: "未发现明显线索", tone: "text-emerald-600 dark:text-emerald-400", icon: CheckCircle2 },
-  "has-warnings": { label: "有提醒", tone: "text-amber-600 dark:text-amber-400", icon: AlertTriangle },
-  "needs-review": { label: "需人工复核", tone: "text-amber-600 dark:text-amber-400", icon: AlertTriangle },
+  ready: { label: "未发现明显线索", tone: "text-success", icon: CheckCircle2 },
+  "has-warnings": { label: "有提醒", tone: "text-warning", icon: AlertTriangle },
+  "needs-review": { label: "需人工复核", tone: "text-warning", icon: AlertTriangle },
   skipped: { label: "未执行检查", tone: "text-muted-foreground", icon: AlertTriangle },
 };
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-2xs text-muted-foreground">{label}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`text-xs ${tone ?? "text-foreground"}`}>{value}</p>
     </div>
   );
@@ -56,8 +56,8 @@ export const PublishReadinessCard: ToolResultRenderer = (context: ToolResultRend
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-t border-border pt-2 sm:grid-cols-4">
-        <Metric label="高风险线索" value={String(highRiskCount)} tone={highRiskCount > 0 ? "text-amber-600 dark:text-amber-400" : undefined} />
-        <Metric label="提醒" value={String(warnCount)} tone={warnCount > 0 ? "text-amber-500" : undefined} />
+        <Metric label="高风险线索" value={String(highRiskCount)} tone={highRiskCount > 0 ? "text-warning" : undefined} />
+        <Metric label="提醒" value={String(warnCount)} tone={warnCount > 0 ? "text-warning" : undefined} />
         <Metric label="建议" value={String(suggestCount)} />
         {aiRiskLevel && <Metric label="AI 味线索" value={aiRiskLevel} />}
       </div>
@@ -104,7 +104,7 @@ export const PublishReadinessCard: ToolResultRenderer = (context: ToolResultRend
         </ul>
       )}
       {summary && <p className="text-xs text-muted-foreground">{summary}</p>}
-      <p className="text-2xs text-muted-foreground">此结果是本地自检线索，不代表平台审核结论。</p>
+      <p className="text-xs text-muted-foreground">此结果是本地自检线索，不代表平台审核结论。</p>
     </div>
   );
 };

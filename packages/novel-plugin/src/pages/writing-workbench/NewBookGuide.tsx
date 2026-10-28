@@ -277,7 +277,7 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
             ))}
           </ul>
 
-          <p className="text-2xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             这些只是建议，还没有启用。你可以在对话里增删，也能随时去「技能文风」视图的写作技能里自己调。
           </p>
 
@@ -377,8 +377,8 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
             type="button"
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition border w-full ${
               activeMode === "random"
-                ? "border-amber-500/50 bg-amber-500/10 text-amber-700"
-                : "border-border text-muted-foreground hover:border-amber-500/30 hover:bg-amber-500/5"
+                ? "border-warning/50 bg-warning/10 text-warning"
+                : "border-border text-muted-foreground hover:border-warning/30 hover:bg-warning/5"
             }`}
             onClick={handleRandom}
           >

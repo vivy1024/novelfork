@@ -67,7 +67,7 @@ function ProvisionNotice({
   };
   const terminalFailure = operation.state === "failed" || operation.state === "compensation-required";
   return (
-    <div role={terminalFailure || error ? "alert" : "status"} className={`mt-4 rounded-md border p-3 text-sm ${terminalFailure || error ? "border-destructive/40 bg-destructive/5 text-destructive" : "border-blue-500/30 bg-blue-500/5 text-foreground"}`}>
+    <div role={terminalFailure || error ? "alert" : "status"} className={`mt-4 rounded-md border p-3 text-sm ${terminalFailure || error ? "border-destructive/40 bg-destructive/5 text-destructive" : "border-info/30 bg-info/5 text-foreground"}`}>
       <div className="flex items-center gap-2">
         {!isRuntimeBookProvisionTerminal(operation.state) && <Loader2 className="size-4 animate-spin" />}
         <span className="font-medium">{stateLabel[operation.state]}：{operation.bookId}</span>
@@ -267,7 +267,7 @@ function RuntimeP0Shell() {
               <p className="text-xs font-medium text-muted-foreground">{selectedBook ? selectedBook.title : "NovelFork"}</p>
               <h2 className="mt-1 text-xl font-semibold">选择一个叙述者开始创作</h2>
               <p className="mt-2 text-sm text-muted-foreground">叙述者、书籍和模型状态均来自 Runtime bootstrap；P0 不调用旧 Studio session、provider 或 onboarding 接口。</p>
-              {bootstrap?.model.setupRequired && <p className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">Runtime 模型尚未配置。请在 Runtime 管理端完成配置后刷新此页；P0 不提供 provider 或 settings 入口。</p>}
+              {bootstrap?.model.setupRequired && <p className="mt-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">Runtime 模型尚未配置。请在 Runtime 管理端完成配置后刷新此页；P0 不提供 provider 或 settings 入口。</p>}
               {selectedBook && <p className="mt-4 text-xs text-muted-foreground">每部作品由 Runtime provision 唯一的只读小说创作助手；P0 不提供叙述者创建、编辑或删除操作。</p>}
             </div>
           </div>

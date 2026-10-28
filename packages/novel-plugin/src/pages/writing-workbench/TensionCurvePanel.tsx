@@ -187,14 +187,14 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
       </CardHeader>
       <CardContent className="space-y-2">
         {error && (
-          <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-2xs text-destructive" role="alert">
+          <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive" role="alert">
             {error}
             <button type="button" onClick={() => void load()} className="ml-2 underline">重试</button>
           </div>
         )}
 
         {stats?.streak && (
-          <div className="flex items-start gap-1 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-2xs text-amber-700 dark:text-amber-400" data-testid="tension-low-streak-alert" role="alert">
+          <div className="flex items-start gap-1 rounded border border-warning/40 bg-warning/10 p-2 text-xs text-warning" data-testid="tension-low-streak-alert" role="alert">
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
             <span>连续 {stats.streak.length} 章（第 {stats.streak.start} 章起）张力低于 {TENSION_THRESHOLD}——考虑安排一次冲突升级或信息增量。</span>
           </div>
@@ -233,8 +233,8 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
                           unevaluated
                             ? "border border-dashed border-muted-foreground/60 bg-muted/40"
                             : isLow
-                              ? "bg-red-400/70"
-                              : "bg-emerald-500/70"
+                              ? "bg-destructive/70"
+                              : "bg-success/70"
                         } group-hover:bg-primary`}
                         style={{ height: `${Math.max(heightPct, unevaluated ? 8 : 4)}%` }}
                       />
@@ -244,12 +244,12 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
                 );
               })}
             </div>
-            <div className="mt-1 flex justify-between text-2xs text-muted-foreground/60 border-t border-dashed border-red-300/40 pt-0.5">
+            <div className="mt-1 flex justify-between text-2xs text-muted-foreground/60 border-t border-dashed border-destructive/40 pt-0.5">
               <span>0</span>
-              <Badge variant="outline" className="text-2xs px-1 py-0 text-red-400 border-red-300/40">告警线 {TENSION_THRESHOLD}</Badge>
+              <Badge variant="outline" className="text-xs px-1 py-0 text-destructive border-destructive/40">告警线 {TENSION_THRESHOLD}</Badge>
               <span>10</span>
             </div>
-            <p className="text-2xs text-muted-foreground/70">
+            <p className="text-xs text-muted-foreground/70">
               虚线灰柱 = 该章评分失败（未评估）；实心柱点击可跳转对应章节。
             </p>
           </>

@@ -25,9 +25,9 @@ export interface ChapterNodeData {
 export type ChapterNodeType = Node<ChapterNodeData, "chapterNode">;
 
 const STATUS_COLORS: Record<string, string> = {
-  active: "border-green-400",
-  dormant: "border-yellow-400",
-  merged: "border-blue-400",
+  active: "border-success",
+  dormant: "border-warning",
+  merged: "border-info",
   abandoned: "border-gray-400",
   frozen: "border-cyan-400",
 };
@@ -41,9 +41,9 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
-  active: "bg-green-500/10 text-green-600",
-  dormant: "bg-yellow-500/10 text-yellow-600",
-  merged: "bg-blue-500/10 text-blue-600",
+  active: "bg-success/10 text-success",
+  dormant: "bg-warning/10 text-warning",
+  merged: "bg-info/10 text-info",
   abandoned: "bg-gray-500/10 text-gray-600",
   frozen: "bg-cyan-500/10 text-cyan-600",
 };
@@ -89,7 +89,7 @@ function ChapterNodeComponent({ data }: NodeProps<ChapterNodeType>) {
           {data.changes != null && (
             <>
               <span>·</span>
-              <span className="rounded bg-blue-500/10 px-1 text-blue-600">{data.changes}</span>
+              <span className="rounded bg-info/10 px-1 text-info">{data.changes}</span>
             </>
           )}
         </div>
@@ -106,7 +106,7 @@ function ChapterNodeComponent({ data }: NodeProps<ChapterNodeType>) {
                 <p className="text-xs text-muted-foreground">{data.messageCount} 条消息</p>
               )}
               {data.lastActivity && (
-                <p className="text-2xs text-muted-foreground">最近活动：{data.lastActivity}</p>
+                <p className="text-xs text-muted-foreground">最近活动：{data.lastActivity}</p>
               )}
               <Button variant="outline" size="sm" className="mt-2">
                 <MessageSquareText className="size-3.5" />

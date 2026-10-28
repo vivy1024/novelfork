@@ -70,7 +70,7 @@ function arcTypeLabel(type: string): string {
 
 const SOURCE_BADGE_STYLES: Record<string, string> = {
   manual: "bg-muted text-muted-foreground",
-  "auto-rule": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  "auto-rule": "bg-info/10 text-info",
   "auto-llm": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
 };
 
@@ -131,7 +131,7 @@ export function CharacterArcsPanel({ bookId }: CharacterArcsPanelProps) {
       </div>
 
       {arcs.length === 0 && (
-        <p className="text-2xs text-muted-foreground text-center py-3">暂无角色弧线数据</p>
+        <p className="text-xs text-muted-foreground text-center py-3">暂无角色弧线数据</p>
       )}
 
       <div className="space-y-1.5">

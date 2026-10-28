@@ -33,9 +33,9 @@ export interface StyleDriftPanelProps {
 // ---------------------------------------------------------------------------
 
 function driftLevel(value: number): { label: string; color: string } {
-  if (value < 0.2) return { label: "低", color: "text-green-600" };
-  if (value < 0.5) return { label: "中", color: "text-yellow-600" };
-  return { label: "高", color: "text-red-600" };
+  if (value < 0.2) return { label: "低", color: "text-success" };
+  if (value < 0.5) return { label: "中", color: "text-warning" };
+  return { label: "高", color: "text-destructive" };
 }
 
 function formatPercent(value: number): string {
@@ -89,7 +89,7 @@ export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftP
           <Palette className="size-3.5 text-primary" />
           <span className="text-xs font-medium">文风漂移检测</span>
         </div>
-        <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">关闭</button>
+        <button type="button" onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">关闭</button>
       </div>
 
       <Button
@@ -116,9 +116,9 @@ export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftP
           {/* Overall */}
           <div className="flex items-center gap-2">
             {result.isSignificant ? (
-              <AlertTriangle className="size-3.5 text-yellow-600 shrink-0" />
+              <AlertTriangle className="size-3.5 text-warning shrink-0" />
             ) : (
-              <CheckCircle2 className="size-3.5 text-green-600 shrink-0" />
+              <CheckCircle2 className="size-3.5 text-success shrink-0" />
             )}
             <span className="text-xs">
               整体漂移：<span className={`font-medium ${overall?.color}`}>{overall?.label}</span>
@@ -143,7 +143,7 @@ export function StyleDriftPanel({ bookId, chapterContent, onClose }: StyleDriftP
           </div>
 
           {result.isSignificant && (
-            <p className="text-2xs text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30 rounded px-2 py-1">
+            <p className="text-xs text-warning bg-warning/10 rounded px-2 py-1">
               检测到显著文风偏移，建议检查近期章节是否偏离既定基调。
             </p>
           )}

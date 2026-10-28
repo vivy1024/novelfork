@@ -21,8 +21,8 @@ export interface StatusBarProps {
 /** 保存状态指示器 */
 function SaveIndicator({ status }: { status: "saved" | "saving" | "dirty" }) {
   const colorMap = {
-    saved: "bg-green-500",
-    saving: "bg-yellow-400 animate-spin",
+    saved: "bg-success",
+    saving: "bg-warning animate-spin",
     dirty: "bg-orange-400",
   } as const;
 
@@ -36,7 +36,7 @@ function SaveIndicator({ status }: { status: "saved" | "saving" | "dirty" }) {
     <span className="flex items-center gap-1.5" title={labelMap[status]}>
       {status === "saving" ? (
         // 旋转圆环
-        <span className="inline-block size-2 border border-yellow-400 border-t-transparent rounded-full animate-spin" />
+        <span className="inline-block size-2 border border-warning border-t-transparent rounded-full animate-spin" />
       ) : (
         <span className={`inline-block size-2 rounded-full ${colorMap[status]}`} />
       )}
@@ -100,7 +100,7 @@ export function StatusBar({
         </span>
 
         {alertLabel && (
-          <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+          <span className="flex items-center gap-1.5 text-warning">
             <AlertTriangle className="size-3.5" />
             <span>{alertLabel}</span>
           </span>

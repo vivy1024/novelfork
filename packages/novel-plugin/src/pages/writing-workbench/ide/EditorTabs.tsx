@@ -49,10 +49,10 @@ function tabIcon(kind: TabKind, view?: TabView) {
   // 叙事记忆条目现在归属经纬工作区，用 memory 图标区分于手写设定
   if (kind === "memory-entry") return { Icon: Brain, color: "text-pink-500" };
   switch (kind) {
-    case "chapter": return { Icon: FileText, color: "text-sky-500" };
+    case "chapter": return { Icon: FileText, color: "text-info" };
     case "jingwei-entry": return { Icon: Scroll, color: "text-violet-500" };
-    case "file": return { Icon: FileIcon, color: "text-sky-600" };
-    case "story-map": return { Icon: GitFork, color: "text-emerald-500" };
+    case "file": return { Icon: FileIcon, color: "text-info" };
+    case "story-map": return { Icon: GitFork, color: "text-success" };
     case "tool": return { Icon: Wrench, color: "text-muted-foreground" };
     default: return { Icon: FileIcon, color: "text-muted-foreground" };
   }
@@ -220,11 +220,11 @@ function SortableTab({
           onMouseDown={(e) => { if (e.button === 1 && !tab.pinned) { e.preventDefault(); onClose(tab.id); } }}
           onClick={() => onActivate(tab.id)}
         >
-          {isActive && <span className={`absolute inset-x-0 top-0 h-[2px] ${tab.dirty ? "bg-amber-500" : "bg-primary"}`} />}
+          {isActive && <span className={`absolute inset-x-0 top-0 h-[2px] ${tab.dirty ? "bg-warning" : "bg-primary"}`} />}
           {tab.pinned ? <Pin className="size-3 text-primary" /> : <Icon className={`size-3.5 shrink-0 ${color}`} />}
           <span className="truncate max-w-[120px]">{tab.title}</span>
           <span role="button" tabIndex={-1} className="relative flex size-5 items-center justify-center rounded hover:bg-muted cursor-pointer" onClick={(e) => { e.stopPropagation(); if (!tab.pinned) onClose(tab.id); }}>
-            {tab.dirty ? <><span className="text-amber-500 text-2xs group-hover:hidden">●</span><X className="size-3 hidden group-hover:block" /></> : <X className={`size-3 transition-opacity ${tab.pinned ? "opacity-30" : "opacity-0 group-hover:opacity-100"}`} />}
+            {tab.dirty ? <><span className="text-warning text-xs group-hover:hidden">●</span><X className="size-3 hidden group-hover:block" /></> : <X className={`size-3 transition-opacity ${tab.pinned ? "opacity-30" : "opacity-0 group-hover:opacity-100"}`} />}
           </span>
         </div>
       </ContextMenuTrigger>

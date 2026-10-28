@@ -218,7 +218,7 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
           <Badge variant="outline">{entry.status === "confirmed" ? "已确认" : "待审"}</Badge>
         </div>
         <p className="whitespace-pre-wrap break-words text-xs">{entry.text}</p>
-        <p className="whitespace-pre-wrap break-words text-2xs text-muted-foreground">证据：{entry.evidence || "未提供"}</p>
+        <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">证据：{entry.evidence || "未提供"}</p>
         <Button size="xs" variant="ghost" disabled={busy}
           aria-label={`${entry.status === "confirmed" ? "撤回确认" : "确认"}：${entry.text}`}
           onClick={() => confirm(sourceIndex, collection, index)}>
@@ -234,10 +234,10 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
         <div className="flex items-center gap-1.5 font-medium"><Palette className="size-3.5 text-primary" />本书文风预设</div>
         <Button size="xs" variant="ghost" disabled={busy} onClick={() => setReloadKey((value) => value + 1)}>重新载入</Button>
       </div>
-      <p className="text-2xs text-muted-foreground">每本书使用一份文风预设。重新载入会放弃本地未保存的修改。</p>
-      {state.response?.source === "legacy" && <p className="text-2xs text-muted-foreground">已沿用旧统计基线，首次保存后升级为本书文风预设。</p>}
-      {state.loading && <p role="status" className="text-2xs text-muted-foreground">正在读取文风预设…</p>}
-      {state.error && <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-2xs text-destructive">{state.error}</p>}
+      <p className="text-xs text-muted-foreground">每本书使用一份文风预设。重新载入会放弃本地未保存的修改。</p>
+      {state.response?.source === "legacy" && <p className="text-xs text-muted-foreground">已沿用旧统计基线，首次保存后升级为本书文风预设。</p>}
+      {state.loading && <p role="status" className="text-xs text-muted-foreground">正在读取文风预设…</p>}
+      {state.error && <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{state.error}</p>}
       {state.draft && <>
         <fieldset disabled={busy} className="min-w-0 space-y-2">
           <label className="block space-y-1"><span>预设名称</span>
@@ -257,7 +257,7 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
           </label>
           {constraintsSupported && <div className="space-y-1" data-testid="custom-constraints">
             <span>硬约束（{state.draft.customConstraints.length}/{CUSTOM_CONSTRAINT_MAX_ITEMS}，每条 {CUSTOM_CONSTRAINT_MAX_ITEM_CHARS} 字）</span>
-            <p className="text-2xs text-muted-foreground">作者手写的硬性要求，随「交叙述者做语感体检」和划词 AI 指令一起注入，优先于语感体检的手法说明；不进入章节写作指南。</p>
+            <p className="text-xs text-muted-foreground">作者手写的硬性要求，随「交叙述者做语感体检」和划词 AI 指令一起注入，优先于语感体检的手法说明；不进入章节写作指南。</p>
             <ul className="space-y-1">
               {state.draft.customConstraints.map((item, index) => (
                 <li key={`${index}-${item}`} className="flex items-start justify-between gap-2 rounded bg-muted/30 px-2 py-1" data-testid="custom-constraint-item">
@@ -275,14 +275,14 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
                 onClick={addConstraint}>添加</Button>
             </div>
             {constraintsExtraction && (constraintsExtraction.clampedItems > 0 || constraintsExtraction.truncatedItems > 0) ? (
-              <p role="status" className="text-2xs text-muted-foreground">载入的硬约束超出上限，已自动收短到每条 {CUSTOM_CONSTRAINT_MAX_ITEM_CHARS} 字、保留前 {CUSTOM_CONSTRAINT_MAX_ITEMS} 条；保存后生效。</p>
+              <p role="status" className="text-xs text-muted-foreground">载入的硬约束超出上限，已自动收短到每条 {CUSTOM_CONSTRAINT_MAX_ITEM_CHARS} 字、保留前 {CUSTOM_CONSTRAINT_MAX_ITEMS} 条；保存后生效。</p>
             ) : null}
-            {constraintsNote ? <p role="status" className="text-2xs text-muted-foreground">{constraintsNote}</p> : null}
+            {constraintsNote ? <p role="status" className="text-xs text-muted-foreground">{constraintsNote}</p> : null}
           </div>}
         </fieldset>
         {state.draft.sources.length > 0 && <div className="space-y-2">
           <p className="font-medium">来源包</p>
-          <p className="text-2xs text-muted-foreground">仅已确认且可迁移的规则进入指南；作品专属内容即使确认也不会进入。已确认的样文会按本章场景类型挑选 2–4 段，写章时作为示例。</p>
+          <p className="text-xs text-muted-foreground">仅已确认且可迁移的规则进入指南；作品专属内容即使确认也不会进入。已确认的样文会按本章场景类型挑选 2–4 段，写章时作为示例。</p>
           {state.draft.sources.map((source, sourceIndex) => <details key={source.id} open className="space-y-2 rounded border border-border p-2">
             <summary className="cursor-pointer font-medium">{source.title}</summary>
             {source.rules.map((entry, index) => sourceEntry(entry, sourceIndex, "rules", index))}
@@ -293,11 +293,11 @@ function BookStylePresetEditor({ bookId, refreshKey = 0, disabled = false, onBus
           onClick={() => void save()}>
           {state.saving && <Loader2 className="size-3 animate-spin" />}{state.saving ? "保存中…" : "保存文风预设"}
         </Button>
-        {state.notice && <p role="status" className="text-2xs text-muted-foreground">{state.notice}</p>}
+        {state.notice && <p role="status" className="text-xs text-muted-foreground">{state.notice}</p>}
       </>}
       <div className="space-y-1 border-t border-border pt-2">
         <p className="font-medium">合成指南预览</p>
-        <p className="text-2xs text-muted-foreground">{dirty ? "正在预览未保存的修改，保存后生效。" : "以下为当前已保存预设的合成结果。"}</p>
+        <p className="text-xs text-muted-foreground">{dirty ? "正在预览未保存的修改，保存后生效。" : "以下为当前已保存预设的合成结果。"}</p>
         <div aria-label="合成指南内容" className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded bg-muted/30 p-2 text-2xs">
           {guideText || "暂无合成指南。"}
         </div>

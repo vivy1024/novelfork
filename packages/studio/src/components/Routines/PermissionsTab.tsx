@@ -104,17 +104,17 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
 
   const getPermissionColor = (permission: PermissionBehavior) => {
     switch (permission) {
-      case "allow": return "text-green-600";
-      case "deny": return "text-red-600";
-      case "ask": return "text-yellow-600";
+      case "allow": return "text-success";
+      case "deny": return "text-destructive";
+      case "ask": return "text-warning";
     }
   };
 
   const getPermissionIcon = (permission: PermissionBehavior) => {
     switch (permission) {
-      case "allow": return <Shield size={14} className="text-green-600" />;
-      case "deny": return <AlertTriangle size={14} className="text-red-600" />;
-      case "ask": return <Shield size={14} className="text-yellow-600" />;
+      case "allow": return <Shield size={14} className="text-success" />;
+      case "deny": return <AlertTriangle size={14} className="text-destructive" />;
+      case "ask": return <Shield size={14} className="text-warning" />;
     }
   };
 

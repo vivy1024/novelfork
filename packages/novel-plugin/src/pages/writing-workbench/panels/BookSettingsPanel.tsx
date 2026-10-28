@@ -259,9 +259,9 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
         <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0"><ArrowLeft className="size-4" /></Button>
         <h1 className="text-sm font-semibold text-foreground">书籍设置</h1>
         {saveStatus.state === "saving" && <span className="ml-auto text-2xs text-muted-foreground">保存中...</span>}
-        {saveStatus.state === "saved" && <span className="ml-auto text-2xs text-green-500">已保存</span>}
+        {saveStatus.state === "saved" && <span className="ml-auto text-2xs text-success">已保存</span>}
         {saveStatus.state === "error" && (
-          <span role="alert" data-testid="book-settings-save-error" className="ml-auto text-2xs text-destructive" title={saveStatus.message}>
+          <span role="alert" data-testid="book-settings-save-error" className="ml-auto text-xs text-destructive" title={saveStatus.message}>
             保存失败：{saveStatus.message}
           </span>
         )}

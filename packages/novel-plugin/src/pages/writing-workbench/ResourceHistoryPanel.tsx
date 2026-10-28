@@ -58,7 +58,7 @@ export function ResourceHistoryPanel({ entries, loading = false, error, onClose 
                 <Badge variant="outline" className="text-2xs">{statusLabel[entry.status] ?? entry.status}</Badge>
                 <span className="ml-auto text-2xs text-muted-foreground">{formatDate(entry.updatedAt)}</span>
               </div>
-              <p className="mt-1 text-2xs text-muted-foreground">ID: {entry.id}{entry.parentId ? ` · parent: ${entry.parentId}` : " · 根版本"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">ID: {entry.id}{entry.parentId ? ` · parent: ${entry.parentId}` : " · 根版本"}</p>
             </li>
           ))}
         </ol>

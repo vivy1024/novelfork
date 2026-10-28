@@ -353,7 +353,7 @@ export function ShellSidebar({
           <div className="flex items-center justify-between border-b border-border px-2 py-2" role="banner">
             <div className="min-w-0 px-1">
               <p className="nf-display truncate text-base">NovelFork Studio</p>
-              <p className="text-2xs text-muted-foreground">Agent Shell</p>
+              <p className="text-xs text-muted-foreground">Agent Shell</p>
             </div>
             <Button
               type="button"
@@ -495,7 +495,7 @@ export function ShellSidebar({
               })
               : !isCollapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无最近会话</p>
             }
-            {!isCollapsed && hiddenNarratorCount > 0 && <p className="px-2 py-1 text-2xs text-muted-foreground">还有 {hiddenNarratorCount} 个会话</p>}
+            {!isCollapsed && hiddenNarratorCount > 0 && <p className="px-2 py-1 text-xs text-muted-foreground">还有 {hiddenNarratorCount} 个会话</p>}
             {!isCollapsed && (
               <Button
                 variant="link"
@@ -546,7 +546,7 @@ export function ShellSidebar({
             <div className="mt-1">
               <button
                 type="button"
-                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-2xs text-muted-foreground hover:bg-muted"
+                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
                 onClick={() => setShowCollapsed((v) => !v)}
               >
                 <PackageMinus className="size-3" />

@@ -362,18 +362,18 @@ function HomeRouteLive({
       ) : null}
 
       {!loading && !runtimeStatus?.hasUsableModel && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 flex items-center gap-3">
-          <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
+        <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 flex items-center gap-3">
+          <span className="text-warning text-lg">⚠️</span>
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+            <p className="text-sm font-medium text-warning">
               AI 模型尚未就绪
             </p>
             {runtimeStatus?.label ? (
-              <p className="text-xs text-amber-700 dark:text-amber-300">
+              <p className="text-xs text-warning">
                 {runtimeStatus.label}
               </p>
             ) : null}
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-warning">
               就绪后可使用 AI 写作、续写、审校、去 AI
               味等功能；在此之前仍可本地编辑。
             </p>
@@ -381,7 +381,7 @@ function HomeRouteLive({
           <Button
             size="sm"
             variant="outline"
-            className="shrink-0 border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
+            className="shrink-0 border-warning/30 text-warning hover:bg-warning/10"
             onClick={() => onNavigate({ kind: "settings" })}
           >
             去配置

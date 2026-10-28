@@ -242,12 +242,12 @@ export function CharacterVoiceSection({ bookId, entryId, entryVersion, onVoiceSa
   };
 
   return (
-    <Card className="border-sky-500/30 bg-sky-500/[0.03]" data-testid="character-voice-section">
+    <Card className="border-info/30 bg-info/[0.03]" data-testid="character-voice-section">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
-              <MessageSquareQuote className="size-4 text-sky-600" />
+              <MessageSquareQuote className="size-4 text-info" />
               角色声线
               <Badge variant="secondary" className="text-2xs font-normal">写对白时的高优先级约束</Badge>
             </CardTitle>
@@ -304,7 +304,7 @@ export function CharacterVoiceSection({ bookId, entryId, entryVersion, onVoiceSa
                   生成草稿
                 </Button>
               </div>
-              <p className="text-2xs text-muted-foreground">生成读取的是已保存的角色卡；刚改的内容请先保存。草稿只写成「待审」，已确认的项不会被覆盖。</p>
+              <p className="text-xs text-muted-foreground">生成读取的是已保存的角色卡；刚改的内容请先保存。草稿只写成「待审」，已确认的项不会被覆盖。</p>
               {draftNote ? <p className="text-xs text-foreground/80" data-testid="character-voice-draft-note">{draftNote}</p> : null}
             </section>
 
@@ -318,15 +318,15 @@ export function CharacterVoiceSection({ bookId, entryId, entryVersion, onVoiceSa
             {warnings.length > 0 ? (
               <ul className="space-y-1.5" data-testid="character-voice-warnings">
                 {warnings.map((warning) => (
-                  <li key={warning.code} className="rounded-md border border-amber-500/40 bg-amber-500/[0.05] px-3 py-2">
-                    <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                  <li key={warning.code} className="rounded-md border border-warning/40 bg-warning/[0.05] px-3 py-2">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
                       <AlertTriangle className="size-3.5 shrink-0" />{warning.message}
                     </p>
                     {warning.explanation?.whatHappened && warning.explanation.whatHappened !== warning.message ? (
-                      <p className="mt-0.5 text-2xs text-muted-foreground">{warning.explanation.whatHappened}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{warning.explanation.whatHappened}</p>
                     ) : null}
-                    {warning.explanation?.whyItMatters ? <p className="mt-0.5 text-2xs text-muted-foreground">{warning.explanation.whyItMatters}</p> : null}
-                    {warning.explanation?.suggestedAction ? <p className="mt-0.5 text-2xs text-muted-foreground">建议：{warning.explanation.suggestedAction}</p> : null}
+                    {warning.explanation?.whyItMatters ? <p className="mt-0.5 text-xs text-muted-foreground">{warning.explanation.whyItMatters}</p> : null}
+                    {warning.explanation?.suggestedAction ? <p className="mt-0.5 text-xs text-muted-foreground">建议：{warning.explanation.suggestedAction}</p> : null}
                   </li>
                 ))}
               </ul>
@@ -366,7 +366,7 @@ export function CharacterVoiceSection({ bookId, entryId, entryVersion, onVoiceSa
                     {field.evidence && field.evidence.length > 0 ? (
                       <ul className="space-y-0.5">
                         {field.evidence.map((item, index) => (
-                          <li key={`${meta.key}-evidence-${index}`} className="text-2xs leading-relaxed text-muted-foreground">依据：{item}</li>
+                          <li key={`${meta.key}-evidence-${index}`} className="text-xs leading-relaxed text-muted-foreground">依据：{item}</li>
                         ))}
                       </ul>
                     ) : null}

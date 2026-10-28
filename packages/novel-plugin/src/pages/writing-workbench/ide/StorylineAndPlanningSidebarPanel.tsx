@@ -209,7 +209,7 @@ function StorylineResourceTree({
         ? (draftedChapters?.has(targetChapter) ? "drafted" : "planned")
         : null;
     const stateBadge = outlineState === "drafted"
-      ? <span className="shrink-0 text-2xs text-emerald-600 dark:text-emerald-400" title={`已对应第 ${targetChapter} 章`}>✓已落稿</span>
+      ? <span className="shrink-0 text-2xs text-success" title={`已对应第 ${targetChapter} 章`}>✓已落稿</span>
       : outlineState === "planned"
         ? <span className="shrink-0 text-2xs text-muted-foreground" title={`规划为第 ${targetChapter} 章，尚未落稿`}>🗺规划中</span>
         : null;
@@ -218,12 +218,12 @@ function StorylineResourceTree({
         <div className="group/node flex items-center justify-between gap-1 rounded hover:bg-muted pr-1">
           <button
             type="button"
-            className="flex min-w-0 flex-1 items-center gap-1 rounded px-1.5 py-1 text-left text-2xs"
+            className="flex min-w-0 flex-1 items-center gap-1 rounded px-1.5 py-1 text-left text-xs"
             style={{ paddingLeft: `${depth * 12 + 4}px` }}
             onClick={() => (hasChildren ? toggle(node.id) : onOpen(openTarget ?? node))}
           >
             {hasChildren ? (isExpanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />) : <span className="w-3 shrink-0" />}
-            {node.kind === "chapter" ? <FileText className="size-3 shrink-0 text-blue-500" /> : <ListTree className="size-3 shrink-0 text-sky-500" />}
+            {node.kind === "chapter" ? <FileText className="size-3 shrink-0 text-info" /> : <ListTree className="size-3 shrink-0 text-info" />}
             {/* 章节树用作者语言：「正文 › 卷01 › 第 1 章 雨夜」；资源管理器里才显示真实文件名。 */}
             <span className="min-w-0 flex-1 truncate">{resourceDisplayTitle(node)}</span>
             {stateBadge}
@@ -252,7 +252,7 @@ function StorylineResourceTree({
     );
   };
 
-  return nodes.length > 0 ? <div className="space-y-0.5">{nodes.map((node) => renderNode(node))}</div> : <p className="px-1 py-2 text-2xs text-muted-foreground">{emptyLabel}</p>;
+  return nodes.length > 0 ? <div className="space-y-0.5">{nodes.map((node) => renderNode(node))}</div> : <p className="px-1 py-2 text-xs text-muted-foreground">{emptyLabel}</p>;
 }
 
 type StorylineSubTab = "outline" | "memory";
@@ -378,7 +378,7 @@ function StorylineCockpit({
       </button>
       {/* 叙述者 seed 动作而没有叙述者通道时明说，不静默吞掉点击（口径同 NextChapterPanel 的 note） */}
       {next.key === "outline-empty" && !onSendToNarrator ? (
-        <p className="text-2xs text-muted-foreground" data-testid="storyline-next-no-narrator">当前视图没接叙述者通道，这条建议点了发不出去；先在对话里开启叙述者会话。</p>
+        <p className="text-xs text-muted-foreground" data-testid="storyline-next-no-narrator">当前视图没接叙述者通道，这条建议点了发不出去；先在对话里开启叙述者会话。</p>
       ) : null}
     </div>
   );
@@ -509,7 +509,7 @@ export function StorylineAndPlanningSidebarPanel({
             )}
             onClick={() => setActiveSubTab("outline")}
           >
-            <ListTree className="size-3.5 text-sky-500" />
+            <ListTree className="size-3.5 text-info" />
             <span className="truncate">章节与大纲</span>
           </Button>
 
@@ -522,7 +522,7 @@ export function StorylineAndPlanningSidebarPanel({
             )}
             onClick={() => setActiveSubTab("memory")}
           >
-            <Sparkles className="size-3.5 text-amber-500" />
+            <Sparkles className="size-3.5 text-warning" />
             <span className="truncate">章后事实</span>
           </Button>
 
@@ -535,7 +535,7 @@ export function StorylineAndPlanningSidebarPanel({
           <section id="storyline-chapter-outline" className="rounded-lg border border-border bg-card p-2 space-y-2" data-testid="storyline-chapter-outline">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-2xs font-semibold">
-                <ListTree className="size-3.5 text-sky-500" />
+                <ListTree className="size-3.5 text-info" />
                 <span>章节与大纲</span>
               </div>
               {/* 此前数的是顶层节点（「正文」目录 1 个、分类组 1 个），七章两条纲也显示「章节 1 · 大纲 1」。 */}

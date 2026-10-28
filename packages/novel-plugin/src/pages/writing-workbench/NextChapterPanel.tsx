@@ -66,9 +66,9 @@ function useForeshadowEntries(bookId: string | undefined, version: number): Read
 
 /** 伏笔状态：文字标签 + 色点。只有「超期」会当正文警示色，其余克制。 */
 const URGENCY_META: Record<ForeshadowDebt["urgency"], { label: string; dot: string }> = {
-  overdue: { label: "超期", dot: "bg-red-500" },
-  watch: { label: "临近", dot: "bg-amber-500" },
-  ok: { label: "近期可用", dot: "bg-emerald-500" },
+  overdue: { label: "超期", dot: "bg-destructive" },
+  watch: { label: "临近", dot: "bg-warning" },
+  ok: { label: "近期可用", dot: "bg-success" },
 };
 
 /** 默认只展开最急的 3 条。 */
@@ -235,10 +235,10 @@ export function NextChapterPanel({
             {plan.focus ? (
               <>
                 <p className="text-sm font-medium" data-testid="next-focus-goal">{plan.focus.goal}</p>
-                {plan.focus.why ? <p className="mt-1 text-2xs text-muted-foreground" data-testid="next-focus-why">为什么现在：{plan.focus.why}</p> : null}
+                {plan.focus.why ? <p className="mt-1 text-xs text-muted-foreground" data-testid="next-focus-why">为什么现在：{plan.focus.why}</p> : null}
               </>
             ) : (
-              <p className="text-2xs text-muted-foreground" data-testid="next-focus-empty">
+              <p className="text-xs text-muted-foreground" data-testid="next-focus-empty">
                 还没填本章焦点。到写作视图的「创作罗盘」写一句本章最该推进的事，建议会按它点名剧情线。
               </p>
             )}
@@ -254,12 +254,12 @@ export function NextChapterPanel({
               <div className="flex items-center gap-1.5 text-2xs font-medium">
                 <GitFork className="size-3.5 text-muted-foreground" /> 这本书还没有剧情线
               </div>
-              <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 剧情线是「下一章建议」的地基。叙述者可以先替你起个草稿：读已结算章的事件、归纳剧情线草稿、你在「待确认」里逐条定。
               </p>
               <button
                 type="button"
-                className="mt-2 inline-flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="mt-2 inline-flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 disabled={!onSendToNarrator}
                 onClick={() => void messageNarrator(INDUCE_STORYLINES_MESSAGE)}
                 data-testid="next-storyline-induce"
@@ -267,7 +267,7 @@ export function NextChapterPanel({
                 <MoonStar className="size-3" /> 让叙述者从事件里归纳剧情线
               </button>
               {!onSendToNarrator ? (
-                <p className="mt-1 text-2xs text-muted-foreground">当前视图没接叙述者通道，按钮暂不可用。</p>
+                <p className="mt-1 text-xs text-muted-foreground">当前视图没接叙述者通道，按钮暂不可用。</p>
               ) : null}
             </section>
           )}
@@ -276,7 +276,7 @@ export function NextChapterPanel({
             <div className="flex justify-start">
               <button
                 type="button"
-                className="rounded bg-primary px-2.5 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="rounded bg-primary px-2.5 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 disabled={!onSendToNarrator}
                 onClick={() =>
                   void messageNarrator(
@@ -313,7 +313,7 @@ export function NextChapterPanel({
               <span className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">伏笔账本（{allHooks.length}）</span>
               <button
                 type="button"
-                className="text-2xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => { setVersion((value) => value + 1); reload(); }}
                 data-testid="next-hook-refresh"
                 aria-label="刷新伏笔账本"
@@ -321,10 +321,10 @@ export function NextChapterPanel({
                 <RefreshCw className="inline size-3" />
               </button>
             </div>
-            {note ? <p className="mt-1 text-2xs text-muted-foreground" role="status" data-testid="next-hook-note">{note}</p> : null}
+            {note ? <p className="mt-1 text-xs text-muted-foreground" role="status" data-testid="next-hook-note">{note}</p> : null}
 
             {allHooks.length === 0 ? (
-              <p className="mt-1.5 text-2xs text-muted-foreground/70" data-testid="next-hook-empty">还没有开着伏笔账。埋了新的才会在这里倒计时。</p>
+              <p className="mt-1.5 text-xs text-muted-foreground/70" data-testid="next-hook-empty">还没有开着伏笔账。埋了新的才会在这里倒计时。</p>
             ) : (
               <ul className="mt-1.5 space-y-1" data-testid="next-hook-list">
                 {(restOpen ? allHooks : pinnedHooks).map((debt) => {
@@ -332,7 +332,7 @@ export function NextChapterPanel({
                   return (
                     <li
                       key={debt.entryId}
-                      className="rounded border border-border/60 px-2 py-1.5 text-2xs"
+                      className="rounded border border-border/60 px-2 py-1.5 text-xs"
                       data-testid={`next-hook-item-${debt.entryId}`}
                       data-urgency={debt.urgency}
                     >
@@ -369,7 +369,7 @@ export function NextChapterPanel({
             {restHooks.length > 0 ? (
               <button
                 type="button"
-                className="mt-1.5 flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
+                className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setRestOpen((open) => !open)}
                 data-testid="next-hook-toggle-rest"
               >
@@ -381,7 +381,7 @@ export function NextChapterPanel({
             <div className="mt-2 border-t border-border/60 pt-2" data-testid="next-hook-plant">
               <button
                 type="button"
-                className="flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setPlantOpen((open) => !open)}
                 data-testid="next-hook-plant-toggle"
               >
@@ -394,7 +394,7 @@ export function NextChapterPanel({
                     value={plantTitle}
                     onChange={(event) => setPlantTitle(event.target.value)}
                     placeholder="要埋什么（例：拍卖会上的科学丹方）"
-                    className="w-full rounded border border-border bg-background px-2 py-1 text-2xs outline-none focus:border-primary"
+                    className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary"
                     data-testid="next-hook-plant-title"
                   />
                   <input
@@ -406,7 +406,7 @@ export function NextChapterPanel({
                   />
                   <button
                     type="button"
-                    className="rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     disabled={plantBusy}
                     onClick={() => void plantHook()}
                     data-testid="next-hook-plant-confirm"

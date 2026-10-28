@@ -47,7 +47,7 @@ function TaskRow({ task }: { readonly task: TaskItem }) {
             aria-hidden="true"
             className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
               task.completed
-                ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600"
+                ? "border-success/50 bg-success/10 text-success"
                 : "border-primary/30 bg-primary/10 text-primary"
             }`}
           >
@@ -59,7 +59,7 @@ function TaskRow({ task }: { readonly task: TaskItem }) {
                 {task.title}
               </span>
               {task.recommended ? <Badge variant="secondary">推荐第一步</Badge> : null}
-              {task.completed ? <Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/10">已完成</Badge> : null}
+              {task.completed ? <Badge className="bg-success/10 text-success hover:bg-success/10">已完成</Badge> : null}
             </div>
             <p className="text-sm text-muted-foreground">{task.statusText ?? task.description}</p>
           </div>

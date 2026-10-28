@@ -389,7 +389,7 @@ describe("CharactersAndLoreSidebarPanel 新建与导入的失败提示", () => {
     expect(error.textContent).toContain("服务不可用");
   });
 
-  it("导入失败用 destructive 色展示，成功保持 emerald", async () => {
+  it("导入失败用 destructive 色展示，成功用 success 语义色", async () => {
     let fail = true;
     fetchJson.mockImplementation(async (url: string, init?: RequestInit) => {
       if (String(url).includes("/jingwei/import")) {
@@ -407,11 +407,11 @@ describe("CharactersAndLoreSidebarPanel 新建与导入的失败提示", () => {
 
     const failure = await screen.findByTestId("lore-import-result-error");
     expect(failure.className).toContain("text-destructive");
-    expect(failure.className).not.toContain("text-emerald-600");
+    expect(failure.className).not.toContain("text-success");
 
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "开始导入" }));
     const success = await screen.findByTestId("lore-import-result-success");
-    expect(success.className).toContain("text-emerald-600");
+    expect(success.className).toContain("text-success");
   });
 });

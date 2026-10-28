@@ -66,7 +66,7 @@ export function ChapterSettlementBanner({ bookId, chapterNumber, content, onAskR
 
   return (
     <div
-      className="flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400"
+      className="flex items-center gap-2 rounded border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs text-warning"
       data-testid="chapter-stale-banner"
     >
       <AlertTriangle className="size-3.5 shrink-0" />
@@ -82,7 +82,7 @@ export function ChapterSettlementBanner({ bookId, chapterNumber, content, onAskR
         让叙述者重结算
       </Button>
       {!onAskResettle ? (
-        <span className="shrink-0 text-2xs text-amber-600/80 dark:text-amber-400/80" data-testid="chapter-stale-no-narrator">先在对话里开启叙述者会话</span>
+        <span className="shrink-0 text-xs text-warning/80" data-testid="chapter-stale-no-narrator">先在对话里开启叙述者会话</span>
       ) : null}
     </div>
   );

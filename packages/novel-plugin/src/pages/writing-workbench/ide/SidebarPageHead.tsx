@@ -24,7 +24,7 @@ export function SidebarPageHead({ icon: Icon, title, purpose, status, action }: 
       </span>
       <div className="min-w-0 flex-1">
         <div className="text-xs font-semibold text-foreground" data-testid="sidebar-page-head-title">{title}</div>
-        <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground" data-testid="sidebar-page-head-sub">
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground" data-testid="sidebar-page-head-sub">
           {purpose}
           {status ? ` · 当前：${status}` : ""}
         </p>

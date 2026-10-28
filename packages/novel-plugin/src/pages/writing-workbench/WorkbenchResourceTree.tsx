@@ -56,12 +56,12 @@ function NodeIcon({ node }: { node: WorkbenchResourceNode }) {
   switch (kind) {
     case "book": return <BookOpen className="size-4 text-primary" />;
     case "group": return <FolderOpen className="size-4 text-muted-foreground" />;
-    case "chapter": return <FileText className="size-4 text-blue-500" />;
-    case "jingwei": return <Scroll className="size-4 text-amber-500" />;
-    case "story": return <Globe className="size-4 text-green-500" />;
+    case "chapter": return <FileText className="size-4 text-info" />;
+    case "jingwei": return <Scroll className="size-4 text-warning" />;
+    case "story": return <Globe className="size-4 text-success" />;
     case "jingwei-section": case "jingwei-entry": return <BookMarked className="size-4 text-teal-500" />;
     case "narrative-line": return <Route className="size-4 text-rose-500" />;
-    case "story-map": return <GitFork className="size-4 text-emerald-500" />;
+    case "story-map": return <GitFork className="size-4 text-success" />;
     case "tool": return <Wrench className="size-4 text-indigo-500" />;
     case "tool-group": return <FolderOpen className="size-4 text-indigo-400" />;
     default: return <Sparkles className="size-4 text-muted-foreground" />;

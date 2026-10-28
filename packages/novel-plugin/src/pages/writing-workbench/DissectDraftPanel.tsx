@@ -114,7 +114,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
         <p className="text-xs text-destructive">{error}</p>
         <button
           type="button"
-          className="text-2xs text-muted-foreground hover:text-foreground"
+          className="text-xs text-muted-foreground hover:text-foreground"
           onClick={() => void load()}
           data-testid="dissect-draft-retry"
         >
@@ -141,7 +141,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
         <div className="flex items-center gap-1">
           <button
             type="button"
-            className="text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
             onClick={() => void load()}
             disabled={busy}
             data-testid="dissect-draft-reload"
@@ -160,12 +160,12 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
           ) : null}
         </div>
       </div>
-      <p className="text-2xs leading-relaxed text-muted-foreground">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         拆书时会从原文抽出角色、地点、势力、伏笔候选。确认（promote）后写入正式设定，参与写作注入；驳回（reject）后废弃。这本没有处理完的草案不会进入正文。
       </p>
       {note ? (
         <p
-          className={`text-2xs ${note.tone === "ok" ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}
+          className={`text-xs ${note.tone === "ok" ? "text-success" : "text-destructive"}`}
           role="status"
           data-testid="dissect-draft-note"
         >
@@ -176,7 +176,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
         <div className="flex flex-wrap gap-1" data-testid="dissect-draft-kinds">
           <button
             type="button"
-            className={`rounded px-1.5 py-0.5 text-2xs ${kindFilter === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+            className={`rounded px-1.5 py-0.5 text-xs ${kindFilter === null ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
             onClick={() => setKindFilter(null)}
           >
             全部
@@ -185,7 +185,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
             <button
               key={kind}
               type="button"
-              className={`rounded px-1.5 py-0.5 text-2xs ${kindFilter === kind ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+              className={`rounded px-1.5 py-0.5 text-xs ${kindFilter === kind ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}
               onClick={() => setKindFilter(kind)}
             >
               {KIND_LABELS[kind] ?? kind}
@@ -194,13 +194,13 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
         </div>
       ) : null}
       {shown.length === 0 ? (
-        <p className="mt-4 text-center text-2xs text-muted-foreground" data-testid="dissect-draft-empty">
+        <p className="mt-4 text-center text-xs text-muted-foreground" data-testid="dissect-draft-empty">
           没有待确认的拆书草案。导入旧稿并跑过拆书后，这里会列出抽出的角色、地点、伏笔候选。
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5" data-testid="dissect-draft-list">
           {shown.map((item) => (
-            <li key={item.id} className="rounded border border-border/60 bg-card/40 px-2 py-1.5 text-2xs" data-testid={`dissect-draft-item-${item.id}`}>
+            <li key={item.id} className="rounded border border-border/60 bg-card/40 px-2 py-1.5 text-xs" data-testid={`dissect-draft-item-${item.id}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="font-medium text-foreground">
@@ -217,7 +217,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
               <div className="mt-1.5 flex justify-end gap-1.5">
                 <button
                   type="button"
-                  className="rounded border border-border px-1.5 py-0.5 text-2xs hover:bg-accent disabled:opacity-50"
+                  className="rounded border border-border px-1.5 py-0.5 text-xs hover:bg-accent disabled:opacity-50"
                   disabled={busyId === item.id}
                   onClick={() => void decide(item, "reject")}
                   data-testid={`dissect-draft-reject-${item.id}`}
@@ -226,7 +226,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
                 </button>
                 <button
                   type="button"
-                  className="rounded bg-primary px-1.5 py-0.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  className="rounded bg-primary px-1.5 py-0.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   disabled={busyId === item.id}
                   onClick={() => void decide(item, "promote")}
                   data-testid={`dissect-draft-promote-${item.id}`}

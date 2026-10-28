@@ -182,7 +182,7 @@ export function StoryProgressionCanvas({
     >
       <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <div className="flex items-center gap-2">
-          <ScrollText className="h-4 w-4 text-emerald-600" />
+          <ScrollText className="h-4 w-4 text-success" />
           <span className="text-sm font-semibold">故事推进</span>
           <Badge variant="outline" data-testid="story-progression-chapter-badge">
             第 {currentChapter ?? "?"} 章

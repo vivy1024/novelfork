@@ -92,7 +92,7 @@ function SentenceLengthHistogram({ buckets }: { buckets: readonly number[] }) {
 
   return (
     <div className="space-y-1">
-      <p className="text-2xs text-muted-foreground">句长分布（共 {total} 句）</p>
+      <p className="text-xs text-muted-foreground">句长分布（共 {total} 句）</p>
       <svg width={svgWidth} height={chartHeight + 14} className="block" role="img" aria-label="句长分布直方图">
         {buckets.map((count, index) => {
           const barHeight = (count / max) * chartHeight;
@@ -337,7 +337,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
         <button
           type="button"
           onClick={() => setShowPendingReview(true)}
-          className="mx-2 mt-2 flex shrink-0 items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-left text-2xs text-amber-800 transition-colors hover:bg-amber-500/15 dark:text-amber-300"
+          className="mx-2 mt-2 flex shrink-0 items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-left text-xs text-warning transition-colors hover:bg-warning/15"
         >
           <ClipboardList className="size-3.5 shrink-0" />
           <span className="flex-1">待确认 {pendingReviewTotal} 项：声线、文风规则、伏笔、事件与改稿等待你决定，不确认不生效。</span>
@@ -350,7 +350,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
         <button
           type="button"
           onClick={() => void loadPendingReviewTotal()}
-          className="mx-2 mt-2 flex shrink-0 items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-left text-2xs text-destructive transition-colors hover:bg-destructive/10"
+          className="mx-2 mt-2 flex shrink-0 items-center gap-1.5 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-left text-xs text-destructive transition-colors hover:bg-destructive/10"
         >
           <AlertTriangle className="size-3.5 shrink-0" />
           <span className="flex-1">待确认清单读取失败：无法确认是否还有待你决定的产物。点此重试。</span>
@@ -398,7 +398,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
               </div>
 
               {profileError && (
-                <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-2xs text-destructive">
+                <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
                   {profileError}
                 </p>
               )}
@@ -424,7 +424,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
                   <Metric label="弱副词/千字" value={profile.weakAdverbPer1000 !== undefined ? String(profile.weakAdverbPer1000) : "—"} />
                 </div>
               ) : profileLoading || profileError ? null : (
-                <p className="text-2xs text-muted-foreground">尚未建立基线。用下方样文提取后即生效。</p>
+                <p className="text-xs text-muted-foreground">尚未建立基线。用下方样文提取后即生效。</p>
               )}
 
               {profile?.sentenceLengthBuckets && profile.sentenceLengthBuckets.length > 0 && (
@@ -443,7 +443,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
                 <Upload className="size-3 text-primary" />
                 <span>从参考样文提取统计</span>
               </div>
-              <p className="text-2xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 贴入你满意的参考正文（建议 500-2000 字）。只提取句长节奏、对话密度、词汇丰富度等可复用统计特征，
                 不会把样文的专名、口癖或情节带进本书。
               </p>
@@ -465,13 +465,13 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
               </Button>
 
               {distillNotice && (
-                <div className="flex items-start gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 p-2 text-2xs text-emerald-700 dark:text-emerald-400">
+                <div className="flex items-start gap-1 rounded border border-success/20 bg-success/10 p-2 text-2xs text-success">
                   <CheckCircle2 className="mt-0.5 size-3 shrink-0" />
                   <span>{distillNotice}</span>
                 </div>
               )}
               {distillError && (
-                <div role="alert" className="flex items-start gap-1 rounded border border-destructive/20 bg-destructive/10 p-2 text-2xs text-destructive">
+                <div role="alert" className="flex items-start gap-1 rounded border border-destructive/20 bg-destructive/10 p-2 text-xs text-destructive">
                   <AlertTriangle className="mt-0.5 size-3 shrink-0" />
                   <span>{distillError}</span>
                 </div>
@@ -619,7 +619,7 @@ function StyleMemorySection({
         <BookMarked className="size-3 text-primary" />
         <span>记住这种写法</span>
       </div>
-      <p className="text-2xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         贴入一段你认可的正文，配一句话注解。预览会推断写法规则与例句（纯统计，不调模型），
         确认后写进文风预设的「手动写法记忆」来源；普通聊天不会写入。
       </p>
@@ -651,15 +651,15 @@ function StyleMemorySection({
 
       {preview && (
         <div className="space-y-2 rounded-md border border-primary/25 bg-primary/5 p-2" aria-label="写法预览">
-          <p className="text-2xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             共 {preview.stats.sentenceCount} 句 · 平均句长 {preview.stats.avgSentenceLength} 字 · 对话占比 {Math.round(preview.stats.dialogueRatio * 100)}%；
             推断适用场景：{preview.sceneTypes.map(sceneLabel).join("、")}
           </p>
           {preview.rules.length > 0 ? (
             <div className="space-y-1.5">
-              <p className="text-2xs font-medium">写法规则（勾选后写入）</p>
+              <p className="text-xs font-medium">写法规则（勾选后写入）</p>
               {preview.rules.map((rule, index) => (
-                <label key={`rule-${index}`} className="flex items-start gap-1.5 text-2xs">
+                <label key={`rule-${index}`} className="flex items-start gap-1.5 text-xs">
                   <input
                     type="checkbox"
                     className="mt-0.5"
@@ -682,7 +682,7 @@ function StyleMemorySection({
           ) : null}
           {preview.samples.length > 0 ? (
             <div className="space-y-1.5">
-              <p className="text-2xs font-medium">例句（写入为本书范文）</p>
+              <p className="text-xs font-medium">例句（写入为本书范文）</p>
               {preview.samples.map((sample, index) => (
                 <div key={`sample-${index}`} className="flex items-start gap-1.5 text-2xs">
                   <input
@@ -711,7 +711,7 @@ function StyleMemorySection({
             </div>
           ) : null}
           {preview.warnings.map((warning, index) => (
-            <p key={`warning-${index}`} className="text-2xs text-amber-600 dark:text-amber-400">• {warning}</p>
+            <p key={`warning-${index}`} className="text-xs text-warning">• {warning}</p>
           ))}
           <Button
             size="xs"
@@ -726,13 +726,13 @@ function StyleMemorySection({
       )}
 
       {notice && (
-        <div className="flex items-start gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 p-2 text-2xs text-emerald-700 dark:text-emerald-400">
+        <div className="flex items-start gap-1 rounded border border-success/20 bg-success/10 p-2 text-2xs text-success">
           <CheckCircle2 className="mt-0.5 size-3 shrink-0" />
           <span>{notice}</span>
         </div>
       )}
       {error && (
-        <div role="alert" className="flex items-start gap-1 rounded border border-destructive/20 bg-destructive/10 p-2 text-2xs text-destructive">
+        <div role="alert" className="flex items-start gap-1 rounded border border-destructive/20 bg-destructive/10 p-2 text-xs text-destructive">
           <AlertTriangle className="mt-0.5 size-3 shrink-0" />
           <span>{error}</span>
         </div>
@@ -791,7 +791,7 @@ function TavernPresetImportSection({
         </div>
         <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
-      <p className="text-2xs text-muted-foreground leading-relaxed">
+      <p className="text-xs text-muted-foreground leading-relaxed">
         粘贴酒馆 Chat Completion 预设 JSON。系统会自动展开宏变量（如 {"{{user}}"} $\to$ 作者）、识别并小说化提纯破限词，转换为标准写作技能。
       </p>
 
@@ -801,10 +801,10 @@ function TavernPresetImportSection({
             value={jsonText}
             onChange={(e) => setJsonText(e.target.value)}
             placeholder='在此粘贴酒馆预设 JSON 文本（{"prompts": [...], "prompt_order": [...]}）...'
-            className="min-h-[90px] font-mono text-2xs"
+            className="min-h-[90px] font-mono text-xs"
           />
           {parseError && (
-            <p role="alert" className="text-2xs text-destructive bg-destructive/10 p-2 rounded border border-destructive/20">
+            <p role="alert" className="text-xs text-destructive bg-destructive/10 p-2 rounded border border-destructive/20">
               {parseError}
             </p>
           )}
@@ -826,7 +826,7 @@ function TavernPresetImportSection({
               <span>破限提纯: {parsedResult.stats.jailbreakCount} 处</span>
             </div>
             {parsedResult.warnings.length > 0 && (
-              <div className="space-y-0.5 pt-1 text-2xs text-amber-600 dark:text-amber-400">
+              <div className="space-y-0.5 pt-1 text-xs text-warning">
                 {parsedResult.warnings.map((w, i) => (
                   <p key={i}>• {w}</p>
                 ))}

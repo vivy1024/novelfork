@@ -104,9 +104,9 @@ export function MCPToolsTab({ mcpTools, onChange }: MCPToolsTabProps) {
                   >
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {tool.approved ? (
-                        <CheckCircle size={14} className="text-green-600 flex-shrink-0" />
+                        <CheckCircle size={14} className="text-success flex-shrink-0" />
                       ) : (
-                        <XCircle size={14} className="text-red-600 flex-shrink-0" />
+                        <XCircle size={14} className="text-destructive flex-shrink-0" />
                       )}
                       <code className="text-sm font-mono truncate">
                         mcp__{serverName}__{tool.toolName}

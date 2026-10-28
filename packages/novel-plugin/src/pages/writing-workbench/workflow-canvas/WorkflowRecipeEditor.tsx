@@ -215,7 +215,7 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-semibold">{working.name}</span>
           <span
-            className={`rounded-full px-2 py-0.5 text-2xs font-medium ${isDraft ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"}`}
+            className={`rounded-full px-2 py-0.5 text-2xs font-medium ${isDraft ? "bg-warning/10 text-warning" : "bg-success/10 text-success"}`}
             data-testid="workflow-recipe-status"
           >
             {isDraft ? "草稿" : "已发布"}
@@ -227,7 +227,7 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
               叙述者起草
             </span>
           ) : null}
-          {dirty ? <span className="text-2xs text-amber-600" data-testid="workflow-recipe-dirty">有未保存的修改</span> : null}
+          {dirty ? <span className="text-xs text-warning" data-testid="workflow-recipe-dirty">有未保存的修改</span> : null}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <button type="button" className={toolButton} onClick={() => onCreate("blank")} disabled={busy || dirty} title={dirty ? "先保存或放弃当前修改" : undefined}>
@@ -267,7 +267,7 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
               </button>
               <button
                 type="button"
-                className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-2xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 onClick={() => void save("published")}
                 disabled={busy || !publishable}
                 title={publishable ? "发布后可以在上方启动运行" : "还有结构问题，修好后才能发布"}
@@ -283,7 +283,7 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
               </button>
               <button
                 type="button"
-                className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-2xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 onClick={() => void save("published")}
                 disabled={busy || !dirty || !publishable}
                 title={publishable ? undefined : "已发布的方案必须结构完整；有问题可以先转为草稿再改"}
@@ -297,7 +297,7 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
       </div>
 
       {problem ? (
-        <div role="alert" className="space-y-0.5 rounded-md border border-amber-400/60 bg-amber-50 p-2 text-2xs text-amber-800 dark:bg-amber-950/20 dark:text-amber-300" data-testid="workflow-op-problem">
+        <div role="alert" className="space-y-0.5 rounded-md border border-warning/60 bg-warning/10 p-2 text-xs text-warning" data-testid="workflow-op-problem">
           <div className="font-medium">{problem.what}</div>
           <div>原因：{problem.why}</div>
           <div>建议：{problem.action}</div>
@@ -305,7 +305,7 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
       ) : null}
 
       {saveError ? (
-        <div role="alert" className="space-y-0.5 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-2xs text-destructive" data-testid="workflow-save-error">
+        <div role="alert" className="space-y-0.5 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive" data-testid="workflow-save-error">
           <div className="flex items-center gap-1 font-medium">
             <AlertCircle className="size-3" />
             {saveError.explanation?.what ?? saveError.message}

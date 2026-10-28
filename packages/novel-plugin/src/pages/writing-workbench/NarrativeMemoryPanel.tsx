@@ -295,7 +295,7 @@ function MemoryNodeTree({ nodes, selectedNodeId, onOpen, onOpenEntityDetail }: {
       <div key={node.id}>
         <button
           type="button"
-          className={`flex w-full items-center gap-1 rounded px-2 py-1 text-left text-2xs hover:bg-muted ${selected ? "bg-primary/10 text-primary" : ""}`}
+          className={`flex w-full items-center gap-1 rounded px-2 py-1 text-left text-xs hover:bg-muted ${selected ? "bg-primary/10 text-primary" : ""}`}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
           onClick={() => {
             if (hasChildren) toggle(node);
@@ -372,7 +372,7 @@ function StoryStatusSummary({
           <div className="text-2xs text-muted-foreground">已结算</div>
         </div>
         <div className="rounded border border-border/60 p-2">
-          <div className={`text-sm font-semibold tabular-nums ${highRiskCount > 0 ? "text-amber-600" : ""}`}>{highRiskCount}</div>
+          <div className={`text-sm font-semibold tabular-nums ${highRiskCount > 0 ? "text-warning" : ""}`}>{highRiskCount}</div>
           <div className="text-2xs text-muted-foreground">高风险待确认</div>
         </div>
       </div>
@@ -380,7 +380,7 @@ function StoryStatusSummary({
       {factEditError ? <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{factEditError}</div> : null}
 
       {factPreview.length === 0 ? (
-        <p className="text-2xs text-muted-foreground">还没有沉淀动态事实。写完一章后会自动出现角色状态、关系、伏笔等。</p>
+        <p className="text-xs text-muted-foreground">还没有沉淀动态事实。写完一章后会自动出现角色状态、关系、伏笔等。</p>
       ) : entityGroups.length > 0 ? (
         <EntityStatusBoard
           bookId={bookId}
@@ -538,7 +538,7 @@ function OpenSourceChapterButton({
     <button
       type="button"
       onClick={() => onOpenChapter(chapterNumber)}
-      className="shrink-0 rounded px-1.5 py-0.5 text-2xs text-primary hover:bg-muted"
+      className="shrink-0 rounded px-1.5 py-0.5 text-xs text-primary hover:bg-muted"
       title={`打开来源第 ${chapterNumber} 章`}
     >
       第 {chapterNumber} 章
@@ -578,11 +578,11 @@ function EditableFactRow({
         <input
           value={draft}
           onChange={(event) => setDraft(event.currentTarget.value)}
-          className="h-7 w-full rounded border border-border bg-background px-2 text-2xs outline-none"
+          className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none"
           placeholder={fact.object}
         />
         <div className="flex justify-end gap-1.5">
-          <button type="button" onClick={() => setOpen(false)} className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted">取消</button>
+          <button type="button" onClick={() => setOpen(false)} className="rounded border border-border px-2 py-1 text-xs hover:bg-muted">取消</button>
           <button
             type="button"
             disabled={!draft.trim() || draft.trim() === fact.object}
@@ -606,16 +606,16 @@ function EditableFactRow({
         {conflictLabel ? <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">{conflictLabel}</span> : null}
         {typeof fact.confidence === "number" ? <span className="shrink-0 text-2xs text-muted-foreground">置信 {fact.confidence.toFixed(2)}</span> : null}
         <OpenSourceChapterButton chapterNumber={sourceChapter} onOpenChapter={onOpenChapter} />
-        <button type="button" onClick={() => setShowHistory((value) => !value)} className="shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted" title="查看变迁史">
+        <button type="button" onClick={() => setShowHistory((value) => !value)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted" title="查看变迁史">
           历史
         </button>
         {onCorrect ? (
-          <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted" title="纠正">
+          <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted" title="纠正">
             纠正
           </button>
         ) : null}
         {onRetire ? (
-          <button type="button" onClick={() => onRetire(fact)} className="shrink-0 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted" title="作废">
+          <button type="button" onClick={() => onRetire(fact)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted" title="作废">
             作废
           </button>
         ) : null}
@@ -651,7 +651,7 @@ function SearchResults({
         {loading ? <Loader2 className="size-3 animate-spin" /> : <span className="text-2xs text-muted-foreground">{results.length} 条</span>}
       </div>
       {results.length === 0 && !loading ? (
-        <p className="text-2xs text-muted-foreground">没有匹配的叙事记忆。</p>
+        <p className="text-xs text-muted-foreground">没有匹配的叙事记忆。</p>
       ) : results.map((entry) => (
         <button key={`${entry.kind}:${entry.id}`} type="button" onClick={() => onOpen?.(entry)} className="block w-full rounded border border-border/60 p-2 text-left hover:bg-muted">
           <div className="flex items-center justify-between gap-2">
@@ -671,7 +671,7 @@ function SearchResults({
           type="button"
           disabled={loading}
           onClick={onLoadMore}
-          className="w-full rounded border border-dashed border-border px-2 py-1.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+          className="w-full rounded border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
         >
           {loading ? "加载中…" : "加载更多结果"}
         </button>
@@ -689,7 +689,7 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
         <span className="text-2xs text-muted-foreground">{open ? "收起" : "展开"}</span>
       </button>
       {!open ? (
-        <p className="text-2xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           最近召回 {diagnostics.purpose} · 第 {formatNumber(diagnostics.chapterNumber)} 章 · {formatMs(diagnostics.totalMs)} · {formatNumber(diagnostics.totalEstimatedTokens)} tokens
           {(diagnostics.warnings?.length ?? 0) > 0 ? ` · ${diagnostics.warnings!.length} 条警告` : ""}
         </p>
@@ -702,7 +702,7 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
             <span>Tokens：{formatNumber(diagnostics.totalEstimatedTokens)}</span>
           </div>
           {(diagnostics.warnings?.length ?? 0) > 0 && (
-            <div className="space-y-1 text-yellow-700 dark:text-yellow-500">
+            <div className="space-y-1 text-warning">
               {diagnostics.warnings!.map((warning, index) => (
                 <div key={index} className="flex gap-1 text-2xs">
                   <AlertTriangle className="size-3 shrink-0" />
@@ -775,7 +775,7 @@ function PendingEventCard({
       <div className="rounded border border-primary/40 bg-primary/5 p-2 space-y-1.5">
         <div className="flex justify-between gap-2">
           <span className="font-medium">{event.eventType ?? "event"}</span>
-          <button type="button" onClick={() => setEditing(false)} className="text-2xs text-muted-foreground hover:text-foreground">取消编辑</button>
+          <button type="button" onClick={() => setEditing(false)} className="text-xs text-muted-foreground hover:text-foreground">取消编辑</button>
         </div>
         <EditField label="主体" value={draft.subject ?? ""} onChange={(value) => setDraft((prev) => ({ ...prev, subject: value }))} />
         <EditField label="谓词" value={draft.predicate ?? ""} onChange={(value) => setDraft((prev) => ({ ...prev, predicate: value }))} />
@@ -785,7 +785,7 @@ function PendingEventCard({
             type="button"
             disabled={loading}
             onClick={() => onReject?.(event)}
-            className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
+            className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
           >
             驳回
           </button>
@@ -793,7 +793,7 @@ function PendingEventCard({
             type="button"
             disabled={loading || !draft.object?.trim()}
             onClick={() => onApprove?.(event, draft)}
-            className="rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {loading ? "处理中…" : "保存修正并批准"}
           </button>
@@ -817,7 +817,7 @@ function PendingEventCard({
           )}
           <span className="min-w-0 truncate font-medium">{event.eventType ?? "event"}</span>
         </div>
-        <span className={`shrink-0 text-2xs ${event.risk === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
+        <span className={`shrink-0 text-2xs ${event.risk === "high" ? "text-warning" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
         <span>{event.entity ?? "未命名实体"} · 置信度 {event.confidence ?? "—"}</span>
@@ -836,7 +836,7 @@ function PendingEventCard({
             type="button"
             disabled={loading}
             onClick={() => onReject?.(event)}
-            className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
+            className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
           >
             驳回
           </button>
@@ -844,7 +844,7 @@ function PendingEventCard({
             type="button"
             disabled={loading}
             onClick={() => setEditing(true)}
-            className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
+            className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
           >
             改后批准
           </button>
@@ -852,7 +852,7 @@ function PendingEventCard({
             type="button"
             disabled={loading}
             onClick={() => onApprove?.(event)}
-            className="rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {loading ? "处理中…" : "批准"}
           </button>
@@ -869,7 +869,7 @@ function EditField({ label, value, onChange }: { label: string; value: string; o
       <input
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
-        className="h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-2xs outline-none"
+        className="h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-xs outline-none"
       />
     </label>
   );
@@ -890,10 +890,10 @@ function RelationshipMatrix({ facts }: { facts: EntityFact[] }) {
   }, [facts]);
 
   if (rows.rels.length === 0) {
-    return <p className="text-2xs text-muted-foreground">还没有关系事实。角色间关系变化会在章后结算自动沉淀。</p>;
+    return <p className="text-xs text-muted-foreground">还没有关系事实。角色间关系变化会在章后结算自动沉淀。</p>;
   }
   if (rows.subjects.length > 30 || rows.objects.length > 30) {
-    return <p className="text-2xs text-muted-foreground">关系实体超过 30 个，建议切到「发展历程 › 骨架关系层」查看。</p>;
+    return <p className="text-xs text-muted-foreground">关系实体超过 30 个，建议切到「发展历程 › 骨架关系层」查看。</p>;
   }
 
   return (
@@ -938,7 +938,7 @@ function HookBoard({ facts, currentChapter, onOpenChapter }: { facts: EntityFact
   }, [facts]);
 
   if (hooks.length === 0) {
-    return <p className="text-2xs text-muted-foreground">还没有伏笔事实。伏笔的埋设与推进会在章后结算自动沉淀。</p>;
+    return <p className="text-xs text-muted-foreground">还没有伏笔事实。伏笔的埋设与推进会在章后结算自动沉淀。</p>;
   }
 
   return (
@@ -947,7 +947,7 @@ function HookBoard({ facts, currentChapter, onOpenChapter }: { facts: EntityFact
         const planted = hook.sourceChapter ?? hook.validFromChapter;
         const stale = currentChapter !== undefined && planted !== undefined && currentChapter - planted > 20;
         return (
-          <div key={hook.id} className={`flex items-center gap-2 rounded border p-2 ${stale ? "border-amber-400/60 bg-amber-50 dark:bg-amber-950/20" : "border-border/60"}`}>
+          <div key={hook.id} className={`flex items-center gap-2 rounded border p-2 ${stale ? "border-warning/60 bg-warning/10" : "border-border/60"}`}>
             <div className="min-w-0 flex-1">
               <div className="truncate text-2xs font-medium">{hook.object}</div>
               <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
@@ -959,7 +959,7 @@ function HookBoard({ facts, currentChapter, onOpenChapter }: { facts: EntityFact
               {hook.evidenceText ? <div className="truncate text-2xs text-muted-foreground">{hook.evidenceText}</div> : null}
             </div>
             {stale ? (
-              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-2xs text-amber-700 dark:text-amber-400">
+              <span className="shrink-0 rounded bg-warning/20 px-1.5 py-0.5 text-2xs text-warning">
                 超期未推进
               </span>
             ) : null}
@@ -994,9 +994,9 @@ function FactHistoryPanel({ bookId, fact, onClose, onOpenChapter }: { bookId: st
     <div className="rounded-lg border border-border/60 p-2.5 space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-2xs font-medium">{fact.subject} / {fact.predicate} 变迁史</span>
-        <button type="button" onClick={onClose} className="text-2xs text-muted-foreground hover:text-foreground">收起</button>
+        <button type="button" onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">收起</button>
       </div>
-      {loading ? <Loader2 className="size-3.5 animate-spin" /> : error ? <p className="text-2xs text-destructive">{error}</p> : items.length === 0 ? <p className="text-2xs text-muted-foreground">暂无变迁记录。</p> : (
+      {loading ? <Loader2 className="size-3.5 animate-spin" /> : error ? <p className="text-xs text-destructive">{error}</p> : items.length === 0 ? <p className="text-xs text-muted-foreground">暂无变迁记录。</p> : (
         <div className="space-y-1">
           {items.map((item, index) => {
             const chapter = factSourceChapter(item);
@@ -1007,7 +1007,7 @@ function FactHistoryPanel({ bookId, fact, onClose, onOpenChapter }: { bookId: st
                 {!chapter ? <span className="shrink-0 text-2xs text-muted-foreground">第 — 章</span> : null}
                 <span>{item.object}</span>
                 {typeof item.confidence === "number" ? <span className="text-2xs text-muted-foreground">置信 {item.confidence.toFixed(2)}</span> : null}
-                {closed ? <span className="text-2xs text-muted-foreground">{item.sourceType === "manual" ? "已纠正" : "已关闭"} → 第 {item.validUntilChapter} 章</span> : <span className="text-2xs text-emerald-600">当前</span>}
+                {closed ? <span className="text-2xs text-muted-foreground">{item.sourceType === "manual" ? "已纠正" : "已关闭"} → 第 {item.validUntilChapter} 章</span> : <span className="text-2xs text-success">当前</span>}
                 {item.evidenceText ? <span className="w-full text-2xs text-muted-foreground">{item.evidenceText}</span> : null}
               </div>
             );
@@ -1532,7 +1532,7 @@ export function NarrativeMemoryPanelShell({
             <Brain className="size-4 text-primary" />
             章后事实与故事状态
           </div>
-          <p className="text-2xs text-muted-foreground">查看当前状态与结算历史；不编辑作品基础设定。</p>
+          <p className="text-xs text-muted-foreground">查看当前状态与结算历史；不编辑作品基础设定。</p>
         </div>
         <button type="button" onClick={onRefresh} className="rounded p-1 hover:bg-muted" title="刷新">
           <RefreshCw className="size-3.5" />
@@ -1578,10 +1578,10 @@ export function NarrativeMemoryPanelShell({
                   value={queryInput}
                   onChange={(event) => setQueryInput(event.currentTarget.value)}
                   placeholder="搜索角色、关系、伏笔、证据..."
-                  className="h-7 min-w-0 flex-1 bg-transparent text-2xs outline-none"
+                  className="h-7 min-w-0 flex-1 bg-transparent text-xs outline-none"
                 />
               </div>
-              <button type="submit" className="rounded bg-primary px-3 py-1 text-2xs text-primary-foreground">搜索</button>
+              <button type="submit" className="rounded bg-primary px-3 py-1 text-xs text-primary-foreground">搜索</button>
             </form>
           </section>
           <SearchResults
@@ -1622,7 +1622,7 @@ export function NarrativeMemoryPanelShell({
               <span className="text-2xs text-muted-foreground">完整历史见下方</span>
             </div>
             {historyEvents.length === 0 ? (
-              <p className="text-2xs text-muted-foreground">暂无结算历史。</p>
+              <p className="text-xs text-muted-foreground">暂无结算历史。</p>
             ) : historyEvents.slice(0, 5).map((entry) => (
               <button
                 key={`${entry.kind}:${entry.id}`}
@@ -1651,12 +1651,12 @@ export function NarrativeMemoryPanelShell({
                 {highRiskEvents.length > 0 ? ` · 高风险 ${highRiskEvents.length}` : ""}
               </h3>
               {events.length > 3 && (
-                <button type="button" className="text-2xs text-muted-foreground hover:text-foreground" onClick={() => setPendingOpen((value) => !value)}>
+                <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setPendingOpen((value) => !value)}>
                   {pendingOpen ? "收起" : "展开全部"}
                 </button>
               )}
             </div>
-            <p className="text-2xs text-muted-foreground">章后默认自动结算；这里通常只剩高风险/低置信度项，可不处理也不阻断写作。</p>
+            <p className="text-xs text-muted-foreground">章后默认自动结算；这里通常只剩高风险/低置信度项，可不处理也不阻断写作。</p>
 
             {/* 置信度筛选 + 全选：批量处理低置信抽取时先筛再选。 */}
             <div className="flex flex-wrap items-center gap-1" aria-label="待确认置信度筛选">
@@ -1666,7 +1666,7 @@ export function NarrativeMemoryPanelShell({
                   type="button"
                   aria-pressed={confidenceFilter === filter.value}
                   onClick={() => setConfidenceFilter(filter.value)}
-                  className={`rounded-full px-2 py-0.5 text-2xs transition-colors ${
+                  className={`rounded-full px-2 py-0.5 text-xs transition-colors ${
                     confidenceFilter === filter.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -1674,7 +1674,7 @@ export function NarrativeMemoryPanelShell({
                 </button>
               ))}
               {selectableIds.size > 0 && (
-                <label className="ml-auto flex items-center gap-1 text-2xs text-muted-foreground">
+                <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -1699,7 +1699,7 @@ export function NarrativeMemoryPanelShell({
                       type="button"
                       disabled={bulkLoading !== null}
                       onClick={() => void runBulk("delete")}
-                      className="ml-auto rounded bg-destructive px-2 py-1 text-2xs text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                      className="ml-auto rounded bg-destructive px-2 py-1 text-xs text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
                     >
                       {bulkLoading === "delete" ? "丢弃中…" : `确认丢弃 ${selectedEventIds.size} 条`}
                     </button>
@@ -1707,7 +1707,7 @@ export function NarrativeMemoryPanelShell({
                       type="button"
                       disabled={bulkLoading !== null}
                       onClick={() => setConfirmingDiscard(false)}
-                      className="rounded px-2 py-1 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                      className="rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                     >
                       取消
                     </button>
@@ -1718,7 +1718,7 @@ export function NarrativeMemoryPanelShell({
                       type="button"
                       disabled={bulkLoading !== null}
                       onClick={() => void runBulk("approve")}
-                      className="ml-auto rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      className="ml-auto rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     >
                       {bulkLoading === "approve" ? "批准中…" : "批量批准"}
                     </button>
@@ -1726,7 +1726,7 @@ export function NarrativeMemoryPanelShell({
                       type="button"
                       disabled={bulkLoading !== null}
                       onClick={() => setConfirmingDiscard(true)}
-                      className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
+                      className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
                       title="把这些草案移出待确认队列（不作裁决）；进入回收站后可以撤销。"
                     >
                       批量丢弃
@@ -1735,7 +1735,7 @@ export function NarrativeMemoryPanelShell({
                       type="button"
                       disabled={bulkLoading !== null}
                       onClick={() => setSelectedEventIds(new Set())}
-                      className="rounded px-2 py-1 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                      className="rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                     >
                       取消选择
                     </button>
@@ -1750,7 +1750,7 @@ export function NarrativeMemoryPanelShell({
                   type="button"
                   disabled={bulkLoading !== null}
                   onClick={() => void undoDiscard()}
-                  className="ml-auto rounded border border-border px-2 py-1 text-2xs hover:bg-muted disabled:opacity-50"
+                  className="ml-auto rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
                 >
                   {bulkLoading === "restore" ? "撤销中…" : "撤销"}
                 </button>
@@ -1760,9 +1760,9 @@ export function NarrativeMemoryPanelShell({
 
             {actionError && <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{actionError}</div>}
             {events.length === 0 ? (
-              <p className="text-2xs text-muted-foreground">没有待确认事件。</p>
+              <p className="text-xs text-muted-foreground">没有待确认事件。</p>
             ) : pendingToShow.length === 0 ? (
-              <p className="text-2xs text-muted-foreground">当前置信度筛选下没有待确认事件。</p>
+              <p className="text-xs text-muted-foreground">当前置信度筛选下没有待确认事件。</p>
             ) : pendingToShow.map((event, index) => (
               <PendingEventCard
                 key={event.id ?? index}
@@ -1777,7 +1777,7 @@ export function NarrativeMemoryPanelShell({
               />
             ))}
             {!pendingOpen && confidenceFilter === "all" && otherPending.length > 0 && highRiskEvents.length > 0 && (
-              <p className="text-2xs text-muted-foreground">另有 {otherPending.length} 条非高风险待确认，已折叠。</p>
+              <p className="text-xs text-muted-foreground">另有 {otherPending.length} 条非高风险待确认，已折叠。</p>
             )}
           </section>
 
@@ -1804,9 +1804,9 @@ export function NarrativeMemoryPanelShell({
             <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
             <EvidenceChainLookup bookId={bookId} />
           </div>
-          <p className="text-2xs text-muted-foreground">已自动应用或已驳回的章后事件，按最近优先展示。</p>
+          <p className="text-xs text-muted-foreground">已自动应用或已驳回的章后事件，按最近优先展示。</p>
           {historyEvents.length === 0 ? (
-            <p className="text-2xs text-muted-foreground">暂无结算历史。写下一章后会自动出现。</p>
+            <p className="text-xs text-muted-foreground">暂无结算历史。写下一章后会自动出现。</p>
           ) : historyEvents.map((entry) => (
             <button
               key={`${entry.kind}:${entry.id}`}
@@ -1834,7 +1834,7 @@ export function NarrativeMemoryPanelShell({
               type="button"
               disabled={historyLoadingMore}
               onClick={onLoadMoreHistory}
-              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               {historyLoadingMore ? "加载中…" : "加载更多历史"}
             </button>
@@ -1852,9 +1852,9 @@ export function NarrativeMemoryPanelShell({
           */}
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-line-approvals">
           <h3 className="text-xs font-semibold">叙事线审批 ({lineApprovals.length})</h3>
-          <p className="text-2xs text-muted-foreground">叙事线节点与关系的变更审批记录，批准与驳回都会留痕。</p>
+          <p className="text-xs text-muted-foreground">叙事线节点与关系的变更审批记录，批准与驳回都会留痕。</p>
           {lineApprovals.length === 0 ? (
-            <p className="text-2xs text-muted-foreground">暂无叙事线审批记录。在叙事线视图增删节点后会出现。</p>
+            <p className="text-xs text-muted-foreground">暂无叙事线审批记录。在叙事线视图增删节点后会出现。</p>
           ) : lineApprovals.map((approval) => (
             <div
               key={approval.previewId}
@@ -1871,7 +1871,7 @@ export function NarrativeMemoryPanelShell({
                 {approvalScopeText(approval)}
               </div>
               {approval.reason && (
-                <p className="mt-0.5 text-2xs text-muted-foreground">理由：{approval.reason}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">理由：{approval.reason}</p>
               )}
             </div>
           ))}
@@ -1880,7 +1880,7 @@ export function NarrativeMemoryPanelShell({
               type="button"
               disabled={approvalsLoadingMore}
               onClick={onLoadMoreApprovals}
-              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               {approvalsLoadingMore ? "加载中…" : "加载更多审批"}
             </button>
@@ -1984,7 +1984,7 @@ export function EvidenceChainLookup({ bookId }: { bookId: string }) {
           查证据链
         </Button>
       </div>
-      {error && <p className="text-2xs text-destructive">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
       {payload && (
         <div className="rounded border border-border/60 bg-muted/20 p-2 text-2xs space-y-1" data-testid="evidence-chain-result">
           <p className="font-medium text-foreground">
@@ -1992,7 +1992,7 @@ export function EvidenceChainLookup({ bookId }: { bookId: string }) {
             <span className="ml-1 font-normal text-muted-foreground">指纹 {payload.fingerprint.slice(0, 8)}…</span>
           </p>
           {(payload.artifact.sandboxIntercepted ?? 0) > 0 && (
-            <p className="text-amber-600 dark:text-amber-400">收敛沙漏拦截 {payload.artifact.sandboxIntercepted} 条</p>
+            <p className="text-warning">收敛沙漏拦截 {payload.artifact.sandboxIntercepted} 条</p>
           )}
           {(payload.artifact.drafts ?? []).map((draft, index) => (
             <div key={index} className="flex items-start gap-1.5">
@@ -2084,7 +2084,7 @@ function InjectionReportView({ report }: { report: WriteInjectionReport }) {
                     <li key={card.id} className="flex flex-wrap items-center gap-1.5">
                       <span>{card.title}</span>
                       <span className="text-muted-foreground">约 {card.estimatedTokens} tokens</span>
-                      {card.droppedInPacking ? <span className="rounded bg-amber-500/20 px-1 py-px text-amber-700 dark:text-amber-400">全局打包时被裁，未进上下文</span> : null}
+                      {card.droppedInPacking ? <span className="rounded bg-warning/20 px-1 py-px text-warning">全局打包时被裁，未进上下文</span> : null}
                     </li>
                   ))}
                 </ul>
@@ -2134,7 +2134,7 @@ function InjectionReportView({ report }: { report: WriteInjectionReport }) {
                         <span className="rounded bg-muted px-1 py-px text-muted-foreground">{sample.sceneTypeLabel}</span>
                         <span className="rounded bg-muted px-1 py-px text-muted-foreground">{sample.matchLabel}</span>
                         <span className="text-muted-foreground">约 {sample.estimatedTokens} tokens</span>
-                        {sample.droppedInPacking ? <span className="rounded bg-amber-500/20 px-1 py-px text-amber-700 dark:text-amber-400">全局打包时被裁</span> : null}
+                        {sample.droppedInPacking ? <span className="rounded bg-warning/20 px-1 py-px text-warning">全局打包时被裁</span> : null}
                       </div>
                       <div className="mt-0.5 text-muted-foreground">{sample.sourceTitle} · {sample.transferLabel}</div>
                       <div className="mt-0.5 text-muted-foreground/80">{sample.reason}</div>
@@ -2282,15 +2282,15 @@ export function WriteInjectionSection({ bookId, currentChapter }: { bookId: stri
         {currentChapter ? (
           <button
             type="button"
-            className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted"
+            className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted"
             onClick={() => setChapterInput(String(currentChapter))}
           >
             填入当前章（第 {currentChapter} 章）
           </button>
         ) : null}
       </div>
-      {inputError ? <p className="text-2xs text-destructive">{inputError}</p> : null}
-      {error ? <p className="text-2xs text-destructive">{error}</p> : null}
+      {inputError ? <p className="text-xs text-destructive">{inputError}</p> : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
       {data && !data.exists ? (
         <div className="space-y-1 rounded border border-border/60 bg-muted/20 p-2 text-2xs" data-testid="write-injection-empty">
           <p className="font-medium">{data.summary}</p>
@@ -2367,11 +2367,11 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-1.5 px-1 py-2 text-2xs text-muted-foreground">
+        <p className="flex items-center gap-1.5 px-1 py-2 text-xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" /> 正在加载摘要…
         </p>
       ) : error ? (
-        <p className="flex items-start gap-1 px-1 py-2 text-2xs text-destructive">
+        <p className="flex items-start gap-1 px-1 py-2 text-xs text-destructive">
           <AlertTriangle className="mt-0.5 size-3 shrink-0" /> {error}
         </p>
       ) : (
@@ -2388,7 +2388,7 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
             <span>{stats?.total ?? 0} 条</span>
           </div>
           {pendingCount === 0 && (
-            <p className="pt-0.5 text-2xs text-muted-foreground">章后默认自动结算，当前没有需要你处理的事项。</p>
+            <p className="pt-0.5 text-xs text-muted-foreground">章后默认自动结算，当前没有需要你处理的事项。</p>
           )}
         </div>
       )}
@@ -2398,7 +2398,7 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
           在中央打开章后事实
         </Button>
       )}
-      <p className="px-1 text-2xs leading-relaxed text-muted-foreground">
+      <p className="px-1 text-xs leading-relaxed text-muted-foreground">
         完整的故事状态、关系矩阵、结算历史与待确认队列在中央面板中管理。
       </p>
     </div>

@@ -200,20 +200,20 @@ export function CreativeCompassPanel({ bookId, onFillDirective }: CreativeCompas
           <RefreshCw className="size-3" />
         </button>
       </div>
-      <p className="mt-0.5 text-2xs text-muted-foreground">
+      <p className="mt-0.5 text-xs text-muted-foreground">
         近 1–3 章的焦点。保存在作品基础里，写章时会按它推进。
       </p>
-      {error ? <p className="mt-1 text-2xs text-destructive">加载失败：{error}</p> : null}
+      {error ? <p className="mt-1 text-xs text-destructive">加载失败：{error}</p> : null}
       <div className="mt-1.5 flex flex-col gap-1.5">
         {FIELDS.map((field) => (
-          <label key={field.key} className="grid gap-0.5 text-2xs text-muted-foreground">
+          <label key={field.key} className="grid gap-0.5 text-xs text-muted-foreground">
             {field.label}
             <textarea
               value={draft[field.key]}
               rows={field.rows}
               placeholder={field.placeholder}
               data-testid={`creative-compass-${field.key}`}
-              className="resize-none rounded border border-border bg-background px-2 py-1 text-2xs text-foreground outline-none focus:border-primary"
+              className="resize-none rounded border border-border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-primary"
               onChange={(event) => scheduleSave({ ...draft, [field.key]: event.currentTarget.value })}
             />
           </label>
@@ -229,7 +229,7 @@ export function CreativeCompassPanel({ bookId, onFillDirective }: CreativeCompas
         {draft.goal.trim() && onFillDirective ? (
           <button
             type="button"
-            className="text-2xs text-primary hover:underline"
+            className="text-xs text-primary hover:underline"
             data-testid="creative-compass-fill-directive"
             onClick={() => onFillDirective(draft.goal.trim())}
           >

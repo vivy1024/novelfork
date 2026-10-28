@@ -90,7 +90,7 @@ function IssueList({ issues, onSelect }: { issues: readonly WorkflowGraphIssue[]
               type="button"
               disabled={!target || !onSelect}
               onClick={() => onSelect?.(target)}
-              className="w-full space-y-0.5 rounded border border-destructive/40 bg-destructive/5 p-1.5 text-left text-2xs text-destructive enabled:hover:bg-destructive/10"
+              className="w-full space-y-0.5 rounded border border-destructive/40 bg-destructive/5 p-1.5 text-left text-xs text-destructive enabled:hover:bg-destructive/10"
             >
               <div className="flex items-start gap-1 font-medium">
                 <AlertTriangle className="mt-0.5 size-3 shrink-0" />
@@ -238,9 +238,9 @@ export function WorkflowInspector({ recipe, issues, selection, editable, onOps, 
           <CommitInput ariaLabel="节点名称" value={node.label} disabled={!editable} onCommit={(text) => onOps([{ op: "update_node", id: node.id, patch: { label: text } }])} />
         </label>
         {node.type === "step" ? <StepFields step={node} editable={editable} onOps={onOps} /> : null}
-        {node.type === "join" ? <p className="text-2xs text-muted-foreground">汇合节点等所有入线都走完（或因分支未选中而作废）后才继续。</p> : null}
+        {node.type === "join" ? <p className="text-xs text-muted-foreground">汇合节点等所有入线都走完（或因分支未选中而作废）后才继续。</p> : null}
         {node.type === "step" && requiresAuthorDecision(node) ? (
-          <p className="text-2xs text-muted-foreground">从卡片右侧的橙色连接点拖一条线到上游工序，作者打回时就回到那里重做；不连则打回本工序重做。</p>
+          <p className="text-xs text-muted-foreground">从卡片右侧的橙色连接点拖一条线到上游工序，作者打回时就回到那里重做；不连则打回本工序重做。</p>
         ) : null}
         <IssueList issues={nodeIssues} />
       </div>
@@ -349,11 +349,11 @@ export function WorkflowInspector({ recipe, issues, selection, editable, onOps, 
       </label>
       {issues.length > 0 ? (
         <div className="space-y-1.5">
-          <div className="text-2xs font-medium text-destructive">结构问题（{issues.length}）——修好后才能发布</div>
+          <div className="text-xs font-medium text-destructive">结构问题（{issues.length}）——修好后才能发布</div>
           <IssueList issues={issues} onSelect={onSelect} />
         </div>
       ) : (
-        <p className="text-2xs text-muted-foreground">结构完整。点选节点或连线可以编辑它；从节点底部的连接点拖线可以连接下一步。</p>
+        <p className="text-xs text-muted-foreground">结构完整。点选节点或连线可以编辑它；从节点底部的连接点拖线可以连接下一步。</p>
       )}
     </div>
   );

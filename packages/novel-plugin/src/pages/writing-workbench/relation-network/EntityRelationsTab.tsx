@@ -155,14 +155,14 @@ export function EntityRelationsTab({ bookId, entryId, resolving, entityName, cur
     return (
       <div className="rounded-lg border border-dashed border-border/80 bg-muted/10 p-4 text-center text-xs text-muted-foreground" data-testid="entity-relations-none">
         <p className="font-medium">{currentChapter !== undefined ? `截至第 ${currentChapter} 章` : "目前"}还没有 TA 的关系记录。</p>
-        <p className="mt-1 text-2xs">关系来自章后结算里的关系类事实，双方都要有条目；只是同场出现不算关系。</p>
+        <p className="mt-1 text-xs">关系来自章后结算里的关系类事实，双方都要有条目；只是同场出现不算关系。</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-2" data-testid="entity-relations">
-      <p className="px-0.5 text-2xs text-muted-foreground">
+      <p className="px-0.5 text-xs text-muted-foreground">
         {currentChapter !== undefined ? `截至第 ${currentChapter} 章` : "至今"}与 {currentCount} 人有仍成立的关系，共和 {counterparts.length} 人有过关系。
       </p>
       {counterparts.map((item) => {
@@ -180,7 +180,7 @@ export function EntityRelationsTab({ bookId, entryId, resolving, entityName, cur
             </button>
             {expanded ? (
               <div className="mt-2 space-y-1.5 border-t pt-2">
-                <p className="text-2xs leading-relaxed text-muted-foreground">{item.trend.explanation}{item.sharedEvents > 0 ? ` 共同经历事件 ${item.sharedEvents} 次。` : ""}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">{item.trend.explanation}{item.sharedEvents > 0 ? ` 共同经历事件 ${item.sharedEvents} 次。` : ""}</p>
                 {item.history.map((relation) => (
                   <div key={relation.relationId} className={`space-y-1 rounded border p-2 ${relation.active ? "border-primary/40" : ""}`}>
                     <div className="flex flex-wrap items-center gap-1 text-2xs text-muted-foreground">
@@ -196,7 +196,7 @@ export function EntityRelationsTab({ bookId, entryId, resolving, entityName, cur
                       <span className="text-muted-foreground">{nameOf(relation.subjectId)} → {nameOf(relation.objectId)}：</span>
                       <span className="font-medium">{relation.predicate}</span>
                     </div>
-                    {relation.evidence ? <p className="line-clamp-2 rounded bg-muted/30 p-1.5 text-2xs text-muted-foreground">依据：{relation.evidence}</p> : null}
+                    {relation.evidence ? <p className="line-clamp-2 rounded bg-muted/30 p-1.5 text-xs text-muted-foreground">依据：{relation.evidence}</p> : null}
                   </div>
                 ))}
               </div>

@@ -38,7 +38,7 @@ function MetricRow({ label, value, suffix, good }: { label: string; value: strin
   return (
     <div className="flex items-center justify-between py-1">
       <span className="text-2xs text-muted-foreground">{label}</span>
-      <span className={`text-xs font-medium ${good === false ? "text-red-500" : good === true ? "text-green-600" : ""}`}>
+      <span className={`text-xs font-medium ${good === false ? "text-destructive" : good === true ? "text-success" : ""}`}>
         {value}{suffix && <span className="text-muted-foreground font-normal ml-0.5">{suffix}</span>}
       </span>
     </div>
@@ -49,7 +49,7 @@ function MetricRow({ label, value, suffix, good }: { label: string; value: strin
 
 function DimensionBar({ label, value, max }: { label: string; value: number; max: number }) {
   const percent = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
-  const color = percent >= 70 ? "bg-green-500" : percent >= 40 ? "bg-yellow-500" : "bg-red-500";
+  const color = percent >= 70 ? "bg-success" : percent >= 40 ? "bg-warning" : "bg-destructive";
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between text-2xs">
@@ -108,7 +108,7 @@ export function BookHealthSummary({ bookId }: BookHealthSummaryProps) {
     ? Math.round(dimensions.reduce((sum, d) => sum + (d.value / d.max) * 100, 0) / dimensions.length)
     : 0;
 
-  const overallColor = overallScore >= 70 ? "text-green-600" : overallScore >= 40 ? "text-yellow-600" : "text-red-500";
+  const overallColor = overallScore >= 70 ? "text-success" : overallScore >= 40 ? "text-warning" : "text-destructive";
 
   return (
     <div className="rounded-lg border border-border p-3 space-y-3" data-testid="book-health-summary">
@@ -147,7 +147,7 @@ export function BookHealthSummary({ bookId }: BookHealthSummaryProps) {
       {h.warnings.length > 0 && (
         <div className="space-y-1 pt-1">
           {h.warnings.map((w, i) => (
-            <div key={i} className="flex items-start gap-1.5 text-2xs text-yellow-700">
+            <div key={i} className="flex items-start gap-1.5 text-2xs text-warning">
               <AlertTriangle className="size-3 shrink-0 mt-0.5" />
               <span>{w.message}</span>
             </div>

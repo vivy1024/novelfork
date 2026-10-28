@@ -130,7 +130,7 @@ function PendingReviewRow({
             <Badge variant="secondary" className="text-2xs">{item.typeLabel}</Badge>
             <span className="text-2xs text-muted-foreground">{item.location}</span>
           </div>
-          <p className="break-words text-2xs leading-relaxed text-foreground">{item.summary}</p>
+          <p className="break-words text-xs leading-relaxed text-foreground">{item.summary}</p>
         </div>
         <div className="mt-0.5 flex shrink-0 gap-1">
           <Button
@@ -163,8 +163,8 @@ function PendingReviewRow({
           <Badge variant="secondary" className="text-2xs">{item.typeLabel}</Badge>
           <span className="text-2xs text-muted-foreground">{item.location}</span>
         </div>
-        <p className="break-words text-2xs leading-relaxed text-foreground">{item.summary}</p>
-        <p className="text-2xs text-muted-foreground">去哪决定：{item.resolveAt}</p>
+        <p className="break-words text-xs leading-relaxed text-foreground">{item.summary}</p>
+        <p className="text-xs text-muted-foreground">去哪决定：{item.resolveAt}</p>
       </div>
       {action.run ? (
         <Button size="xs" variant="outline" className="mt-0.5 shrink-0 gap-0.5 text-2xs" onClick={action.run}>
@@ -268,30 +268,30 @@ export function PendingReviewPanel(props: PendingReviewPanelProps) {
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
         {error && (
-          <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-2xs text-destructive">{error}</p>
+          <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">{error}</p>
         )}
 
         {loading && !data && (
-          <p className="flex items-center gap-1.5 text-2xs text-muted-foreground" role="status">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
             <Loader2 className="size-3 animate-spin" />
             正在汇总 {PENDING_REVIEW_KINDS.length} 类待确认来源…
           </p>
         )}
 
         {data && total === 0 && (
-          <div className="space-y-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 p-2">
-            <p className="flex items-center gap-1 text-2xs font-medium text-emerald-700 dark:text-emerald-400">
+          <div className="space-y-1.5 rounded-md border border-success/20 bg-success/5 p-2">
+            <p className="flex items-center gap-1 text-xs font-medium text-success">
               <CheckCircle2 className="size-3.5" />
               全部确认完
             </p>
-            <p className="text-2xs leading-relaxed text-muted-foreground">{data.explanation}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{data.explanation}</p>
           </div>
         )}
 
         {data && data.warnings.length > 0 && (
-          <div className="space-y-0.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
+          <div className="space-y-0.5 rounded-md border border-warning/30 bg-warning/5 p-2">
             {data.warnings.map((warning, index) => (
-              <p key={`${warning.code}-${index}`} className="text-2xs leading-relaxed text-amber-700 dark:text-amber-400">
+              <p key={`${warning.code}-${index}`} className="text-xs leading-relaxed text-warning">
                 {warning.message}
               </p>
             ))}
@@ -321,7 +321,7 @@ export function PendingReviewPanel(props: PendingReviewPanelProps) {
         ))}
 
         {data && total > 0 && (
-          <p className="px-0.5 text-2xs leading-relaxed text-muted-foreground">{data.explanation}</p>
+          <p className="px-0.5 text-xs leading-relaxed text-muted-foreground">{data.explanation}</p>
         )}
       </div>
     </section>

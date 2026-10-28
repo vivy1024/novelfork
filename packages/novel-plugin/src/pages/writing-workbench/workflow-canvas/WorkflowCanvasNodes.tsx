@@ -44,11 +44,11 @@ export const RUN_STATUS_LABEL: Record<CanvasRunStatus, string> = {
 function RunStatusIcon({ status }: { status: CanvasRunStatus }) {
   switch (status) {
     case "done":
-      return <CheckCircle2 className="size-3.5 text-emerald-500" />;
+      return <CheckCircle2 className="size-3.5 text-success" />;
     case "running":
       return <Loader2 className="size-3.5 animate-spin text-primary" />;
     case "awaiting_approval":
-      return <Pause className="size-3.5 text-amber-500" />;
+      return <Pause className="size-3.5 text-warning" />;
     case "failed":
       return <XCircle className="size-3.5 text-destructive" />;
     case "skipped":
@@ -61,9 +61,9 @@ function RunStatusIcon({ status }: { status: CanvasRunStatus }) {
 
 const RUN_BORDER: Partial<Record<CanvasRunStatus, string>> = {
   running: "border-primary ring-2 ring-primary/30",
-  awaiting_approval: "border-amber-400 ring-2 ring-amber-300/40",
+  awaiting_approval: "border-warning ring-2 ring-warning/40",
   failed: "border-destructive ring-2 ring-destructive/30",
-  done: "border-emerald-400/70",
+  done: "border-success/70",
 };
 
 function frameClass(props: NodeProps<WorkflowCanvasNode>): string {
@@ -78,7 +78,7 @@ const handleClass = "!size-2.5 !border-2 !border-background !bg-muted-foreground
 function IssueMark({ count }: { count: number }) {
   if (count === 0) return null;
   return (
-    <span className="flex items-center gap-0.5 text-2xs text-destructive" title={`${count} 处结构问题`}>
+    <span className="flex items-center gap-0.5 text-xs text-destructive" title={`${count} 处结构问题`}>
       <AlertTriangle className="size-3" />
       {count}
     </span>
@@ -88,7 +88,7 @@ function IssueMark({ count }: { count: number }) {
 function StartNodeView(props: NodeProps<WorkflowCanvasNode>) {
   return (
     <div
-      className={`flex w-28 items-center justify-center gap-1.5 rounded-full border-2 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 shadow-sm dark:bg-emerald-950/30 dark:text-emerald-300 ${frameClass(props)}`}
+      className={`flex w-28 items-center justify-center gap-1.5 rounded-full border-2 bg-success/10 px-3 py-2 text-xs font-medium text-success shadow-sm ${frameClass(props)}`}
       data-testid={`workflow-node-${props.id}`}
     >
       <Play className="size-3.5 shrink-0 fill-current" />
@@ -145,7 +145,7 @@ function StepNodeView(props: NodeProps<WorkflowCanvasNode>) {
       <div className="flex items-start justify-between gap-1 px-2.5 pt-2">
         <span className={`font-medium leading-snug ${node.enabled ? "" : "line-through"}`}>{node.label}</span>
         <span className="flex shrink-0 items-center gap-1">
-          {needsDecision ? <ShieldCheck className="size-3.5 text-amber-500" aria-label="需要作者确认" /> : null}
+          {needsDecision ? <ShieldCheck className="size-3.5 text-warning" aria-label="需要作者确认" /> : null}
           <IssueMark count={issues.length} />
         </span>
       </div>
@@ -176,7 +176,7 @@ function StepNodeView(props: NodeProps<WorkflowCanvasNode>) {
           type="source"
           position={Position.Right}
           style={{ top: "70%" }}
-          className="!size-2.5 !border-2 !border-background !bg-amber-500"
+          className="!size-2.5 !border-2 !border-background !bg-warning"
           title="从这里拖到要重做的上游工序：作者打回时回到那里"
         />
       ) : null}
@@ -223,7 +223,7 @@ function WorkflowEdgeView(props: EdgeProps<WorkflowCanvasEdge>) {
       {label ? (
         <EdgeLabelRenderer>
           <div
-            className={`nodrag nopan pointer-events-auto absolute rounded border px-1.5 py-0.5 text-2xs ${isReject ? "border-amber-400/70 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" : "bg-card text-foreground"}`}
+            className={`nodrag nopan pointer-events-auto absolute rounded border px-1.5 py-0.5 text-2xs ${isReject ? "border-warning/70 bg-warning/10 text-warning" : "bg-card text-foreground"}`}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
             {label}

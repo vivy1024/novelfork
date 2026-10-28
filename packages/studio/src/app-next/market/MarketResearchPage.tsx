@@ -1161,7 +1161,7 @@ export function MarketResearchPage() {
                               title="采样分析公开前 3 章结构指标"
                               onClick={() => void sampleChapters(record)}
                             >
-                              <Sparkles className="size-3 text-amber-500" />
+                              <Sparkles className="size-3 text-warning" />
                               采样
                             </Button>
                           ) : (
@@ -1255,7 +1255,7 @@ export function MarketResearchPage() {
                       <div>问叹句：问号 {s.question_mark_count} / 感叹号 {s.exclamation_mark_count}</div>
                       <div>金手指命中：{s.golden_finger_hits} 次 · 冲突词：{s.conflict_word_hits} 次</div>
                       {s.structural_summary ? (
-                        <p className="mt-2 rounded bg-background p-1.5 text-2xs leading-relaxed text-foreground">
+                        <p className="mt-2 rounded bg-background p-1.5 text-xs leading-relaxed text-foreground">
                           {s.structural_summary}
                         </p>
                       ) : null}

@@ -88,7 +88,7 @@ function FencedCodeBlock({ className, children }: CodeBlockProps) {
       <button
         type="button"
         onClick={handleCopy}
-        className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover/code:opacity-100 transition-opacity flex items-center gap-1 px-1.5 py-0.5 text-2xs text-gray-400 hover:text-gray-200 bg-gray-800/80 hover:bg-gray-700/80 rounded"
+        className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover/code:opacity-100 transition-opacity flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-400 hover:text-gray-200 bg-gray-800/80 hover:bg-gray-700/80 rounded"
       >
         {copied ? "已复制" : "复制"}
       </button>

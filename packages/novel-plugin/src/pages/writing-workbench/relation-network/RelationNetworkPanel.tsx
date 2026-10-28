@@ -287,7 +287,7 @@ function RelationNetworkInner({ bookId, onOpenEntry, onOpenEntity, onOpenChapter
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center" data-testid="relation-network-error">
         <AlertCircle className="size-5 text-destructive" />
-        <p className="max-w-sm text-2xs text-muted-foreground">{overview.message}</p>
+        <p className="max-w-sm text-xs text-muted-foreground">{overview.message}</p>
         <Button size="xs" variant="outline" className="h-6 gap-1 text-2xs" onClick={reload}>
           <RefreshCw className="size-3" /> 重试
         </Button>
@@ -310,7 +310,7 @@ function RelationNetworkInner({ bookId, onOpenEntry, onOpenEntity, onOpenChapter
           </Button>
         ) : null}
         {rebuild.message ? (
-          <p className={`max-w-md text-center text-2xs ${rebuild.failed ? "text-destructive" : "text-muted-foreground"}`} data-testid="relation-network-rebuild-message">{rebuild.message}</p>
+          <p className={`max-w-md text-center text-xs ${rebuild.failed ? "text-destructive" : "text-muted-foreground"}`} data-testid="relation-network-rebuild-message">{rebuild.message}</p>
         ) : null}
       </div>
     );
@@ -379,7 +379,7 @@ function RelationNetworkInner({ bookId, onOpenEntry, onOpenEntity, onOpenChapter
         </div>
       </div>
       {rebuild.message ? (
-        <p className={`shrink-0 px-0.5 text-2xs ${rebuild.failed ? "text-destructive" : "text-muted-foreground"}`} data-testid="relation-network-rebuild-message">{rebuild.message}</p>
+        <p className={`shrink-0 px-0.5 text-xs ${rebuild.failed ? "text-destructive" : "text-muted-foreground"}`} data-testid="relation-network-rebuild-message">{rebuild.message}</p>
       ) : null}
 
       <div className="flex min-h-0 flex-1 gap-2">
@@ -418,7 +418,7 @@ function RelationNetworkInner({ bookId, onOpenEntry, onOpenEntity, onOpenChapter
               <Controls showInteractive={false} position="bottom-left" />
             </ReactFlow>
           {network.status === "error" ? (
-            <div className="absolute inset-x-2 top-2 flex items-center gap-1.5 rounded border border-destructive/40 bg-background px-2 py-1 text-2xs text-destructive" role="alert">
+            <div className="absolute inset-x-2 top-2 flex items-center gap-1.5 rounded border border-destructive/40 bg-background px-2 py-1 text-xs text-destructive" role="alert">
               <AlertCircle className="size-3 shrink-0" />
               <span className="flex-1">{network.message}</span>
               <button type="button" className="underline-offset-2 hover:underline" onClick={reload}>重试</button>
@@ -528,14 +528,14 @@ function NodeInspector({ node, edges, nameOf, onFocus, onSelectEdge, onOpenEntry
       </div>
       <div className="space-y-1">
         <div className="text-2xs font-medium text-muted-foreground">图上的关系（点一条看关系史）</div>
-        {touching.length === 0 ? <p className="text-2xs text-muted-foreground">图上没有与 TA 相连的关系。</p> : null}
+        {touching.length === 0 ? <p className="text-xs text-muted-foreground">图上没有与 TA 相连的关系。</p> : null}
         {touching.map((edge) => {
           const other = edge.source === node.id ? edge.target : edge.source;
           return (
             <button
               key={edge.id}
               type="button"
-              className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-2xs hover:bg-muted"
+              className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-muted"
               onClick={() => onSelectEdge(edge.id)}
               data-testid={`relation-node-edge-${other}`}
             >
@@ -569,7 +569,7 @@ function EdgeInspector({ edge, nameOf, pair, chapter, onFocus, onOpenChapter }: 
       {!pair || pair.status === "loading" ? (
         <div className="flex items-center gap-1.5 text-2xs text-muted-foreground"><Loader2 className="size-3 animate-spin" /> 正在读关系史…</div>
       ) : pair.status === "error" ? (
-        <p className="text-2xs text-destructive">{pair.message}</p>
+        <p className="text-xs text-destructive">{pair.message}</p>
       ) : (
         <>
           <div className="space-y-1 rounded-md border bg-muted/30 p-2" data-testid="relation-trend">
@@ -577,7 +577,7 @@ function EdgeInspector({ edge, nameOf, pair, chapter, onFocus, onOpenChapter }: 
               <span className="text-2xs text-muted-foreground">走向</span>
               <Badge variant="outline" className={`h-4 px-1 text-2xs ${TREND_BADGE[pair.data.trend.kind] ?? ""}`}>{pair.data.trend.label}</Badge>
             </div>
-            <p className="text-2xs leading-relaxed text-muted-foreground">{pair.data.trend.explanation}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{pair.data.trend.explanation}</p>
           </div>
           <div className="space-y-1.5">
             <div className="text-2xs font-medium text-muted-foreground">关系史（{pair.data.history.length} 条）</div>
@@ -596,18 +596,18 @@ function EdgeInspector({ edge, nameOf, pair, chapter, onFocus, onOpenChapter }: 
                   <span className="text-muted-foreground">{nameOf(item.subjectId)} → {nameOf(item.objectId)}：</span>
                   <span className="font-medium">{item.predicate}</span>
                 </div>
-                {item.evidence ? <p className="line-clamp-3 rounded bg-muted/40 p-1.5 text-2xs text-muted-foreground">依据：{item.evidence}</p> : null}
+                {item.evidence ? <p className="line-clamp-3 rounded bg-muted/40 p-1.5 text-xs text-muted-foreground">依据：{item.evidence}</p> : null}
               </article>
             ))}
           </div>
           <div className="space-y-1">
             <div className="text-2xs font-medium text-muted-foreground">共同关系人</div>
-            {pair.data.common.length === 0 ? <p className="text-2xs text-muted-foreground">没有同时与两人有关系的人。</p> : null}
+            {pair.data.common.length === 0 ? <p className="text-xs text-muted-foreground">没有同时与两人有关系的人。</p> : null}
             {pair.data.common.map((item) => (
               <button
                 key={item.entity.id}
                 type="button"
-                className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-2xs hover:bg-muted"
+                className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-muted"
                 title="设为焦点"
                 onClick={() => onFocus(item.entity.id)}
               >

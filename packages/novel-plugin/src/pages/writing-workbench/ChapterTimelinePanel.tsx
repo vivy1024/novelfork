@@ -30,7 +30,7 @@ export interface ChapterTimelinePanelProps {
 
 const STATUS_DOT: Record<string, string> = {
   unsettled: "bg-foreground/30",
-  stale: "bg-amber-500",
+  stale: "bg-warning",
 };
 
 function TextTag({ tone, children }: { readonly tone: "unsettled" | "stale"; readonly children: string }) {
@@ -79,14 +79,14 @@ function ChapterEventList({ bookId, chapter }: { readonly bookId: string; readon
   if (state.status === "error") {
     // 列表取不通时不编数据：只退回到走势自带的计数。
     return (
-      <p className="py-1.5 text-2xs text-muted-foreground" data-testid={`chapter-events-error-${chapter.number}`}>
+      <p className="py-1.5 text-xs text-muted-foreground" data-testid={`chapter-events-error-${chapter.number}`}>
         本章记录 {chapter.eventCount} 个事件，明细暂时取不回来。
       </p>
     );
   }
   if (state.events.length === 0) {
     return (
-      <p className="py-1.5 text-2xs text-muted-foreground" data-testid={`chapter-events-empty-${chapter.number}`}>
+      <p className="py-1.5 text-xs text-muted-foreground" data-testid={`chapter-events-empty-${chapter.number}`}>
         本章没有已结算的事件记录。
       </p>
     );
@@ -94,7 +94,7 @@ function ChapterEventList({ bookId, chapter }: { readonly bookId: string; readon
   return (
     <ul className="space-y-1 py-1.5" data-testid={`chapter-events-${chapter.number}`}>
       {state.events.map((event) => (
-        <li key={event.id} className="flex min-w-0 items-baseline gap-1.5 text-2xs">
+        <li key={event.id} className="flex min-w-0 items-baseline gap-1.5 text-xs">
           <span className="mt-0.5 size-1 shrink-0 rounded-full bg-foreground/50" />
           <span className="shrink-0 font-medium">{eventTypeLabel(event.eventType)}</span>
           <span className="min-w-0 truncate text-muted-foreground">
@@ -132,7 +132,7 @@ function ChapterRow({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className={`flex w-full flex-wrap items-baseline gap-x-2 rounded px-1.5 py-1 text-left text-2xs hover:bg-muted/60 ${settled ? "" : "opacity-70"}`}
+        className={`flex w-full flex-wrap items-baseline gap-x-2 rounded px-1.5 py-1 text-left text-xs hover:bg-muted/60 ${settled ? "" : "opacity-70"}`}
         data-testid={`chapter-timeline-row-${chapter.number}`}
       >
         <ChevronRight className={`size-3 shrink-0 self-center text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} />
@@ -189,13 +189,13 @@ export function ChapterTimelinePanel({ bookId, currentChapter }: ChapterTimeline
     return (
       <div className="flex h-full min-h-24 flex-col items-center justify-center gap-1.5 px-4 text-center" data-testid="chapter-timeline-empty">
         <AlertCircle className="size-5 text-muted-foreground" />
-        <p className="text-2xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           这里按章排出全书走势——每章的摘要、卡司和伏笔账。走势接口暂时没读通
           {state.status === "ready" ? "（或本书还没有章节）。先写完第一章并结算，这里就会亮起来。" : `（${state.message}）。`}
         </p>
         <button
           type="button"
-          className="rounded border border-border px-2 py-0.5 text-2xs text-muted-foreground hover:text-foreground"
+          className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
           onClick={reload}
           data-testid="chapter-timeline-retry"
         >

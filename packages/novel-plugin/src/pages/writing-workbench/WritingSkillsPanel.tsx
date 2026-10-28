@@ -194,11 +194,11 @@ function SkillRow({
             </Badge>
           )}
         </div>
-        <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
           {skill.description}
         </p>
         {skill.retiredFromBuiltin && (
-          <p className="text-2xs text-muted-foreground mt-0.5">{RETIRED_BUILTIN_EXPLANATION}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{RETIRED_BUILTIN_EXPLANATION}</p>
         )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -357,12 +357,12 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
         <WritingSkillPathDetails />
       </div>
 
-      {notice && <p className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1 text-2xs text-destructive">{notice}</p>}
+      {notice && <p className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs text-destructive">{notice}</p>}
 
       <section className="space-y-1.5" data-testid="writing-skills-enabled">
-        <p className="text-2xs font-medium text-foreground">本书已启用 {enabledSkills.length}</p>
+        <p className="text-xs font-medium text-foreground">本书已启用 {enabledSkills.length}</p>
         {enabledSkills.length === 0 ? (
-          <p className="text-2xs text-muted-foreground py-1" data-testid="writing-skills-enabled-empty">
+          <p className="text-xs text-muted-foreground py-1" data-testid="writing-skills-enabled-empty">
             还没有启用任何写作技能。启用后，相关要求会在写章前注入并作为成品校验依据。
           </p>
         ) : (
@@ -383,7 +383,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       </section>
 
       <section className="space-y-1.5" data-testid="writing-skills-available">
-        <p className="text-2xs font-medium text-foreground">可启用 {availableSkills.length}</p>
+        <p className="text-xs font-medium text-foreground">可启用 {availableSkills.length}</p>
         <div className="flex items-center gap-1.5">
           <input
             value={query}
@@ -397,14 +397,14 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
         </div>
 
         {availableSkills.length === 0 && (
-          <p className="text-2xs text-muted-foreground py-2" data-testid="writing-skills-no-match">
+          <p className="text-xs text-muted-foreground py-2" data-testid="writing-skills-no-match">
             {query.trim() ? "没有匹配的写作技能，换个词再看看。" : "技能库里的技能都已在本作品启用。"}
           </p>
         )}
 
         {entrySkills.length > 0 && (
           <div className="space-y-1.5" data-testid="writing-skills-entries">
-            <p className="text-2xs text-muted-foreground">作者入口 {entrySkills.length}</p>
+            <p className="text-xs text-muted-foreground">作者入口 {entrySkills.length}</p>
             <div className="grid grid-cols-1 gap-2">
               {entrySkills.map((skill) => (
                 <SkillRow
@@ -427,7 +427,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
                 type="button"
                 onClick={() => setShowOthers((value) => !value)}
                 aria-expanded={othersExpanded}
-                className="text-2xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground"
                 data-testid="writing-skills-others-toggle"
               >
                 {othersExpanded ? "收起" : "展开"}其余技能（{otherSkills.length}）· 叙述者会按任务自行调用
@@ -469,7 +469,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
               {readingBody}
             </pre>
           )}
-          {notice && <p className="text-2xs text-muted-foreground">{notice}</p>}
+          {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
         </DialogContent>
       </Dialog>
     </div>

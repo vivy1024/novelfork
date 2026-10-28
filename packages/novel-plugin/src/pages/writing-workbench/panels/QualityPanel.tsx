@@ -179,7 +179,7 @@ export function QualityPanel({ bookId }: QualityPanelProps) {
         {/* AI味趋势 */}
         {hasAiTaste && (
           <div className="rounded-md border border-border p-2">
-            <p className="text-2xs text-muted-foreground mb-1">AI味趋势 (最近20章)</p>
+            <p className="text-xs text-muted-foreground mb-1">AI味趋势 (最近20章)</p>
             <ChartContainer config={aiTasteChartConfig} className="h-[80px] w-full">
               <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -202,7 +202,7 @@ export function QualityPanel({ bookId }: QualityPanelProps) {
         {/* 文风漂移 */}
         {hasDrift && (
           <div className="rounded-md border border-border p-2">
-            <p className="text-2xs text-muted-foreground mb-1">文风漂移 (与基线偏离)</p>
+            <p className="text-xs text-muted-foreground mb-1">文风漂移 (与基线偏离)</p>
             <ChartContainer config={driftChartConfig} className="h-[80px] w-full">
               <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -225,7 +225,7 @@ export function QualityPanel({ bookId }: QualityPanelProps) {
       {/* Quality score chart (full width) */}
       {hasQuality && (
         <div className="rounded-md border border-border p-2">
-          <p className="text-2xs text-muted-foreground mb-1">质量评分趋势</p>
+          <p className="text-xs text-muted-foreground mb-1">质量评分趋势</p>
           <ChartContainer config={qualityChartConfig} className="h-[60px] w-full">
             <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -265,7 +265,7 @@ export function QualityPanel({ bookId }: QualityPanelProps) {
                   {ch.qualityScore !== null ? (
                     <span className={cn(
                       "font-medium",
-                      ch.qualityScore >= 80 ? "text-green-600" : ch.qualityScore >= 60 ? "text-yellow-600" : "text-red-500"
+                      ch.qualityScore >= 80 ? "text-success" : ch.qualityScore >= 60 ? "text-warning" : "text-destructive"
                     )}>
                       {ch.qualityScore}
                     </span>

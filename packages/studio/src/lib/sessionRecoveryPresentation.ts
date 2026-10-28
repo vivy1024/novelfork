@@ -97,11 +97,11 @@ export function getRecoveryPresentation(input: RecoveryPresentationInput): Recov
 export function getRecoveryToneBadgeClassName(tone: RecoveryPresentationTone): string {
   switch (tone) {
     case "success":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
+      return "border-success/30 bg-success/10 text-success";
     case "info":
-      return "border-sky-500/30 bg-sky-500/10 text-sky-700";
+      return "border-info/30 bg-info/10 text-info";
     case "warning":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-700";
+      return "border-warning/30 bg-warning/10 text-warning";
     case "danger":
       return "border-rose-500/30 bg-rose-500/10 text-rose-700";
     case "neutral":
@@ -113,11 +113,11 @@ export function getRecoveryToneBadgeClassName(tone: RecoveryPresentationTone): s
 export function getRecoveryToneBannerClassName(tone: RecoveryPresentationTone): string {
   switch (tone) {
     case "success":
-      return "border-b border-emerald-500/20 bg-emerald-500/10 text-emerald-700";
+      return "border-b border-success/20 bg-success/10 text-success";
     case "info":
-      return "border-b border-sky-500/20 bg-sky-500/10 text-sky-700";
+      return "border-b border-info/20 bg-info/10 text-info";
     case "warning":
-      return "border-b border-amber-500/20 bg-amber-500/10 text-amber-700";
+      return "border-b border-warning/20 bg-warning/10 text-warning";
     case "danger":
       return "border-b border-rose-500/20 bg-rose-500/10 text-rose-700";
     case "neutral":

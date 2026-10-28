@@ -560,7 +560,7 @@ export function RuntimeWritingWorkbenchRoute({
       <div className="flex items-center gap-3 border-b border-border px-4 py-2">
         <p className="text-sm text-muted-foreground">章节、作品基础、写作资源与故事推进</p>
         {openNotice ? (
-          <p className="ml-auto flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300" role="status" data-testid="workbench-open-notice">
+          <p className="ml-auto flex items-center gap-2 text-xs text-warning" role="status" data-testid="workbench-open-notice">
             {openNotice}
             <button type="button" className="underline-offset-2 hover:underline" onClick={() => setOpenNotice(null)}>知道了</button>
           </p>

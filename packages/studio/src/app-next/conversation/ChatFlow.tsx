@@ -96,7 +96,7 @@ function AssistantMessage({
 }
 
 function DefaultToolCallCard({ toolCall }: { readonly toolCall: ChatToolCall }) {
-  const statusColor = toolCall.status === "completed" ? "border-emerald-500/30 bg-emerald-500/5"
+  const statusColor = toolCall.status === "completed" ? "border-success/30 bg-success/5"
     : toolCall.status === "failed" ? "border-destructive/30 bg-destructive/5"
     : "border-border bg-muted/30";
 

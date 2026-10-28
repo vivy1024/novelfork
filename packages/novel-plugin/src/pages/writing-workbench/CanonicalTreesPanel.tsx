@@ -187,7 +187,7 @@ function matchingIds(node: CanonicalTreeNode, query: string): Set<string> {
 function NodeInspector({ node }: { node: CanonicalTreeNode | null }) {
   if (!node) {
     return (
-      <p className="p-3 text-2xs text-muted-foreground" data-testid="canonical-tree-inspector-empty">
+      <p className="p-3 text-xs text-muted-foreground" data-testid="canonical-tree-inspector-empty">
         点树上任一节点查看详情。
       </p>
     );
@@ -196,7 +196,7 @@ function NodeInspector({ node }: { node: CanonicalTreeNode | null }) {
     <div className="space-y-2 p-3" data-testid="canonical-tree-inspector">
       <div>
         <p className="text-xs font-semibold">{node.label}</p>
-        {node.subtitle ? <p className="mt-0.5 text-2xs text-muted-foreground">{node.subtitle}</p> : null}
+        {node.subtitle ? <p className="mt-0.5 text-xs text-muted-foreground">{node.subtitle}</p> : null}
       </div>
       <div className="flex flex-wrap gap-1">
         <Badge variant="outline" className="h-4 px-1 text-2xs">{node.kind}</Badge>
@@ -205,11 +205,11 @@ function NodeInspector({ node }: { node: CanonicalTreeNode | null }) {
         {node.degree ? <Badge variant="outline" className="h-4 px-1 text-2xs">{node.degree} 共现</Badge> : null}
       </div>
       {node.detail ? (
-        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">
+        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
           {node.detail}
         </p>
       ) : (
-        <p className="text-2xs text-muted-foreground">这个节点没有正文内容。</p>
+        <p className="text-xs text-muted-foreground">这个节点没有正文内容。</p>
       )}
     </div>
   );
@@ -406,7 +406,7 @@ export function CanonicalTreesPanel({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center" data-testid="canonical-trees-error">
         <AlertCircle className="size-6 text-destructive" />
-        <p className="max-w-sm text-2xs text-muted-foreground">{state.message}</p>
+        <p className="max-w-sm text-xs text-muted-foreground">{state.message}</p>
         <Button size="xs" variant="outline" className="h-7 gap-1 text-xs" onClick={reload}>
           <RefreshCw className="size-3" /> 重试
         </Button>
@@ -426,7 +426,7 @@ export function CanonicalTreesPanel({
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="canonical-trees-panel">
       {state.status === "ready" && state.degraded && !networkView ? (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1 text-2xs text-amber-700 dark:text-amber-300" data-testid="canonical-trees-degraded">
+        <p className="rounded-md border border-warning/40 bg-warning/[0.06] px-2 py-1 text-xs text-warning" data-testid="canonical-trees-degraded">
           部分数据没读到（动态记忆或条目）：发展历程、章节脉络可能缺事件，章节树可能缺摘要；结构部分照常可用。
         </p>
       ) : null}
@@ -472,7 +472,7 @@ export function CanonicalTreesPanel({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索节点"
               aria-label="搜索正图"
-              className="h-6 w-32 pl-6 text-2xs"
+              className="h-6 w-32 pl-6 text-xs"
             />
           </div>
           {query ? (
@@ -485,7 +485,7 @@ export function CanonicalTreesPanel({
       </div>
 
       {query && treeView && matched.size === 0 ? (
-        <p className="px-1 text-2xs text-muted-foreground">没有匹配「{query}」的节点。</p>
+        <p className="px-1 text-xs text-muted-foreground">没有匹配「{query}」的节点。</p>
       ) : null}
 
       {networkView ? (
@@ -539,7 +539,7 @@ export function CanonicalTreesPanel({
           </Button>
         </div>
       ) : treeView && forest?.emptyReason ? (
-        <p className="px-1 text-2xs text-muted-foreground">{forest.emptyReason}</p>
+        <p className="px-1 text-xs text-muted-foreground">{forest.emptyReason}</p>
       ) : null}
     </div>
   );

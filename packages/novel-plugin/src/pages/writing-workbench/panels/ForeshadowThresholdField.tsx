@@ -114,17 +114,17 @@ export function ForeshadowThresholdField({ initial, onSave }: ForeshadowThreshol
         </Button>
       </div>
       {saveFailed ? (
-        <p className="text-2xs text-destructive" data-testid="foreshadow-threshold-save-failed">
+        <p className="text-xs text-destructive" data-testid="foreshadow-threshold-save-failed">
           保存没有成功，阈值仍按上一次保存的值判定。请检查网络或稍后再改一次。
         </p>
       ) : null}
       {check.ok ? (
-        <p className="text-2xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           伏笔埋下后悬置满 {check.value.watchChapters} 章开始提醒，满 {check.value.overdueChapters} 章判为超期。
           快节奏的书可以调小，慢热长篇可以调大；伏笔看板、推进看板、驾驶舱与写前简报都按这里判定。
         </p>
       ) : (
-        <p className="text-2xs text-destructive" data-testid="foreshadow-threshold-error">
+        <p className="text-xs text-destructive" data-testid="foreshadow-threshold-error">
           {check.explanation}（未保存）
         </p>
       )}

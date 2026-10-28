@@ -253,7 +253,7 @@ export function EntityDetailDrawer({
           {voiceQuote ? (
             <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-2.5 flex items-start gap-2 text-xs text-foreground/90 shadow-2xs">
               <MessageSquareQuote className="size-4 text-primary shrink-0 mt-0.5" />
-              <p className="italic text-2xs leading-relaxed text-muted-foreground line-clamp-2">
+              <p className="italic text-xs leading-relaxed text-muted-foreground line-clamp-2">
                 {voiceQuote}
               </p>
             </div>
@@ -332,11 +332,11 @@ function LoadingBlock({ label }: { label: string }) {
 function ErrorBlock({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-2 text-destructive" data-testid="entity-drawer-error">
-      <p className="text-2xs">{message}</p>
+      <p className="text-xs">{message}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="rounded border border-destructive/40 px-2 py-1 text-2xs hover:bg-destructive/10"
+        className="rounded border border-destructive/40 px-2 py-1 text-xs hover:bg-destructive/10"
       >
         重试
       </button>
@@ -383,7 +383,7 @@ function FactsTab({
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
         >
           <Plus className="size-3" />
           手动补一条
@@ -411,7 +411,7 @@ function FactsTab({
       {liveFacts.length === 0 && !adding ? (
         <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10 space-y-1">
           <p className="font-medium">这个实体还没有记忆状态</p>
-          <p className="text-2xs text-muted-foreground/80">写完一章、章后结算后会自动记下来，也可以点「手动补一条」。</p>
+          <p className="text-xs text-muted-foreground/80">写完一章、章后结算后会自动记下来，也可以点「手动补一条」。</p>
         </div>
       ) : (
         <div className="space-y-1.5">
@@ -505,7 +505,7 @@ function FactRow({
         {fact.sourceType && <span>{factSourceLabel(fact.sourceType)}</span>}
         {isLowConfidence(fact.confidence) && (
           <span
-            className="text-amber-600 dark:text-amber-400"
+            className="text-warning"
             title="这条是从正文里推断出来的，把握不大，建议核对一下"
             data-testid="entity-fact-low-confidence"
           >
@@ -543,7 +543,7 @@ function FactForm({
 
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2 shadow-xs" data-testid="entity-fact-form">
-      {factId && <p className="text-2xs text-muted-foreground">纠正后旧的一条留在变迁史里，新的一条记为作者手填。</p>}
+      {factId && <p className="text-xs text-muted-foreground">纠正后旧的一条留在变迁史里，新的一条记为作者手填。</p>}
       <Field label="对象" value={subject} onChange={setSubject} placeholder="角色名、地点或物品" />
       <Field label="方面" value={predicate} onChange={setPredicate} placeholder="如：境界、位置、伤势" />
       <Field label="现状" value={object} onChange={setObject} placeholder="如：元婴、青云宗、左臂重伤" />
@@ -616,7 +616,7 @@ function ActionButton({ children, onClick, disabled, primary }: { children: Reac
       type="button"
       disabled={disabled}
       onClick={() => void onClick()}
-      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-2xs font-medium transition-colors disabled:opacity-50 ${
+      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
         primary
           ? "bg-primary text-primary-foreground hover:bg-primary/90"
           : "border border-border/80 bg-background hover:bg-muted text-muted-foreground hover:text-foreground"
@@ -657,7 +657,7 @@ function JingweiTab({
   return (
     <div className="space-y-2">
       {openError && (
-        <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-2xs text-destructive">
+        <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
           {openError}
         </p>
       )}
@@ -693,7 +693,7 @@ function JingweiTab({
           </div>
 
           {entry.summary ? (
-            <p className="text-2xs text-muted-foreground leading-relaxed">{entry.summary}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{entry.summary}</p>
           ) : entry.contentMd ? (
             <div className="max-h-36 overflow-y-auto rounded bg-muted/30 p-2 text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
               {entry.contentMd.slice(0, 500)}
@@ -750,7 +750,7 @@ function HistoryTab({ bookId, state, currentChapter }: { bookId: string; state: 
               {fact.subject} · {fact.predicate} → <span className="text-primary font-semibold">{fact.object}</span>
             </div>
             {fact.evidenceText ? (
-              <p className="text-2xs text-muted-foreground line-clamp-2 bg-muted/30 p-1.5 rounded">
+              <p className="text-xs text-muted-foreground line-clamp-2 bg-muted/30 p-1.5 rounded">
                 依据：{fact.evidenceText}
               </p>
             ) : null}

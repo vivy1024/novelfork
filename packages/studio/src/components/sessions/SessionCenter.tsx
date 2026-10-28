@@ -527,8 +527,8 @@ export function SessionCenter({
 				</Alert>
 			) : null}
 			{success ? (
-				<Alert className="border-emerald-500/30 bg-emerald-500/10">
-					<AlertDescription className="text-emerald-700">
+				<Alert className="border-success/30 bg-success/10">
+					<AlertDescription className="text-success">
 						{success}
 					</AlertDescription>
 				</Alert>
@@ -640,7 +640,7 @@ export function SessionCenter({
 											/>
 										) : (
 											<ShieldCheck
-												className="mt-1 size-4 shrink-0 text-emerald-600"
+												className="mt-1 size-4 shrink-0 text-success"
 												aria-label="书籍叙述者受保护"
 											/>
 										)}

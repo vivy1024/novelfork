@@ -81,7 +81,7 @@ function ImportPanel({ bookId, onClose, onImported }: { bookId: string; onClose:
         <span className="text-xs font-medium">导入经纬</span>
         <Button size="xs" variant="ghost" onClick={onClose}><X className="size-3" /></Button>
       </div>
-      <p className="text-2xs text-muted-foreground">粘贴 Markdown，按 ## 标题拆分为多条条目。</p>
+      <p className="text-xs text-muted-foreground">粘贴 Markdown，按 ## 标题拆分为多条条目。</p>
       <select className="h-7 text-xs border rounded px-2 bg-background" value={category} onChange={(e) => setCategory(e.target.value)}>
         <option value="world-model">世界模型</option>
         <option value="characters">角色</option>
@@ -102,7 +102,7 @@ function ImportPanel({ bookId, onClose, onImported }: { bookId: string; onClose:
         <Button size="sm" onClick={handleImport} disabled={importing || !text.trim()}>
           {importing ? "导入中…" : "导入"}
         </Button>
-        {result && <span className="text-xs text-green-600">{result}</span>}
+        {result && <span className="text-xs text-success">{result}</span>}
       </div>
     </div>
   );

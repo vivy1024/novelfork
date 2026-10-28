@@ -63,15 +63,15 @@ const SEVERITY_ICON: Record<IssueSeverity, typeof AlertCircle> = {
 };
 
 const SEVERITY_COLOR: Record<IssueSeverity, string> = {
-  error: "text-red-500",
-  warning: "text-yellow-500",
-  info: "text-blue-400",
+  error: "text-destructive",
+  warning: "text-warning",
+  info: "text-info",
 };
 
 const SEVERITY_BG: Record<IssueSeverity, string> = {
-  error: "hover:bg-red-500/5",
-  warning: "hover:bg-yellow-500/5",
-  info: "hover:bg-blue-400/5",
+  error: "hover:bg-destructive/5",
+  warning: "hover:bg-warning/5",
+  info: "hover:bg-info/5",
 };
 
 function severityLabel(severity: IssueSeverity): string {
@@ -165,20 +165,20 @@ export function ProblemsPanel({
         {/* Severity summary icons */}
         {counts.error > 0 && (
           <span className="flex items-center gap-0.5 text-2xs">
-            <AlertCircle className="size-3.5 text-red-500" />
-            <span className="text-red-500 font-medium">{counts.error}</span>
+            <AlertCircle className="size-3.5 text-destructive" />
+            <span className="text-destructive font-medium">{counts.error}</span>
           </span>
         )}
         {counts.warning > 0 && (
           <span className="flex items-center gap-0.5 text-2xs">
-            <AlertTriangle className="size-3.5 text-yellow-500" />
-            <span className="text-yellow-500 font-medium">{counts.warning}</span>
+            <AlertTriangle className="size-3.5 text-warning" />
+            <span className="text-warning font-medium">{counts.warning}</span>
           </span>
         )}
         {counts.info > 0 && (
           <span className="flex items-center gap-0.5 text-2xs">
-            <Info className="size-3.5 text-blue-400" />
-            <span className="text-blue-400 font-medium">{counts.info}</span>
+            <Info className="size-3.5 text-info" />
+            <span className="text-info font-medium">{counts.info}</span>
           </span>
         )}
 

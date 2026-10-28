@@ -991,5 +991,5 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function WarningList({ warnings, title = "处理提醒" }: { warnings: readonly string[]; title?: string }) {
-  return <div className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm"><p className="font-medium">{title}</p><ul className="list-disc space-y-1 pl-5 text-muted-foreground">{warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul></div>;
+  return <div className="space-y-1 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm"><p className="font-medium">{title}</p><ul className="list-disc space-y-1 pl-5 text-muted-foreground">{warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul></div>;
 }

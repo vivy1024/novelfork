@@ -21,11 +21,11 @@ const PROVIDER_PROTOCOL_DESCRIPTIONS: Record<ProviderProtocol, string> = {
 };
 
 const PROVIDER_PROTOCOL_BADGE_COLORS: Record<ProviderProtocol, string> = {
-  completions: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  responses: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  completions: "bg-success/10 text-success",
+  responses: "bg-success/10 text-success",
   anthropic: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
   codex: "bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-300",
-  "claude-code": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "claude-code": "bg-info/10 text-info",
 };
 
 const PROVIDER_API_MODE_LABELS: Record<ProviderApiMode, string> = {

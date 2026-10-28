@@ -30,7 +30,7 @@ function readDiagnostics(value: unknown): DiagnosticRow[] {
 function DiagnosticList({ rows, tone }: { rows: readonly DiagnosticRow[]; tone: "block" | "warn" }) {
   if (rows.length === 0) return null;
   const Icon = tone === "block" ? XCircle : AlertTriangle;
-  const color = tone === "block" ? "text-destructive" : "text-amber-500";
+  const color = tone === "block" ? "text-destructive" : "text-warning";
   return (
     <ul className="space-y-1.5">
       {rows.map((row) => (
@@ -72,20 +72,20 @@ export const WritePreflightCard: ToolResultRenderer = (context: ToolResultRender
   return (
     <div data-testid="tool-result-write-preflight" className="space-y-3 rounded-lg border border-border bg-card p-3 text-sm">
       <div className="flex items-center gap-2">
-        {ok ? <CheckCircle2 className="size-4 text-emerald-500" /> : <XCircle className="size-4 text-destructive" />}
+        {ok ? <CheckCircle2 className="size-4 text-success" /> : <XCircle className="size-4 text-destructive" />}
         <span className="font-medium">
           {ok ? "写前检查通过" : "写前检查未通过"}
           {chapterNumber ? ` · 第${chapterNumber}章` : ""}
         </span>
         {warnings.length > 0 && (
-          <span className="text-xs text-amber-500">{warnings.length} 条提醒</span>
+          <span className="text-xs text-warning">{warnings.length} 条提醒</span>
         )}
       </div>
 
       {directive && (
         <p className="text-xs text-muted-foreground">
           本章目标：<span className="text-foreground">{directive}</span>
-          {needsUserConfirm && <span className="ml-1 text-amber-500">（来自焦点默认，需你确认）</span>}
+          {needsUserConfirm && <span className="ml-1 text-warning">（来自焦点默认，需你确认）</span>}
         </p>
       )}
 

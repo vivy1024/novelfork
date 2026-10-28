@@ -106,16 +106,16 @@ export interface WriteViewPanelProps {
 }
 
 const LIGHT_STYLE: Record<WriteViewModel["light"], { bar: string; text: string; icon: typeof CheckCircle2 }> = {
-  green: { bar: "bg-emerald-500/15 border-emerald-500/40", text: "text-emerald-600 dark:text-emerald-400", icon: CheckCircle2 },
-  yellow: { bar: "bg-amber-500/15 border-amber-500/40", text: "text-amber-600 dark:text-amber-400", icon: AlertTriangle },
-  red: { bar: "bg-red-500/15 border-red-500/40", text: "text-red-600 dark:text-red-400", icon: XCircle },
+  green: { bar: "bg-success/15 border-success/40", text: "text-success", icon: CheckCircle2 },
+  yellow: { bar: "bg-warning/15 border-warning/40", text: "text-warning", icon: AlertTriangle },
+  red: { bar: "bg-destructive/15 border-destructive/40", text: "text-destructive", icon: XCircle },
   unknown: { bar: "bg-muted border-border", text: "text-muted-foreground", icon: Sparkles },
 };
 
 const CHECK_ICON: Record<ReadyCheckItem["state"], { glyph: string; cls: string }> = {
-  ok: { glyph: "✓", cls: "text-emerald-500" },
-  warn: { glyph: "!", cls: "text-amber-500" },
-  block: { glyph: "×", cls: "text-red-500" },
+  ok: { glyph: "✓", cls: "text-success" },
+  warn: { glyph: "!", cls: "text-warning" },
+  block: { glyph: "×", cls: "text-destructive" },
 };
 
 export function WriteViewPanel({
@@ -436,7 +436,7 @@ export function WriteViewPanel({
             <BookOpen className="size-5" strokeWidth={1.8} />
           </span>
           <p className="text-xs font-medium text-foreground">还没有打开的作品。</p>
-          <p className="text-2xs text-muted-foreground">在左侧「资源」里选一本书，即可回到写作视图。</p>
+          <p className="text-xs text-muted-foreground">在左侧「资源」里选一本书，即可回到写作视图。</p>
         </div>
       </div>
     );
@@ -478,8 +478,8 @@ export function WriteViewPanel({
           {proposalsSection}
           {lastWritten.hasAiDraft && (lastWritten.authorRatio ?? 0) > 0 ? (
             <section className="rounded-md border border-border bg-card/40 px-2 py-1.5" data-testid="chapter-loop-revisions">
-              <p className="text-2xs font-medium text-foreground">把改得好的段落存为范文</p>
-              <p className="mt-0.5 text-2xs text-muted-foreground">勾选你改过的段落，采纳后写下一章时优先作为示例。</p>
+              <p className="text-xs font-medium text-foreground">把改得好的段落存为范文</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">勾选你改过的段落，采纳后写下一章时优先作为示例。</p>
               <ChapterRevisions
                 bookId={bookId}
                 chapterNumber={lastWritten.chapterNumber}
@@ -490,7 +490,7 @@ export function WriteViewPanel({
           <button
             type="button"
             onClick={() => setPickedStep("write")}
-            className="rounded border border-border px-2 py-1.5 text-2xs hover:bg-accent"
+            className="rounded border border-border px-2 py-1.5 text-xs hover:bg-accent"
             data-testid="chapter-loop-next"
           >
             {lastWritten.chapterNumber < model.chapterNumber ? `开始写第 ${model.chapterNumber} 章` : "回到写作"}
@@ -511,11 +511,11 @@ export function WriteViewPanel({
             <Compass className="mt-0.5 size-4 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-foreground" data-testid="write-onboarding-title">{model.onboarding.title}</p>
-              <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{model.onboarding.description}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{model.onboarding.description}</p>
               <button
                 type="button"
                 onClick={handleOnboardingAction}
-                className="mt-1.5 rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90"
+                className="mt-1.5 rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
                 data-testid="write-onboarding-action"
               >
                 {model.onboarding.actionLabel}
@@ -563,7 +563,7 @@ export function WriteViewPanel({
       )}
 
       {error && (
-        <p className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-2xs text-red-600 dark:text-red-400">{error}</p>
+        <p className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">{error}</p>
       )}
 
       {/* 卷驾驶舱：当前卷目标与本章在本卷的位置，就绪红绿灯下方集中呈现。 */}
@@ -601,7 +601,7 @@ export function WriteViewPanel({
                       type="button"
                       onClick={() => void handleFix(check.fixAction!)}
                       disabled={fixBusy !== null}
-                      className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-2xs text-primary hover:bg-primary/20 disabled:opacity-50"
+                      className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary hover:bg-primary/20 disabled:opacity-50"
                       data-testid={`write-fix-${check.code}`}
                     >
                       {fixBusy === check.fixAction ? "处理中" : "一键修"}
@@ -637,7 +637,7 @@ export function WriteViewPanel({
         </ul>
       )}
 
-      {fixNote && <p className="text-2xs text-muted-foreground">{fixNote}</p>}
+      {fixNote && <p className="text-xs text-muted-foreground">{fixNote}</p>}
 
       {/*
         本章提议：写作 → 叙事记忆 的回路终点。有写完的章时放在「收尾」一步；
@@ -662,7 +662,7 @@ export function WriteViewPanel({
           <button
             type="button"
             onClick={() => setBeatOpen((open) => !open)}
-            className="flex w-full items-center justify-between px-2 py-1 text-2xs font-medium text-foreground"
+            className="flex w-full items-center justify-between px-2 py-1 text-xs font-medium text-foreground"
             data-testid="write-beat-budget-toggle"
           >
             <span>
@@ -683,7 +683,7 @@ export function WriteViewPanel({
         </section>
 
         <div className="flex items-baseline justify-between gap-2">
-          <label className="text-2xs font-medium text-foreground" htmlFor="write-directive">
+          <label className="text-xs font-medium text-foreground" htmlFor="write-directive">
             第 {model.chapterNumber || "?"} 章要发生什么
           </label>
           {effectiveWordTarget > 0 ? (
@@ -698,11 +698,11 @@ export function WriteViewPanel({
           onChange={(event) => setDirectiveDraft(event.target.value)}
           placeholder={model.resolvedDirective ?? "一句话说明本章目标，例如：让林舟通过守门人试炼，并暴露旧伤。"}
           rows={3}
-          className="resize-none rounded border border-border bg-background px-2 py-1.5 text-2xs outline-none focus:border-primary"
+          className="resize-none rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
           data-testid="write-directive-input"
         />
         {model.needsUserConfirm && !directiveDraft.trim() && (
-          <label className="flex items-center gap-1.5 text-2xs text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <input
               type="checkbox"
               checked={acceptFocusDefault}
@@ -712,13 +712,13 @@ export function WriteViewPanel({
             采用当前焦点的默认目标
           </label>
         )}
-        {!gate.ok && !model.alreadyWritten && <p className="text-2xs text-amber-600 dark:text-amber-400">{gate.reason}</p>}
+        {!gate.ok && !model.alreadyWritten && <p className="text-xs text-warning">{gate.reason}</p>}
         {model.alreadyWritten ? (
           <button
             type="button"
             onClick={() => start("chapter")}
             disabled={!onJumpToChapter || model.chapterNumber <= 0}
-            className="rounded bg-primary px-2 py-1.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            className="rounded bg-primary px-2 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             data-testid="write-open-chapter"
           >
             打开第 {model.chapterNumber} 章正文
@@ -729,7 +729,7 @@ export function WriteViewPanel({
               type="button"
               onClick={() => start("blueprint")}
               disabled={!gate.ok}
-              className="flex-1 rounded border border-border px-2 py-1.5 text-2xs hover:bg-accent disabled:opacity-40"
+              className="flex-1 rounded border border-border px-2 py-1.5 text-xs hover:bg-accent disabled:opacity-40"
               data-testid="write-blueprint"
             >
               生成蓝图
@@ -738,7 +738,7 @@ export function WriteViewPanel({
               type="button"
               onClick={() => start("chapter")}
               disabled={!gate.ok}
-              className="flex-1 rounded bg-primary px-2 py-1.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              className="flex-1 rounded bg-primary px-2 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
               data-testid="write-chapter"
             >
               写第 {model.chapterNumber || "?"} 章
@@ -758,7 +758,7 @@ export function WriteViewPanel({
           type="button"
           onClick={onOpenWorkflow}
           title="按工作流方案把这一章拆成几道工序，叙述者逐道做；需要你确认的工序会停下等你。在中央打开。"
-          className="flex w-full items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-left text-2xs text-foreground transition-colors hover:bg-primary/10"
+          className="flex w-full items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-primary/10"
           data-testid="write-open-workflow"
         >
           <Workflow className="size-3.5 shrink-0 text-primary" />
@@ -792,7 +792,7 @@ function ChapterLoopBar({ steps, active, onSelect }: {
             aria-selected={selected}
             disabled={!item.available}
             onClick={() => onSelect(item.id)}
-            className={`relative flex flex-1 flex-col items-center rounded px-1 py-1 text-2xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`relative flex flex-1 flex-col items-center rounded px-1 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               selected ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
             data-testid={`chapter-loop-step-${item.id}`}
@@ -800,7 +800,7 @@ function ChapterLoopBar({ steps, active, onSelect }: {
             <span>{index + 1} · {item.label}</span>
             {item.available && item.chapterNumber > 0 ? <span className="text-2xs text-muted-foreground">第 {item.chapterNumber} 章</span> : null}
             {item.attention ? (
-              <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-500" aria-label="有待处理" data-testid={`chapter-loop-attention-${item.id}`} />
+              <span className="absolute right-1 top-1 size-1.5 rounded-full bg-warning" aria-label="有待处理" data-testid={`chapter-loop-attention-${item.id}`} />
             ) : null}
           </button>
         );
@@ -819,7 +819,7 @@ function ReviseStep({ chapter, onOpenChapter }: {
       <p className="text-xs font-medium text-foreground">
         改第 {chapter.chapterNumber} 章{chapter.title ? ` · ${chapter.title}` : ""}
       </p>
-      <p className="text-2xs leading-relaxed text-muted-foreground" data-testid="chapter-loop-author-ratio">
+      <p className="text-xs leading-relaxed text-muted-foreground" data-testid="chapter-loop-author-ratio">
         {chapter.hasAiDraft
           ? `这一章是 AI 写的，你目前改动了 ${percent(chapter.authorRatio ?? 0)}。这个比例只反映你改了多少，不代表任何检测工具的判断。`
           : "这一章没有 AI 原稿记录（可能是你自己写的，或写于保留原稿之前）。"}
@@ -833,7 +833,7 @@ function ReviseStep({ chapter, onOpenChapter }: {
         type="button"
         onClick={() => onOpenChapter?.(chapter.chapterNumber)}
         disabled={!onOpenChapter}
-        className="rounded bg-primary px-2 py-1.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+        className="rounded bg-primary px-2 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
         data-testid="chapter-loop-open-chapter"
       >
         打开第 {chapter.chapterNumber} 章正文
@@ -984,7 +984,7 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
           {report && report.issues.length > 0 ? (
             <button
               type="button"
-              className="rounded bg-primary px-2 py-0.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               onClick={() => void handoffToNarrator("humanize")}
               disabled={handoffBusy !== null || loading}
               data-testid="self-review-humanize"
@@ -995,7 +995,7 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
           {report && report.status !== "empty-input" ? (
             <button
               type="button"
-              className="rounded border border-primary/40 px-2 py-0.5 text-2xs text-primary hover:bg-primary/10 disabled:opacity-50"
+              className="rounded border border-primary/40 px-2 py-0.5 text-xs text-primary hover:bg-primary/10 disabled:opacity-50"
               onClick={() => void handoffToNarrator("polish")}
               disabled={handoffBusy !== null || loading}
               title="不限于检查命中的句子，逐处打磨全章语言；候选仍逐条确认，不改正文"
@@ -1006,7 +1006,7 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
           ) : null}
           <button
             type="button"
-            className="text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
             onClick={() => void run()}
             disabled={loading}
             data-testid="self-review-rerun"
@@ -1016,18 +1016,18 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
         </div>
       </div>
       {loadError ? (
-        <p className="mt-1 text-2xs text-destructive" data-testid="self-review-error">{loadError}</p>
+        <p className="mt-1 text-xs text-destructive" data-testid="self-review-error">{loadError}</p>
       ) : null}
       {handoffNote ? (
-        <p className="mt-1 text-2xs text-muted-foreground" data-testid="self-review-handoff-note">{handoffNote}</p>
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="self-review-handoff-note">{handoffNote}</p>
       ) : null}
       {report ? (
         <>
-          <p className="mt-1 text-2xs text-muted-foreground" data-testid="self-review-message">{report.message}</p>
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="self-review-message">{report.message}</p>
           {report.issues.length > 0 ? (
             <ul className="mt-1.5 flex flex-col gap-1">
               {report.issues.slice(0, 8).map((issue, index) => (
-                <li key={`${issue.ruleId}-${issue.start}-${index}`} className="rounded border border-border/60 bg-background/60 px-1.5 py-1 text-2xs" data-testid="self-review-item">
+                <li key={`${issue.ruleId}-${issue.start}-${index}`} className="rounded border border-border/60 bg-background/60 px-1.5 py-1 text-xs" data-testid="self-review-item">
                   <div className="flex items-center justify-between gap-1.5">
                     <span className="text-muted-foreground">第 {issue.paragraph} 段</span>
                     <button
@@ -1049,7 +1049,7 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
             </ul>
           ) : null}
           {report.issues.length > 8 ? (
-            <p className="mt-1 text-2xs text-muted-foreground">
+            <p className="mt-1 text-xs text-muted-foreground">
               另有 {report.issues.length - 8} 条命中未列出；打开章节逐段「人味化」处理。
             </p>
           ) : null}
@@ -1072,10 +1072,10 @@ function CloseStep({ chapter, busy, note, onSettle }: {
       <p className="text-xs font-medium text-foreground">
         收尾第 {chapter.chapterNumber} 章{chapter.title ? ` · ${chapter.title}` : ""}
       </p>
-      <p className="text-2xs text-muted-foreground" data-testid="chapter-loop-settlement">
+      <p className="text-xs text-muted-foreground" data-testid="chapter-loop-settlement">
         记忆：{settlementLabel(chapter.settlement)}
       </p>
-      <p className="text-2xs leading-relaxed text-muted-foreground">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         结算会让模型读一遍本章，提出人物状态、关系、伏笔和新设定的变化；你确认后才写进记忆，下一章写作会用到。
       </p>
       {!settled ? (
@@ -1083,7 +1083,7 @@ function CloseStep({ chapter, busy, note, onSettle }: {
           type="button"
           onClick={() => onSettle(false)}
           disabled={busy}
-          className="self-start rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="self-start rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           data-testid="chapter-loop-settle"
         >
           {busy ? "结算中…" : chapter.settlement === "stale" ? `重新结算第 ${chapter.chapterNumber} 章` : `结算第 ${chapter.chapterNumber} 章`}
@@ -1094,7 +1094,7 @@ function CloseStep({ chapter, busy, note, onSettle }: {
           onClick={() => onSettle(true)}
           disabled={busy}
           title="正文没改也让模型重新读一遍本章。上次结算漏记了才需要。"
-          className="self-start text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+          className="self-start text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
           data-testid="chapter-loop-force-settle"
         >
           {busy ? "结算中…" : "强制重新结算（上次漏记时用）"}
@@ -1102,7 +1102,7 @@ function CloseStep({ chapter, busy, note, onSettle }: {
       )}
       {note ? (
         <p
-          className={`rounded px-1.5 py-1 text-2xs ${note.tone === "ok" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"}`}
+          className={`rounded px-1.5 py-1 text-xs ${note.tone === "ok" ? "bg-success/10 text-success" : "border border-destructive/40 bg-destructive/10 text-destructive"}`}
           data-testid="chapter-loop-settle-note"
         >
           {note.text}
@@ -1128,17 +1128,17 @@ function ProposalsSection({ groups, error, busyId, earlierOpen, onToggleEarlier,
           本章提议 {groups.current.length > 0 ? `(${groups.current.length})` : ""}
         </span>
         {groups.highRiskCount > 0 && (
-          <span className="text-2xs text-amber-600 dark:text-amber-400">
+          <span className="text-xs text-warning">
             高风险 {groups.highRiskCount}
           </span>
         )}
       </div>
-      <p className="mt-0.5 text-2xs text-muted-foreground">
+      <p className="mt-0.5 text-xs text-muted-foreground">
         章后结算从正文提出的事实与事件。确认后写入动态事实；不处理也不阻断写作。
       </p>
 
       {error && (
-        <p className="mt-1 rounded border border-red-500/40 bg-red-500/10 px-1.5 py-1 text-2xs text-red-600 dark:text-red-400">
+        <p className="mt-1 rounded border border-destructive/40 bg-destructive/10 px-1.5 py-1 text-xs text-destructive">
           {error}
         </p>
       )}
@@ -1161,7 +1161,7 @@ function ProposalsSection({ groups, error, busyId, earlierOpen, onToggleEarlier,
           <button
             type="button"
             onClick={onToggleEarlier}
-            className="mt-1.5 text-2xs text-muted-foreground hover:text-foreground"
+            className="mt-1.5 text-xs text-muted-foreground hover:text-foreground"
             data-testid="write-proposals-earlier-toggle"
           >
             {earlierOpen ? "收起" : `另有 ${groups.earlier.length} 条前面章节遗留`}
@@ -1212,14 +1212,14 @@ function VolumeCockpit({ volume, chapterNumber, error, onCreateVolume, creating 
           <BookOpen className="size-3.5 text-muted-foreground" />
           当前卷
         </div>
-        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           {error ?? "还没有卷纲。设定卷目标后，长篇每章都能对齐本卷主线，不易写散。"}
         </p>
         <button
           type="button"
           onClick={onCreateVolume}
           disabled={creating}
-          className="mt-1.5 rounded bg-primary/10 px-2 py-0.5 text-2xs text-primary hover:bg-primary/20 disabled:opacity-50"
+          className="mt-1.5 rounded bg-primary/10 px-2 py-0.5 text-xs text-primary hover:bg-primary/20 disabled:opacity-50"
           data-testid="write-volume-create"
         >
           {creating ? "处理中" : "生成卷纲草案"}
@@ -1236,11 +1236,11 @@ function VolumeCockpit({ volume, chapterNumber, error, onCreateVolume, creating 
 
   return (
     <section
-      className={`rounded-md border px-2.5 py-2 ${derailed ? "border-amber-500/50 bg-amber-500/10" : "border-border bg-card/40"}`}
+      className={`rounded-md border px-2.5 py-2 ${derailed ? "border-warning/50 bg-warning/10" : "border-border bg-card/40"}`}
       data-testid="write-volume-cockpit"
     >
       <div className="flex items-center gap-1.5">
-        <BookOpen className={`size-3.5 shrink-0 ${derailed ? "text-amber-600 dark:text-amber-400" : "text-primary"}`} />
+        <BookOpen className={`size-3.5 shrink-0 ${derailed ? "text-warning" : "text-primary"}`} />
         <span className="min-w-0 flex-1 truncate text-2xs font-medium text-foreground">
           {volume.index > 0 ? `第 ${volume.index} 卷 · ` : ""}{current.title}
         </span>
@@ -1258,12 +1258,12 @@ function VolumeCockpit({ volume, chapterNumber, error, onCreateVolume, creating 
       </div>
 
       {derailed && (
-        <p className="mt-1 text-2xs leading-relaxed text-amber-600 dark:text-amber-400" data-testid="write-volume-derailed">
+        <p className="mt-1 text-xs leading-relaxed text-warning" data-testid="write-volume-derailed">
           第 {chapterNumber} 章不在本卷区间（{rangeText}），卷纲与实际进度已脱节。
         </p>
       )}
 
-      <p className="mt-1 text-2xs leading-relaxed text-foreground/90">
+      <p className="mt-1 text-xs leading-relaxed text-foreground/90">
         {current.goal
           ? `本卷目标：${current.goal}`
           : "本卷目标：未填写（卷纲缺目标，无法据此约束本章走向）"}
@@ -1292,7 +1292,7 @@ function ProposalRow({ event, busy, disabled, onApprove, onReject }: {
           {event.entity ?? "未命名实体"}
           {event.eventType ? <span className="text-muted-foreground"> · {event.eventType}</span> : null}
         </span>
-        <span className={`shrink-0 text-2xs ${event.risk === "high" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+        <span className={`shrink-0 text-2xs ${event.risk === "high" ? "text-warning" : "text-muted-foreground"}`}>
           {riskLabel(event.risk)}
         </span>
       </div>
@@ -1301,7 +1301,7 @@ function ProposalRow({ event, busy, disabled, onApprove, onReject }: {
         {typeof event.confidence === "number" ? ` · 置信度 ${event.confidence}` : ""}
       </div>
       {event.evidence && (
-        <p className="mt-0.5 line-clamp-2 text-2xs leading-relaxed text-muted-foreground">{event.evidence}</p>
+        <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{event.evidence}</p>
       )}
       {event.id && (
         <div className="mt-1 flex justify-end gap-1">
@@ -1309,7 +1309,7 @@ function ProposalRow({ event, busy, disabled, onApprove, onReject }: {
             type="button"
             onClick={onReject}
             disabled={disabled}
-            className="rounded border border-border px-1.5 py-0.5 text-2xs hover:bg-accent disabled:opacity-40"
+            className="rounded border border-border px-1.5 py-0.5 text-xs hover:bg-accent disabled:opacity-40"
             data-testid="write-proposal-reject"
           >
             {busy ? "处理中" : "驳回"}
@@ -1318,7 +1318,7 @@ function ProposalRow({ event, busy, disabled, onApprove, onReject }: {
             type="button"
             onClick={onApprove}
             disabled={disabled}
-            className="rounded bg-primary px-1.5 py-0.5 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            className="rounded bg-primary px-1.5 py-0.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             data-testid="write-proposal-approve"
           >
             {busy ? "处理中" : "确认"}

@@ -74,7 +74,7 @@ export function SaveStatus({ state, error }: SaveStatusProps) {
   const label = state === "dirty" ? "未保存" : state === "saving" ? "保存中…" : state === "saved" ? "已保存" : state === "error" ? "保存失败" : "";
   if (state === "clean") return null;
   return (
-    <span className={`text-xs ${state === "error" ? "text-destructive" : state === "saved" ? "text-green-600" : "text-muted-foreground"}`} title={error}>
+    <span className={`text-xs ${state === "error" ? "text-destructive" : state === "saved" ? "text-success" : "text-muted-foreground"}`} title={error}>
       {label}
     </span>
   );
@@ -88,9 +88,9 @@ export interface ConnectionFeedbackProps {
 /** 连接状态反馈。 */
 export function ConnectionFeedback({ status, label }: ConnectionFeedbackProps) {
   const colors: Record<ConnectionFeedbackProps["status"], string> = {
-    connected: "bg-green-500",
+    connected: "bg-success",
     disconnected: "bg-gray-400",
-    connecting: "bg-yellow-500 animate-pulse",
+    connecting: "bg-warning animate-pulse",
     error: "bg-destructive",
   };
   const defaultLabels: Record<ConnectionFeedbackProps["status"], string> = {

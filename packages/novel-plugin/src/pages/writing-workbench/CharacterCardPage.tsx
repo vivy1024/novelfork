@@ -398,7 +398,7 @@ function FactLine({ fact, icon: Icon }: { fact: NarrativeFactRecord; icon: typeo
       <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-medium leading-relaxed">{factText(fact)}</p>
-        {fact.sourceChapter !== undefined ? <p className="mt-0.5 text-2xs text-muted-foreground">第 {fact.sourceChapter} 章结算</p> : null}
+        {fact.sourceChapter !== undefined ? <p className="mt-0.5 text-xs text-muted-foreground">第 {fact.sourceChapter} 章结算</p> : null}
       </div>
     </div>
   );
@@ -422,12 +422,12 @@ function DevelopmentSection({
   return (
     <>
       <SpaceDivider label="发展历程 · Narrative Memory" />
-      <Card className="border-emerald-500/30 bg-emerald-500/[0.035]" data-testid="character-development-section">
+      <Card className="border-success/30 bg-success/[0.035]" data-testid="character-development-section">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Activity className="size-4 text-emerald-600" />
+                <Activity className="size-4 text-success" />
                 发展历程
                 <Badge variant="secondary" className="text-2xs font-normal">动态数据</Badge>
               </CardTitle>
@@ -458,35 +458,35 @@ function DevelopmentSection({
                * 同时给出有数据的角色作为对照，让用户能立即自证功能是好的。
                */}
               {!snapshot?.evolution.length && !state?.realm && !state?.injury && !state?.resources.length && !snapshot?.relationships.length ? (
-                <div className="rounded-md border border-amber-500/40 bg-amber-500/[0.05] px-4 py-5 text-center space-y-2" data-testid="character-development-empty-diagnosis">
-                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">该角色暂无任何章后结算记录</p>
+                <div className="rounded-md border border-warning/40 bg-warning/[0.05] px-4 py-5 text-center space-y-2" data-testid="character-development-empty-diagnosis">
+                  <p className="text-sm font-medium text-warning">该角色暂无任何章后结算记录</p>
                   <p className="text-xs leading-relaxed text-muted-foreground max-w-md mx-auto">
                     叙事记忆只收录<strong>正文中实际出场</strong>并经章后结算的角色动态。
                     「{characterName.trim() || "该角色"}」可能尚未正式登场，或结算器未从正文识别到 TA 的状态变化。
                     经纬静态设定不受影响，写作召回仍会携带本卡的内核字段。
                   </p>
-                  <p className="text-2xs text-muted-foreground/80">
+                  <p className="text-xs text-muted-foreground/80">
                     想验证动态功能？打开一位已出场主角（如「薛行之」）即可看到发展历程与关系演化。
                   </p>
                 </div>
               ) : null}
               <section className="space-y-2" aria-labelledby="character-current-state-title">
                 <div className="flex items-center gap-2">
-                  <Clock3 className="size-3.5 text-emerald-600" />
+                  <Clock3 className="size-3.5 text-success" />
                   <h3 id="character-current-state-title" className="text-xs font-semibold tracking-wide">当前状态</h3>
                   <span className="text-2xs text-muted-foreground">来自目前有效的状态记录</span>
                 </div>
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">
-                    <p className="text-2xs font-medium text-muted-foreground">修为 / 境界</p>
+                    <p className="text-xs font-medium text-muted-foreground">修为 / 境界</p>
                     {state?.realm ? <FactLine fact={state.realm} icon={Sparkles} /> : <p className="text-xs text-muted-foreground">暂无动态记录</p>}
                   </div>
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">
-                    <p className="text-2xs font-medium text-muted-foreground">持有物品 / 资源</p>
+                    <p className="text-xs font-medium text-muted-foreground">持有物品 / 资源</p>
                     {state && state.resources.length > 0 ? state.resources.slice(0, 3).map((fact, index) => <FactLine key={fact.id ?? `resource-${index}`} fact={fact} icon={PackageOpen} />) : <p className="text-xs text-muted-foreground">暂无动态记录</p>}
                   </div>
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">
-                    <p className="text-2xs font-medium text-muted-foreground">伤势状态</p>
+                    <p className="text-xs font-medium text-muted-foreground">伤势状态</p>
                     {state?.injury ? <FactLine fact={state.injury} icon={ShieldAlert} /> : <p className="text-xs text-muted-foreground">暂无动态记录</p>}
                   </div>
                 </div>
@@ -501,14 +501,14 @@ function DevelopmentSection({
 
               <section className="space-y-2" aria-labelledby="character-evolution-title">
                 <div className="flex items-center gap-2">
-                  <GitBranch className="size-3.5 text-emerald-600" />
+                  <GitBranch className="size-3.5 text-success" />
                   <h3 id="character-evolution-title" className="text-xs font-semibold tracking-wide">关键发展节点</h3>
                   <span className="text-2xs text-muted-foreground">最近 10 条</span>
                 </div>
                 {snapshot?.evolution.length ? (
-                  <ol className="space-y-2 border-l border-emerald-500/25 pl-3">
+                  <ol className="space-y-2 border-l border-success/25 pl-3">
                     {snapshot.evolution.map((step, index) => (
-                      <li key={`${step.chapter}-${step.eventType}-${index}`} className="relative rounded-md border border-border/50 bg-background/60 px-3 py-2 before:absolute before:-left-[1.05rem] before:top-3 before:size-2 before:rounded-full before:border-2 before:border-emerald-500 before:bg-background">
+                      <li key={`${step.chapter}-${step.eventType}-${index}`} className="relative rounded-md border border-border/50 bg-background/60 px-3 py-2 before:absolute before:-left-[1.05rem] before:top-3 before:size-2 before:rounded-full before:border-2 before:border-success before:bg-background">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <ChapterBadge chapter={step.chapter} />
                           <Badge variant="secondary" className="text-2xs font-normal">{step.eventType}</Badge>
@@ -525,7 +525,7 @@ function DevelopmentSection({
 
               <section className="space-y-2" aria-labelledby="character-relationship-evolution-title">
                 <div className="flex items-center gap-2">
-                  <Users className="size-3.5 text-emerald-600" />
+                  <Users className="size-3.5 text-success" />
                   <h3 id="character-relationship-evolution-title" className="text-xs font-semibold tracking-wide">关系演化</h3>
                   <span className="text-2xs text-muted-foreground">当前关系 + 最近变化</span>
                 </div>
@@ -539,7 +539,7 @@ function DevelopmentSection({
                           <span className="truncate">{relationship.object}</span>
                           <ChapterBadge chapter={relationship.chapter} />
                         </div>
-                        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{relationship.label}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{relationship.label}</p>
                       </div>
                     ))}
                   </div>
@@ -896,7 +896,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
           <div className="flex gap-2 flex-shrink-0 items-center">
             {isEditing ? (
               <>
-                {dirty ? <Badge className="text-2xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge> : null}
+                {dirty ? <Badge className="text-2xs bg-warning/10 text-warning border-warning/20">未保存</Badge> : null}
                 {confirmDiscard ? (
                   <span className="flex items-center gap-1">
                     <span className="text-xs text-muted-foreground">放弃未保存的修改？</span>

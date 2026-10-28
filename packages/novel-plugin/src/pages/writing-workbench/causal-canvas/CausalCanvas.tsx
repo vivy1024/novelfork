@@ -121,7 +121,7 @@ function FrozenRulers({ graph, layout, selectedLaneId, onSelectLane }: {
                 </span>
               ) : null}
               {lane.stalledChapters !== undefined && height > 56 ? (
-                <span className="truncate text-2xs text-amber-600">已 {lane.stalledChapters} 章没推进</span>
+                <span className="truncate text-xs text-warning">已 {lane.stalledChapters} 章没推进</span>
               ) : null}
             </button>
           );
@@ -287,7 +287,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
           </button>
         </div>
         {error ? (
-          <div role="alert" className="flex items-center gap-1.5 rounded border border-destructive/40 bg-destructive/5 px-2 py-1 text-2xs text-destructive" data-testid="causal-canvas-error">
+          <div role="alert" className="flex items-center gap-1.5 rounded border border-destructive/40 bg-destructive/5 px-2 py-1 text-xs text-destructive" data-testid="causal-canvas-error">
             <AlertCircle className="size-3 shrink-0" />
             <span className="flex-1">{error}</span>
             <button type="button" onClick={() => setError(null)} aria-label="关闭"><X className="size-3" /></button>
@@ -369,10 +369,10 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
                 {selectedScene.scene.function ? ` · ${SCENE_FUNCTION_LABEL[selectedScene.scene.function] ?? selectedScene.scene.function}` : ""}
               </div>
               {selectedScene.scene.status === "needs-review" ? (
-                <div className="rounded bg-amber-50 px-1.5 py-1 text-2xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">机器拆出的场景，确认前不要当作定论。</div>
+                <div className="rounded bg-warning/10 px-1.5 py-1 text-xs text-warning">机器拆出的场景，确认前不要当作定论。</div>
               ) : null}
             </div>
-            {selectedScene.scene.summary ? <p className="whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">{selectedScene.scene.summary}</p> : null}
+            {selectedScene.scene.summary ? <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{selectedScene.scene.summary}</p> : null}
             <div className="space-y-1.5">
               <div className="text-2xs font-medium text-muted-foreground">服务的剧情线</div>
               {selectedScene.mounts.length === 0 ? <div className="text-2xs text-muted-foreground">还没有挂到任何剧情线。</div> : null}
@@ -382,7 +382,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
                   <span className="flex-1 truncate">{nameOf(mount.storylineId)}</span>
                   <span className="text-2xs text-muted-foreground">{mount.role === "primary" ? "主" : "辅"}</span>
                   {mount.role === "supporting" ? (
-                    <button type="button" disabled={busy} className="rounded border px-1 text-2xs hover:bg-muted disabled:opacity-50" onClick={() => moveScene(selectedScene.scene.id, mount.storylineId)}>
+                    <button type="button" disabled={busy} className="rounded border px-1 text-xs hover:bg-muted disabled:opacity-50" onClick={() => moveScene(selectedScene.scene.id, mount.storylineId)}>
                       设为主线
                     </button>
                   ) : null}
@@ -410,7 +410,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
                   <button
                     type="button"
                     disabled={busy || !addLineId}
-                    className="flex items-center gap-0.5 rounded border px-1.5 py-1 text-2xs hover:bg-muted disabled:opacity-50"
+                    className="flex items-center gap-0.5 rounded border px-1.5 py-1 text-xs hover:bg-muted disabled:opacity-50"
                     onClick={() => {
                       const storylineId = addLineId;
                       const role = selectedScene.mounts.length === 0 ? "primary" : "supporting";
@@ -432,11 +432,11 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
                 <div className="font-medium text-muted-foreground">伏笔</div>
                 {selectedScene.scene.hooksPlanted?.length ? <div>埋下：{selectedScene.scene.hooksPlanted.join("、")}</div> : null}
                 {selectedScene.scene.hooksUsed?.length ? <div>回收：{selectedScene.scene.hooksUsed.join("、")}</div> : null}
-                {selectedScene.openHooks.length ? <div className="text-amber-600">之后还没回收：{selectedScene.openHooks.join("、")}</div> : null}
+                {selectedScene.openHooks.length ? <div className="text-warning">之后还没回收：{selectedScene.openHooks.join("、")}</div> : null}
               </div>
             ) : null}
             {onOpenChapter ? (
-              <button type="button" className="flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted" onClick={() => onOpenChapter(selectedScene.scene.chapterNumber)}>
+              <button type="button" className="flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-muted" onClick={() => onOpenChapter(selectedScene.scene.chapterNumber)}>
                 <BookOpen className="size-3" />
                 打开第 {selectedScene.scene.chapterNumber} 章
               </button>
@@ -451,12 +451,12 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
               </div>
               {laneSummary(selectedLane) ? <div className="text-2xs text-muted-foreground">{laneSummary(selectedLane)}</div> : null}
             </div>
-            {selectedLane.storyline?.goal ? <p className="text-2xs leading-relaxed text-muted-foreground">目标：{selectedLane.storyline.goal}</p> : null}
+            {selectedLane.storyline?.goal ? <p className="text-xs leading-relaxed text-muted-foreground">目标：{selectedLane.storyline.goal}</p> : null}
             <div className="text-2xs">
               {selectedLane.sceneCount} 场{selectedLane.lastChapter !== undefined ? `，最近推进到第 ${selectedLane.lastChapter} 章` : "，还没有场景"}
-              {selectedLane.stalledChapters !== undefined ? <span className="text-amber-600">，已 {selectedLane.stalledChapters} 章没推进</span> : null}
+              {selectedLane.stalledChapters !== undefined ? <span className="text-warning">，已 {selectedLane.stalledChapters} 章没推进</span> : null}
             </div>
-            <p className="text-2xs text-muted-foreground">画布上只突出这条线经过的场景；再点一次线名取消。</p>
+            <p className="text-xs text-muted-foreground">画布上只突出这条线经过的场景；再点一次线名取消。</p>
           </>
         ) : (
           <>
@@ -473,7 +473,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
                 <select aria-label="剧情线类别" value={newLineKind} onChange={(event) => setNewLineKind(event.target.value)} className={`${fieldClass} flex-1`}>
                   {Object.entries(STORYLINE_KIND_LABEL).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
                 </select>
-                <button type="button" disabled={busy || !newLineName.trim()} onClick={createStoryline} className="flex items-center gap-0.5 rounded bg-primary px-2 py-1 text-2xs text-primary-foreground disabled:opacity-50">
+                <button type="button" disabled={busy || !newLineName.trim()} onClick={createStoryline} className="flex items-center gap-0.5 rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-50">
                   <Plus className="size-3" />
                   新建
                 </button>
@@ -482,7 +482,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
           </>
         )}
         {instance && graph.scenes.length > 0 ? (
-          <button type="button" className="text-2xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => void instance.fitView({ padding: FIT_PADDING, duration: 200 })}>
+          <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => void instance.fitView({ padding: FIT_PADDING, duration: 200 })}>
             查看全书
           </button>
         ) : null}

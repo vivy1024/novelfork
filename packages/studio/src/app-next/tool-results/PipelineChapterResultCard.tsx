@@ -85,18 +85,18 @@ function readContextSources(value: unknown): ContextSourceRow[] {
 }
 
 const STAGE_STATUS: Record<StageRow["status"], { readonly label: string; readonly className: string }> = {
-  ok: { label: "通过", className: "text-emerald-600 dark:text-emerald-400" },
+  ok: { label: "通过", className: "text-success" },
   skipped: { label: "跳过", className: "text-muted-foreground/70" },
-  warning: { label: "有提醒", className: "text-amber-600 dark:text-amber-400" },
+  warning: { label: "有提醒", className: "text-warning" },
   failed: { label: "失败", className: "text-destructive" },
 };
 
 function StageIcon({ status }: { readonly status: StageRow["status"] }) {
   switch (status) {
     case "ok":
-      return <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-500" />;
+      return <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" />;
     case "warning":
-      return <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />;
+      return <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />;
     case "failed":
       return <XCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />;
     case "skipped":
@@ -173,7 +173,7 @@ function PipelineStages({ stages }: { readonly stages: readonly StageRow[] }) {
   const skipped = stages.filter((item) => item.status === "skipped").length;
   const done = passed + skipped + warning + failed;
   const progress = Math.round((done / stages.length) * 100);
-  const barClass = failed > 0 ? "bg-destructive" : warning > 0 ? "bg-amber-500" : "bg-emerald-500";
+  const barClass = failed > 0 ? "bg-destructive" : warning > 0 ? "bg-warning" : "bg-success";
 
   return (
     <div className="flex flex-col gap-2 text-xs" data-testid="pipeline-stages">
@@ -360,7 +360,7 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
             <ul className="flex flex-col gap-1">
               {skillWarnings.map((warning, index) => (
                 <li key={`skill-warning-${index}`} className="flex items-start gap-1.5">
-                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
                   <span className="text-muted-foreground">{warning}</span>
                 </li>
               ))}
@@ -403,8 +403,8 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
         )}
 
         {needsHumanReview && !failed && (
-          <Alert className="border-amber-500/40 bg-amber-500/5" data-testid="pipeline-human-review">
-            <Pause className="size-4 text-amber-600 dark:text-amber-400" />
+          <Alert className="border-warning/40 bg-warning/5" data-testid="pipeline-human-review">
+            <Pause className="size-4 text-warning" />
             <AlertTitle>需要人工干预</AlertTitle>
             <AlertDescription className="flex flex-col gap-1">
               <p>审计仍有可修订问题。正文已保存，但不要直接发布。</p>

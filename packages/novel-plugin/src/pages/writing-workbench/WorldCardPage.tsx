@@ -234,7 +234,7 @@ function FactLine({ fact }: { fact: EntityFact }) {
     <div className="rounded-md border border-border/50 bg-background/70 px-2.5 py-2">
       <p className="text-xs font-medium leading-relaxed">{factText(fact)}</p>
       {typeof fact.sourceChapter === "number" ? (
-        <p className="mt-0.5 text-2xs text-muted-foreground">第 {fact.sourceChapter} 章结算</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">第 {fact.sourceChapter} 章结算</p>
       ) : null}
     </div>
   );
@@ -260,12 +260,12 @@ function WorldDynamicsSection({
     && snapshot.relatedCharacters.length === 0;
 
   return (
-    <Card className="border-sky-500/30 bg-sky-500/[0.035]" data-testid="world-dynamics-section">
+    <Card className="border-info/30 bg-info/[0.035]" data-testid="world-dynamics-section">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Activity className="size-4 text-sky-600" />
+              <Activity className="size-4 text-info" />
               实体动态
               <Badge variant="secondary" className="text-2xs font-normal">动态数据</Badge>
             </CardTitle>
@@ -291,8 +291,8 @@ function WorldDynamicsSection({
         ) : (
           <>
             {isEmpty ? (
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/[0.05] px-4 py-4 text-center" data-testid="world-dynamics-empty">
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-400">该实体暂无章后结算记录</p>
+              <div className="rounded-md border border-warning/40 bg-warning/[0.05] px-4 py-4 text-center" data-testid="world-dynamics-empty">
+                <p className="text-sm font-medium text-warning">该实体暂无章后结算记录</p>
                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
                   叙事记忆只收录正文中实际出现并经章后结算的动态。「{selfName.trim() || "该实体"}」可能尚未登场，
                   或结算器未从正文识别到与它相关的变化。静态设定不受影响。
@@ -302,7 +302,7 @@ function WorldDynamicsSection({
 
             <section className="space-y-2" aria-labelledby="world-current-state-title">
               <div className="flex items-center gap-2">
-                <Clock3 className="size-3.5 text-sky-600" />
+                <Clock3 className="size-3.5 text-info" />
                 <h3 id="world-current-state-title" className="text-xs font-semibold tracking-wide">{presentation.stateLabel}</h3>
                 <span className="text-2xs text-muted-foreground">来自当前 open facts</span>
               </div>
@@ -323,12 +323,12 @@ function WorldDynamicsSection({
             <Separator />
             <section className="space-y-2" aria-labelledby="world-evolution-title">
               <div className="flex items-center gap-2">
-                <GitBranch className="size-3.5 text-sky-600" />
+                <GitBranch className="size-3.5 text-info" />
                 <h3 id="world-evolution-title" className="text-xs font-semibold tracking-wide">发展历程</h3>
                 <span className="text-2xs text-muted-foreground">最近 10 条</span>
               </div>
               {snapshot && snapshot.evolution.length > 0 ? (
-                <ol className="space-y-2 border-l border-sky-500/25 pl-3">
+                <ol className="space-y-2 border-l border-info/25 pl-3">
                   {snapshot.evolution.map((step, index) => (
                     <li key={`${step.chapter}-${step.eventType}-${index}`} className="rounded-md border border-border/50 bg-background/60 px-3 py-2">
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -346,7 +346,7 @@ function WorldDynamicsSection({
 
             <section className="space-y-2" aria-labelledby="world-related-characters-title">
               <div className="flex items-center gap-2">
-                <Users className="size-3.5 text-sky-600" />
+                <Users className="size-3.5 text-info" />
                 <h3 id="world-related-characters-title" className="text-xs font-semibold tracking-wide">关联角色</h3>
                 <span className="text-2xs text-muted-foreground">与该实体有过交互</span>
               </div>
@@ -358,7 +358,7 @@ function WorldDynamicsSection({
                         <span className="truncate">{item.name}</span>
                         {item.chapter !== undefined ? <Badge variant="outline" className="text-2xs">第 {item.chapter} 章</Badge> : null}
                       </div>
-                      <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{item.label}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.label}</p>
                     </div>
                   ))}
                 </div>
@@ -524,7 +524,7 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave, relatedEn
           </div>
           {isEditing ? (
             <div className="flex shrink-0 items-center gap-2">
-              {dirty ? <Badge className="text-2xs bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge> : null}
+              {dirty ? <Badge className="text-2xs bg-warning/10 text-warning border-warning/20">未保存</Badge> : null}
               {confirmDiscard ? (
                 <span className="flex items-center gap-1">
                   <span className="text-xs text-muted-foreground">放弃未保存的修改？</span>

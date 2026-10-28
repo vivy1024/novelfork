@@ -37,7 +37,7 @@ function SceneView({ data, selected }: NodeProps & { data: CausalSceneNodeData }
   const pending = scene.status === "needs-review";
   return (
     <div
-      className={`flex flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm transition-opacity ${selected ? "ring-2 ring-primary" : ""} ${data.matched ? "ring-2 ring-amber-400" : ""} ${data.dimmed ? "opacity-30" : ""} ${pending ? "border-dashed" : ""}`}
+      className={`flex flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm transition-opacity ${selected ? "ring-2 ring-primary" : ""} ${data.matched ? "ring-2 ring-warning" : ""} ${data.dimmed ? "opacity-30" : ""} ${pending ? "border-dashed" : ""}`}
       style={{ width: SCENE_WIDTH, height: SCENE_HEIGHT, borderLeft: `4px solid ${data.homeColor}` }}
       data-testid={`causal-scene-${scene.id}`}
       title={scene.summary || undefined}
@@ -45,7 +45,7 @@ function SceneView({ data, selected }: NodeProps & { data: CausalSceneNodeData }
       <Handle id="in" type="target" position={Position.Left} className={hiddenHandle} isConnectable={false} />
       <div className="flex items-start justify-between gap-1">
         <span className="line-clamp-1 font-medium leading-snug">{scene.title?.trim() || `第 ${scene.ordinal} 场`}</span>
-        {pending ? <span className="shrink-0 rounded bg-amber-100 px-1 text-2xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">待审</span> : null}
+        {pending ? <span className="shrink-0 rounded bg-warning/10 px-1 text-xs text-warning">待审</span> : null}
       </div>
       <div className="text-2xs text-muted-foreground">
         第 {scene.chapterNumber} 章 · 第 {scene.ordinal} 场{scene.function ? ` · ${SCENE_FUNCTION_LABEL[scene.function] ?? scene.function}` : ""}
@@ -63,7 +63,7 @@ function SceneView({ data, selected }: NodeProps & { data: CausalSceneNodeData }
           {planted > 0 ? <span title="这里埋下的伏笔">埋 {planted}</span> : null}
           {used > 0 ? <span title="这里回收的伏笔">收 {used}</span> : null}
           {openHooks.length > 0 ? (
-            <span className="text-amber-600" title={`之后还没有场景回收：${openHooks.join("、")}`}>悬 {openHooks.length}</span>
+            <span className="text-warning" title={`之后还没有场景回收：${openHooks.join("、")}`}>悬 {openHooks.length}</span>
           ) : null}
         </span>
       </div>
@@ -104,7 +104,7 @@ function HookEdgeView(props: EdgeProps<CausalCanvasEdge>) {
       {props.data?.label && !dimmed ? (
         <EdgeLabelRenderer>
           <div
-            className="nodrag nopan pointer-events-none absolute rounded border border-amber-400/70 bg-amber-50 px-1 py-0.5 text-2xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+            className="nodrag nopan pointer-events-none absolute rounded border border-warning/70 bg-warning/10 px-1 py-0.5 text-2xs text-warning"
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
             {props.data.label}

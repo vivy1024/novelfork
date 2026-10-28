@@ -38,7 +38,7 @@ export const SelectionCandidateCard: ToolResultRenderer = (context: ToolResultRe
     >
       {sourceText && (
         <div>
-          <p className="text-2xs text-muted-foreground">原文</p>
+          <p className="text-xs text-muted-foreground">原文</p>
           <p className="mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap rounded bg-muted/50 p-2 text-xs" data-testid="selection-candidate-card-source">
             {clip(sourceText)}
           </p>
@@ -46,7 +46,7 @@ export const SelectionCandidateCard: ToolResultRenderer = (context: ToolResultRe
       )}
       {candidateText && (
         <div>
-          <p className="text-2xs text-muted-foreground">候选（{action === "continue" ? "接在原文之后" : "替换原文"}）</p>
+          <p className="text-xs text-muted-foreground">候选（{action === "continue" ? "接在原文之后" : "替换原文"}）</p>
           <p className="mt-0.5 max-h-24 overflow-y-auto whitespace-pre-wrap rounded bg-primary/10 p-2 text-xs" data-testid="selection-candidate-card-text">
             {clip(candidateText, 600)}
           </p>
@@ -54,7 +54,7 @@ export const SelectionCandidateCard: ToolResultRenderer = (context: ToolResultRe
       )}
       {context.onOpenArtifact ? (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-2xs text-muted-foreground">在正文中查看对照后，决定应用或放弃。</p>
+          <p className="text-xs text-muted-foreground">在正文中查看对照后，决定应用或放弃。</p>
           <Button size="sm" onClick={() => context.onOpenArtifact!(artifact)} data-testid="selection-candidate-open">
             在正文里审阅
           </Button>

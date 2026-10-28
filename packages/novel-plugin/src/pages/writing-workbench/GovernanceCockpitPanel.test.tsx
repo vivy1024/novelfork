@@ -47,9 +47,9 @@ describe("纯函数：承诺命中率口径", () => {
     expect(result.overdue).toBe(1);
     expect(result.resolved).toBe(3);
     expect(result.percent).toBe(75);
-    expect(rateToneClass(result.percent)).toBe("text-green-600");
-    expect(rateToneClass(50)).toBe("text-yellow-600");
-    expect(rateToneClass(39)).toBe("text-red-500");
+    expect(rateToneClass(result.percent)).toBe("text-success");
+    expect(rateToneClass(50)).toBe("text-warning");
+    expect(rateToneClass(39)).toBe("text-destructive");
   });
 
   it("当前章号取 chapters 最大号；否则用 nextChapter - 1", () => {

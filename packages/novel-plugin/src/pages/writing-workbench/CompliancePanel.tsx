@@ -74,9 +74,9 @@ export interface CompliancePanelProps {
 }
 
 const STATUS_ICON: Record<RiskStatus, React.ReactNode> = {
-  clear: <CheckCircle2 className="size-4 text-green-500" />,
-  warning: <AlertTriangle className="size-4 text-yellow-500" />,
-  "needs-review": <AlertTriangle className="size-4 text-amber-500" />,
+  clear: <CheckCircle2 className="size-4 text-success" />,
+  warning: <AlertTriangle className="size-4 text-warning" />,
+  "needs-review": <AlertTriangle className="size-4 text-warning" />,
   unknown: <AlertTriangle className="size-4 text-muted-foreground" />,
 };
 
@@ -227,7 +227,7 @@ export function CompliancePanel({ bookId, bookPlatform }: CompliancePanelProps) 
                   {evidence.suggestion && <p className="mt-1">人工复核建议：{evidence.suggestion}</p>}
                 </div>
               ))}
-              {report.evidence.length > 6 && <p className="text-2xs text-muted-foreground">另有 {report.evidence.length - 6} 条证据。</p>}
+              {report.evidence.length > 6 && <p className="text-xs text-muted-foreground">另有 {report.evidence.length - 6} 条证据。</p>}
             </div>
           )}
         </div>
@@ -243,7 +243,7 @@ export function CompliancePanel({ bookId, bookPlatform }: CompliancePanelProps) 
             <div className="relative rounded-md bg-muted/50 p-2">
               <pre className="max-h-32 whitespace-pre-wrap overflow-y-auto text-2xs text-muted-foreground">{disclosure.markdownText}</pre>
               <button type="button" onClick={() => void handleCopy()} className="absolute right-1 top-1 rounded p-1 hover:bg-muted" title="复制">
-                {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3 text-muted-foreground" />}
+                {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3 text-muted-foreground" />}
               </button>
             </div>
           )}
@@ -273,7 +273,7 @@ export function CompliancePanel({ bookId, bookPlatform }: CompliancePanelProps) 
         )}
       </div>
 
-      <p className="text-2xs text-muted-foreground">本地自检只提供风险线索，不能替代平台审核或作者判断。</p>
+      <p className="text-xs text-muted-foreground">本地自检只提供风险线索，不能替代平台审核或作者判断。</p>
     </div>
   );
 }

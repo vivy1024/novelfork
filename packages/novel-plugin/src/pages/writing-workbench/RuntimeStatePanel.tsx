@@ -144,7 +144,7 @@ function ResourcesTab({ resources }: { resources: ResourceEntry[] }) {
       {resources.map((r) => (
         <div key={r.resourceId} className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/50">
           <span className="flex-1 font-medium">{r.name || r.resourceId}</span>
-          <span className={cn("font-mono", r.balance >= 0 ? "text-green-600" : "text-red-500")}>
+          <span className={cn("font-mono", r.balance >= 0 ? "text-success" : "text-destructive")}>
             {r.balance >= 0 ? "+" : ""}{r.balance}
           </span>
         </div>

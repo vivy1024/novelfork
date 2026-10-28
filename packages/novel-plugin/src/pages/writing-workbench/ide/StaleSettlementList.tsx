@@ -71,14 +71,14 @@ export function StaleSettlementList({ bookId }: { readonly bookId: string }) {
   return (
     <section
       aria-label="记忆过期的章节"
-      className="mb-2 space-y-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2"
+      className="mb-2 space-y-1.5 rounded-lg border border-warning/40 bg-warning/5 p-2"
     >
       <div className="flex items-center gap-1.5 text-2xs font-semibold">
-        <AlertTriangle className="size-3.5 text-amber-600" />
+        <AlertTriangle className="size-3.5 text-warning" />
         <span>记忆过期的章节 · {stale.length}</span>
       </div>
       {data?.explanation?.whyItMatters ? (
-        <p className="text-2xs leading-relaxed text-muted-foreground">{data.explanation.whyItMatters}</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{data.explanation.whyItMatters}</p>
       ) : null}
       <ul className="space-y-1">
         {stale.map((chapter) => (

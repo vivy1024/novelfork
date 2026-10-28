@@ -104,7 +104,7 @@ function TreeRow({
       className={
         "group flex items-center gap-1 rounded px-1 py-0.5 transition-colors "
         + (selected ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted/60")
-        + (matched ? " ring-1 ring-amber-500/40" : "")
+        + (matched ? " ring-1 ring-warning/40" : "")
       }
       style={{ paddingLeft: node.depth * KIND_INDENT + 4 }}
       data-testid={`story-tree-row-${node.id}`}
@@ -166,7 +166,7 @@ function TreeRow({
 function NodeInspector({ node }: { node: StoryTreeNode | null }) {
   if (!node) {
     return (
-      <p className="p-3 text-2xs text-muted-foreground" data-testid="story-tree-inspector-empty">
+      <p className="p-3 text-xs text-muted-foreground" data-testid="story-tree-inspector-empty">
         点左侧任一节点查看详情。
       </p>
     );
@@ -175,7 +175,7 @@ function NodeInspector({ node }: { node: StoryTreeNode | null }) {
     <div className="space-y-2 p-3" data-testid="story-tree-inspector">
       <div>
         <p className="text-xs font-semibold">{node.label}</p>
-        {node.subtitle ? <p className="mt-0.5 text-2xs text-muted-foreground">{node.subtitle}</p> : null}
+        {node.subtitle ? <p className="mt-0.5 text-xs text-muted-foreground">{node.subtitle}</p> : null}
       </div>
       <div className="flex flex-wrap gap-1">
         <Badge variant="outline" className="h-4 px-1 text-2xs">{node.kind}</Badge>
@@ -185,11 +185,11 @@ function NodeInspector({ node }: { node: StoryTreeNode | null }) {
         {node.status ? <Badge variant="secondary" className="h-4 px-1 text-2xs">{node.status}</Badge> : null}
       </div>
       {node.detail ? (
-        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-2xs leading-relaxed text-muted-foreground">
+        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
           {node.detail}
         </p>
       ) : (
-        <p className="text-2xs text-muted-foreground">这个节点没有正文内容。</p>
+        <p className="text-xs text-muted-foreground">这个节点没有正文内容。</p>
       )}
     </div>
   );
@@ -303,7 +303,7 @@ export function StoryTreeView({
       >
         <FolderTree className="size-6 text-muted-foreground/60" />
         <p className="text-xs font-medium">作品基础里还没有条目</p>
-        <p className="max-w-xs text-2xs leading-relaxed text-muted-foreground">
+        <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
           树的层级来自叙事分类，条目来自经纬。先建立角色、地点、设定等条目，或对已有正文跑一次拆书。
         </p>
       </div>
@@ -330,7 +330,7 @@ export function StoryTreeView({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索节点"
               aria-label="搜索故事树"
-              className="h-6 w-32 pl-6 text-2xs"
+              className="h-6 w-32 pl-6 text-xs"
             />
           </div>
           {query ? (
@@ -359,7 +359,7 @@ export function StoryTreeView({
       </div>
 
       {query && matched.size === 0 ? (
-        <p className="px-1 text-2xs text-muted-foreground" data-testid="story-tree-no-match">
+        <p className="px-1 text-xs text-muted-foreground" data-testid="story-tree-no-match">
           没有匹配「{query}」的节点。
         </p>
       ) : null}

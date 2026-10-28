@@ -225,7 +225,7 @@ function MarkdownResourceBody({
           <p className="text-xs leading-relaxed text-muted-foreground">
             为避免首次打开卡顿，当前先不建立完整编辑器文档。文件仍可读取；需要格式化预览时再加载。
           </p>
-          <p className="text-2xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             大小约 {Math.ceil(utf8ByteLength(content) / 1024)} KB，渲染阈值为 256 KB。
           </p>
           <Button type="button" size="sm" onClick={() => setPreviewLarge(true)}>
@@ -318,7 +318,7 @@ function renderNarrativeMemoryEntry(node: WorkbenchResourceNode) {
     <ViewerShell node={node} label="叙事记忆详情">
       <div className="space-y-3 p-4">
         {detailError ? (
-          <div role="alert" className="rounded border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs text-yellow-700 dark:text-yellow-300">
+          <div role="alert" className="rounded border border-warning/30 bg-warning/10 p-2 text-xs text-warning">
             详情补充失败，当前显示列表摘要：{detailError}
           </div>
         ) : null}
@@ -404,9 +404,9 @@ const NODE_TYPE_LABELS: Record<string, string> = {
 };
 
 const SEVERITY_STYLES: Record<string, string> = {
-  critical: "border-red-500/50 bg-red-50 dark:bg-red-950/20",
-  warning: "border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20",
-  info: "border-blue-500/50 bg-blue-50 dark:bg-blue-950/20",
+  critical: "border-destructive/50 bg-destructive/10",
+  warning: "border-warning/50 bg-warning/10",
+  info: "border-info/50 bg-info/10",
 };
 
 function NarrativeLineView({ node, bookId }: { node: WorkbenchResourceNode; bookId?: string }) {
@@ -536,7 +536,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">冲突线 ({conflicts.length})</h4>
           {conflicts.map((c) => (
             <div key={c.id} className="flex items-center gap-2 rounded border border-border p-2 text-xs">
-              <span className={`inline-block size-2 rounded-full ${c.status === "resolved" ? "bg-green-500" : c.status === "escalating" ? "bg-red-500" : "bg-yellow-500"}`} />
+              <span className={`inline-block size-2 rounded-full ${c.status === "resolved" ? "bg-success" : c.status === "escalating" ? "bg-destructive" : "bg-warning"}`} />
               <span className="font-medium">{c.title}</span>
               <span className="text-muted-foreground ml-auto">{c.status}</span>
             </div>
@@ -550,7 +550,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">伏笔线 ({foreshadows.length})</h4>
           {foreshadows.map((f) => (
             <div key={f.id} className="flex items-center gap-2 rounded border border-border p-2 text-xs">
-              <span className={`inline-block size-2 rounded-full ${f.status === "paid-off" ? "bg-green-500" : f.status === "due" ? "bg-orange-500" : f.status === "abandoned" ? "bg-gray-400" : "bg-blue-500"}`} />
+              <span className={`inline-block size-2 rounded-full ${f.status === "paid-off" ? "bg-success" : f.status === "due" ? "bg-orange-500" : f.status === "abandoned" ? "bg-gray-400" : "bg-info"}`} />
               <span className="font-medium">{f.title}</span>
               {f.dueChapter && <span className="text-muted-foreground">预计第{f.dueChapter}章</span>}
               <span className="text-muted-foreground ml-auto">{f.status}</span>
@@ -568,7 +568,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
               <div key={n.id} className="rounded border border-border p-2 text-xs group">
                 <div className="flex items-center gap-1.5">
                   <span className="rounded bg-muted px-1 py-0.5 text-2xs font-mono">{NODE_TYPE_LABELS[n.type] ?? n.type}</span>
-                  {n.layer === "annotation" ? <span className="rounded bg-amber-100 px-1 py-0.5 text-2xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">备注</span> : <span className="rounded bg-sky-100 px-1 py-0.5 text-2xs text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">派生</span>}
+                  {n.layer === "annotation" ? <span className="rounded bg-warning/10 px-1 py-0.5 text-2xs text-warning">备注</span> : <span className="rounded bg-info/10 px-1 py-0.5 text-2xs text-info">派生</span>}
                   <span className="font-medium">{n.title}</span>
                   {n.chapterNumber != null && <span className="text-muted-foreground ml-auto mr-1">第{n.chapterNumber}章</span>}
                   {bookId && n.layer !== "derived" && (
@@ -595,7 +595,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
       {edges.length > 0 && (
         <div className="space-y-1">
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">关系 ({edges.length})</h4>
-          <p className="text-2xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {edges.length} 条关系连接（{[...new Set(edges.map(e => e.type))].join("、")}）
           </p>
         </div>
@@ -650,7 +650,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
 
       {/* Status message */}
       {statusMsg && (
-        <p className="text-xs text-emerald-600 dark:text-emerald-400">{statusMsg}</p>
+        <p className="text-xs text-success">{statusMsg}</p>
       )}
 
       {/* Agent hint */}
@@ -674,17 +674,17 @@ function renderNarrativeLine(node: WorkbenchResourceNode, options: ResourceViewe
 // ---------------------------------------------------------------------------
 
 const CATEGORY_COLOR_MAP: Record<string, string> = {
-  blue: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  blue: "bg-info/10 text-info",
   orange: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
   purple: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  yellow: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
-  green: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  red: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-  amber: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  yellow: "bg-warning/10 text-warning",
+  green: "bg-success/10 text-success",
+  red: "bg-destructive/10 text-destructive",
+  amber: "bg-warning/10 text-warning",
   rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300",
-  emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  emerald: "bg-success/10 text-success",
   violet: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
-  sky: "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300",
+  sky: "bg-info/10 text-info",
   pink: "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300",
   indigo: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
   cyan: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300",
