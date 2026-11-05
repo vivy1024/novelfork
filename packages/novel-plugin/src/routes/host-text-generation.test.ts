@@ -155,6 +155,29 @@ describe("网页文风蒸馏接宿主文本生成", () => {
       explanation: { next: expect.stringContaining("jobId") },
     });
   });
+
+  it("宿主报告的截断标记与输出用量传到批次：用满上限没写出 JSON 时报「被截断」而不是「没有 JSON」", async () => {
+    const root = await tempRoot("nf-host-distill-trunc-");
+    const bookRoot = join(root, "book-a");
+    await mkdir(bookRoot, { recursive: true });
+    const generateText = vi.fn<HostTextGenerator>(async (request) => ({
+      text: "",
+      model: "gemini:flash-high",
+      usage: { completionTokens: (request.maxTokens ?? 0) - 4 },
+    }));
+    const app = createStyleDistillationsRouter(
+      routerContext(root, async () => ({ available: true, model: "gemini:flash-high", generateText })),
+      { resolveBookRoot: () => bookRoot },
+    );
+    const created = await (await app.request("/api/books/book-a/style/distillations/jobs", post({ sourceName: "旧稿甲", text: "第一章 雨夜\n她停在门前，听见雨声。" }))).json() as { job: { jobId: string } };
+    let view: { job: { status: string; batches: { status: string; explanation?: { what: string; next: string } }[] } } | undefined;
+    for (let attempt = 0; attempt < 50 && view?.job.status !== "ready"; attempt += 1) {
+      view = await (await app.request(`/api/books/book-a/style/distillations/jobs/${created.job.jobId}`)).json() as typeof view;
+      if (view?.job.status !== "ready") await new Promise((done) => setTimeout(done, 10));
+    }
+    expect(view?.job.batches[0]).toMatchObject({ status: "failed", explanation: { what: expect.stringContaining("模型输出被截断") } });
+    expect(view?.job.batches[0]?.explanation?.next).not.toContain("更守格式");
+  });
 });
 
 describe("角色声线草稿接宿主文本生成", () => {

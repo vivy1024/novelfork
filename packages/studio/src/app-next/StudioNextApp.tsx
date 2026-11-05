@@ -112,6 +112,7 @@ const RUNTIME_PAGE_LABELS: Record<Exclude<RuntimePageSection, "routines" | "sett
 };
 import { DirectoryPickerDialog } from "./components/DirectoryPickerDialog";
 import { WorkspaceCreateWizard, type WorkspaceCreateInput } from "./components/WorkspaceCreateWizard";
+import { createManuscriptImportClient } from "./runtime/manuscript-import-client";
 import type { WorkbenchCanvasContext } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 interface StudioNextAppProps {
@@ -138,6 +139,9 @@ function ShellPlaceholder({
     </section>
   );
 }
+
+/** 旧稿导入的请求封装没有状态，整个外壳共用一份。 */
+const manuscriptImportClient = createManuscriptImportClient();
 
 function LazyFallback() {
   return (
@@ -603,6 +607,15 @@ function RouteMountPoint({
                 await reloadRuntimeShell();
                 return result;
               }}
+              manuscriptImportClient={manuscriptImportClient}
+              onCreateManuscriptBook={async (title) => {
+                // 旧稿导入先建一本空书（与「新建作品」同一接口），之后的切分、写章都只操作这本书。
+                const operation = await runtimeClient.createBook({ title }, crypto.randomUUID());
+                if (operation.state !== "ready") throw new Error(operation.error ?? `书籍初始化尚未完成（${operation.state}）`);
+                await reloadRuntimeShell();
+                return operation.bookId;
+              }}
+              onBooksChanged={reloadRuntimeShell}
             />
           </Suspense>
         </LazyErrorBoundary>

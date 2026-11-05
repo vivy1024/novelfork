@@ -177,7 +177,7 @@ export { loadRuntimeStateSnapshot, buildRuntimeStateArtifacts, saveRuntimeStateS
 export { StateManager } from "./state/manager.js";
 export { resolveBookStorageDir, resolveBookStorageDirAsync } from "./state/book-storage-resolver.js";
 export { migrateChaptersToBindingDir, type BindingMigrationResult } from "./state/migrate-chapters-to-binding.js";
-export { bootstrapStructuredStateFromMarkdown, rewriteStructuredStateFromMarkdown, resolveDurableStoryProgress } from "./state/state-bootstrap.js";
+export { bootstrapStructuredStateFromMarkdown, rewriteStructuredStateFromMarkdown, resolveDurableStoryProgress, ChapterFilesUnreadableError } from "./state/state-bootstrap.js";
 export { renderCurrentStateProjection, renderHooksProjection, renderChapterSummariesProjection } from "./state/state-projections.js";
 export { applyRuntimeStateDelta, findKnowledgeViolations, findTimelineConflicts, type RuntimeStateSnapshot, type ResourceLedgerWarning } from "./state/state-reducer.js";
 export {

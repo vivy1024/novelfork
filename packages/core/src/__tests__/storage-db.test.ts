@@ -417,6 +417,57 @@ describe("storage SQLite database", () => {
     }
   });
 
+  it("运行时已补过的列：ADD COLUMN 迁移跳过该列、照常记账，其余语句仍执行", async () => {
+    const databasePath = await createTempDbPath();
+    const migrationsDir = join(databasePath, "..", "add-column-migrations");
+    await mkdir(migrationsDir, { recursive: true });
+    await writeFile(join(migrationsDir, "0001_base.sql"), `CREATE TABLE "scene" ("id" TEXT PRIMARY KEY);`, "utf-8");
+    await writeFile(
+      join(migrationsDir, "0002_gaps.sql"),
+      [
+        `ALTER TABLE "scene" ADD COLUMN "gaps_json" TEXT NOT NULL DEFAULT '[]';`,
+        `ALTER TABLE scene ADD COLUMN mood TEXT NOT NULL DEFAULT '';`,
+        `CREATE TABLE "after_add" ("id" TEXT);`,
+      ].join("\n"),
+      "utf-8",
+    );
+    const storage = createStorageDatabase({ databasePath });
+    try {
+      // 先只跑到 0001，再模拟插件 ensure*Schema 在运行时补了 gaps_json（大小写不同也算同一列）
+      const gapsSql = await readFile(join(migrationsDir, "0002_gaps.sql"), "utf-8");
+      await rm(join(migrationsDir, "0002_gaps.sql"));
+      expect(runStorageMigrations(storage, { migrationsDir }).applied).toEqual(["0001_base.sql"]);
+      storage.sqlite.exec(`ALTER TABLE scene ADD COLUMN GAPS_JSON TEXT NOT NULL DEFAULT '[]'`);
+      await writeFile(join(migrationsDir, "0002_gaps.sql"), gapsSql, "utf-8");
+
+      const result = runStorageMigrations(storage, { migrationsDir });
+      expect(result.applied).toEqual(["0002_gaps.sql"]);
+      const columns = (storage.sqlite.prepare(`PRAGMA table_info("scene")`).all() as Array<{ name: string }>).map((row) => row.name.toLowerCase());
+      expect(columns.filter((name) => name === "gaps_json")).toHaveLength(1);
+      expect(columns).toContain("mood");
+      expect(storage.sqlite.prepare(`SELECT name FROM sqlite_master WHERE name = 'after_add'`).get()).toBeTruthy();
+      // 再跑一次：已记账，不重复执行
+      expect(runStorageMigrations(storage, { migrationsDir }).applied).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("ADD COLUMN 的目标表不存在时不跳过，迁移照常报错且不记账", async () => {
+    const databasePath = await createTempDbPath();
+    const migrationsDir = join(databasePath, "..", "add-column-missing-table");
+    await mkdir(migrationsDir, { recursive: true });
+    await writeFile(join(migrationsDir, "0001_add.sql"), `ALTER TABLE "missing_table" ADD COLUMN "x" TEXT;`, "utf-8");
+    const storage = createStorageDatabase({ databasePath });
+    try {
+      expect(() => runStorageMigrations(storage, { migrationsDir })).toThrow(/no such table/u);
+      const recorded = storage.sqlite.prepare(`SELECT COUNT(*) AS count FROM "drizzle_migrations"`).get() as { count: number };
+      expect(recorded.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("applies 0030 entry_key identity migration in filesystem and embedded with parity, defaults, dirty JSON, duplicate keys, and idempotency", async () => {
     // --- Parity check: filesystem SQL === embedded SQL ---
     const migrationSql = await readFile(

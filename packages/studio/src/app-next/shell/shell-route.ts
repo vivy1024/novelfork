@@ -75,6 +75,8 @@ export interface ShellBookItem {
    * for this book; it grants nothing by itself.
    */
   readonly runtimeProjectId?: string | null;
+  /** 旧稿导入尚未「完成导入」时的任务 ID。 */
+  readonly manuscriptImportJobId?: string;
 }
 
 export interface ShellSessionItem {

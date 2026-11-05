@@ -96,7 +96,9 @@ export const PUNCTUATION_RULES: readonly PhrasePattern[] = [
   },
   {
     rule: "em-dash",
-    pattern: /\s*(?:——|—|--)\s*/gu,
+    // 「──」（制表符横线 U+2500 连写）是老排版与繁体书里常见的破折号写法，与「——」同口径，
+    // 否则原文的「──」不报、润色换成「——」后反倒新增命中。单个「─」多为制表线，不算。
+    pattern: /\s*(?:——|—|--|─{2,})\s*/gu,
     replace: () => "，",
     reason: "破折号在正文里改为逗号承接",
   },

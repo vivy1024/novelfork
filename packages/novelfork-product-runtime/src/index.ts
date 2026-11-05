@@ -36,6 +36,8 @@ import {
 } from "./services/narrator-access";
 import { migrateLegacySessions } from "./services/legacy-session-migration";
 import { reconcileBookProjectOwners } from "./services/book-project-owner";
+import { repairLegacyToolCallOutputJson } from "./services/legacy-tool-output-repair";
+import { moveLegacyBundledSkillCopies } from "./services/legacy-skill-copies";
 import { shouldBypassBookGuard } from "./services/book-guard-bypass";
 import {
 	assertBookProjectMutationAllowed,
@@ -115,7 +117,12 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 	isProductNarrator: isNovelForkProductNarrator,
 	resolveNarratorCwd: resolveNovelForkNarratorCwd,
 	initialize: async () => {
-		initializeNovelRuntimeStorage();
+		const storage = initializeNovelRuntimeStorage();
+		// 旧版 Runtime 留在 output_json 里的纯文本会让 0.9 的历史读取整页失败；
+		// 必须先于任何叙述者历史读取修好（幂等，修过一次即记标记跳过）。
+		repairLegacyToolCallOutputJson(storage);
+		// 旧版「编辑内置技能」留下的未改动副本会以全局技能出现；逐字一致的才移到备份目录。
+		await moveLegacyBundledSkillCopies(storage);
 		await migrateLegacySessions();
 		// 给本次修复前建的书补上 Runtime 项目 owner（幂等；只补 owner 仍为空的）。
 		await reconcileBookProjectOwners();

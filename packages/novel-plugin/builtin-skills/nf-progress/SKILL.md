@@ -20,12 +20,12 @@ tags:
 
 ## 步骤
 
-1. 调 `cockpit.snapshot`：总章数、总字数、最近章节摘要、未兑现伏笔、健康度。刚调过且结果仍在上下文里就不要重复调。
-2. 调 `outline.volume`（action=get）：当前卷的卷目标与章号区间，算出已写到区间的第几章。没有卷纲就如实写「本书还没有卷纲」，不要根据章节自行推一个。
-3. 调 `hooks.manage`（action=check_due，chapterNumber 取下一章章号）：列出到期、临近到期的伏笔。
+1. 调 `cockpit_snapshot`：总章数、总字数、最近章节摘要、未兑现伏笔、健康度。刚调过且结果仍在上下文里就不要重复调。
+2. 调 `outline_volume`（action=get）：当前卷的卷目标与章号区间，算出已写到区间的第几章。没有卷纲就如实写「本书还没有卷纲」，不要根据章节自行推一个。
+3. 调 `hooks_manage`（action=check_due，chapterNumber 取下一章章号）：列出到期、临近到期的伏笔。
 4. 按需补充：
-   - 本书有进行中的工作流运行时，`workflow.get_current_step` 看停在哪道工序；
-   - 作者关心剧情线时，`memory.read_line` 看剧情线的 warnings。
+   - 本书有进行中的工作流运行时，`workflow_get_current_step` 看停在哪道工序；
+   - 作者关心剧情线时，`memory_read_line` 看剧情线的 warnings。
 5. 按下面的格式汇总。
 
 ## 输出格式

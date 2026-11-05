@@ -69,6 +69,15 @@ describe("语料校准边界", () => {
     expect(many.advisory.some((item) => item.ruleId === "em-dash-density")).toBe(true);
   });
 
+  it("「──」与「——」同口径计数，两种写法互换不改变命中", () => {
+    const emText = "他停住——门开了——风灌进来——灯灭了——没人说话——他后退。".repeat(2);
+    const boxText = emText.replaceAll("——", "──");
+    const em = detectZhAiFlavor(emText).advisory.find((item) => item.ruleId === "em-dash-density");
+    const box = detectZhAiFlavor(boxText).advisory.find((item) => item.ruleId === "em-dash-density");
+    expect(box).toBeTruthy();
+    expect(box?.count).toBe(em?.count);
+  });
+
   it("英文双连字符不算破折号（真人稿里是分隔线）", () => {
     const report = detectZhAiFlavor(`${filler(20)}${"--".repeat(20)}`);
     expect(report.advisory.some((item) => item.ruleId === "em-dash-density")).toBe(false);

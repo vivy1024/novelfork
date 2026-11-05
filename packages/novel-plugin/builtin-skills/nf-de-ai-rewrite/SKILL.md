@@ -1,7 +1,7 @@
 ---
 id: nf-de-ai-rewrite
 name: 去AI味重写
-description: 把"假"洗掉而不是把文本洗平——诊断 AI 腔病灶（句式均匀/对话同腔/抽象判断/模板转折），按三档强度重写为人在场景里说话、做事、承受压力的样子。改写文本由本 Agent 生成，用 rewrite.apply 落盘。
+description: 把"假"洗掉而不是把文本洗平——诊断 AI 腔病灶（句式均匀/对话同腔/抽象判断/模板转折），按三档强度重写为人在场景里说话、做事、承受压力的样子。改写文本由本 Agent 生成，用 rewrite_apply 落盘。
 kind: revision
 mode: manual
 version: 1.0.0
@@ -63,7 +63,7 @@ checks:
 
 ## 操作（NovelFork）
 
-1. `chapter.read` 读目标章节（或直接拿到待改文本）。
+1. `chapter_read` 读目标章节（或直接拿到待改文本）。
 2. 本 Agent 按上述诊断+拆洗生成改写文本。
-3. `rewrite.apply` 按行范围写回；整章重写走 `chapter.write`。
+3. `rewrite_apply` 按行范围写回；整章重写走 `chapter_write`。
 4. 改后自检：重跑四维病灶速查，仍有套话就再来一轮，同一段最多 2 轮，之后交作者定夺。

@@ -3,6 +3,15 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { DiagnosticExplanation } from "../../handlers/diagnostic-explanation.js";
 import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry-repo.js";
 import { queryCurrentNarrativeLedger } from "./ledger.js";
+import {
+  ignoreKeyString,
+  listConsistencyIgnores,
+  runSceneChecks,
+  SCENE_DEAD_ACTS,
+  SCENE_LOCATION_JUMP,
+  type ConsistencyIgnoreKey,
+  type SceneCheckFinding,
+} from "./scene-check.js";
 
 /**
  * 经纬 × 叙事记忆 一致性检测（纰漏检测 v1）。
@@ -15,7 +24,7 @@ import { queryCurrentNarrativeLedger } from "./ledger.js";
  * try/catch 兜底，旧表结构下静默降级为「无检测结果」，不阻断软提醒。
  */
 
-export type ConsistencyFindingKind = "realm-drift" | "orphan-location";
+export type ConsistencyFindingKind = "realm-drift" | "orphan-location" | typeof SCENE_DEAD_ACTS | typeof SCENE_LOCATION_JUMP;
 
 export interface ConsistencyFinding {
   readonly kind: ConsistencyFindingKind;
@@ -33,6 +42,19 @@ export interface ConsistencyFinding {
   readonly memoryPredicate?: string;
   /** 叙事记忆侧那条事实的生效章号，供「看第 X 章」跳转用。 */
   readonly memoryChapter?: number;
+  /** 实体索引 id（场景校验给出；忽略键的一部分）。 */
+  readonly entityId?: string;
+  /** 矛盾出现的章（场景校验：被检查的那一章）。 */
+  readonly chapterNumber?: number;
+  /** 正文原文句子（场景校验的证据）。 */
+  readonly evidenceText?: string;
+  /** 地点跳变：本章的地点（蓝图场景的地点，或没有场景时本章首个「所在」）。 */
+  readonly sceneLocation?: string;
+  /**
+   * 作者「忽略此条」用的裁决键（检测类型 + 实体 id + 章号 + 记忆事实 id）。
+   * 前端原样回传，不自己拼。
+   */
+  readonly ignoreKey?: ConsistencyIgnoreKey;
   /**
    * 人话层：发生了什么 / 为什么要看 / 建议怎么做。
    *
@@ -44,11 +66,18 @@ export interface ConsistencyFinding {
 export interface ConsistencyCheckInput {
   readonly bookId: string;
   readonly asOfChapter?: number;
+  /** 场景校验只查这些章（结算后自动检测传本章）；缺省查截至 asOfChapter 的全部章。 */
+  readonly sceneChapters?: readonly number[];
+  /** 场景校验读正文（证据核对与人物首句）；缺省时地点跳变不报。 */
+  readonly loadChapterText?: (chapterNumber: number) => Promise<string | undefined> | string | undefined;
 }
 
 export interface ConsistencyCheckResult {
   readonly bookId: string;
+  /** 未被作者忽略的检出项。 */
   readonly findings: readonly ConsistencyFinding[];
+  /** 作者已标「忽略此条」、本次仍检出的项（供撤销忽略）。 */
+  readonly ignored: readonly ConsistencyFinding[];
   readonly summary: string;
 }
 
@@ -174,22 +203,116 @@ export async function detectOrphanLocation(storage: StorageDatabase, input: Cons
   return findings;
 }
 
+/** 忽略键：检测类型 + 实体 id + 章号 + 记忆事实 id。旧检测器没有实体 id 时退回经纬条目 / 名字。 */
+export function consistencyIgnoreKeyOf(finding: Omit<ConsistencyFinding, "ignoreKey">): ConsistencyIgnoreKey {
+  return {
+    kind: finding.kind,
+    entityId: finding.entityId ?? (finding.jingweiEntryId ? `entry:${finding.jingweiEntryId}` : `name:${finding.entity}`),
+    chapterNumber: finding.chapterNumber ?? finding.memoryChapter ?? 0,
+    factId: finding.factId ?? "",
+  };
+}
+
+function fromSceneFinding(finding: SceneCheckFinding): Omit<ConsistencyFinding, "ignoreKey"> {
+  return {
+    kind: finding.kind,
+    severity: finding.severity,
+    title: finding.title,
+    detail: finding.detail,
+    entity: finding.entity,
+    entityId: finding.entityId,
+    ...(finding.jingweiEntryId ? { jingweiEntryId: finding.jingweiEntryId } : {}),
+    chapterNumber: finding.chapterNumber,
+    evidenceText: finding.evidenceText,
+    factId: finding.factId,
+    memoryChapter: finding.memoryChapter,
+    memoryPredicate: finding.memoryPredicate,
+    memoryValue: finding.memoryValue,
+    ...(finding.sceneLocation ? { sceneLocation: finding.sceneLocation } : {}),
+    explanation: finding.explanation,
+  };
+}
+
 export async function runConsistencyCheck(storage: StorageDatabase, input: ConsistencyCheckInput): Promise<ConsistencyCheckResult> {
-  let findings: ConsistencyFinding[];
+  let jingweiFindings: ConsistencyFinding[];
   try {
-    findings = [
+    jingweiFindings = [
       ...(await detectRealmDrift(storage, input)),
       ...(await detectOrphanLocation(storage, input)),
     ];
   } catch {
     // 经纬旧表结构缺列时 entry-repo 会失败；一致性检测是软提醒，静默降级。
-    findings = [];
+    jingweiFindings = [];
   }
+  let sceneFindings: Omit<ConsistencyFinding, "ignoreKey">[];
+  try {
+    sceneFindings = (await runSceneChecks(storage, {
+      bookId: input.bookId,
+      ...(input.asOfChapter !== undefined ? { asOfChapter: input.asOfChapter } : {}),
+      ...(input.sceneChapters ? { chapters: input.sceneChapters } : {}),
+      ...(input.loadChapterText ? { loadChapterText: input.loadChapterText } : {}),
+    })).map(fromSceneFinding);
+  } catch {
+    // 场景校验只提示不拦截；读失败时按「未检出」降级，不影响经纬侧检测。
+    sceneFindings = [];
+  }
+  let ignoredKeys: Set<string>;
+  try {
+    ignoredKeys = new Set(listConsistencyIgnores(storage, input.bookId).map(ignoreKeyString));
+  } catch {
+    ignoredKeys = new Set();
+  }
+  const findings: ConsistencyFinding[] = [];
+  const ignored: ConsistencyFinding[] = [];
+  for (const raw of [...jingweiFindings, ...sceneFindings]) {
+    const finding: ConsistencyFinding = { ...raw, ignoreKey: consistencyIgnoreKeyOf(raw) };
+    (ignoredKeys.has(ignoreKeyString(finding.ignoreKey!)) ? ignored : findings).push(finding);
+  }
+  const ignoredNote = ignored.length > 0 ? `另有 ${ignored.length} 处已被你标为忽略。` : "";
   return {
     bookId: input.bookId,
     findings,
+    ignored,
     summary: findings.length === 0
-      ? "经纬设定与叙事记忆现状一致，未发现纰漏。"
-      : `发现 ${findings.length} 处经纬设定与叙事记忆现状的分歧。`,
+      ? `经纬设定、叙事记忆现状与场景衔接未发现纰漏。${ignoredNote}`
+      : `发现 ${findings.length} 处设定、现状或场景衔接上的可能矛盾。${ignoredNote}`,
+  };
+}
+
+export interface ChapterSceneCheckInput {
+  readonly bookId: string;
+  readonly chapterNumber: number;
+  /** 本章正文（结算时手上就有）。 */
+  readonly content: string;
+}
+
+export interface ChapterSceneCheckResult {
+  /** 未被作者忽略的检出项数。 */
+  readonly found: number;
+  /** 作者已忽略、本次仍检出的项数。 */
+  readonly ignored: number;
+  /** 结算结果里展示的一行摘要。 */
+  readonly summary: string;
+}
+
+/**
+ * 结算后自动检测：只查本章，用本章新状态对照截至上一章的状态。
+ * 只读、只提示；结果不落盘，作者在叙事体检面板里查看与处置。
+ */
+export async function runChapterSceneCheck(storage: StorageDatabase, input: ChapterSceneCheckInput): Promise<ChapterSceneCheckResult> {
+  const raw = (await runSceneChecks(storage, {
+    bookId: input.bookId,
+    chapters: [input.chapterNumber],
+    loadChapterText: (chapter) => (chapter === input.chapterNumber ? input.content : undefined),
+  })).map(fromSceneFinding);
+  const ignoredKeys = new Set(listConsistencyIgnores(storage, input.bookId).map(ignoreKeyString));
+  const ignored = raw.filter((finding) => ignoredKeys.has(ignoreKeyString(consistencyIgnoreKeyOf(finding)))).length;
+  const found = raw.length - ignored;
+  return {
+    found,
+    ignored,
+    summary: found > 0
+      ? `场景校验：发现 ${found} 处可能矛盾，详见叙事体检。`
+      : "场景校验：未发现死亡后行动或地点跳变。",
   };
 }

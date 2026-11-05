@@ -221,14 +221,14 @@ describe("planFixAction", () => {
     const plan = planFixAction("settle-range", { chapterNumber: 47, formalChapterCount: 46 });
     expect(plan.kind).toBe("narrator");
     expect(plan.label).toBe("补结算历史章节");
-    expect(plan.message).toContain("memory.settle_range");
+    expect(plan.message).toContain("memory_settle_range");
     expect(plan.message).toContain("第 1–46 章");
   });
 
   it("asks the narrator for a volume draft instead of writing jingwei directly", () => {
     const plan = planFixAction("set-volume", { chapterNumber: 5 });
     expect(plan.kind).toBe("narrator");
-    expect(plan.message).toContain("outline.volume(action=suggest)");
+    expect(plan.message).toContain("outline_volume(action=suggest)");
   });
 
   it("never plans a silent write from the frontend", () => {

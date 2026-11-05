@@ -54,6 +54,14 @@ describe("确定性改写", () => {
     expect(result.text).not.toContain("……");
   });
 
+  it("「──」与「——」按同一条破折号规则判定", () => {
+    const boxDash = deslopText("他想说什么──最后什么也没说。");
+    const emDash = deslopText("他想说什么——最后什么也没说。");
+    expect(boxDash.edits.filter((edit) => edit.rule === "em-dash")).toHaveLength(1);
+    expect(emDash.edits.filter((edit) => edit.rule === "em-dash")).toHaveLength(1);
+    expect(boxDash.text).toBe(emDash.text);
+  });
+
   it("弱化副词按预算保留自然使用，只删超额复现", () => {
     const withinBudget = deslopText("他缓缓抬手。".repeat(1) + "风轻轻吹过。");
     expect(withinBudget.edits.filter((edit) => edit.rule === "weak-adverb-budget")).toHaveLength(0);

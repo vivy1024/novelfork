@@ -14,6 +14,8 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 
+import { withAlpha } from "@/styles/chart-palette";
+
 import { SCENE_FUNCTION_LABEL } from "../../../engine/narrative-taxonomy/causal-graph";
 import type { CausalCanvasEdge, CausalLaneNodeData, CausalSceneNodeData } from "./causal-canvas-layout";
 import { SCENE_HEIGHT, SCENE_WIDTH } from "./causal-canvas-layout";
@@ -24,7 +26,7 @@ function LaneView({ data }: NodeProps & { data: CausalLaneNodeData }) {
   return (
     <div
       className={`h-full w-full border-y border-dashed ${data.striped ? "bg-muted/40" : "bg-transparent"} ${data.dropTarget ? "!bg-primary/10 outline outline-2 outline-primary/50" : ""}`}
-      style={{ borderColor: `${data.color}33` }}
+      style={{ borderColor: withAlpha(data.color, 20) }}
       data-testid={`causal-lane-${data.lane.id}`}
     />
   );

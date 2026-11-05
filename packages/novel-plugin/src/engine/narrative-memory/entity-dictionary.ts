@@ -120,19 +120,46 @@ interface JingweiEntryRowLike {
   aliases_json?: string | null;
 }
 
-/** 从 story_jingwei_entry 表读取实体条目行（只取身份链需要的最小列）。 */
+/**
+ * 从 story_jingwei_entry 表读取实体条目行（只取身份链需要的最小列）。
+ *
+ * 待确认（status = needs-review）的人物条目不进字典：它们是机器从正文里起草的人物（如旧稿导入），
+ * 作者确认前不当作官方名单，也不进实体索引与场景校验。只排除人物类目——伏笔草稿同样是 needs-review，
+ * 章后结算要靠字典里的伏笔称呼把推进、回收事件挂回草稿，不能一并排除。
+ */
+/**
+ * 旧版单数类目名（仓库写入只 trim 不归一，旧数据与外部导入里会出现）→ 字典用的统一类目。
+ * 与 jingwei/unified-categories 的 LEGACY_CATEGORY_MAP 同一口径；只列会进字典的那几类。
+ * 「待确认人物」面板按 normalizeCategory 把 character 当人物，字典也必须认它，
+ * 否则这类条目确认后进不了图谱，面板上「确认后进实体图谱」的说法对它不成立。
+ */
+const LEGACY_DICTIONARY_CATEGORY: Readonly<Record<string, string>> = {
+  character: "characters",
+  geography: "locations",
+  faction: "factions",
+};
+const DICTIONARY_CATEGORY_KEYS: readonly string[] = [...ENTITY_DICTIONARY_CATEGORIES, ...Object.keys(LEGACY_DICTIONARY_CATEGORY)];
+
 function loadEntityRows(storage: StorageDatabase, bookId: string): readonly JingweiEntryRowLike[] {
+  const placeholders = DICTIONARY_CATEGORY_KEYS.map(() => "?").join(", ");
+  const select = (statusFilter: string) => (storage.sqlite.prepare(
+    `SELECT id, category, title, fields_json, aliases_json
+     FROM story_jingwei_entry
+     WHERE book_id = ? AND category IN (${placeholders})
+       AND deleted_at IS NULL${statusFilter}`,
+  ).all(bookId, ...DICTIONARY_CATEGORY_KEYS) as JingweiEntryRowLike[])
+    // 在读出口归一：下游按 "characters" 等统一类目判断，不各自处理旧名。
+    .map((row) => (LEGACY_DICTIONARY_CATEGORY[row.category] ? { ...row, category: LEGACY_DICTIONARY_CATEGORY[row.category]! } : row));
   try {
-    const placeholders = ENTITY_DICTIONARY_CATEGORIES.map(() => "?").join(", ");
-    return storage.sqlite.prepare(
-      `SELECT id, category, title, fields_json, aliases_json
-       FROM story_jingwei_entry
-       WHERE book_id = ? AND category IN (${placeholders})
-         AND deleted_at IS NULL`,
-    ).all(bookId, ...ENTITY_DICTIONARY_CATEGORIES) as JingweiEntryRowLike[];
+    return select(" AND NOT (category IN ('characters', 'character') AND COALESCE(status, '') = 'needs-review')");
   } catch {
-    // 表尚未建好（旧书首次打开）等情况：返回空字典，调用方按无字典降级。
-    return [];
+    // 迁移 0024 之前的旧库没有 status 列（也就没有待确认草稿）：退回不按状态过滤。
+    try {
+      return select("");
+    } catch {
+      // 表尚未建好（旧书首次打开）等情况：返回空字典，调用方按无字典降级。
+      return [];
+    }
   }
 }
 

@@ -20,6 +20,7 @@ import {
 	createMarketRouter,
 	createNarrativeLineRouter,
 	createNarrativeMemoryRouter,
+	createManuscriptImportRouter,
 	createChapterTimelineRouter,
 	createPendingReviewRouter,
 	createOverviewRouter,
@@ -126,6 +127,7 @@ export function createProductTextGenerationResolver(
 		return {
 			available: true,
 			model: `${status.provider}:${status.model}`,
+			actorId: userId,
 			generateText: (request) =>
 				services.generateText(
 					{
@@ -198,6 +200,17 @@ novelDomainRoutes.route(
 		}),
 	),
 );
+// 旧稿导入（T4.2）：源快照 → 切分预览 → 确认写章 → 逐章事实（Runtime 默认模型）→ 全书综合 → 发布。
+// 书根只经可信绑定解析；写章走章节文件存储，逐章事实与 resettle 同一实现。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createManuscriptImportRouter({
+			resolveBookRoot: resolveDomainBookRoot,
+			resolveTextGeneration: resolveProductTextGeneration,
+		}),
+	),
+);
 // 全书走势章节时间线（只读）：每章一行，含摘要/事件计数/出场人物与结算新鲜度。
 novelDomainRoutes.route(
 	"",
@@ -217,7 +230,11 @@ novelDomainRoutes.route(
 		createOverviewRouter({ loadChapterIndex: (bookId) => productRouterContext.state.loadChapterIndex(bookId) }),
 	),
 );
-novelDomainRoutes.route("", asRuntimeRouter(createJingweiRouter()));
+// 经纬：从文件导入等需要读书根的端点按可信绑定解析，外部作品不再被拼成受控目录。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(createJingweiRouter({ resolveBookRoot: resolveDomainBookRoot })),
+);
 // 角色声线：权威源是经纬角色条目 fields_json.voice；草稿待审、作者逐项确认，写入带版本校验。
 // 「请模型增补」走 Runtime 提供的服务端文本生成（当前用户、默认模型）；没有模型时只出规则初稿并说明原因。
 novelDomainRoutes.route(

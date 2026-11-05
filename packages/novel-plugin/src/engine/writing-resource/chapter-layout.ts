@@ -89,7 +89,7 @@ export async function listChapterFiles(bookRoot: string): Promise<ChapterFileEnt
 
   const walk = async (chapterRelativeDirectory: string): Promise<void> => {
     const absoluteDirectory = join(chaptersRoot, chapterRelativeDirectory);
-    const entries = await readdir(absoluteDirectory, { withFileTypes: true }).catch(() => []);
+    const entries = await readChapterDirectory(absoluteDirectory, chapterRelativeDirectory);
     for (const entry of entries) {
       if (entry.name === CHAPTER_INDEX_FILE || entry.name === "_discarded") continue;
       const nextRelativePath = normalizeChapterRelativePath(join(chapterRelativeDirectory, entry.name));
@@ -121,7 +121,8 @@ export interface ChapterStoreExplanation {
 export type ChapterStoreErrorCode =
   | "CHAPTER_INDEX_UNREADABLE"
   | "CHAPTER_INDEX_CORRUPT"
-  | "CHAPTER_FILE_DELETE_FAILED";
+  | "CHAPTER_FILE_DELETE_FAILED"
+  | "CHAPTER_DIRECTORY_UNREADABLE";
 
 /**
  * 章节存储拒绝继续的错误：读写半途不安全时直接抛出，不按空处理、不覆写。
@@ -151,6 +152,24 @@ export function describeFsError(error: unknown): string {
   const code = errnoCode(error);
   const message = error instanceof Error ? error.message : String(error);
   return code && !message.includes(code) ? `${code}: ${message}` : message;
+}
+
+/**
+ * 列一层章节目录。不存在（新书还没写过章）等于没有章节；存在却读不出（EACCES/EBUSY/ENOTDIR）必须抛出：
+ * 当成空的话，对账会把索引条目当成文件已删、删章会漏掉正文、续写会从头起算。
+ */
+async function readChapterDirectory(absoluteDirectory: string, chapterRelativeDirectory: string) {
+  try {
+    return await readdir(absoluteDirectory, { withFileTypes: true });
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return [];
+    const label = chapterRelativeDirectory ? `${CHAPTERS_DIRECTORY}/${chapterRelativeDirectory}` : CHAPTERS_DIRECTORY;
+    throw new ChapterStoreError("CHAPTER_DIRECTORY_UNREADABLE", 503, {
+      whatHappened: `章节目录 ${label} 存在但无法列出（${describeFsError(error)}），本次操作已中止，章节与索引都没有改动。`,
+      whyItMatters: "列不出章节时如果当成没有章节，章节列表会显示为空、删章会漏掉正文、续写会从头起算。",
+      suggestedAction: "确认该路径是文件夹而不是同名文件，并检查它的权限与是否被同步盘、杀毒软件占用；处理后重试。",
+    }, { cause: error });
+  }
 }
 
 /** 坏索引改名留底：index.json → index.json.corrupt-<时间戳>，之后的对账从空索引重建也不会抹掉原文件。 */
@@ -237,7 +256,7 @@ export async function synchronizeChapterLayout(
   let migrated = 0;
   let changed = false;
 
-  const directEntries = await readdir(chaptersRoot, { withFileTypes: true }).catch(() => []);
+  const directEntries = await readChapterDirectory(chaptersRoot, "");
   for (const entry of directEntries) {
     if (!entry.isFile() || entry.name === CHAPTER_INDEX_FILE || !entry.name.toLowerCase().endsWith(".md")) continue;
     const parsed = parseChapterFileName(entry.name);

@@ -109,7 +109,7 @@ interface GraphPayload {
 }
 
 const DEBT_TONE: Record<ForeshadowDebt["urgency"], string> = {
-  overdue: "border-rose-500/50 bg-rose-500/[0.08] text-rose-700 dark:text-rose-300",
+  overdue: "border-destructive/50 bg-destructive/[0.08] text-destructive",
   watch: "border-warning/50 bg-warning/[0.08] text-warning",
   ok: "border-border/70 bg-muted/40 text-muted-foreground",
 };
@@ -309,7 +309,7 @@ function StructureScoreStrip({
         return (
           <span
             key={row.featureId}
-            className={hot ? "text-2xs text-rose-600 dark:text-rose-300" : "text-2xs text-muted-foreground"}
+            className={hot ? "text-2xs text-destructive" : "text-2xs text-muted-foreground"}
             title={row.featureId}
           >
             {STRUCTURE_LABEL[row.value] ?? row.value} {row.numericValue.toFixed(2)}
@@ -418,7 +418,7 @@ function FocusCard({
             <ul className="mt-1 space-y-1">
               {focus.dueDebts.map((debt) => (
                 <li key={debt.id} className="flex items-start gap-1 text-xs leading-snug">
-                  <TriangleAlert className={`mt-0.5 size-3 shrink-0 ${debt.urgency === "overdue" ? "text-rose-500" : "text-warning"}`} />
+                  <TriangleAlert className={`mt-0.5 size-3 shrink-0 ${debt.urgency === "overdue" ? "text-destructive" : "text-warning"}`} />
                   <span title={debt.reason}>
                     <span className="font-medium">{debt.title}</span>
                     <span className="text-muted-foreground"> · {debt.reason}</span>

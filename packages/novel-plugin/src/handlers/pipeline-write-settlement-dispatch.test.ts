@@ -183,6 +183,33 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
     }
   });
 
+  it("作者手建的同章场景与蓝图场景是同一场：落盘只更新作者版，不追加 workflow 场景，留白保留作者版", async () => {
+    const { projectRoot, bookRoot } = await createBook();
+    const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
+    seedRecentProgress(storage);
+    const { createScene, listScenesByChapter } = await import("../engine/narrative-memory/scene-store.js");
+    // 迁移库里场景表外键指向 book；建书行后才能手建场景（产品里由建书流程写入）。
+    const { createBookRepository } = await import("../engine/jingwei/repositories/book-repo.js");
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    await createBookRepository(storage).create({ id: "trusted", name: "Book trusted", jingweiMode: "dynamic", currentChapter: 1, createdAt: now, updatedAt: now });
+    const authored = createScene(storage, {
+      bookId: "trusted", chapterNumber: 4, title: "夜访师兄", layer: "canon", status: "confirmed", source: "manual",
+      characters: ["林舟"], gaps: [{ kind: "motivation", gap: "为何深夜登门", answer: "白天有人盯梢" }],
+    }).data!;
+
+    const result = await executePipelineWrite(
+      { bookId: "trusted", sceneSpec: { ...sceneSpec, scenes: [{ ...sceneSpec.scenes[0]!, gaps: [{ kind: "detail", gap: "蓝图留白", answer: "蓝图答案" }] }] }, content: CHAPTER_TEXT },
+      { root: projectRoot, bookRoot, dispatchToolCall: async () => ({ ok: true, summary: "ok" }) },
+    );
+    expect(result.ok).toBe(true);
+    const scenes = listScenesByChapter(storage, "trusted", 4);
+    expect(scenes.map((scene) => [scene.id, scene.source, scene.title])).toEqual([[authored.id, "manual", "夜访师兄"]]);
+    expect(scenes[0]!.gaps).toEqual([{ kind: "motivation", gap: "为何深夜登门", answer: "白天有人盯梢" }]);
+    expect(scenes[0]!.summary.startsWith("[地点: 山门石阶]")).toBe(true);
+  });
+
   it("结算工具调用失败时保留正文，pipeline.write 仍然成功并如实报告可重试", async () => {
     const { projectRoot, bookRoot } = await createBook();
     const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });

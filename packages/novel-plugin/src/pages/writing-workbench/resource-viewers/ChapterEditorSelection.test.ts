@@ -22,7 +22,7 @@ describe("buildSelectionInstruction 划词 AI prompt 组装", () => {
     expect(prompt).toContain("目标章节：第 3 章。");
     expect(prompt).toContain("选中原文：");
     expect(prompt).toContain(request().sourceText);
-    expect(prompt).toContain("请调用 chapter.propose_selection");
+    expect(prompt).toContain("请调用 chapter_propose_selection");
     expect(prompt).toContain(JSON.stringify(request()));
     expect(prompt).toContain("工具只返回候选，不要直接修改章节正文。");
   });
@@ -54,7 +54,7 @@ describe("buildSelectionInstruction 划词 AI prompt 组装", () => {
     const lines = prompt.split("\n");
     const styleHeaderIndex = lines.indexOf("全书文风基准：");
     const styleContentIndex = lines.indexOf(styleProfile);
-    const toolPromptIndex = lines.findIndex((line) => line.startsWith("请调用 chapter.propose_selection"));
+    const toolPromptIndex = lines.findIndex((line) => line.startsWith("请调用 chapter_propose_selection"));
 
     expect(styleHeaderIndex).toBeGreaterThan(0);
     expect(styleContentIndex).toBe(styleHeaderIndex + 1);
@@ -82,7 +82,7 @@ describe("buildSelectionInstruction 划词 AI prompt 组装", () => {
     const styleHeaderIndex = lines.indexOf("全书文风基准：");
     const constraintsTitleIndex = lines.findIndex((line) => line.startsWith("本书硬约束"));
     const firstItemIndex = lines.indexOf("- 对话必须口语化");
-    const toolPromptIndex = lines.findIndex((line) => line.startsWith("请调用 chapter.propose_selection"));
+    const toolPromptIndex = lines.findIndex((line) => line.startsWith("请调用 chapter_propose_selection"));
 
     expect(constraintsTitleIndex).toBeGreaterThan(styleHeaderIndex);
     expect(firstItemIndex).toBe(constraintsTitleIndex + 1);

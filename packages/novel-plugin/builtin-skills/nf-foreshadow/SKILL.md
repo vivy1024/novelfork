@@ -1,7 +1,7 @@
 ---
 id: nf-foreshadow
 name: 伏笔
-description: 作者要埋伏笔、兑现伏笔、查哪些伏笔该收了时使用。伏笔以经纬的伏笔条目为准，通过 hooks.manage 列出、埋设、兑现，部分揭示用 lore.progress 记录推进；每次写入前先给作者看方案。
+description: 作者要埋伏笔、兑现伏笔、查哪些伏笔该收了时使用。伏笔以经纬的伏笔条目为准，通过 hooks_manage 列出、埋设、兑现，部分揭示用 lore_progress 记录推进；每次写入前先给作者看方案。
 kind: plot
 mode: manual
 entry: 伏笔
@@ -22,12 +22,12 @@ tags:
 
 | 作者说 | 做法 |
 |---|---|
-| 「现在有哪些伏笔」 | `hooks.manage` action=list |
-| 「哪些该收了」 | `hooks.manage` action=check_due，chapterNumber 取将要写的章号 |
-| 「在这章埋一个」 | 先设计，再 `hooks.manage` action=plant |
-| 「这章把它收了」 | 核对正文，再 `hooks.manage` action=payoff |
-| 「这里只露一角」 | `lore.progress` 把该条目的状态字段推进为部分揭示 |
-| 「这个伏笔不要了」 | 确认是作者本人的决定，再 `hooks.manage` action=delete |
+| 「现在有哪些伏笔」 | `hooks_manage` action=list |
+| 「哪些该收了」 | `hooks_manage` action=check_due，chapterNumber 取将要写的章号 |
+| 「在这章埋一个」 | 先设计，再 `hooks_manage` action=plant |
+| 「这章把它收了」 | 核对正文，再 `hooks_manage` action=payoff |
+| 「这里只露一角」 | `lore_progress` 把该条目的状态字段推进为部分揭示 |
+| 「这个伏笔不要了」 | 确认是作者本人的决定，再 `hooks_manage` action=delete |
 
 ## 埋设：先设计，再写入
 
@@ -38,23 +38,23 @@ tags:
 3. **大约何时回收**：给一个章号窗口。说不出窗口的，先别埋。
 4. **回收时怎么用上它**：回收那一章要让读者想起埋设时的细节。只有「原来如此」没有「难怪当时」，回收就是空的。
 
-把这四项给作者过目，作者认可后用 `hooks.manage` action=plant 写入：description 写一句能看懂的伏笔描述（含真相），chapterNumber 写埋设章。
+把这四项给作者过目，作者认可后用 `hooks_manage` action=plant 写入：description 写一句能看懂的伏笔描述（含真相），chapterNumber 写埋设章。
 
 ## 兑现：先核对，再写入
 
-1. 用 `chapter.read` 读回收章，找出真正揭示真相的那段文字。
+1. 用 `chapter_read` 读回收章，找出真正揭示真相的那段文字。
 2. 对照台账描述：揭示的是不是同一件事？埋设的细节有没有被用上？
-3. 对得上，用 `hooks.manage` action=payoff（hookId 取 list 返回的 id，chapterNumber 为回收章）。
+3. 对得上，用 `hooks_manage` action=payoff（hookId 取 list 返回的 id，chapterNumber 为回收章）。
 4. 对不上，告诉作者差在哪，不要硬标兑现。
 
 ## 部分揭示
 
-长线伏笔常常分几次露。每露一次，用 `lore.progress` 记一笔：fieldKey 用条目里真实存在的状态字段，newValue 写推进后的状态，chapterNumber 写本章，reason 引一句正文作证据。这样之后能回放它是怎么一步步露出来的。
+长线伏笔常常分几次露。每露一次，用 `lore_progress` 记一笔：fieldKey 用条目里真实存在的状态字段，newValue 写推进后的状态，chapterNumber 写本章，reason 引一句正文作证据。这样之后能回放它是怎么一步步露出来的。
 
 ## 检查伏笔是否被遗忘
 
 - 超过回收窗口还没动的，列给作者，让作者选：本卷内回收、推迟并说明理由、或放弃。
-- 想确认某个伏笔在正文里有没有被再次提起，用 `memory.search` 按关键词查叙事记忆。
+- 想确认某个伏笔在正文里有没有被再次提起，用 `memory_search` 按关键词查叙事记忆。
 - 同时开着的伏笔太多，读者记不住。未兑现的明显多于近期能回收的，建议作者先收再埋。
 
 ## 纪律

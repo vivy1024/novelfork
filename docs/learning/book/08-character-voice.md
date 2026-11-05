@@ -58,4 +58,4 @@ AI 写对白最常见的毛病是：所有人一个腔调，换个名字就分�
 
 ## Agent 查阅提示
 
-- `character.voice.read` 读声线与当前注入文本；`character.voice.draft` 只写待审草稿，不能确认。
+- `character_voice_read` 读声线与当前注入文本；`character_voice_draft` 只写待审草稿，不能确认。

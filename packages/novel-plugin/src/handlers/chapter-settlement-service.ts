@@ -23,6 +23,7 @@ import { buildEntityDictionary } from "../engine/narrative-memory/entity-diction
 import { loadOpenForeshadowSnapshots } from "../engine/narrative-taxonomy/foreshadow-states.js";
 import { stageForeshadowDrafts } from "./foreshadow-draft-staging.js";
 import { refreshNarrativeEntityIndex } from "../engine/narrative-entity/entity-index.js";
+import { runChapterSceneCheck, type ChapterSceneCheckResult } from "../engine/narrative-memory/consistency-detect.js";
 import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
 import { foreshadowPhase } from "../engine/narrative-memory/foreshadow-phase.js";
@@ -71,6 +72,8 @@ export type ChapterSettlementOptions = Readonly<{
    * 缺省时沙漏守卫按 development 跳过（诚实不猜）。
    */
   targetChapters?: number;
+  /** 结算后场景校验的实现；缺省为 runChapterSceneCheck（测试可注入以模拟失败）。 */
+  sceneCheck?: typeof runChapterSceneCheck;
 }>;
 
 function idPart(value: string): string {
@@ -1116,15 +1119,32 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
 
   const { persisted, applied, eventResults, downgradedPendingIds, record, stateRevision, stateFingerprint } = commit;
 
-  // 实体索引（参与者 / 关系边 / 状态流水）由经纬 + 记忆整本派生；失败不影响已提交的结算。
-  // 推导与整本重建相同，只把变化的行写回：结算之外的写入（审批、手工改事实、回收站恢复）也在这里一并追上。
+  // 实体索引（参与者 / 关系边 / 状态流水）由经纬 + 记忆派生；失败不影响已提交的结算。
+  // 结果与整本重建逐行一致，只把变化的行写回：结算之外的写入（审批、手工改事实、回收站恢复）也在这里一并追上。
+  // 首次结算按本章增量推导；改写重结算（同章换了正文）牵动旧事件作废与前驱重开，保守地整本推导。
   try {
-    const entityIndex = refreshNarrativeEntityIndex(storage, input.bookId);
+    const entityIndex = refreshNarrativeEntityIndex(storage, input.bookId, { incremental: idempotency.decision !== "resettle" });
     if (entityIndex.ok && entityIndex.duplicateEntryIds.length > 0) {
       warnings.push(`作品基础里有 ${entityIndex.duplicateEntryIds.length} 个条目与其他条目同名（去掉括号注释后），没有进入实体索引，关系图里不会出现。建议合并重复条目或改成可区分的名字。`);
     }
   } catch (error) {
     warnings.push(`实体索引未更新（不影响结算）：${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // 场景校验 S1：读刷新后的实体索引，用本章新状态对照截至上一章的状态。只提示、不拦、不改正文；
+  // 失败只记日志，结算照常完成。
+  let sceneCheck: ChapterSceneCheckResult | undefined;
+  try {
+    sceneCheck = await (options.sceneCheck ?? runChapterSceneCheck)(storage, {
+      bookId: input.bookId,
+      chapterNumber: input.chapterNumber,
+      content: input.content,
+    });
+    if (sceneCheck.found > 0) warnings.push(sceneCheck.summary);
+  } catch (error) {
+    console.warn(`[chapter-settlement] 第${input.chapterNumber}章场景校验失败（不影响结算）：${error instanceof Error ? error.message : String(error)}`);
+    // 也要让作者看到：只写日志的话，「校验没跑」和「校验通过、没有矛盾」在界面上一模一样。
+    warnings.push("本章场景校验没有执行（不影响结算）：人物生死、去向、所在的前后矛盾这次没查。可以在「叙事体检」里手动再查一次。");
   }
 
   try {
@@ -1301,6 +1321,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     idempotency: idempotencyInfo,
     stateRevision,
     stateFingerprint,
+    ...(sceneCheck ? { sceneCheck: { found: sceneCheck.found, ignored: sceneCheck.ignored, summary: sceneCheck.summary } } : {}),
     ...(resettled ? { explanation: explainResettled(input, idempotency, persisted.authorDecidedPreserved) } : {}),
   };
 }

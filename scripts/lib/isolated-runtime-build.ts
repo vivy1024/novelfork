@@ -15,7 +15,7 @@ import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-export const REQUIRED_RUNTIME_BUN_VERSION = "1.4.2";
+export const REQUIRED_RUNTIME_BUN_VERSION = "1.4.3";
 export const MINIMUM_ISOLATED_RUNTIME_FREE_BYTES = 10 * 1024 ** 3;
 
 function formatGiB(bytes: number): string {
@@ -397,15 +397,25 @@ function toBunFilePath(path: string): string {
  * specifiers, so each must be an extra compile entry; keep this list equal to the extra
  * entries in the Runtime's scripts/build-cross-platform.ts (a contract test checks it).
  */
+// Mirrors Runtime `server/lib/compiled-worker.ts` COMPILED_WORKER_ENTRIES (prefixed with
+// `server/`); the contract test compares the two so an upstream addition fails loudly.
 export const RUNTIME_WORKER_ENTRIES = [
 	"server/lib/db-worker/worker-entry.ts",
-	"server/services/editor-document-worker.ts",
+	"server/lib/fs-scan-worker/fs-scan-worker-entry.ts",
 	"server/lib/browser/memory-snapshot-worker.ts",
 	"server/lib/browser/memory-profile-worker.ts",
 	"server/lib/share-preview-worker.ts",
+	"server/lib/request-recorder-worker.ts",
+	"server/lib/agent/request-json-worker.ts",
+	"server/services/editor-document-worker.ts",
+	"server/services/editor-document-stream-worker.ts",
+	"server/services/outline/edit-text-worker.ts",
+	"server/services/git-untracked-line-worker.ts",
+	"server/services/git-current-baseline-worker.ts",
+	"server/services/agent-runtime/model-history-worker.ts",
+	"server/services/narrator-prefix-snapshots-worker.ts",
 	"server/services/revert-transaction-manifest-worker.ts",
-	"server/services/project-archive/legacy-sync-worker.ts",
-	"server/services/project-archive/legacy-import-worker.ts",
+	"server/services/token-recalculation-worker.ts",
 ] as const;
 
 /**

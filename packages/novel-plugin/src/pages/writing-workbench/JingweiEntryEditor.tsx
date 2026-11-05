@@ -98,7 +98,11 @@ export interface JingweiEntryEditorProps {
   bookId?: string;
   sectionLabel?: string;
   sourceLabel?: string;
-  onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void>;
+  /**
+   * 保存条目。可返回 notice：保存已成功、但附带动作没做完（如确认人物后实体图谱没同步），
+   * 编辑器把它作为提示显示，不当作保存失败。
+   */
+  onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void | { readonly notice?: string }>;
   onDelete?: (entryId: string) => Promise<void>;
   /** 关联条目列表（由父组件解析 ID → 标题后传入） */
   relatedEntries?: RelatedEntryItem[];
@@ -296,6 +300,8 @@ function JingweiEntryEditorForm({
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 保存成功但附带动作没做完时的提示（如确认人物后实体图谱没同步）；下次保存或换条目时清掉。
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"details" | "relations" | "history">("details");
   const [previewMode, setPreviewMode] = useState(false);
   // 档案式阅读为默认形态；未确认条目（needs-review / draft）打开即编辑，便于作者先改再确认。
@@ -408,6 +414,7 @@ function JingweiEntryEditorForm({
     setConfirmDiscard(false);
     setConfirmDelete(false);
     setError(null);
+    setSaveNotice(null);
     setActiveTab("details");
     setConflictStatus(entry.conflictStatus ?? "none");
     setConflictDetail(entry.conflictDetail);
@@ -474,12 +481,13 @@ function JingweiEntryEditorForm({
     if (!dirty || saving) return;
     setSaving(true);
     setError(null);
+    setSaveNotice(null);
     try {
       const nextFields: Record<string, unknown> = { ...fields };
       if ((getCategorySchema(category)?.fields ?? []).some((field) => field.key === "name") && !String(nextFields.name ?? "").trim()) {
         nextFields.name = title.trim();
       }
-      await onSave(entry.id, {
+      const saved = await onSave(entry.id, {
         title: title.trim(),
         contentMd: content,
         priorityTier,
@@ -511,6 +519,7 @@ function JingweiEntryEditorForm({
       // 本地状态同步跟上，警示条与「待确认」里的这一项立刻消失，不用等重新拉取。
       setConflictStatus("none");
       setConflictDetail(undefined);
+      setSaveNotice(saved && typeof saved === "object" && saved.notice ? saved.notice : null);
       // 保存成功回到档案式阅读态。
       setIsEditing(false);
       setConfirmDiscard(false);
@@ -653,6 +662,11 @@ function JingweiEntryEditorForm({
       {error && !isEditing && (
         <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
           {error}
+        </div>
+      )}
+      {saveNotice && !isEditing && (
+        <div className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning" role="status" data-testid="jingwei-save-notice">
+          {saveNotice}
         </div>
       )}
       {conflictStatus === "pending" && (

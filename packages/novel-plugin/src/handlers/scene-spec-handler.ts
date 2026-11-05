@@ -12,22 +12,11 @@ import {
   toSceneSpecConstraintLines,
   type WritingSkillConstraintDigest,
 } from "../engine/writing-skills/compliance.js";
+import { parseSceneGaps, type SceneGap } from "./scene-gaps.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type SceneGapKind = "motivation" | "detail" | "pacing";
-
-/**
- * 规划留白（T2.6）：让规划刻意留下动机/细节/节奏的真实答案，
- * 防止模型把每个关键点写成标准解答。有效标准：该缺口至少有两种合理处理且结果明显不同。
- */
-export interface SceneGap {
-  readonly kind: SceneGapKind;
-  /** 留白（缺口问题，例：她为什么这次没有反驳）。 */
-  readonly gap: string;
-  /** 作者或导演的真实答案；写作时注入，避免模型自行给出一套标准解答。 */
-  readonly answer: string;
-}
+export type { SceneGap, SceneGapKind } from "./scene-gaps.js";
 
 export interface SceneSpecScene {
   characters: string[];
@@ -110,24 +99,6 @@ export interface SceneSpecFailure {
 }
 
 export type SceneSpecResult = SceneSpecSuccess | SceneSpecFailure;
-
-const SCENE_GAP_KINDS = new Set<SceneGapKind>(["motivation", "detail", "pacing"]);
-
-/** 只保留合法留白条目；非法条目剔除而不是让整个蓝图失败（与现有宽松解析风格一致）。 */
-function parseSceneGaps(value: unknown): SceneGap[] {
-  if (!Array.isArray(value)) return [];
-  const gaps: SceneGap[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const record = item as Record<string, unknown>;
-    const kind = typeof record.kind === "string" ? record.kind : "";
-    const gap = typeof record.gap === "string" ? record.gap.trim() : "";
-    const answer = typeof record.answer === "string" ? record.answer.trim() : "";
-    if (!SCENE_GAP_KINDS.has(kind as SceneGapKind) || !gap || !answer) continue;
-    gaps.push({ kind: kind as SceneGapKind, gap, answer });
-  }
-  return gaps;
-}
 
 function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: number): SceneSpec | null {
   try {

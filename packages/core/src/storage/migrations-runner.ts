@@ -121,6 +121,31 @@ function equivalentSqlHashes(sql: string): ReadonlySet<string> {
   ]);
 }
 
+const ADD_COLUMN_STATEMENT = /ALTER\s+TABLE\s+"?([A-Za-z_][\w]*)"?\s+ADD\s+COLUMN\s+"?([A-Za-z_][\w]*)"?[^;]*;/giu;
+
+/**
+ * 去掉「要加的列已经存在」的 `ALTER TABLE … ADD COLUMN` 语句，其余原样执行。
+ *
+ * SQLite 没有 `ADD COLUMN IF NOT EXISTS`。插件的 ensure*Schema 会在运行时补同一批列（为了没跑过
+ * 迁移的旧库也能用），一旦某个库先被运行时补过列、迁移账本里却没有这条记录，迁移就报
+ * `duplicate column name`，整个事务回滚、启动失败。账本按原 SQL 文本计哈希，所以改执行内容而不改文件。
+ * 表不存在时不跳过，让迁移照常报错（那是真问题）。
+ */
+export function skipExistingColumnAdds(storage: StorageDatabase, sql: string): string {
+  const columnsByTable = new Map<string, ReadonlySet<string> | null>();
+  const columnsOf = (table: string): ReadonlySet<string> | null => {
+    if (!columnsByTable.has(table)) {
+      const rows = storage.sqlite.prepare(`PRAGMA table_info("${table.replace(/"/gu, '""')}")`).all() as Array<{ name: string }>;
+      columnsByTable.set(table, rows.length > 0 ? new Set(rows.map((row) => row.name.toLowerCase())) : null);
+    }
+    return columnsByTable.get(table) ?? null;
+  };
+  return sql.replace(ADD_COLUMN_STATEMENT, (statement, table: string, column: string) => {
+    const columns = columnsOf(table);
+    return columns?.has(column.toLowerCase()) ? `-- 已存在，跳过：${table}.${column}\n` : statement;
+  });
+}
+
 function listMigrationFiles(migrationsDir: string): string[] {
   if (!existsSync(migrationsDir)) {
     // In compiled mode or when migrations dir is not available, return empty
@@ -154,7 +179,7 @@ export function runStorageMigrations(
   );
 
   const applyMigration = storage.sqlite.transaction((name: string, sql: string, hash: string) => {
-    storage.sqlite.exec(sql);
+    storage.sqlite.exec(skipExistingColumnAdds(storage, sql));
     recordMigration.run(hash, name, Date.now());
     appliedByName.set(name, hash);
     appliedByHash.set(hash, name);

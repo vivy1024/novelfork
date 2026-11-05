@@ -335,10 +335,10 @@ pnpm run compile:all     # 全部 7 个平台，发版用
 
 产物校验：每个产物旁生成 `<产物名>.sha256`；多平台构建额外生成 `dist/novelfork-v<版本>-SHA256SUMS` 汇总全部产物，Release 资产以它为准。
 
-Bun 版本：编译用的 Bun 必须与 Runtime `package.json` 的 `packageManager` 完全一致（Runtime 0.7.10 起为 1.4.2，脚本常量 `REQUIRED_RUNTIME_BUN_VERSION`），不一致时编译在开头就报错。产物内嵌的就是这个 Bun，与上游发布和测试用的版本对齐。注意版本检查的是**每个进程**的 `Bun.version`：本机 PATH 上是旧版（1.3.13）时，光用绝对路径调 1.4.2 不够——编译脚本嵌套 spawn `bun` 子进程仍按 PATH 解析，会在中途炸掉。正确姿势是把 1.4.2 目录前置 PATH 跑整条链：
+Bun 版本：编译用的 Bun 必须与 Runtime `package.json` 的 `packageManager` 完全一致（Runtime 0.7.10–0.8.3 为 1.4.2，0.9.11 起为 1.4.3，脚本常量 `REQUIRED_RUNTIME_BUN_VERSION`），不一致时编译在开头就报错。产物内嵌的就是这个 Bun，与上游发布和测试用的版本对齐。注意版本检查的是**每个进程**的 `Bun.version`：本机 PATH 上是旧版（1.3.13）时，光用绝对路径调 1.4.3 不够——编译脚本嵌套 spawn `bun` 子进程仍按 PATH 解析，会在中途炸掉。正确姿势是把 1.4.3 目录前置 PATH 跑整条链（官方 zip 解压到 `tmp/bun-1.4.3/extracted/`，按 release 的 SHASUMS256.txt 校验）：
 
 ```bash
-PATH="$PWD/tmp/bun-1.4.2/extracted/bun-windows-x64:$PATH" bun run compile:all
+PATH="$PWD/tmp/bun-1.4.3/extracted/bun-windows-x64:$PATH" bun run compile:all
 ```
 
 `.build-tmp/` 是构建脚本 `statfs` 的常驻 scratch 目录（已在 `.gitignore`），目录大扫除时也不得删除，否则编译炸在 `statfs ENOENT`（2026-10-09 实例）。

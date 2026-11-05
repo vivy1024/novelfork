@@ -18,8 +18,10 @@ import { fetchJson, invalidateApiPaths, useApi } from "@/hooks/use-api";
 import { resolveChapterLoop, settlementLabel, type ChapterLoopStep, type LastWrittenChapter, type LoopFreshnessChapter } from "./chapter-loop-state";
 import { freshnessPath } from "./ide/StaleSettlementList";
 import { ChapterRevisions, vaultPath, type VaultSummary } from "./ide/StyleVaultPanel";
-import { reviewChapterParagraphs, type ParagraphSelfReviewIssue, type ParagraphSelfReviewResult } from "../../engine/compliance/paragraph-self-review";
-import { composeCustomConstraintsSection } from "../../engine/writing-layers/style-preset-custom-constraints";
+import { groupSelfReviewIssues, reviewChapterParagraphs, type ParagraphSelfReviewResult } from "../../engine/compliance/paragraph-self-review";
+import { buildHumanizeMessage, buildPolishMessage } from "./self-review-handoff";
+// 消息构建是纯函数，放在 self-review-handoff；这里保留导出给既有调用方。
+export { buildHumanizeMessage, buildPolishMessage } from "./self-review-handoff";
 import { dispatchLocateInEditor } from "./audit-issue-actions";
 import { fetchCustomConstraints } from "./style-custom-constraints";
 
@@ -611,7 +613,7 @@ export function WriteViewPanel({
                     <button
                       type="button"
                       onClick={() => setExpanded(open ? null : checkKey)}
-                      className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                      className="-m-1 shrink-0 rounded p-1.5 text-muted-foreground hover:text-foreground"
                       aria-label="展开说明"
                     >
                       <ChevronDown className={`size-3 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -843,64 +845,6 @@ function ReviseStep({ chapter, onOpenChapter }: {
 }
 
 /**
- * 把自审命中交给叙述者做整章语感体检：逐条生成定点候选（≤10% 改动），
- * 不带编辑器坐标，候选回到正文按原文定位由作者逐条确认。
- */
-export function buildHumanizeMessage(
-  chapterNumber: number,
-  issues: readonly ParagraphSelfReviewIssue[],
-  customConstraints?: readonly string[],
-): string {
-  const lines = [
-    `第 ${chapterNumber} 章的表达检查发现了 ${issues.length} 处规则命中的写法问题。请逐条生成「语感体检」候选，用 chapter.propose_selection 提交（每条问题一条候选）。`,
-    "",
-    "要求：",
-    "- 只改被命中的句子，改动不超过原句的 10%；情节、对白、设定一律不动。",
-    "- from/to 是编辑器坐标你拿不到：不要编造坐标，直接省略 from/to，编辑器会按候选原文在正文里定位。sourceText 必须是正文里的原文，candidateText 是改写后的句子。",
-    "- requestId 自行生成，每条候选一个稳定编号。",
-  ];
-  // 作者硬约束先于人文化手法说明；没有约束时输出与此前逐字一致。
-  lines.push(...composeCustomConstraintsSection(customConstraints));
-  lines.push(
-    "- 可选的人文化手法（按需选择，不必全用）：矛盾的情绪、小身体细节、无关的随机念头、不完美的对话、环境作用于身体、注意到无关事物、刻意的节奏断裂。",
-    "- 不要改正文；作者会在编辑器里逐条确认。",
-    "",
-    "问题清单：",
-  );
-  issues.slice(0, 20).forEach((issue, index) => {
-    lines.push(`${index + 1}. 第 ${issue.paragraph} 段「${issue.evidence}」：${issue.reason}${issue.suggestion ? `。参考方向：${issue.suggestion}` : ""}`);
-  });
-  if (issues.length > 20) lines.push(`（另有 ${issues.length - 20} 条未列出，先处理上面这些。）`);
-  return lines.join("\n");
-}
-
-/**
- * 人文化之后的一档：通篇润色。不限于规则命中的句子、幅度不再限 10%，
- * 但仍是逐处定点候选、作者逐条确认；情节、对白与设定不动，不整章重写。
- */
-export function buildPolishMessage(
-  chapterNumber: number,
-  customConstraints?: readonly string[],
-): string {
-  const lines = [
-    `请对第 ${chapterNumber} 章做一遍通篇语言润色：先用 chapter_read 读这一章正文，通读之后逐处打磨，每处用 chapter.propose_selection 提交一条候选（action 用 "polish"），按正文先后顺序交。`,
-    "",
-    "要求：",
-    "- 打磨范围：错别字与病句、重复用词与搭配不当、句式与节奏、段落衔接、标点规范、叙述视角与称呼的一致性。",
-    "- 情节、对白内容、人物与设定、章节结构一律不动；不增删内容，不大段重写，不整章重写。",
-  ];
-  // 作者硬约束先于润色机制说明；没有约束时输出与未注入逐字一致。
-  lines.push(...composeCustomConstraintsSection(customConstraints));
-  lines.push(
-    "- from/to 是编辑器坐标你拿不到：不要编造坐标，直接省略 from/to，编辑器会按候选原文在正文里定位。sourceText 必须是正文里的原文（一句话或一个需要整体疏通的自然段），candidateText 是润色后的对应文字。",
-    "- sourceText 在正文里必须只出现一次，重复出现会导致定位失败；没有把握唯一定位时就缩小到一句。",
-    "- requestId 自行生成，每条候选一个稳定编号。",
-    "- 不要改正文；作者会在编辑器里逐条确认。",
-  );
-  return lines.join("\n");
-}
-
-/**
  * 表达自审（改这一步）：客户端复用去套话规则引擎只读定位命中，
  * 不改写正文、不出结论；「定位」打开章节后把原句送进编辑器搜索。
  */
@@ -935,6 +879,10 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
   useEffect(() => {
     void run();
   }, [run]);
+
+  // 面板列表也按「规则 + 原句」合并：定位只按原句文本搜索编辑器（不用逐处偏移），
+  // 同一句的几处命中定位到的是同一个位置，逐处列出只是重复。
+  const groupedIssues = useMemo(() => (report ? groupSelfReviewIssues(report.issues) : []), [report]);
 
   const locate = (quote: string) => {
     onJumpToChapter?.(chapterNumber);
@@ -1024,12 +972,14 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
       {report ? (
         <>
           <p className="mt-1 text-xs text-muted-foreground" data-testid="self-review-message">{report.message}</p>
-          {report.issues.length > 0 ? (
+          {groupedIssues.length > 0 ? (
             <ul className="mt-1.5 flex flex-col gap-1">
-              {report.issues.slice(0, 8).map((issue, index) => (
+              {groupedIssues.slice(0, 8).map(({ issue, hitCount, paragraphs }, index) => (
                 <li key={`${issue.ruleId}-${issue.start}-${index}`} className="rounded border border-border/60 bg-background/60 px-1.5 py-1 text-xs" data-testid="self-review-item">
                   <div className="flex items-center justify-between gap-1.5">
-                    <span className="text-muted-foreground">第 {issue.paragraph} 段</span>
+                    <span className="text-muted-foreground">
+                      第 {paragraphs.join("、")} 段{hitCount > 1 ? `（本句命中 ${hitCount} 处）` : ""}
+                    </span>
                     <button
                       type="button"
                       className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-primary hover:bg-primary/20"
@@ -1048,9 +998,9 @@ function SelfReviewSection({ bookId, chapterNumber, onJumpToChapter, onSendToNar
               ))}
             </ul>
           ) : null}
-          {report.issues.length > 8 ? (
+          {groupedIssues.length > 8 ? (
             <p className="mt-1 text-xs text-muted-foreground">
-              另有 {report.issues.length - 8} 条命中未列出；打开章节逐段「人味化」处理。
+              另有 {groupedIssues.length - 8} 条命中未列出；打开章节逐段「人味化」处理。
             </p>
           ) : null}
         </>

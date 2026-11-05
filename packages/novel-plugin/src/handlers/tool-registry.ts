@@ -184,7 +184,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "cockpit.snapshot",
     description:
-      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- chapters：最近正式章节与章节结果\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 用户问「进度怎么样」/「写到哪了」/「伏笔状态」\n- 准备写下一章前的第一步\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n不要用的时候：\n- 刚调用过且结果还在上下文中（除非被折叠提示了）\n\nNUG/Kiro 调用参数：必须传入 `confirm: true`；当前书籍身份由宿主可信绑定注入，禁止传 `bookId`。\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
+      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- chapters：最近正式章节与章节结果\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 用户问「进度怎么样」/「写到哪了」/「伏笔状态」\n- 准备写下一章前的第一步\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n不要用的时候：\n- 刚调用过且结果还在上下文中（除非被折叠提示了）\n\nNUG/Kiro 调用参数：必须传入 `confirm: true`；当前书籍身份由宿主可信绑定注入，禁止传 `bookId`。\n\n参数：本工具没有业务参数，除上面的 `confirm` 外不要传任何字段（包括 `reason`、`purpose`、`chapterNumber` 等说明或筛选字段）；多传的字段会被严格校验拒绝，调用直接失败。\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["cockpit.snapshot"]),
     risk: "read",
     renderer: "cockpit.snapshot",

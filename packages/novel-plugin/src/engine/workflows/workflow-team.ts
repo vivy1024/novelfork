@@ -13,6 +13,25 @@ import type { NovelWorkflowRecipe } from "./novel-workflows.js";
 /** 工人叙述者标题前缀：让 team.status 的 availableNarrators 里一眼认出（发现协议按标题匹配）。 */
 export const WORKFLOW_WORKER_TITLE_PREFIX = "工作流工人·";
 
+/**
+ * 工作流工人的身份标记（写在叙述者 traits 上）。
+ *
+ * 闸门认它而不是认标题：插件 team.update_member 允许改成员标题，改完必须仍然认得出。
+ * 这里是唯一来源，产品运行时适配器（workflow-run-gate）直接 re-export 使用。
+ */
+export const WORKFLOW_WORKER_TRAIT = "novelfork-workflow-worker";
+
+/**
+ * 一本书的固定团队 id：插件按 teamId 存配置，一本书一个，多本书同时跑不会串团队。
+ *
+ * 只把空白与路径分隔符折成 `-`，中文原样保留（团队 id 是存储键里的普通字符串，
+ * 保住书名才看得出这个团队属于哪本书）；bookId 为空时退化成固定的 `team-book`。
+ */
+export function workflowTeamIdForBook(bookId: string): string {
+	const normalized = bookId.trim().replace(/[\\/\s]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+	return `team-${(normalized || "book").slice(0, 96)}`;
+}
+
 export interface WorkflowTeamMemberPlan {
   /** 稳定键：同一角色跨工序复用一个工人叙述者。 */
   readonly roleKey: string;

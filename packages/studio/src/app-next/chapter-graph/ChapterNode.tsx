@@ -28,8 +28,8 @@ const STATUS_COLORS: Record<string, string> = {
   active: "border-success",
   dormant: "border-warning",
   merged: "border-info",
-  abandoned: "border-gray-400",
-  frozen: "border-cyan-400",
+  abandoned: "border-muted-foreground",
+  frozen: "border-primary",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -44,8 +44,8 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
   active: "bg-success/10 text-success",
   dormant: "bg-warning/10 text-warning",
   merged: "bg-info/10 text-info",
-  abandoned: "bg-gray-500/10 text-gray-600",
-  frozen: "bg-cyan-500/10 text-cyan-600",
+  abandoned: "bg-muted text-muted-foreground",
+  frozen: "bg-primary/10 text-primary",
 };
 
 function ChapterNodeComponent({ data }: NodeProps<ChapterNodeType>) {

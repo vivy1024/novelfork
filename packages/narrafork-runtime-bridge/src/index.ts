@@ -194,7 +194,6 @@ export type {
 export { getDbDir, getDbPath } from "../../narrafork-runtime-private/server/db/connection";
 export { db } from "../../narrafork-runtime-private/server/db";
 export {
-	chapters,
 	narratorMessageRefs,
 	narratorMessages,
 	narrators,

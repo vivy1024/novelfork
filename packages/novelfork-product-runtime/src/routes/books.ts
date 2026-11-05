@@ -1,5 +1,5 @@
 import { NotFoundError, ValidationError } from "@vivy1024/narrafork-runtime-bridge";
-import { planWorkflowTeam, readWorkflowRecipes } from "@vivy1024/novelfork-novel-plugin/engine";
+import { planWorkflowTeam, readWorkflowRecipes, workflowTeamIdForBook } from "@vivy1024/novelfork-novel-plugin/engine";
 import {
 	handleProjectWritingSkillDelete,
 	handleProjectWritingSkillUpdate,
@@ -22,6 +22,7 @@ import { resolveDomainBookRoot } from "./domain";
 import { forwardErrorsToParent } from "./forward-errors";
 import { getProductBootstrapContract } from "../services/product-contract";
 import { getPublicStorageIntegrityAlert } from "../adapters/storage";
+import { WORKFLOW_WORKER_TRAIT } from "../adapters/workflow-run-gate";
 
 const guidedSetupAnswerSchema = z
 	.object({
@@ -526,8 +527,12 @@ const ensureWorkflowTeamSchema = z
  * 组建/核对本书的工作流工人团队（narrator-team 编排的工人侧）。
  *
  * 委派工序由「工作流工人·<角色>」标题的产品叙述者承接：这里按配方幂等
- * 建/复用它们（同标题复用，不重复建）。领导者叙述者拿到名单后经插件
- * team.setup 收编；闸门仍只认运行叙述者的 submit，权威写入不旁路。
+ * 建/复用它们（同标题复用，不重复建）。新修的工人打上 `WORKFLOW_WORKER_TRAIT`，
+ * 闸门据此在运行期间收口它的写入；老的在建工人没有这个标记，标题仍然认得，
+ * 这里顺手补上（幂等，不重复写）。
+ *
+ * 返回里带 `teamId`：插件按 teamId 存团队配置，一本书一个，避免多本书同时跑时
+ * 领导者把别的书的工人收编进来。
  */
 bookNarratorGatewayRoutes.post("/ensure-workflow-team", async (c) => {
 	const parsed = ensureWorkflowTeamSchema.safeParse(await c.req.json().catch(() => ({})));
@@ -554,6 +559,7 @@ bookNarratorGatewayRoutes.post("/ensure-workflow-team", async (c) => {
 	for (const member of plan.members) {
 		const hit = byTitle.get(member.title);
 		if (hit) {
+			await novelForkProductBookService.ensureNarratorTrait(hit.id, WORKFLOW_WORKER_TRAIT);
 			members.push({ ...member, narratorId: hit.id, created: false });
 			continue;
 		}
@@ -561,8 +567,15 @@ bookNarratorGatewayRoutes.post("/ensure-workflow-team", async (c) => {
 			bookId,
 			actor(c),
 			member.title,
+			[WORKFLOW_WORKER_TRAIT],
 		);
 		members.push({ ...member, narratorId: narrator.id, created: true });
 	}
-	return c.json({ recipeId: recipe.id, recipeName: recipe.name, members });
+	return c.json({
+		recipeId: recipe.id,
+		recipeName: recipe.name,
+		teamId: workflowTeamIdForBook(bookId),
+		workerTrait: WORKFLOW_WORKER_TRAIT,
+		members,
+	});
 });

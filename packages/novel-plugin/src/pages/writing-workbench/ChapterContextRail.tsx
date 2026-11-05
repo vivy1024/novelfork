@@ -1,8 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type CSSProperties } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApi } from "@/hooks/use-api";
 import { cn } from "@/lib/utils";
+import { CHART_COLOR_COUNT, chartColor, withAlpha } from "@/styles/chart-palette";
 
 export interface ChapterContextRailProps {
   bookId: string;
@@ -61,16 +62,6 @@ export interface DueForeshadowing {
   readonly suspenseChapters: number;
 }
 
-const AVATAR_COLORS = [
-  "#2563eb",
-  "#7c3aed",
-  "#db2777",
-  "#dc2626",
-  "#d97706",
-  "#059669",
-  "#0891b2",
-  "#65a30d",
-] as const;
 
 const SETTLED_FORESHADOWING_STATUSES = new Set(["已回收", "已揭示", "已废弃"]);
 
@@ -118,12 +109,25 @@ function isActiveEntry(entry: ContextEntry): boolean {
   return true;
 }
 
+/**
+ * 头像色取 DESIGN.md 的分类色令牌（var(--chart-N)），按名字哈希稳定分配，随书房主题与明暗切换。
+ * 深色主题的分类色偏亮，白字压不住；所以用分类色作文字与描边、淡染作底，两种明暗下都读得清。
+ */
 function avatarColor(name: string): string {
   let hash = 0;
   for (let index = 0; index < name.length; index += 1) {
     hash = (hash * 31 + name.charCodeAt(index)) | 0;
   }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  return chartColor(Math.abs(hash) % CHART_COLOR_COUNT);
+}
+
+function avatarStyle(name: string): CSSProperties {
+  const color = avatarColor(name);
+  return {
+    color,
+    backgroundColor: withAlpha(color, 16),
+    boxShadow: `inset 0 0 0 1px ${withAlpha(color, 45)}`,
+  };
 }
 
 /**
@@ -399,8 +403,8 @@ export function ChapterContextRail({
                   onClick={() => openEntry(character.id)}
                   title={tooltip}
                   aria-label={`打开角色 ${character.name}`}
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-2xs font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md"
-                  style={{ backgroundColor: avatarColor(character.name) }}
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-2xs font-semibold shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md"
+                  style={avatarStyle(character.name)}
                 >
                   {character.name.slice(0, 2)}
                 </button>

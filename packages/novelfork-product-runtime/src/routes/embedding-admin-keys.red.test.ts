@@ -29,8 +29,10 @@ let originalNovelforkHome: string | undefined;
 // the test switches it to a throwaway database and restores the original path afterward.
 
 const EMBEDDING_KV = "settings:embedding";
-const ADMIN = { sub: "s15-admin", role: "admin" as const };
-const USER = { sub: "s15-user", role: "user" as const };
+// Runtime 0.9 的 assertAdmin 只在 payload 带 sid（本次请求已解析的会话）时信任其中的 role，
+// 否则回查 users 行；这里直接注入的测试身份用 sid 表示「已认证会话」，模拟真实门禁之后的形状。
+const ADMIN = { sub: "s15-admin", role: "admin" as const, sid: "s15-admin-session" };
+const USER = { sub: "s15-user", role: "user" as const, sid: "s15-user-session" };
 
 function appFor(user: typeof ADMIN | typeof USER) {
 	const app = new Hono();

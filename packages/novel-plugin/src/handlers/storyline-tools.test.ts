@@ -104,6 +104,43 @@ describe("storyline.propose", () => {
     expect(line.entryId).toBe("entry-xue");
   });
 
+  it("relatedEntryTitles 做繁简归一：简体写法也能解析到繁体标题的条目", async () => {
+    await seedEntry(activeStorage!, "entry-zhao", "趙太爺");
+    await seedEntry(activeStorage!, "entry-wuma", "吳媽");
+    const result = await propose({
+      bookId: "book-test-1",
+      name: "未庄线",
+      relatedEntryTitles: ["赵太爷", "吴妈"],
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as { resolvedEntries: { id: string; title: string }[]; unresolvedNames: string[] };
+    expect(data.resolvedEntries).toEqual([{ id: "entry-zhao", title: "趙太爺" }, { id: "entry-wuma", title: "吳媽" }]);
+    expect(data.unresolvedNames).toEqual([]);
+  });
+
+  it("依据自带句号时摘要不出现双句号", async () => {
+    const result = await propose({ bookId: "book-test-1", name: "恋爱线", evidenceNote: "第 3 章两人初遇。" });
+    expect(result.summary).toContain("依据：第 3 章两人初遇。");
+    expect(result.summary).not.toContain("。。");
+  });
+
+  it("复用待审草稿时把新解析出的关联条目补挂上；已挂条目的不改挂", async () => {
+    const first = await propose({ bookId: "book-test-1", name: "阿Q线" });
+    const id = (first.data as { storylineId: string }).storylineId;
+    expect(getStoryline(activeStorage!, id)?.entryId).toBeUndefined();
+
+    await seedEntry(activeStorage!, "entry-aq", "阿Q");
+    await seedEntry(activeStorage!, "entry-xiaod", "小D");
+    const again = await propose({ bookId: "book-test-1", name: "阿Q线", relatedEntryTitles: ["阿Q"] });
+    expect(again.data).toMatchObject({ reused: true, linkedEntry: { id: "entry-aq", title: "阿Q" } });
+    expect(again.summary).toContain("已补挂关联条目「阿Q」");
+    expect(getStoryline(activeStorage!, id)?.entryId).toBe("entry-aq");
+
+    const third = await propose({ bookId: "book-test-1", name: "阿Q线", relatedEntryTitles: ["小D"] });
+    expect(third.data).toMatchObject({ reused: true, linkedEntry: { id: "entry-aq" } });
+    expect(getStoryline(activeStorage!, id)?.entryId).toBe("entry-aq");
+  });
+
   it("name 为空与 kind 非法都被挡下", async () => {
     expect((await propose({ bookId: "book-test-1", name: "  " })).ok).toBe(false);
     expect((await propose({ bookId: "book-test-1", name: "线", kind: "epic" })).ok).toBe(false);

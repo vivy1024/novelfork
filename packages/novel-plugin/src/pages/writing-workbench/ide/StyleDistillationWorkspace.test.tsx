@@ -172,6 +172,51 @@ describe("StyleDistillationWorkspace", () => {
     expect(JSON.parse(String(resumeCall?.[1]?.body))).toEqual({ retryFailed: false });
   });
 
+  it("证据被丢弃的规则可展开查看；整批丢弃显示失败原因，过半丢弃的完成批次标「需关注」", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    const readyJob = {
+      job: {
+        jobId: "job-3",
+        status: "ready",
+        sourceName: "参考作品 A",
+        rules: job.result.rules,
+        samples: [],
+        fingerprint: { avgSentenceLength: 18 },
+        batches: [
+          {
+            id: "batch-001", chapterNumbers: [1, 2], status: "failed", ruleIds: [], issues: [],
+            rejectedRules: [{ category: "voice", text: "叙述者用反讽口吻评点人物", evidence: "「我要給阿Ｑ做正傳」", reason: "证据未在本批原文中逐字找到" }],
+            explanation: { what: "1 条模型规则因证据未在原文找到被丢弃，本批没有收录任何规则。", why: "…", next: "展开本批「被丢弃的规则」查看" },
+          },
+          {
+            id: "batch-002", chapterNumbers: [3], status: "done", ruleIds: ["m-1"], issues: [],
+            rejectedRules: [
+              { category: "scene", text: "规则甲", evidence: "编造甲", reason: "证据未在本批原文中逐字找到" },
+              { category: "scene", text: "规则乙", evidence: "编造乙", reason: "证据未在本批原文中逐字找到" },
+            ],
+            explanation: { what: "2 条模型规则因证据未在原文找到被丢弃，仅收录 1 条。", why: "…", next: "重试本批" },
+          },
+        ],
+      },
+      expectedRevision: null,
+    };
+    request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/preview")) return preview;
+      if (path.endsWith("/jobs")) return readyJob;
+      throw new Error(`unexpected request: ${path}`);
+    });
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    await openReview(request);
+    expect(screen.getByText(/3 条模型规则因证据未在原文找到被丢弃/)).toBeTruthy();
+    expect(screen.getByText(/失败原因：1 条模型规则因证据未在原文找到被丢弃/)).toBeTruthy();
+    expect(screen.getByText("需关注")).toBeTruthy();
+    expect(screen.getByText(/需要关注：2 条模型规则/)).toBeTruthy();
+    expect(screen.getByText("查看被丢弃的规则（1 条）")).toBeTruthy();
+    expect(screen.getByText("查看被丢弃的规则（2 条）")).toBeTruthy();
+    expect(screen.getByText("模型给的证据：「我要給阿Ｑ做正傳」")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重试失败批次" })).toBeTruthy();
+  });
+
   it("采纳完成后可一键生成本书专属技能；采纳前不显示该入口", async () => {
     const request = vi.fn<StyleDistillationFetchJson>();
     request.mockImplementation(async (path: string, init?: RequestInit) => {
@@ -198,6 +243,129 @@ describe("StyleDistillationWorkspace", () => {
     expect(exportCall[0]).toBe("/api/books/book-1/style/skill-export");
     expect(exportCall[1]?.method).toBe("POST");
     expect(screen.getByRole("button", { name: "复制 SKILL.md 内容" })).toBeTruthy();
+  });
+
+  it("多来源时并列「共同技法 / 来源差异 / 不应迁移」三列，每条带证据与出处；跨来源确认经同一采纳接口按版本串行提交", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    const comparison = {
+      sources: [
+        { sourceId: "s-a", sourceName: "参考作品 A", jobId: "job-1", ruleCount: 2, adoptedRuleIds: [], adoptedSampleIds: [] },
+        { sourceId: "s-b", sourceName: "旧稿乙", jobId: "job-b", ruleCount: 3, adoptedRuleIds: ["b-keep"], adoptedSampleIds: ["sample-b"] },
+      ],
+      threshold: 0.4,
+      common: [{
+        category: "scene", text: "以细小动作收束情绪", sourceIds: ["s-a", "s-b"],
+        members: [
+          { sourceId: "s-a", sourceName: "参考作品 A", jobId: "job-1", ruleId: "rule-transfer", text: "让动作承载情绪", evidence: "第三章多处动作落点", status: "needs-review" },
+          { sourceId: "s-b", sourceName: "旧稿乙", jobId: "job-b", ruleId: "b-common", text: "以细小动作收束情绪", evidence: "第2章：他把烟按灭", status: "needs-review" },
+        ],
+      }],
+      differences: [{ sourceId: "s-b", sourceName: "旧稿乙", rules: [
+        { sourceId: "s-b", sourceName: "旧稿乙", jobId: "job-b", ruleId: "b-keep", text: "长段落后接独立短句", evidence: "第4章：门开了。", status: "needs-review", category: "rhythm" },
+      ] }],
+      nonTransferable: [
+        { sourceId: "s-a", sourceName: "参考作品 A", jobId: "job-1", ruleId: "rule-source", text: "角色惯说青云归我", evidence: "第四章角色原话", status: "confirmed", category: "voice" },
+      ],
+    };
+    request.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/preview")) return preview;
+      if (path.endsWith("/jobs") && init?.method === "POST") return job;
+      if (path.endsWith("/compare")) return comparison;
+      if (path.endsWith("/jobs/job-1/adopt")) return { revision: "revision-2" };
+      if (path.endsWith("/jobs/job-b/adopt")) return { revision: "revision-3" };
+      throw new Error(`unexpected request: ${path}`);
+    });
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    await openReview(request);
+
+    const section = await screen.findByLabelText("多来源比较");
+    expect(section.textContent).toContain("参考作品 A、旧稿乙");
+    expect(screen.getByText("共同技法（1）")).toBeTruthy();
+    expect(screen.getByText("来源差异（1）")).toBeTruthy();
+    expect(screen.getByText("不应迁移（1）")).toBeTruthy();
+    expect(screen.getByText("仅见于「旧稿乙」")).toBeTruthy();
+    expect(screen.getByText("证据：第2章：他把烟按灭")).toBeTruthy();
+    expect(screen.getByText("证据：第4章：门开了。")).toBeTruthy();
+    expect(screen.getAllByText("出处：旧稿乙").length).toBeGreaterThanOrEqual(2);
+    // 单来源的「写法规则」列由三列取代，范文与统计指纹保留。
+    expect(screen.queryByText("写法规则")).toBeNull();
+    expect(screen.getByText("范文")).toBeTruthy();
+
+    // 当前来源的条目与单来源审阅共用同一份选择；其他来源的选择从上次采纳记录初始化。
+    fireEvent.click(screen.getByRole("button", { name: "确认（参考作品 A）：让动作承载情绪" }));
+    expect(screen.getByRole("button", { name: "撤回确认（旧稿乙）：长段落后接独立短句" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "确认（旧稿乙）：以细小动作收束情绪" }));
+    fireEvent.click(screen.getByRole("button", { name: "采纳到本书文风预设" }));
+    await screen.findByText(/含另外 1 个来源的选择变化/);
+
+    const adoptCalls = request.mock.calls.filter(([path]) => String(path).endsWith("/adopt"));
+    expect(adoptCalls.map(([path]) => path)).toEqual([
+      "/api/books/book-1/style/distillations/jobs/job-1/adopt",
+      "/api/books/book-1/style/distillations/jobs/job-b/adopt",
+    ]);
+    expect(JSON.parse(String(adoptCalls[0]?.[1]?.body))).toEqual({
+      expectedRevision: "revision-1", confirmedRuleIds: ["rule-transfer", "rule-source"], confirmedSampleIds: ["sample-1"],
+    });
+    // 第二次带第一次返回的新版本；保留该来源原有的范文选择。
+    expect(JSON.parse(String(adoptCalls[1]?.[1]?.body))).toEqual({
+      expectedRevision: "revision-2", confirmedRuleIds: ["b-keep", "b-common"], confirmedSampleIds: ["sample-b"],
+    });
+  });
+
+  it("各来源统计对比：数值按来源并列成表、基线规则按来源分列，不进三列合并", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    const baselineRule = (sourceId: string, sourceName: string, jobId: string, ratio: number) => ({
+      sourceId, sourceName, jobId, ruleId: "dialogue-1", text: `对话约占文本 ${ratio}%`, evidence: `对话句占比约 ${ratio}%`, status: "needs-review", category: "dialogue",
+    });
+    request.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/preview")) return preview;
+      if (path.endsWith("/jobs") && init?.method === "POST") return job;
+      if (path.endsWith("/compare")) return {
+        sources: [
+          { sourceId: "s-a", sourceName: "参考作品 A", jobId: "job-1", adoptedRuleIds: [], adoptedSampleIds: [] },
+          { sourceId: "s-b", sourceName: "旧稿乙", jobId: "job-b", adoptedRuleIds: [], adoptedSampleIds: [] },
+        ],
+        common: [], differences: [], nonTransferable: [],
+        statistics: [
+          { sourceId: "s-a", sourceName: "参考作品 A", jobId: "job-1", metrics: { dialogueRatio: 0, avgSentenceLength: 9.3 }, baselineRules: [baselineRule("s-a", "参考作品 A", "job-1", 0)] },
+          { sourceId: "s-b", sourceName: "旧稿乙", jobId: "job-b", metrics: { dialogueRatio: 0.19, avgSentenceLength: 14.8 }, baselineRules: [baselineRule("s-b", "旧稿乙", "job-b", 19)] },
+        ],
+      };
+      throw new Error(`unexpected request: ${path}`);
+    });
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    await openReview(request);
+    const stats = await screen.findByLabelText("各来源统计对比");
+    const table = stats.querySelector("table")!;
+    const rows = [...table.querySelectorAll("tr")].map((row) => [...row.querySelectorAll("th,td")].map((cell) => cell.textContent));
+    expect(rows).toEqual([
+      ["指标", "参考作品 A", "旧稿乙"],
+      ["平均句长", "9.3", "14.8"],
+      ["对白比例", "0", "0.19"],
+    ]);
+    expect(stats.textContent).toContain("「旧稿乙」的基线规则");
+    expect(stats.textContent).toContain("对话约占文本 0%");
+    expect(stats.textContent).toContain("对话约占文本 19%");
+    expect(stats.textContent).toContain("证据：对话句占比约 19%");
+    // 三列里没有这些基线规则。
+    expect(screen.getByText("共同技法（0）")).toBeTruthy();
+    expect(screen.getByText("来源差异（0）")).toBeTruthy();
+  });
+
+  it("单来源（或比较只有一个来源）时保持原有写法规则列，不显示三列", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    request.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/preview")) return preview;
+      if (path.endsWith("/jobs") && init?.method === "POST") return job;
+      if (path.endsWith("/compare")) return { sources: [{ sourceId: "s-a", sourceName: "参考作品 A", jobId: "job-1", adoptedRuleIds: [], adoptedSampleIds: [] }], common: [], differences: [], nonTransferable: [] };
+      throw new Error(`unexpected request: ${path}`);
+    });
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    await openReview(request);
+    await waitFor(() => expect(request.mock.calls.some(([path]) => String(path).endsWith("/compare"))).toBe(true));
+    expect(screen.getByText("写法规则")).toBeTruthy();
+    expect(screen.queryByLabelText("多来源比较")).toBeNull();
+    expect(screen.queryByText(/共同技法/)).toBeNull();
   });
 
   it("切回输入阶段保留来源名称、标题规则和参考文本草稿", async () => {

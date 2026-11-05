@@ -9,6 +9,7 @@ import {
   type StyleDistillationExplanation,
   type StyleRuleCategory,
 } from "./style-distillation.js";
+import { normalizeEvidenceForMatch, normalizeEvidenceWithMap } from "./style-distillation-normalize.js";
 import { collectSourceTerms, findSourceTerms, type SourceTermIndex } from "./style-distillation-terms.js";
 
 /**
@@ -20,17 +21,44 @@ import { collectSourceTerms, findSourceTerms, type SourceTermIndex } from "./sty
 export const STYLE_DISTILLATION_MAX_RULES_PER_BATCH = 12;
 
 /**
- * 每批的输出上限。每批最多 12 条规则，每条含正文（≤120 字）、逐字证据（≤120 字）与判断理由，
- * 连同 JSON 结构约 4–5 千字、5 千 token 上下；思考型模型（W0 实测的 claude-opus-4-6、gemini-3.7-flash）
- * 还会先把上限的一部分花在推理上。原先的 3000 在 W0 里多次把输出截在半截，这里放宽到 8000，
- * 仍在主流模型的单次输出上限之内。
+ * 每批的输出上限。
+ *
+ * JSON 体量估算：一批 ≤12000 字 / ≤5 章，最多 12 条规则；每条 text ≤120 字、evidence 8–120 字、
+ * reason 一句话（约 40–80 字），加字段名与引号约 60 字符，单条约 250–380 字符，12 条约 3–4.6 千字符，
+ * 中文按 1–1.5 token/字计约 4.5–7 千 token。
+ *
+ * 思考型模型的推理 token 也计入输出上限：2026-10 真模型验收里 gemini-3.8-flash-high 一批
+ * output_tokens=7996（原上限 8000），推理把额度耗尽、JSON 一个字没写出来。产品侧目前不能为
+ * 服务端文本生成指定思考强度（见下方 extractStyleRulesFromBatch 注释），所以给推理预留约 9 千 token，
+ * 总上限取 16000。Runtime 会按模型卡声明的输出上限再收紧（resolveOutputTokenLimit），
+ * 声明了更低上限的模型不会因此被拒。
  */
-export const STYLE_DISTILLATION_BATCH_MAX_TOKENS = 8_000;
+export const STYLE_DISTILLATION_BATCH_MAX_TOKENS = 16_000;
 
-/** 宿主可选地告知输出是否因上限被截断；Runtime 会话生成器只返回 text 时视为未知。 */
+/** 输出 token 达到上限的这个比例即视为被截断（宿主不报 outputTruncated 时的兜底判定）。 */
+export const STYLE_DISTILLATION_TRUNCATION_USAGE_RATIO = 0.98;
+
+/**
+ * 宿主可选地告知输出是否因上限被截断，以及本次输出用了多少 token；
+ * Runtime 会话生成器只返回 text 时视为未知。
+ */
 export type StyleDistillationTextGenerator = (
   input: RuntimeTextGenerationRequest,
-) => Promise<{ readonly text: string; readonly outputTruncated?: boolean }>;
+) => Promise<{
+  readonly text: string;
+  readonly outputTruncated?: boolean;
+  readonly usage?: { readonly completionTokens?: number };
+}>;
+
+/** 宿主报截断，或输出 token 达到上限的 98% 以上，都按截断处理。 */
+export function isStyleDistillationOutputTruncated(
+  response: { readonly outputTruncated?: boolean; readonly usage?: { readonly completionTokens?: number } },
+  maxTokens: number = STYLE_DISTILLATION_BATCH_MAX_TOKENS,
+): boolean {
+  if (response.outputTruncated === true) return true;
+  const used = response.usage?.completionTokens;
+  return typeof used === "number" && Number.isFinite(used) && used >= maxTokens * STYLE_DISTILLATION_TRUNCATION_USAGE_RATIO;
+}
 
 const TRANSFER_ALIASES: Readonly<Record<string, "transferable" | "source-only">> = {
   transferable: "transferable",
@@ -65,8 +93,30 @@ export interface ExtractedStyleRule {
   readonly reason: string;
 }
 
+/** 因证据未在原文中找到而未收录的模型规则，原样保留供作者审阅（证据是模型给的原话，未经回查）。 */
+export interface RejectedStyleRule {
+  /** 被丢弃的只会是模型规则，类别已经过 ModelRuleSchema 校验；general 只给确定性基线用。 */
+  readonly category: (typeof STYLE_MODEL_RULE_CATEGORIES)[number];
+  readonly text: string;
+  readonly evidence: string;
+  readonly reason: string;
+}
+
+/**
+ * 一批里被证据校验丢弃的规则占比超过这个阈值（或全部被丢弃）时，本批需要作者关注：
+ * 全部丢弃判为失败批次（可重试）；部分丢弃但超过阈值，批次照常完成并带提醒。
+ * 一半以上的证据都对不上原文，通常是模型在改写原文或比对口径有问题，不能看起来像正常成功。
+ */
+export const STYLE_DISTILLATION_EVIDENCE_REJECTION_ATTENTION_RATIO = 0.5;
+
 export type StyleBatchExtraction =
-  | { readonly ok: true; readonly rules: readonly ExtractedStyleRule[]; readonly issues: readonly string[] }
+  | {
+    readonly ok: true;
+    readonly rules: readonly ExtractedStyleRule[];
+    readonly issues: readonly string[];
+    /** 证据校验未通过的规则；缺省视为没有。 */
+    readonly rejected?: readonly RejectedStyleRule[];
+  }
   | { readonly ok: false; readonly explanation: StyleDistillationExplanation };
 
 const SYSTEM_PROMPT = `你是 NovelFork 的文风分析助手。任务：从作者提供的参考正文中提取可以指导写作的「写法规则」。只分析表达方法，不复述剧情，不整理人物、地点或世界设定。
@@ -103,72 +153,38 @@ export function buildStyleDistillationBatchMessages(input: {
   ];
 }
 
-// 引号与全半角标点归一：模型常把原文的 “” 写成 " 或「」，把，写成 ,；比对时视为同一个字符。
-const QUOTE_CHARS = new Set([..."“”„‟〝〞＂\"'‘’‛「」『』﹁﹂﹃﹄"]);
-const PUNCTUATION_PAIRS: Readonly<Record<string, string>> = {
-  ",": "，", ";": "；", ":": "：", "!": "！", "?": "？", "(": "（", ")": "）",
-};
-
-function normalizeChar(char: string): string {
-  if (QUOTE_CHARS.has(char)) return "\"";
-  return PUNCTUATION_PAIRS[char] ?? char;
-}
-
-/**
- * 去空白并归一引号与标点（逐字一一对应，只删空白），同时记下每个归一后字符在原文里的起止位置，
- * 便于取回原文片段。
- */
-function normalizeWithMap(text: string): {
-  readonly value: string;
-  readonly starts: readonly number[];
-  readonly ends: readonly number[];
-} {
-  const chars: string[] = [];
-  const starts: number[] = [];
-  const ends: number[] = [];
-  let offset = 0;
-  for (const char of text) {
-    if (!/\s/u.test(char)) {
-      chars.push(normalizeChar(char));
-      starts.push(offset);
-      ends.push(offset + char.length);
-    }
-    offset += char.length;
-  }
-  return { value: chars.join(""), starts, ends };
-}
-
-function normalizeForMatch(text: string): string {
-  return normalizeWithMap(text).value;
-}
-
 export interface LocatedStyleEvidence {
   readonly chapterNumber: number;
   /** 取自原文的逐字片段；多段证据用「……」连接。 */
   readonly excerpt: string;
 }
 
-/** 证据按省略号切段，每段都必须在同一章原文中按顺序逐字出现（引号、全半角标点、空白不计差异）。 */
+/**
+ * 证据按省略号切段，每段都必须在同一章原文中按顺序逐字出现。比对前两边做同样的逐字归一
+ * （引号与括引号一律忽略（换样式或省略都不计），全半角、ASCII 大小写、常见繁简异体、空白不计差异，见 style-distillation-normalize），
+ * 返回的片段仍取自原文原字。
+ */
 export function locateStyleEvidenceInChapters(
   evidence: string,
   chapters: readonly DistillableChapter[],
 ): LocatedStyleEvidence | null {
+  // 归一会删去引号与括引号：模型在证据外再套一层引号、换引号样式或整个省掉引号，都不计差异。
   const segments = evidence
     .trim()
-    .replace(/^[「『“"'‘]+|[」』”"'’]+$/gu, "")
     .split(/…+|\.{3,}/u)
-    .map(normalizeForMatch)
-    .filter((segment) => segment.length >= 2);
-  if (segments.length === 0) return null;
+    .map(normalizeEvidenceForMatch);
+  const usable = segments.filter((segment) => segment.length >= 2);
+  if (usable.length === 0) return null;
   for (const chapter of chapters) {
-    const content = normalizeWithMap(chapter.content);
+    const content = normalizeEvidenceWithMap(chapter.content);
     const pieces: string[] = [];
     let cursor = 0;
     let matched = true;
-    for (const segment of segments) {
+    for (const segment of usable) {
       const at = content.value.indexOf(segment, cursor);
       if (at < 0) { matched = false; break; }
-      // 归一只替换等长字符、删空白，归一串的下标与 starts/ends 一一对应（按码点计）。
+      // 归一删去了空白与引号，归一串第 i 个码点经 starts/ends 映射回原文下标；
+      // 片段从原文取原字，落在命中范围中间的引号随之取回。
       const first = [...content.value.slice(0, at)].length;
       const last = first + [...segment].length - 1;
       pieces.push(chapter.content.slice(content.starts[first], content.ends[last]));
@@ -201,6 +217,21 @@ const JSON_FAILURE_WHY: Readonly<Record<ModelJsonFailureReason, string>> = {
   invalid: "本批规则无法可靠解析，不能猜测模型的原意。",
 };
 
+/**
+ * 蒸馏批次被截断时的建议。思考型模型会把输出额度先花在推理上，换「更守格式」的模型解决不了，
+ * 应缩小批次或降低思考强度。
+ */
+const TRUNCATED_NEXT = "重试本批；仍被截断时缩小参考文本范围（每批章节更少），或在设置里把默认模型的思考强度调低、换用非思考型模型后再重试失败批次。";
+
+/** 输出被截断（宿主报告或输出 token 用满上限）时，不论解析成什么样都按截断报告。 */
+function truncatedFailure(detail: string): StyleBatchExtraction {
+  return failure(
+    `模型输出被截断：${detail}`,
+    `${JSON_FAILURE_WHY.truncated}思考型模型的推理也计入输出上限，推理过长时正文 JSON 可能一个字都来不及写。`,
+    TRUNCATED_NEXT,
+  );
+}
+
 function termList(terms: readonly { readonly term: string; readonly count: number }[]): string {
   return terms.slice(0, 3).map((term) => `「${term.term}」（来源中出现 ${term.count} 次）`).join("、");
 }
@@ -208,7 +239,7 @@ function termList(terms: readonly { readonly term: string; readonly count: numbe
 export interface ParseStyleBatchOptions {
   /** 来源全文的专名统计；缺省时只用本批章节统计。 */
   readonly sourceTerms?: SourceTermIndex;
-  /** 宿主告知输出因上限被截断。 */
+  /** 宿主告知输出因上限被截断，或输出 token 已用满上限（见 isStyleDistillationOutputTruncated）。 */
   readonly outputTruncated?: boolean;
 }
 
@@ -220,6 +251,12 @@ export function parseStyleDistillationBatchOutput(
 ): StyleBatchExtraction {
   const parsedJson = parseModelJson(text, { expect: "object", outputTruncated: options.outputTruncated });
   if (!parsedJson.ok) {
+    // 截断是根因时，「没有 JSON」「JSON 无效」都只是表象，统一报截断并给出可执行建议。
+    if (options.outputTruncated || parsedJson.reason === "truncated") {
+      return truncatedFailure(options.outputTruncated && parsedJson.reason !== "truncated"
+        ? `输出达到了长度上限（${STYLE_DISTILLATION_BATCH_MAX_TOKENS} token），没有写出完整的 JSON。`
+        : parsedJson.message.replace(/^模型输出被截断：/u, ""));
+    }
     return failure(parsedJson.message, JSON_FAILURE_WHY[parsedJson.reason], modelJsonFailureAdvice(parsedJson.reason));
   }
   const shape = StyleDistillationModelOutputSchema.safeParse(parsedJson.value);
@@ -263,10 +300,12 @@ export function parseStyleDistillationBatchOutput(
 
   const sourceTerms = options.sourceTerms ?? collectSourceTerms(chapters);
   const rules: ExtractedStyleRule[] = [];
+  const rejected: RejectedStyleRule[] = [];
   for (const candidate of valid) {
     const located = locateStyleEvidenceInChapters(candidate.evidence, chapters);
     if (!located) {
       issues.push(`未收录「${candidate.text.slice(0, 60)}」：证据未在本批原文中逐字找到，可能是模型改写或编造。`);
+      rejected.push({ category: candidate.category, text: candidate.text, evidence: candidate.evidence, reason: "证据未在本批原文中逐字找到" });
       continue;
     }
     let transfer = candidate.transfer;
@@ -288,7 +327,31 @@ export function parseStyleDistillationBatchOutput(
     });
   }
   if (candidates.length === 0) issues.push("模型认为本批没有可提取的写法规则。");
-  return { ok: true, rules, issues };
+  return { ok: true, rules, issues, rejected };
+}
+
+export type StyleBatchEvidenceAssessment =
+  | { readonly level: "ok" }
+  /** 部分规则被丢弃且占比超过阈值：批次完成，但带提醒。 */
+  | { readonly level: "warning"; readonly explanation: StyleDistillationExplanation }
+  /** 模型给出的规则全部因证据被丢弃：按失败批次处理，可重试。 */
+  | { readonly level: "failed"; readonly explanation: StyleDistillationExplanation };
+
+/** 判断一批的证据丢弃情况是否需要作者关注；文案统一在这里，前端与叙述者不自造。 */
+export function assessStyleBatchEvidence(
+  kept: number,
+  rejected: number,
+): StyleBatchEvidenceAssessment {
+  if (rejected <= 0) return { level: "ok" };
+  const total = kept + rejected;
+  const what = `${rejected} 条模型规则因证据未在原文找到被丢弃${kept > 0 ? `，仅收录 ${kept} 条` : "，本批没有收录任何规则"}。`;
+  const why = "证据必须是原文里的逐字片段，对不上的规则可能是模型改写或编造原文，不能进入审阅；但大面积对不上也可能是模型改了原文的写法（如繁简、引号），不应当作正常完成。";
+  const next = "展开本批「被丢弃的规则」查看模型给出的证据与原文差在哪里；重试本批，多次仍大面积丢弃时换用更忠于原文的模型。";
+  if (kept === 0) return { level: "failed", explanation: { what, why, next } };
+  if (rejected / total > STYLE_DISTILLATION_EVIDENCE_REJECTION_ATTENTION_RATIO) {
+    return { level: "warning", explanation: { what, why, next } };
+  }
+  return { level: "ok" };
 }
 
 export async function extractStyleRulesFromBatch(input: {
@@ -300,13 +363,18 @@ export async function extractStyleRulesFromBatch(input: {
   let text: string;
   let outputTruncated = false;
   try {
+    // 思考强度：蒸馏是格式固定的抽取任务，用不上深推理，理想做法是像 Runtime 的摘要类辅助生成那样
+    // 显式压低思考强度。但产品侧的文本生成契约（core RuntimeTextGenerationRequest、Bridge
+    // RuntimeProductTextGenerationRequest、Runtime ToolContext.generateText）都没有 reasoningEffort 字段，
+    // product-host 的 default 角色沿用模型配置的默认思考强度，只能在 Runtime fork 层加字段后再传。
+    // 在那之前靠更高的输出上限给推理留余量，并把用满上限如实报成截断。
     const response = await input.generateText({
       messages: buildStyleDistillationBatchMessages(input),
       temperature: 0.2,
       maxTokens: STYLE_DISTILLATION_BATCH_MAX_TOKENS,
     });
     text = response.text;
-    outputTruncated = response.outputTruncated === true;
+    outputTruncated = isStyleDistillationOutputTruncated(response);
   } catch (error) {
     return failure(
       `模型调用失败：${error instanceof Error ? error.message : String(error)}`,

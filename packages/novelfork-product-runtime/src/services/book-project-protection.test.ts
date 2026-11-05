@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { eq, inArray } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { Hono } from "hono";
-import { AppError, chapters, db, projects } from "@vivy1024/narrafork-runtime-bridge";
+import { AppError, db, projects } from "@vivy1024/narrafork-runtime-bridge";
 import { novelForkProductIntegration } from "../index";
 import { initializeNovelRuntimeStorage } from "../adapters/storage";
 import { getNovelForkProductDatabase } from "../db/database";
@@ -73,13 +73,11 @@ beforeAll(async () => {
 		{ id: bookProjectId, name: "Book project", gitPath: bookRoot, createdAt: now, updatedAt: now },
 		{ id: plainProjectId, name: "Plain project", createdAt: now, updatedAt: now },
 	]);
-	await db.insert(chapters).values({ id: bookChapterId, projectId: bookProjectId, title: "root", branch: "main", baseBranch: "main", createdAt: now, updatedAt: now });
 	await getNovelForkProductDatabase().insert(bookRuntimeBindings).values({ id: `book-project-binding-${suffix}`, runtimeProjectId: bookProjectId, bookId, bookRoot, createdByUserId: author.sub, createdAt: now, updatedAt: now });
 });
 
 afterAll(async () => {
 	await getNovelForkProductDatabase().delete(bookRuntimeBindings).where(inArray(bookRuntimeBindings.bookId, [bookId]));
-	await db.delete(chapters).where(inArray(chapters.id, [bookChapterId]));
 	await db.delete(projects).where(inArray(projects.id, [bookProjectId, plainProjectId]));
 	await rm(bookRoot, { recursive: true, force: true });
 });

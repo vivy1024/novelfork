@@ -22,16 +22,16 @@ tags:
 
 ## 流程
 
-1. **确认来源文本**。作者指的是一段文字、某几章，还是一部参考作品。本书章节可以先用 `chapter.read` 取出正文。文本要由作者提供或指定，不要自己找。
-2. **预览范围**。用 `style.distill_preview`（sourceName 起一个作者认得出的名字，text 或 chapters 二选一），把章节切分和可分析的覆盖范围告诉作者。范围不对就调整后再预览。
-3. **开始蒸馏**。作者认可范围后调 `style.distill_start`。每次最多处理 maxBatches 批，没处理完就带 jobId 再调一次；失败的批次带 retryFailed=true 重试。
-4. **读取结果**。用 `style.distill_status` 取回规则、范文与统计指纹。
+1. **确认来源文本**。作者指的是一段文字、某几章，还是一部参考作品。本书章节可以先用 `chapter_read` 取出正文。文本要由作者提供或指定，不要自己找。
+2. **预览范围**。用 `style_distill_preview`（sourceName 起一个作者认得出的名字，text 或 chapters 二选一），把章节切分和可分析的覆盖范围告诉作者。范围不对就调整后再预览。
+3. **开始蒸馏**。作者认可范围后调 `style_distill_start`。每次最多处理 maxBatches 批，没处理完就带 jobId 再调一次；失败的批次带 retryFailed=true 重试。
+4. **读取结果**。用 `style_distill_status` 取回规则、范文与统计指纹。
 5. **逐条给作者看**。每条规则写清：
    - 规则本身（一句话）；
    - 原文证据（引一两句）；
    - 可迁移，还是这部作品专属（专属条目只作证据保存，不进本书写作指南）。
-6. **只采纳作者点名的**。作者说「第 2、5 条要，范文 A 要」，就只传这几条的 ID，调 `style.distill_adopt`：ruleIds、sampleIds 为作者选中的项，expectedVersion 原样用 `style.distill_status` 返回的值。
-7. **遇到冲突**。采纳返回版本冲突（409），说明文风预设在此期间被改过：重新 `style.distill_status` 取最新版本，把变化告诉作者，再按作者意见重试。不要强行覆盖。
+6. **只采纳作者点名的**。作者说「第 2、5 条要，范文 A 要」，就只传这几条的 ID，调 `style_distill_adopt`：ruleIds、sampleIds 为作者选中的项，expectedVersion 原样用 `style_distill_status` 返回的值。
+7. **遇到冲突**。采纳返回版本冲突（409），说明文风预设在此期间被改过：重新 `style_distill_status` 取最新版本，把变化告诉作者，再按作者意见重试。不要强行覆盖。
 
 ## 采纳之后
 

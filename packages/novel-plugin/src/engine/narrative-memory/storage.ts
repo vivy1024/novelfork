@@ -572,6 +572,7 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
   if (addedDerivedKeys) {
     backfillNarrativeFactSlotKeys(storage);
   }
+  rekeyNormalizedStateFactsOnce(storage);
 
   // 场景与剧情线（同步自迁移 0035）。场景是两棵叙事树共用的叶子：
   // 承载树 卷 → 章 → 场景（在哪讲），因果树 剧情线 → 场景（为什么发生）。
@@ -647,6 +648,8 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     { name: "hooks_used_json", ddl: "ADD COLUMN hooks_used_json TEXT NOT NULL DEFAULT '[]'" },
     { name: "hooks_planted_json", ddl: "ADD COLUMN hooks_planted_json TEXT NOT NULL DEFAULT '[]'" },
     { name: "beat_budget_json", ddl: "ADD COLUMN beat_budget_json TEXT" },
+    // 场景留白（同步自迁移 0040）
+    { name: "gaps_json", ddl: "ADD COLUMN gaps_json TEXT NOT NULL DEFAULT '[]'" },
   ];
   for (const col of sceneColumnsToAdd) {
     if (!sceneColumns.has(col.name)) {
@@ -679,6 +682,51 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_structure_score_dimension
       ON narrative_structure_score(book_id, dimension);
   `);
+
+  // 叙事体检「忽略此条」的作者裁决（同步自迁移 0041）。只记裁决键，不存检测结果。
+  // 外键必须与迁移一致：谁先建表决定表结构，两边不同会让删书后裁决残留与否取决于库的历史。
+  // 只在 book 表存在时带外键（插件单测的裸库没有 book 表，引用不存在的表在 SQLite 里建表成功、插入才报错）。
+  const hasBookTable = Boolean(
+    storage.sqlite.prepare(`SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'book'`).get(),
+  );
+  storage.sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS narrative_consistency_ignore (
+      book_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      entity_id TEXT NOT NULL DEFAULT '',
+      chapter_number INTEGER NOT NULL DEFAULT 0,
+      fact_id TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (book_id, kind, entity_id, chapter_number, fact_id)${hasBookTable ? `,
+      FOREIGN KEY (book_id) REFERENCES book(id) ON DELETE CASCADE` : ""}
+    );
+  `);
+}
+
+/** 每个数据库连接只做一次存量谓词归一的 slot_key 重算。 */
+const rekeyedStateFacts = new WeakSet<StorageDatabase>();
+
+/**
+ * 场景校验 S1：生死 / 去向 / 所在 三类谓词归一后，旧库里按旧规则算的 slot_key 要重算，
+ * 否则旧的「身亡」与新的「复活」仍落在两个槽里。只改 slot_key 这一派生列，不动事实内容；
+ * slot_key 不在实体索引的推导列里，不会触发索引重算。
+ */
+function rekeyNormalizedStateFactsOnce(storage: StorageDatabase): void {
+  if (rekeyedStateFacts.has(storage)) return;
+  rekeyedStateFacts.add(storage);
+  const rows = storage.sqlite.prepare<{ id: string; bookId: string; category: string; subject: string; predicate: string; object: string; slotKey: string | null }>(`
+    SELECT id, book_id AS bookId, category, subject, predicate, object, slot_key AS slotKey
+    FROM narrative_fact
+    WHERE category IN ('character_state', 'location')
+  `).all();
+  const stale = rows
+    .map((row) => ({ id: row.id, next: narrativeFactSlotKey(row), current: row.slotKey }))
+    .filter((row) => row.next !== row.current);
+  if (stale.length === 0) return;
+  const update = storage.sqlite.prepare(`UPDATE narrative_fact SET slot_key = ? WHERE id = ?`);
+  storage.sqlite.transaction(() => {
+    for (const row of stale) update.run(row.next, row.id);
+  })();
 }
 
 /** T4 证据链读取：某章最新一次结算的证据 artifact（按 created_at 取最新）。 */

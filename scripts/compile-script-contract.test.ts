@@ -109,6 +109,11 @@ describe("根 Host 编译契约", () => {
   test("根入口直接加载完整 NarraFork Runtime 后端", () => {
     const runtimeImport = 'await import("./packages/narrafork-runtime-private/server/index.ts")';
     expect(rootMain).toContain(runtimeImport);
+    // Runtime 0.9 起 Windows 编译产物默认进图形化管理器（不监听端口）；产品入口必须在加载
+    // Runtime 之前补上 --serve，否则 EXE 卡在管理器里永不就绪。
+    const forceServe = 'if (!process.argv.includes("--serve")) process.argv.push("--serve");';
+    expect(rootMain).toContain(forceServe);
+    expect(rootMain.indexOf(forceServe)).toBeLessThan(rootMain.lastIndexOf(runtimeImport));
     expect(rootMain).not.toContain("runtime-core-private");
     expect(rootMain).not.toContain("legacy-runtime-loader");
     expect(existsSync(join(repositoryRoot, "packages", "runtime-core-private"))).toBe(false);
@@ -241,10 +246,18 @@ describe("根 Host 编译契约", () => {
 
   test("Runtime 用 new Worker() 启动的模块全部作为额外编译入口，且与 Runtime 编译脚本一致", () => {
     // Worker 的路径打包器不跟随：漏掉一个，EXE 里对应功能就只剩 ModuleNotFound（0.7 的编辑器文档即如此）。
-    const runtimeCompileArgs = buildScript.slice(buildScript.indexOf('"./server/index.ts"'), buildScript.indexOf('"--compile"'));
-    const runtimeWorkerEntries = [...runtimeCompileArgs.matchAll(/"\.\/(server\/[^"]+\.ts)"/gu)]
-      .map((match) => match[1])
-      .filter((entry) => entry !== "server/index.ts");
+    // Runtime 0.9 起编译脚本经 compiledWorkerBuildEntrypoints() 展开 server/lib/compiled-worker.ts
+    // 的 COMPILED_WORKER_ENTRIES（相对 server/），这里直接读那份清单。
+    expect(buildScript).toContain("...compiledWorkerBuildEntrypoints()");
+    const compiledWorkerSource = readFileSync(
+      join(repositoryRoot, "packages", "narrafork-runtime-private", "server", "lib", "compiled-worker.ts"),
+      "utf8",
+    );
+    const entriesBlock = compiledWorkerSource.slice(
+      compiledWorkerSource.indexOf("export const COMPILED_WORKER_ENTRIES = ["),
+      compiledWorkerSource.indexOf("] as const;", compiledWorkerSource.indexOf("export const COMPILED_WORKER_ENTRIES = [")),
+    );
+    const runtimeWorkerEntries = [...entriesBlock.matchAll(/"([^"]+\.ts)"/gu)].map((match) => `server/${match[1]}`);
     expect(runtimeWorkerEntries.length).toBeGreaterThan(0);
     expect([...RUNTIME_WORKER_ENTRIES].sort()).toEqual([...runtimeWorkerEntries].sort());
     expect(productCompileScript).toContain("entrypoints: [entry, ...workerEntries]");

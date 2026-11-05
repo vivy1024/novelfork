@@ -7,6 +7,7 @@ import { splitChapters, type SplitChapter } from "@vivy1024/novelfork-core";
 import { distillStyleProfile, type DistilledStyleProfile } from "../tools/import/style-distiller.js";
 import type { DissectKnowledgePack, DissectSourceChapter } from "../../handlers/dissect-knowledge.js";
 import { writeFileAtomic } from "../writing-resource/atomic-write.js";
+import { findDialogueRanges } from "../compliance/dialogue-spans.js";
 import {
   extractKnowledgePack,
 } from "../../handlers/dissect-knowledge.js";
@@ -103,6 +104,17 @@ export const StyleDistillationBatchSchema = z.object({
   ruleIds: z.array(z.string().trim().min(1).max(120)).max(50),
   /** 本批被拒收或合并的条目说明；不静默丢弃模型输出。 */
   issues: z.array(sourceText).max(30),
+  /** 证据未在原文中找到而未收录的模型规则，原样保留供作者审阅；旧任务文件没有此字段。 */
+  rejectedRules: z.array(z.object({
+    category: z.enum(STYLE_MODEL_RULE_CATEGORIES),
+    text: sourceText,
+    evidence: sourceText,
+    reason: sourceText,
+  }).strict()).max(20).optional(),
+  /**
+   * failed 批次：失败原因。done 批次：需要作者关注的提醒（如过半规则因证据被丢弃），
+   * 批次结果照常收录。
+   */
   explanation: explanation.optional(),
   startedAt: z.string().datetime().optional(),
   finishedAt: z.string().datetime().optional(),
@@ -122,6 +134,23 @@ export const StyleDistillationJobSchema = StyleDistillationSourceSchema.extend({
     presetRevision: z.string().regex(/^[a-f0-9]{64}$/u),
     adoptedAt: z.string().datetime(),
   }).strict().optional(),
+  /**
+   * 进程重启后的自动续跑记录（见 style-distillation-auto-resume.ts）。failures 是「连续未完成」的
+   * 自动续跑次数：每次自动续跑拿到运行锁时先加一并落盘（进程中途退出也算一次），跑完清零。
+   * explanation 说明最近一次自动续跑为何停下（没有模型 / 达到上限 / 来源快照缺失）。
+   * 作者手动继续时整条记录清除。旧任务文件没有此字段。
+   */
+  autoResume: z.object({
+    failures: z.number().int().nonnegative(),
+    lastAttemptAt: z.string().datetime().optional(),
+    explanation: explanation.optional(),
+  }).strict().optional(),
+  /**
+   * 最近一次启动 / 手动继续模型批次的用户（宿主的稳定用户 id）。进程重启后的自动续跑只替这个人续跑，
+   * 模型用量也计到他名下——与 narrator-team 的口径一致：派出去的活归发起它的人。
+   * 旧任务文件与没有登录身份的入口（叙述者工具）没有此字段，这类任务不自动续跑，留给作者手动继续。
+   */
+  initiatorId: z.string().trim().min(1).max(200).optional(),
 }).strict();
 
 export type StyleDistillationSource = z.infer<typeof StyleDistillationSourceSchema>;
@@ -310,9 +339,27 @@ function excerptFor(chapter: DistillableChapter): string {
   return (lastEnd > 120 ? cut.slice(0, lastEnd + 1) : cut).trim();
 }
 
+/**
+ * 范文引号内文字（含引号）占比达到这个值才算对话场景。
+ * 议论、序言里零星引一个词或一句话（「……」式的称引）不构成对白示范。
+ */
+export const SAMPLE_DIALOGUE_SCENE_MIN_RATIO = 0.3;
+
+/** 引号内文字（含引号）占全文非空白字符的比例。 */
+export function quotedTextRatio(text: string): number {
+  const total = text.replace(/\s/gu, "").length;
+  if (total === 0) return 0;
+  const quoted = findDialogueRanges(text).reduce(
+    (sum, range) => sum + text.slice(range.start, range.end).replace(/\s/gu, "").length,
+    0,
+  );
+  return quoted / total;
+}
+
 /** 基于关键词与引号的确定性场景分类；判不出时如实标「通用」，不冒充具体场景。 */
 export function sampleSceneType(text: string): StyleDistillationSample["sceneType"] {
-  if (/[“”「」"：:]/u.test(text)) return "dialogue";
+  // 只看引号内对白的占比：冒号、单个称引词不再把议论段标成对话。
+  if (quotedTextRatio(text) >= SAMPLE_DIALOGUE_SCENE_MIN_RATIO) return "dialogue";
   if (/(?:冲|追|逃|打|杀|跑|撞|拔|挥|战|躲)/u.test(text)) return "action";
   if (/(?:想|记得|意识|心中|暗自|不由得)/u.test(text)) return "interiority";
   if (/(?:后来|随后|转眼|次日|终于|走进|离开)/u.test(text)) return "transition";
@@ -333,6 +380,21 @@ function rule(id: string, text: string, evidence: string, category: StyleRuleCat
   };
 }
 
+/**
+ * 对话比例低于这个值时，样文基本靠叙述推进；此时再建议「用对白推进」与统计自相矛盾。
+ * 5% 约等于一章几千字里只有零星几句短对白。
+ */
+export const STYLE_BASELINE_LOW_DIALOGUE_RATIO = 0.05;
+
+/** 对话比例基线文案：只陈述比例；比例足够高时才给「用对白推进」的写法提示。 */
+export function dialogueBaselineText(dialogueRatio: number): string {
+  const percent = Math.round(dialogueRatio * 100);
+  if (dialogueRatio < STYLE_BASELINE_LOW_DIALOGUE_RATIO) {
+    return `对话约占文本 ${percent}%，以叙述推进为主，对白很少。`;
+  }
+  return `对话约占文本 ${percent}%，用对白推进信息或冲突。`;
+}
+
 function mapRules(pack: DissectKnowledgePack, fingerprint: DistilledStyleProfile): StyleDistillationRule[] {
   const rules: StyleDistillationRule[] = [];
   if (pack.styleHints.tone.trim()) {
@@ -341,10 +403,23 @@ function mapRules(pack: DissectKnowledgePack, fingerprint: DistilledStyleProfile
   for (const [index, hint] of pack.styleHints.formattingRules.entries()) {
     const normalized = hint.trim();
     if (!normalized) continue;
+    // 文案引用的是统计指纹的数值，证据也必须给同一个数：拆书提示里的句长 / 对话占比
+    // 按另一套口径计算（如对话按句数计），原样当证据会出现「约占 19%」配「约 0%」的自相矛盾。
     if (/平均句长约\s*(\d+)/u.test(normalized)) {
-      rules.push(rule(`rhythm-${index}`, `句长以约 ${fingerprint.avgSentenceLength} 字为参照，保留长短变化。`, normalized, "rhythm"));
+      rules.push(rule(
+        `rhythm-${index}`,
+        `句长以约 ${fingerprint.avgSentenceLength} 字为参照，保留长短变化。`,
+        `统计指纹：平均句长 ${fingerprint.avgSentenceLength} 字，句长标准差 ${fingerprint.sentenceLengthStdDev}（样本 ${fingerprint.sampleSentenceCount} 句）`,
+        "rhythm",
+      ));
     } else if (/对话句占比约\s*(\d+)%/u.test(normalized)) {
-      rules.push(rule(`dialogue-${index}`, `对话约占文本 ${Math.round((fingerprint.dialogueRatio ?? 0) * 100)}%，用对白推进信息或冲突。`, normalized, "dialogue"));
+      const ratio = fingerprint.dialogueRatio ?? 0;
+      rules.push(rule(
+        `dialogue-${index}`,
+        dialogueBaselineText(ratio),
+        `统计指纹：引号内对白约占全文 ${Math.round(ratio * 100)}%（${fingerprint.sampleCharCount} 字样本）`,
+        "dialogue",
+      ));
     } else {
       rules.push(rule(`format-${index}`, `表达格式参考：${normalized}。`, normalized));
     }

@@ -41,7 +41,9 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return { ...actual, readFile, default: { ...actual, readFile } };
 });
 
-vi.mock("@vivy1024/novelfork-core", () => ({
+vi.mock("@vivy1024/novelfork-core", async (importOriginal) => ({
+  // 写前召回会用到 core 的其他导出（如 loadRuntimeStateSnapshot），只替换存储入口。
+  ...await importOriginal<typeof import("@vivy1024/novelfork-core")>(),
   getStorageDatabase: () => {
     if (!activeStorage) throw new Error("test storage not initialized");
     return activeStorage;
@@ -603,5 +605,63 @@ describe("scene.spec hard gate descriptions", () => {
     expect(scene?.description).toContain("write.preflight");
     expect(pipeline?.description).toContain("write.preflight");
     expect(pipeline?.description).toContain("context-not-ready");
+  });
+});
+
+describe("write.preflight 带出本章规划留白（T2.6）", () => {
+  it("作者在场景上存的留白出现在结果的 sceneGaps 里；没有留白时省略", async () => {
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    const { createScene, updateSceneGaps } = await import("../engine/narrative-memory/scene-store.js");
+    const base = {
+      bookId: "book-1",
+      chapterNumber: 1,
+      userDirectives: "开篇写主角下山寻仇，先从客栈冲突切入。",
+      storage: activeStorage,
+      cockpitState: cockpitState({ formalChapterCount: 0, focus: null }),
+    };
+    expect((await handleWritePreflight(base)).sceneGaps).toBeUndefined();
+
+    const scene = createScene(activeStorage!, { bookId: "book-1", chapterNumber: 1, title: "客栈" }).data!;
+    updateSceneGaps(activeStorage!, {
+      bookId: "book-1",
+      sceneId: scene.id,
+      expectedUpdatedAt: scene.updatedAt,
+      gaps: [{ kind: "motivation", gap: "他为何不拔刀", answer: "仇人身边站着他师妹" }],
+    });
+    const result = await handleWritePreflight(base);
+    expect(result.sceneGaps).toEqual([
+      { sceneId: scene.id, ordinal: 1, title: "客栈", gaps: [{ kind: "motivation", gap: "他为何不拔刀", answer: "仇人身边站着他师妹" }] },
+    ]);
+  });
+
+  it("sceneSpec 场景不带 hooks_used / hooks_planted 时写前召回照常装配，不报 recall-failed", async () => {
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    const bookRoot = join(tmpdir(), `novelfork-preflight-partial-spec-${crypto.randomUUID()}`);
+    tempDirs.push(bookRoot);
+    await mkdir(bookRoot, { recursive: true });
+    const base = {
+      bookId: "book-1",
+      chapterNumber: 1,
+      userDirectives: "开篇写主角下山寻仇，先从客栈冲突切入。",
+      storage: activeStorage,
+      bookRoot,
+      buildRecall: true,
+      cockpitState: cockpitState({ formalChapterCount: 0, focus: null }),
+    };
+    const partial = {
+      chapter: 1, title: "下山", wordTarget: 3000, constraints: [],
+      scenes: [{ characters: ["主角"], location: "客栈", conflict: "寻仇", mood: "冷", outcome: "拔刀" }],
+    } as unknown as Parameters<typeof handleWritePreflight>[0]["sceneSpec"];
+    const result = await handleWritePreflight({ ...base, sceneSpec: partial });
+    expect(result.blockers.map((item) => `${item.code}:${item.message}`)).toEqual([]);
+    expect(JSON.stringify(result.blockers)).not.toContain("Spread syntax");
+    expect(result.recall).toBeDefined();
+
+    // 对照：字段齐全的蓝图同样装配成功。
+    const full = await handleWritePreflight({
+      ...base,
+      sceneSpec: { ...partial!, scenes: [{ ...partial!.scenes[0]!, hooks_used: ["旧仇"], hooks_planted: ["师妹"] }] },
+    });
+    expect(full.recall).toBeDefined();
   });
 });

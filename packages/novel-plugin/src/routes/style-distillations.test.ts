@@ -1,6 +1,7 @@
-import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStyleDistillationsRouter } from "./style-distillations.js";
 import { loadStylePreset } from "../engine/writing-layers/style-preset-store.js";
@@ -125,6 +126,54 @@ describe("文风自动蒸馏路由", () => {
     });
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toMatchObject({ code: "STYLE_PRESET_CONFLICT", explanation: { what: expect.any(String) } });
+  });
+
+  it("模拟进程重启：第一次访问蒸馏接口时自动续跑上次未跑完的任务；比较接口带证据与任务 ID", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nf-style-distill-route-"));
+    roots.push(root);
+    const bookRoot = join(root, "book-a");
+    await mkdir(bookRoot, { recursive: true });
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const { createStyleDistillationJob } = await import("../engine/writing-layers/style-distillation-runner.js");
+      const { resetStyleDistillationAutoResumeForTests } = await import("../engine/writing-layers/style-distillation-auto-resume.js");
+      const created = await createStyleDistillationJob({ bookRoot, bookId: "book-a", source: { sourceName: "旧稿甲", text: "第一章 雨夜\n她停在门前，听见雨声。" }, modelAvailable: true, initiatorId: "author-1" });
+      // 上一个进程跑到一半退出：任务文件停在 running，没有运行锁。
+      const file = join(bookRoot, "story", "style-distillations", `${created.jobId}.json`);
+      const raw = JSON.parse(await readFile(file, "utf8"));
+      raw.status = "running";
+      raw.batches[0].status = "running";
+      await writeFile(file, JSON.stringify(raw), "utf8");
+      resetStyleDistillationAutoResumeForTests();
+
+      const generateText = vi.fn(async () => ({ text: JSON.stringify({ rules: [
+        { category: "scene", text: "用一个小动作收住情绪", evidence: "她停在门前", transfer: "transferable", reason: "通用技法" },
+      ] }) }));
+      const inner = createStyleDistillationsRouter({
+        state: { bookDir: () => bookRoot }, root, getSessionLlm: async () => undefined,
+      } as unknown as RouterContext, { resolveBookRoot: () => bookRoot, resolveTextGenerator: async () => generateText });
+      // 宿主在认证中间件里写入登录用户；自动续跑只替任务的发起人续跑。
+      const router = new Hono();
+      router.use("*", async (c, next) => { (c as unknown as { set(k: string, v: unknown): void }).set("user", { sub: "author-1" }); await next(); });
+      router.route("", inner);
+
+      let status = "";
+      for (let attempt = 0; attempt < 50 && status !== "ready"; attempt += 1) {
+        const list = await (await router.request("/api/books/book-a/style/distillations/jobs")).json() as { jobs: { status: string }[] };
+        status = list.jobs[0]?.status ?? "";
+        if (status !== "ready") await new Promise((done) => setTimeout(done, 10));
+      }
+      expect(status).toBe("ready");
+      expect(generateText).toHaveBeenCalledTimes(1);
+
+      const compare = await (await router.request("/api/books/book-a/style/distillations/compare")).json() as {
+        sources: { jobId: string }[]; differences: { rules: { jobId: string; evidence: string }[] }[];
+      };
+      expect(compare.sources[0]?.jobId).toBe(created.jobId);
+      expect(compare.differences[0]?.rules.some((rule) => rule.jobId === created.jobId && rule.evidence.includes("她停在门前"))).toBe(true);
+    } finally {
+      infoSpy.mockRestore();
+    }
   });
 
   it("后台批次顶层失败（updateJob 自身失败）时落日志，留下任务 id 与错误，不再静默吞掉", async () => {

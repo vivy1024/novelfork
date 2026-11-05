@@ -91,7 +91,7 @@ export const GENERATED_LEARNING_CONTRIBUTION: RuntimeLearningContribution = {
       workflow: [t("看就绪条：绿色可以写，黄色可以写但有提醒，红色先处理检查项。"), t("在创作罗盘写好本章目标，点「填入本章指示」；或者直接在「第 N 章要发生什么」里写一句（至少 8 个字）。"), t("想先看结构，点「生成蓝图」。叙述者会先给你一份场景蓝图，你确认后再写正文。"), t("想一步到位，点「写第 N 章」。叙述者会先做写前检查，检查不过就停下告诉你缺什么。"), t("写完后侧栏跳到「改」：会告诉你这一章是不是 AI 写的、你改动了多少，点「打开第 N 章正文」去读、去改。本章已经写过时，「写」这一步的按钮也会变成「打开第 N 章正文」。"), t("改完到「收尾」：点「结算第 N 章」，让模型把你改后的正文重新读一遍；下面的「本章提议」逐条确认或驳回；「把改得好的段落存为范文」里勾选你改过的段落。"), t("点「开始写第 N+1 章」回到「写」。")],
       bestPractices: [],
       pitfalls: [t("写章按钮是灰的：看按钮上方的提示，通常是本章目标没写或太短，或者检查项里有 ×。"), t("「改」「收尾」点不了：还没有写完的章，写完第一章就能用。"), t("结算提示没有默认模型：先在设置里配好 AI 供应商并选定默认模型。"), t("已经结算过，但觉得上次漏记了：在「收尾」点「强制重新结算（上次漏记时用）」，正文没改也会重新读一遍。"), t("想自己排这一章的节奏：展开「本章情节点预算（可选）」，给每个情节点分配字数，写章时会一起交给叙述者。"), t("勾选「采用当前焦点的默认目标」是什么意思：你没写本章目标时，用创作罗盘里已有的焦点作为本章方向。"), t("试写的几章不想要了：对叙述者说「把第 5 到第 7 章作废」。它会归档这几章正文，清掉这几章记下的事，设定不会动。确认后才执行，别用结算把废稿记进记忆。"), t("章字数和平台对不上：「平台字数」提醒来自投稿平台建议，见「投稿平台写作建议」；改每章字数在「写作设置 › 写作参数」。")],
-      agentHints: [t("写作侧栏的按钮只把本章目标和章号交给叙述者；写章顺序是 write.preflight → scene.spec → pipeline.write，写前检查不过就停下。"), t("废稿用 chapter.discard_range，补历史章节的记忆用 memory.settle_range。")],
+      agentHints: [t("写作侧栏的按钮只把本章目标和章号交给叙述者；写章顺序是 write_preflight → scene_spec → pipeline_write，写前检查不过就停下。"), t("废稿用 chapter_discard_range，补历史章节的记忆用 memory_settle_range。")],
       actions: [
         { label: t("打开「我的作品」"), description: t("打开「我的作品」"), href: "/next/books" },
         { label: t("教程：和叙述者一起写"), description: t("教程：和叙述者一起写"), href: "/next/learn?doc=book-narrator" },
@@ -135,7 +135,7 @@ export const GENERATED_LEARNING_CONTRIBUTION: RuntimeLearningContribution = {
       workflow: [t("先通读一遍，对叙述者说「审这一章」。它会列出人物、设定、时间线的矛盾，节奏和章末钩子的问题，以及 AI 味线索，每条都指到原文位置。"), t("挑要改的地方。零散的套话，选中后点「人味化」。"), t("整段要重写，对叙述者说「这段太啰嗦，改一下」，并说清要改成什么样。它会先给改前改后对照，你确认后只替换这一段。"), t("改完后如果出现提示「本章正文在结算后已被修改——叙事记忆可能过期，建议重新结算」，点「让叙述者重结算」。")],
       bestPractices: [],
       pitfalls: [t("点「应用候选」提示选中文本已变化：你在这期间改了那段文字。重新选中再点一次。"), t("人味化说没发现可改的：规则只认得常见痕迹。剩下的靠你读，或交给叙述者。"), t("想看全书的 AI 味走势：打开「资源 › 分析工具 › 质量中心」，里面有「趋势」「指标」「文风检测」「一致性体检」。"), t("这些检测只是线索，不等于任何平台或检测器的结论。")],
-      agentHints: [t("「改这段」按行范围替换，用 rewrite.apply；改前先给作者看对照。"), t("「审这一章」的规则审计用 chapter.audit，不调模型。")],
+      agentHints: [t("「改这段」按行范围替换，用 rewrite_apply；改前先给作者看对照。"), t("「审这一章」的规则审计用 chapter_audit，不调模型。")],
       actions: [
         { label: t("打开「我的作品」"), description: t("打开「我的作品」"), href: "/next/books" },
         { label: t("写作课：去 AI 味"), description: t("写作课：去 AI 味"), href: "/next/learn?doc=craft-de-ai" },
@@ -157,7 +157,7 @@ export const GENERATED_LEARNING_CONTRIBUTION: RuntimeLearningContribution = {
       workflow: [t("网页蒸馏：在「文风自动蒸馏」填「来源名称」，把参考文本贴进「粘贴参考文本」，点「预览处理范围」。"), t("看「处理范围」：章节数、字数、预计产出多少条。没问题点「开始蒸馏」，要改点「返回修改」。"), t("等它按章节分批处理。中途失败的批次不影响已完成的，可以点「继续未完成批次」或「重试失败批次」。"), t("审阅「写法规则」和「范文」：看证据，觉得对的点「确认这条」。「统计指纹」只作对照参考。"), t("点「采纳到本书文风预设」。只有你确认过的会被写进去。"), t("对话蒸馏：片段短的话，直接贴给叙述者，说「记住这种写法」或「学学这段」。它会逐条给你看提炼出的写法，只把你点名同意的写进预设。")],
       bestPractices: [],
       pitfalls: [t("网页蒸馏报错说没有模型：网页蒸馏用「设置 › 模型」里的默认模型，先把它配好。"), t("一次出来几十条，看不过来：先确认最有把握的几条就采纳，剩下的以后再审。待审的不会生效。"), t("采纳时提示冲突：文风预设在这期间被改过。重新蒸馏或重新载入后再采纳，避免覆盖别人的修改。"), t("能拿别人的书来学吗：只学写法，不搬内容；请确认你有权这样使用。优先用你自己的旧稿。"), t("「文风」标签里的「从参考样文提取统计」只算句长、对话占比这类数字，不会产出写法规则。完整的学习请用上面的自动蒸馏。")],
-      agentHints: [t("对话蒸馏：style.distill_preview 预览范围 → style.distill_start 分批抽取 → style.distill_status 读结果 → 作者逐条点名后 style.distill_adopt；不得自行采纳。")],
+      agentHints: [t("对话蒸馏：style_distill_preview 预览范围 → style_distill_start 分批抽取 → style_distill_status 读结果 → 作者逐条点名后 style_distill_adopt；不得自行采纳。")],
       actions: [
         { label: t("打开「我的作品」"), description: t("打开「我的作品」"), href: "/next/books" },
         { label: t("教程：文风金库"), description: t("教程：文风金库"), href: "/next/learn?doc=book-style-vault" },
@@ -179,7 +179,7 @@ export const GENERATED_LEARNING_CONTRIBUTION: RuntimeLearningContribution = {
       workflow: [t("先把角色卡的基本设定写好并保存。生成草稿读的是已保存的卡。"), t("在「对白样本」里贴几句这个角色说过的话，越像本人越好。可以打开「扫描最近 10 章正文对白」，让它自己去正文里找。"), t("想让模型帮忙补，打开「请模型增补（须附原文依据）」。模型补的每一项都必须能在材料里找到原话，找不到的会被丢掉。"), t("点「生成草稿」。有依据的项变成「待审」，并列出依据；依据不够的保持「待补充」。"), t("逐项看，觉得对就点「确认」，不对就改了再确认。已确认的项以后生成草稿也不会被覆盖。")],
       bestPractices: [t("先给出场最多的两三个主角做声线，配角等出场多了再补。"), t("「绝不会说的句式」往往比「会说什么」更管用。")],
       pitfalls: [t("生成后什么都没变：说明没找到新依据。多贴几句对白样本，或先让这个角色在正文里多说几句。"), t("确认时提示冲突：角色卡在这期间被改过。点「重新载入」再操作。"), t("能让叙述者帮我确认吗：不能。叙述者可以读声线、生成草稿，确认必须你自己在角色卡上点。")],
-      agentHints: [t("character.voice.read 读声线与当前注入文本；character.voice.draft 只写待审草稿，不能确认。")],
+      agentHints: [t("character_voice_read 读声线与当前注入文本；character_voice_draft 只写待审草稿，不能确认。")],
       actions: [
         { label: t("打开「我的作品」"), description: t("打开「我的作品」"), href: "/next/books" },
         { label: t("写作课：对话与角色声线"), description: t("写作课：对话与角色声线"), href: "/next/learn?doc=craft-dialogue-voice" },
@@ -222,7 +222,7 @@ export const GENERATED_LEARNING_CONTRIBUTION: RuntimeLearningContribution = {
       workflow: [t("每写完一章，到写作侧栏的「收尾」：先点「结算第 N 章」，再看「本章提议」，对的点「确认」，错的点「驳回」。已经结算过但觉得漏记了，点「强制重新结算（上次漏记时用）」。"), t("积压多了，去「在中央打开章后事实」。可以按置信度筛选，用「批量批准」一次处理，也可以「改后批准」。"), t("自己改过更早的章节后，到「记忆过期的章节」点「重新结算」。它用「设置 › 模型」里的默认模型。"), t("要埋伏笔，对叙述者说「在这章埋个伏笔：某某，第 20 章前收」。它会先给你看方案，再写进经纬。"), t("伏笔收了，在伏笔账本点「标记已回收」。要改成部分揭示、已废弃这类状态，对叙述者说「把某某伏笔改成部分揭示」，它会改经纬里的伏笔条目。")],
       bestPractices: [t("伏笔提醒的快慢在「写作设置 › 写作参数 › 伏笔提醒阈值」里调，默认埋下 5 章开始提醒、12 章判为超期。快节奏的书调小，慢热长篇调大。"), t("不要把废稿结算进记忆。废稿先让叙述者作废，见「写下一章」。")],
       pitfalls: [t("点「重新结算」报错说没有模型：先在「设置 › 模型」选好默认模型。"), t("写作侧栏提示「近章记忆」：有正文但一直没结算过。点「一键修」，让叙述者把历史章节补结算一遍。"), t("记忆里有一条是错的：在正文里按住 Ctrl（Mac 上是 ⌘）点人名打开资料卡，在状态上点「纠正」或「作废」。"), t("伏笔到期了但这章不想收：推进一点，或改到期章，别让它无声消失。")],
-      agentHints: [t("伏笔以经纬伏笔条目为准，用 hooks.manage 列出、埋设、兑现；部分揭示用 lore.progress。"), t("补结算历史章节用 memory.settle_range；单章用 memory.settle_chapter。")],
+      agentHints: [t("伏笔以经纬伏笔条目为准，用 hooks_manage 列出、埋设、兑现；部分揭示用 lore_progress。"), t("补结算历史章节用 memory_settle_range；单章用 memory_settle_chapter。")],
       actions: [
         { label: t("打开「我的作品」"), description: t("打开「我的作品」"), href: "/next/books" },
         { label: t("写作课：伏笔的埋与收"), description: t("写作课：伏笔的埋与收"), href: "/next/learn?doc=craft-foreshadowing" },
@@ -288,7 +288,7 @@ export const GENERATED_LEARNING_CONTRIBUTION: RuntimeLearningContribution = {
       workflow: [t("投稿前先跑「投稿风险自检」，逐条看证据再决定改不改。"), t("在「写作设置 › 基本信息」确认平台，自检会按平台给写作建议。"), t("定期「导出档案」存一份备份。"), t("换电脑时，在新电脑「导入档案」，看完导入报告再开写。")],
       bestPractices: [],
       pitfalls: [t("档案里有和叙述者的聊天记录吗：没有。对话属于 Runtime，不在档案里。"), t("导入后检索和人物关系是空的：这些是从书里的数据算出来的，导入后会重新整理，必要时在「人物关系」里点「重建索引」。"), t("导入别人给的档案安全吗：档案里的书级技能会被叙述者读取，只导入可信来源的档案。"), t("「导入已有作品」和「导入档案」有什么不同：前者接回本机上已有的作品目录，后者导入 .zip 档案。")],
-      agentHints: [t("投稿风险自检用 publish.check；导出正文用 chapter.list + chapter.read，不假装生成文件。")],
+      agentHints: [t("投稿风险自检用 publish_check；导出正文用 chapter_list + chapter_read，不假装生成文件。")],
       actions: [
         { label: t("打开「我的作品」"), description: t("打开「我的作品」"), href: "/next/books" },
         { label: t("教程：投稿平台写作建议"), description: t("教程：投稿平台写作建议"), href: "/next/learn?doc=book-platforms" },

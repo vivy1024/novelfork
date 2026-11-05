@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const faults = vi.hoisted(() => ({
   readFile: null as null | ((path: string) => Error | null),
   stat: null as null | ((path: string) => Error | null),
+  readdir: null as null | ((path: string) => Error | null),
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -28,11 +29,21 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       if (injected) throw injected;
       return (actual.stat as (...args: unknown[]) => Promise<unknown>)(path, ...rest);
     }) as typeof actual.stat,
+    readdir: (async (path: Parameters<typeof actual.readdir>[0], ...rest: unknown[]) => {
+      const injected = faults.readdir?.(String(path));
+      if (injected) throw injected;
+      return (actual.readdir as (...args: unknown[]) => Promise<unknown>)(path, ...rest);
+    }) as typeof actual.readdir,
   };
   return { ...actual, ...overrides, default: { ...actual, ...overrides } };
 });
 
-import { bootstrapStructuredStateFromMarkdown, RuntimeStateFileError } from "../state/state-bootstrap.js";
+import {
+  bootstrapStructuredStateFromMarkdown,
+  ChapterFilesUnreadableError,
+  listChapterFiles,
+  RuntimeStateFileError,
+} from "../state/state-bootstrap.js";
 import { StateManager } from "../state/manager.js";
 
 function fsError(code: string): NodeJS.ErrnoException {
@@ -48,12 +59,14 @@ let root = "";
 beforeEach(async () => {
   faults.readFile = null;
   faults.stat = null;
+  faults.readdir = null;
   root = await mkdtemp(join(tmpdir(), "novelfork-state-bootstrap-safety-"));
 });
 
 afterEach(async () => {
   faults.readFile = null;
   faults.stat = null;
+  faults.readdir = null;
   await rm(root, { recursive: true, force: true });
 });
 
@@ -157,5 +170,35 @@ describe("StateManager.writeIfMissing（经 ensureControlDocumentsAt）", () => 
     const manager = new StateManager(root);
     await manager.ensureControlDocumentsAt(bookDir, "zh");
     expect(await readFile(join(bookDir, "story", "current_focus.md"), "utf-8")).toContain("当前聚焦");
+  });
+});
+
+describe("listChapterFiles：区分「章节目录不存在」与「存在却读不出」", () => {
+  it("新书还没有 chapters/ 时返回空列表，续写从第 1 章起算", async () => {
+    const bookDir = join(root, "fresh-book");
+    await mkdir(bookDir, { recursive: true });
+    await expect(listChapterFiles(join(bookDir, "chapters"))).resolves.toEqual([]);
+    await expect(new StateManager(root, { resolveBookDir: () => bookDir }).getNextChapterNumber("fresh-book")).resolves.toBe(1);
+  });
+
+  it("chapters/ 读不出（EACCES）时抛错，不当成没有章节", async () => {
+    const bookDir = join(root, "book");
+    await mkdir(join(bookDir, "chapters", "卷01"), { recursive: true });
+    await writeFile(join(bookDir, "chapters", "卷01", "0001_开端.md"), "# 开端\n", "utf-8");
+    faults.readdir = (path) => (normalize(path).endsWith("/chapters") ? fsError("EACCES") : null);
+
+    const failure = await listChapterFiles(join(bookDir, "chapters")).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ChapterFilesUnreadableError);
+    expect((failure as ChapterFilesUnreadableError).code).toBe("CHAPTER_DIRECTORY_UNREADABLE");
+    expect((failure as ChapterFilesUnreadableError).explanation.whyItMatters).toContain("第 1 章");
+    await expect(new StateManager(root, { resolveBookDir: () => bookDir }).getNextChapterNumber("book"))
+      .rejects.toBeInstanceOf(ChapterFilesUnreadableError);
+  });
+
+  it("chapters 是同名文件（ENOTDIR）时同样报错", async () => {
+    const bookDir = join(root, "book");
+    await mkdir(bookDir, { recursive: true });
+    await writeFile(join(bookDir, "chapters"), "not a directory", "utf-8");
+    await expect(listChapterFiles(join(bookDir, "chapters"))).rejects.toBeInstanceOf(ChapterFilesUnreadableError);
   });
 });

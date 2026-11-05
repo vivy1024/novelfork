@@ -643,11 +643,47 @@ export function draftCharacterVoice(input: {
  * 2026-09-30 真模型基准：旧判据只要求引号前同句有名字、有任一说话动词，
  * 「他讳说“癞”」「那里还会有“著之竹帛”」这类叙述引语被当成了阿Q的对白。
  */
-const SPEECH_VERB_SOURCE = "(?:(?<![知难味地街轨频渠通报称公霸想])道|(?<![听据虽小传学游演解])说|问|喊|叫|笑|骂|嘀咕|吼|答|哼|嚷|低语|开口|叹)";
+const SPEECH_VERB_SOURCE = "(?:(?<![知难味地街轨频渠通报称公霸想])道|(?<![听据虽小传学游演解])说|问|喊|叫|笑|骂|嘀咕|吼|答|哼|嚷|低语|开口|叹|唱)";
 const SPEECH_VERB = new RegExp(SPEECH_VERB_SOURCE, "u");
 /** 引号前紧贴说话动词：「X说：」「X问道，」「X叫了一声：」…… */
 const SPEECH_VERB_AT_END = new RegExp(`${SPEECH_VERB_SOURCE}(?:道|着|了|起来|了一声|一声)?\\s*[：:，,]?\\s*$`, "u");
-const QUOTE_PATTERN = /[“「]([^”」\n]{1,300})[”」]/gu;
+/**
+ * 四种成对引号各自配对；matchAll 自左向右不重叠，外层引号先匹配，
+ * 嵌套在里面的『』‘’ 随外层一起被吞掉，不会再单独算一句。
+ */
+const QUOTE_PATTERN = /“([^”\n]{1,300})”|「([^」\n]{1,300})」|『([^』\n]{1,300})』|‘([^’\n]{1,300})’/gu;
+/** 截取引号前后上下文时用作断句的字符：句末标点、换行与全部引号。 */
+const BEFORE_BREAK = /[。！？!?\n“”「」『』‘’]/u;
+const AFTER_BREAK = /[。！？!?\n“「『‘]/u;
+/**
+ * 归属判定只认简体字形与半角字母（说话动词、人称、介词、名字都按简体写）。
+ * 繁体正文与全角字母（《阿Ｑ正傳》的「阿Ｑ說」）先逐字映射到同一字形再匹配。
+ * 映射严格一字对一字，规范化副本与原文下标一致，返回的对白仍取原文。
+ * 只收判定里用到的字，不是通用繁简转换。
+ */
+const MATCH_CHAR_MAP: Readonly<Record<string, string>> = {
+  說: "说", 問: "问", 罵: "骂", 嘆: "叹", 歎: "叹", 開: "开", 語: "语", 嘰: "叽", 喚: "唤",
+  聽: "听", 據: "据", 雖: "虽", 傳: "传", 學: "学", 遊: "游", 難: "难", 頻: "频", 軌: "轨", 報: "报", 稱: "称", 誰: "谁",
+  對: "对", 與: "与", 給: "给", 讓: "让", 們: "们", 別: "别", 衆: "众", 眾: "众", 著: "着", 來: "来", 聲: "声",
+  // 常见人名用字：别名或他人名字以简体登记、正文是繁体时也能对上。
+  鬍: "胡", 趙: "赵", 爺: "爷", 錢: "钱", 孫: "孙", 張: "张", 陳: "陈", 劉: "刘", 吳: "吴", 鄒: "邹", 葉: "叶", 蕭: "萧",
+};
+
+function normalizeForAttribution(text: string): string {
+  let result = "";
+  for (const char of text) {
+    const code = char.codePointAt(0)!;
+    // 全角 ASCII（！到～）→ 半角；保持一字对一字（全角字符都在 BMP 内，长度同为 1）。
+    if (code >= 0xff01 && code <= 0xff5e) {
+      const half = String.fromCharCode(code - 0xfee0);
+      // 冒号、逗号、问号、感叹号等全角标点在规则里本来就按全角写，不动。
+      result += /[A-Za-z0-9]/u.test(half) ? half : char;
+      continue;
+    }
+    result += MATCH_CHAR_MAP[char] ?? char;
+  }
+  return result;
+}
 /** 句末标点：真对白通常自带，叙述里的引语（术语、转述的词）通常没有。 */
 const DIALOGUE_END_PUNCT = /[。！？!?…～~—]\s*$/u;
 /** 没有句末标点、又短于此字数的引号内容，默认是叙述引语而不是对白。 */
@@ -719,22 +755,26 @@ export function extractCharacterDialogue(
   text: string,
   options: { readonly names: readonly string[]; readonly otherNames?: readonly string[]; readonly limit?: number },
 ): string[] {
-  const names = uniq(options.names.map((name) => name.trim()).filter((name) => name.length >= 1));
+  const names = uniq(options.names.map((name) => normalizeForAttribution(name.trim())).filter((name) => name.length >= 1));
   if (names.length === 0) return [];
-  const others = uniq((options.otherNames ?? []).map((name) => name.trim()).filter((name) => name.length >= 1 && !names.includes(name)));
+  const others = uniq((options.otherNames ?? [])
+    .map((name) => normalizeForAttribution(name.trim()))
+    .filter((name) => name.length >= 1 && !names.includes(name)));
   const limit = options.limit ?? 60;
+  // 判定在规范化副本上做（繁体、全角字母），对白原文从 text 同一下标取，保持作者原字形。
+  const normalized = normalizeForAttribution(text);
   const result: string[] = [];
-  for (const match of text.matchAll(QUOTE_PATTERN)) {
+  for (const match of normalized.matchAll(QUOTE_PATTERN)) {
     if (result.length >= limit) break;
-    const line = cleanDialogueLine(match[1]!);
-    if (countChars(line) === 0) continue;
-    if (!DIALOGUE_END_PUNCT.test(line) && countChars(line) < MIN_UNPUNCTUATED_DIALOGUE_CHARS) continue;
     const start = match.index ?? 0;
     const end = start + match[0].length;
+    const line = cleanDialogueLine(text.slice(start + 1, end - 1));
+    if (countChars(line) === 0) continue;
+    if (!DIALOGUE_END_PUNCT.test(line) && countChars(line) < MIN_UNPUNCTUATED_DIALOGUE_CHARS) continue;
     // 「阿Q歪着头，说道：」之后另起一段写引号，冒号后的换行不算断句。
-    const beforeRaw = text.slice(Math.max(0, start - 40), start).replace(/([：:])\s+$/u, "$1");
-    const before = beforeRaw.split(/[。！？!?\n“”「」]/u).pop() ?? "";
-    const after = text.slice(end, end + 24).split(/[。！？!?\n“「]/u)[0] ?? "";
+    const beforeRaw = normalized.slice(Math.max(0, start - 40), start).replace(/([：:])\s+$/u, "$1");
+    const before = beforeRaw.split(BEFORE_BREAK).pop() ?? "";
+    const after = normalized.slice(end, end + 24).split(AFTER_BREAK)[0] ?? "";
     if (!attributedBefore(before, names, others) && !attributedAfter(after, names, others)) continue;
     result.push(line);
   }

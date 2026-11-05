@@ -66,7 +66,7 @@ export const GhostText = Extension.create({
             const widget = Decoration.widget(state.pos, () => {
               const span = document.createElement("span");
               span.textContent = state.suggestion;
-              span.style.color = "#9ca3af";
+              span.style.color = "var(--muted-foreground)";
               span.style.pointerEvents = "none";
               span.style.fontStyle = "italic";
               span.className = "ghost-text-suggestion";

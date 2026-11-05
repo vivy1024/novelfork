@@ -107,7 +107,7 @@ describe("knowledge channel 内容", () => {
     expect(card.channel).toBe("knowledge");
     expect(card.title).toBe("知情边界：薛行之");
     expect(card.content).toContain("境界：筑基");
-    expect(card.content).toContain("位置：青云山");
+    expect(card.content).toContain("所在：青云山");
     expect(card.content).toContain("写作禁忌");
     expect(card.content).toContain("方工 · 身份 → 内鬼");
     expect(card.content).toContain("沈遥与方工 · 决裂");
@@ -126,7 +126,7 @@ describe("knowledge channel 内容", () => {
     expect(at4.cards[0]!.content).not.toContain("青云山");
 
     const latest = await runChannel({ storage, bookId: "book-1", entities: ["薛行之"] });
-    expect(latest.cards[0]!.content).toContain("位置：青云山");
+    expect(latest.cards[0]!.content).toContain("所在：青云山");
   });
 
   it("非 character 实体与归并不到的名字不出卡", async () => {

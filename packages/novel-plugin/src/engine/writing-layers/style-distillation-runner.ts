@@ -18,7 +18,13 @@ import {
   type StyleDistillationRule,
   type StyleDistillationSourceInput,
 } from "./style-distillation.js";
-import { extractStyleRulesFromBatch, type StyleBatchExtraction } from "./style-distillation-model.js";
+import { assessStyleBatchEvidence, extractStyleRulesFromBatch, type StyleBatchExtraction } from "./style-distillation-model.js";
+import {
+  acquireStyleDistillationLock,
+  inspectStyleDistillationLock,
+  type StyleDistillationLockHandle,
+  type StyleDistillationLockOwner,
+} from "./style-distillation-lock.js";
 import { createStylePreset, type StylePreset } from "./style-preset.js";
 import { loadStylePreset, saveStylePreset, StylePresetError, type LoadedStylePreset } from "./style-preset-store.js";
 
@@ -33,12 +39,25 @@ function taskKey(bookRoot: string, jobId: string): string {
   return `${process.platform === "win32" ? absolute.toLowerCase() : absolute}::${jobId}`;
 }
 
-// 同一进程内每个任务只允许一个运行者；读改写按任务串行，避免批次结果与采纳互相覆盖。
+// 同一进程内每个任务只允许一个运行者（同步登记，HTTP 可立即返回 running）；
+// 跨进程由任务运行锁（style-distillation-lock.ts）兜底。读改写按任务串行，避免批次结果与采纳互相覆盖。
 const activeRunners = new Map<string, symbol>();
 const jobWrites = new Map<string, Promise<void>>();
 
+/** 本进程是否有运行者在处理该任务。 */
 export function isStyleDistillationActive(bookRoot: string, jobId: string): boolean {
   return activeRunners.has(taskKey(bookRoot, jobId));
+}
+
+/** 本进程或本机/他机另一个进程是否有活着的执行者持有该任务。 */
+export async function hasLiveStyleDistillationRunner(bookRoot: string, jobId: string): Promise<boolean> {
+  if (isStyleDistillationActive(bookRoot, jobId)) return true;
+  return (await inspectStyleDistillationLock(bookRoot, jobId)).kind !== "none";
+}
+
+function busyMessage(owner: Exclude<StyleDistillationLockOwner, { kind: "none" }>): string {
+  if (owner.kind === "other-host") return `该文风蒸馏任务正由另一台电脑「${owner.host}」处理，请在那边完成或关闭后再继续。`;
+  return "该文风蒸馏任务正在处理中，请等待当前批次完成。";
 }
 
 async function withJobWrite<T>(bookRoot: string, jobId: string, operation: () => Promise<T>): Promise<T> {
@@ -68,10 +87,13 @@ async function updateJob(
   });
 }
 
-/** 读取任务的对外视图：进程重启或中断后残留的 running 状态按「已暂停、可恢复」呈现。 */
+/**
+ * 读取任务的对外视图：没有活着的执行者时，残留的 running 状态按「已暂停、可恢复」呈现；
+ * 另一个进程正在跑时照实显示 running。
+ */
 export async function readStyleDistillationJob(bookRoot: string, jobId: string): Promise<StyleDistillationJob> {
   const job = await loadStyleDistillationJob(bookRoot, jobId);
-  return settleStyleDistillationJobState(job, isStyleDistillationActive(bookRoot, jobId));
+  return settleStyleDistillationJobState(job, await hasLiveStyleDistillationRunner(bookRoot, jobId));
 }
 
 export interface StyleDistillationRunSummary {
@@ -80,10 +102,18 @@ export interface StyleDistillationRunSummary {
   readonly done: number;
   readonly failed: number;
   readonly failures: readonly { readonly batchId: string; readonly chapterNumbers: readonly number[]; readonly explanation: StyleDistillationBatch["explanation"] }[];
+  /** 已结束批次里因证据未在原文找到而被丢弃的模型规则总数。 */
+  readonly rejectedRuleCount: number;
+  /** 已完成但需要作者关注的批次（如过半规则因证据被丢弃）；失败批次见 failures。 */
+  readonly warnings: readonly { readonly batchId: string; readonly chapterNumbers: readonly number[]; readonly explanation: StyleDistillationBatch["explanation"] }[];
+  /** 有被丢弃规则时的汇总说明，供界面与叙述者直接展示。 */
+  readonly rejectedExplanation?: { readonly what: string; readonly why: string; readonly next: string };
 }
 
 export function summarizeStyleDistillationBatches(job: StyleDistillationJob): StyleDistillationRunSummary {
   const count = (status: StyleDistillationBatch["status"]) => job.batches.filter((batch) => batch.status === status).length;
+  const rejectedRuleCount = job.batches.reduce((sum, batch) => sum + (batch.rejectedRules?.length ?? 0), 0);
+  const rejectedBatches = job.batches.filter((batch) => (batch.rejectedRules?.length ?? 0) > 0).length;
   return {
     total: job.batches.length,
     pending: count("pending") + count("running"),
@@ -92,6 +122,19 @@ export function summarizeStyleDistillationBatches(job: StyleDistillationJob): St
     failures: job.batches
       .filter((batch) => batch.status === "failed")
       .map((batch) => ({ batchId: batch.id, chapterNumbers: batch.chapterNumbers, explanation: batch.explanation })),
+    rejectedRuleCount,
+    warnings: job.batches
+      .filter((batch) => batch.status === "done" && batch.explanation)
+      .map((batch) => ({ batchId: batch.id, chapterNumbers: batch.chapterNumbers, explanation: batch.explanation })),
+    ...(rejectedRuleCount > 0
+      ? {
+        rejectedExplanation: {
+          what: `${rejectedRuleCount} 条模型规则因证据未在原文找到被丢弃（涉及 ${rejectedBatches} 批）。`,
+          why: "证据对不上原文的规则可能是模型改写或编造，不进入审阅；被丢弃的条目与原因保存在对应批次里。",
+          next: "在模型批次里展开「被丢弃的规则」核对；整批被丢弃的批次已标为失败，可重试失败批次。",
+        },
+      }
+      : {}),
   };
 }
 
@@ -101,11 +144,14 @@ export async function createStyleDistillationJob(input: {
   readonly bookId: string;
   readonly source: StyleDistillationSourceInput;
   readonly modelAvailable: boolean;
+  /** 新建任务的用户（宿主用户 id）；之后的自动续跑只替他续跑。 */
+  readonly initiatorId?: string;
 }): Promise<StyleDistillationJob> {
   const jobId = newStyleDistillationJobId();
   const { job, chapters } = makeInitialStyleDistillationJob(input.bookId, jobId, input.source, input.modelAvailable);
   await saveStyleDistillationSourceSnapshot(input.bookRoot, jobId, job.sourceFingerprint, chapters);
-  return saveStyleDistillationJob(input.bookRoot, job);
+  const initiatorId = input.initiatorId?.trim().slice(0, 200);
+  return saveStyleDistillationJob(input.bookRoot, initiatorId ? { ...job, initiatorId } : job);
 }
 
 /** 规则去重口径：忽略空白、标点与大小写；预设内所有来源的规则去重共用这一实现。 */
@@ -123,11 +169,36 @@ function applyBatchResult(
   const batches = job.batches.map((batch) => {
     if (batch.id !== batchId) return batch;
     if (!result.ok) {
-      return { ...batch, status: "failed" as const, ruleIds: [], issues: [], explanation: result.explanation, finishedAt };
+      return { ...batch, status: "failed" as const, ruleIds: [], issues: [], rejectedRules: undefined, explanation: result.explanation, finishedAt };
     }
     return batch;
   });
   if (!result.ok) return { ...job, batches };
+
+  const rejectedRules = (result.rejected ?? []).slice(0, 20).map((rule) => ({
+    category: rule.category,
+    text: rule.text.slice(0, 4_000),
+    evidence: rule.evidence.slice(0, 4_000),
+    reason: rule.reason.slice(0, 4_000),
+  }));
+  const assessment = assessStyleBatchEvidence(result.rules.length, result.rejected?.length ?? 0);
+  if (assessment.level === "failed") {
+    // 模型规则全部因证据被丢弃：不能当成正常完成；保留被丢弃条目与原因供审阅，可重试本批。
+    return {
+      ...job,
+      batches: batches.map((batch) => batch.id === batchId
+        ? {
+          ...batch,
+          status: "failed" as const,
+          ruleIds: [],
+          issues: result.issues.slice(0, 30).map((issue) => issue.slice(0, 4_000)),
+          rejectedRules,
+          explanation: assessment.explanation,
+          finishedAt,
+        }
+        : batch),
+    };
+  }
 
   const existing = new Set(job.rules.map((rule) => normalizedRuleKey(rule.text)));
   const rules: StyleDistillationRule[] = [...job.rules];
@@ -168,7 +239,9 @@ function applyBatchResult(
         status: "done" as const,
         ruleIds,
         issues: issues.slice(0, 30).map((issue) => issue.slice(0, 4_000)),
-        explanation: undefined,
+        rejectedRules: rejectedRules.length > 0 ? rejectedRules : undefined,
+        // done 批次的 explanation 只用于「需要关注」的提醒（过半规则因证据被丢弃）。
+        explanation: assessment.level === "warning" ? assessment.explanation : undefined,
         finishedAt,
       }
       : batch),
@@ -183,6 +256,16 @@ export interface RunStyleDistillationOptions {
   readonly maxBatches?: number;
   /** 把失败批次重新排回待处理。 */
   readonly retryFailed?: boolean;
+  /**
+   * 进程重启后的自动续跑（style-distillation-auto-resume.ts）：拿到运行锁后先把连续未完成次数加一并落盘，
+   * 跑完清零。缺省为作者 / 叙述者手动继续：清掉自动续跑记录，失败状态的任务重新开放。
+   */
+  readonly autoResume?: boolean;
+  /**
+   * 这次启动 / 继续批次的用户（宿主用户 id，模型用量计到他名下）。手动继续时写进任务的 initiatorId，
+   * 之后进程重启的自动续跑只替这个人续跑。没有登录身份的入口（叙述者工具）不传，任务上原有的发起人保持不变。
+   */
+  readonly initiatorId?: string;
   readonly onProgress?: (job: StyleDistillationJob, batch: StyleDistillationBatch) => void;
 }
 
@@ -193,8 +276,8 @@ export interface StyleDistillationRunResult {
 }
 
 /**
- * 从未完成批次继续执行。调用时同步登记运行者，所以 HTTP 可以不等待它结束就返回 running 状态；
- * 同一任务已有运行者时直接拒绝，不并发写同一个任务文件。
+ * 从未完成批次继续执行。调用时同步登记本进程运行者，所以 HTTP 可以不等待它结束就返回 running 状态；
+ * 随后获取跨进程运行锁。同一任务已有运行者（本进程或别的进程）时直接拒绝，不并发写同一个任务文件。
  */
 export function runStyleDistillationBatches(options: RunStyleDistillationOptions): Promise<StyleDistillationRunResult> {
   const key = taskKey(options.bookRoot, options.jobId);
@@ -203,28 +286,53 @@ export function runStyleDistillationBatches(options: RunStyleDistillationOptions
   }
   const token = Symbol(options.jobId);
   activeRunners.set(key, token);
-  return runBatches(options).finally(() => {
+  const { bookRoot, jobId } = options;
+  const execute = async (): Promise<StyleDistillationRunResult> => {
+    const acquired = await acquireStyleDistillationLock(bookRoot, jobId);
+    // 没拿到锁：别的进程正在执行，本次不碰任务文件（不结算状态，免得把对方的 running 改成 paused）。
+    if (!acquired.ok) throw new StyleDistillationError(busyMessage(acquired.owner), "STYLE_DISTILLATION_BUSY");
+    try {
+      let processed: string[];
+      try {
+        processed = await runBatches(options, acquired.handle);
+      } catch (error) {
+        await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState(current, false)).catch(() => undefined);
+        throw error;
+      }
+      // 释放运行锁之前结算：未完成批次变为 paused，全部结束变为 ready/adopted；自动续跑完整跑完则清零计数。
+      const job = await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState(
+        options.autoResume ? { ...current, autoResume: undefined } : current,
+        false,
+      ));
+      return { job, processedBatchIds: processed, summary: summarizeStyleDistillationBatches(job) };
+    } finally {
+      await acquired.handle.release();
+    }
+  };
+  return execute().finally(() => {
     if (activeRunners.get(key) === token) activeRunners.delete(key);
-  }).then(async (processed) => {
-    // 运行者注销后再结算一次状态：未完成批次变为 paused，全部结束变为 ready/adopted。
-    const job = await updateJob(options.bookRoot, options.jobId, (current) => settleStyleDistillationJobState(current, false));
-    return { job, processedBatchIds: processed, summary: summarizeStyleDistillationBatches(job) };
-  }, async (error: unknown) => {
-    await updateJob(options.bookRoot, options.jobId, (current) => settleStyleDistillationJobState(current, false)).catch(() => undefined);
-    throw error;
   });
 }
 
-async function runBatches(options: RunStyleDistillationOptions): Promise<string[]> {
+async function runBatches(options: RunStyleDistillationOptions, lock: StyleDistillationLockHandle): Promise<string[]> {
   const { bookRoot, jobId } = options;
   const initial = await loadStyleDistillationJob(bookRoot, jobId);
   const chapters = await loadStyleDistillationSourceSnapshot(bookRoot, initial);
   const byNumber = new Map<number, DistillableChapter>(chapters.map((chapter) => [chapter.number, chapter]));
+  const attemptAt = new Date().toISOString();
   await updateJob(bookRoot, jobId, (job) => settleStyleDistillationJobState({
     ...job,
+    // 手动继续会重新开放自动续跑判为 failed 的任务，并清掉自动续跑记录；
+    // 自动续跑先记一次「未完成」：进程在本次中途退出，下次启动能据此累计并在达到上限时停下。
+    ...(options.autoResume
+      ? { autoResume: { failures: (job.autoResume?.failures ?? 0) + 1, lastAttemptAt: attemptAt } }
+      : { autoResume: undefined, status: job.status === "failed" ? "paused" as const : job.status }),
+    ...(!options.autoResume && options.initiatorId?.trim() ? { initiatorId: options.initiatorId.trim().slice(0, 200) } : {}),
     batches: job.batches.map((batch) => {
       if (batch.status === "running") return { ...batch, status: "pending" as const };
-      if (options.retryFailed && batch.status === "failed") return { ...batch, status: "pending" as const, explanation: undefined };
+      if (options.retryFailed && batch.status === "failed") {
+        return { ...batch, status: "pending" as const, explanation: undefined, rejectedRules: undefined };
+      }
       return batch;
     }),
   }, true));
@@ -235,6 +343,10 @@ async function runBatches(options: RunStyleDistillationOptions): Promise<string[
     const job = await loadStyleDistillationJob(bookRoot, jobId);
     const next = job.batches.find((batch) => batch.status === "pending" && !processed.includes(batch.id));
     if (!next) break;
+    // 每批开始前刷新运行锁心跳；锁已被别人接管（本进程被判陈旧）就立即停下，不再写任务文件。
+    if (!(await lock.heartbeat())) {
+      throw new StyleDistillationError("该文风蒸馏任务的运行锁已被另一个执行者接管，本次执行已停止。", "STYLE_DISTILLATION_BUSY");
+    }
     const startedAt = new Date().toISOString();
     await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState({
       ...current,
@@ -289,7 +401,7 @@ export async function adoptStyleDistillation(input: AdoptStyleDistillationInput)
   return withJobWrite(input.bookRoot, input.jobId, async () => {
     const job = settleStyleDistillationJobState(
       await loadStyleDistillationJob(input.bookRoot, input.jobId),
-      isStyleDistillationActive(input.bookRoot, input.jobId),
+      await hasLiveStyleDistillationRunner(input.bookRoot, input.jobId),
     );
     if (job.status === "running") {
       throw new StyleDistillationError("模型批次仍在处理中，请等待本批完成或暂停后再采纳。", "STYLE_DISTILLATION_BUSY");

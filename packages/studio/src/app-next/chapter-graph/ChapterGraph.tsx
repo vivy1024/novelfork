@@ -20,6 +20,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { Button } from "@/components/ui/button";
+import { chartColor } from "@/styles/chart-palette";
 import { ChapterNode, type ChapterNodeData, type ChapterNodeType } from "./ChapterNode";
 
 export interface ChapterGraphChapter {
@@ -51,12 +52,13 @@ export interface ChapterGraphProps {
 
 const nodeTypes = { chapterNode: ChapterNode } as const;
 
+/** 连线颜色读主题令牌（DESIGN.md），切换书房主题与明暗时跟着变。 */
 const EDGE_COLORS: Record<string, string> = {
-  fork: "#4c6ef5",
-  merge: "#40c057",
-  dependency: "#fd7e14",
-  cherry_pick: "#7950f2",
-  review: "#fab005",
+  fork: "var(--info)",
+  merge: "var(--success)",
+  dependency: "var(--warning)",
+  cherry_pick: chartColor(4),
+  review: chartColor(1),
 };
 
 export function ChapterGraph({ chapters, edges: graphEdges, onChapterSelect, onPositionChange, onNewChapter, onForkChapter }: ChapterGraphProps) {
@@ -87,7 +89,7 @@ export function ChapterGraph({ chapters, edges: graphEdges, onChapterSelect, onP
         source: e.source,
         target: e.target,
         label: e.type,
-        style: { stroke: EDGE_COLORS[e.type] ?? "#aaa" },
+        style: { stroke: EDGE_COLORS[e.type] ?? "var(--muted-foreground)" },
         animated: e.type === "fork",
       })),
     [graphEdges],

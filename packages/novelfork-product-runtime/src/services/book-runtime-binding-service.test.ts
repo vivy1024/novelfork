@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +7,7 @@ import {
 	BookRuntimeBindingService,
 	type BookRuntimeBindingStore,
 	deriveBookRoot,
+	diagnoseTrustedBookRoot,
 } from "./book-binding";
 
 class MemoryBindingStore implements BookRuntimeBindingStore {
@@ -87,6 +88,41 @@ describe("BookRuntimeBindingService", () => {
 		});
 		expect(Object.isFrozen(context)).toBe(true);
 		expect(Object.isFrozen(context?.resourceBindings)).toBe(true);
+	});
+
+	test("creates the controlled books root when a fresh install never made it", async () => {
+		// 全新机器、书全部建在外部目录时，谁都不会创建受控书根；录入绑定不能因此失败。
+		await rm(booksRoot, { recursive: true, force: true });
+		expect(await realpath(booksRoot).catch(() => null)).toBeNull();
+		const bookRoot = await mkdtemp(join(tmpdir(), "novelfork-external-book-"));
+		try {
+			const saved = await service.upsert("project-a", "book-a", "user-a", bookRoot);
+			expect(saved.bookRoot).toBe(await realpath(bookRoot));
+			expect(await realpath(booksRoot).catch(() => null)).not.toBeNull();
+		} finally {
+			await rm(bookRoot, { recursive: true, force: true });
+		}
+	});
+
+	test("keeps an external book usable when the controlled books root is absent", async () => {
+		// 受控书根缺失与这本书无关：外部作品不能因此被判成「目录不见了」而丢掉领域工具。
+		const bookRoot = await mkdtemp(join(tmpdir(), "novelfork-external-book-"));
+		try {
+			await writeFile(
+				join(bookRoot, "book.json"),
+				`${JSON.stringify({ id: "book-a", title: "外部书", novelforkExternalWorkspace: true }, null, 2)}\n`,
+				"utf8",
+			);
+			const saved = await service.upsert("project-a", "book-a", "user-a", bookRoot);
+			await rm(booksRoot, { recursive: true, force: true });
+			const diagnosis = await diagnoseTrustedBookRoot(saved, booksRoot, true);
+			expect(diagnosis).toMatchObject({ reason: "trusted", bookRoot: await realpath(bookRoot) });
+			expect(
+				(await service.resolveForNarrator("narrator-a"))?.resourceBindings["novel.book"],
+			).toMatchObject({ bookId: "book-a" });
+		} finally {
+			await rm(bookRoot, { recursive: true, force: true });
+		}
 	});
 
 	test("fails closed when persisted root data no longer matches the controlled book", async () => {

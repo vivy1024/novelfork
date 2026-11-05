@@ -12,19 +12,33 @@
  */
 
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import { db as runtimeDb, narrators } from "@vivy1024/narrafork-runtime-bridge";
+import { eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import {
 	buildContextIndexCard,
 	buildWorkflowRunBrief,
 	findApprovedProseMismatch,
 	getActiveWorkflowRunForNarrator,
+	listActiveWorkflowRunsForBook,
 	loadWritingInjectionPreserve,
 	renderWritingInjectionPreserve,
 	runningSteps,
+	WORKFLOW_WORKER_TRAIT,
+	workflowTeamIdForBook,
 	type WorkflowExplanation,
 	type WorkflowRunRecord,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 
 export const WORKFLOW_PROMPT_EXTENSION_ID = "novelfork.workflow-run";
+export const WORKFLOW_WORKER_PROMPT_EXTENSION_ID = "novelfork.workflow-worker";
+
+/**
+ * 工作流工人叙述者的身份标记（建队时写在 traits 上，闸门据此认出本运行的工人）。
+ *
+ * 单一来源在插件的 workflow-team 模块：建队（产品路由）和闸门（适配器）必须同一个值。
+ * 不靠标题前缀——插件 team.update_member 允许改成员标题，改完仍要认得出。
+ */
+export { WORKFLOW_WORKER_TRAIT };
 
 type Risk = "read" | "draft-write" | "confirmed-write" | "destructive";
 
@@ -79,9 +93,143 @@ export function explainWorkflowLookupFailure(canonicalName: string, risk: Risk):
 	};
 }
 
+export type WorkerWorkflowGate =
+	/** 不是工人：走领导者那条原有路径。 */
+	| { readonly kind: "not-worker" }
+	/** 是工人，但这本书上没有进行中的运行：工作流没在管它，按普通叙述者处理。 */
+	| { readonly kind: "idle" }
+	/** 是工人，且这本书正在跑工作流：领导者在什么状态，它就待在什么状态。 */
+	| { readonly kind: "controlled"; readonly run: WorkflowRunRecord }
+	/** 是工人，但读不出这本书的运行状态：写类 fail-closed。 */
+	| { readonly kind: "unreadable"; readonly error: unknown };
+
+export interface WorkerWorkflowGateSeams {
+	/** 这个叙述者是不是工作流工人（产品写在 traits 上的标记）。 */
+	readonly isWorker?: (narratorId: string) => Promise<boolean>;
+	/** 这本书上进行中的运行。 */
+	readonly activeRunsForBook?: (bookId: string) => readonly WorkflowRunRecord[];
+}
+
+/** 叙述者 traits 里是否带工作流工人标记（traits 可能在库中是数组，也可能是 JSON 字符串）。 */
+export function isWorkflowWorkerByTrait(traits: unknown): boolean {
+	const list = Array.isArray(traits)
+		? traits.filter((item): item is string => typeof item === "string")
+		: typeof traits === "string"
+			? (() => {
+					try {
+						const parsed: unknown = JSON.parse(traits);
+						return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+					} catch {
+						return [];
+					}
+				})()
+			: [];
+	return list.includes(WORKFLOW_WORKER_TRAIT);
+}
+
+async function isWorkflowWorkerNarrator(narratorId: string): Promise<boolean> {
+	try {
+		const row = await runtimeDb.query.narrators.findFirst({
+			where: eq(narrators.id, narratorId),
+			columns: { traits: true, type: true },
+		});
+		if (!row) return false;
+		// Runtime 子代理（task 派出的）继承父叙述者的 contextProjectId，能解析到同一本书的绑定，
+		// 但不继承 traits、也有自己的 narratorId：领导者侧查不到运行、工人标记也没有。
+		// 不收口它，领导者按简报回退派出的通用子代理就能在运行期间直接写书。
+		// 按 type 判断而不是 parentNarratorId：后者也记录 fork 来源，会误锁 fork 出来的主叙述者。
+		return isWorkflowWorkerByTrait(row.traits) || row.type === "subagent";
+	} catch {
+		// 读不到叙述者行（Runtime 库还没初始化）就不是工人：不让 Runtime 的偶发读取失败
+		// 把领导者也当成工人拦掉。
+		return false;
+	}
+}
+
+/**
+ * 工人侧闸门判定。
+ *
+ * 工人是同一本书上的另一个产品叙述者，`workflow_runs.narrator_id` 记的是领导者，
+ * 所以按叙述者查运行永远是 null——闸门对它们等于不存在，工人可以绕过工序直接写书。
+ * 这里改成按书判定：本运行在跑，工人就只能在领导者的同一套约束下活动；
+ * 运行状态读不出来时写类 fail-closed（与领导者侧同一条政策）。
+ */
+export async function resolveWorkerWorkflowGate(
+	narratorId: string,
+	bookId: string | undefined,
+	seams: WorkerWorkflowGateSeams = {},
+): Promise<WorkerWorkflowGate> {
+	if (!bookId) return { kind: "not-worker" };
+	let worker: boolean;
+	try {
+		worker = await (seams.isWorker ?? isWorkflowWorkerNarrator)(narratorId);
+	} catch {
+		return { kind: "not-worker" };
+	}
+	if (!worker) return { kind: "not-worker" };
+	let storage: ReturnType<typeof getStorageDatabase>;
+	try {
+		storage = getStorageDatabase();
+	} catch {
+		// 产品库还没初始化：产品本身也做不了事，按「没在跑」处理（与领导者侧一致）。
+		return { kind: "idle" };
+	}
+	try {
+		// 自己是领导者的叙述者永远走领导者那条路：它有自己的运行行，按工序放行才是对的。
+		// 一个叙述者可能既是某本书的工人、又在另一本书当领导者，不能让工人的收口把它锁死。
+		const own = getActiveWorkflowRunForNarrator(storage, narratorId);
+		if (own && own.bookId === bookId) return { kind: "not-worker" };
+		const runs = seams.activeRunsForBook
+			? seams.activeRunsForBook(bookId)
+			: listActiveWorkflowRunsForBook(storage, bookId);
+		// 一本书同时跑多条运行属反常：取最近启动的一条做说明，拦不拦只看有没有。
+		const run = runs[0];
+		return run ? { kind: "controlled", run } : { kind: "idle" };
+	} catch (error) {
+		return { kind: "unreadable", error };
+	}
+}
+
+/**
+ * 工人被拦下时给模型看的三段式说明。
+ *
+ * 不和领导者共用一套文案：工人被拦的原因不是「越出本工序」，而是「派发的活不在你身上」，
+ * 让它去提交产物只会把权威写入从领导者那里旁路走，所以 action 明确指向汇报给领导者。
+ */
+export function explainWorkerWorkflowDenial(
+	run: WorkflowRunRecord,
+	canonicalName: string,
+	risk: Risk,
+): WorkflowExplanation | null {
+	if (isWorkflowTool(canonicalName) || risk === "read") return null;
+	const phase =
+		run.state.status === "blocked"
+			? "运行受阻"
+			: run.state.status === "awaiting_approval"
+				? "产物已提交，正在等作者确认"
+				: "运行中";
+	return {
+		what: `${canonicalName} 被拦下：你是本运行的工作流工人，不能直接写这本书（方案「${run.recipe.name}」第 ${run.chapterNumber} 章）`,
+		why: `${phase}；权威写入与工序产物只能由领导者的叙述者提交，工人直写会让作者审的内容和被写进书里的对不上`,
+		action:
+			"把结果整理成文字，用 team_report 汇报给领导者（大段产物按团队约定转交），由领导者统一提交；不要自己调用写入工具",
+	};
+}
+
 /** 由叙述者本人执行的进行中工序（委派子代理的工序不允许叙述者直接写入）。 */
 function directSteps(run: WorkflowRunRecord) {
 	return runningSteps(run.state).filter((step) => step.executorKind !== "subagent");
+}
+
+/**
+ * 工人可见性：运行没在进行时不受约束；在进行中时，读类、workflow.* 与团队编排工具照常可见，
+ * 写类一律不露。收窄可见性只能减少误导，权威约束仍由 resolver 在 execute 时执行。
+ */
+export function isToolVisibleForWorker(gate: WorkerWorkflowGate, canonicalName: string, risk: Risk): boolean {
+	if (gate.kind !== "controlled") return true;
+	if (risk === "read") return true;
+	// 汇报与团队编排靠插件工具完成，它们不经过这里（插件工具不是小说工具）。
+	return false;
 }
 
 /**
@@ -163,6 +311,39 @@ export function explainWorkflowDenial(
 export function workflowPromptExtension(run: WorkflowRunRecord): { id: string; content: string } | null {
 	const brief = buildWorkflowRunBrief(run);
 	return brief ? { id: WORKFLOW_PROMPT_EXTENSION_ID, content: brief } : null;
+}
+
+/**
+ * 工人侧的团队任务说明。
+ *
+ * 工人不跑状态机，简报里那些「提交工序产物 / 报告阻塞」对它没有意义，写了反而诱导它去调
+ * workflow_submit_step_output。这里只留它真正要做的三件事：按派发做事、把结果汇报回去、
+ * 以及明确它没有本工序的写入权（权威写入在领导者那边）。
+ */
+export function buildWorkflowWorkerBrief(run: WorkflowRunRecord): string {
+	const roles = new Set<string>();
+	for (const step of runningSteps(run.state)) {
+		if (step.agentId) roles.add(step.agentId);
+	}
+	// 一本书一个团队：工人的汇报与上下文广播都要落在领导者那套 teamId 上，落错就等于没汇报。
+	const teamId = run.bookId ? workflowTeamIdForBook(run.bookId) : "";
+	return [
+		"【创作工作流 · 你是本运行的工作流工人】",
+		`方案「${run.recipe.name}」｜第 ${run.chapterNumber} 章｜运行 ${run.id}`,
+		teamId ? `团队：${teamId}（team_report / team_context 都用这个 teamId，不要另建团队）` : "",
+		`工序：${runningSteps(run.state).map((step) => `「${step.label}」${step.agentId ? `（角色 ${step.agentId}）` : ""}`).join("、") || "（当前没有进行中的工序）"}`,
+		"做法：按领导者派发的任务产出结果，完成后用 team_report 汇报给领导者；结论、引用与必要片段都写清楚。",
+		"边界：你没有这本书的写入权——chapter_write / pipeline_write / lore_write / memory_* 等写类工具在本运行期间会被拒绝。",
+		"不要调用 workflow_submit_step_output / workflow_report_blocker：产物提交与阻塞报告由领导者负责。",
+		"需要更多上下文时用 team_context_log 或读类工具，不要凭猜测补设定。",
+	]
+		.filter(Boolean)
+		.join("\n");
+}
+
+/** 工人侧的简报扩展；不是工人时由调用方跳过。 */
+export function workflowWorkerExtension(run: WorkflowRunRecord): { id: string; content: string } {
+	return { id: WORKFLOW_WORKER_PROMPT_EXTENSION_ID, content: buildWorkflowWorkerBrief(run) };
 }
 
 export const CONTEXT_INDEX_CARD_EXTENSION_ID = "novelfork.context-index-card";

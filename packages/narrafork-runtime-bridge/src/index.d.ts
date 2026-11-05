@@ -301,6 +301,8 @@ export interface RuntimeDatabase {
 	insert(table: any): any;
 	update(table: any): any;
 	delete(table: any): any;
+	run(query: any): { changes: number };
+	all<T = unknown>(query: any): T[];
 	transaction<T>(callback: (tx: RuntimeDatabase) => T): T;
 }
 
@@ -316,7 +318,6 @@ export interface RuntimeClineProvider {
 }
 
 export const db: RuntimeDatabase;
-export const chapters: any;
 export const narratorMessageRefs: any;
 export const narratorMessages: any;
 export const narrators: any;

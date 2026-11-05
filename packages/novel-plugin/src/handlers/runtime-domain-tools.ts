@@ -1093,7 +1093,10 @@ export async function executeRuntimeDomainTool(
     case "chapter.audit":
       return chapterAudit(input, binding);
     case "chapter_propose_selection":
-      return proposeSelectionCandidate(input, binding.bookId);
+      return proposeSelectionCandidate(input, binding.bookId, async (chapterNumber) => {
+        const chapter = await readBoundChapter(binding, chapterNumber);
+        return chapter.ok && chapter.data ? chapter.data.content : null;
+      });
     case "chapter_propose_revision":
       return proposeChapterRevision(input, binding);
     case "lore_propose_update":

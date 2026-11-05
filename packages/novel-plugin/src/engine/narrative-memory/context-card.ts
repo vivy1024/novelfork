@@ -180,13 +180,13 @@ function buildCard(input: {
 function formatSceneSpec(sceneSpec: SceneSpec): string {
   const scenes = sceneSpec.scenes.map((scene, index) => [
     `场景 ${index + 1}`,
-    `角色：${scene.characters.join("、")}`,
+    `角色：${(scene.characters ?? []).join("、")}`,
     `地点：${scene.location}`,
     `冲突：${scene.conflict}`,
     `情绪：${scene.mood}`,
     `结果：${scene.outcome}`,
-    scene.hooks_used.length > 0 ? `回收伏笔：${scene.hooks_used.join("、")}` : "",
-    scene.hooks_planted.length > 0 ? `埋设伏笔：${scene.hooks_planted.join("、")}` : "",
+    (scene.hooks_used ?? []).length > 0 ? `回收伏笔：${(scene.hooks_used ?? []).join("、")}` : "",
+    (scene.hooks_planted ?? []).length > 0 ? `埋设伏笔：${(scene.hooks_planted ?? []).join("、")}` : "",
   ].filter(Boolean).join("\n")).join("\n\n");
 
   return [`第 ${sceneSpec.chapter} 章《${sceneSpec.title}》`, `目标字数：${sceneSpec.wordTarget}`, scenes].join("\n");
@@ -194,10 +194,10 @@ function formatSceneSpec(sceneSpec: SceneSpec): string {
 
 export function sceneSpecToContextCards(input: SceneSpecToContextCardsInput): NarrativeContextCard[] {
   const entities = uniqueStrings(input.sceneSpec.scenes.flatMap((scene) => [
-    ...scene.characters,
+    ...(scene.characters ?? []),
     scene.location,
-    ...scene.hooks_used,
-    ...scene.hooks_planted,
+    ...(scene.hooks_used ?? []),
+    ...(scene.hooks_planted ?? []),
   ]));
 
   const cards: NarrativeContextCard[] = [];

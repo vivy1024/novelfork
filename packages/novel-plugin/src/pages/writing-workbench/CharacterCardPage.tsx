@@ -304,7 +304,7 @@ export interface CharacterCardPageProps {
   entry: JingweiEntryData;
   bookId?: string;
   saving: boolean;
-  onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void>;
+  onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void | { readonly notice?: string }>;
   relatedEntries?: RelatedEntryItem[];
   onNavigateToEntry?: (entryId: string) => void;
 }

@@ -455,9 +455,28 @@ export interface ChapterFileEntry {
 }
 
 /**
+ * 章节目录存在却列不出（EACCES / EBUSY / ENOTDIR 等）。只有「目录不存在」才等于没有章节；
+ * 其它情况若当成空，续写会从第 1 章起算、回滚会漏删正文，所以直接抛出交给调用方。
+ */
+export class ChapterFilesUnreadableError extends Error {
+  readonly code = "CHAPTER_DIRECTORY_UNREADABLE";
+  readonly statusCode = 503;
+
+  constructor(
+    readonly path: string,
+    readonly explanation: RuntimeStateFileExplanation,
+    options?: { cause?: unknown },
+  ) {
+    super(explanation.whatHappened, options);
+    this.name = "ChapterFilesUnreadableError";
+  }
+}
+
+/**
  * Recursively lists persisted chapter markdown files under `chapters/`.
  * The chapter number comes from the filename, while an index fileName is
  * preferred by resolveChapterFilePath/resolveChapterFilePaths when available.
+ * 目录不存在（新书还没写过章）返回空；存在却读不出时抛 ChapterFilesUnreadableError。
  */
 export async function listChapterFiles(chaptersDir: string): Promise<ReadonlyArray<ChapterFileEntry>> {
   const files: ChapterFileEntry[] = [];
@@ -466,8 +485,13 @@ export async function listChapterFiles(chaptersDir: string): Promise<ReadonlyArr
     let entries: Awaited<ReturnType<typeof readdir>>;
     try {
       entries = await readdir(directory, { withFileTypes: true });
-    } catch {
-      return;
+    } catch (error) {
+      if (errnoCode(error) === "ENOENT") return;
+      throw new ChapterFilesUnreadableError(directory, {
+        whatHappened: `章节目录 ${directory} 存在但无法列出（${String(error)}），本次没有改动任何章节。`,
+        whyItMatters: "列不出章节时如果当成没有章节，续写会从第 1 章重新起算、回滚会漏删正文，可能覆盖或残留已写的章节。",
+        suggestedAction: "确认该路径是文件夹而不是同名文件，并检查它的权限与是否被同步盘、杀毒软件占用；处理后重试。",
+      }, { cause: error });
     }
 
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"))) {

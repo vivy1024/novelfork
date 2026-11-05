@@ -2,8 +2,9 @@
  * 叙事体检（经纬设定 × 叙事记忆现状纰漏检测）的前端取数与分组通道。
  *
  * 后端 P4 的检测器只被写前检查当软提醒用过一次，作者看不到也处理不了。
- * 这里是体检面板的唯一取数封装：只读 GET /consistency，结果一次性返回、
- * 不落盘（诊断结果不持久化），面板里的处置动作全部走 fact 编辑通道。
+ * 这里是体检面板的唯一取数封装：GET /consistency 结果一次性返回、不落盘
+ * （诊断结果不持久化）；作者「忽略此条」的裁决由后端按忽略键记账，
+ * 其余处置动作走 fact 编辑通道。
  */
 
 import { fetchJson } from "@/hooks/use-api";
@@ -28,18 +29,36 @@ export interface ConsistencyFinding {
   readonly factId?: string;
   readonly memoryPredicate?: string;
   readonly memoryChapter?: number;
+  readonly entityId?: string;
+  /** 矛盾出现的章（场景校验）。 */
+  readonly chapterNumber?: number;
+  /** 正文原文句子（场景校验的证据）。 */
+  readonly evidenceText?: string;
+  readonly sceneLocation?: string;
+  /** 后端给的忽略键，忽略 / 撤销时原样回传，前端不自己拼。 */
+  readonly ignoreKey?: ConsistencyIgnoreKey;
   readonly explanation?: FindingExplanation;
+}
+
+export interface ConsistencyIgnoreKey {
+  readonly kind: string;
+  readonly entityId: string;
+  readonly chapterNumber: number;
+  readonly factId: string;
 }
 
 export interface ConsistencyReport {
   readonly bookId: string;
   readonly findings: readonly ConsistencyFinding[];
+  /** 作者已忽略、本次仍检出的项（可撤销）。 */
+  readonly ignored: readonly ConsistencyFinding[];
   readonly summary: string;
 }
 
 interface ConsistencyResponse {
   bookId?: string;
   findings?: ConsistencyFinding[];
+  ignored?: ConsistencyFinding[];
   summary?: string;
 }
 
@@ -64,22 +83,49 @@ export async function fetchConsistencyReport(
   return {
     bookId: payload.bookId ?? bookId,
     findings: payload.findings ?? [],
+    ignored: payload.ignored ?? [],
     summary: payload.summary ?? "",
   };
+}
+
+/** 持久化「忽略此条」：刷新与重新结算后都不再出现。 */
+export async function ignoreConsistencyFinding(
+  bookId: string,
+  key: ConsistencyIgnoreKey,
+  options: { readonly fetchImpl?: typeof fetch } = {},
+): Promise<void> {
+  await fetchJson(
+    `/api/books/${encodeURIComponent(bookId)}/narrative-memory/consistency/ignores`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(key) },
+    { fetchImpl: options.fetchImpl },
+  );
+}
+
+/** 撤销忽略：这一条会重新出现在体检结果里。 */
+export async function unignoreConsistencyFinding(
+  bookId: string,
+  key: ConsistencyIgnoreKey,
+  options: { readonly fetchImpl?: typeof fetch } = {},
+): Promise<void> {
+  await fetchJson(
+    `/api/books/${encodeURIComponent(bookId)}/narrative-memory/consistency/ignores/remove`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(key) },
+    { fetchImpl: options.fetchImpl },
+  );
 }
 
 /**
  * 稳定标识一条检出项。
  *
- * 体检结果不落盘，后端不给 finding id，「已忽略」只能靠内容算 key。用
- * kind + 事实 id + 两边取值组合：同一条纰漏重新检测后 key 不变，作者纠正
- * 或作废之后（值变了）不会被旧的忽略状态藏起来。
+ * 体检结果不落盘，后端不给 finding id，React key 与「处理中」状态靠内容算。
+ * 「忽略此条」不用它：忽略键由后端给（ignoreKey），裁决持久化在后端。
  */
 export function findingKey(finding: ConsistencyFinding): string {
   return [
     finding.kind,
     finding.factId ?? "",
     finding.entity,
+    finding.chapterNumber ?? "",
     finding.jingweiValue ?? "",
     finding.memoryValue ?? "",
   ].join("\u0000");
@@ -94,6 +140,8 @@ export function findingKey(finding: ConsistencyFinding): string {
 const KIND_LABELS: Record<string, string> = {
   "realm-drift": "境界倒退 / 职级不一致",
   "orphan-location": "地点孤立",
+  "scene-dead-acts": "死亡 / 离场后又行动",
+  "scene-location-jump": "地点跳变无过渡",
 };
 
 export function findingKindLabel(kind: string): string {

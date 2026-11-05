@@ -35,7 +35,6 @@ export type RuntimeFileOpenInterceptor = (request: RuntimeFileOpenRequest) => bo
 export interface EmbeddedNarratorDockHostProps {
 	readonly narratorId: string;
 	readonly highlightMessageId?: string;
-	readonly onForkFromMessage?: (messageUuid: string) => void;
 	readonly compact?: boolean;
 	readonly toolResultRenderer?: RuntimeToolResultRenderer;
 	/** Lets the host open some files (e.g. chapters) in its own editor. */

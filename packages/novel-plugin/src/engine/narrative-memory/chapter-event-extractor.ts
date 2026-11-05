@@ -111,9 +111,15 @@ export class ChapterExtractionParseError extends Error {
     this.reason = reason;
   }
   get advice(): string {
+    if (this.reason === "truncated") return EXTRACTOR_TRUNCATION_ADVICE;
     return modelJsonFailureAdvice(this.reason);
   }
 }
+
+/** 抽取被截断时给作者的建议：说清上限、为何会截断、按什么顺序处理。 */
+export const EXTRACTOR_TRUNCATION_ADVICE = "这一章的记忆抽取写到输出上限（约 24000 token）被截断了，JSON 没写完，所以一条也没有记。"
+  + "思考型模型的推理也占这个额度，长章、群像章更容易撞线。先重试一次；仍截断时换用不带长推理的模型或输出上限更大的模型结算这一章，"
+  + "或把这一章拆成两章后分别结算。";
 
 /** 解析抽取输出；失败时抛 ChapterExtractionParseError。兼容旧数组与新对象 `{ events, mentionedEntities }`。 */
 export function parseChapterExtractionOrThrow(content: string, options: { readonly outputTruncated?: boolean } = {}): ParsedChapterExtraction {
@@ -153,6 +159,7 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   "不要写入静态 Lore/canon；只提出 NarrativeEvent 草案。",
   "若提供了「当前叙事记忆台账」，events 只抽取相对台账发生变化或新增的状态；与台账一致、本章未改变的内容不要重复输出。mentionedEntities 不受此限制。",
   "对人物状态类变化（修为/位置/情绪/伤势等），subject+predicate 标识状态槽位，object 是本章后的新值；同一槽位的新值会由系统自动作废旧值，你只需给出新值。",
+  "三个固定谓词必须照写，不要换同义词：生死（character_state_changed，object 只写 存活 / 死亡 / 复活 之一）；去向（character_state_changed，object 只写 离场 / 回归 之一，指人物离开或重新回到故事舞台）；所在（location_changed，object 写地点名，优先用官方实体名单里的地点名）。回忆、梦境、传闻里的人物不算本章状态变化，不要输出。",
   "对关系变化（relationship_changed）：subject 与 object 都只写一方的名字（人物或势力，优先用官方实体名单里的名字），predicate 写两人之间的关系或变化，如「救下」「结为师徒」「反目」「暗中提防」。object 不要写描述句，经过与细节放进 evidenceText。一件事牵涉多人时拆成多条，每条一对。",
   "对伏笔：本章新埋用 hook_planted；已有伏笔被提及/推进但触发条件尚未满足用 hook_progressed；触发条件已出现、该兑现但尚未兑现用 hook_triggered（object 写触发条件）；被揭晓/回收用 hook_resolved。同一条伏笔的后续事件 causedBy 必须指向它更早的 planted/progressed/triggered。",
   "伏笔的 subject 就是它的 key：若用户消息提供了「本书未回收伏笔」，推进/触发/回收其中某条时 subject 必须原样写清单里的伏笔名，不要换说法；本章新埋的伏笔起一个简短、以后能沿用的名字作 subject。清单里的伏笔本章没有动静就不要输出。",
@@ -199,10 +206,32 @@ function buildExtractorUserPrompt(input: ChapterEventExtractorInput): string {
 }
 
 /**
- * 抽取输出上限。一章通常 10–30 条事件加全量出场实体，JSON 约 3–8KB；
- * 2000 时 claude 在 9 章里有 7 章被截断（2026-09-30 真模型基准），思考型模型还要额外的推理预算。
+ * 抽取输出上限（与文风蒸馏 STYLE_DISTILLATION_BATCH_MAX_TOKENS 同一估算方法）。
+ *
+ * JSON 体量：一章 10–30 条事件，每条 8 个字段，evidenceText 为 10–60 字原文摘录，
+ * subject / predicate / object 合计约 10–30 字，加字段名与引号约 120 字符，单条约 180–260 字符；
+ * 30 条约 5.4–7.8 千字符，加 mentionedEntities 全量出场（20–60 个名字，约 0.3–1 千字符），
+ * 合计约 6–9 千字符，中文按 1–1.5 token/字计约 6–12 千 token（长章、群像章取上沿）。
+ *
+ * 思考型模型的推理 token 也计入输出上限：2026-10 导入复验里思考型模型 4 章有 2 章在 8000 截断
+ * （推理把额度吃掉一大半，JSON 没写完）。给推理预留约 8–12 千 token，总上限取 24000。
+ * Runtime 会按模型卡声明的输出上限再收紧，声明了更低上限的模型不会因此被拒。
+ * 2000 时 claude 在 9 章里有 7 章被截断（2026-09-30 真模型基准）。
  */
-const EXTRACTOR_MAX_TOKENS = 8000;
+export const EXTRACTOR_MAX_TOKENS = 24_000;
+
+/** 输出 token 达到上限的这个比例即视为被截断（宿主不报 outputTruncated 时的兜底判定，同文风蒸馏）。 */
+export const EXTRACTOR_TRUNCATION_USAGE_RATIO = 0.98;
+
+/** 宿主报截断，或输出 token 用到上限的 98% 以上，都按截断处理。 */
+export function isExtractorOutputTruncated(
+  response: { readonly outputTruncated?: boolean; readonly usage?: { readonly completionTokens?: number } },
+  maxTokens: number = EXTRACTOR_MAX_TOKENS,
+): boolean {
+  if (response.outputTruncated === true) return true;
+  const used = response.usage?.completionTokens;
+  return typeof used === "number" && Number.isFinite(used) && used >= maxTokens * EXTRACTOR_TRUNCATION_USAGE_RATIO;
+}
 
 export function createLLMChapterEventExtractor(client: LLMClient, model: string): NonNullable<ChapterEventExtractorInput["llmExtractor"]> {
   return async (input) => {
@@ -210,7 +239,7 @@ export function createLLMChapterEventExtractor(client: LLMClient, model: string)
       { role: "system", content: EXTRACTOR_SYSTEM_PROMPT },
       { role: "user", content: buildExtractorUserPrompt(input) },
     ], { temperature: 0.1, maxTokens: EXTRACTOR_MAX_TOKENS });
-    return parseChapterExtractionOrThrow(response.content);
+    return parseChapterExtractionOrThrow(response.content, isExtractorOutputTruncated({ usage: response.usage }) ? { outputTruncated: true } : {});
   };
 }
 
@@ -224,7 +253,7 @@ export function createRuntimeChapterEventExtractor(
     messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;
     maxTokens?: number;
-  }) => Promise<{ text: string; outputTruncated?: boolean }>,
+  }) => Promise<{ text: string; outputTruncated?: boolean; usage?: { completionTokens?: number } }>,
 ): NonNullable<ChapterEventExtractorInput["llmExtractor"]> {
   return async (input) => {
     const response = await generateText({
@@ -235,7 +264,7 @@ export function createRuntimeChapterEventExtractor(
       temperature: 0.1,
       maxTokens: EXTRACTOR_MAX_TOKENS,
     });
-    return parseChapterExtractionOrThrow(response.text, response.outputTruncated ? { outputTruncated: true } : {});
+    return parseChapterExtractionOrThrow(response.text, isExtractorOutputTruncated(response) ? { outputTruncated: true } : {});
   };
 }
 

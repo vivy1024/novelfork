@@ -13,6 +13,7 @@ const faults = vi.hoisted(() => ({
   readFile: null as null | ((path: string) => Error | null),
   unlink: null as null | ((path: string) => Error | null),
   atomic: null as null | ((path: string) => Error | null),
+  readdir: null as null | ((path: string) => Error | null),
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -28,6 +29,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       if (injected) throw injected;
       return actual.unlink(path);
     }) as typeof actual.unlink,
+    readdir: (async (path: Parameters<typeof actual.readdir>[0], ...rest: unknown[]) => {
+      const injected = faults.readdir?.(String(path));
+      if (injected) throw injected;
+      return (actual.readdir as (...args: unknown[]) => Promise<unknown>)(path, ...rest);
+    }) as typeof actual.readdir,
   };
   // 被测模块对 node 内置模块走 default 互操作，具名导出与 default 都要换掉。
   return { ...actual, ...overrides, default: { ...actual, ...overrides } };
@@ -45,7 +51,7 @@ vi.mock("./atomic-write.js", async (importOriginal) => {
   };
 });
 
-import { ChapterStoreError, readChapterIndex, synchronizeChapterLayout } from "./chapter-layout.js";
+import { ChapterStoreError, listChapterFiles, readChapterIndex, synchronizeChapterLayout } from "./chapter-layout.js";
 import { createWritingResourceFileStore } from "./file-store.js";
 
 function fsError(code: string, message = code): NodeJS.ErrnoException {
@@ -60,12 +66,14 @@ beforeEach(() => {
   faults.readFile = null;
   faults.unlink = null;
   faults.atomic = null;
+  faults.readdir = null;
 });
 
 afterEach(async () => {
   faults.readFile = null;
   faults.unlink = null;
   faults.atomic = null;
+  faults.readdir = null;
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -267,5 +275,40 @@ describe("问题 3：softDelete 先删正文再改索引，删除失败要报出
 
     await expect(store.softDelete("book", created.id)).resolves.toMatchObject({ status: "archived" });
     expect(await readChapterIndex(root)).toEqual([]);
+  });
+});
+
+describe("章节目录：不存在当空，读不出报错", () => {
+  const isChaptersDir = (path: string) => /chapters$/u.test(path.replaceAll("\\", "/"));
+
+  it("新书还没有 chapters/ 时列表为空，对账只建目录不报错", async () => {
+    const root = await bookRoot();
+    await expect(listChapterFiles(root)).resolves.toEqual([]);
+    const store = createWritingResourceFileStore(() => root);
+    await expect(store.list("book")).resolves.toEqual([]);
+  });
+
+  it("chapters/ 读到 EACCES 时 listChapterFiles 抛带 explanation 的错误", async () => {
+    const root = await bookRoot();
+    await seedRichBook(root);
+    faults.readdir = (path) => (isChaptersDir(path) ? fsError("EACCES", "permission denied") : null);
+
+    const failure = await listChapterFiles(root).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ChapterStoreError);
+    expect((failure as ChapterStoreError).code).toBe("CHAPTER_DIRECTORY_UNREADABLE");
+    expect((failure as ChapterStoreError).statusCode).toBe(503);
+    expect((failure as ChapterStoreError).explanation.whatHappened).toContain("EACCES");
+  });
+
+  it("对账时 chapters/ 读不出则中止，index.json 原样不动", async () => {
+    const root = await bookRoot();
+    const raw = await seedRichBook(root);
+    faults.readdir = (path) => (isChaptersDir(path) ? fsError("EBUSY", "resource busy or locked") : null);
+
+    await expect(synchronizeChapterLayout("book", root, () => "卷01")).rejects.toMatchObject({
+      code: "CHAPTER_DIRECTORY_UNREADABLE",
+    });
+    faults.readdir = null;
+    expect(await readFile(join(root, "chapters", "index.json"), "utf8")).toBe(raw);
   });
 });

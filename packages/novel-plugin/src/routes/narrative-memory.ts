@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { Hono, type Context } from "hono";
 import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
 
@@ -20,7 +23,7 @@ import {
 } from "../engine/narrative-memory/config.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
 import { readChapterSettlementRecord, chapterContentFingerprint } from "../engine/narrative-memory/settlement-idempotency.js";
-import { readLatestSettlementArtifact } from "../engine/narrative-memory/storage.js";
+import { ensureNarrativeMemorySchema, readLatestSettlementArtifact } from "../engine/narrative-memory/storage.js";
 import { readLatestAuditIssues, markChapterAuditStale } from "../engine/tools/health/audit-log-persist.js";
 import { backfillNarrativeEventEntityIds } from "../engine/narrative-memory/entity-id-backfill.js";
 import { readBookSettlementFreshness } from "../engine/narrative-memory/settlement-freshness.js";
@@ -44,13 +47,18 @@ import {
   isSceneFunction,
   isStorylineKind,
   getStoryline,
+  listScenesByChapter,
   reviewStoryline,
+  updateSceneGaps,
   SCENE_FUNCTIONS,
   STORYLINE_KINDS,
 } from "../engine/narrative-memory/scene-store.js";
+import { MAX_SCENE_GAPS, MAX_SCENE_GAP_TEXT } from "../handlers/scene-gaps.js";
 import { listStructureScores, scoreAndPersistNarrativeStructure } from "../engine/narrative-memory/structure-score.js";
 import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
+import { addConsistencyIgnore, removeConsistencyIgnore, type ConsistencyIgnoreKey } from "../engine/narrative-memory/scene-check.js";
+import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
 import { listCharacterKernels, getCharacterKernel } from "../engine/narrative-memory/storage.js";
 import {
   NARRATIVE_EVENT_TRASH_RETENTION_DAYS,
@@ -239,6 +247,44 @@ function queryCompleteChapterRange(
 
 function invalidQuery(c: { json(body: unknown, status?: number): Response }, message: string): Response {
   return c.json({ error: "invalid-input", summary: message }, 400);
+}
+
+/** 作者手建场景一次最多点名的出场人物数；蓝图没有硬上限，这里只防误传超大数组。 */
+const MAX_SCENE_CHARACTERS = 50;
+
+/**
+ * 作者手建场景的出场人物。口径与蓝图（sceneFromSpec）一致：存人物名字。
+ * 每项须是非空字符串；传实体 id（ent:<bookId>:…）时换成该实体的规范名，id 不属于本书则拒绝。
+ * 名字对不上实体时原样保留（蓝图同样允许新登场人物），由场景校验按实体字典归并。
+ */
+function parseSceneCharacters(
+  db: StorageDatabase,
+  bookId: string,
+  raw: unknown,
+): { ok: true; names: string[] } | { ok: false; message: string } {
+  if (raw === undefined || raw === null) return { ok: true, names: [] };
+  if (!Array.isArray(raw)) return { ok: false, message: "characters 必须是字符串数组：每项是人物名字或实体 id。" };
+  if (raw.length > MAX_SCENE_CHARACTERS) {
+    return { ok: false, message: `一场最多点名 ${MAX_SCENE_CHARACTERS} 个出场人物（收到 ${raw.length} 个）。` };
+  }
+  const names: string[] = [];
+  for (const [index, item] of raw.entries()) {
+    const value = typeof item === "string" ? item.trim() : "";
+    if (!value) return { ok: false, message: `characters 第 ${index + 1} 项为空或不是字符串：每项须是人物名字或实体 id。` };
+    let name = value;
+    if (value.startsWith("ent:")) {
+      const hasEntityTable = db.sqlite
+        .prepare<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'narrative_entity'")
+        .get();
+      const row = hasEntityTable && db.sqlite
+        .prepare<{ canonical_name: string }>("SELECT canonical_name FROM narrative_entity WHERE id = ? AND book_id = ?")
+        .get(value, bookId);
+      if (!row) return { ok: false, message: `characters 第 ${index + 1} 项「${value}」不是这本书的实体。` };
+      name = row.canonical_name;
+    }
+    if (!names.includes(name)) names.push(name);
+  }
+  return { ok: true, names };
 }
 
 function handlerStatus(error: string | undefined): number {
@@ -980,15 +1026,78 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     });
   });
 
-  // 经纬设定 × 叙事记忆现状 一致性检测（纰漏），只读不写。
+  // 经纬设定 × 叙事记忆现状 一致性检测（纰漏）+ 场景校验，只读不写；作者忽略过的项单列在 ignored。
   app.get(`${base}/consistency`, async (c) => {
     const bookId = c.req.param("bookId");
     const asOfChapter = queryInteger(c, "asOfChapter", "chapter");
+    const bookRoot = optionalBookRootFor(bookId);
+    // 场景校验要核对正文原文与人物首句；书根只经可信绑定解析，读不到时该项按「不确定」不报。
+    let chapterFiles: Awaited<ReturnType<typeof listChapterFiles>> | undefined;
+    const loadChapterText = bookRoot
+      ? async (chapterNumber: number): Promise<string | undefined> => {
+        chapterFiles ??= await listChapterFiles(bookRoot).catch(() => []);
+        const file = chapterFiles.find((entry) => entry.number === chapterNumber);
+        return file ? readFile(join(bookRoot, file.relativePath), "utf-8").catch(() => undefined) : undefined;
+      }
+      : undefined;
     const result = await runConsistencyCheck(storage(), {
       bookId,
       ...(asOfChapter !== undefined ? { asOfChapter } : {}),
+      ...(loadChapterText ? { loadChapterText } : {}),
     });
     return c.json(result);
+  });
+
+  // 叙事体检「忽略此条」：只记作者裁决（检测类型 + 实体 id + 章号 + 记忆事实 id），不存检测结果。
+  // 超长一律拒绝，不静默截断：截断后的键与检测结果的键对不上，「忽略」会无声失效。
+  const IGNORE_ID_MAX = 400;
+  const parseIgnoreKey = (body: Record<string, unknown>): ConsistencyIgnoreKey | null => {
+    const kind = typeof body.kind === "string" ? body.kind.trim() : "";
+    if (!kind || kind.length > 80) return null;
+    const text = (value: unknown): string | null => {
+      if (value === undefined || value === null) return "";
+      if (typeof value !== "string" || value.length > IGNORE_ID_MAX) return null;
+      return value;
+    };
+    const entityId = text(body.entityId);
+    const factId = text(body.factId);
+    if (entityId === null || factId === null) return null;
+    const chapter = typeof body.chapterNumber === "number" && Number.isSafeInteger(body.chapterNumber) && body.chapterNumber >= 0 ? body.chapterNumber : 0;
+    return { kind, entityId, chapterNumber: chapter, factId };
+  };
+  const IGNORE_KEY_HINT = `需要提供检测类型 kind（不超过 80 字符），以及可选的 entityId / factId（字符串，各不超过 ${IGNORE_ID_MAX} 字符）与 chapterNumber。`;
+  app.post(`${base}/consistency/ignores`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const key = parseIgnoreKey(await readJson(c));
+    if (!key) return invalidQuery(c, IGNORE_KEY_HINT);
+    const db = storage();
+    ensureNarrativeMemorySchema(db);
+    try {
+      const saved = addConsistencyIgnore(db, bookId, key);
+      return c.json({ ignoreKey: saved, summary: "已忽略这一条；刷新和重新结算都不会再提示，可在叙事体检里撤销。" });
+    } catch (error) {
+      // 忽略表带外键（与迁移 0041 一致）：书不在产品库里时插入会违反约束，按「书不存在」回 404。
+      if (error instanceof Error && /FOREIGN KEY constraint failed/iu.test(error.message)) {
+        return c.json({
+          error: { code: "BOOK_NOT_FOUND", message: "这本书不在叙事记忆库里。" },
+          explanation: {
+            whatHappened: "这本书不在叙事记忆库里，无法记下忽略。",
+            whyItMatters: "忽略裁决按书存放，书不存在时记下来也不会生效。",
+            suggestedAction: "刷新页面确认书还在；若书刚被删除，无需再处理这一条。",
+          },
+        }, 404);
+      }
+      throw error;
+    }
+  });
+  app.post(`${base}/consistency/ignores/remove`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const key = parseIgnoreKey(await readJson(c));
+    if (!key) return invalidQuery(c, IGNORE_KEY_HINT);
+    const db = storage();
+    ensureNarrativeMemorySchema(db);
+    const removed = removeConsistencyIgnore(db, bookId, key);
+    return c.json({ removed, summary: removed ? "已撤销忽略，这一条会重新出现在叙事体检里。" : "这一条本来就没有被忽略。" });
   });
 
   const graphHandler = async (c: Context): Promise<Response> => {
@@ -1156,9 +1265,12 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     if (body?.function !== undefined && !isSceneFunction(body.function)) {
       return invalidQuery(c, `function 取值无效（收到「${String(body.function)}」）：只接受 ${SCENE_FUNCTIONS.join(" / ")}。`);
     }
+    const characters = parseSceneCharacters(storage(), bookId, body?.characters);
+    if (!characters.ok) return invalidQuery(c, characters.message);
     const result = createScene(storage(), {
       bookId,
       chapterNumber,
+      ...(characters.names.length > 0 ? { characters: characters.names } : {}),
       ...(typeof body?.title === "string" ? { title: body.title } : {}),
       ...(typeof body?.summary === "string" ? { summary: body.summary } : {}),
       ...(isSceneFunction(body?.function) ? { function: body.function } : {}),
@@ -1168,6 +1280,43 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       source: "manual",
     });
     return c.json(result, result.ok ? 200 : 400);
+  });
+
+  /** 本章蓝图场景（含规划留白），写作台的留白编辑器用它读，保存时带回每个场景的 updatedAt。 */
+  app.get(`${base}/chapters/:chapterNumber/scenes`, (c) => {
+    const chapterNumber = Number(c.req.param("chapterNumber"));
+    if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
+      return invalidQuery(c, "chapterNumber 必须是正整数。");
+    }
+    return c.json({ ok: true, chapterNumber, scenes: listScenesByChapter(storage(), c.req.param("bookId"), chapterNumber) });
+  });
+
+  /**
+   * 作者手编某场的规划留白（T2.6）：整组替换。必须带读取时的 expectedUpdatedAt，
+   * 场景被别处改过就 409，不覆盖。非法条目（类别不对、缺口或答案为空）按与 scene.spec 同一判据剔除。
+   */
+  app.put(`${base}/scenes/:sceneId/gaps`, async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body || !Array.isArray(body.gaps)) return invalidQuery(c, "gaps 必须是数组：给出这一场全部留白，空数组表示清空。");
+    if (!Number.isSafeInteger(body.expectedUpdatedAt)) {
+      return invalidQuery(c, "expectedUpdatedAt 必填：带上读取场景时的 updatedAt，用来防止覆盖别处的修改。");
+    }
+    if (body.gaps.length > MAX_SCENE_GAPS) {
+      return invalidQuery(c, `一场最多 ${MAX_SCENE_GAPS} 条留白（收到 ${body.gaps.length} 条）：留白是刻意留下的少数关键缺口，太多会让规划失焦。`);
+    }
+    const tooLong = body.gaps.some((item) => {
+      const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
+      return [record.gap, record.answer].some((text) => typeof text === "string" && text.trim().length > MAX_SCENE_GAP_TEXT);
+    });
+    if (tooLong) return invalidQuery(c, `缺口与答案每项最多 ${MAX_SCENE_GAP_TEXT} 字：请精简后再保存。`);
+    const result = updateSceneGaps(storage(), {
+      bookId: c.req.param("bookId"),
+      sceneId: c.req.param("sceneId"),
+      gaps: body.gaps,
+      expectedUpdatedAt: body.expectedUpdatedAt as number,
+    });
+    const status = result.ok ? 200 : result.error === "scene-not-found" ? 404 : result.error === "scene-conflict" ? 409 : 400;
+    return c.json(result, status);
   });
 
   /** 重排要求给出该章全序——少给会留下空号，树的先后就错了。 */

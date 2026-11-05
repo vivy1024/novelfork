@@ -107,6 +107,40 @@ const sceneSpec: SceneSpec = {
 };
 
 describe("buildNarrativeContext", () => {
+  it("蓝图场景缺 hooks_used / hooks_planted / characters 时按空数组处理，不崩溃", async () => {
+    const storage = await createStorage();
+    try {
+      // 作者或叙述者手写的蓝图常省略伏笔字段；此前 `...scene.hooks_used` 在这里抛
+      // 「Spread syntax requires ...iterable not be null or undefined」。
+      const partialSpec = {
+        chapter: 12,
+        title: "药园试探",
+        wordTarget: 3200,
+        scenes: [
+          { characters: ["韩立"], location: "药园", conflict: "试探", mood: "谨慎", outcome: "发现" },
+          { location: "后山", conflict: "", mood: "", outcome: "" },
+        ],
+        constraints: [],
+      } as unknown as SceneSpec;
+      const result = await buildNarrativeContext({
+        storage,
+        bookId: "book-1",
+        purpose: "write_chapter",
+        chapterNumber: 12,
+        sceneSpec: partialSpec,
+        maxTokens: 2000,
+      });
+      expect(result.diagnostics.channelStats.map((item) => item.channel)).toEqual(expect.arrayContaining(["scene-spec", "state", "hooks", "facts"]));
+      expect(result.cards.map((item) => item.content).join("\n")).not.toContain("undefined");
+
+      // 对照：字段齐全的蓝图照常把伏笔名纳入检索实体。
+      const full = await buildNarrativeContext({ storage, bookId: "book-1", purpose: "write_chapter", chapterNumber: 12, sceneSpec, maxTokens: 2000 });
+      expect(full.diagnostics.channelStats.length).toBeGreaterThan(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("runs MVP channels and returns packed sections with diagnostics/log", async () => {
     const storage = await createStorage();
     try {

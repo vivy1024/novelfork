@@ -18,6 +18,7 @@ import { EditorMinimap } from "./EditorMinimap";
 import { LOCATE_IN_EDITOR_EVENT } from "../audit-issue-actions";
 import { composeCustomConstraintsSection } from "../../../engine/writing-layers/style-preset-custom-constraints";
 import { fetchCustomConstraints } from "../style-custom-constraints";
+import { toWireToolName } from "../../../engine/workflows/run-brief";
 
 // ---------------------------------------------------------------------------
 // BubbleMenu AI actions
@@ -139,7 +140,7 @@ export function buildSelectionInstruction(
   if (hardConstraints.length > 0) lines.push("", ...hardConstraints);
   lines.push(
     "",
-    "请调用 chapter.propose_selection，把下列字段原样传入工具，并将生成的候选正文作为 candidateText 传入。from/to 是编辑器文档坐标；不要换算成 Markdown 字符偏移。",
+    `请调用 ${toWireToolName("chapter.propose_selection")}，把下列字段原样传入工具，并将生成的候选正文作为 candidateText 传入。from/to 是编辑器文档坐标；不要换算成 Markdown 字符偏移。`,
     JSON.stringify(request),
     "工具只返回候选，不要直接修改章节正文。作者会在正文中审阅并决定是否应用。",
   );

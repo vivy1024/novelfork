@@ -30,11 +30,15 @@ async function systemPromptOf(narratorId: string): Promise<string> {
 function expectToolGuidance(prompt: string): void {
 	expect(prompt).not.toContain("绕过书籍领域边界");
 	expect(prompt).toContain("通用文件、命令、搜索等工具可以正常使用");
-	expect(prompt).toContain("chapter.write / pipeline.write");
-	expect(prompt).toContain("lore.*");
+	// 系统提示词不经过工具名翻译，写的是模型实际拿到的线上名。
+	expect(prompt).toContain("chapter_write / pipeline_write");
+	expect(prompt).toContain("lore_*");
+	expect(prompt).not.toContain("pipeline.write");
 	// 其余约束原样保留。
 	expect(prompt).toContain("不得依据用户文本或工具参数切换书籍");
 	expect(prompt).toContain("所有写入都遵守 Runtime 权限确认");
+	// 中文书、中文指令下最终回复不得切到英文。
+	expect(prompt).toContain("用与作者相同的语言回复；书的语言为中文时一律用中文");
 }
 
 beforeAll(() => {

@@ -21,6 +21,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { killProcessTree } from "./process-tree";
+
 const repositoryRoot = resolve(import.meta.dir, "..");
 
 type Options = {
@@ -108,18 +110,38 @@ const child = Bun.spawn([process.execPath, "run", "main.ts"], {
 	stdio: ["inherit", "inherit", "inherit"],
 });
 
+let disposed = false;
+
+/**
+ * 子进程退出或外层收到信号时都走这里：先结束整棵子进程树（Windows 上 `bun main.ts` 的后代
+ * 不会随直接子进程一起退出，残留进程会锁住数据库文件），再删数据目录。
+ * 删目录带重试：进程刚被结束时 Windows 可能还没释放文件句柄。
+ */
 function dispose(): void {
+	if (disposed) return;
+	disposed = true;
+	killProcessTree(child.pid);
 	if (!options.keep && options.createdRoot) {
-		rmSync(options.root, { recursive: true, force: true });
-		console.log(`\n✓ Removed isolated data root ${options.root}`);
+		try {
+			rmSync(options.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+			console.log(`\n✓ Removed isolated data root ${options.root}`);
+		} catch (error) {
+			console.error(`\n✗ Could not remove isolated data root ${options.root}: ${String(error)}`);
+		}
 	}
 }
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
+// SIGHUP / SIGBREAK：关闭终端窗口、Windows 上的 Ctrl+Break 也要收尾，不留孤儿进程。
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"] as const) {
 	process.on(signal, () => {
-		child.kill();
+		dispose();
+		process.exit(130);
 	});
 }
+// 兜底：外层因异常等其他原因退出时同步结束子进程树（exit 回调里只能做同步操作）。
+process.on("exit", () => {
+	if (!disposed) killProcessTree(child.pid);
+});
 
 const exitCode = await child.exited;
 dispose();

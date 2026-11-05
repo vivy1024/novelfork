@@ -181,6 +181,32 @@ describe("chapter event extractor", () => {
     await expect(noJson(baseInput)).rejects.toMatchObject({ reason: "truncated" });
   });
 
+  it("输出上限按估算取 24000（思考型模型 8000 会截断）；截断时如实报截断并给出换模型 / 拆章建议", async () => {
+    const { EXTRACTOR_MAX_TOKENS, isExtractorOutputTruncated, EXTRACTOR_TRUNCATION_ADVICE } = await import("./chapter-event-extractor.js");
+    expect(EXTRACTOR_MAX_TOKENS).toBe(24_000);
+    let requested: number | undefined;
+    const truncatedByUsage = createRuntimeChapterEventExtractor(async (request) => {
+      requested = request.maxTokens;
+      // 宿主没报 outputTruncated，但用量顶到上限、JSON 没闭合。
+      return { text: '{"events":[{"eventType":"location_changed","subject":"韩', usage: { completionTokens: 23_990 } };
+    });
+    const error = await truncatedByUsage(baseInput).catch((caught: unknown) => caught) as { reason: string; advice: string };
+    expect(requested).toBe(24_000);
+    expect(error.reason).toBe("truncated");
+    expect(error.advice).toBe(EXTRACTOR_TRUNCATION_ADVICE);
+    expect(error.advice).toContain("24000");
+    expect(error.advice).toContain("换用");
+
+    // 正反例：用量判据。
+    expect(isExtractorOutputTruncated({ usage: { completionTokens: 23_600 } })).toBe(true);
+    expect(isExtractorOutputTruncated({ usage: { completionTokens: 9_000 } })).toBe(false);
+    expect(isExtractorOutputTruncated({ outputTruncated: true })).toBe(true);
+    expect(isExtractorOutputTruncated({})).toBe(false);
+    // 用量高但 JSON 完整闭合：照常解析，不误报截断。
+    const complete = createRuntimeChapterEventExtractor(async () => ({ text: '{"events":[],"mentionedEntities":["韩立"]}', usage: { completionTokens: 9_000 } }));
+    await expect(complete(baseInput)).resolves.toMatchObject({ events: [] });
+  });
+
   it("合法 JSON 缺少 events 数组时失败，不把格式错误当成零事件", async () => {
     const extractor = createRuntimeChapterEventExtractor(async () => ({ text: '{"summary":"本章没有变化"}' }));
     await expect(extractor(baseInput)).rejects.toMatchObject({ name: "ChapterExtractionParseError", reason: "invalid" });

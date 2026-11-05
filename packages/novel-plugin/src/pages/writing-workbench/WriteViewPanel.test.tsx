@@ -396,7 +396,8 @@ describe("WriteViewPanel 章节循环（写 → 改 → 收尾）", () => {
 
     const message = onSendToNarrator.mock.calls[0]![0] as string;
     expect(message).toContain("第 11 章的表达检查发现了");
-    expect(message).toContain("chapter.propose_selection");
+    expect(message).toContain("chapter_propose_selection");
+    expect(message).not.toContain("chapter.propose_selection");
     expect(message).toContain("不超过原句的 10%");
     expect(message).toContain("省略 from/to");
     expect(message).toContain("不禁");
@@ -502,7 +503,8 @@ describe("WriteViewPanel 章节循环（写 → 改 → 收尾）", () => {
     const message = onSendToNarrator.mock.calls[0]![0] as string;
     expect(message).toContain("第 11 章做一遍通篇语言润色");
     expect(message).toContain("chapter_read");
-    expect(message).toContain("chapter.propose_selection");
+    expect(message).toContain("chapter_propose_selection");
+    expect(message).not.toContain("chapter.propose_selection");
     expect(message).toContain("不整章重写");
     expect(message).toContain("省略 from/to");
     expect(message).toContain("本书硬约束");

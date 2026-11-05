@@ -3,6 +3,7 @@ import {
   BookOpen,
   Download,
   FileArchive,
+  FileText,
   FolderOpen,
   FolderPen,
   Plus,
@@ -40,6 +41,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DirectoryPickerDialog } from "../components/DirectoryPickerDialog";
 import { WorkspaceCreateWizard, type WorkspaceCreateInput } from "../components/WorkspaceCreateWizard";
 import { BookArchiveExportDialog, BookArchiveImportDialog } from "./BookArchiveDialogs";
+import { ManuscriptImportDialog } from "./ManuscriptImportDialog";
+import type { ManuscriptImportClient } from "../runtime/manuscript-import-client";
 import type {
   RuntimeBookArchiveImportResult,
   RuntimeBookArchiveModule,
@@ -48,7 +51,25 @@ import type {
   RuntimeRebindBookWorkspaceResult,
 } from "../runtime/product-contract";
 
-type ManagedBook = Pick<RuntimeBookSummary, "id" | "title" | "status">;
+type ManagedBook = Pick<RuntimeBookSummary, "id" | "title" | "status" | "manuscriptImportJobId">;
+
+/**
+ * 书架上给作者看的状态：可写（ready）是常态，不挂徽标；建书流程中途的各阶段统一叫「准备中」，
+ * 失败与待补偿各自说明。不改状态值本身，未知值也不把英文原样露给作者。
+ */
+const BOOK_SHELF_STATUS_LABELS: Readonly<Record<string, string>> = {
+  reserved: "准备中",
+  "core-staged": "准备中",
+  "filesystem-promoted": "准备中",
+  "runtime-bound": "准备中",
+  failed: "创建失败",
+  "compensation-required": "需要修复",
+};
+
+export function bookShelfStatusLabel(status: string | undefined | null): string | null {
+  if (!status || status === "ready") return null;
+  return BOOK_SHELF_STATUS_LABELS[status] ?? "状态异常";
+}
 
 export interface BookManagementPageProps {
   readonly books: readonly ManagedBook[];
@@ -77,6 +98,12 @@ export interface BookManagementPageProps {
     archive: File,
     modules: readonly string[],
   ) => Promise<RuntimeBookArchiveImportResult>;
+  /** 导入旧稿（只有正文、没有 book.json）：客户端与建书回调齐备时才显示入口。 */
+  readonly manuscriptImportClient?: ManuscriptImportClient;
+  /** 为旧稿新建一本空书并返回书 ID。 */
+  readonly onCreateManuscriptBook?: (title: string) => Promise<string>;
+  /** 导入状态变化后刷新书架。 */
+  readonly onBooksChanged?: () => Promise<void> | void;
 }
 
 export function BookManagementPage({
@@ -93,6 +120,9 @@ export function BookManagementPage({
   loadArchiveModules,
   onExportBookArchive,
   onImportBookArchive,
+  manuscriptImportClient,
+  onCreateManuscriptBook,
+  onBooksChanged,
 }: BookManagementPageProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -113,6 +143,9 @@ export function BookManagementPage({
   const [archiveImportOpen, setArchiveImportOpen] = useState(false);
   const archiveExportEnabled = Boolean(loadArchiveModules && onExportBookArchive);
   const archiveImportEnabled = Boolean(loadArchiveModules && onImportBookArchive);
+  const manuscriptImportEnabled = Boolean(manuscriptImportClient && onCreateManuscriptBook);
+  const [manuscriptOpen, setManuscriptOpen] = useState(false);
+  const [manuscriptResume, setManuscriptResume] = useState<{ bookId: string; jobId: string } | null>(null);
 
   const claimLegacyBook = async () => {
     const bookId = legacyBookId.trim();
@@ -235,6 +268,18 @@ export function BookManagementPage({
               导入档案
             </Button>
           ) : null}
+          {manuscriptImportEnabled ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setManuscriptResume(null);
+                setManuscriptOpen(true);
+              }}
+            >
+              <FileText data-icon="inline-start" />
+              导入旧稿
+            </Button>
+          ) : null}
           {onImportBook ? (
             <Button variant="outline" onClick={() => setPickerOpen(true)}>
               <FolderOpen data-icon="inline-start" />
@@ -302,18 +347,34 @@ export function BookManagementPage({
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="truncate">{book.title}</CardTitle>
-                  <Badge
-                    variant={book.status === "ready" ? "default" : "secondary"}
-                  >
-                    {book.status ?? "ready"}
-                  </Badge>
+                  {book.manuscriptImportJobId ? (
+                    <Badge variant="secondary">导入中</Badge>
+                  ) : (() => {
+                    const label = bookShelfStatusLabel(book.status);
+                    return label ? (
+                      <Badge variant="secondary" data-testid="book-shelf-status">{label}</Badge>
+                    ) : null;
+                  })()}
                 </div>
                 <CardDescription className="truncate">
                   {book.id}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
-                <Button onClick={() => onNavigateToBook(book.id)}>
+                {book.manuscriptImportJobId && manuscriptImportEnabled ? (
+                  <Button
+                    onClick={() => {
+                      setManuscriptResume({ bookId: book.id, jobId: book.manuscriptImportJobId! });
+                      setManuscriptOpen(true);
+                    }}
+                  >
+                    继续导入
+                  </Button>
+                ) : null}
+                <Button
+                  variant={book.manuscriptImportJobId && manuscriptImportEnabled ? "outline" : "default"}
+                  onClick={() => onNavigateToBook(book.id)}
+                >
                   打开工作台
                 </Button>
                 <Button
@@ -380,6 +441,18 @@ export function BookManagementPage({
           loadModules={loadArchiveModules}
           onImport={onImportBookArchive}
           onClose={() => setArchiveImportOpen(false)}
+          onOpenBook={onNavigateToBook}
+        />
+      ) : null}
+
+      {manuscriptImportClient && onCreateManuscriptBook ? (
+        <ManuscriptImportDialog
+          open={manuscriptOpen}
+          resume={manuscriptResume}
+          client={manuscriptImportClient}
+          createBook={onCreateManuscriptBook}
+          onClose={() => setManuscriptOpen(false)}
+          onChanged={async () => { await onBooksChanged?.(); }}
           onOpenBook={onNavigateToBook}
         />
       ) : null}

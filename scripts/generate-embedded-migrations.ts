@@ -69,11 +69,13 @@ try {
     }
     const path = join(scratch, `embedded-${index}.ts`);
     writeFileSync(path, source, "utf8");
-    const module = await import(pathToFileURL(path).href) as { embeddedMigrations?: ReadonlyArray<{ name: string; sql: string }> };
+    const module = await import(pathToFileURL(path).href) as { embeddedMigrations?: ReadonlyArray<{ name: string; sql: string; legacyHashes?: readonly string[] }> };
     for (const migration of module.embeddedMigrations ?? []) {
       const bucket = legacy.get(migration.name);
       if (!bucket) continue;
       for (const hash of equivalentHashes(migration.sql)) bucket.add(hash);
+      // 已登记的旧写法原样继承：有的旧写法只出现在当时未提交的副本里，git 历史找不回来。
+      for (const hash of migration.legacyHashes ?? []) bucket.add(hash);
     }
   }
 } finally {
@@ -82,11 +84,12 @@ try {
 
 // ③ 工作区里尚未提交的那一版内嵌副本（覆盖前读取）
 try {
-  const module = await import(`${pathToFileURL(OUTPUT).href}?before=${Date.now()}`) as { embeddedMigrations?: ReadonlyArray<{ name: string; sql: string }> };
+  const module = await import(`${pathToFileURL(OUTPUT).href}?before=${Date.now()}`) as { embeddedMigrations?: ReadonlyArray<{ name: string; sql: string; legacyHashes?: readonly string[] }> };
   for (const migration of module.embeddedMigrations ?? []) {
     const bucket = legacy.get(migration.name);
     if (!bucket) continue;
     for (const hash of equivalentHashes(migration.sql)) bucket.add(hash);
+    for (const hash of migration.legacyHashes ?? []) bucket.add(hash);
   }
 } catch {
   // 首次生成或旧文件无法导入时跳过

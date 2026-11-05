@@ -6,6 +6,7 @@
  */
 
 import type { BeatBudgetItem } from "../../handlers/beat-budget";
+import { toWireToolName } from "../../engine/workflows/run-brief";
 
 export interface WriteRequestPayload {
   readonly mode: "blueprint" | "chapter";
@@ -26,7 +27,7 @@ function beatBudgetLines(beats: readonly BeatBudgetItem[] | undefined): string[]
   if (!beats || beats.length === 0) return [];
   return [
     "",
-    `我已经排好本章 ${beats.length} 个情节点的字数预算，请原样传入 scene.spec 的 beatBudget 参数，不要另拟一套：`,
+    `我已经排好本章 ${beats.length} 个情节点的字数预算，请原样传入 ${toWireToolName("scene.spec")} 的 beatBudget 参数，不要另拟一套：`,
     "```json",
     JSON.stringify(beats, null, 2),
     "```",
@@ -44,7 +45,7 @@ export function buildWriteRequestMessage(payload: WriteRequestPayload): string {
     return [
       `请为${chapter}生成场景蓝图，先不要写正文。`,
       `本章目标：${directive}${accept}`,
-      "流程：write.preflight 通过后调用 scene.spec；蓝图给我确认后再写正文。",
+      `流程：${toWireToolName("write.preflight")} 通过后调用 ${toWireToolName("scene.spec")}；蓝图给我确认后再写正文。`,
       ...beats,
     ].join("\n");
   }
@@ -52,7 +53,7 @@ export function buildWriteRequestMessage(payload: WriteRequestPayload): string {
   return [
     `请写${chapter}的正文。`,
     `本章目标：${directive}${accept}`,
-    "流程：write.preflight → scene.spec → pipeline.write。preflight 不通过就停下告诉我缺什么，不要先写。",
+    `流程：${toWireToolName("write.preflight")} → ${toWireToolName("scene.spec")} → ${toWireToolName("pipeline.write")}。preflight 不通过就停下告诉我缺什么，不要先写。`,
     ...beats,
   ].join("\n");
 }

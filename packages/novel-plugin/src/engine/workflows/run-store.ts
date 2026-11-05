@@ -317,6 +317,23 @@ export function listWorkflowRunsForBook(storage: StorageDatabase, bookId: string
     .map((row) => toRecord(storage, row));
 }
 
+/**
+ * 一本书上进行中的运行（运行中 / 等待确认 / 受阻），最近的在前。
+ *
+ * 工人与子代理没有自己的运行行，闸门要靠它判断「这本书现在有没有在跑」。
+ * 上限取小值：同一本书并行多条运行属反常，调用方只需要知道有没有、以及取一条做说明。
+ */
+export function listActiveWorkflowRunsForBook(storage: StorageDatabase, bookId: string, limit = 5): WorkflowRunRecord[] {
+  ensureWorkflowRunSchema(storage);
+  const placeholders = ACTIVE_WORKFLOW_RUN_STATUSES.map(() => "?").join(", ");
+  return storage.sqlite
+    .prepare<RunRow>(
+      `SELECT * FROM workflow_runs WHERE book_id = ? AND status IN (${placeholders}) ORDER BY created_at DESC, id DESC LIMIT ?`,
+    )
+    .all(bookId, ...ACTIVE_WORKFLOW_RUN_STATUSES, limit)
+    .map((row) => toRecord(storage, row));
+}
+
 export function listWorkflowRunEvents(storage: StorageDatabase, runId: string, sinceSeq = 0): WorkflowRunEvent[] {
   ensureWorkflowRunSchema(storage);
   return storage.sqlite

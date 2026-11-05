@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { Hono as ProductHono } from "hono";
 import { createBookRuntimeCapabilitiesRoutes, type BookRuntimeCapabilitiesRouteDeps } from "./runtime-capabilities";
 
 /**
- * S1.2 红测：Runtime 父应用（hono 4.13.13）挂载能力子应用（产品侧 hono 4.12.14）时，
+ * S1.2 红测：Runtime 父应用（自己那份 hono 安装）挂载能力子应用（产品侧另一份 hono 安装）时，
  * 能力路由抛出的已知业务错误必须仍由父应用的 onError 转为 JSON，而不是被子应用的
  * 默认处理器吞成纯文本 500。
  *
@@ -25,10 +26,13 @@ function notFoundDeps(): BookRuntimeCapabilitiesRouteDeps {
 }
 
 describe("capability sub-app error contract across Hono copies", () => {
-	test("sanity: the two hono copies really differ, so the test exercises the production shape", () => {
-		const productVersion = (createRequire(import.meta.url)("hono/package.json") as { version: string }).version;
-		const runtimeVersion = (runtimeRequire("hono/package.json") as { version: string }).version;
-		expect(productVersion).not.toBe(runtimeVersion);
+	test("sanity: the two hono copies are separate module instances, so the test exercises the production shape", () => {
+		// Runtime 0.9.11 起两侧版本号相同（4.12.14），但仍是两份独立安装：子应用的 Hono 类与父应用
+		// 不是同一个构造器，Hono.route() 仍走跨副本包装路径。契约依赖的是「不同实例」，不是「不同版本」。
+		const productEntry = realpathSync(createRequire(import.meta.url).resolve("hono"));
+		const runtimeEntry = realpathSync(runtimeRequire.resolve("hono"));
+		expect(productEntry).not.toBe(runtimeEntry);
+		expect(RuntimeHono).not.toBe(ProductHono);
 	});
 
 	test("a known AppError from the capability sub-app keeps the parent JSON contract", async () => {

@@ -93,10 +93,10 @@ describe("豁免执行器的测试环境隔离", () => {
 	});
 
 	test("refuses a Bun executable whose version is not the pinned runtime version", async () => {
-		await expect(assertPinnedBunVersion("1.3.13")).rejects.toThrow("1.4.2");
+		await expect(assertPinnedBunVersion("1.3.13")).rejects.toThrow("1.4.3");
 	});
 
 	test("accepts the pinned runtime version", async () => {
-		await expect(assertPinnedBunVersion("1.4.2")).resolves.toBeUndefined();
+		await expect(assertPinnedBunVersion("1.4.3")).resolves.toBeUndefined();
 	});
 });

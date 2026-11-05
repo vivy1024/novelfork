@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,6 +74,40 @@ export interface StyleDistillationBatchView {
   readonly ruleCount: number;
   readonly issues: readonly string[];
   readonly explanation: { readonly what: string; readonly next?: string } | null;
+  /** 证据未在原文找到而未收录的模型规则。 */
+  readonly rejectedRules: readonly { readonly text: string; readonly evidence: string; readonly reason: string }[];
+}
+
+/** 多来源比较（后端 GET …/distillations/compare 的派生视图）里的一条规则，带出处与证据。 */
+export interface StyleComparisonMemberView {
+  readonly sourceId: string;
+  readonly sourceName: string;
+  readonly jobId: string | null;
+  readonly ruleId: string;
+  readonly text: string;
+  readonly evidence: string;
+  readonly category: string;
+}
+
+export interface StyleComparisonView {
+  readonly sources: readonly {
+    readonly sourceId: string;
+    readonly sourceName: string;
+    readonly jobId: string | null;
+    readonly adoptedRuleIds: readonly string[];
+    readonly adoptedSampleIds: readonly string[];
+  }[];
+  readonly common: readonly { readonly category: string; readonly text: string; readonly members: readonly StyleComparisonMemberView[] }[];
+  readonly differences: readonly { readonly sourceId: string; readonly sourceName: string; readonly rules: readonly StyleComparisonMemberView[] }[];
+  readonly nonTransferable: readonly StyleComparisonMemberView[];
+  /** 各来源统计对比：统计指纹数值与确定性基线规则，按来源并列，不合并。 */
+  readonly statistics: readonly {
+    readonly sourceId: string;
+    readonly sourceName: string;
+    readonly jobId: string | null;
+    readonly metrics: Readonly<Record<string, number>>;
+    readonly baselineRules: readonly StyleComparisonMemberView[];
+  }[];
 }
 
 interface Review {
@@ -155,6 +189,94 @@ const SCENE_TYPE_LABELS: Record<string, string> = {
 
 function sceneTypeLabel(sceneType: string): string {
   return SCENE_TYPE_LABELS[sceneType] ?? "通用";
+}
+
+const RULE_CATEGORY_LABELS: Record<string, string> = {
+  voice: "声音",
+  language: "语言",
+  rhythm: "节奏",
+  dialogue: "对话",
+  scene: "场景写法",
+  consistency: "一致性",
+  general: "综合",
+};
+
+function ruleCategoryLabel(category: string): string {
+  return RULE_CATEGORY_LABELS[category] ?? "综合";
+}
+
+function stringList(value: unknown): string[] {
+  return firstArray(value).filter((item): item is string => typeof item === "string");
+}
+
+function normaliseComparisonMember(value: unknown, fallbackCategory = "general"): StyleComparisonMemberView | null {
+  const record = asRecord(value);
+  const ruleId = firstString(record?.ruleId);
+  const text = firstString(record?.text);
+  if (!record || !ruleId || !text) return null;
+  return {
+    sourceId: firstString(record.sourceId) ?? "",
+    sourceName: firstString(record.sourceName) ?? "未命名来源",
+    jobId: firstString(record.jobId),
+    ruleId,
+    text,
+    evidence: firstString(record.evidence) ?? "未提供证据",
+    category: firstString(record.category) ?? fallbackCategory,
+  };
+}
+
+function normaliseComparisonMembers(value: unknown, fallbackCategory?: string): StyleComparisonMemberView[] {
+  return firstArray(value).map((item) => normaliseComparisonMember(item, fallbackCategory)).filter((item): item is StyleComparisonMemberView => item !== null);
+}
+
+function normaliseComparison(value: unknown): StyleComparisonView | null {
+  const record = asRecord(value);
+  if (!record || !Array.isArray(record.sources)) return null;
+  return {
+    sources: record.sources.flatMap((item) => {
+      const source = asRecord(item);
+      const sourceId = firstString(source?.sourceId);
+      if (!source || !sourceId) return [];
+      return [{
+        sourceId,
+        sourceName: firstString(source.sourceName) ?? "未命名来源",
+        jobId: firstString(source.jobId),
+        adoptedRuleIds: stringList(source.adoptedRuleIds),
+        adoptedSampleIds: stringList(source.adoptedSampleIds),
+      }];
+    }),
+    common: firstArray(record.common).flatMap((item) => {
+      const group = asRecord(item);
+      const category = firstString(group?.category) ?? "general";
+      const members = normaliseComparisonMembers(group?.members, category);
+      return group && members.length > 0 ? [{ category, text: firstString(group.text) ?? members[0]!.text, members }] : [];
+    }),
+    differences: firstArray(record.differences).flatMap((item) => {
+      const entry = asRecord(item);
+      const rules = normaliseComparisonMembers(entry?.rules);
+      return entry && rules.length > 0 ? [{ sourceId: firstString(entry.sourceId) ?? "", sourceName: firstString(entry.sourceName) ?? "未命名来源", rules }] : [];
+    }),
+    nonTransferable: normaliseComparisonMembers(record.nonTransferable),
+    statistics: firstArray(record.statistics).flatMap((item) => {
+      const entry = asRecord(item);
+      const sourceId = firstString(entry?.sourceId);
+      if (!entry || !sourceId) return [];
+      const metrics = Object.fromEntries(Object.entries(asRecord(entry.metrics) ?? {})
+        .filter((pair): pair is [string, number] => typeof pair[1] === "number" && Number.isFinite(pair[1])));
+      return [{
+        sourceId,
+        sourceName: firstString(entry.sourceName) ?? "未命名来源",
+        jobId: firstString(entry.jobId),
+        metrics,
+        baselineRules: normaliseComparisonMembers(entry.baselineRules),
+      }];
+    }),
+  };
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  const a = new Set(left);
+  return a.size === new Set(right).size && right.every((id) => a.has(id));
 }
 
 const METRIC_LABELS: Record<string, string> = {
@@ -280,6 +402,11 @@ function normaliseBatches(value: unknown): StyleDistillationBatchView[] {
       ruleCount: firstArray(batch.ruleIds).length,
       issues: firstArray(batch.issues).filter((issue): issue is string => typeof issue === "string"),
       explanation: what ? { what, next: firstString(explanation?.next) ?? undefined } : null,
+      rejectedRules: firstArray(batch.rejectedRules).flatMap((entry) => {
+        const rule = asRecord(entry);
+        const text = firstString(rule?.text);
+        return text ? [{ text, evidence: firstString(rule?.evidence) ?? "", reason: firstString(rule?.reason) ?? "" }] : [];
+      }),
     } satisfies StyleDistillationBatchView];
   });
 }
@@ -440,6 +567,10 @@ function BookStyleDistillationWorkspace({
   const [skillExport, setSkillExport] = useState<StyleSkillExportResponse | null>(null);
   const [skillError, setSkillError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [comparison, setComparison] = useState<StyleComparisonView | null>(null);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  /** 比较视图里「其他来源」任务的规则选择（按任务 ID）；当前任务的选择仍记在 review.rules 上。 */
+  const [otherSelections, setOtherSelections] = useState<Record<string, string[]>>({});
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -462,6 +593,7 @@ function BookStyleDistillationWorkspace({
       job: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}`,
       resume: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/resume`,
       adopt: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/adopt`,
+      compare: `/api/books/${encodedBookId}/style/distillations/compare`,
       skillExport: `/api/books/${encodedBookId}/style/skill-export`,
     };
   }, [bookId]);
@@ -544,6 +676,7 @@ function BookStyleDistillationWorkspace({
       const result = await waitForJob(resumed);
       if (!mounted.current) return;
       setReview(result);
+      void loadComparison(reviewJobId.current);
       setStage("review");
     } catch (cause) {
       if (!mounted.current) return;
@@ -555,6 +688,51 @@ function BookStyleDistillationWorkspace({
     } finally {
       if (mounted.current) setBusy(false);
     }
+  }
+
+  /**
+   * 读取多来源比较（每个来源取最新任务）。其他来源的选择从它们上次的采纳记录初始化，
+   * 这样重新采纳时不会把作者之前确认过的条目丢掉。读取失败时退回单来源审阅。
+   */
+  async function loadComparison(currentJobId: string | null) {
+    try {
+      const view = normaliseComparison(await fetchJson<unknown>(paths.compare));
+      if (!mounted.current) return;
+      setCompareError(null);
+      setComparison(view);
+      setOtherSelections(Object.fromEntries((view?.sources ?? [])
+        .filter((source) => source.jobId && source.jobId !== currentJobId)
+        .map((source) => [source.jobId!, [...source.adoptedRuleIds]])));
+    } catch (cause) {
+      if (!mounted.current) return;
+      setComparison(null);
+      setCompareError(errorMessage(cause, "多来源比较读取失败。"));
+    }
+  }
+
+  function isMemberConfirmed(member: StyleComparisonMemberView): boolean {
+    if (!member.jobId) return false;
+    if (member.jobId === reviewJobId.current) return review?.rules.some((rule) => rule.id === member.ruleId && rule.status === "confirmed") ?? false;
+    return otherSelections[member.jobId]?.includes(member.ruleId) ?? false;
+  }
+
+  function toggleMember(member: StyleComparisonMemberView) {
+    if (busy || !review || !member.jobId) return;
+    if (member.jobId === reviewJobId.current) {
+      const index = review.rules.findIndex((rule) => rule.id === member.ruleId);
+      if (index >= 0) toggleEntry("rules", index);
+      return;
+    }
+    const jobKey = member.jobId;
+    setOtherSelections((current) => {
+      const selected = current[jobKey] ?? [];
+      return {
+        ...current,
+        [jobKey]: selected.includes(member.ruleId) ? selected.filter((id) => id !== member.ruleId) : [...selected, member.ruleId],
+      };
+    });
+    setNotice(null);
+    setError(null);
   }
 
   function toggleEntry(kind: "rules" | "samples", index: number) {
@@ -585,17 +763,38 @@ function BookStyleDistillationWorkspace({
     setError(null);
     setNotice(null);
     try {
-      const response = await fetchJson<unknown>(paths.adopt(reviewJobId.current), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          expectedRevision: id,
-          confirmedRuleIds,
-          confirmedSampleIds,
-        }),
+      // 多来源时，其他来源中选择有变化的任务也各走一次同一个采纳接口（与 style.distill_adopt 共用采纳函数）。
+      // 每次采纳都要带上一次返回的预设版本，按顺序串行，任何一次冲突都会停下。
+      const otherAdoptions = (comparison?.sources ?? []).flatMap((source) => {
+        if (!source.jobId || source.jobId === reviewJobId.current) return [];
+        const selected = otherSelections[source.jobId] ?? [];
+        return sameIds(selected, source.adoptedRuleIds)
+          ? []
+          : [{ jobId: source.jobId, ruleIds: selected, sampleIds: source.adoptedSampleIds }];
       });
+      let revision: string | null = id;
+      let response: unknown = null;
+      for (const request of [
+        { jobId: reviewJobId.current, ruleIds: confirmedRuleIds, sampleIds: confirmedSampleIds },
+        ...otherAdoptions,
+      ]) {
+        response = await fetchJson<unknown>(paths.adopt(request.jobId), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            expectedRevision: revision,
+            confirmedRuleIds: request.ruleIds,
+            confirmedSampleIds: request.sampleIds,
+          }),
+        });
+        revision = firstString(asRecord(response)?.revision) ?? revision;
+      }
       if (!mounted.current) return;
-      setNotice("已采纳到本书文风预设。作品专属内容仍保留在来源包中，不会进入通用写法指南。");
+      setReview((current) => current ? { ...current, expectedRevision: revision } : current);
+      if (otherAdoptions.length > 0) void loadComparison(reviewJobId.current);
+      setNotice(otherAdoptions.length > 0
+        ? `已采纳到本书文风预设（含另外 ${otherAdoptions.length} 个来源的选择变化）。作品专属内容仍保留在来源包中，不会进入通用写法指南。`
+        : "已采纳到本书文风预设。作品专属内容仍保留在来源包中，不会进入通用写法指南。");
       setAdopted(true);
       setSkillExport(null);
       setSkillError(null);
@@ -659,6 +858,9 @@ function BookStyleDistillationWorkspace({
     setSkillError(null);
     setCopied(false);
     setProgressBatches([]);
+    setComparison(null);
+    setCompareError(null);
+    setOtherSelections({});
     setStage("processing");
     try {
       const created = await fetchJson<unknown>(paths.jobs, {
@@ -677,6 +879,7 @@ function BookStyleDistillationWorkspace({
       const result = await waitForJob(created);
       if (!mounted.current) return;
       setReview(result);
+      void loadComparison(reviewJobId.current);
       setStage("review");
     } catch (cause) {
       if (!mounted.current) return;
@@ -688,6 +891,11 @@ function BookStyleDistillationWorkspace({
   }
 
   const hasReviewItems = Boolean(review && (review.rules.length || review.samples.length || Object.keys(review.fingerprint).length));
+  // 来源 ≥2 时并列「共同技法 / 来源差异 / 不应迁移」三列，替代单来源的写法规则列；单来源保持原样。
+  // 比较只取每个来源的最新任务；当前审阅的不是本来源最新任务时，它的规则不在比较里，退回单来源审阅。
+  const multiSource = comparison !== null && comparison.sources.length >= 2
+    && comparison.sources.some((source) => source.jobId === reviewJobId.current);
+  const otherSelectedCount = Object.values(otherSelections).reduce((sum, ids) => sum + ids.length, 0);
 
   return (
     <section aria-label="文风自动蒸馏工作面" className="min-w-0 space-y-4">
@@ -859,14 +1067,26 @@ function BookStyleDistillationWorkspace({
               </CardContent>
             </Card>
           )}
+          {compareError && <p className="text-xs text-muted-foreground">多来源比较暂不可用（{compareError}），以下按单个来源审阅。</p>}
+          {multiSource && comparison && (
+            <SourceComparison
+              comparison={comparison}
+              currentJobId={reviewJobId.current}
+              disabled={busy}
+              isConfirmed={isMemberConfirmed}
+              onToggle={toggleMember}
+            />
+          )}
           {hasReviewItems ? (
-            <div className="grid gap-4 lg:grid-cols-3">
-              <Card>
-                <CardHeader><CardTitle>写法规则</CardTitle><CardDescription>确认后按规则 ID 发送。作品专属内容可以确认，但不会进入通用指南。</CardDescription></CardHeader>
-                <CardContent className="space-y-3">
-                  {review.rules.length > 0 ? review.rules.map((entry, index) => <ReviewEntry key={entry.id} entry={entry} disabled={busy} onToggle={() => toggleEntry("rules", index)} />) : <EmptyState text="暂无可审阅的写法规则。" />}
-                </CardContent>
-              </Card>
+            <div className={`grid gap-4 ${multiSource ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
+              {!multiSource && (
+                <Card>
+                  <CardHeader><CardTitle>写法规则</CardTitle><CardDescription>确认后按规则 ID 发送。作品专属内容可以确认，但不会进入通用指南。</CardDescription></CardHeader>
+                  <CardContent className="space-y-3">
+                    {review.rules.length > 0 ? review.rules.map((entry, index) => <ReviewEntry key={entry.id} entry={entry} disabled={busy} onToggle={() => toggleEntry("rules", index)} />) : <EmptyState text="暂无可审阅的写法规则。" />}
+                  </CardContent>
+                </Card>
+              )}
               <Card>
                 <CardHeader><CardTitle>范文</CardTitle><CardDescription>范文保留来源和场景证据，待审范文不会随采纳请求发送。</CardDescription></CardHeader>
                 <CardContent className="space-y-3">
@@ -891,7 +1111,10 @@ function BookStyleDistillationWorkspace({
               <CardDescription>只发送已确认项目。作品专属项目可以确认并保存在来源证据中，但不会进入本书通用写法指南；待审项目不会被选中。</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">已确认：{confirmedRuleIds.length} 条规则，{confirmedSampleIds.length} 条范文</p>
+              <p className="text-xs text-muted-foreground">
+                已确认：{confirmedRuleIds.length} 条规则，{confirmedSampleIds.length} 条范文
+                {multiSource ? `；其他来源 ${otherSelectedCount} 条规则（选择有变化的来源会一并采纳）` : ""}
+              </p>
               <Button type="button" disabled={busy || conflict || !hasReviewItems} onClick={() => void adopt()}>
                 {busy && <Loader2 className="size-4 animate-spin" />}
                 {busy ? "采纳中…" : "采纳到本书文风预设"}
@@ -949,11 +1172,15 @@ function chapterSpan(numbers: readonly number[]): string {
 function BatchProgress({ batches }: { batches: readonly StyleDistillationBatchView[] }) {
   const finished = batches.filter((batch) => batch.status === "done" || batch.status === "failed").length;
   const failed = batches.filter((batch) => batch.status === "failed").length;
+  const rejected = batches.reduce((sum, batch) => sum + batch.rejectedRules.length, 0);
   const percent = batches.length > 0 ? Math.round((finished / batches.length) * 100) : 0;
   return (
     <div className="space-y-2" aria-label="批次进度">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>已结束 {finished}/{batches.length} 批{failed > 0 ? `，其中 ${failed} 批失败` : ""}</span>
+        <span>
+          已结束 {finished}/{batches.length} 批{failed > 0 ? `，其中 ${failed} 批失败` : ""}
+          {rejected > 0 ? `；${rejected} 条模型规则因证据未在原文找到被丢弃` : ""}
+        </span>
         <span>{percent}%</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -965,10 +1192,27 @@ function BatchProgress({ batches }: { batches: readonly StyleDistillationBatchVi
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{chapterSpan(batch.chapterNumbers)}</span>
               <Badge variant={batch.status === "failed" ? "destructive" : batch.status === "done" ? "secondary" : "outline"}>{BATCH_STATUS_LABELS[batch.status]}</Badge>
+              {batch.status === "done" && batch.explanation && <Badge variant="outline">需关注</Badge>}
               {batch.status === "done" && <span className="text-xs text-muted-foreground">新增 {batch.ruleCount} 条待审规则</span>}
             </div>
             {batch.explanation && (
-              <p className="mt-1 text-xs text-destructive">失败原因：{batch.explanation.what}{batch.explanation.next ? ` 建议：${batch.explanation.next}` : ""}</p>
+              <p className={`mt-1 text-xs ${batch.status === "failed" ? "text-destructive" : "text-foreground"}`}>
+                {batch.status === "failed" ? "失败原因" : "需要关注"}：{batch.explanation.what}{batch.explanation.next ? ` 建议：${batch.explanation.next}` : ""}
+              </p>
+            )}
+            {batch.rejectedRules.length > 0 && (
+              <details className="mt-1 text-xs">
+                <summary className="cursor-pointer text-muted-foreground">查看被丢弃的规则（{batch.rejectedRules.length} 条）</summary>
+                <ul className="mt-1 space-y-1 pl-2">
+                  {batch.rejectedRules.map((rule, index) => (
+                    <li key={`${batch.id}-rejected-${index}`} className="rounded border border-border/50 p-1.5">
+                      <p>{rule.text}</p>
+                      <p className="text-muted-foreground">模型给的证据：{rule.evidence}</p>
+                      {rule.reason && <p className="text-muted-foreground">原因：{rule.reason}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
             {batch.issues.length > 0 && (
               <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
@@ -979,6 +1223,188 @@ function BatchProgress({ batches }: { batches: readonly StyleDistillationBatchVi
         ))}
       </ul>
     </div>
+  );
+}
+
+function ComparisonMemberRow({
+  member,
+  current,
+  confirmed,
+  disabled,
+  onToggle,
+}: {
+  member: StyleComparisonMemberView;
+  current: boolean;
+  confirmed: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="space-y-1 rounded-md border border-border/60 bg-background/60 p-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant="outline">出处：{member.sourceName}</Badge>
+        {current && <Badge variant="secondary">本次</Badge>}
+        <Badge variant={confirmed ? "default" : "outline"}>{confirmed ? "已确认" : "待审"}</Badge>
+      </div>
+      <p className="whitespace-pre-wrap break-words text-sm leading-6">{member.text}</p>
+      <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">证据：{member.evidence}</p>
+      <Button
+        type="button"
+        size="xs"
+        variant={confirmed ? "outline" : "ghost"}
+        disabled={disabled || !member.jobId}
+        aria-label={`${confirmed ? "撤回确认" : "确认"}（${member.sourceName}）：${member.text}`}
+        onClick={onToggle}
+      >
+        {confirmed ? <Check className="size-3" /> : null}
+        {confirmed ? "撤回确认" : "确认这条"}
+      </Button>
+    </div>
+  );
+}
+
+function SourceComparison({
+  comparison,
+  currentJobId,
+  disabled,
+  isConfirmed,
+  onToggle,
+}: {
+  comparison: StyleComparisonView;
+  currentJobId: string | null;
+  disabled: boolean;
+  isConfirmed: (member: StyleComparisonMemberView) => boolean;
+  onToggle: (member: StyleComparisonMemberView) => void;
+}) {
+  const row = (member: StyleComparisonMemberView) => (
+    <ComparisonMemberRow
+      key={`${member.jobId ?? member.sourceId}-${member.ruleId}`}
+      member={member}
+      current={member.jobId === currentJobId}
+      confirmed={isConfirmed(member)}
+      disabled={disabled}
+      onToggle={() => onToggle(member)}
+    />
+  );
+  return (
+    <section aria-label="多来源比较" className="space-y-2">
+      <div>
+        <p className="text-sm font-medium">多来源比较：{comparison.sources.map((source) => source.sourceName).join("、")}</p>
+        <p className="text-xs text-muted-foreground">
+          每个来源取最近一次蒸馏。按规则文本相似度与类别自动分组，不调用模型；分组只帮你对照，是否采纳仍逐条确认。
+        </p>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card aria-label="共同技法">
+          <CardHeader>
+            <CardTitle>共同技法（{comparison.common.length}）</CardTitle>
+            <CardDescription>至少两个来源都有的可迁移写法，最值得优先确认。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {comparison.common.length > 0 ? comparison.common.map((group, index) => (
+              <div key={`common-${index}`} className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="secondary">{ruleCategoryLabel(group.category)}</Badge>
+                  <Badge variant="outline">{new Set(group.members.map((member) => member.sourceId)).size} 个来源</Badge>
+                </div>
+                <p className="text-sm font-medium leading-6">{group.text}</p>
+                <div className="space-y-2">{group.members.map(row)}</div>
+              </div>
+            )) : <EmptyState text="各来源之间没有足够相似的可迁移写法。" />}
+          </CardContent>
+        </Card>
+        <Card aria-label="来源差异">
+          <CardHeader>
+            <CardTitle>来源差异（{comparison.differences.reduce((sum, entry) => sum + entry.rules.length, 0)}）</CardTitle>
+            <CardDescription>只在一个来源出现的可迁移写法，按来源分列。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {comparison.differences.length > 0 ? comparison.differences.map((entry) => (
+              <div key={`diff-${entry.sourceId}`} className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">仅见于「{entry.sourceName}」</p>
+                {entry.rules.map((member) => (
+                  <div key={`diff-${entry.sourceId}-${member.ruleId}`} className="space-y-1">
+                    <Badge variant="outline">{ruleCategoryLabel(member.category)}</Badge>
+                    {row(member)}
+                  </div>
+                ))}
+              </div>
+            )) : <EmptyState text="没有只属于单个来源的可迁移写法。" />}
+          </CardContent>
+        </Card>
+        <Card aria-label="不应迁移">
+          <CardHeader>
+            <CardTitle>不应迁移（{comparison.nonTransferable.length}）</CardTitle>
+            <CardDescription>标为作品专属的条目。可以确认保存为来源证据，但不会进入本书通用写法指南。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {comparison.nonTransferable.length > 0 ? comparison.nonTransferable.map((member) => (
+              <div key={`non-${member.jobId ?? member.sourceId}-${member.ruleId}`} className="space-y-1">
+                <Badge variant="outline">{ruleCategoryLabel(member.category)} · 作品专属</Badge>
+                {row(member)}
+              </div>
+            )) : <EmptyState text="没有标为作品专属的条目。" />}
+          </CardContent>
+        </Card>
+      </div>
+      {comparison.statistics.length > 0 && <SourceStatistics statistics={comparison.statistics} row={row} />}
+    </section>
+  );
+}
+
+/**
+ * 各来源统计对比：数值按来源并列，基线规则按来源分列。不合并、不给结论——
+ * 这些规则由统计数值套模板生成，相同文案不代表相同写法。
+ */
+function SourceStatistics({
+  statistics,
+  row,
+}: {
+  statistics: StyleComparisonView["statistics"];
+  row: (member: StyleComparisonMemberView) => ReactNode;
+}) {
+  const metricKeys = Object.keys(METRIC_LABELS).filter((key) => statistics.some((entry) => key in entry.metrics));
+  return (
+    <Card aria-label="各来源统计对比">
+      <CardHeader>
+        <CardTitle>各来源统计对比</CardTitle>
+        <CardDescription>
+          统计指纹与由它生成的基线规则，按来源原样并列，不参与上面的合并，也不代表各来源写法一致或不一致。数值只作写后对照，不当成机械配额。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {metricKeys.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[32rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th scope="col" className="py-1.5 pr-3 font-medium text-muted-foreground">指标</th>
+                  {statistics.map((entry) => <th key={entry.sourceId} scope="col" className="py-1.5 pr-3 font-medium">{entry.sourceName}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {metricKeys.map((key) => (
+                  <tr key={key} className="border-b border-border/50">
+                    <th scope="row" className="py-1.5 pr-3 text-left font-normal text-muted-foreground">{metricLabel(key)}</th>
+                    {statistics.map((entry) => (
+                      <td key={entry.sourceId} className="py-1.5 pr-3 tabular-nums">{key in entry.metrics ? formatValue(entry.metrics[key]) : "—"}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <EmptyState text="各来源都没有统计指纹。" />}
+        <div className="grid gap-4 lg:grid-cols-3">
+          {statistics.map((entry) => (
+            <div key={entry.sourceId} className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">「{entry.sourceName}」的基线规则</p>
+              {entry.baselineRules.length > 0 ? entry.baselineRules.map(row) : <EmptyState text="没有基线规则。" />}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -2,7 +2,7 @@
  * 关系图谱路由（T4.4）：按实体 id 查关系，数据只来自实体索引（entity-index.ts）。
  *
  *   GET /api/books/:bookId/narrative-memory/entity-graph/entities            实体列表与索引概况
- *   GET …/entity-graph/network?focus=&hops=1|2&chapter=                     焦点人物 1–2 跳网络
+ *   GET …/entity-graph/network?focus=&hops=1|2&chapter=                     焦点人物 1–2 跳网络（focus 为实体 id 或经纬条目 id）
  *   GET …/entity-graph/relations?entity=|entryId=&chapter=                  某实体的当前关系与关系史（实体抽屉）
  *   GET …/entity-graph/pair?a=&b=&chapter=                                  两实体的关系史、趋势与共同关系人
  *   GET …/entity-graph/path?from=&to=&chapter=                              两实体之间的最短关系路径
@@ -126,11 +126,15 @@ export function createEntityGraphRouter(options: EntityGraphRouterOptions = {}):
     if (empty) return c.json({ ...empty, stats: stats(data) });
 
     const requested = c.req.query("focus")?.trim();
-    if (requested && !data.entities.some((entity) => entity.id === requested)) {
+    // focus 同时接受实体 id 与经纬条目 id（与 relations?entryId= 口径一致）：按索引里记录的条目映射找实体，不手拼 id。
+    const requestedEntity = requested
+      ? data.entities.find((entity) => entity.id === requested) ?? data.entities.find((entity) => entity.entryId === requested)
+      : undefined;
+    if (requested && !requestedEntity) {
       // 焦点可能在重建索引后失效（条目被删 / 同名跳过）：给说明，界面据此退回默认焦点。
       return c.json({ ...emptyBody(data, "entity-not-found"), stats: stats(data), defaultFocusId: defaultFocusEntity(data, chapter) });
     }
-    const focusId = requested || defaultFocusEntity(data, chapter);
+    const focusId = requestedEntity?.id ?? defaultFocusEntity(data, chapter);
     if (!focusId) {
       return c.json({ ...emptyBody(data, "no-relations-at-chapter", chapter !== undefined ? { chapter } : {}), stats: stats(data) });
     }

@@ -23,6 +23,7 @@ import { describeNextChapterSuggestion, storylineKindLabel as kindLabel } from "
 import { useNextChapterPlan } from "./use-next-chapter-plan";
 import { ChapterTimelinePanel } from "./ChapterTimelinePanel";
 import type { ForeshadowDebt } from "../../engine/narrative-taxonomy/foreshadow-debts.js";
+import { toWireToolName } from "../../engine/workflows/run-brief";
 
 export interface NextChapterPanelProps {
   readonly bookId: string;
@@ -113,7 +114,7 @@ export function NextChapterPanel({
   const scheduleHook = useCallback((debt: ForeshadowDebt) => {
     if (!plan) return;
     void messageNarrator(
-      `请把伏笔「${debt.title}」（第 ${debt.plantedChapter ?? "?"} 章埋下，已悬置 ${debt.chaptersPending ?? "?"} 章）排进第 ${plan.nextChapter} 章的写作计划：在 scene.spec 里安排推进或回收节拍，写作上下文里确保它在场。数据以伏笔条目为准，不要改写条目内容。`,
+      `请把伏笔「${debt.title}」（第 ${debt.plantedChapter ?? "?"} 章埋下，已悬置 ${debt.chaptersPending ?? "?"} 章）排进第 ${plan.nextChapter} 章的写作计划：在 ${toWireToolName("scene.spec")} 里安排推进或回收节拍，写作上下文里确保它在场。数据以伏笔条目为准，不要改写条目内容。`,
     );
   }, [messageNarrator, plan]);
 
@@ -280,7 +281,7 @@ export function NextChapterPanel({
                 disabled={!onSendToNarrator}
                 onClick={() =>
                   void messageNarrator(
-                    `按下一章建议推进第 ${plan.nextChapter} 章：${plan.suggestions.map((s) => `${kindLabel(s.laneKind)}「${s.laneTitle}」推进一拍（${s.reasonText}）`).join("；")}${plan.hookPlan.length > 0 ? `；顺手回收或推进伏笔「${plan.hookPlan[0]!.debt.title}」` : ""}。先经 write.preflight 检查 就绪，再 scene.spec 排蓝图，最后 pipeline.write 写章；数据以快照为准，编排以写作技能为准。`,
+                    `按下一章建议推进第 ${plan.nextChapter} 章：${plan.suggestions.map((s) => `${kindLabel(s.laneKind)}「${s.laneTitle}」推进一拍（${s.reasonText}）`).join("；")}${plan.hookPlan.length > 0 ? `；顺手回收或推进伏笔「${plan.hookPlan[0]!.debt.title}」` : ""}。先经 ${toWireToolName("write.preflight")} 检查 就绪，再 ${toWireToolName("scene.spec")} 排蓝图，最后 ${toWireToolName("pipeline.write")} 写章；数据以快照为准，编排以写作技能为准。`,
                   )
                 }
                 data-testid="next-send-suggestion"

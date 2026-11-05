@@ -96,6 +96,7 @@ function progressLine(job: StyleDistillationJob): string {
   const parts = [`模型批次 ${summary.done + summary.failed}/${summary.total} 已结束`];
   if (summary.failed > 0) parts.push(`${summary.failed} 批失败`);
   if (summary.pending > 0) parts.push(`${summary.pending} 批待处理`);
+  if (summary.rejectedRuleCount > 0) parts.push(`${summary.rejectedRuleCount} 条模型规则因证据未在原文找到被丢弃`);
   return parts.join("，");
 }
 

@@ -31,12 +31,16 @@ import {
 import { z } from "zod/v4";
 import {
 	contextIndexCardExtension,
+	explainWorkerWorkflowDenial,
 	explainWorkflowDenial,
 	explainWorkflowLookupFailure,
 	findActiveWorkflowRun,
 	isToolVisibleDuringRun,
+	isToolVisibleForWorker,
 	lookupActiveWorkflowRun,
+	resolveWorkerWorkflowGate,
 	workflowPromptExtension,
+	workflowWorkerExtension,
 	writingInjectionPreserveExtension,
 } from "./workflow-run-gate";
 
@@ -231,6 +235,22 @@ function defaultBindingDiagnosticSink(event: {
 
 const RUNTIME_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u;
 
+/**
+ * 工具结果里写给模型看的说明性字段：出口处把其中的目录工具名换成线上名。
+ * 与 explanation 契约（what / why / next / action / suggestedAction）和顶层 summary / error 对齐。
+ */
+const MODEL_FACING_RESULT_TEXT_KEYS: ReadonlySet<string> = new Set([
+	"summary",
+	"error",
+	"message",
+	"what",
+	"why",
+	"next",
+	"action",
+	"suggestedAction",
+	"hint",
+]);
+
 type RuntimeToolNameAlias = Readonly<{
 	canonical: string;
 	wire: string;
@@ -350,19 +370,34 @@ export class NovelRuntimeHostAdapter {
 		// 每趟对话开始时 Runtime 都会重新调用这里，工序推进后下一趟即按新工序生效。
 		// 这里只决定「本趟露出哪些」：Runtime 把返回的工具名当可见性过滤，会话启用了哪些
 		// 小说工具仍由套路模式与 /load 决定，收窄不会抹掉作者的手动加载。
-		const run = findActiveWorkflowRun(narratorId, boundBookId(context));
-		const workflowExtension = run ? workflowPromptExtension(run) : null;
+		//
+		// 工人侧按书判定：工人没有自己的运行行，领导者那条路查不到它，照抄等于不设防。
+		const bookId = boundBookId(context);
+		const workerGate = await resolveWorkerWorkflowGate(narratorId, bookId);
+		const controllingRun = workerGate.kind === "controlled" ? workerGate.run : null;
+		const run = controllingRun ?? findActiveWorkflowRun(narratorId, bookId);
+		const workflowExtension = controllingRun
+			? workflowWorkerExtension(controllingRun)
+			: run
+				? workflowPromptExtension(run)
+				: null;
 		// 资料索引卡（T4.7）：会话压缩折叠历史时它随本趟重建，模型随时可以按卡重取原文。
-		const indexCardExtension = contextIndexCardExtension(boundBookId(context));
+		const indexCardExtension = contextIndexCardExtension(bookId);
 		// 写作注入保留件（T4.7 尾巴）：最近一次写作注入的原文快照同通道重建，压缩后案头仍有原件。
-		const preserveExtension = await writingInjectionPreserveExtension(boundBookRoot(context), boundBookId(context));
-		const visibleTools = run
-			? resolved.tools.filter((tool) => isToolVisibleDuringRun(
-				run,
+		const preserveExtension = await writingInjectionPreserveExtension(boundBookRoot(context), bookId);
+		const visibleTools = controllingRun
+			? resolved.tools.filter((tool) => isToolVisibleForWorker(
+				workerGate,
 				tool.definition.name,
 				toRuntimeRisk(tool.definition.risk),
 			))
-			: resolved.tools;
+			: run
+				? resolved.tools.filter((tool) => isToolVisibleDuringRun(
+					run,
+					tool.definition.name,
+					toRuntimeRisk(tool.definition.risk),
+				))
+				: resolved.tools;
 
 		// Runtime later validates the final provider-facing name with
 		// /^[A-Za-z0-9_-]{1,64}$/, so the product boundary must expose wire names
@@ -440,6 +475,26 @@ export class NovelRuntimeHostAdapter {
 			translated = translated.replaceAll(canonical, wire);
 		}
 		return translated;
+	}
+
+	/**
+	 * 工具结果的出口翻译：handler 的说明文字（summary / explanation 的 next、action 等）写的是目录名，
+	 * 这里统一换成模型拿到的线上名，免得模型照着去调一个不存在的点号工具。
+	 * 只翻说明性字段（MODEL_FACING_RESULT_TEXT_KEYS），data 里的标识值（source、renderer、id 等）
+	 * 原样保留：它们要被模型原样回传，或被前端结果卡片按值匹配。
+	 */
+	private toModelFacingResult<T extends { readonly summary?: string }>(result: T): T {
+		const translate = (value: unknown, key: string | null): unknown => {
+			if (typeof value === "string") {
+				return key !== null && MODEL_FACING_RESULT_TEXT_KEYS.has(key) ? this.toModelFacingText(value) : value;
+			}
+			if (Array.isArray(value)) return value.map((item) => translate(item, key));
+			if (!value || typeof value !== "object") return value;
+			return Object.fromEntries(
+				Object.entries(value as Record<string, unknown>).map(([childKey, child]) => [childKey, translate(child, childKey)]),
+			);
+		};
+		return translate(result, null) as T;
 	}
 
 	toolDefinitions(): ToolDefinition[] {
@@ -538,7 +593,33 @@ export class NovelRuntimeHostAdapter {
 
 		// 创作工作流的权威约束：每次调用都查，本工序不允许的写入直接拒绝并说明原因。
 		// 运行状态读不出来时对写类 fail-closed（可见性那侧仍按「没有运行」处理）。
-		const lookup = lookupActiveWorkflowRun(narratorId, boundBookId(context));
+		const bookId = boundBookId(context);
+		const workerGate = await resolveWorkerWorkflowGate(narratorId, bookId);
+		if (workerGate.kind === "unreadable") {
+			const denial = explainWorkflowLookupFailure(canonicalToolName, runtimeRisk);
+			if (denial) {
+				return errorResult(
+					"workflow-state-unavailable",
+					this.toModelFacingText(`${denial.what}。${denial.why}。${denial.action}。`),
+					toolName,
+					{ ...runtimeMetadata, explanation: denial },
+				);
+			}
+		}
+		// 工人：本运行在跑期间不能直接写这本书。权威写入与工序产物只走领导者的叙述者，
+		// 否则派出去的活可以绕过工序闸门把内容直接写进书里。
+		if (workerGate.kind === "controlled") {
+			const denial = explainWorkerWorkflowDenial(workerGate.run, canonicalToolName, runtimeRisk);
+			if (denial) {
+				return errorResult(
+					"workflow-worker-disallowed",
+					this.toModelFacingText(`${denial.what}。${denial.why}。${denial.action}。`),
+					toolName,
+					{ ...runtimeMetadata, workflowRunId: workerGate.run.id, explanation: denial },
+				);
+			}
+		}
+		const lookup = lookupActiveWorkflowRun(narratorId, bookId);
 		if (!lookup.ok) {
 			const denial = explainWorkflowLookupFailure(canonicalToolName, runtimeRisk);
 			if (denial) {
@@ -585,7 +666,7 @@ export class NovelRuntimeHostAdapter {
 				...(hostExecution?.generateText ? { generateText: hostExecution.generateText } : {}),
 				...(hostExecution?.emitOutput ? { emitOutput: hostExecution.emitOutput } : {}),
 			};
-			const result = await tool.handler(parsed.data, toolContext);
+			const result = this.toModelFacingResult(await tool.handler(parsed.data, toolContext));
 			return {
 				output: JSON.stringify(result),
 				isError: !result.ok,

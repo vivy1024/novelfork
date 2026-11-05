@@ -53,6 +53,26 @@ const LOCATION_FINDING = {
   },
 };
 
+const SCENE_FINDING = {
+  kind: "scene-dead-acts",
+  severity: "warning" as const,
+  title: "甲 已死亡，第 3 章又在行动",
+  entity: "甲",
+  entityId: "ent:book-1:entry-jia",
+  chapterNumber: 3,
+  evidenceText: "甲一掌拍碎了石桌。",
+  factId: "fact-death",
+  memoryChapter: 2,
+  memoryPredicate: "身亡",
+  memoryValue: "死亡",
+  ignoreKey: { kind: "scene-dead-acts", entityId: "ent:book-1:entry-jia", chapterNumber: 3, factId: "fact-death" },
+  explanation: {
+    whatHappened: "第 2 章记着甲已死亡；第 3 章甲却是动手的一方。",
+    whyItMatters: "没有交代就让人重新出手，会被当成作者忘了前文。",
+    suggestedAction: "核对第 3 章：若是回忆就写清楚，若真复活就补交代。",
+  },
+};
+
 function jsonResponse(body: unknown, init: { status?: number } = {}): Response {
   return new Response(JSON.stringify(body), {
     status: init.status ?? 200,
@@ -75,7 +95,7 @@ function stubBackend(options: {
       method: (init?.method ?? "GET").toUpperCase(),
       body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {},
     });
-    if (url.includes("/narrative-memory/consistency")) return options.consistency();
+    if (/\/narrative-memory\/consistency(\?|$)/u.test(url)) return options.consistency();
     return options.mutation?.() ?? jsonResponse({ summary: "ok" });
   }));
   return calls;
@@ -232,21 +252,63 @@ describe("NarrativeConsistencyPanel", () => {
     expect(screen.getByText(REALM_FINDING.title)).toBeTruthy();
   });
 
-  it("hides a finding locally when marked as a false positive and can bring it back", async () => {
-    stubBackend({
-      consistency: () => jsonResponse({ findings: [REALM_FINDING], summary: "发现 1 处分歧。" }),
+  it("persists「忽略此条」through the backend and offers an undo that restores the finding", async () => {
+    // 假后端按忽略记录决定结果：被忽略的项进 ignored，撤销后回到 findings。
+    let ignoredNow = false;
+    const calls = stubBackend({
+      consistency: () => jsonResponse(ignoredNow
+        ? { findings: [], ignored: [SCENE_FINDING], summary: "未发现纰漏。另有 1 处已被你标为忽略。" }
+        : { findings: [SCENE_FINDING], ignored: [], summary: "发现 1 处可能矛盾。" }),
+      mutation: () => {
+        const last = calls[calls.length - 1]!;
+        ignoredNow = !last.url.endsWith("/remove");
+        return jsonResponse({ summary: "ok" });
+      },
     });
 
     render(<NarrativeConsistencyPanel bookId="book-1" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /标误报/u }));
+    fireEvent.click(await screen.findByRole("button", { name: /忽略此条/u }));
+    await waitFor(() => {
+      expect(calls.some((call) => call.method === "POST")).toBe(true);
+    });
+    const ignore = calls.find((call) => call.method === "POST")!;
+    expect(ignore.url).toBe("/api/books/book-1/narrative-memory/consistency/ignores");
+    // 忽略键原样回传后端给的那份，前端不自己拼。
+    expect(ignore.body).toEqual(SCENE_FINDING.ignoreKey);
 
-    // 会话级隐藏：没有后端调用，列表回到空态但保留恢复入口。
+    // 重新体检后进入空态，保留查看 / 撤销入口。
     const empty = await screen.findByTestId("narrative-consistency-empty");
-    expect(within(empty).getByText(/另有 1 条被你标为误报/u)).toBeTruthy();
+    fireEvent.click(within(empty).getByRole("button", { name: /另有 1 条已被你忽略/u }));
+    const ignoredList = screen.getByTestId("consistency-ignored");
+    fireEvent.click(within(ignoredList).getByRole("button", { name: /撤销忽略/u }));
 
-    fireEvent.click(within(empty).getByRole("button", { name: /显示出来/u }));
-    expect(screen.getByText(REALM_FINDING.title)).toBeTruthy();
+    await waitFor(() => {
+      expect(calls.some((call) => call.url.endsWith("/consistency/ignores/remove"))).toBe(true);
+    });
+    expect(calls.find((call) => call.url.endsWith("/remove"))!.body).toEqual(SCENE_FINDING.ignoreKey);
+    await screen.findByRole("button", { name: /忽略此条/u });
+    expect(screen.queryByTestId("narrative-consistency-empty")).toBeNull();
+  });
+
+  it("renders scene-check findings with the original sentence and both chapter jumps", async () => {
+    stubBackend({
+      consistency: () => jsonResponse({ findings: [SCENE_FINDING], ignored: [], summary: "发现 1 处可能矛盾。" }),
+    });
+    const onJumpToChapter = vi.fn();
+
+    render(<NarrativeConsistencyPanel bookId="book-1" onJumpToChapter={onJumpToChapter} />);
+
+    await screen.findByText(SCENE_FINDING.title);
+    expect(screen.getByText("死亡 / 离场后又行动")).toBeTruthy();
+    expect(within(screen.getByTestId("consistency-evidence")).getByText(/甲一掌拍碎了石桌/u)).toBeTruthy();
+    expect(screen.getByText(SCENE_FINDING.explanation.suggestedAction)).toBeTruthy();
+    // 场景校验不和经纬比，不提供「纠正为」。
+    expect(screen.queryByRole("button", { name: /纠正为/u })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /看第 3 章/u }));
+    fireEvent.click(screen.getByRole("button", { name: /看第 2 章/u }));
+    expect(onJumpToChapter.mock.calls).toEqual([[3], [2]]);
   });
 
   it("wires chapter and jingwei jumps to the workbench handlers", async () => {

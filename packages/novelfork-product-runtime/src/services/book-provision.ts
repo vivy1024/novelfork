@@ -14,7 +14,6 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
 	AppError,
-	chapters,
 	db as runtimeDb,
 	deleteProjectById,
 	FOLLOW_DEFAULT_MODEL,
@@ -176,9 +175,12 @@ export type GuidedSetupResult = {
 };
 
 const READY_STATE: ProvisionState = "ready";
-const ROOT_CHAPTER_TITLE = "小说主线";
-const NOVELIST_PROMPT =
-	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 write.preflight 拿到本章写前召回包，再用 scene.spec 建立蓝图，按召回包写好正文后用 pipeline.write 提交；它会执行本书的字数、预设、节拍和审校治理。没有可用文本模型时必须如实说明阻塞，绝不能用 chapter.write 写入短文本充当新章节。chapter.write 仅用于覆盖已存在的完整章节，局部改写使用 rewrite.apply；所有写入都遵守 Runtime 权限确认。通用文件、命令、搜索等工具可以正常使用；但写章节正文请用 chapter.write / pipeline.write，改设定请用 lore.* 工具，这样字数、结算和审计才会正确记录。";
+/**
+ * 产品叙述者的系统提示词。工具名写模型实际拿到的线上名（点换下划线，见 adapters/runtime-host-adapter
+ * 的 toRuntimeToolName）：系统提示词不经过工具名翻译，写点号名模型对不上号。有测试核对。
+ */
+export const NOVELIST_PROMPT =
+	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 write_preflight 拿到本章写前召回包，再用 scene_spec 建立蓝图，按召回包写好正文后用 pipeline_write 提交；它会执行本书的字数、预设、节拍和审校治理。没有可用文本模型时必须如实说明阻塞，绝不能用 chapter_write 写入短文本充当新章节。chapter_write 仅用于覆盖已存在的完整章节，局部改写使用 rewrite_apply；所有写入都遵守 Runtime 权限确认。通用文件、命令、搜索等工具可以正常使用；但写章节正文请用 chapter_write / pipeline_write，改设定请用 lore_* 工具，这样字数、结算和审计才会正确记录。用与作者相同的语言回复；书的语言为中文时一律用中文。";
 
 export type RuntimeEntityCapabilities = {
 	read: boolean;
@@ -205,6 +207,8 @@ export type ProductBookSummary = {
   platform?: "tomato" | "feilu" | "qidian" | "other";
   chapterWordCount?: number;
   language?: "zh" | "en";
+  /** 旧稿导入进行中（未点「完成导入」）的任务 ID。 */
+  manuscriptImportJobId?: string;
   updatedAt: string;
   capabilities: RuntimeEntityCapabilities;
 };
@@ -1576,9 +1580,10 @@ export class NovelForkProductBookService {
 		actor: ProductActor,
 	): Promise<ProductNarratorSummary[]> {
 		const { operation } = await this.getReadyBookRoot(bookId, actor);
-		if (!operation.runtimeChapterId) return [];
+		if (!operation.runtimeProjectId) return [];
+		// Runtime 0.9 起叙述者经 context_project_id 归属本书项目（不再有 chapters）。
 		const rows = await runtimeDb.query.narrators.findMany({
-			where: eq(narrators.chapterId, operation.runtimeChapterId),
+			where: eq(narrators.contextProjectId, operation.runtimeProjectId),
 			columns: productNarratorColumns,
 			orderBy: [desc(narrators.updatedAt), desc(narrators.createdAt)],
 		});
@@ -1605,24 +1610,31 @@ export class NovelForkProductBookService {
 		return narrator;
 	}
 
+	/**
+	 * 在本书名下建一个产品叙述者。
+	 *
+	 * `extraTraits` 只由服务端调用方传入（工作流工人建队时打 `WORKFLOW_WORKER_TRAIT`），
+	 * 用来让闸门认出「这个叙述者是本运行的工人」；路由不转发客户端传的 traits。
+	 */
 	async createBookNarrator(
 		bookId: string,
 		actor: ProductActor,
 		rawTitle: string,
+		extraTraits: readonly string[] = [],
 	): Promise<ProductNarratorSummary> {
 		const title = rawTitle.trim();
 		if (!title || title.length > 200) {
 			throw new ValidationError("Narrator title must be between 1 and 200 characters");
 		}
 		const { operation, root } = await this.getReadyBookRoot(bookId, actor);
-		if (!operation.runtimeChapterId || !operation.narratorId) {
+		if (!operation.runtimeProjectId || !operation.narratorId) {
 			throw new ValidationError("Book has no ready narrator binding");
 		}
 		await this.ensureProductNarratorWriteMode(operation.narratorId);
 		const source = await runtimeDb.query.narrators.findFirst({
 			where: and(
 				eq(narrators.id, operation.narratorId),
-				eq(narrators.chapterId, operation.runtimeChapterId),
+				eq(narrators.contextProjectId, operation.runtimeProjectId),
 			),
 			columns: {
 				model: true,
@@ -1632,11 +1644,12 @@ export class NovelForkProductBookService {
 		if (!source) throw new NotFoundError("Narrator", operation.narratorId);
 
 		const timestamp = now();
+		const traits = [...new Set(["novelfork-product", "novelist", "chapter-write", ...extraTraits])];
 		const [narrator] = await runtimeDb
 			.insert(narrators)
 			.values({
 				id: generateId(),
-				chapterId: operation.runtimeChapterId,
+				contextProjectId: operation.runtimeProjectId,
 				type: "primary",
 				variant: "primary",
 				inheritMode: "fresh",
@@ -1647,13 +1660,33 @@ export class NovelForkProductBookService {
 				permissionMode: "default",
 				status: "idle",
 				cwd: root,
-				traits: ["novelfork-product", "novelist", "chapter-write"],
+				traits,
 				createdAt: timestamp,
 				updatedAt: timestamp,
 			})
 			.returning();
 		if (!narrator) throw new ValidationError("Failed to create book narrator");
 		return this.mapNarrator(narrator, operation.bookId);
+	}
+
+	/**
+	 * 补写叙述者身上的一个产品标记（幂等）。
+	 *
+	 * 用在「已经在的工人」身上：老工人是打标记之前建的，靠标题仍然认得出来，
+	 * 但闸门认的是 trait，这里把它们补齐。只允许产品标记，不接受任意 trait。
+	 */
+	async ensureNarratorTrait(narratorId: string, trait: string): Promise<void> {
+		const narrator = await runtimeDb.query.narrators.findFirst({
+			where: eq(narrators.id, narratorId),
+			columns: { traits: true },
+		});
+		if (!narrator) throw new NotFoundError("Narrator", narratorId);
+		const current = Array.isArray(narrator.traits) ? narrator.traits : [];
+		if (current.includes(trait)) return;
+		await runtimeDb
+			.update(narrators)
+			.set({ traits: [...current, trait], updatedAt: now() })
+			.where(eq(narrators.id, narratorId));
 	}
 
 	async create(actor: ProductActor, idempotencyKey: string, rawInput: ProductBookInput) {
@@ -1680,7 +1713,16 @@ export class NovelForkProductBookService {
 		// bookId 谁就把别人的书收进自己的书架。没有绑定的旧书只能由管理员走 claim 认领。
 		// 必须在写建书记录、Runtime 项目之前拒绝，不留半成品；promoteFilesystem 另有兜底。
 		if (!isExternalBookWorkspace(input.projectInit)) {
-			const controlledRoot = await realpath(getControlledBooksRoot()).catch(() => null);
+			// 受控书根还不存在（全新机器）时里面不可能有同名目录，跳过即可；
+			// 存在却解析不出真实路径属于异常，不能静默放过这道防接管检查。
+			const configuredControlledRoot = getControlledBooksRoot();
+			const controlledRoot = (await pathExists(configuredControlledRoot))
+				? await realpath(configuredControlledRoot).catch(() => {
+						throw new ValidationError(
+							"受控作品目录无法解析，暂时无法确认同名作品是否已被占用；请检查该目录的访问权限后重试",
+						);
+					})
+				: null;
 			const targetRoot = controlledRoot ? deriveBookRoot(controlledRoot, bookId) : null;
 			if (targetRoot && (await pathExists(targetRoot))) {
 				throw controlledBookRootOccupiedError(
@@ -2133,12 +2175,6 @@ export class NovelForkProductBookService {
 			.update(projects)
 			.set({ gitPath: root, updatedAt: timestamp })
 			.where(eq(projects.id, operation.runtimeProjectId));
-		if (operation.runtimeChapterId) {
-			await runtimeDb
-				.update(chapters)
-				.set({ worktreePath: root, updatedAt: timestamp })
-				.where(eq(chapters.id, operation.runtimeChapterId));
-		}
 		if (operation.narratorId) {
 			await runtimeDb
 				.update(narrators)
@@ -2802,6 +2838,10 @@ export class NovelForkProductBookService {
 			status: READY_STATE,
 			runtimeProjectId: operation.runtimeProjectId ?? null,
 			...getProductBookWritingConfig(config),
+			// 旧稿导入（T4.2）尚未「完成导入」时 book.json 带任务标记；书架据此显示「导入中」与继续入口。
+			...(typeof config.manuscriptImportJobId === "string" && config.manuscriptImportJobId.trim()
+				? { manuscriptImportJobId: config.manuscriptImportJobId.trim() }
+				: {}),
 			updatedAt: operation.updatedAt,
 			capabilities: bookCapabilities(),
 		};
@@ -3053,13 +3093,13 @@ export class NovelForkProductBookService {
 			? await initializeControlledBookGit(root, operation.actorUserId)
 			: null;
 		let current = operation;
+		// Runtime 0.9 起没有 chapters：叙述者直接以 context_project_id 归属项目。
+		// runtime_chapter_id 列保留在产品库里只为兼容旧记录，不再写入新值。
 		const projectId = current.runtimeProjectId ?? generateId();
-		const chapterId = current.runtimeChapterId ?? generateId();
 		const narratorId = current.narratorId ?? generateId();
-		if (!current.runtimeProjectId || !current.runtimeChapterId || !current.narratorId) {
+		if (!current.runtimeProjectId || !current.narratorId) {
 			current = await this.updateOperation(current.id, {
 				runtimeProjectId: projectId,
-				runtimeChapterId: chapterId,
 				narratorId,
 			});
 		}
@@ -3099,28 +3139,11 @@ export class NovelForkProductBookService {
 				.set({ ownerUserId, updatedAt: timestamp })
 				.where(eq(projects.id, projectId));
 		}
-		const chapter = await runtimeDb.query.chapters.findFirst({ where: eq(chapters.id, chapterId) });
-		if (!chapter) {
-			await runtimeDb.insert(chapters).values({
-				id: chapterId,
-				projectId,
-				title: ROOT_CHAPTER_TITLE,
-				status: "active",
-				role: "trunk",
-				branch: "main",
-				worktreePath: root,
-				baseBranch: "main",
-				isRoot: 1,
-				lastAccessedAt: timestamp,
-				createdAt: timestamp,
-				updatedAt: timestamp,
-			});
-		}
 		const narrator = await runtimeDb.query.narrators.findFirst({ where: eq(narrators.id, narratorId) });
 		if (!narrator) {
 			await runtimeDb.insert(narrators).values({
 				id: narratorId,
-				chapterId,
+				contextProjectId: projectId,
 				type: "primary",
 				title: `${operation.title} · 小说创作助手`,
 				model: getProductNarratorModel(),

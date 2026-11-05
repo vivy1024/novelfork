@@ -423,7 +423,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     const onSendToNarrator = vi.fn();
     renderPanel({ outlineTreeNodes: [], onSendToNarrator });
     fireEvent.click(screen.getByTestId("storyline-next-outline-empty"));
-    expect(onSendToNarrator).toHaveBeenCalledWith(expect.stringContaining("outline.volume"));
+    expect(onSendToNarrator).toHaveBeenCalledWith(expect.stringContaining("outline_volume"));
   });
 
   it("NEXT 缺纲而没有叙述者通道时，卡内明说而不是静默吞掉点击", () => {

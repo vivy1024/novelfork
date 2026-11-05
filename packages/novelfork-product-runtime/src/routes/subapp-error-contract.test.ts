@@ -16,7 +16,7 @@ const { Hono: RuntimeHono } = runtimeRequire("hono") as { Hono: typeof ProductHo
 function parentWith(role: "admin" | "user") {
 	const parent = new RuntimeHono();
 	parent.use("*", async (c, next) => {
-		(c as unknown as { set: (key: string, value: unknown) => void }).set("user", { sub: "u1", role });
+		(c as unknown as { set: (key: string, value: unknown) => void }).set("user", { sub: "u1", role, sid: "u1-session" }); // sid：Runtime 0.9 assertAdmin 只信任已解析会话里的 role
 		await next();
 	});
 	parent.onError((err, c) => {

@@ -208,6 +208,7 @@ describe("novel Runtime contribution", () => {
     expect(prompt).toContain("可信的 novel.book 资源绑定");
     expect(prompt).toContain("write.preflight");
     expect(prompt).toContain("禁止用写作理论");
+    expect(prompt).toContain("用与作者相同的语言回复；书的语言为中文时一律用中文");
   });
 
   it("contributes the generated NovelFork learning catalog without empty metadata", () => {

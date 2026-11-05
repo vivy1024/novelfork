@@ -55,4 +55,4 @@ AI 默认的文笔千篇一律。文风预设告诉它这本书「怎么写」�
 
 ## Agent 查阅提示
 
-- 对话蒸馏：`style.distill_preview` 预览范围 → `style.distill_start` 分批抽取 → `style.distill_status` 读结果 → 作者逐条点名后 `style.distill_adopt`；不得自行采纳。
+- 对话蒸馏：`style_distill_preview` 预览范围 → `style_distill_start` 分批抽取 → `style_distill_status` 读结果 → 作者逐条点名后 `style_distill_adopt`；不得自行采纳。

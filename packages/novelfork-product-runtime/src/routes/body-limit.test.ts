@@ -11,6 +11,7 @@ import {
 } from "./body-limit";
 import { MAX_BOOK_ARCHIVE_UPLOAD_BYTES } from "../../../novel-plugin/src/routes/book-archive";
 import { MAX_STYLE_DISTILLATION_CHARS } from "../../../novel-plugin/src/engine/writing-layers/style-distillation";
+import { MAX_MANUSCRIPT_BYTES } from "../../../novel-plugin/src/engine/manuscript-import/manuscript-import";
 
 const MiB = 1024 * 1024;
 
@@ -106,6 +107,12 @@ describe("product body limit policy (T-11)", () => {
 		}
 		// 文风蒸馏最多 100 万字：UTF-8 下中文每字 3 字节，加上 JSON 包装仍在 8 MiB 之内。
 		expect(LONG_TEXT_BODY_LIMIT_BYTES).toBeGreaterThan(MAX_STYLE_DISTILLATION_CHARS * 3 + 64 * 1024);
+	});
+
+	test("旧稿导入只有建任务的上传放宽到 8 MiB，且放得下原文上限加 multipart 包装", () => {
+		expect(resolveProductBodyLimit("/api/books/b1/manuscript-import/jobs")).toBe(LONG_TEXT_BODY_LIMIT_BYTES);
+		expect(resolveProductBodyLimit("/api/books/b1/manuscript-import/jobs/job-1/confirm")).toBe(PRODUCT_BODY_LIMIT_BYTES);
+		expect(LONG_TEXT_BODY_LIMIT_BYTES).toBeGreaterThanOrEqual(MAX_MANUSCRIPT_BYTES + 1024 * 1024);
 	});
 
 	test("caps the archive import at its own 256 MiB limit instead of exempting it", () => {

@@ -98,6 +98,11 @@ export type ChapterSettlementResult = Readonly<{
   stateRevision?: number;
   /** 本次 ChapterStateDelta 内容指纹。 */
   stateFingerprint?: string;
+  /**
+   * 结算后的场景校验（死亡后行动 / 地点跳变）。只提示，不拦写作；检测失败时缺省。
+   * found 是未被作者忽略的条数，summary 是一行摘要，详情在叙事体检面板。
+   */
+  sceneCheck?: Readonly<{ found: number; ignored: number; summary: string }>;
 }>;
 
 const REQUIRED_FIELDS: readonly (keyof Pick<NarrativeEventDraft, "subject" | "predicate" | "object" | "evidenceText">)[] = ["subject", "predicate", "object", "evidenceText"];

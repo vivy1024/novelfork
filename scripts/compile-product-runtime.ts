@@ -269,6 +269,13 @@ async function compileProduct(): Promise<void> {
 				() =>
 					Bun.build({
 						entrypoints: [entry, ...workerEntries],
+						// Pin the embed root to the isolated workspace. Bun otherwise stores entries
+						// under the common directory of every input, and the product graph pulls
+						// modules from the host repository (outside .build-tmp/<workspace>), so the
+						// Runtime worker shims landed at `.build-tmp/<workspace>/server/...` — a key
+						// Runtime 0.9 never probes (it tries `server/...`). Without its workers the
+						// Runtime cannot read history or save tool epochs at all.
+						root: isolatedRuntime.workspaceRoot,
 						compile: {
 							target: platform.target as Bun.Build.CompileTarget,
 							outfile: artifact,

@@ -200,12 +200,12 @@ function WorkflowEdgeView(props: EdgeProps<WorkflowCanvasEdge>) {
   const hasIssue = (props.data?.issues.length ?? 0) > 0;
   const runState = props.data?.runState;
   const stroke = hasIssue
-    ? "var(--destructive, #dc2626)"
+    ? "var(--destructive)"
     : isReject
-      ? "#f59e0b"
+      ? "var(--warning)"
       : runState === "taken"
-        ? "#10b981"
-        : "var(--muted-foreground, #94a3b8)";
+        ? "var(--success)"
+        : "var(--muted-foreground)";
   const label = isReject ? "打回" : edge?.outcome;
   return (
     <>

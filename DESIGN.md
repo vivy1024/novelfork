@@ -18,6 +18,14 @@ colors:
   warning: "#9a5400"
   success: "#1f7a4d"
   info: "#1b6aa0"
+  chart-1: "#2e7d5b"
+  chart-2: "#2f6fd0"
+  chart-3: "#c2417a"
+  chart-4: "#b26b00"
+  chart-5: "#7a52c7"
+  chart-6: "#1f7fa8"
+  chart-7: "#c43c2f"
+  chart-8: "#8a5a3c"
   border: "#d3dbd2"
   input: "#dde3db"
   paper: "#fbfbf8"
@@ -37,6 +45,14 @@ colors:
   dark-warning: "#f0b45a"
   dark-success: "#6fd09a"
   dark-info: "#74b9ea"
+  dark-chart-1: "#6fcf9f"
+  dark-chart-2: "#7aa2f7"
+  dark-chart-3: "#f27ca8"
+  dark-chart-4: "#f0b45a"
+  dark-chart-5: "#b69cf5"
+  dark-chart-6: "#5cc4e8"
+  dark-chart-7: "#f08070"
+  dark-chart-8: "#c9a27e"
   dark-border: "#28342c"
   dark-input: "#253029"
   dark-paper: "#151c17"
@@ -56,6 +72,14 @@ colors:
   shuhan-warning: "#9a5400"
   shuhan-success: "#1f7a4d"
   shuhan-info: "#1b6aa0"
+  shuhan-chart-1: "#2f5a9a"
+  shuhan-chart-2: "#b07a1c"
+  shuhan-chart-3: "#c2417a"
+  shuhan-chart-4: "#1a8a7a"
+  shuhan-chart-5: "#7a52c7"
+  shuhan-chart-6: "#c43c2f"
+  shuhan-chart-7: "#4f8a1f"
+  shuhan-chart-8: "#8a5a3c"
   shuhan-border: "#d2d8e1"
   shuhan-input: "#d9dee6"
   shuhan-paper: "#f9fafb"
@@ -83,6 +107,14 @@ colors:
   shuhan-dark-warning: "#f0b45a"
   shuhan-dark-success: "#6fd09a"
   shuhan-dark-info: "#74b9ea"
+  shuhan-dark-chart-1: "#8fb0e6"
+  shuhan-dark-chart-2: "#d8b65c"
+  shuhan-dark-chart-3: "#f27ca8"
+  shuhan-dark-chart-4: "#4fd1b8"
+  shuhan-dark-chart-5: "#b69cf5"
+  shuhan-dark-chart-6: "#f08070"
+  shuhan-dark-chart-7: "#9ccf6a"
+  shuhan-dark-chart-8: "#c9a27e"
   shuhan-dark-border: "#26324b"
   shuhan-dark-input: "#243049"
   shuhan-dark-paper: "#141c2c"
@@ -110,6 +142,14 @@ colors:
   yegeng-warning: "#9a5400"
   yegeng-success: "#1f7a4d"
   yegeng-info: "#1b6aa0"
+  yegeng-chart-1: "#9a6412"
+  yegeng-chart-2: "#2f6fd0"
+  yegeng-chart-3: "#c2417a"
+  yegeng-chart-4: "#1a8a7a"
+  yegeng-chart-5: "#7a52c7"
+  yegeng-chart-6: "#c43c2f"
+  yegeng-chart-7: "#5f7d2a"
+  yegeng-chart-8: "#1f7fa8"
   yegeng-border: "#d9d4c9"
   yegeng-input: "#e0dbd1"
   yegeng-paper: "#f9f8f5"
@@ -129,6 +169,14 @@ colors:
   yegeng-dark-warning: "#f0b45a"
   yegeng-dark-success: "#6fd09a"
   yegeng-dark-info: "#74b9ea"
+  yegeng-dark-chart-1: "#e3a649"
+  yegeng-dark-chart-2: "#7aa2f7"
+  yegeng-dark-chart-3: "#f27ca8"
+  yegeng-dark-chart-4: "#4fd1b8"
+  yegeng-dark-chart-5: "#b69cf5"
+  yegeng-dark-chart-6: "#f08070"
+  yegeng-dark-chart-7: "#a8c86a"
+  yegeng-dark-chart-8: "#5cc4e8"
   yegeng-dark-border: "#322d24"
   yegeng-dark-input: "#2e2921"
   yegeng-dark-paper: "#1b1813"
@@ -141,17 +189,17 @@ typography:
     lineHeight: 1.6
   label-sm:
     fontFamily: System Sans
-    fontSize: 11px
+    fontSize: 12px
     fontWeight: 500
     lineHeight: 1.4
   # ── 界面字号阶梯：Tailwind text-2xs / xs / sm / base / lg 读这 5 档 ──
   scale-2xs:
     fontFamily: System Sans
-    fontSize: 11px
+    fontSize: 12px
     lineHeight: 1.45
   scale-xs:
     fontFamily: System Sans
-    fontSize: 12px
+    fontSize: 13px
     lineHeight: 1.5
   scale-sm:
     fontFamily: System Sans
@@ -493,6 +541,7 @@ NovelFork 是网文作者的长期工作台：一天在里面坐几个小时，�
   - `slip`、`slip-edge`、`slip-ink`：书函藏青书封上的题签。
   - `highlight`：书函藏青在函套上的选中色（金）。
   - `glow`：夜更烛光稿面上方的烛光。
+- **分类色**（`chart-1` … `chart-8`，生成为 `--chart-1` … `--chart-8`）：图表、画布、关系图里区分剧情线、泳道、数据系列的颜色，每个主题、每种明暗各一组。只以线条、色点、色条出现，不承载正文；在 `card` 与 `background` 上对比度不低于 3:1（WCAG 1.4.11 非文字对比），两两之间要能分开。绘图组件按序号取色，不按含义写死某个色相；中性线条用 `muted-foreground`、`border`，状态用 `warning` / `success` / `destructive`。
 - 主色只用于操作与选中状态，不用来大面积铺底。
 - **状态色**（成功、警告）可以用 Tailwind 原生色系（emerald / amber），底色用 `/10` 之类的透明度写法；令牌色现在支持透明度修饰（`bg-primary/10`），因为 `tailwind.config.js` 用 `color-mix` 接住了 `<alpha-value>`。
 - 所有文字与底色组合须达到 WCAG AA（4.5:1）；`components` 里列出了每个主题、每种明暗下的主要组合，`designmd lint` 会逐一检查。格线、分隔线、题签边、烛光这类纯装饰色只以线条或色块出现（组件里只写 `backgroundColor`），不承载文字，不参与对比度检查。
@@ -509,13 +558,13 @@ NovelFork 是网文作者的长期工作台：一天在里面坐几个小时，�
 
   | 类 | 字号 | 用途 |
   |---|---|---|
-  | `text-2xs` | 11px | 只用于角标、计数、快捷键提示这类不需要读的标记 |
-  | `text-xs` | 12px | 次要说明、元信息、表格辅助列 |
+  | `text-2xs` | 12px | 角标、计数、快捷键提示与密集面板里的元信息 |
+  | `text-xs` | 13px | 次要说明、元信息、表格辅助列 |
   | `text-sm` | 14px | 面板里的列表项、表单标签、按钮 |
   | `text-base` | 15px | 面板正文、卡片主文字（与页面正文同号） |
   | `text-lg` | 18px | 面板标题、需要强调的数字 |
 
-  需要读的信息不用 `text-2xs`；页面大标题（`h1`、`h2`）另按标题字体。
+  12px 是界面最小字号：中文在 11px 下笔画会粘连，小字也要能读。比 12px 更小的只允许出现在纯装饰的图形元素上。
 - 页面正文 15px / 行高 1.6（`body-md`），代码 13px。稿面按主题令牌（`--prose-size`、`--prose-line-height`）。
 
 ## Layout

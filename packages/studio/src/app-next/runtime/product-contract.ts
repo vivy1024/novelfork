@@ -108,6 +108,8 @@ export interface RuntimeBookSummary {
   /** 书籍正文语言，决定章节长度按中文字数还是英文单词数统计。 */
   readonly language?: "zh" | "en";
   readonly updatedAt?: string;
+  /** 旧稿导入尚未「完成导入」时的任务 ID；书架据此显示「导入中」。 */
+  readonly manuscriptImportJobId?: string;
   readonly capabilities: RuntimeEntityCapabilities;
 }
 
@@ -421,6 +423,9 @@ function mapBook(value: unknown): RuntimeBookSummary | null {
       : {}),
     ...(asString(record?.updatedAt)
       ? { updatedAt: asString(record?.updatedAt) }
+      : {}),
+    ...(asString(record?.manuscriptImportJobId)
+      ? { manuscriptImportJobId: asString(record?.manuscriptImportJobId) }
       : {}),
     capabilities: mapEntityCapabilities(record?.capabilities),
   };

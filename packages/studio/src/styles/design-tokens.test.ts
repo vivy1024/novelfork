@@ -60,6 +60,49 @@ describe("书房主题令牌", () => {
     for (const status of ["warning", "success", "info"]) expect(themeCss).toContain(`--${status}: `);
   });
 
+  it("分类色 chart-1…8 在每个主题、每种明暗下都有：在卡片与底色上 ≥3:1，两两之间可分辨", () => {
+    const model = parseDesignMd(designMd);
+    const channels = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    const lum = (hex: string) => {
+      const [r, g, b] = channels(hex);
+      return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+    };
+    const contrast = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi! + 0.05) / (lo! + 0.05);
+    };
+    // CIELAB 色差（ΔE76），用来确认相邻分类色不会糊成一种颜色
+    const lab = (hex: string) => {
+      const [r, g, b] = channels(hex);
+      const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+      const x = f((r! * 0.4124 + g! * 0.3576 + b! * 0.1805) / 0.95047);
+      const y = f(r! * 0.2126 + g! * 0.7152 + b! * 0.0722);
+      const z = f((r! * 0.0193 + g! * 0.1192 + b! * 0.9505) / 1.08883);
+      return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+    };
+    const deltaE = (a: string, b: string) => {
+      const [p, q] = [lab(a), lab(b)];
+      return Math.hypot(p[0]! - q[0]!, p[1]! - q[1]!, p[2]! - q[2]!);
+    };
+    const prefixes = ["", "dark-", "shuhan-", "shuhan-dark-", "yegeng-", "yegeng-dark-"];
+    for (const prefix of prefixes) {
+      const palette = Array.from({ length: 8 }, (_, index) => model.colors[`${prefix}chart-${index + 1}`]);
+      palette.forEach((color, index) => {
+        expect(color, `${prefix}chart-${index + 1}`).toMatch(/^#[0-9a-f]{6}$/i);
+        for (const surface of ["card", "background"]) {
+          expect(contrast(color!, model.colors[`${prefix}${surface}`]!), `${prefix}chart-${index + 1} 在 ${surface} 上`).toBeGreaterThanOrEqual(3);
+        }
+      });
+      for (let i = 0; i < palette.length; i += 1) {
+        for (let j = i + 1; j < palette.length; j += 1) {
+          expect(deltaE(palette[i]!, palette[j]!), `${prefix}chart-${i + 1} 与 chart-${j + 1} 太接近`).toBeGreaterThanOrEqual(15);
+        }
+      }
+    }
+    for (let index = 1; index <= 8; index += 1) expect(themeCss).toContain(`--chart-${index}: `);
+  });
+
   it("缺少必需颜色时报出具体令牌名", () => {
     const model = parseDesignMd(designMd);
     const { "shuhan-dark-border": _removed, ...colors } = model.colors;

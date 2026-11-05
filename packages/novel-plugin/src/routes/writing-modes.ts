@@ -31,7 +31,9 @@ import {
 } from "../engine/index.js";
 
 import type { HostTextGenerationAvailability, HostTextGenerationRequest, RouterContext } from "./context.js";
-import { adoptRevisionSamples, readChapterVaultDetail, summarizeStyleVault, type AdoptRevisionInput } from "../engine/writing-layers/style-vault.js";
+import {
+  adoptRevisionSamples, readChapterAiDraft, readChapterVaultDetail, readVaultFingerprintStatus, summarizeStyleVault, type AdoptRevisionInput,
+} from "../engine/writing-layers/style-vault.js";
 import { STYLE_SCENE_TYPES } from "../engine/writing-layers/style-preset.js";
 import {
   loadStylePreset, readStyleFingerprint, saveStylePreset, StylePresetError, updateStyleFingerprint,
@@ -134,7 +136,9 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
 
   // 文风金库：AI 原稿与当前正文逐句比对得出人工占比；只读，不写正文也不写预设。
   app.get("/api/books/:bookId/style/vault", async (c) => {
-    return c.json({ ok: true, ...(await summarizeStyleVault(ctx.state.bookDir(c.req.param("bookId")))) });
+    const bookRoot = ctx.state.bookDir(c.req.param("bookId"));
+    const [summary, fingerprintRefresh] = await Promise.all([summarizeStyleVault(bookRoot), readVaultFingerprintStatus(bookRoot)]);
+    return c.json({ ok: true, ...summary, fingerprintRefresh });
   });
   app.get("/api/books/:bookId/style/vault/chapters/:chapterNumber", async (c) => {
     const chapterNumber = Number(c.req.param("chapterNumber"));
@@ -154,6 +158,38 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
           suggestedAction: "确认章节存在；原稿损坏时可让叙述者重写本章生成新原稿，或忽略这一章的占比。",
         },
       }, 404);
+    }
+  });
+
+  // 本章 AI 原稿原文：写作台编辑时用同一套逐句比对（style-vault-share）实时算作者改动占比。只读。
+  app.get("/api/books/:bookId/style/vault/chapters/:chapterNumber/ai-draft", async (c) => {
+    const chapterNumber = Number(c.req.param("chapterNumber"));
+    if (!Number.isInteger(chapterNumber) || chapterNumber <= 0) {
+      return c.json({ error: "章号必须是正整数。", code: "STYLE_VAULT_INVALID_CHAPTER" }, 400);
+    }
+    try {
+      const draft = await readChapterAiDraft(ctx.state.bookDir(c.req.param("bookId")), chapterNumber);
+      return c.json(draft
+        ? { ok: true, chapterNumber, hasAiDraft: true, text: draft.text, createdAt: draft.createdAt }
+        : { ok: true, chapterNumber, hasAiDraft: false });
+    } catch (error) {
+      // 文件系统错误里通常带绝对路径：原文只进服务端日志，对外给固定文案。
+      // 「原稿不存在」已由 readChapterAiDraft 返回 null 处理，走到这里的都是读得到却读不了（损坏、权限）。
+      const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      console.error(`[style-vault] 第 ${chapterNumber} 章 AI 原稿读取失败：${detail}`);
+      const fsError = typeof (error as NodeJS.ErrnoException | null)?.code === "string";
+      const message = fsError
+        ? "这一章的 AI 原稿读不出来（没有读取权限或磁盘错误）。"
+        : "这一章的 AI 原稿文件损坏，格式不对，无法比对。";
+      return c.json({
+        error: message,
+        code: "STYLE_VAULT_UNAVAILABLE",
+        explanation: {
+          whatHappened: message,
+          whyItMatters: "读不到 AI 原稿，就算不出这一章的作者改动占比。",
+          suggestedAction: "原稿损坏时可让叙述者重写本章生成新原稿，或忽略这一章的占比；详情见服务日志 [style-vault]。",
+        },
+      }, 422);
     }
   });
 

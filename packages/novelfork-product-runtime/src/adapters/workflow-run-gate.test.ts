@@ -16,9 +16,25 @@ import {
 	startWorkflowRun,
 	insertRetrievalLog,
 	preserveLatestWritingInjection,
+	workflowTeamIdForBook,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import { NovelRuntimeAdapter, type NovelRuntimeBindingResolver } from "./runtime-adapter";
-import { contextIndexCardExtension, CONTEXT_INDEX_CARD_EXTENSION_ID, explainWorkflowDenial, explainWorkflowLookupFailure, findActiveWorkflowRun, lookupActiveWorkflowRun, writingInjectionPreserveExtension, WRITING_INJECTION_PRESERVE_EXTENSION_ID } from "./workflow-run-gate";
+import {
+	buildWorkflowWorkerBrief,
+	contextIndexCardExtension,
+	CONTEXT_INDEX_CARD_EXTENSION_ID,
+	explainWorkerWorkflowDenial,
+	explainWorkflowDenial,
+	explainWorkflowLookupFailure,
+	findActiveWorkflowRun,
+	isToolVisibleForWorker,
+	isWorkflowWorkerByTrait,
+	lookupActiveWorkflowRun,
+	resolveWorkerWorkflowGate,
+	WORKFLOW_WORKER_TRAIT,
+	writingInjectionPreserveExtension,
+	WRITING_INJECTION_PRESERVE_EXTENSION_ID,
+} from "./workflow-run-gate";
 
 class MemoryResolver implements NovelRuntimeBindingResolver {
 	context: RuntimeResolveContext | null = null;
@@ -327,5 +343,109 @@ describe("正文一致性校验的 fail-closed 闸门", () => {
 	test("产品库尚未初始化时视为没有运行，不拦写入", () => {
 		closeStorageDatabase();
 		expect(lookupActiveWorkflowRun("narrator-a", "book-1")).toEqual({ ok: true, run: null });
+	});
+});
+
+describe("工作流工人闸门（修 A：工人不得直写权威源）", () => {
+	test("本书正在跑工作流：工人的写类工具全部 fail-closed，说明指向 team_report", async () => {
+		const run = await startRun("leader-a");
+		const gate = await resolveWorkerWorkflowGate("worker-a", "book-a", {
+			isWorker: async () => true,
+			activeRunsForBook: () => [run],
+		});
+		expect(gate.kind).toBe("controlled");
+
+		for (const [tool, risk] of [
+			["chapter.write", "confirmed-write"],
+			["pipeline.write", "draft-write"],
+			["chapter.delete", "destructive"],
+		] as const) {
+			const denial = explainWorkerWorkflowDenial(run, tool, risk);
+			expect(denial).not.toBeNull();
+			// 三段式：身份与运行、为什么不能写、该交给谁
+			expect(denial?.what).toContain("工作流工人");
+			expect(denial?.what).toContain(tool);
+			expect(denial?.why).toContain("只能由领导者的叙述者提交");
+			expect(denial?.action).toContain("team_report");
+			expect(denial?.action).toContain("不要自己调用写入工具");
+		}
+	});
+
+	test("读类与 workflow.* 对工人恒放行（汇报通道不被自己的闸门挡住）", async () => {
+		const run = await startRun("leader-a");
+		expect(explainWorkerWorkflowDenial(run, "chapter.read", "read")).toBeNull();
+		expect(explainWorkerWorkflowDenial(run, "lore.read", "read")).toBeNull();
+		expect(explainWorkerWorkflowDenial(run, "workflow.submit_step_output", "confirmed-write")).toBeNull();
+		expect(explainWorkerWorkflowDenial(run, "workflow.report_blocker", "draft-write")).toBeNull();
+	});
+
+	test("可见性：控制期内只露读类，写类不露", async () => {
+		const run = await startRun("leader-a");
+		const gate = await resolveWorkerWorkflowGate("worker-a", "book-a", {
+			isWorker: async () => true,
+			activeRunsForBook: () => [run],
+		});
+		expect(isToolVisibleForWorker(gate, "chapter.read", "read")).toBe(true);
+		expect(isToolVisibleForWorker(gate, "chapter.write", "confirmed-write")).toBe(false);
+		expect(isToolVisibleForWorker(gate, "pipeline.write", "draft-write")).toBe(false);
+		// 没有运行时不受约束（不是 controlled）
+		expect(isToolVisibleForWorker({ kind: "idle" }, "chapter.write", "confirmed-write")).toBe(true);
+	});
+
+	test("不是工人时不受工人闸门影响（领导者走自己的工序闸门）", async () => {
+		const run = await startRun("leader-a");
+		const gate = await resolveWorkerWorkflowGate("leader-a", "book-a", {
+			isWorker: async () => false,
+			activeRunsForBook: () => [run],
+		});
+		expect(gate.kind).toBe("not-worker");
+	});
+
+	test("工人但本书没有进行中的运行：按普通叙述者处理，不拦", async () => {
+		const gate = await resolveWorkerWorkflowGate("worker-a", "book-a", {
+			isWorker: async () => true,
+			activeRunsForBook: () => [],
+		});
+		expect(gate.kind).toBe("idle");
+		expect(isToolVisibleForWorker(gate, "chapter.write", "confirmed-write")).toBe(true);
+	});
+
+	test("工人自己就是本书运行的领导者时走领导者路径，不被工人收口锁死", async () => {
+		await startRun("worker-a");
+		const gate = await resolveWorkerWorkflowGate("worker-a", "book-a", { isWorker: async () => true });
+		expect(gate.kind).toBe("not-worker");
+	});
+
+	test("读不出本书运行状态：写类 fail-closed（unreadable）", async () => {
+		const gate = await resolveWorkerWorkflowGate("worker-a", "book-a", {
+			isWorker: async () => true,
+			activeRunsForBook: () => {
+				throw new Error("disk I/O error");
+			},
+		});
+		expect(gate.kind).toBe("unreadable");
+	});
+
+	test("没有绑定书时不判定为工人（无从判断属于哪本书的运行）", async () => {
+		const gate = await resolveWorkerWorkflowGate("worker-a", undefined, { isWorker: async () => true });
+		expect(gate.kind).toBe("not-worker");
+	});
+
+	test("工人简报：钉住本书团队 id，并写明汇报通道与不可写入", async () => {
+		const run = await startRun("leader-a");
+		const brief = buildWorkflowWorkerBrief(run);
+		expect(brief).toContain("你是本运行的工作流工人");
+		expect(brief).toContain(workflowTeamIdForBook("book-a"));
+		expect(brief).toContain("team_report");
+		expect(brief).toContain("没有这本书的写入权");
+		// 工人不跑状态机：不要诱导它去提交产物
+		expect(brief).toContain("不要调用 workflow_submit_step_output");
+	});
+
+	test("工人标记按 traits 认人（改名也认得出），字符串/数组两种存储都能读", () => {
+		expect(isWorkflowWorkerByTrait([WORKFLOW_WORKER_TRAIT])).toBe(true);
+		expect(isWorkflowWorkerByTrait(JSON.stringify([WORKFLOW_WORKER_TRAIT]))).toBe(true);
+		expect(isWorkflowWorkerByTrait(["novelfork-product", "novelist"])).toBe(false);
+		expect(isWorkflowWorkerByTrait(null)).toBe(false);
 	});
 });

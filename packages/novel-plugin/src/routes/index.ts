@@ -39,6 +39,7 @@ export { createMarketRouter } from "./market.js";
 export { createEmbeddingSettingsRouter } from "./embedding.js";
 export { createCockpitRouter, type CreateCockpitRouterOptions } from "./cockpit.js";
 export { createNarrativeMemoryRouter } from "./narrative-memory.js";
+export { createManuscriptImportRouter, type CreateManuscriptImportRouterOptions } from "./manuscript-import.js";
 export { createChapterTimelineRouter, type CreateChapterTimelineRouterOptions } from "./chapter-timeline.js";
 export { createEntityGraphRouter, type EntityGraphRouterOptions } from "./entity-graph.js";
 export { createKnowledgeRouter, type KnowledgeRouterOptions } from "./knowledge.js";

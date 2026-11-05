@@ -20,7 +20,7 @@ tags:
 
 ## 第一步：锁定范围
 
-1. 作者给的是章号加引文，或写作台里选中的文字。用 `chapter.read` 读该章，找到对应的起止行号。
+1. 作者给的是章号加引文，或写作台里选中的文字。用 `chapter_read` 读该章，找到对应的起止行号。
 2. 引文在章里出现多次、或找不到时，先问作者是哪一处，不要猜。
 3. 向作者复述：「第 N 章第 a–b 行，从『……』到『……』」。
 
@@ -39,8 +39,8 @@ tags:
 
 ## 第三步：装载必要的上下文
 
-- 改动涉及人物言行：`lore.read` 读出场人物的设定。
-- 改动涉及前文事实（谁知道什么、东西在哪）：`memory.read`（purpose=revise）核对。
+- 改动涉及人物言行：`lore_read` 读出场人物的设定。
+- 改动涉及前文事实（谁知道什么、东西在哪）：`memory_read`（purpose=revise）核对。
 - 纯文字层面的修改不必装载，别为改一句话读半本书。
 
 ## 第四步：给出对照
@@ -55,8 +55,8 @@ tags:
 
 ## 第五步：落盘
 
-作者确认后，用 `rewrite.apply` 写回：chapterNumber、lineRange 与第一步锁定的范围一致，mode=replace。作者要在某行后补一段时用 mode=insert_after。
+作者确认后，用 `rewrite_apply` 写回：chapterNumber、lineRange 与第一步锁定的范围一致，mode=replace。作者要在某行后补一段时用 mode=insert_after。
 
 - 作者没说「可以」「就这样」之类的确认，不落盘。
 - 改动超出一段、变成整章重写时，停下来告诉作者，改走「写下一章」或整章重写流程。
-- 改变了剧情事实时，落盘后提醒作者用 `memory.settle_chapter` 重新结算本章。
+- 改变了剧情事实时，落盘后提醒作者用 `memory_settle_chapter` 重新结算本章。

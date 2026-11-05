@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildWriteViewModel } from "../pages/writing-workbench/write-view-state.js";
+import { toWireToolName } from "../engine/workflows/run-brief.js";
 import { NOVEL_SESSION_TOOL_DEFINITIONS } from "./tool-registry.js";
 
 const DOCS_ROOT = resolve(__dirname, "../../../../docs/learning");
@@ -32,8 +33,14 @@ const ALL_DOCS = LINES.flatMap((line) =>
 const NON_DOMAIN_REFERENCES = new Set<string>([]);
 
 const registeredTools = new Set(NOVEL_SESSION_TOOL_DEFINITIONS.map((tool) => tool.name));
+/**
+ * 「Agent 查阅提示」一节会原样进模型上下文（学习中心 agentHints），写的是模型拿到的线上名
+ * （点换下划线）。线上名一律折回目录名再查注册表。
+ */
+const wireToCanonical = new Map([...registeredTools].map((name) => [toWireToolName(name), name]));
+const toolNamespaces = new Set([...registeredTools].map((name) => name.split(".")[0]!));
 
-/** 抓形如 `foo.bar` 的工具引用（含反引号包裹与调用括号两种写法）。 */
+/** 抓形如 `foo.bar` / `foo_bar` 的工具引用（含反引号包裹与调用括号两种写法）。 */
 function referencedTools(text: string): string[] {
   const found = new Set<string>();
   for (const match of text.matchAll(/`([a-z_-]+\.[a-z_.]+)(?:\([^`]*\))?`/gu)) {
@@ -42,6 +49,12 @@ function referencedTools(text: string): string[] {
   // 正文里未加反引号的调用式引用，如 memory.settle_range(...)
   for (const match of text.matchAll(/\b([a-z]+\.[a-z_]+)\(/gu)) {
     found.add(match[1]!);
+  }
+  // 线上名：命名空间与现有工具相同的反引号下划线标识符；查不到就原样报出。
+  for (const match of text.matchAll(/`([a-z]+)_([a-z_]+)(?:\([^`]*\))?`/gu)) {
+    if (!toolNamespaces.has(match[1]!)) continue;
+    const wire = `${match[1]}_${match[2]}`;
+    found.add(wireToCanonical.get(wire) ?? wire);
   }
   return [...found];
 }
@@ -93,8 +106,9 @@ describe("学习中心教程与实现一致性", () => {
   it("「写下一章」教程讲到写前检查与废稿处理", () => {
     // 这两条是写章纪律：不讲清，作者不知道为什么被拦、写废了该怎么办
     const doc = readDoc("book/04-write-next-chapter.md");
-    expect(doc).toContain("write.preflight");
-    expect(doc).toContain("chapter.discard_range");
+    // 写在「Agent 查阅提示」里，用模型拿到的线上名。
+    expect(doc).toContain("write_preflight");
+    expect(doc).toContain("chapter_discard_range");
     expect(doc).toContain("一键修");
   });
 

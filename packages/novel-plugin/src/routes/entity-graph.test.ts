@@ -152,6 +152,22 @@ describe("关系图谱路由", () => {
     expect(missing.body.explanation.suggestedAction).toContain("重建索引");
   });
 
+  it("焦点网络的 focus 也接受经纬条目 id，与实体 id 得到同一张网", async () => {
+    const xue = await character("薛行之");
+    await character("方工");
+    relationFact("f1", 12, "薛行之与方工", "协作", "一起复核");
+    rebuildNarrativeEntityIndex(storage, "book-1");
+
+    const byEntry = await get(`/network?focus=${encodeURIComponent(xue)}`);
+    expect(byEntry.body.status).toBe("ok");
+    expect(byEntry.body.network.nodes[0]).toMatchObject({ id: `ent:book-1:${xue}`, name: "薛行之" });
+    const byEntity = await get(`/network?focus=${encodeURIComponent(`ent:book-1:${xue}`)}`);
+    expect(byEntity.body.network).toEqual(byEntry.body.network);
+
+    const missing = await get("/network?focus=not-an-entry");
+    expect(missing.body).toMatchObject({ status: "empty", reason: "entity-not-found" });
+  });
+
   it("参数校验：hops、chapter、缺少实体", async () => {
     expect((await get("/network?hops=3")).status).toBe(400);
     expect((await get("/network?chapter=abc")).status).toBe(400);

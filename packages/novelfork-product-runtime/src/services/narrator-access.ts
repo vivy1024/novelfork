@@ -1,7 +1,6 @@
 import { and, eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import {
 	AppError,
-	chapters,
 	db,
 	narrators,
 	narratorToolCalls,
@@ -92,25 +91,25 @@ export async function assertBookNarratorAccess(
 	actor: BoundNarratorActor,
 	bookId: string,
 	narratorId: string,
-): Promise<{ binding: BookRuntimeBindingRecord; narrator: { id: string; chapterId: string | null } }> {
+): Promise<{ binding: BookRuntimeBindingRecord; narrator: { id: string; projectId: string } }> {
 	const binding = await bookRuntimeBindingService.getByBookId(bookId);
 	if (!binding || !ownsBinding(actor, binding)) throw new NotFoundError("Narrator", narratorId);
 	await assertTrustedBinding(binding);
+	// Runtime 0.9 起叙述者经 context_project_id 归属项目（子代理继承父级），不再经 chapters。
 	const [row] = await db
-		.select({ id: narrators.id, chapterId: narrators.chapterId, projectId: chapters.projectId })
+		.select({ id: narrators.id, projectId: narrators.contextProjectId })
 		.from(narrators)
-		.innerJoin(chapters, eq(narrators.chapterId, chapters.id))
 		.where(
 			and(
 				eq(narrators.id, narratorId),
-				eq(chapters.projectId, binding.runtimeProjectId),
+				eq(narrators.contextProjectId, binding.runtimeProjectId),
 			),
 		)
 		.limit(1);
-	if (!row || row.projectId !== binding.runtimeProjectId || !row.chapterId) {
+	if (!row || row.projectId !== binding.runtimeProjectId) {
 		throw new NotFoundError("Narrator", narratorId);
 	}
-	return { binding, narrator: { id: row.id, chapterId: row.chapterId } };
+	return { binding, narrator: { id: row.id, projectId: row.projectId } };
 }
 
 /** Permission IDs are global, so resolve the owning narrator before deciding. */

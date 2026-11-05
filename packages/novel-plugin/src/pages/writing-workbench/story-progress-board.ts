@@ -15,6 +15,8 @@
 
 // ─── 输入类型（对齐 /jingwei/entries 与 /narrative-memory/graph 的实际返回） ───
 
+import { chartColor } from "@/styles/chart-palette";
+
 import type {
   NarrativeScene,
   NarrativeStoryline,
@@ -177,18 +179,21 @@ export const FUTURE_CHAPTER_COLUMNS = 2;
 
 const DEFAULT_MAX_CHARACTER_LANES = 4;
 
-/** 低饱和分类色（暗底/亮底都可读，避免饱和亮色刺眼）。 */
+/**
+ * 剧情线分类色：取 DESIGN.md 的分类色令牌（var(--chart-N)），每套书房主题、每种明暗各一组，
+ * 在卡片与底色上都可辨认。伏笔沿用警告色，其他用中性色。
+ */
 export const LANE_COLORS: Record<StoryProgressLaneKind, string> = {
-  main: "#7aa2f7",
-  sub: "#2ac3de",
-  romance: "#f7768e",
-  faction: "#9ece6a",
-  mystery: "#bb9af7",
-  "character-arc": "#e0af68",
-  conflict: "#f7768e",
-  character: "#bb9af7",
-  foreshadow: "#e0af68",
-  other: "#a9b1d6",
+  main: chartColor(0),
+  sub: chartColor(1),
+  romance: chartColor(2),
+  "character-arc": chartColor(3),
+  mystery: chartColor(4),
+  faction: chartColor(5),
+  conflict: chartColor(6),
+  character: chartColor(7),
+  foreshadow: "var(--warning)",
+  other: "var(--muted-foreground)",
 };
 
 export const LANE_KIND_LABEL: Record<StoryProgressLaneKind, string> = {

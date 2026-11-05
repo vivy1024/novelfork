@@ -6,11 +6,12 @@
  *   叙述者不能确认自己的草稿。
  * - 幂等：同书同名的剧情线已存在（待审或已确认）时不重复创建，返回已存在的那条；
  *   作者驳回过的名字直接拒绝，不反复起草。
- * - relatedEntryTitles 只解析不建实体；解析不出的名字在结果里如实列出。
+ * - relatedEntryTitles 只解析不建实体（按标题，含繁简归一）；解析不出的名字在结果里如实列出。
  */
 
-import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
 
+import { toSimplifiedText } from "../engine/text/zh-variants.js";
 import {
   createStoryline,
   findStorylineByName,
@@ -44,6 +45,16 @@ function fail(error: string, summary: string): StorylineProposeResult {
   return { ok: false, error, summary };
 }
 
+function entryTitleOf(storage: StorageDatabase, bookId: string, entryId: string): { id: string; title: string } | undefined {
+  return storage.sqlite
+    .prepare<{ id: string; title: string }>(
+      "SELECT id, title FROM story_jingwei_entry WHERE book_id = ? AND id = ? AND deleted_at IS NULL",
+    )
+    .get(bookId, entryId) ?? undefined;
+}
+
+const MAX_RELATED_TITLES = 20;
+
 export async function handleStorylinePropose(input: StorylineProposeInput): Promise<StorylineProposeResult> {
   const name = input.name?.trim() ?? "";
   if (!name) return fail("invalid-input", "剧情线需要一个名字，否则归纳出的草稿无法在树上区分。");
@@ -55,18 +66,33 @@ export async function handleStorylinePropose(input: StorylineProposeInput): Prom
 
   const resolved: { id: string; title: string }[] = [];
   const unresolved: string[] = [];
-  for (const title of input.relatedEntryTitles ?? []) {
-    const trimmed = title.trim();
-    if (!trimmed) continue;
-    const row = storage.sqlite
+  // 关联条目只是给剧情线挂几个主角色/主事件：去重后最多取前 MAX_RELATED_TITLES 个，多出的报未解析。
+  const allTitles = [...new Set((input.relatedEntryTitles ?? []).map((title) => title.trim()).filter((title) => title.length > 0 && title.length <= 200))];
+  const titles = allTitles.slice(0, MAX_RELATED_TITLES);
+  unresolved.push(...allTitles.slice(MAX_RELATED_TITLES));
+  if (titles.length > 0) {
+    // 按标题解析：先逐字，再做繁简归一（叙述者常把「趙太爷」「吳媽」写成简体）。只读条目标题，不建实体。
+    // 条目标题只归一一次建表（按最近更新优先，同名取最近更新的那条），不对每个查询标题重扫全书。
+    const entries = storage.sqlite
       .prepare<{ id: string; title: string }>(
         `SELECT id, title FROM story_jingwei_entry
-         WHERE book_id = ? AND title = ? AND deleted_at IS NULL
-         ORDER BY updated_at DESC LIMIT 1`,
+         WHERE book_id = ? AND deleted_at IS NULL
+         ORDER BY updated_at DESC`,
       )
-      .get(input.bookId, trimmed);
-    if (row) resolved.push(row);
-    else unresolved.push(trimmed);
+      .all(input.bookId);
+    const byExact = new Map<string, { id: string; title: string }>();
+    const byNormalized = new Map<string, { id: string; title: string }>();
+    for (const entry of entries) {
+      if (!byExact.has(entry.title)) byExact.set(entry.title, entry);
+      const normalizedTitle = toSimplifiedText(entry.title.trim());
+      if (!byNormalized.has(normalizedTitle)) byNormalized.set(normalizedTitle, entry);
+    }
+    for (const title of titles) {
+      const row = byExact.get(title) ?? byNormalized.get(toSimplifiedText(title));
+      if (row) {
+        if (!resolved.some((item) => item.id === row.id)) resolved.push({ id: row.id, title: row.title });
+      } else unresolved.push(title);
+    }
   }
 
   const existing = findStorylineByName(storage, input.bookId, name);
@@ -79,13 +105,30 @@ export async function handleStorylinePropose(input: StorylineProposeInput): Prom
   if (existing) {
     const unresolvedText = unresolved.length > 0 ? `未解析的名字：${unresolved.join("、")}。` : "";
     const stateText = existing.status === "needs-review" ? "已存在（待审中）" : "已是本书的正式剧情线";
+    // 复用的待审草稿还没挂关联条目时，把这次新解析出的首个条目补挂上（与新建时同一口径）；
+    // 已挂了条目的不改，作者确认过的线也不由叙述者改挂。
+    const primary = resolved[0];
+    const wantsBackfill = Boolean(primary && !existing.entryId && existing.status === "needs-review");
+    // 写入时再核对一次书与状态：读到写之间作者可能已确认这条线，确认过的线不由叙述者改挂。
+    // 按实际改动行数决定提示，没改成就不说「已补挂」。
+    const backfill = wantsBackfill && primary
+      ? storage.sqlite
+        .prepare("UPDATE narrative_storyline SET entry_id = ?, updated_at = ? WHERE id = ? AND book_id = ? AND status = 'needs-review' AND entry_id IS NULL")
+        .run(primary.id, Date.now(), existing.id, input.bookId).changes > 0
+      : false;
+    const linkedId = backfill && primary ? primary.id : existing.entryId;
+    const linkedEntry = linkedId
+      ? resolved.find((entry) => entry.id === linkedId) ?? entryTitleOf(storage, input.bookId, linkedId)
+      : undefined;
+    const backfillText = backfill && primary ? `已补挂关联条目「${primary.title}」。` : "";
     return {
       ok: true,
-      summary: `剧情线「${name}」${stateText}，未重复创建。${unresolvedText}`,
+      summary: `剧情线「${name}」${stateText}，未重复创建。${backfillText}${unresolvedText}`,
       data: {
         storylineId: existing.id,
         name: existing.name,
         reused: true,
+        ...(linkedEntry ? { linkedEntry } : {}),
         resolvedEntries: resolved,
         unresolvedNames: unresolved,
       },
@@ -109,7 +152,9 @@ export async function handleStorylinePropose(input: StorylineProposeInput): Prom
   const evidence = input.evidenceNote?.trim();
   const primary = resolved[0];
   const unresolvedText = unresolved.length > 0 ? `未解析的名字：${unresolved.join("、")}。` : "";
-  const evidenceText = evidence ? `依据：${evidence}。` : "";
+  // 叙述者写的依据常自带句末标点，去掉再统一补一个句号，免得出现「。。」。
+  const evidenceBody = evidence?.replace(/[。．.！!？?；;，,、\s]+$/u, "");
+  const evidenceText = evidenceBody ? `依据：${evidenceBody}。` : "";
   return {
     ok: true,
     summary: `已提交剧情线草稿「${name}」（待确认）。${evidenceText}${unresolvedText}`.trim(),

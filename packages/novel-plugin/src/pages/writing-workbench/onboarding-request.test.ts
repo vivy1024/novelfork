@@ -9,9 +9,9 @@ import { buildOnboardingRequestMessage } from "./onboarding-request";
 describe("buildOnboardingRequestMessage", () => {
   it("包含四步编排与正确的工具名；技能启用交给作者在写作台勾选，不出现已下线的 skills.read / skills.write", () => {
     const message = buildOnboardingRequestMessage();
-    expect(message).toContain("skills.recommend");
+    expect(message).toContain("skills_recommend");
     expect(message).toContain("AskUserQuestion");
-    expect(message).toContain("lore.write");
+    expect(message).toContain("lore_write");
     // 叙述者已没有技能读写工具：启用只由作者在写作台「技能文风」完成。
     expect(message).not.toContain("skills.read");
     expect(message).not.toContain("skills.write");
@@ -46,7 +46,7 @@ describe("buildOnboardingRequestMessage", () => {
 
   it("没有推荐时也能生成可执行请求，不出现空清单段落", () => {
     const message = buildOnboardingRequestMessage({ recommendedWritingSkills: [] });
-    expect(message).toContain("skills.recommend");
+    expect(message).toContain("skills_recommend");
     expect(message).not.toContain("预选了这些写作技能");
   });
 

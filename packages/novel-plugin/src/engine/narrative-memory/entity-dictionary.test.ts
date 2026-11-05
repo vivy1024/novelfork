@@ -86,3 +86,56 @@ describe("buildEntityDictionary + resolveEntity", () => {
     expect(prompt).toContain("薛小爷");
   });
 });
+
+describe("buildEntityDictionary：待确认人物草稿", () => {
+  it("SQL 只排除 characters 类目下的 needs-review，伏笔草稿与其他类目照常进字典", () => {
+    const seen: string[] = [];
+    const storage = {
+      sqlite: {
+        prepare: (sql: string) => ({
+          all: () => {
+            seen.push(sql);
+            return [];
+          },
+        }),
+        exec: () => undefined,
+      },
+    } as never;
+    buildEntityDictionary(storage, "book-1");
+    expect(seen[0]).toContain("NOT (category IN ('characters', 'character') AND COALESCE(status, '') = 'needs-review')");
+  });
+
+  it("旧版单数类目 character 也进字典，并按统一类目 characters 记账", () => {
+    const rows = [{ id: "entry-legacy", category: "character", title: "沈默", fields_json: null }];
+    const storage = {
+      sqlite: {
+        prepare: (sql: string) => ({
+          all: (...params: unknown[]) => {
+            expect(sql).toContain("category IN");
+            expect(params).toContain("character");
+            return rows;
+          },
+        }),
+        exec: () => undefined,
+      },
+    } as never;
+    const dictionary = buildEntityDictionary(storage, "book-1");
+    expect(dictionary.entries.map((entry) => [entry.entryId, entry.category])).toEqual([["entry-legacy", "characters"]]);
+  });
+
+  it("旧库没有 status 列时退回不按状态过滤", () => {
+    const rows = [{ id: "entry-1", category: "characters", title: "林照", fields_json: null }];
+    const storage = {
+      sqlite: {
+        prepare: (sql: string) => ({
+          all: () => {
+            if (sql.includes("status")) throw new Error("no such column: status");
+            return rows;
+          },
+        }),
+        exec: () => undefined,
+      },
+    } as never;
+    expect(buildEntityDictionary(storage, "book-1").entries.map((entry) => entry.entryId)).toEqual(["entry-1"]);
+  });
+});

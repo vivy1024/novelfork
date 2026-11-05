@@ -4,6 +4,7 @@
 import { useMemo } from "react";
 import type { PaletteCommand } from "./command-palette";
 import type { ViewId } from "./use-panel-manager";
+import { toWireToolName } from "../../../engine/workflows/run-brief";
 
 export interface IdeCommandOptions {
   switchView: (view: ViewId) => void;
@@ -153,7 +154,7 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         label: "卷纲：查看或生成草案",
         category: "写作",
         execute: () => options.sendToNarrator?.(
-          "请用 outline.volume(action=get) 读取当前卷纲；如果还没有，就用 action=suggest 生成草案给我确认。",
+          `请用 ${toWireToolName("outline.volume")}(action=get) 读取当前卷纲；如果还没有，就用 action=suggest 生成草案给我确认。`,
         ),
       },
       {
@@ -161,7 +162,7 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         label: "投稿风险自检",
         category: "写作",
         execute: () => options.sendToNarrator?.(
-          "请用 publish.check 对最近章节做投稿风险自检，展示规则来源、敏感词与 AI 味线索的正文证据，并给出人工复核建议。",
+          `请用 ${toWireToolName("publish.check")} 对最近章节做投稿风险自检，展示规则来源、敏感词与 AI 味线索的正文证据，并给出人工复核建议。`,
         ),
       },
       {

@@ -122,8 +122,8 @@ export function TensionCurveStrip({ chapters, currentChapter, onJumpToChapter }:
           >
             <defs>
               <linearGradient id="tension-strip-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#f7768e" stopOpacity="0.28" />
-                <stop offset="100%" stopColor="#7aa2f7" stopOpacity="0.04" />
+                <stop offset="0%" stopColor="var(--destructive)" stopOpacity="0.28" />
+                <stop offset="100%" stopColor="var(--info)" stopOpacity="0.04" />
               </linearGradient>
             </defs>
 
@@ -133,7 +133,8 @@ export function TensionCurveStrip({ chapters, currentChapter, onJumpToChapter }:
               x2={model.width}
               y1={8 + (1 - HOT_SCORE / MAX_SCORE) * (HEIGHT - 20)}
               y2={8 + (1 - HOT_SCORE / MAX_SCORE) * (HEIGHT - 20)}
-              stroke="rgba(148,163,184,0.35)"
+              stroke="var(--muted-foreground)"
+              strokeOpacity={0.45}
               strokeWidth={1}
               strokeDasharray="3 3"
             />
@@ -150,7 +151,7 @@ export function TensionCurveStrip({ chapters, currentChapter, onJumpToChapter }:
                       fill="url(#tension-strip-fill)"
                     />
                   ) : null}
-                  <path d={path} fill="none" stroke="#f7768e" strokeWidth={1.5} strokeLinecap="round" />
+                  <path d={path} fill="none" stroke="var(--destructive)" strokeWidth={1.5} strokeLinecap="round" />
                 </g>
               );
             })}
@@ -161,7 +162,7 @@ export function TensionCurveStrip({ chapters, currentChapter, onJumpToChapter }:
                 cx={point.x}
                 cy={point.y}
                 r={point.score >= HOT_SCORE ? 3 : 2}
-                fill={point.score >= HOT_SCORE ? "#f7768e" : "#7aa2f7"}
+                fill={point.score >= HOT_SCORE ? "var(--destructive)" : "var(--info)"}
                 className={onJumpToChapter ? "cursor-pointer" : undefined}
                 onClick={onJumpToChapter ? () => onJumpToChapter(point.chapterNumber) : undefined}
               >
@@ -176,11 +177,12 @@ export function TensionCurveStrip({ chapters, currentChapter, onJumpToChapter }:
                   x2={model.currentX}
                   y1={4}
                   y2={HEIGHT - 12}
-                  stroke="rgba(16,185,129,0.55)"
+                  stroke="var(--success)"
+                  strokeOpacity={0.7}
                   strokeWidth={1}
                   strokeDasharray="3 3"
                 />
-                <text x={model.currentX} y={HEIGHT - 2} textAnchor="middle" fontSize={8} fill="rgba(16,185,129,0.9)">
+                <text x={model.currentX} y={HEIGHT - 2} textAnchor="middle" fontSize={8} fill="var(--success)">
                   第{currentChapter}章
                 </text>
               </g>

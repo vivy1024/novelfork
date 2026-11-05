@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MemoryDB } from "../state/memory-db.js";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { StoredHook } from "../state/memory-db.js";
@@ -309,5 +309,35 @@ describe("Hooks Countdown System", () => {
     expect(overdueHooks[0]?.hookId).toBe("overdue-1");
     expect(overdueHooks[1]?.hookId).toBe("overdue-2");
     expect(overdueHooks[2]?.hookId).toBe("overdue-3");
+  });
+});
+
+describe("MemoryDB 打开全新书目录", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "novelfork-memorydb-fresh-"));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("书目录还没有 story/ 时补建该目录并能正常读写", () => {
+    const bookDir = join(root, "book");
+    mkdirSync(bookDir);
+    const db = new MemoryDB(bookDir);
+    try {
+      expect(existsSync(join(bookDir, "story", "memory.db"))).toBe(true);
+      expect(db.getChapterCount()).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("书目录本身不存在时报清楚的错，不替它把目录建出来", () => {
+    const bookDir = join(root, "missing-book");
+    expect(() => new MemoryDB(bookDir)).toThrow(/书籍目录不存在/);
+    expect(existsSync(bookDir)).toBe(false);
   });
 });

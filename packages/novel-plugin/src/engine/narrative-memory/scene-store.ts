@@ -17,6 +17,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import type { BeatBudgetItem } from "../../handlers/beat-budget.js";
 import type { SceneSpecScene } from "../../handlers/scene-spec-handler.js";
+import { parseSceneGaps, type SceneGap } from "../../handlers/scene-gaps.js";
 import { ensureNarrativeMemorySchema } from "./storage.js";
 
 /** canon 是作者确认过的；机器抽取一律 dynamic。 */
@@ -94,6 +95,8 @@ export type NarrativeScene = Readonly<{
   hooksUsed: readonly string[];
   hooksPlanted: readonly string[];
   beatBudget?: readonly BeatBudgetItem[];
+  /** 规划留白（T2.6）：蓝图带来或作者手编；旧行为空数组。 */
+  gaps: readonly SceneGap[];
   layer: NarrativeLayer;
   status: NarrativeReviewStatus;
   source: NarrativeSource;
@@ -150,6 +153,7 @@ type SceneRow = {
   hooks_used_json: string;
   hooks_planted_json: string;
   beat_budget_json: string | null;
+  gaps_json: string | null;
   layer: string;
   status: string;
   source: string;
@@ -227,6 +231,8 @@ function toScene(row: SceneRow): NarrativeScene {
     hooksUsed: safeParseJsonArray<string>(row.hooks_used_json),
     hooksPlanted: safeParseJsonArray<string>(row.hooks_planted_json),
     ...(beatBudget ? { beatBudget } : {}),
+    // 读出时再过一遍判据：旧行没有这一列或存了脏数据，都只得到合法条目。
+    gaps: parseSceneGaps(safeParseJsonArray<unknown>(row.gaps_json)),
     layer: row.layer as NarrativeLayer,
     status: row.status as NarrativeReviewStatus,
     source: row.source as NarrativeSource,
@@ -381,6 +387,7 @@ export type CreateSceneInput = Readonly<{
   hooksUsed?: readonly string[];
   hooksPlanted?: readonly string[];
   beatBudget?: readonly BeatBudgetItem[];
+  gaps?: readonly SceneGap[];
   layer?: NarrativeLayer;
   status?: NarrativeReviewStatus;
   source?: NarrativeSource;
@@ -422,6 +429,7 @@ export function createScene(storage: StorageDatabase, input: CreateSceneInput): 
     hooksUsed: input.hooksUsed ? [...input.hooksUsed] : [],
     hooksPlanted: input.hooksPlanted ? [...input.hooksPlanted] : [],
     ...(input.beatBudget ? { beatBudget: [...input.beatBudget] } : {}),
+    gaps: parseSceneGaps(input.gaps ?? []),
     layer: input.layer ?? "dynamic",
     status: input.status ?? "needs-review",
     source: input.source ?? "inferred",
@@ -435,9 +443,9 @@ export function createScene(storage: StorageDatabase, input: CreateSceneInput): 
       INSERT INTO narrative_scene
         (id, book_id, chapter_number, ordinal, title, summary, function, pov_entity_id,
          location_entity_id, word_count, conflict, mood, outcome, characters_json,
-         hooks_used_json, hooks_planted_json, beat_budget_json,
+         hooks_used_json, hooks_planted_json, beat_budget_json, gaps_json,
          layer, status, source, confidence, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       row.id, row.bookId, row.chapterNumber, row.ordinal, row.title, row.summary, row.function,
@@ -447,6 +455,7 @@ export function createScene(storage: StorageDatabase, input: CreateSceneInput): 
       JSON.stringify(row.hooksUsed),
       JSON.stringify(row.hooksPlanted),
       row.beatBudget ? JSON.stringify(row.beatBudget) : null,
+      JSON.stringify(row.gaps),
       row.layer, row.status, row.source, row.confidence, row.createdAt, row.updatedAt,
     );
 
@@ -682,6 +691,53 @@ export function setScenePrimaryStoryline(
   };
 }
 
+/** 读单个场景，并核对它属于这本书；不属于时与不存在一样返回 undefined，不泄露存在性。 */
+export function getSceneInBook(storage: StorageDatabase, bookId: string, sceneIdValue: string): NarrativeScene | undefined {
+  ensureNarrativeMemorySchema(storage);
+  const row = storage.sqlite
+    .prepare<SceneRow>("SELECT * FROM narrative_scene WHERE id = ? AND book_id = ?")
+    .get(sceneIdValue, bookId);
+  return row ? toScene(row) : undefined;
+}
+
+/**
+ * 作者手编某个场景的规划留白（T2.6）：整组替换，非法条目按 parseSceneGaps 剔除。
+ *
+ * - 冲突保护：调用方带上读取时的 updatedAt；场景此后被别处改过（叙述者重写、另一个窗口保存）
+ *   就拒绝写入并返回 scene-conflict，不覆盖别人的修改。
+ * - 作者动手改过即视为认领：needs-review 的机器场景升为 confirmed，之后重写本章时
+ *   replaceChapterScenes 会保留它，作者写的留白不会被新蓝图静默抹掉。
+ */
+export function updateSceneGaps(
+  storage: StorageDatabase,
+  input: Readonly<{ bookId: string; sceneId: string; gaps: unknown; expectedUpdatedAt: number }>,
+): SceneStoreResult<NarrativeScene> {
+  ensureNarrativeMemorySchema(storage);
+  const existing = getSceneInBook(storage, input.bookId, input.sceneId);
+  if (!existing) return fail("scene-not-found", "这本书里没有这个场景，可能已被删除或本章已重写。");
+  if (existing.updatedAt !== input.expectedUpdatedAt) {
+    return fail("scene-conflict", "这个场景在你打开之后被改过（可能是叙述者重写了本章或另一个窗口保存过），为避免覆盖，这次没有保存。请重新载入后再改。");
+  }
+  const gaps = parseSceneGaps(input.gaps);
+  // 毫秒时间戳作版本号：保证严格递增，同一毫秒内连续保存也能区分版本。
+  const updatedAt = Math.max(Date.now(), existing.updatedAt + 1);
+  const status: NarrativeReviewStatus = existing.status === "needs-review" ? "confirmed" : existing.status;
+  const changed = storage.sqlite
+    .prepare("UPDATE narrative_scene SET gaps_json = ?, status = ?, updated_at = ? WHERE id = ? AND book_id = ? AND updated_at = ?")
+    .run(JSON.stringify(gaps), status, updatedAt, input.sceneId, input.bookId, input.expectedUpdatedAt);
+  if (Number(changed.changes) !== 1) {
+    return fail("scene-conflict", "这个场景刚刚被别处改过，为避免覆盖，这次没有保存。请重新载入后再改。");
+  }
+  const saved = getSceneInBook(storage, input.bookId, input.sceneId)!;
+  return {
+    ok: true,
+    summary: gaps.length > 0
+      ? `第 ${saved.chapterNumber} 章第 ${saved.ordinal} 场的留白已保存（${gaps.length} 条）。`
+      : `第 ${saved.chapterNumber} 章第 ${saved.ordinal} 场的留白已清空。`,
+    data: saved,
+  };
+}
+
 /** 某个场景挂在哪几条线上——正交性的另一半，给承载树侧展示用。 */
 export function listSceneMounts(storage: StorageDatabase, sceneIdValue: string): SceneStorylineMount[] {
   ensureNarrativeMemorySchema(storage);
@@ -726,7 +782,10 @@ export function sceneFromSpec(
   ordinal: number,
   spec: SceneSpecScene,
   options?: SceneFromSpecOptions,
-): CreateSceneInput {
+): BlueprintSceneInput {
+  // 蓝图可选带 sceneId（叙述者对着已有场景写蓝图时），落盘时据此对上作者场景。
+  const rawSceneId = (spec as { sceneId?: unknown }).sceneId;
+  const targetSceneId = typeof rawSceneId === "string" && rawSceneId.trim() ? rawSceneId.trim() : undefined;
   const locationPrefix = spec.location?.trim() ? `[地点: ${spec.location.trim()}] ` : "";
   const baseSummary = spec.outcome?.trim() || spec.conflict?.trim() || `第 ${chapterNumber} 章第 ${ordinal} 场`;
   const summary = `${locationPrefix}${baseSummary}`.trim();
@@ -744,11 +803,13 @@ export function sceneFromSpec(
     characters: spec.characters ?? [],
     hooksUsed: spec.hooks_used ?? [],
     hooksPlanted: spec.hooks_planted ?? [],
+    ...(spec.gaps && spec.gaps.length > 0 ? { gaps: spec.gaps } : {}),
     ...(options?.beatBudget ? { beatBudget: options.beatBudget } : {}),
     layer: options?.layer ?? "dynamic",
     status: options?.status ?? "needs-review",
     source: options?.source ?? "workflow",
     confidence: options?.confidence ?? 1.0,
+    ...(targetSceneId ? { targetSceneId } : {}),
   };
 }
 
@@ -760,7 +821,9 @@ export function sceneFromSpec(
  * 作者已挂到剧情线上的场景，都是作者投入过的劳动。若按「整章删光再建」处理，作者
  * 一重写本章，这些场景与挂载就会被静默抹掉，而界面上看不出发生过什么。
  *
- * 新场景追加在保留场景之后（ordinal 取当前最大值 + 1），不复用蓝图里的序号，
+ * 蓝图里与保留场景是同一场的（同 sceneId / 同序号 / 地点相同且人物重合，见 matchBlueprintToPreserved），
+ * 只就地更新那个保留场景、不另建一份——否则作者手建的场景和蓝图场景会并存，留白被复制。
+ * 其余新场景追加在保留场景之后（ordinal 取当前最大值 + 1），不复用蓝图里的序号，
  * 避免与保留场景撞号。整个过程在一个事务里：任何一条写入失败则整体回滚，
  * 不会留下「旧的删了、新的只写了一半」的状态。
  */
@@ -768,14 +831,16 @@ export function replaceChapterScenes(
   storage: StorageDatabase,
   bookId: string,
   chapterNumber: number,
-  inputs: readonly CreateSceneInput[],
+  inputs: readonly BlueprintSceneInput[],
 ): SceneStoreResult<NarrativeScene[]> {
   ensureNarrativeMemorySchema(storage);
   if (!Number.isInteger(chapterNumber) || chapterNumber < 1) {
     return fail("invalid-input", "场景必须落在某一章上，章号需为正整数。");
   }
 
-  const createdScenes: NarrativeScene[] = [];
+  const resultScenes: NarrativeScene[] = [];
+  let createdCount = 0;
+  let mergedCount = 0;
   let replacedCount = 0;
   let preservedCount = 0;
 
@@ -791,16 +856,20 @@ export function replaceChapterScenes(
         .run(bookId, chapterNumber);
       replacedCount = Number(removed.changes);
 
-      const remaining = storage.sqlite
-        .prepare<{ count: number }>(
-          "SELECT COUNT(*) AS count FROM narrative_scene WHERE book_id = ? AND chapter_number = ?",
-        )
-        .get(bookId, chapterNumber);
-      preservedCount = remaining?.count ?? 0;
+      const preserved = listScenesByChapter(storage, bookId, chapterNumber);
+      preservedCount = preserved.length;
+      const matches = matchBlueprintToPreserved(storage, bookId, inputs, preserved);
 
-      for (const input of inputs) {
+      for (const [index, input] of inputs.entries()) {
+        const target = matches.get(index);
+        if (target) {
+          // 同一场：只更新作者版，不重复建。
+          resultScenes.push(mergeBlueprintIntoScene(storage, target, input));
+          mergedCount += 1;
+          continue;
+        }
         // 丢弃蓝图自带的序号，由 createScene 追加到当前末尾。
-        const { ordinal: _ignoredOrdinal, ...rest } = input;
+        const { ordinal: _ignoredOrdinal, targetSceneId: _ignoredTarget, ...rest } = input;
         const created = createScene(storage, {
           ...rest,
           bookId,
@@ -812,7 +881,8 @@ export function replaceChapterScenes(
         if (!created.ok || !created.data) {
           throw new Error(created.summary);
         }
-        createdScenes.push(created.data);
+        resultScenes.push(created.data);
+        createdCount += 1;
       }
     })();
   } catch (error) {
@@ -821,11 +891,145 @@ export function replaceChapterScenes(
   }
 
   const preservedNote = preservedCount > 0
-    ? `保留了 ${preservedCount} 个作者建过、确认过或已挂线的场景，`
+    ? `保留了 ${preservedCount} 个作者建过、确认过或已挂线的场景${mergedCount > 0 ? `（其中 ${mergedCount} 个与蓝图是同一场，已就地更新）` : ""}，`
     : "";
   return {
     ok: true,
-    summary: `第 ${chapterNumber} 章场景已刷新：替换 ${replacedCount} 个机器场景，${preservedNote}新写入 ${createdScenes.length} 个。`,
-    data: createdScenes,
+    summary: `第 ${chapterNumber} 章场景已刷新：替换 ${replacedCount} 个机器场景，${preservedNote}新写入 ${createdCount} 个。`,
+    data: resultScenes,
   };
+}
+
+/** 蓝图场景：可带要对上的已有场景 id（蓝图里写了 sceneId 时）。 */
+export type BlueprintSceneInput = CreateSceneInput & Readonly<{ targetSceneId?: string }>;
+
+const LOCATION_PREFIX = /^\[地点:\s*([^\]]+)\]\s*/u;
+
+function sceneLocationLabel(storage: StorageDatabase, scene: Pick<NarrativeScene, "summary" | "locationEntityId">): string | null {
+  const fromSummary = scene.summary.match(LOCATION_PREFIX)?.[1]?.trim();
+  if (fromSummary) return fromSummary;
+  if (!scene.locationEntityId) return null;
+  const row = storage.sqlite
+    .prepare<{ canonical_name: string }>("SELECT canonical_name FROM narrative_entity WHERE id = ?")
+    .get(scene.locationEntityId);
+  return row?.canonical_name ?? null;
+}
+
+/** 地点名归并键：命中实体（规范名 / 别名）时用实体 id，否则用去空白的原文。 */
+function locationKey(storage: StorageDatabase, bookId: string, label: string | null): string | null {
+  const name = label?.replace(/\s+/gu, "");
+  if (!name) return null;
+  const hasEntities = storage.sqlite
+    .prepare<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'narrative_entity_alias'")
+    .get();
+  if (hasEntities) {
+    const hit = storage.sqlite.prepare<{ id: string }>(`
+      SELECT id FROM narrative_entity WHERE book_id = ? AND canonical_name = ?
+      UNION SELECT entity_id AS id FROM narrative_entity_alias WHERE book_id = ? AND alias = ?
+      LIMIT 1
+    `).get(bookId, name, bookId, name);
+    if (hit) return hit.id;
+  }
+  return `text:${name}`;
+}
+
+/**
+ * 蓝图场景对上保留场景（同章内）。优先级：
+ *   1. 蓝图写了 sceneId，且是本章保留场景；
+ *   2. 同序号——除非两边地点都写了且不同、人物又毫无重合（明显是另一场）；
+ *   3. 地点相同且出场人物有重合。
+ * 每个保留场景至多对上一个蓝图场景；按优先级分轮配对，避免前面的蓝图抢走后面更准的配对。
+ */
+function matchBlueprintToPreserved(
+  storage: StorageDatabase,
+  bookId: string,
+  inputs: readonly BlueprintSceneInput[],
+  preserved: readonly NarrativeScene[],
+): Map<number, NarrativeScene> {
+  const matches = new Map<number, NarrativeScene>();
+  if (preserved.length === 0) return matches;
+  const claimed = new Set<string>();
+  const facts = preserved.map((scene) => ({
+    scene,
+    location: locationKey(storage, bookId, sceneLocationLabel(storage, scene)),
+    characters: new Set(scene.characters.map((name) => name.trim()).filter(Boolean)),
+  }));
+  const inputFacts = inputs.map((input) => ({
+    location: locationKey(storage, bookId, (input.summary ?? "").match(LOCATION_PREFIX)?.[1]?.trim() ?? null),
+    characters: (input.characters ?? []).map((name) => name.trim()).filter(Boolean),
+  }));
+  const overlap = (a: Set<string>, b: readonly string[]) => b.some((name) => a.has(name));
+  const claim = (index: number, scene: NarrativeScene) => {
+    matches.set(index, scene);
+    claimed.add(scene.id);
+  };
+
+  inputs.forEach((input, index) => {
+    if (!input.targetSceneId) return;
+    const hit = preserved.find((scene) => scene.id === input.targetSceneId && !claimed.has(scene.id));
+    if (hit) claim(index, hit);
+  });
+  inputs.forEach((input, index) => {
+    if (matches.has(index) || input.ordinal === undefined) return;
+    const own = inputFacts[index]!;
+    const hit = facts.find((fact) => {
+      if (claimed.has(fact.scene.id) || fact.scene.ordinal !== input.ordinal) return false;
+      const contradicts = fact.location !== null && own.location !== null && fact.location !== own.location
+        && !overlap(fact.characters, own.characters);
+      return !contradicts;
+    });
+    if (hit) claim(index, hit.scene);
+  });
+  inputs.forEach((_input, index) => {
+    if (matches.has(index)) return;
+    const own = inputFacts[index]!;
+    if (own.location === null || own.characters.length === 0) return;
+    const hit = facts.find((fact) => !claimed.has(fact.scene.id) && fact.location === own.location && overlap(fact.characters, own.characters));
+    if (hit) claim(index, hit.scene);
+  });
+  return matches;
+}
+
+/**
+ * 把蓝图并进作者场景：作者写过的一律保留（标题、摘要、冲突等非空字段、留白、状态与来源），
+ * 只补作者没写的——空字段取蓝图值，人物与伏笔取并集，作者摘要没有地点时补上蓝图地点前缀，
+ * 作者没有留白 / 节拍预算时才取蓝图的。
+ */
+function mergeBlueprintIntoScene(storage: StorageDatabase, scene: NarrativeScene, input: BlueprintSceneInput): NarrativeScene {
+  const union = (own: readonly string[], extra: readonly string[] | undefined) => {
+    const result = [...own];
+    for (const item of extra ?? []) if (item.trim() && !result.includes(item)) result.push(item);
+    return result;
+  };
+  const blueprintSummary = input.summary?.trim() ?? "";
+  const blueprintPrefix = blueprintSummary.match(LOCATION_PREFIX)?.[0] ?? "";
+  let summary = scene.summary;
+  if (!summary.trim()) summary = blueprintSummary;
+  else if (blueprintPrefix && !LOCATION_PREFIX.test(summary) && !scene.locationEntityId) summary = `${blueprintPrefix}${summary}`;
+  const merged: NarrativeScene = {
+    ...scene,
+    title: scene.title.trim() ? scene.title : (input.title?.trim() ?? ""),
+    summary,
+    conflict: scene.conflict.trim() ? scene.conflict : (input.conflict?.trim() ?? ""),
+    mood: scene.mood.trim() ? scene.mood : (input.mood?.trim() ?? ""),
+    outcome: scene.outcome.trim() ? scene.outcome : (input.outcome?.trim() ?? ""),
+    characters: union(scene.characters, input.characters),
+    hooksUsed: union(scene.hooksUsed, input.hooksUsed),
+    hooksPlanted: union(scene.hooksPlanted, input.hooksPlanted),
+    ...(scene.beatBudget ? {} : input.beatBudget ? { beatBudget: [...input.beatBudget] } : {}),
+    gaps: scene.gaps.length > 0 ? scene.gaps : parseSceneGaps(input.gaps ?? []),
+    updatedAt: Math.max(Date.now(), scene.updatedAt + 1),
+  };
+  storage.sqlite.prepare(`
+    UPDATE narrative_scene
+    SET title = ?, summary = ?, conflict = ?, mood = ?, outcome = ?, characters_json = ?,
+        hooks_used_json = ?, hooks_planted_json = ?, beat_budget_json = ?, gaps_json = ?, updated_at = ?
+    WHERE id = ? AND book_id = ?
+  `).run(
+    merged.title, merged.summary, merged.conflict, merged.mood, merged.outcome,
+    JSON.stringify(merged.characters), JSON.stringify(merged.hooksUsed), JSON.stringify(merged.hooksPlanted),
+    merged.beatBudget ? JSON.stringify(merged.beatBudget) : null, JSON.stringify(merged.gaps), merged.updatedAt,
+    merged.id, merged.bookId,
+  );
+  return merged;
 }

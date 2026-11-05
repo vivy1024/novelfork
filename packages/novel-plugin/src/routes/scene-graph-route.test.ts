@@ -97,6 +97,34 @@ describe("建场景与剧情线", () => {
     }
   });
 
+  it("手建场景接收出场人物 characters：名字原样存、实体 id 换成规范名、非法项被拒", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      // 实体索引表由迁移建出；这里只需一行本书人物实体与一行他书实体。
+      storage.sqlite.exec(`
+        CREATE TABLE IF NOT EXISTS narrative_entity (id TEXT PRIMARY KEY, book_id TEXT NOT NULL, canonical_name TEXT NOT NULL);
+        INSERT INTO narrative_entity (id, book_id, canonical_name) VALUES ('ent:book-1:e1', 'book-1', '卫青锋'), ('ent:book-2:e9', 'book-2', '外人');
+      `);
+      const ok = await postJson(app, `${BASE}/scenes`, { chapterNumber: 2, title: "夜访师兄", characters: ["韩烈", "ent:book-1:e1", "韩烈"] });
+      expect(ok.status).toBe(200);
+      expect((ok.body.data as { characters: string[] }).characters).toEqual(["韩烈", "卫青锋"]);
+
+      // 反例：不传仍是空名单；类型不对、空项、他书实体都拒绝，场景不落库。
+      const none = await postJson(app, `${BASE}/scenes`, { chapterNumber: 2 });
+      expect((none.body.data as { characters: string[] }).characters).toEqual([]);
+      for (const characters of ["韩烈", [""], [3], ["ent:book-2:e9"]]) {
+        const bad = await postJson(app, `${BASE}/scenes`, { chapterNumber: 2, characters });
+        expect(bad.status).toBe(400);
+        expect(String(bad.body.summary)).toContain("characters");
+      }
+      const graph = await (await app.request(`${BASE}/chapters/2/scenes`)).json() as { scenes: unknown[] };
+      expect(graph.scenes).toHaveLength(2);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("空名剧情线与非正整数章号被拒，错误可读", async () => {
     const storage = await createStorage();
     try {
@@ -356,6 +384,63 @@ describe("POST storylines/:storylineId/review", () => {
       const app = routerFor(storage);
       const id = await createDraft(storage, "book-1");
       expect((await postJson(app, `${BASE}/storylines/${id}/review`, { decision: "maybe" })).status).toBe(400);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("场景规划留白接口（T2.6）", () => {
+  async function putGaps(app: ReturnType<typeof routerFor>, path: string, body: unknown) {
+    const res = await app.request(path, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: await res.json() as Record<string, unknown> };
+  }
+
+  it("读本章场景 → 改留白（非法条目剔除）→ 再读到作者的修改；旧版本号 409", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      await postJson(app, `${BASE}/scenes`, { chapterNumber: 4, title: "夜谈" });
+      const list = await (await app.request(`${BASE}/chapters/4/scenes`)).json() as { scenes: Array<{ id: string; updatedAt: number; gaps: unknown[] }> };
+      expect(list.scenes).toHaveLength(1);
+      expect(list.scenes[0]!.gaps).toEqual([]);
+      const scene = list.scenes[0]!;
+
+      const saved = await putGaps(app, `${BASE}/scenes/${encodeURIComponent(scene.id)}/gaps`, {
+        expectedUpdatedAt: scene.updatedAt,
+        gaps: [
+          { kind: "motivation", gap: "她为何留下", answer: "欠他一条命" },
+          { kind: "nope", gap: "x", answer: "y" },
+        ],
+      });
+      expect(saved.status).toBe(200);
+      const reread = await (await app.request(`${BASE}/chapters/4/scenes`)).json() as { scenes: Array<{ gaps: unknown[] }> };
+      expect(reread.scenes[0]!.gaps).toEqual([{ kind: "motivation", gap: "她为何留下", answer: "欠他一条命" }]);
+
+      const stale = await putGaps(app, `${BASE}/scenes/${encodeURIComponent(scene.id)}/gaps`, { expectedUpdatedAt: scene.updatedAt, gaps: [] });
+      expect(stale.status).toBe(409);
+      expect(stale.body).toMatchObject({ ok: false, error: "scene-conflict" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("缺版本号、超条数、他书场景都被拒", async () => {
+    const storage = await createStorage();
+    try {
+      const app = routerFor(storage);
+      const created = await postJson(app, `${BASE}/scenes`, { chapterNumber: 1, title: "甲" });
+      const scene = created.body.data as { id: string; updatedAt: number };
+      const path = `${BASE}/scenes/${encodeURIComponent(scene.id)}/gaps`;
+      expect((await putGaps(app, path, { gaps: [] })).status).toBe(400);
+      const many = Array.from({ length: 13 }, () => ({ kind: "detail", gap: "a", answer: "b" }));
+      expect((await putGaps(app, path, { expectedUpdatedAt: scene.updatedAt, gaps: many })).status).toBe(400);
+      const other = await putGaps(app, `/api/books/book-2/narrative-memory/scenes/${encodeURIComponent(scene.id)}/gaps`, { expectedUpdatedAt: scene.updatedAt, gaps: [] });
+      expect(other.status).toBe(404);
     } finally {
       storage.close();
     }

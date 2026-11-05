@@ -62,8 +62,11 @@ const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel
 const CharacterCardPage = lazy(() => import("./CharacterCardPage").then(m => ({ default: m.CharacterCardPage })));
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
+import { SceneGapsEditor } from "./SceneGapsEditor";
+import { AuthorShareBadge } from "./AuthorShareBadge";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import { createStoryProgressionNode, type WorkbenchResourceKind, type WorkbenchResourceNode } from "./useWorkbenchResources";
+import { toWireToolName } from "../../engine/workflows/run-brief";
 
 export interface WorkbenchCanvasContext extends CanvasContext {
   activeResourceId: string | null;
@@ -171,6 +174,9 @@ function ChapterStatusBar({
   language,
   sceneSpec,
   onOpenBlueprint,
+  bookId,
+  onOpenStyleVault,
+  revision,
 }: {
   chapterNumber?: number;
   content: string;
@@ -178,6 +184,9 @@ function ChapterStatusBar({
   language: LengthLanguage;
   sceneSpec: SceneSpec | null;
   onOpenBlueprint: () => void;
+  bookId?: string;
+  onOpenStyleVault?: (chapterNumber: number) => void;
+  revision?: string | number;
 }) {
   const wordCount = countEditorWords(content, language);
   const unit = language === "en" ? "words" : "字";
@@ -199,8 +208,14 @@ function ChapterStatusBar({
         ) : (
           <span>未生成</span>
         )}
+        <button type="button" className="font-medium text-primary hover:underline" onClick={onOpenBlueprint} data-testid="open-scene-gaps">
+          规划留白
+        </button>
         <span>正文 {wordCount.toLocaleString()} / 目标 {targetLabel}</span>
         <Badge variant="outline" className="h-4 px-1.5 text-2xs">{progressLabel}</Badge>
+        {bookId && typeof chapterNumber === "number" ? (
+          <AuthorShareBadge bookId={bookId} chapterNumber={chapterNumber} content={content} revision={revision} onOpenStyleVault={onOpenStyleVault} />
+        ) : null}
       </div>
     </div>
   );
@@ -278,7 +293,8 @@ export interface ChapterActionHandlers {
 }
 
 export interface JingweiActionHandlers {
-  onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void>;
+  /** 可返回 notice：保存成功但附带动作没做完（见 JingweiEntryEditor 的 onSave）。 */
+  onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void | { readonly notice?: string }>;
   onDelete?: (entryId: string) => Promise<void>;
 }
 
@@ -324,9 +340,11 @@ export interface WorkbenchCanvasProps {
   /** 叙述者结果卡送回的待审阅选区候选；仅在 chapterNumber 与当前章节一致时显示。 */
   selectionCandidate?: SelectionCandidate | null;
   onDismissSelectionCandidate?: () => void;
+  /** 点作者改动占比徽标时跳到「技能文风 › 文风金库」并展开该章。 */
+  onOpenStyleVault?: (chapterNumber: number) => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, onOpenStyleVault }: WorkbenchCanvasProps) {
   const { resourceKey, content, dirty, saving, saveError, setContent, save: handleSave, setSaveError } = useResourceAutosave(node, bookId, onSave);
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -766,6 +784,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
           language={resolveBookLanguage(nodes)}
           sceneSpec={sceneSpec}
           onOpenBlueprint={() => setSceneSpecOpen(true)}
+          bookId={bookId}
+          onOpenStyleVault={onOpenStyleVault}
+          revision={typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : typeof node.metadata?.version === "number" ? node.metadata.version : undefined}
         />
       )}
 
@@ -915,15 +936,19 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         </Sheet>
       )}
 
-      {/* 章节蓝图面板（右侧抽屉） */}
-      {sceneSpec && (
+      {/* 章节蓝图面板（右侧抽屉）：本次生成的蓝图 + 本章场景的规划留白（作者手编，已落盘） */}
+      {isChapterWorkflowNode(node) && bookId && typeof node.metadata?.chapterNumber === "number" && (
         <Sheet open={sceneSpecOpen} onOpenChange={setSceneSpecOpen}>
           <SheetContent side="right" className="w-[400px] sm:w-[480px] overflow-y-auto">
             <SheetHeader>
               <SheetTitle>章节蓝图</SheetTitle>
             </SheetHeader>
-            <div className="p-4">
-              <SceneSpecPanel spec={sceneSpec} />
+            <div className="space-y-5 p-4">
+              {sceneSpec ? <SceneSpecPanel spec={sceneSpec} /> : null}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold">规划留白</h3>
+                {sceneSpecOpen ? <SceneGapsEditor bookId={bookId} chapterNumber={node.metadata.chapterNumber} /> : null}
+              </div>
             </div>
           </SheetContent>
         </Sheet>
@@ -937,7 +962,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             chapterNumber={node.metadata.chapterNumber}
             content={content}
             {...(onSendToNarrator
-              ? { onAskResettle: () => { void onSendToNarrator(`请对第 ${node.metadata?.chapterNumber} 章重新执行 memory.settle_chapter（force=true），正文已修改需要刷新叙事记忆。`); } }
+              ? { onAskResettle: () => { void onSendToNarrator(`请对第 ${node.metadata?.chapterNumber} 章重新执行 ${toWireToolName("memory.settle_chapter")}（force=true），正文已修改需要刷新叙事记忆。`); } }
               : {})}
           />
         </Suspense>

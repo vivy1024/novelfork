@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { inArray } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { Hono } from "hono";
-import { AppError, chapters, db, narrators, projects } from "@vivy1024/narrafork-runtime-bridge";
+import { AppError, db, narrators, projects } from "@vivy1024/narrafork-runtime-bridge";
 import { novelForkProductIntegration } from "../index";
 import { initializeNovelRuntimeStorage } from "../adapters/storage";
 import { getNovelForkProductDatabase } from "../db/database";
@@ -15,7 +15,6 @@ const suffix = crypto.randomUUID();
 const actor = { userId: `lifecycle-user-${suffix}`, role: "user" as const };
 const bookId = `lifecycle-book-${suffix}`;
 const projectId = `lifecycle-project-${suffix}`;
-const chapterId = `lifecycle-chapter-${suffix}`;
 const bookNarratorId = `lifecycle-book-narrator-${suffix}`;
 const standaloneNarratorId = `lifecycle-standalone-narrator-${suffix}`;
 const bookRoot = resolve(getControlledBooksRoot(), bookId);
@@ -41,10 +40,9 @@ beforeAll(async () => {
 	initializeNovelRuntimeStorage();
 	await mkdir(bookRoot, { recursive: true });
 	await db.insert(projects).values({ id: projectId, name: "Lifecycle protection project", gitPath: bookRoot, createdAt: now, updatedAt: now });
-	await db.insert(chapters).values({ id: chapterId, projectId, title: "Lifecycle protection chapter", branch: "main", baseBranch: "main", createdAt: now, updatedAt: now });
 	await db.insert(narrators).values([
-		{ id: bookNarratorId, chapterId, title: "Protected book narrator", type: "primary", inheritMode: "fresh", createdAt: now, updatedAt: now },
-		{ id: standaloneNarratorId, chapterId: null, title: "Independent narrator", type: "primary", inheritMode: "fresh", createdAt: now, updatedAt: now },
+		{ id: bookNarratorId, contextProjectId: projectId, title: "Protected book narrator", type: "primary", inheritMode: "fresh", createdAt: now, updatedAt: now },
+		{ id: standaloneNarratorId, contextProjectId: null, title: "Independent narrator", type: "primary", inheritMode: "fresh", createdAt: now, updatedAt: now },
 	]);
 	await getNovelForkProductDatabase().insert(bookRuntimeBindings).values({ id: `lifecycle-binding-${suffix}`, runtimeProjectId: projectId, bookId, bookRoot, createdByUserId: actor.userId, createdAt: now, updatedAt: now });
 });
@@ -52,7 +50,6 @@ beforeAll(async () => {
 afterAll(async () => {
 	await getNovelForkProductDatabase().delete(bookRuntimeBindings).where(inArray(bookRuntimeBindings.bookId, [bookId]));
 	await db.delete(narrators).where(inArray(narrators.id, [bookNarratorId, standaloneNarratorId]));
-	await db.delete(chapters).where(inArray(chapters.id, [chapterId]));
 	await db.delete(projects).where(inArray(projects.id, [projectId]));
 	await rm(bookRoot, { recursive: true, force: true });
 });

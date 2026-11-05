@@ -28,6 +28,7 @@ import { createMemoryCenterNode, createStoryProgressionNode } from "../useWorkbe
 import type { ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 import { resourceDisplayTitle } from "../chapter-display-title";
+import { toWireToolName } from "../../../engine/workflows/run-brief";
 
 export interface StorylineAndPlanningSidebarPanelProps {
   bookId: string;
@@ -306,7 +307,7 @@ function usePendingEventCount(bookId: string) {
 }
 
 const OUTLINE_SEED_MESSAGE =
-  "请为我生成第一卷卷纲草案（outline.volume action=suggest），生成后给我确认，确认前不要直接写入。";
+  `请为我生成第一卷卷纲草案（${toWireToolName("outline.volume")} action=suggest），生成后给我确认，确认前不要直接写入。`;
 
 /**
  * NEXT 规则：按序取第一个命中，永远只给一条建议。

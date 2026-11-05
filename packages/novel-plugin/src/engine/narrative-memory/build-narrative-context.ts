@@ -172,10 +172,10 @@ function asSceneSpec(value: unknown): SceneSpec | undefined {
 
 function collectSceneEntities(sceneSpec?: SceneSpec): string[] {
   return sceneSpec?.scenes.flatMap((scene) => [
-    ...scene.characters,
+    ...(scene.characters ?? []),
     scene.location,
-    ...scene.hooks_used,
-    ...scene.hooks_planted,
+    ...(scene.hooks_used ?? []),
+    ...(scene.hooks_planted ?? []),
   ]).filter(Boolean) ?? [];
 }
 

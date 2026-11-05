@@ -194,7 +194,7 @@ export function CreativeCompassPanel({ bookId, onFillDirective }: CreativeCompas
             setReloadNonce((value) => value + 1);
             void refetch();
           }}
-          className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+          className="-m-1 rounded p-1.5 text-muted-foreground hover:text-foreground"
           aria-label="刷新创作罗盘"
         >
           <RefreshCw className="size-3" />

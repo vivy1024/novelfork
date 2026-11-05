@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { BookManagementPage } from "./BookManagementPage";
+import { BookManagementPage, bookShelfStatusLabel } from "./BookManagementPage";
 import type { RuntimeBookProvisionOperation } from "../runtime/product-contract";
 
 afterEach(cleanup);
@@ -9,6 +9,36 @@ afterEach(cleanup);
 function operation(bookId: string): RuntimeBookProvisionOperation {
   return { id: `operation-${bookId}`, bookId, state: "ready" };
 }
+
+describe("书架状态标签", () => {
+  it("可写的书不挂英文状态徽标，其他阶段显示中文", () => {
+    expect(bookShelfStatusLabel("ready")).toBeNull();
+    expect(bookShelfStatusLabel(undefined)).toBeNull();
+    expect(bookShelfStatusLabel("runtime-bound")).toBe("准备中");
+    expect(bookShelfStatusLabel("failed")).toBe("创建失败");
+    expect(bookShelfStatusLabel("compensation-required")).toBe("需要修复");
+    expect(bookShelfStatusLabel("something-new")).toBe("状态异常");
+  });
+
+  it("书架卡片上不出现原始状态值 ready", () => {
+    render(
+      <BookManagementPage
+        books={[{ id: "book-1", title: "长夜", status: "ready" }, { id: "book-2", title: "旧梦", status: "failed" }]}
+        loading={false}
+        error={null}
+        onNavigateToBook={vi.fn()}
+        onCreateBook={vi.fn()}
+        onClaimLegacyBook={vi.fn()}
+        onRepairBook={vi.fn()}
+        onRebindBookWorkspace={vi.fn()}
+        onDeleteBook={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("ready")).toBeNull();
+    expect(screen.queryByText("failed")).toBeNull();
+    expect(screen.getAllByTestId("book-shelf-status").map((node) => node.textContent)).toEqual(["创建失败"]);
+  });
+});
 
 describe("BookManagementPage Runtime maintenance actions", () => {
   it("repairs a listed book through the Runtime product callback", async () => {

@@ -10,6 +10,7 @@ import type {
   NarrativeNode,
   NarrativeNodeType,
 } from "../../handlers/narrative-line-types";
+import { toWireToolName } from "../../engine/workflows/run-brief";
 
 export type StoryMapLane = "main" | "character_arc" | "conflict" | "foreshadow";
 export type StoryMapThreadKind = "conflict" | "foreshadow" | "character_arc";
@@ -124,16 +125,16 @@ export function buildStoryMapPlanPrompt(chapterCount: number, missing?: readonly
   let step = 1;
   if (needsDissect) {
     lines.push(
-      `${step}. 用 book.dissect(apply=true) 拆解已有正文，提取角色卡 / 世界要素 / 关系 / 伏笔 / 章摘要（写入经纬 dynamic 层，status=needs-review）。`,
+      `${step}. 用 ${toWireToolName("book.dissect")}(apply=true) 拆解已有正文，提取角色卡 / 世界要素 / 关系 / 伏笔 / 章摘要（写入经纬 dynamic 层，status=needs-review）。`,
     );
     step += 1;
   }
   if (needsArcs) {
-    lines.push(`${step}. 用 arc.character(action=sync) 抽取各角色的弧线 beats。`);
+    lines.push(`${step}. 用 ${toWireToolName("arc.character")}(action=sync) 抽取各角色的弧线 beats。`);
     step += 1;
   }
   if (needsConflict) {
-    lines.push(`${step}. 用 lore.write 把主线冲突写进经纬 conflicts 分类（layer=dynamic、status=needs-review），等我确认后再升 canon。`);
+    lines.push(`${step}. 用 ${toWireToolName("lore.write")} 把主线冲突写进经纬 conflicts 分类（layer=dynamic、status=needs-review），等我确认后再升 canon。`);
     step += 1;
   }
   lines.push("", "完成后重读 narrative_line 快照，告诉我情节板点亮了哪些线索、还缺哪一类。");

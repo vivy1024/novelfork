@@ -9,8 +9,27 @@
  * persistence layer. MemoryDB is an acceleration index built alongside them.
  */
 
+import * as fs from "node:fs";
 import { join } from "node:path";
 import { createSqliteDatabase } from "./sqlite-driver.js";
+
+/**
+ * 新书还没写过任何 story 文件时 story/ 不存在，SQLite 会报 "unable to open database file"。
+ * 这里只补建 story/ 这一层：书目录本身不存在（例如外部目录被移走）时不替它建出来，而是报清楚。
+ * 命名空间导入：core 根入口会被打进浏览器包，node:fs 在那里是空壳，只在真正调用时取属性。
+ */
+function ensureStoryDir(bookDir: string, storyDir: string): void {
+  try {
+    fs.mkdirSync(storyDir);
+  } catch (error) {
+    const code = error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
+    if (code === "EEXIST") return;
+    if (code === "ENOENT") {
+      throw new Error(`书籍目录不存在，无法打开记忆索引：${bookDir}`, { cause: error });
+    }
+    throw error;
+  }
+}
 
 const FACT_SELECT_COLUMNS = `
   id,
@@ -93,7 +112,9 @@ export class MemoryDB {
   private db: any;
 
   constructor(bookDir: string) {
-    const dbPath = join(bookDir, "story", "memory.db");
+    const storyDir = join(bookDir, "story");
+    ensureStoryDir(bookDir, storyDir);
+    const dbPath = join(storyDir, "memory.db");
     this.db = createSqliteDatabase(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL");
     this.migrate();

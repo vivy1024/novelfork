@@ -275,7 +275,6 @@ async function migrateOneSession(
 			tx.insert(narrators)
 				.values({
 					id: narratorId,
-					chapterId: null,
 					type: "primary",
 					variant: "primary",
 					traits: ["standalone"],

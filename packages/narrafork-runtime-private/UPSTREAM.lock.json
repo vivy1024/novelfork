@@ -2,49 +2,37 @@
   "schemaVersion": 1,
   "repository": "NarraFork/novelfork-runtime",
   "remote": "https://github.com/NarraFork/novelfork-runtime.git",
-  "commit": "1c1caa84b8403e59ecb46e7ca7a203dfbdc467da",
-  "tree": "b190497b1bbfcb49c9e2bb37873c0fe68ddb8149",
-  "branch": "novelfork/upgrade-0.8.3",
-  "version": "0.8.3",
-  "importedAt": "2026-10-21T12:40:00.000Z",
-  "trackedFileCount": 5067,
+  "commit": "42883aae7fc1d4b62cf0769e0f951aa7a7dc83cc",
+  "tree": "93253c950b55bb798de95865bcf55d7f4dafb599",
+  "branch": "novelfork/upgrade-0.9.11",
+  "version": "0.9.11",
+  "importedAt": "2026-11-04T23:58:36.000Z",
+  "trackedFileCount": 7050,
   "importMethod": "git-archive",
   "provenance": {
-    "note": "2026-10-08 由私有线切换到公开线：从公开 NarraFork/NarraFork 的 release: v0.8.3 锚点开新分支 novelfork/upgrade-0.8.3，把 fork 层以树级移植逐文件重放（无 merge 血缘），已推送到公开 fork 仓 NarraFork/novelfork-runtime 同名分支。本目录是该分支的导出物。上一版（0.7.12 物化）备份在 .runtime-backup-v0.7.12-20261008/（不含 node_modules）。远端使用 HTTPS：SSH 被本机代理阻断（Connection closed by 198.18.0.18）。在物化树里跑 Runtime 测试套件要设 NARRAFORK_MIGRATIONS_DIR=runtime-migrations（drizzle/ 是本机 drizzle-kit 生成物、不入库也不物化）。2026-10-20 在 ef3e451d 之上追加设置向导嵌入修复与产品品牌化（50ba448c/7e1976d4/d879ffc7/86ffae95），已推送公开 fork。2026-10-21 追加 1c1caa84（工具 ctx.generateText 改走 generateWithMeta，修章后结算拿不到 JSON），已推送公开 fork。",
+    "note": "2026-11-05 由 0.8.3 升级到上游 v0.9.11：在 novelfork/upgrade-0.8.3 头 1c1caa84 上真合并公开 NarraFork release: v0.9.11（有 merge 血缘），合并提交 0ea82296 已推送公开 fork 同名分支；其上追加 4ec42d84（git-line-stats onChunk 显式返回 undefined，过 tsc 5.9；已提上游 PR NarraFork/NarraFork#358）、42883aae（新装首次写设置只取 Runtime 自身工具套路，不抢先锁定产品注册表，修 EXE 空目录启动失败）。Runtime 0.9.11 要求 Bun 1.4.3。本目录是该分支的导出物。0.8.3 物化备份在主仓 tmp/runtime-backup-0.8.3/（不含 node_modules/dist），旧 lock 全文见其中 UPSTREAM.lock.0.8.3.json。远端使用 HTTPS。物化树跑 Runtime 测试仍需 NARRAFORK_MIGRATIONS_DIR=runtime-migrations，并按 package.json 用 bun test --isolate（非 isolate 同进程会因 product integration 顶层锁定互相串扰）。",
     "publicBase": {
-      "commit": "be6240400cbaec5b5dc7227376fac07364c46c70",
-      "subject": "release: v0.8.3",
-      "ref": "upstream-public（公开仓 https://github.com/NarraFork/NarraFork，无 tag；main 头当时为 4e04d2f2、领先锚点 2 提交）"
+      "commit": "5c6cbebb555153c1aba9d67c404c9817730f4d0f",
+      "subject": "release: v0.9.11",
+      "ref": "upstream-public（公开仓 https://github.com/NarraFork/NarraFork）"
     },
-    "virtualBase": {
-      "commit": "3ac2d0df7816fa0a50d2a225fd236b846a57b16d",
-      "note": "私有线末代（0.7.12 时代内容对齐点），仅作本次逐文件三方的虚拟 base 注记；公开历史不含该对象，之后升级不再需要它"
+    "previous": {
+      "commit": "1c1caa84b8403e59ecb46e7ca7a203dfbdc467da",
+      "branch": "novelfork/upgrade-0.8.3",
+      "version": "0.8.3",
+      "publicBase": "be6240400cbaec5b5dc7227376fac07364c46c70（release: v0.8.3，即本次合并基）",
+      "lockBackup": "tmp/runtime-backup-0.8.3/UPSTREAM.lock.0.8.3.json（含 0.8.3 树级移植的完整 port 记录）"
     },
-    "port": {
-      "method": "树级移植（评估报告 docs/design/Runtime-0.8.3-升级评估.md 的路径 C）",
-      "steps": [
-        "fork 独有 49 文件整体 checkout（product-host、host 宿主层、runtime-migrations、product-narrator-tools 等）",
-        "fork 单边修改 81 文件按 3ac2d0df 为虚拟 base 三方重放（merge-file 干净落地）",
-        "9 个真实冲突文件逐块手工解决（评估预期 10；zstd-patch-file.test.ts 在锚点上干净自动合并）",
-        "9 个文件跟随上游删除/消毒集（在锚点上已真空删除，0 文件实际 rm）；另删除上游 0.8.3 发布后在 main 上删的 9 个文件（CHANGELOG/DESIGN/Dockerfile 等）保持同构",
-        "package.json pins 重放（zod=4.3.6、workbox-*=7.4.0 ×5；bun-pty 上游已自带 0.4.11 pin）+ bun install 重建 bun.lock",
-        "drizzle-kit generate 对 0011 快照求差生成 runtime-migrations/0012_wealthy_red_hulk（5 新表 + 5 表重建）；无新列故无回填"
+    "merge": {
+      "method": "git merge --no-ff：fork 1c1caa84 × 上游 5c6cbebb5，合并基 be6240400（v0.8.3），上游 1308 提交",
+      "conflictsResolved": 44,
+      "principle": "上游重构全收（containers 取代 chapters、托管工具装载 requestToolAllowed、prompt part、迁移证明链）；fork 接入层（Product Host SPI、产品叙述者默认禁 Bash/Write/Terminal/Browser 与套路装载、嵌入宿主接线、品牌、CSP 内联脚本哈希、ctx.generateText）在新结构上重新落地",
+      "followedUpstreamDeletions": [
+        "server/lib/agent/malformed-request-dump.ts 及其测试"
       ],
-      "portCommits": "be6240400..6f02fc259 共 15 笔：2a0b25d26 fork-unique、19452d93c single-side replay、025937911 deletions(0)、fd5d323dd pins、41226c090 bun.lock、ed1e1ba54/10c51cdec/8b50cc27d/85e22b418/9101ff566/83e6d2ae9/c78e764ba/7eb4f9b34/d7233808d resolve ×9、eb332b1eb follow main deletions、2d7ddfc1f/42a2dd969/a4f6807d3 anchor fixes ×3、6f02fc259 migration 0012",
-      "anchorDefectsFixed": "锚点树 be6240400 自身有三处历史重写残损（settings 顶层常量缺失、narrator-event-handler invalid_state case 截断、malformed-request-dump 与其两个测试文件半成品重构），已按公开 main 头 4e04d2f2 的完好文本修复成三笔 fix 提交（测试文件修复后与 main 字节级一致）；判定依据为这些文件均不在 fork 层",
-      "conflictsResolved": [
-        "server/services/agent-runtime/orchestrator.ts（3 块）— buildSystemPrompt 两调用点并集（narratorId 穿参 + runtimeToolNames/summaryRange 并集 destructure），sync 落点保持 prompt 生效后",
-        "server/services/narrator-session.ts（1 块）— 返回类型融合为 BuildPromptResult & { runtimeToolNames }，产品贡献解析全保留",
-        "frontend/components/narrator/dock/NarratorDockContext.tsx — 拦截 hook 改锚存活的 apiRef 行；丢弃已退役 fileModProps 状态行",
-        "frontend/components/narrator/vlist/ExactRow.tsx — 并集：上游折叠/只读渲染 + fork renderer 注入",
-        "server/routes/projects.ts — 上游 withProjectRetirement 包装完整保留在导出版 deleteProjectById(id, signal?) 内",
-        "server/main.ts — 机械并集：产品宿主登记与优雅关闭",
-        "frontend/components/AppRootLayout.tsx — 以 0.8.3 为主体，租约改动重嵌到新宿主 AuthenticatedAppLayout.tsx",
-        "server/lib/browser/pool.ts（2 块）— fork 修复全保留（上游 25+/15- 仅代理重构，零覆盖）；仅丢过时注释",
-        "frontend/lib/narrator-ws-manager.test.ts — 双方同点新增断言并集"
-      ],
-      "verification": "9 个解冲突文件全量 grep 无残留标记；tsgo 分段（server+shared+tests / frontend+shared）与纯公开 0.8.3 基线（补同三处锚点修补）对照差集仅 3 行、全属已知 codegen 恒红家族（routeTree.gen / embedded-migrations-data / build-info 行移位），合并独有语义错误 0；fork 层与缺口测试在 0012 生成后转绿（projects 3+3、orchestrator 40、run-migrations 59）；零库 13 条与 0.7.12 链→0012 哨兵保留双路径迁移验证通过；permission-rule-request-service 18 红经 A/B（换回纯锚点 narrator-permission.ts 同红）判为上游基线类 + Windows symlink EPERM",
-      "postMaterializeDeviations": []
+      "migrations": "runtime-migrations 0012 快照与上游 drizzle 0193 全等；0013–0053 与上游 0194–0234 逐字节一致（仅重编号）；0054_novelfork_chat_messages_share_fk 补上游 0163 的 sender_share_id ON DELETE SET NULL 重建。run-migrations：退役 chapters 的迁移前把章节项目承接到 narrators.context_project_id；历史空洞内已生效重建只重放增量 DDL；后续已退役列上的历史索引按 journal 证据跳过",
+      "verification": "bun test --isolate 全量对纯 0.9.11 基线 A/B 合并独有失败 0；零库与 0.8.3 旧库（含章节叙述者与子代理）升级探针通过；tsgo 合并独有仅 2 条 routeTree codegen 噪声",
+      "knownPreexistingDrift": "fork 迁移链比上游多 users.disabled_at 与 chat_group_* 三表、少 gateway_platforms；0.8.3 时已存在，本次未处理"
     },
     "toolRoutines": {
       "base": "6f02fc259a6970b5ae6bd00eb103afca10ec2713（novelfork/upgrade-0.8.3 头）",

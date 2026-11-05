@@ -7,7 +7,11 @@ import {
 import { buildWorkflowRunBrief } from "./run-brief.js";
 import { createRunState, transition } from "./run-state-machine.js";
 import { linearRecipeToGraph } from "./workflow-graph.js";
-import { planWorkflowTeam, WORKFLOW_WORKER_TITLE_PREFIX } from "./workflow-team.js";
+import {
+  planWorkflowTeam,
+  WORKFLOW_WORKER_TITLE_PREFIX,
+  workflowTeamIdForBook,
+} from "./workflow-team.js";
 
 describe("planWorkflowTeam", () => {
   test("番茄连载配方：writer 与 continuity-audit 各一个工人，承接对应工序", () => {
@@ -136,5 +140,31 @@ describe("委派工序简报", () => {
     expect(brief).toContain("能力降级");
     // 权威写入不旁路：工人不得直写
     expect(brief).toContain("工人不得直写权威源");
+    // 一本书一个团队：简报把 teamId 钉死到本书，避免多本书的工人被收编进同一个默认团队
+    expect(brief).toContain(workflowTeamIdForBook("team-book"));
+    expect(brief).toContain("不要用默认团队");
+  });
+});
+
+describe("workflowTeamIdForBook", () => {
+  test("同一本书稳定得到同一个 id；不同书不同 id", () => {
+    expect(workflowTeamIdForBook("book-a")).toBe("team-book-a");
+    expect(workflowTeamIdForBook("book-a")).toBe(workflowTeamIdForBook("book-a"));
+    expect(workflowTeamIdForBook("book-b")).not.toBe(workflowTeamIdForBook("book-a"));
+  });
+
+  test("中文书名原样保留，空白与分隔符折成连字符", () => {
+    expect(workflowTeamIdForBook("星河彼岸 7d2f")).toBe("team-星河彼岸-7d2f");
+    expect(workflowTeamIdForBook("  book/with\\slashes  ")).toBe("team-book-with-slashes");
+  });
+
+  test("空 bookId 退化为固定 id，不产生 team- 尾巴", () => {
+    expect(workflowTeamIdForBook("   ")).toBe("team-book");
+  });
+
+  test("超长 bookId 截断到插件可存长度", () => {
+    const id = workflowTeamIdForBook("x".repeat(400));
+    expect(id.length).toBeLessThanOrEqual(101);
+    expect(id.startsWith("team-")).toBe(true);
   });
 });

@@ -15,6 +15,7 @@ vi.mock("@/hooks/use-api", () => ({
             { chapterNumber: 2, title: "手写", hasAiDraft: false },
           ],
           overallAuthorRatio: 0.4,
+          fingerprintRefresh: { basis: "author-revisions", includedSamples: 5, pendingSamples: 2, pendingChars: 80, remainingSamples: 3, due: false, thresholds: { samples: 5, chars: 3000 } },
         },
         loading: false,
         error: null,
@@ -41,6 +42,18 @@ describe("StyleVaultPanel", () => {
     expect(screen.getByText("全书作者改动 40%")).toBeTruthy();
     expect(screen.getByText(/第 1 章 · 雨夜/)).toBeTruthy();
     expect(screen.queryByText(/第 2 章 · 手写/)).toBeNull();
+    expect(screen.getByLabelText("统计指纹更新状态").textContent).toBe("统计指纹已根据 5 段作者改稿更新，此后新增 2 段；再采纳 3 段（或新增满 3000 字）后自动更新统计指纹。");
+  });
+
+  it("采纳触发重算时在结果里说明已根据 N 段作者改稿更新统计指纹", async () => {
+    fetchJson.mockImplementation(async (path: string) => (path.endsWith("/style/preset") ? { revision: "rev-1" } : {
+      fingerprintRefresh: { outcome: "refreshed", status: { basis: "author-revisions", includedSamples: 6, pendingSamples: 0, pendingChars: 0, remainingSamples: 5, due: false, thresholds: { samples: 5, chars: 3000 } } },
+    }));
+    render(<StyleVaultPanel bookId="book-1" />);
+    fireEvent.click(screen.getByText(/第 1 章 · 雨夜/));
+    fireEvent.click(screen.getByLabelText("选中第 1 章改稿段 1"));
+    fireEvent.click(screen.getByRole("button", { name: /采纳为范文/ }));
+    expect(await screen.findByText(/已根据 6 段作者改稿更新统计指纹（文风指南与范文不变）/)).toBeTruthy();
   });
 
   it("勾选改稿段后带预设版本号采纳，并选定场景类型", async () => {

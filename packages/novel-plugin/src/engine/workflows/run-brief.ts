@@ -9,6 +9,7 @@
 
 import type { WorkflowRunRecord } from "./run-store.js";
 import { runningSteps, type WorkflowCandidateKind, type WorkflowStepState } from "./run-state-machine.js";
+import { workflowTeamIdForBook } from "./workflow-team.js";
 import type { WorkflowStepNode } from "./workflow-graph.js";
 
 export function toWireToolName(name: string): string {
@@ -52,15 +53,25 @@ function header(run: WorkflowRunRecord): string[] {
   ];
 }
 
-function executionLine(step: WorkflowStepState, recipeStep: { modelOverride?: string; parallelSubagents?: readonly { name: string }[] } | undefined): string {
+function executionLine(
+  run: WorkflowRunRecord,
+  step: WorkflowStepState,
+  recipeStep: { modelOverride?: string; parallelSubagents?: readonly { name: string }[] } | undefined,
+): string {
   if (step.executorKind === "subagent") {
     const model = recipeStep?.modelOverride ? `，model=${recipeStep.modelOverride}` : "";
     const parallel = recipeStep?.parallelSubagents?.length
       ? `；并行子代理：${recipeStep.parallelSubagents.map((agent) => agent.name).join("、")}（团队里各自 team_dispatch，或各自 task(run_in_background=true)，汇总后一次提交）`
       : "";
+    // 一本书一个团队：插件按 teamId 存团队配置，不指定就会都落到默认团队里串成一锅。
+    const teamId = run.bookId ? workflowTeamIdForBook(run.bookId) : "";
+    const teamLine = teamId
+      ? `团队 id 用 "${teamId}"（本书专用；team_setup / team_status 等工具的 teamId 参数都填它，不要用默认团队）；`
+      : "";
     return (
       `执行方式：委派工人执行（产物必须由你本人提交，工人不得直写权威源）——` +
       `优先用团队编排工具（plugin__com_whisent_narrator-team__ 前缀）：① team_status 读现有编排，合并后 team_setup 写回（勿盲覆盖既有配置）；` +
+      `${teamLine}` +
       `② team_dispatch 把本工序目标派给标题前缀「工作流工人·」的对应工人（角色 ${step.agentId ?? "writer"}${model}）；` +
       `③ team_report / team_status 收集结果。` +
       `没有团队工具时回退：用 task(subagent_type="general") 派 Runtime 通用子代理并把工序目标写进 prompt；` +
@@ -77,7 +88,7 @@ function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multi
   const recipeStep = recipeStepOf(run, step.stepId);
   const lines = [`▶ 工序 ${step.ordinal}：${step.label}（stepId="${step.stepId}"）`];
   lines.push(`目标：${recipeStep?.customPrompt?.trim() || DEFAULT_GOAL[step.kind] || "完成本工序。"}`);
-  lines.push(executionLine(step, recipeStep));
+  lines.push(executionLine(run, step, recipeStep));
   const writeTools = step.executorKind === "subagent" ? [] : step.tools.map(toWireToolName);
   lines.push(
     writeTools.length > 0

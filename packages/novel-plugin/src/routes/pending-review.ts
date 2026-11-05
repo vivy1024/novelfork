@@ -10,6 +10,7 @@
  * 口径：
  * - 角色声线：经纬角色条目已生成过 fields.voice，且还有「待审」或「待补充」字段；
  * - 文风规则：style_preset.json 来源包里 status=needs-review 的规则；
+ * - 人物草稿：经纬角色分类 status=needs-review 的条目（旧稿导入从正文统计起草）；
  * - 伏笔草稿：经纬伏笔分类 status=needs-review 的条目（章后结算新埋）；
  * - 叙事事件（本章提议）：待审 narrative_event 里章号最新的一批——与写作视图
  *   「收尾」步的「本章提议」同一语义；
@@ -189,6 +190,27 @@ function collectForeshadowItems(entries: readonly StoryJingweiEntryRecord[]): Pe
   return items;
 }
 
+/** 人物草稿：经纬人物条目 status=needs-review（旧稿导入从正文统计起草）。确认前不进实体图谱。 */
+function collectCharacterItems(entries: readonly StoryJingweiEntryRecord[]): PendingReviewItem[] {
+  const items: PendingReviewItem[] = [];
+  for (const entry of entries) {
+    if (normalizeCategory(entry.category).category !== "characters") continue;
+    if (entry.status !== "needs-review") continue;
+    const firstChapter = typeof entry.fields.firstChapter === "number" ? entry.fields.firstChapter : null;
+    const occurrences = typeof entry.fields.occurrences === "number" ? entry.fields.occurrences : null;
+    items.push({
+      id: `character:${entry.id}`,
+      kind: "character",
+      typeLabel: PENDING_REVIEW_LABELS.character,
+      location: firstChapter !== null ? `第 ${firstChapter} 章首次出现` : "经纬 › 角色",
+      summary: clip(occurrences !== null ? `${entry.title}（正文出现 ${occurrences} 次），确认后才进实体图谱与场景校验。` : `${entry.title}，确认后才进实体图谱与场景校验。`),
+      resolveAt: "人物条目（角色与设定 › 角色），把状态改为已确认，或删掉",
+      target: { kind: "jingwei-entry", entryId: entry.id },
+    });
+  }
+  return items;
+}
+
 function eventTargetFor(): PendingReviewTarget {
   return { kind: "events" };
 }
@@ -325,6 +347,7 @@ export async function collectPendingReview(
     ? await loadStylePresetSources(bookRoot, warnings)
     : { preset: null };
   const styleRuleItems = collectStyleRuleItems(preset);
+  const characterItems = collectCharacterItems(entries);
   const foreshadowItems = collectForeshadowItems(entries);
   const { current: eventItems, earlier: factItems } = collectNarrativeEventItems(options.storage, options.bookId);
   const revisionItems = bookRoot ? await collectRevisionItems(bookRoot, preset, warnings) : [];
@@ -336,6 +359,7 @@ export async function collectPendingReview(
       ["conflict", conflictItems],
       ["voice", voiceItems],
       ["styleRule", styleRuleItems],
+      ["character", characterItems],
       ["foreshadow", foreshadowItems],
       ["event", eventItems],
       ["fact", factItems],
@@ -355,7 +379,7 @@ export async function collectPendingReview(
   const explanation = total > 0
     ? [
         "这些产物要作者确认后才生效：声线规则（确认前先不进对白约束）、文风规则（确认前不进写作指南）、",
-        "伏笔草稿与待确认事件（确认前不进写作上下文）、改稿段（采纳后才成为范文）、剧情线草稿（确认后才进故事推进）。",
+        "人物草稿（确认前不进实体图谱与场景校验）、伏笔草稿与待确认事件（确认前不进写作上下文）、改稿段（采纳后才成为范文）、剧情线草稿（确认后才进故事推进）。",
         "逐项去「去处理」列出的原有入口决定；剧情线草稿没有专属页面，在本面板就地确认。",
         `各分类只列出前 ${limit} 条，标题上的合计是真实总数。`,
       ].join("")
@@ -363,7 +387,7 @@ export async function collectPendingReview(
         // 类别数从 PENDING_REVIEW_KINDS 推导：这里原先写字面量「七类」，而实际是八类
         // （面板加载文案又写「六类」），三处数字各不相同，改一次要同时改三处。
         `${kindCount} 类待确认来源都查过了，当前没有待处理项。`,
-        `来源包括：${kindList}；入口分别是角色卡、文风蒸馏、章后结算、写作视图收尾、文风金库与 storyline.propose。`,
+        `来源包括：${kindList}；入口分别是角色卡、文风蒸馏、旧稿导入、章后结算、写作视图收尾、文风金库与 storyline.propose。`,
         "以后机器生成的草稿会先在这里排队，确认入口不变。",
       ].join("");
 

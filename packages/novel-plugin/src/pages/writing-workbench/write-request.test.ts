@@ -24,7 +24,7 @@ describe("buildWriteRequestMessage", () => {
     expect(message).toBe([
       "请写第 13 章的正文。",
       "本章目标：让薛行之拿到 B-17 原始数据",
-      "流程：write.preflight → scene.spec → pipeline.write。preflight 不通过就停下告诉我缺什么，不要先写。",
+      "流程：write_preflight → scene_spec → pipeline_write。preflight 不通过就停下告诉我缺什么，不要先写。",
     ].join("\n"));
     expect(message).not.toContain("beatBudget");
   });
@@ -56,12 +56,12 @@ describe("buildWriteRequestMessage", () => {
       beatBudget: BEATS,
     });
 
-    expect(message).toContain("原样传入 scene.spec 的 beatBudget 参数");
+    expect(message).toContain("原样传入 scene_spec 的 beatBudget 参数");
     expect(message).toContain("不要另拟一套");
     expect(message).toContain("```json");
     expect(message).toContain(JSON.stringify(BEATS, null, 2));
     // 原有流程指令不能被节拍段落挤掉。
-    expect(message).toContain("write.preflight → scene.spec → pipeline.write");
+    expect(message).toContain("write_preflight → scene_spec → pipeline_write");
   });
 
   it("蓝图模式同样附带作者节拍", () => {

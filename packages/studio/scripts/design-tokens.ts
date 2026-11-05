@@ -7,6 +7,7 @@
  */
 
 import yaml from "js-yaml";
+import { CHART_COLOR_COUNT } from "../src/styles/chart-palette";
 import { DEFAULT_STYLE_THEME, type StyleThemeId } from "../src/styles/style-themes";
 
 type Mode = "light" | "dark";
@@ -28,6 +29,12 @@ const VARIANTS: readonly Variant[] = [
   { theme: "yegeng", mode: "dark", prefix: "yegeng-dark-" },
 ];
 
+/**
+ * 分类色：图表、画布、关系图区分剧情线 / 泳道 / 数据系列用，生成为 --chart-1 … --chart-8。
+ * 绘图组件按序号循环取用（见 src/styles/chart-palette.ts），不按含义写死色相。
+ */
+const CHART_COLORS = Array.from({ length: CHART_COLOR_COUNT }, (_, index) => `chart-${index + 1}`);
+
 /** 每个主题、每种明暗都必须给出的颜色（对应 Studio 的同名 CSS 变量）。 */
 const REQUIRED_COLORS = [
   "background",
@@ -47,6 +54,7 @@ const REQUIRED_COLORS = [
   "border",
   "input",
   "paper",
+  ...CHART_COLORS,
 ] as const;
 
 /** 可省略的颜色：省略时取右边的令牌。 */

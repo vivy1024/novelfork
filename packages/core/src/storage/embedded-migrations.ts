@@ -1706,4 +1706,36 @@ DROP INDEX IF EXISTS "idx_narrative_foreshadow_deadline";
 DROP TABLE IF EXISTS "narrative_foreshadow";
 `,
   },
+  {
+    name: "0040_narrative_scene_gaps.sql",
+    legacyHashes: [],
+    sql: `-- 0040 场景留白落盘：narrative_scene 增加 gaps_json。
+--
+-- 规划留白（动机 / 细节 / 节奏缺口 + 作者或导演的真实答案）此前只活在 scene.spec 的一次性结果里，
+-- 作者无处修改，叙述者下次也读不到。本迁移给场景补一列 JSON 数组，旧行默认空数组。
+
+ALTER TABLE "narrative_scene" ADD COLUMN "gaps_json" TEXT NOT NULL DEFAULT '[]';
+`,
+  },
+  {
+    name: "0041_narrative_consistency_ignore.sql",
+    legacyHashes: [],
+    sql: `-- 0041 叙事体检「忽略此条」持久化：只记作者的裁决，不存检测结果。
+--
+-- 检测结果每次现算、不落盘（诊断结果不持久化）；作者把某条标为忽略后，
+-- 刷新与重新结算都不该再冒出来，撤销忽略后恢复。裁决键 = 检测类型 + 实体 id + 章号 + 记忆事实 id，
+-- 缺项写空串 / 0，保证主键可比较。
+
+CREATE TABLE IF NOT EXISTS "narrative_consistency_ignore" (
+  "book_id"        TEXT NOT NULL,
+  "kind"           TEXT NOT NULL,
+  "entity_id"      TEXT NOT NULL DEFAULT '',
+  "chapter_number" INTEGER NOT NULL DEFAULT 0,
+  "fact_id"        TEXT NOT NULL DEFAULT '',
+  "created_at"     INTEGER NOT NULL,
+  PRIMARY KEY ("book_id", "kind", "entity_id", "chapter_number", "fact_id"),
+  FOREIGN KEY ("book_id") REFERENCES "book"("id") ON DELETE CASCADE
+);
+`,
+  },
 ];

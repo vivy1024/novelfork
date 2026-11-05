@@ -139,7 +139,8 @@ export function EditorMinimap({
     // 取当前主题的文字色与主色（书房主题与明暗都会改变它们），透明度用 globalAlpha 叠加
     const isDark = document.documentElement.classList.contains("dark");
     const rootStyle = getComputedStyle(document.documentElement);
-    const ink = rootStyle.getPropertyValue("--foreground").trim() || (isDark ? "#ffffff" : "#000000");
+    // 令牌缺失时退回 CSS 系统色 CanvasText（随浏览器明暗），不写死十六进制
+    const ink = rootStyle.getPropertyValue("--foreground").trim() || "CanvasText";
     const accent = rootStyle.getPropertyValue("--primary").trim() || ink;
     const lineAlpha = isDark ? 0.25 : 0.2;
     const headingAlpha = isDark ? 0.5 : 0.45;
@@ -225,6 +226,17 @@ export function EditorMinimap({
       cancelAnimationFrame(animRef.current);
     };
   }, [scrollContainerRef, draw]);
+
+  // 书房主题（<html data-nf-style>）或明暗（<html class="dark">）切换后，画布按新令牌重画
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(animRef.current);
+      animRef.current = requestAnimationFrame(draw);
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-nf-style"] });
+    return () => observer.disconnect();
+  }, [draw]);
 
   // ResizeObserver 监听容器尺寸变化
   useEffect(() => {

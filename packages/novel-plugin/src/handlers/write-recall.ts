@@ -37,11 +37,12 @@ export interface WriteChapterRecallInput {
 }
 
 function sceneSpecText(sceneSpec: SceneSpec): string {
-  return sceneSpec.scenes.map((scene) => [scene.location, scene.conflict, scene.outcome, ...scene.characters].join(" ")).join("\n");
+  return sceneSpec.scenes.map((scene) => [scene.location, scene.conflict, scene.outcome, ...(scene.characters ?? [])].join(" ")).join("\n");
 }
 
+/** 手写蓝图常省略伏笔字段（write.preflight 收到的 sceneSpec 未经 scene.spec 归一），缺省按空数组。 */
 function sceneSpecEntities(sceneSpec: SceneSpec): string[] {
-  return sceneSpec.scenes.flatMap((scene) => [...scene.characters, scene.location, ...scene.hooks_used, ...scene.hooks_planted]);
+  return sceneSpec.scenes.flatMap((scene) => [...(scene.characters ?? []), scene.location, ...(scene.hooks_used ?? []), ...(scene.hooks_planted ?? [])]);
 }
 
 export async function buildWriteChapterRecall(input: WriteChapterRecallInput): Promise<NarrativeContextPackage> {

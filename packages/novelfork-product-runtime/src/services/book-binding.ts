@@ -1,7 +1,6 @@
-import { readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import {
-	chapters,
 	db as runtimeDb,
 	generateId,
 	getDbDir,
@@ -135,18 +134,22 @@ export async function diagnoseTrustedBookRoot(
 	if (!binding.bookId.trim()) return { reason: "empty-book-id", bookRoot: null };
 	if (!isAbsolute(binding.bookRoot)) return { reason: "relative-book-root", bookRoot: null };
 	try {
-		const canonicalBooksRoot = await realpath(resolve(booksRoot));
-		const expectedBookRoot = deriveBookRoot(canonicalBooksRoot, binding.bookId);
-		const [canonicalBookRoot, expectedCanonicalRoot, bookInfo] = await Promise.all([
+		const canonicalBooksRoot = await realpath(resolve(booksRoot)).catch(() => null);
+		const [canonicalBookRoot, bookInfo] = await Promise.all([
 			realpath(binding.bookRoot),
-			realpath(expectedBookRoot).catch(() => null),
 			stat(binding.bookRoot),
 		]);
 		if (!bookInfo.isDirectory()) return { reason: "book-root-not-directory", bookRoot: null };
-		const isControlledRoot =
-			canonicalBookRoot === expectedCanonicalRoot &&
-			isContained(canonicalBooksRoot, canonicalBookRoot);
-		if (isControlledRoot) return { reason: "trusted", bookRoot: canonicalBookRoot };
+		// 受控书根目录不存在（全新机器上谁也还没建它）时，只可能是外部作品：不能把它当成
+		// 「书的目录不见了」，否则一本完好的外部书会因为一个与它无关的目录缺失而整本不可用。
+		if (canonicalBooksRoot) {
+			const expectedBookRoot = deriveBookRoot(canonicalBooksRoot, binding.bookId);
+			const expectedCanonicalRoot = await realpath(expectedBookRoot).catch(() => null);
+			const isControlledRoot =
+				canonicalBookRoot === expectedCanonicalRoot &&
+				isContained(canonicalBooksRoot, canonicalBookRoot);
+			if (isControlledRoot) return { reason: "trusted", bookRoot: canonicalBookRoot };
+		}
 		if (!allowExternalRoot) return { reason: "external-root-unmarked", bookRoot: null };
 		return (await isMarkedExternalBookRoot(canonicalBookRoot, binding.bookId))
 			? { reason: "trusted", bookRoot: canonicalBookRoot }
@@ -184,8 +187,9 @@ async function resolveTrustedContext(
 ): Promise<RuntimeResolveContext | null> {
 	const canonicalBookRoot = await resolveTrustedBookRoot(binding, booksRoot, allowExternalRoot);
 	if (!canonicalBookRoot) return null;
-	const canonicalBooksRoot = await realpath(resolve(booksRoot)).catch(() => null);
-	if (!canonicalBooksRoot) return null;
+	// 外部作品的书根本身就是可信的，不能因为受控书根目录还没建出来（全新机器）而丢掉上下文：
+	// 那时退回到配置的绝对路径即可，它只用于展示项目根，不参与任何包含判定。
+	const canonicalBooksRoot = (await realpath(resolve(booksRoot)).catch(() => null)) ?? resolve(booksRoot);
 	const resourceBinding = Object.freeze({
 		kind: "novel.book",
 		bookId: binding.bookId,
@@ -277,9 +281,18 @@ export class BookRuntimeBindingService {
 			throw new ValidationError(`Project not found: ${runtimeProjectId}`);
 		}
 		const normalizedBookId = bookId.trim();
-		const canonicalBooksRoot = await realpath(resolve(this.booksRoot)).catch(() => {
-			throw new ValidationError("Controlled books root is not accessible");
-		});
+		// 全新机器上受控书根可能从未被创建过（作者直接把书建在外部目录时，谁都不会碰它）。
+		// 绑定记录要的就是受控根的规范路径，缺目录时补建再取，不能因此把一次成功的建书退回
+		// compensation-required——那会让全新安装下「选个空目录新建作品」必然失败。
+		const booksRootPath = resolve(this.booksRoot);
+		const canonicalBooksRoot = await realpath(booksRootPath)
+			.catch(async () => {
+				await mkdir(booksRootPath, { recursive: true });
+				return realpath(booksRootPath);
+			})
+			.catch(() => {
+				throw new ValidationError("Controlled books root is not accessible");
+			});
 		const derivedBookRoot = deriveBookRoot(canonicalBooksRoot, normalizedBookId);
 		const requestedRoot = bookRootOverride?.trim() || derivedBookRoot;
 		const bookRoot = await realpath(requestedRoot).catch(() => {
@@ -340,11 +353,11 @@ export const drizzleBookRuntimeBindingStore: BookRuntimeBindingStore = {
 			.from(bookRuntimeBindings);
 	},
 	async findByNarratorId(narratorId) {
+		// Runtime 0.9 起叙述者经 context_project_id 归属项目；task 子代理在创建时继承父级的值。
 		const [row] = await runtimeDb
 			.select({ runtimeProjectId: projects.id })
 			.from(narrators)
-			.innerJoin(chapters, eq(narrators.chapterId, chapters.id))
-			.innerJoin(projects, eq(chapters.projectId, projects.id))
+			.innerJoin(projects, eq(narrators.contextProjectId, projects.id))
 			.where(eq(narrators.id, narratorId))
 			.limit(1);
 		if (!row) return null;

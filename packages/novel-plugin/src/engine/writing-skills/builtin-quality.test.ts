@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { NOVEL_TOOL_NAMES } from "../../handlers/tool-registry.js";
+import { toWireToolName } from "../workflows/run-brief.js";
 import { BUNDLED_WRITING_SKILLS } from "./bundled-skills.generated.js";
 import { BUILTIN_WRITING_SKILLS_DIR, loadWritingSkillsSync, parseWritingSkill, splitFrontmatter } from "./loader.js";
 import { THIRD_PARTY_SKILL_SOURCES, retiredBuiltinSourceOf } from "./third-party-sources.js";
@@ -85,20 +86,36 @@ function loadBuiltinFiles(): BuiltinSkillFile[] {
   });
 }
 
-/** 从正文与描述里抽出像工具名的引用：`chapter.read`、`skills.check_compliance` 等。 */
-function referencedToolNames(text: string): string[] {
-  const namespaces = new Set(NOVEL_TOOL_NAMES.map((name) => name.split(".")[0]!));
-  const found = new Set<string>();
-  // 反引号内的点号标识符一律当作工具引用检查（扩展名除外）。
-  for (const match of text.matchAll(/`([a-z][a-z-]*\.[a-z][a-z_]*)`/g)) {
+/** 模型实际看到的工具名：目录名的点换成下划线（与 Runtime 注册时的转换同一规则）。 */
+const WIRE_TOOL_NAMES = new Set(NOVEL_TOOL_NAMES.map(toWireToolName));
+const TOOL_NAMESPACES = new Set(NOVEL_TOOL_NAMES.map((name) => name.split(".")[0]!));
+/** 与工具同命名空间前缀、但其实是工具参数字段的 snake_case 名。 */
+const TOOL_FIELD_NAMES = new Set(["hooks_planted", "hooks_paid_off", "hooks_advanced"]);
+
+/**
+ * 从正文与描述里抽出像工具名的引用，分两类：
+ * - dotted：目录里的点号名（`chapter.read`）。技能原文直接进模型上下文，不经过 Runtime 的名称翻译，
+ *   模型拿到的工具叫 chapter_read，写点号名它对不上号，所以一律判错；
+ * - wire：命名空间与现有工具相同的下划线标识符（`chapter_read`、`hooks_manage(action=list)`），必须真实存在。
+ */
+function referencedToolNames(text: string): { dotted: string[]; wire: string[] } {
+  const dotted = new Set<string>();
+  const wire = new Set<string>();
+  // 反引号内的点号标识符一律当作工具引用（扩展名除外）。
+  for (const match of text.matchAll(/`([a-z][a-z-]*\.[a-z][a-z_.]*)`/g)) {
     const token = match[1]!;
-    if (!FILE_EXTENSIONS.has(token.split(".")[1]!)) found.add(token);
+    if (!FILE_EXTENSIONS.has(token.split(".").at(-1)!)) dotted.add(token);
   }
-  // 裸写的引用：命名空间与现有工具相同的点号标识符。
-  for (const match of text.matchAll(/(?<![\w./-])([a-z][a-z-]*)\.([a-z][a-z_]*)(?![\w-])/g)) {
-    if (namespaces.has(match[1]!) && !FILE_EXTENSIONS.has(match[2]!)) found.add(`${match[1]}.${match[2]}`);
+  // 裸写的点号引用：命名空间与现有工具相同。
+  for (const match of text.matchAll(/(?<![\w./-])([a-z][a-z-]*)\.([a-z][a-z_.]*[a-z])(?![\w-])/g)) {
+    if (TOOL_NAMESPACES.has(match[1]!) && !FILE_EXTENSIONS.has(match[2]!.split(".").at(-1)!)) dotted.add(`${match[1]}.${match[2]}`);
   }
-  return [...found];
+  // 下划线线上名：命名空间与现有工具相同。参数字段也是 snake_case（scene_spec 的 hooks_planted），
+  // 已知字段名单独排除；其余同前缀的下划线名都必须是真实工具。
+  for (const match of text.matchAll(/(?<![\w./-])([a-z]+)_([a-z][a-z_]*[a-z])(?![\w-])/g)) {
+    if (TOOL_NAMESPACES.has(match[1]!) && !TOOL_FIELD_NAMES.has(`${match[1]}_${match[2]}`)) wire.add(`${match[1]}_${match[2]}`);
+  }
+  return { dotted: [...dotted], wire: [...wire] };
 }
 
 function isNegativeProseCheck(check: WritingSkillComplianceCheck): boolean {
@@ -184,17 +201,18 @@ describe("创作预设的作者入口", () => {
   });
 });
 
-describe("技能里引用的工具必须真实存在", () => {
-  const toolNames = new Set(NOVEL_TOOL_NAMES);
-
-  it("引用抽取能认出反引号与裸写的工具名，并忽略文件名", () => {
-    expect(referencedToolNames("先 `chapter.read`，再 rewrite.apply；导出 `story/volume_outline.md`，读 `SKILL.md`"))
+describe("技能里引用的工具必须是模型可见的线上名", () => {
+  it("引用抽取能认出反引号、裸写与下划线的工具名，并忽略文件名", () => {
+    expect(referencedToolNames("先 `chapter.read`，再 rewrite.apply；导出 `story/volume_outline.md`，读 `SKILL.md`").dotted)
       .toEqual(["chapter.read", "rewrite.apply"]);
+    expect(referencedToolNames("先 `chapter_read`，再 hooks_manage(action=list)；读 `story/volume_outline.md`").wire)
+      .toEqual(["chapter_read", "hooks_manage"]);
   });
 
   it.each(builtins.map((skill) => [skill.slug, skill] as const))("%s", (_slug, skill) => {
     const references = referencedToolNames(`${skill.parsed.description}\n${skill.parsed.body}`);
-    const missing = references.filter((name) => !toolNames.has(name));
+    expect(references.dotted, `${skill.slug} 写了点号工具名，模型看到的是下划线名`).toEqual([]);
+    const missing = references.wire.filter((name) => !WIRE_TOOL_NAMES.has(name));
     expect(missing, `${skill.slug} 引用了不存在的工具`).toEqual([]);
   });
 });

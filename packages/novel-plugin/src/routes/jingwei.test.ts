@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -57,6 +57,35 @@ async function postEntry() {
   expect(response.status).toBe(201);
   return (await response.json() as { entry: { id: string; fields: Record<string, unknown>; category: string } }).entry;
 }
+
+describe("Jingwei bulk 请求校验", () => {
+  const bulk = (body: unknown, book = "book-1") =>
+    app().request(`http://localhost/api/books/${book}/jingwei/bulk`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    });
+
+  it("坏 JSON、entryIds 非字符串数组、超过条数上限都返回 400，不 500", async () => {
+    expect((await bulk("{oops")).status).toBe(400);
+    expect((await bulk({ action: "delete", entryIds: "e-1" })).status).toBe(400);
+    expect((await bulk({ action: "delete", entryIds: [1, 2] })).status).toBe(400);
+    expect((await bulk({ action: "delete", entryIds: [] })).status).toBe(400);
+    const tooMany = Array.from({ length: 501 }, (_, index) => `e-${index}`);
+    expect((await bulk({ action: "delete", entryIds: tooMany })).status).toBe(400);
+  });
+
+  it("书不存在时返回 404，与同文件其他路由一致", async () => {
+    expect((await bulk({ action: "delete", entryIds: ["e-1"] }, "book-missing")).status).toBe(404);
+  });
+
+  it("合法请求照常执行，重复 id 只算一次", async () => {
+    const entry = await postEntry();
+    const response = await bulk({ action: "set-status", target: "confirmed", entryIds: [entry.id, entry.id] });
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { affected: number }).affected).toBe(1);
+  });
+});
 
 describe("Jingwei canonical entry routes", () => {
   it("accepts category-only creation and gives fields precedence over legacy customFields", async () => {
@@ -684,5 +713,56 @@ describe("Jingwei entry optimistic concurrency over HTTP (T-24)", () => {
     const body = await response.json() as { error: { code: string } };
     expect(body.error.code).toBe("ENTRY_VERSION_CONFLICT");
     expect((await readEntryFromList(created.id)).contentMd).toBe("后台结算写入的正文");
+  });
+});
+
+describe("POST /jingwei/import-from-files 走可信书根", () => {
+  function importApp(resolveBookRoot: (bookId: string) => string) {
+    return createJingweiRouter({ storage, resolveBookRoot }).request(
+      "http://localhost/api/books/book-1/jingwei/import-from-files",
+      { method: "POST" },
+    );
+  }
+
+  it("外部绑定目录的书从它自己的 story/ 导入，而不是受控目录", async () => {
+    const externalRoot = join(tempDir, "外部书目录");
+    await mkdir(join(externalRoot, "story"), { recursive: true });
+    await writeFile(
+      join(externalRoot, "story", "story_bible.md"),
+      "# 世界观\n\n灵气复苏后的第三十年，城市被划分为九个结界区。\n",
+      "utf-8",
+    );
+
+    const response = await importApp((bookId) => (bookId === "book-1" ? externalRoot : join(tempDir, "nope")));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { ok: boolean; imported: number };
+    expect(body).toMatchObject({ ok: true, imported: 1 });
+    const row = storage.sqlite.prepare<{ title: string; source_refs_json: string }>(
+      `SELECT title, source_refs_json FROM story_jingwei_entry WHERE book_id = 'book-1'`,
+    ).get();
+    expect(row?.title).toBe("story bible");
+    expect(JSON.parse(row!.source_refs_json)[0]).toMatchObject({ path: "story/story_bible.md" });
+  });
+
+  it("书目录还没有 story/ 时导入 0 条并说明原因，不报错", async () => {
+    const externalRoot = join(tempDir, "新建外部书");
+    await mkdir(externalRoot, { recursive: true });
+
+    const response = await importApp(() => externalRoot);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { ok: boolean; imported: number; message: string };
+    expect(body).toMatchObject({ ok: true, imported: 0, updated: 0, skipped: 0 });
+    expect(body.message).toContain("story/");
+  });
+
+  it("story/ 下有不在映射表里的 .md 时归入「其他设定」，不 500", async () => {
+    const externalRoot = join(tempDir, "带杂项文件的书");
+    await mkdir(join(externalRoot, "story"), { recursive: true });
+    await writeFile(join(externalRoot, "story", "my_notes.md"), "# 杂记\n这里是作者自己记的一些零散设定，不在映射表里。", "utf-8");
+
+    const response = await importApp(() => externalRoot);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { ok: boolean; imported: number };
+    expect(body).toMatchObject({ ok: true, imported: 1 });
   });
 });

@@ -383,7 +383,7 @@ function TidyTreeFlow(props: TidyTreeCanvasProps) {
           zoomable
           position="bottom-right"
           style={{ width: 140, height: 90 }}
-          nodeColor={(node) => (MINIMAP_STRONG.has((node.data as TreeNodeData).node.kind) ? "#6366f1" : "#94a3b8")}
+          nodeColor={(node) => (MINIMAP_STRONG.has((node.data as TreeNodeData).node.kind) ? "var(--primary)" : "var(--muted-foreground)")}
         />
         <Toolbar hasOffsets={Object.keys(offsets).length > 0} onResetLayout={() => setOffsets({})} />
         <ViewportProbe target={containerRef} />

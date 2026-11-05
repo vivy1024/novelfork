@@ -107,8 +107,13 @@ describe.skipIf(!existsSync(runtimeServicePath))("内置配方与 Runtime 项目
         },
       ),
     }));
+    // Runtime 0.9 起 skill-service 经 narrator-project.ts 在模块顶层引用 narrators 列
+    // （narratorProjectIdColumn 的 sql 模板），这里只给出占位列让模块能加载；按名读技能不碰它们。
     vi.doMock(runtimePath("db/schema.ts"), () => ({
       projects: { gitPath: "gitPath", chapterSettings: "chapterSettings" },
+      narrators: { id: "id", contextProjectId: "contextProjectId" },
+      narratorProjectLinks: { narratorId: "narratorId", projectId: "projectId", role: "role" },
+      skillDirectoryCaches: {},
     }));
     vi.doMock(runtimePath("lib/logger.ts"), () => ({ logger: { warn: vi.fn() } }));
     vi.doMock(runtimePath("lib/errors.ts"), () => ({

@@ -5,7 +5,7 @@
  * installation without pulling Runtime server source into a PNPM consumer's
  * TypeScript program.
  */
-export { and, desc, eq, inArray, ne } from "../../narrafork-runtime-private/node_modules/drizzle-orm";
+export { and, desc, eq, inArray, ne, sql } from "../../narrafork-runtime-private/node_modules/drizzle-orm";
 export { drizzle, type BunSQLiteDatabase } from "../../narrafork-runtime-private/node_modules/drizzle-orm/bun-sqlite";
 export { index, primaryKey, sqliteTable, text, uniqueIndex } from "../../narrafork-runtime-private/node_modules/drizzle-orm/sqlite-core";
 

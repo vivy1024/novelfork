@@ -432,16 +432,97 @@ describe("SceneSpec 对齐与旧表兼容性 (任务 1 验收)", () => {
     const storage = await createStorage();
     try {
       const bookId = "b_ordinal";
-      createScene(storage, { bookId, chapterNumber: 3, title: "作者手建", status: "confirmed", source: "manual" });
+      // 作者场景与蓝图第 1 场地点不同、人物不重合：明显不是同一场，蓝图另建并追加在后。
+      createScene(storage, { bookId, chapterNumber: 3, title: "作者手建", summary: "[地点: 渡口] 送别", characters: ["阿青"], status: "confirmed", source: "manual" });
 
       replaceChapterScenes(storage, bookId, 3, [
-        { bookId, chapterNumber: 3, ordinal: 1, title: "蓝图一" },
+        { bookId, chapterNumber: 3, ordinal: 1, title: "蓝图一", summary: "[地点: 山门] 试炼", characters: ["林照"] },
         { bookId, chapterNumber: 3, ordinal: 2, title: "蓝图二" },
       ]);
 
       const scenes = listScenesByChapter(storage, bookId, 3);
       expect(scenes.map((s) => s.title)).toEqual(["作者手建", "蓝图一", "蓝图二"]);
       expect(scenes.map((s) => s.ordinal)).toEqual([1, 2, 3]);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("蓝图场景与作者场景同场识别（pipeline.write / 工作流落盘）", () => {
+  const spec = (overrides: Partial<Parameters<typeof sceneFromSpec>[3]> = {}) => ({
+    characters: ["卫青锋", "韩烈"], location: "师兄宅", conflict: "夜访师兄", mood: "压抑", outcome: "得知密信",
+    hooks_used: [], hooks_planted: ["密信"], gaps: [{ kind: "motivation" as const, gap: "蓝图留白", answer: "蓝图答案" }],
+    ...overrides,
+  });
+
+  it("同序号：作者手建的「夜访师兄」只被更新，不再追加一份；留白保留作者版", async () => {
+    const storage = await createStorage();
+    try {
+      const bookId = "b_same_ordinal";
+      const authored = createScene(storage, {
+        bookId, chapterNumber: 2, title: "夜访师兄", layer: "canon", status: "confirmed", source: "manual",
+        gaps: [{ kind: "motivation", gap: "他为何深夜登门", answer: "师兄白天被人盯着" }],
+      }).data!;
+
+      const result = replaceChapterScenes(storage, bookId, 2, [sceneFromSpec(bookId, 2, 1, spec())]);
+      expect(result.ok).toBe(true);
+      expect(result.summary).toContain("已就地更新");
+      const scenes = listScenesByChapter(storage, bookId, 2);
+      expect(scenes).toHaveLength(1);
+      const [scene] = scenes;
+      expect(scene!.id).toBe(authored.id);
+      expect(scene).toMatchObject({ title: "夜访师兄", status: "confirmed", source: "manual", layer: "canon" });
+      expect(scene!.gaps).toEqual([{ kind: "motivation", gap: "他为何深夜登门", answer: "师兄白天被人盯着" }]);
+      // 作者没写的由蓝图补上：人物、地点前缀、伏笔、冲突。
+      expect(scene!.characters).toEqual(["卫青锋", "韩烈"]);
+      expect(scene!.summary.startsWith("[地点: 师兄宅]")).toBe(true);
+      expect(scene!.hooksPlanted).toEqual(["密信"]);
+      expect(scene!.conflict).toBe("夜访师兄");
+
+      // 重写同一章再落一次：仍是一场，不累积。
+      replaceChapterScenes(storage, bookId, 2, [sceneFromSpec(bookId, 2, 1, spec())]);
+      expect(listScenesByChapter(storage, bookId, 2)).toHaveLength(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("sceneId 优先；其次地点 + 人物重合（序号对不上也认）", async () => {
+    const storage = await createStorage();
+    try {
+      const bookId = "b_match";
+      const first = createScene(storage, { bookId, chapterNumber: 4, title: "城楼", summary: "[地点: 雁门关] 守关", characters: ["卫青锋"], status: "confirmed", source: "manual" }).data!;
+      const second = createScene(storage, { bookId, chapterNumber: 4, title: "回忆", summary: "[地点: 军帐] 回忆", characters: ["卫青锋"], status: "confirmed", source: "manual" }).data!;
+
+      replaceChapterScenes(storage, bookId, 4, [
+        // 序号 1，但蓝图写明对的是第二场。
+        { ...sceneFromSpec(bookId, 4, 1, spec({ location: "军帐", characters: ["卫青锋"] })), targetSceneId: second.id },
+        // 序号 5（不存在），地点与人物和第一场重合。
+        sceneFromSpec(bookId, 4, 5, spec({ location: "雁门关", characters: ["卫青锋", "副将"] })),
+      ]);
+      const scenes = listScenesByChapter(storage, bookId, 4);
+      expect(scenes.map((s) => s.id)).toEqual([first.id, second.id]);
+      expect(scenes[0]!.characters).toEqual(["卫青锋", "副将"]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("反例：地点同但人物不重合、或地点不同人物不重合的同序号，都不是同一场，另建", async () => {
+    const storage = await createStorage();
+    try {
+      const bookId = "b_no_match";
+      createScene(storage, { bookId, chapterNumber: 6, ordinal: 1, title: "渡口送别", summary: "[地点: 渡口] 送别", characters: ["阿青"], status: "confirmed", source: "manual" });
+      createScene(storage, { bookId, chapterNumber: 6, ordinal: 2, title: "茶馆", summary: "[地点: 茶馆] 听书", characters: ["老周"], status: "confirmed", source: "manual" });
+
+      replaceChapterScenes(storage, bookId, 6, [
+        sceneFromSpec(bookId, 6, 1, spec({ location: "山门", characters: ["林照"] })),
+        sceneFromSpec(bookId, 6, 9, spec({ location: "茶馆", characters: ["林照"] })),
+      ]);
+      const scenes = listScenesByChapter(storage, bookId, 6);
+      expect(scenes).toHaveLength(4);
+      expect(scenes.filter((s) => s.source === "workflow")).toHaveLength(2);
     } finally {
       storage.close();
     }

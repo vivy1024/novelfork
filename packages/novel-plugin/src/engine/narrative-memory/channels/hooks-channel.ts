@@ -55,10 +55,10 @@ function uniqueStrings(values: readonly (string | undefined | null)[]): string[]
 
 function collectQueryEntities(input: HooksChannelInput): string[] {
   const sceneEntities = input.sceneSpec?.scenes.flatMap((scene) => [
-    ...scene.characters,
+    ...(scene.characters ?? []),
     scene.location,
-    ...scene.hooks_used,
-    ...scene.hooks_planted,
+    ...(scene.hooks_used ?? []),
+    ...(scene.hooks_planted ?? []),
   ]) ?? [];
   return uniqueStrings([...(input.entities ?? []), ...sceneEntities]);
 }

@@ -99,6 +99,7 @@ export function mapRuntimeBootstrapToShellData(
       // 只在确有绑定时带上：null 与「字段缺失」对调用方是同一件事，多写一个 null 只会让
       // 每个 book 字面量比较都要跟着改。
       ...(book.runtimeProjectId ? { runtimeProjectId: book.runtimeProjectId } : {}),
+      ...(book.manuscriptImportJobId ? { manuscriptImportJobId: book.manuscriptImportJobId } : {}),
     }));
   const bookNames = new Map(books.map((book) => [book.id, book.title]));
 

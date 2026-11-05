@@ -92,6 +92,11 @@ export type HostTextGenerationAvailability =
     readonly available: true;
     /** provider:model the host will use, for display only. */
     readonly model?: string;
+    /**
+     * 本次生成计量到的用户（宿主的稳定用户 id）。后台续跑类任务据此只替发起人本人续跑，
+     * 与 narrator-team 的口径一致：派出去的活归发起它的人，不由碰巧来访的人买单。
+     */
+    readonly actorId?: string;
     readonly generateText: HostTextGenerator;
   }
   | {

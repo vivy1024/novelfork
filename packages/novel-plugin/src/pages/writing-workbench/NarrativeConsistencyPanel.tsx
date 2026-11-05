@@ -10,11 +10,12 @@
  * - 体检结果不落盘（诊断一次性返回），面板不缓存也不写回检测结论；
  * - 处置动作只改叙事记忆侧（fact 纠正/作废）。经纬那一边要改设定时给跳转，
  *   由作者在经纬条目里改，面板不代写 canon；
- * - 「标误报」是会话级本地忽略，刷新后会重新出现（后端没有误报标记能力）。
+ * - 「忽略此条」持久化在后端（只记作者裁决：检测类型 + 实体 id + 章号 + 记忆事实 id），
+ *   刷新与重新结算后都不再出现；被忽略的项单独列出，可随时撤销。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, BookOpen, CheckCircle2, EyeOff, Loader2, RefreshCw, Stethoscope } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, Eye, EyeOff, Loader2, RefreshCw, Stethoscope } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
@@ -24,6 +25,8 @@ import {
   fetchConsistencyReport,
   findingKey,
   groupFindingsByKind,
+  ignoreConsistencyFinding,
+  unignoreConsistencyFinding,
   type ConsistencyFinding,
   type ConsistencyReport,
   type FindingGroup,
@@ -55,7 +58,7 @@ export function NarrativeConsistencyPanel({
   onOpenJingweiEntry,
 }: NarrativeConsistencyPanelProps) {
   const [state, setState] = useState<PanelState>({ status: "loading" });
-  const [ignoredKeys, setIgnoredKeys] = useState<readonly string[]>([]);
+  const [showIgnored, setShowIgnored] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const generationRef = useRef(0);
@@ -113,19 +116,53 @@ export function NarrativeConsistencyPanel({
     }
   }, [bookId, load]);
 
-  const ignoreFinding = useCallback((finding: ConsistencyFinding) => {
-    const key = findingKey(finding);
-    setIgnoredKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
-    toast("已在本次会话隐藏这条；刷新后会重新检出", "info");
-  }, []);
+  const toggleIgnore = useCallback(async (finding: ConsistencyFinding, ignore: boolean) => {
+    if (!finding.ignoreKey) return;
+    setBusyKey(findingKey(finding));
+    setActionError(null);
+    try {
+      if (ignore) {
+        await ignoreConsistencyFinding(bookId, finding.ignoreKey);
+        toast("已忽略这一条；刷新和重新结算都不会再提示", "success");
+      } else {
+        await unignoreConsistencyFinding(bookId, finding.ignoreKey);
+        toast("已撤销忽略", "success");
+      }
+      await load();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "处理失败";
+      setActionError(message);
+      toast(message, "error");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [bookId, load]);
 
-  const visible = useMemo(() => {
-    if (state.status !== "ready") return [];
-    return state.report.findings.filter((finding) => !ignoredKeys.includes(findingKey(finding)));
-  }, [state, ignoredKeys]);
-
+  const visible = useMemo(() => (state.status === "ready" ? state.report.findings : []), [state]);
+  const ignored = useMemo(() => (state.status === "ready" ? state.report.ignored : []), [state]);
   const groups = useMemo(() => groupFindingsByKind(visible), [visible]);
-  const ignoredCount = state.status === "ready" ? state.report.findings.length - visible.length : 0;
+  const ignoredCount = ignored.length;
+  const ignoredSection = showIgnored && ignoredCount > 0 ? (
+    <section className="rounded-lg border border-dashed border-border p-3 space-y-2" data-testid="consistency-ignored">
+      <h3 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <EyeOff className="size-3.5" />
+        已忽略 {ignoredCount} 条
+      </h3>
+      {ignored.map((finding) => (
+        <FindingCard
+          key={findingKey(finding)}
+          finding={finding}
+          busy={busyKey === findingKey(finding)}
+          ignored
+          onJumpToChapter={onJumpToChapter}
+          onOpenJingweiEntry={onOpenJingweiEntry}
+          onCorrect={(item) => void runAction(item, "correct")}
+          onRetire={(item) => void runAction(item, "retire")}
+          onIgnore={(item) => void toggleIgnore(item, false)}
+        />
+      ))}
+    </section>
+  ) : null;
 
   return (
     <div className="h-full overflow-y-auto p-3 space-y-3 text-xs" data-testid="narrative-consistency-panel">
@@ -136,7 +173,7 @@ export function NarrativeConsistencyPanel({
             叙事体检
           </div>
           <p className="text-xs text-muted-foreground">
-            对照经纬设定与叙事记忆现状，找出对不上的地方。结果每次现算，不落盘。
+            对照经纬设定、叙事记忆现状与章间场景衔接，找出对不上的地方。结果每次现算，只提示不拦写作。
           </p>
         </div>
         <button
@@ -181,11 +218,15 @@ export function NarrativeConsistencyPanel({
           )}
 
           {visible.length === 0 ? (
-            <EmptyState
-              summary={state.report.summary}
-              ignoredCount={ignoredCount}
-              onRestoreIgnored={() => setIgnoredKeys([])}
-            />
+            <>
+              <EmptyState
+                summary={state.report.summary}
+                ignoredCount={ignoredCount}
+                showIgnored={showIgnored}
+                onToggleIgnored={() => setShowIgnored((prev) => !prev)}
+              />
+              {ignoredSection}
+            </>
           ) : (
             <>
               <div className="flex items-center justify-between gap-2">
@@ -203,18 +244,19 @@ export function NarrativeConsistencyPanel({
                   onOpenJingweiEntry={onOpenJingweiEntry}
                   onCorrect={(finding) => void runAction(finding, "correct")}
                   onRetire={(finding) => void runAction(finding, "retire")}
-                  onIgnore={ignoreFinding}
+                  onIgnore={(finding) => void toggleIgnore(finding, true)}
                 />
               ))}
               {ignoredCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => setIgnoredKeys([])}
+                  onClick={() => setShowIgnored((prev) => !prev)}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
-                  已隐藏 {ignoredCount} 条误报 · 显示出来
+                  {showIgnored ? `收起已忽略的 ${ignoredCount} 条` : `已忽略 ${ignoredCount} 条 · 查看 / 撤销`}
                 </button>
               )}
+              {ignoredSection}
             </>
           )}
         </>
@@ -226,11 +268,13 @@ export function NarrativeConsistencyPanel({
 function EmptyState({
   summary,
   ignoredCount,
-  onRestoreIgnored,
+  showIgnored,
+  onToggleIgnored,
 }: {
   summary: string;
   ignoredCount: number;
-  onRestoreIgnored: () => void;
+  showIgnored: boolean;
+  onToggleIgnored: () => void;
 }) {
   return (
     <div
@@ -243,8 +287,8 @@ function EmptyState({
         {summary || "经纬设定与叙事记忆现状一致。"}
       </p>
       {ignoredCount > 0 && (
-        <button type="button" onClick={onRestoreIgnored} className="text-xs text-muted-foreground hover:text-foreground">
-          另有 {ignoredCount} 条被你标为误报 · 显示出来
+        <button type="button" onClick={onToggleIgnored} className="text-xs text-muted-foreground hover:text-foreground">
+          {showIgnored ? `收起已忽略的 ${ignoredCount} 条` : `另有 ${ignoredCount} 条已被你忽略 · 查看 / 撤销`}
         </button>
       )}
     </div>
@@ -296,6 +340,7 @@ function FindingGroupSection({
 function FindingCard({
   finding,
   busy,
+  ignored = false,
   onJumpToChapter,
   onOpenJingweiEntry,
   onCorrect,
@@ -304,26 +349,39 @@ function FindingCard({
 }: {
   finding: ConsistencyFinding;
   busy: boolean;
+  /** 已被作者忽略：按钮换成「撤销忽略」。 */
+  ignored?: boolean;
   onJumpToChapter?: (chapterNumber: number) => void;
   onOpenJingweiEntry?: (entryId: string) => boolean;
   onCorrect: (finding: ConsistencyFinding) => void;
   onRetire: (finding: ConsistencyFinding) => void;
+  /** 忽略此条；已忽略的卡片上表示撤销忽略。 */
   onIgnore: (finding: ConsistencyFinding) => void;
 }) {
   const [entryError, setEntryError] = useState<string | null>(null);
   const explanation = explanationOf(finding);
   const canCorrect = Boolean(finding.factId && finding.jingweiValue);
   const canRetire = Boolean(finding.factId);
+  // 场景校验里矛盾出现的章与记忆依据所在章不同，两个都给跳转。
+  const findingChapter = finding.chapterNumber !== undefined && finding.chapterNumber !== finding.memoryChapter
+    ? finding.chapterNumber
+    : undefined;
+  const headerChapter = findingChapter ?? finding.memoryChapter;
 
   return (
     <article className="rounded border border-border/60 p-2.5 space-y-2" data-testid="consistency-finding">
       <div className="space-y-1">
         <div className="flex items-start justify-between gap-2">
           <span className="text-2xs font-medium">{finding.title}</span>
-          {finding.memoryChapter !== undefined && (
-            <span className="shrink-0 text-2xs text-muted-foreground">第 {finding.memoryChapter} 章</span>
+          {headerChapter !== undefined && (
+            <span className="shrink-0 text-2xs text-muted-foreground">第 {headerChapter} 章</span>
           )}
         </div>
+        {finding.evidenceText && (
+          <blockquote className="border-l-2 border-warning/60 pl-2 text-2xs text-muted-foreground" data-testid="consistency-evidence">
+            「{finding.evidenceText}」
+          </blockquote>
+        )}
         {(finding.jingweiValue || finding.memoryValue) && (
           <div className="flex flex-wrap items-center gap-1.5 text-2xs">
             <span className="text-muted-foreground">{finding.entity}</span>
@@ -349,6 +407,12 @@ function FindingCard({
       {entryError && <p className="text-xs text-destructive">{entryError}</p>}
 
       <div className="flex flex-wrap justify-end gap-1.5">
+        {findingChapter !== undefined && onJumpToChapter && (
+          <ActionButton onClick={() => onJumpToChapter(findingChapter)} disabled={busy}>
+            <BookOpen className="size-3" />
+            看第 {findingChapter} 章
+          </ActionButton>
+        )}
         {finding.memoryChapter !== undefined && onJumpToChapter && (
           <ActionButton onClick={() => onJumpToChapter(finding.memoryChapter!)} disabled={busy}>
             <BookOpen className="size-3" />
@@ -378,10 +442,17 @@ function FindingCard({
             作废这条
           </ActionButton>
         )}
-        <ActionButton disabled={busy} onClick={() => onIgnore(finding)} title="仅本次会话隐藏，刷新后会重新检出">
-          <EyeOff className="size-3" />
-          标误报
-        </ActionButton>
+        {finding.ignoreKey && (ignored ? (
+          <ActionButton disabled={busy} onClick={() => onIgnore(finding)} title="撤销忽略，这一条会重新出现在体检结果里">
+            <Eye className="size-3" />
+            撤销忽略
+          </ActionButton>
+        ) : (
+          <ActionButton disabled={busy} onClick={() => onIgnore(finding)} title="记下你的裁决：刷新与重新结算后都不再提示，可随时撤销">
+            <EyeOff className="size-3" />
+            忽略此条
+          </ActionButton>
+        ))}
       </div>
     </article>
   );

@@ -37,12 +37,12 @@ checks:
 ## 钩子纪律
 
 - 钩子承诺必须兑现：下一章要回应，兑现时带来回报（爽点/代价/新缺口）。
-- 每埋一个钩子，用 hooks.manage 记入伏笔台账；回收时更新状态。
+- 每埋一个钩子，用 hooks_manage 记入伏笔台账；回收时更新状态。
 - 连续两章同型钩子视为失误；"欲知后事如何"式老评书钩子禁用。
 
 ## 操作（NovelFork）
 
-1. 写章时在 scene.spec 蓝图的 hooks_planted 里声明本章埋的钩子。
+1. 写章时在 scene_spec 蓝图的 hooks_planted 里声明本章埋的钩子。
 2. 正文结尾按五类钩子之一写，写后用《去AI味重写》速查防套话。
-3. `pipeline.write` 落盘后，`hooks.manage(action=plant)` 把钩子记入台账。
-4. 兑现时 `hooks.manage(action=payoff)` 更新，让伏笔台账与正文一致。
+3. `pipeline_write` 落盘后，`hooks_manage(action=plant)` 把钩子记入台账。
+4. 兑现时 `hooks_manage(action=payoff)` 更新，让伏笔台账与正文一致。

@@ -1,0 +1,45 @@
+/*
+  React Flow 画布（工作流、因果画布、故事树、关系网、章节图）接到书房主题令牌。
+
+  @xyflow/react 自带的样式表只认 .dark 一档明暗，颜色写死成灰白；这里覆盖它留出的
+  --xy-*（不带 -default 的那一层优先级更高），让底色、点阵、连线、小地图、控件随
+  书房主题与明暗一起切换。颜色只引用 DESIGN.md 生成的令牌，不写色值。
+*/
+
+.react-flow {
+  --xy-background-color: transparent;
+  /* 点阵 / 线格 / 十字三种背景都读这一个变量（库里没有分样式的非 default 变量） */
+  --xy-background-pattern-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent);
+
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--foreground);
+  --xy-connectionline-stroke: var(--primary);
+
+  --xy-node-color: var(--foreground);
+  --xy-node-background-color: var(--card);
+  --xy-node-border: 1px solid var(--border);
+  --xy-node-group-background-color: color-mix(in srgb, var(--muted) 40%, transparent);
+  --xy-node-boxshadow-selected: 0 0 0 1px var(--ring);
+  --xy-handle-background-color: var(--muted-foreground);
+  --xy-handle-border-color: var(--card);
+
+  --xy-edge-label-background-color: var(--card);
+  --xy-edge-label-color: var(--foreground);
+
+  --xy-selection-background-color: color-mix(in srgb, var(--primary) 8%, transparent);
+  --xy-selection-border: 1px dotted color-mix(in srgb, var(--primary) 80%, transparent);
+  --xy-resize-background-color: var(--primary);
+
+  --xy-minimap-background-color: var(--card);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--muted) 60%, transparent);
+  --xy-minimap-node-background-color: var(--muted-foreground);
+
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--muted);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: var(--shadow-sm);
+
+  --xy-attribution-background-color: color-mix(in srgb, var(--card) 50%, transparent);
+}

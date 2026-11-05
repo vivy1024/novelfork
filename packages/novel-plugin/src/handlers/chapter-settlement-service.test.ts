@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
@@ -15,6 +15,10 @@ import { loadForeshadowStates } from "../engine/narrative-taxonomy/foreshadow-st
 import { upsertLedgerEntry } from "./jingwei-ledger-store.js";
 import { settleConfirmedChapter } from "./chapter-settlement-service.js";
 import { handleChapterDiscardRange } from "./chapter-discard-range.js";
+import { DEFAULT_NARRATIVE_MEMORY_CONFIG } from "../engine/narrative-memory/config.js";
+import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
+import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
+import { addConsistencyIgnore, removeConsistencyIgnore } from "../engine/narrative-memory/scene-check.js";
 
 const tempDirs: string[] = [];
 
@@ -1407,8 +1411,109 @@ it("即使 manual 事实的 source_id 与旧台账事件碰撞，作废也只针
       expect(result).toMatchObject({ status: "failed", error: "settlement-extraction-failed" });
       expect(result.explanation?.whatHappened).toContain("截断");
       expect(result.explanation?.suggestedAction).toContain("重试");
+      // 截断建议写明上限与换模型 / 拆章两条出路。
+      expect(result.explanation?.suggestedAction).toContain("24000");
+      expect(result.explanation?.suggestedAction).toContain("拆成两章");
       expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 7 })).toBeUndefined();
     } finally {
+      storage.close();
+    }
+  });
+});
+
+/**
+ * 场景校验 S1 接在结算里：实体索引刷新之后检测本章，结算结果带一行摘要；
+ * 只提示不拦：检测出矛盾、检测器抛异常，结算都照常 completed。
+ */
+describe("结算后场景校验", () => {
+  const CH3 = "夜色沉沉。甲一掌拍碎了石桌，震得乙连退三步。";
+
+  async function createSceneCheckStorage(): Promise<StorageDatabase> {
+    const storage = await createSummaryStorage();
+    upsertLedgerEntry(storage, { bookId: "book-1", category: "characters", title: "甲", contentMd: "主角" });
+    upsertLedgerEntry(storage, { bookId: "book-1", category: "characters", title: "乙", contentMd: "对手" });
+    return storage;
+  }
+
+  /** 第 2 章：甲身亡（高风险事件进待审，作者批准后已应用）。 */
+  async function settleDeathChapter(storage: StorageDatabase): Promise<void> {
+    const result = await settleConfirmedChapter(
+      { bookId: "book-1", chapterNumber: 2, content: "甲倒在血泊里，断了气。" },
+      {
+        storage,
+        config: { ...DEFAULT_NARRATIVE_MEMORY_CONFIG, settlement: { ...DEFAULT_NARRATIVE_MEMORY_CONFIG.settlement, autoChapterSummary: false } },
+        llmExtractor: async () => [{
+          eventType: "character_state_changed", subject: "甲", predicate: "身亡", object: "死亡",
+          evidenceText: "甲倒在血泊里，断了气。", confidence: 0.95, source: "settle",
+        }],
+      },
+    );
+    expect(result.status).toBe("completed");
+    const pending = result.events.find((event) => event.status === "pending");
+    if (pending) {
+      const approved = applyNarrativeEvents(storage, "book-1", [{ ...pending, status: "applied" }]);
+      expect(approved.appliedEventIds).toEqual([pending.id]);
+    }
+  }
+
+  const actorExtractor = async () => [{
+    eventType: "relationship_changed", subject: "甲", predicate: "击退", object: "乙",
+    evidenceText: "甲一掌拍碎了石桌，震得乙连退三步。", confidence: 0.95, source: "settle",
+  }];
+  const noSummary = { ...DEFAULT_NARRATIVE_MEMORY_CONFIG, settlement: { ...DEFAULT_NARRATIVE_MEMORY_CONFIG.settlement, autoChapterSummary: false } };
+
+  it("死后作为行动方出手：结算完成并带摘要，忽略后重新结算不再计入", async () => {
+    const storage = await createSceneCheckStorage();
+    try {
+      await settleDeathChapter(storage);
+      const first = await settleConfirmedChapter({ bookId: "book-1", chapterNumber: 3, content: CH3 }, { storage, config: noSummary, llmExtractor: actorExtractor });
+      expect(first.status).toBe("completed");
+      expect(first.events.map((event) => event.status)).toEqual(["applied"]);
+      expect(first.sceneCheck).toMatchObject({ found: 1, summary: "场景校验：发现 1 处可能矛盾，详见叙事体检。" });
+      expect(first.warnings).toContain("场景校验：发现 1 处可能矛盾，详见叙事体检。");
+      // 只提示：不进待确认、不触发高风险闸门。
+      expect(first).toMatchObject({ pending: 0, highRiskPending: 0 });
+
+      const report = await runConsistencyCheck(storage, { bookId: "book-1", loadChapterText: () => CH3 });
+      const finding = report.findings.find((item) => item.kind === "scene-dead-acts")!;
+      addConsistencyIgnore(storage, "book-1", finding.ignoreKey!);
+
+      const again = await settleConfirmedChapter(
+        { bookId: "book-1", chapterNumber: 3, content: CH3, force: true },
+        { storage, config: noSummary, llmExtractor: actorExtractor },
+      );
+      expect(again.status).toBe("completed");
+      expect(again.sceneCheck).toMatchObject({ found: 0, ignored: 1 });
+      expect(again.warnings.some((warning) => warning.startsWith("场景校验"))).toBe(false);
+
+      removeConsistencyIgnore(storage, "book-1", finding.ignoreKey!);
+      expect((await runConsistencyCheck(storage, { bookId: "book-1", loadChapterText: () => CH3 })).findings.some((item) => item.kind === "scene-dead-acts")).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("检测器抛异常时结算照常完成，只记日志", async () => {
+    const storage = await createSceneCheckStorage();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await settleConfirmedChapter(
+        { bookId: "book-1", chapterNumber: 3, content: CH3 },
+        {
+          storage,
+          config: noSummary,
+          llmExtractor: actorExtractor,
+          sceneCheck: async () => {
+            throw new Error("scene check exploded");
+          },
+        },
+      );
+      expect(result.status).toBe("completed");
+      expect(result.sceneCheck).toBeUndefined();
+      expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 3 })).toBeDefined();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("场景校验失败"));
+    } finally {
+      warn.mockRestore();
       storage.close();
     }
   });

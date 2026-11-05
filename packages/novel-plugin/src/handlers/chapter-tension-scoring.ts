@@ -127,7 +127,7 @@ export function buildTensionScoringMessages(input: TensionScoringInput): Array<{
   ];
 }
 
-type GenerateText = (request: { messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>; temperature?: number; maxTokens?: number }) => Promise<{ text: string }>;
+type GenerateText = (request: { messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>; temperature?: number; maxTokens?: number }) => Promise<{ text: string; outputTruncated?: boolean }>;
 
 /** 独立评分调用：任何异常都收敛为 unevaluated，不向上抛、不阻断结算主体。 */
 export async function scoreChapterTension(
@@ -138,12 +138,13 @@ export async function scoreChapterTension(
     const response = await generateText({
       messages: buildTensionScoringMessages({ ...input, contentExcerpt: input.content.slice(0, 3000) }),
       temperature: 0.2,
-      maxTokens: 160,
+      // 裸 JSON 约 40 token，但带推理或先写前缀的模型会在 JSON 出现前耗尽预算；留足余量，截断时单独说明。
+      maxTokens: 512,
     });
     const parsed = parseTensionScoringResponse(response.text);
-    return parsed.status === "evaluated"
-      ? parsed
-      : { status: "unevaluated", reason: `${parsed.reason}；原始响应：${response.text.slice(0, 120)}` };
+    if (parsed.status === "evaluated") return parsed;
+    const truncated = response.outputTruncated ? "输出在到达输出上限时被截断；" : "";
+    return { status: "unevaluated", reason: `${truncated}${parsed.reason}；原始响应：${response.text.slice(0, 120)}` };
   } catch (error) {
     return { status: "unevaluated", reason: error instanceof Error ? error.message : String(error) };
   }

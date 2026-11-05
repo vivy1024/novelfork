@@ -28,6 +28,11 @@ interface EntryWithOverhaulFields {
 
 export interface CreateJingweiRouterOptions {
   storage?: StorageDatabase;
+  /**
+   * 服务端可信的书根解析（产品层传入，外部绑定的书也能找到）。
+   * 不传时回退到受控目录 `<projectRoot>/books/<bookId>`，仅兼容旧本地书与单元测试。
+   */
+  readonly resolveBookRoot?: (bookId: string) => string;
 }
 
 type EngineModule = typeof import("../engine/index.js");
@@ -475,7 +480,9 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const visibilityInput = body.visibilityRule
       ?? (typeof body.visibilityRuleJson === "string" ? parseObjectJson(body.visibilityRuleJson) : body.visibilityRuleJson);
     const { createStoryJingweiEntryRepository } = await loadEngine();
-    const entry = await createStoryJingweiEntryRepository(storage).update(bookId, c.req.param("entryId"), {
+    const entryRepo = createStoryJingweiEntryRepository(storage);
+    const before = await entryRepo.getById(bookId, c.req.param("entryId"));
+    const entry = await entryRepo.update(bookId, c.req.param("entryId"), {
       ...(typeof body.sectionId === "string" ? { sectionId: body.sectionId } : {}),
       ...(typeof body.title === "string" ? { title: body.title.trim() } : {}),
       ...(typeof body.contentMd === "string" ? { contentMd: body.contentMd } : {}),
@@ -514,7 +521,10 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       const { resolveLedgerConflict } = await import("../engine/jingwei/ledger-conflict-store.js");
       resolveLedgerConflict(storage, bookId, c.req.param("entryId"));
     }
-    return c.json({ entry: serializeEntry(entry) });
+    // 人物条目确认（或撤回确认）后，实体字典变了：补挂历史出场与事件身份链并重建实体索引。
+    const { entityDictionaryMembershipChanged, linkConfirmedEntityEntries } = await import("../engine/jingwei/entity-confirm-link.js");
+    const entityLink = entityDictionaryMembershipChanged(before, entry) ? linkConfirmedEntityEntries(storage, bookId) : undefined;
+    return c.json({ entry: serializeEntry(entry), ...(entityLink ? { entityLink } : {}) });
   });
 
   app.delete("/api/books/:bookId/jingwei/entries/:entryId", async (c) => {
@@ -756,22 +766,34 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       plot: { key: "plot", name: "情节脉络" },
       timeline: { key: "timeline", name: "时间线" },
       "chapter-summary": { key: "chapter-summary", name: "章节摘要" },
+      // 不在 FILE_CATEGORY_MAP 里的 .md 落到这里；缺了它，story/ 下任何一个未映射文件都会让整个导入 500。
+      custom: { key: "custom", name: "其他设定" },
     };
 
     // 读取 storyDir 下的 md 文件
     const { readdir, readFile } = await import("node:fs/promises");
-    const { join, dirname } = await import("node:path");
-    const { existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
 
-    // 确定 projectRoot：优先环境变量，其次 NovelFork 数据目录（NOVELFORK_HOME，默认 ~/.novelfork）
-    const projectRoot = process.env.NOVELFORK_PROJECT_ROOT || resolveGlobalConfigDir();
-    const storyDir = join(projectRoot, "books", bookId, "story");
+    // 书根走服务端可信绑定（外部目录的书也在这里）；未注入时才回退到受控目录。
+    const bookRoot = options.resolveBookRoot
+      ? options.resolveBookRoot(bookId)
+      : join(process.env.NOVELFORK_PROJECT_ROOT || resolveGlobalConfigDir(), "books", bookId);
+    const storyDir = join(bookRoot, "story");
 
-    if (!existsSync(storyDir)) {
-      return c.json({ ok: true, imported: 0, updated: 0, skipped: 0, message: "story 目录不存在" });
+    // story/ 不存在（新书、外部目录还没写过设定文件）等于没有可导入的文件；存在却读不出时照常报错。
+    let allFiles: string[];
+    try {
+      allFiles = await readdir(storyDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") throw error;
+      return c.json({
+        ok: true,
+        imported: 0,
+        updated: 0,
+        skipped: 0,
+        message: "这本书的目录里还没有 story/ 文件夹，没有可导入的设定文件。",
+      });
     }
-
-    const allFiles = await readdir(storyDir);
     const mdFiles = allFiles.filter((f) => f.endsWith(".md"));
 
     let imported = 0;
@@ -845,7 +867,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
         if (existing) {
           await entryRepo.update(bookId, existing.id, {
             contentMd: content,
-            sourceRefs: [{ chapterNumber: 0, excerpt: content.slice(0, 240), path: join("books", bookId, "story", fileName), fileName }],
+            sourceRefs: [{ chapterNumber: 0, excerpt: content.slice(0, 240), path: `story/${fileName}`, fileName }],
             updatedAt: timestamp,
           });
           updated++;
@@ -863,7 +885,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
           fields: {},
           tags: [],
           aliases: [],
-          sourceRefs: [{ chapterNumber: 0, excerpt: content.slice(0, 240), path: join("books", bookId, "story", fileName), fileName }],
+          sourceRefs: [{ chapterNumber: 0, excerpt: content.slice(0, 240), path: `story/${fileName}`, fileName }],
           customFields: {},
           relatedChapterNumbers: [],
           relatedEntryIds: [],
@@ -951,13 +973,28 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
   });
 
   // --- Jingwei v2: Bulk operations ---
+  // 不包事务：仓库层写入是 async 的，无法放进 better-sqlite3 的同步事务；中途失败时已改的条目留在新状态，
+  // 返回的 affected 如实报告改动条数，作者可以对剩下的再提交一次（每条操作本身幂等）。
+  const BULK_ENTRY_LIMIT = 500;
   app.post("/api/books/:bookId/jingwei/bulk", async (c) => {
     const bookId = c.req.param("bookId");
     const storage = await resolveStorage(options);
-    const body = await c.req.json<{ action: string; entryIds: string[]; target?: string }>();
-    const { action, entryIds, target } = body;
-
-    if (!entryIds?.length) return c.json({ error: "No entries specified" }, 400);
+    await ensureBook(storage, bookId);
+    // 请求体按真实形状核对：c.req.json<T>() 只是类型断言，坏 JSON 会 500，entryIds 也可能不是字符串数组。
+    // 条数设上限：set-status 每条都要读写一次，最后还要整本重建实体索引，都在请求线程上同步做。
+    const raw = await c.req.json<unknown>().catch(() => null);
+    const record = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+    const action = typeof record?.action === "string" ? record.action : "";
+    const target = typeof record?.target === "string" ? record.target : undefined;
+    const rawIds = record?.entryIds;
+    if (!Array.isArray(rawIds) || rawIds.some((id) => typeof id !== "string" || !id.trim() || id.length > 200)) {
+      return c.json({ error: "entryIds must be an array of non-empty entry id strings" }, 400);
+    }
+    const entryIds = [...new Set(rawIds as string[])];
+    if (entryIds.length === 0) return c.json({ error: "No entries specified" }, 400);
+    if (entryIds.length > BULK_ENTRY_LIMIT) {
+      return c.json({ error: `At most ${BULK_ENTRY_LIMIT} entries per bulk request (got ${entryIds.length})` }, 400);
+    }
 
     const { createStoryJingweiEntryRepository } = await loadEngine();
     const repo = createStoryJingweiEntryRepository(storage);
@@ -978,9 +1015,16 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       case "set-status": {
         const status = normalizeEntryStatus(target);
         if (!status) return c.json({ error: "valid target status required" }, 400);
+        const { entityDictionaryMembershipChanged, linkConfirmedEntityEntries } = await import("../engine/jingwei/entity-confirm-link.js");
+        let membershipChanged = false;
         for (const entryId of entryIds) {
-          if (await repo.update(bookId, entryId, { status, source: "user", revisionReason: "bulk-status", updatedAt: new Date() })) affected += 1;
+          const before = await repo.getById(bookId, entryId);
+          const updated = await repo.update(bookId, entryId, { status, source: "user", revisionReason: "bulk-status", updatedAt: new Date() });
+          if (updated) affected += 1;
+          if (entityDictionaryMembershipChanged(before, updated)) membershipChanged = true;
         }
+        // 批量确认人物条目：整批改完后只重建一次实体索引。
+        if (membershipChanged) return c.json({ ok: true, affected, entityLink: linkConfirmedEntityEntries(storage, bookId) });
         break;
       }
       default:

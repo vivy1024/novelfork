@@ -1,7 +1,7 @@
 ---
 id: nf-write-chapter
 name: 创建小说正文
-description: 写一章正文的完整方法论：先锁人物矛盾与核心驱动力，按章纲/蓝图写场景，保证信息增量、中段回报与章末钩子。正文由本 Agent 生成，经 scene.spec 校验蓝图、pipeline.write 落盘。
+description: 写一章正文的完整方法论：先锁人物矛盾与核心驱动力，按章纲/蓝图写场景，保证信息增量、中段回报与章末钩子。正文由本 Agent 生成，经 scene_spec 校验蓝图、pipeline_write 落盘。
 kind: prose
 mode: manual
 entry: 写下一章
@@ -44,7 +44,7 @@ checks:
 
 本章结束时，主角离他的目标**更近还是更远**？读者的情绪**涨了还是落了**？没有变化的章节是注水章。
 
-## 章结构（写前在 scene.spec 蓝图里定）
+## 章结构（写前在 scene_spec 蓝图里定）
 
 1. **章首抓力**：承接上章钩子或抛出本冲突，前 300 字必须有事发生。
 2. **中段回报**：至少一个读者能"爽到"的点（信息揭示/反杀/关系推进），不能只铺垫。
@@ -53,11 +53,11 @@ checks:
 
 ## 操作（NovelFork）
 
-1. `write.preflight` 确认可写，拿回本章写前召回包（返回里 recall 的 text）；用 Skill 读取相关写作技能。
-2. `lore.read` 查出场角色/地点/规则；需要补看某一栏（如某角色的近况）时再用 `memory.read`——写前必查，禁止现编设定。
-3. 提交 `scene.spec` 蓝图（含 beatBudget），校验通过后**以写前召回包为前情依据**生成本章正文。
-4. `pipeline.write` 提交正文：落盘、审计（含经纬设定核对）、章后结算由工具完成。这一章没先做第 1 步、或召回已超过 30 分钟，会被 `recall-required` 拦下，回第 1 步重新 preflight；返回 `chapter-conflict` 说明这一章在你写的时候被作者改过，先重新读这一章，不要硬覆盖。
-5. 写后同轮清零：结算失败（settlementError）时 `memory.settle_range` 补；新角色/新设定用 `lore.write` 落经纬待作者确认。
+1. `write_preflight` 确认可写，拿回本章写前召回包（返回里 recall 的 text）；用 Skill 读取相关写作技能。
+2. `lore_read` 查出场角色/地点/规则；需要补看某一栏（如某角色的近况）时再用 `memory_read`——写前必查，禁止现编设定。
+3. 提交 `scene_spec` 蓝图（含 beatBudget），校验通过后**以写前召回包为前情依据**生成本章正文。
+4. `pipeline_write` 提交正文：落盘、审计（含经纬设定核对）、章后结算由工具完成。这一章没先做第 1 步、或召回已超过 30 分钟，会被 `recall-required` 拦下，回第 1 步重新 preflight；返回 `chapter-conflict` 说明这一章在你写的时候被作者改过，先重新读这一章，不要硬覆盖。
+5. 写后同轮清零：结算失败（settlementError）时 `memory_settle_range` 补；新角色/新设定用 `lore_write` 落经纬待作者确认。
 
 ## 禁止
 

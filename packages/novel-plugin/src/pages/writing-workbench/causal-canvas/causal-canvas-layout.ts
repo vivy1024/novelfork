@@ -9,6 +9,8 @@
 
 import type { Edge, Node } from "@xyflow/react";
 
+import { CHART_COLORS } from "@/styles/chart-palette";
+
 import type { CausalGraph, CausalLane, CausalSceneNode } from "../../../engine/narrative-taxonomy/causal-graph";
 
 /** 左侧冻结的泳道名栏在画布坐标里占的宽度：第一章的场景从它右边开始，初始视图不会被遮住。 */
@@ -21,9 +23,14 @@ export const SCENE_HEIGHT = 84;
 const SLOT_WIDTH = SCENE_WIDTH + 24;
 const CHAPTER_GAP = 40;
 
-/** 剧情线的颜色：泳道标记、场景上的挂载圆点与线路同色，一眼对上。 */
-export const LANE_COLORS = ["#6366f1", "#ec4899", "#10b981", "#f59e0b", "#0ea5e9", "#8b5cf6", "#ef4444", "#14b8a6"] as const;
-export const UNMOUNTED_COLOR = "#94a3b8";
+/**
+ * 剧情线的颜色：泳道标记、场景上的挂载圆点与线路同色，一眼对上。
+ * 取 DESIGN.md 的分类色令牌（var(--chart-N)），随书房主题与明暗切换。
+ */
+export const LANE_COLORS = CHART_COLORS;
+export const UNMOUNTED_COLOR = "var(--muted-foreground)";
+/** 伏笔回收线：与「待回收」提示同用警告色。 */
+export const HOOK_COLOR = "var(--warning)";
 
 export interface CausalColumn {
   readonly chapterNumber: number;
@@ -193,7 +200,7 @@ export function toCausalFlow(graph: CausalGraph, layout: CausalLayout, options: 
         type: "hook",
         selectable: false,
         focusable: false,
-        data: { color: "#f59e0b", label: link.label, dimmed: Boolean(options.focusLaneId) },
+        data: { color: HOOK_COLOR, label: link.label, dimmed: Boolean(options.focusLaneId) },
       });
     }
   }

@@ -48,6 +48,7 @@ import {
   RAIL_SCREEN_WIDTH,
   RULER_SCREEN_HEIGHT,
   toCausalFlow,
+  UNMOUNTED_COLOR,
   type CausalCanvasEdge,
   type CausalCanvasNode,
   type CausalLayout,
@@ -331,7 +332,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
             <Controls showInteractive={false} position="bottom-right" />
-            <MiniMap pannable zoomable position="top-right" className="!top-8" style={{ width: 150, height: 90 }} nodeColor={(node) => (node.type === "scene" ? String((node.data as { homeColor?: string }).homeColor ?? "#94a3b8") : "transparent")} />
+            <MiniMap pannable zoomable position="top-right" className="!top-8" style={{ width: 150, height: 90 }} nodeColor={(node) => (node.type === "scene" ? String((node.data as { homeColor?: string }).homeColor ?? UNMOUNTED_COLOR) : "transparent")} />
             <FrozenRulers
               graph={graph}
               layout={layout}

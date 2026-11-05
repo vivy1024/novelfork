@@ -6,12 +6,13 @@
  * 路由实现顶层引用 node:fs 等，会把浏览器包在模块求值期打崩。
  */
 
-export const PENDING_REVIEW_KINDS = ["voice", "styleRule", "foreshadow", "event", "fact", "revision", "storyline", "conflict"] as const;
+export const PENDING_REVIEW_KINDS = ["voice", "styleRule", "character", "foreshadow", "event", "fact", "revision", "storyline", "conflict"] as const;
 export type PendingReviewKind = (typeof PENDING_REVIEW_KINDS)[number];
 
 export const PENDING_REVIEW_LABELS: Record<PendingReviewKind, string> = {
   voice: "声线",
   styleRule: "文风规则",
+  character: "人物",
   foreshadow: "伏笔",
   event: "叙事事件",
   fact: "事实",

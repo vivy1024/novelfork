@@ -172,6 +172,46 @@ describe("文风蒸馏模型批次", () => {
     expect(result.job.batches[1]?.status).toBe("done");
   });
 
+  it("整批模型规则都因证据被丢弃：批次标失败、保留被丢弃条目，任务汇总写明丢弃条数；过半丢弃的批次完成但带提醒", async () => {
+    const root = await bookRoot();
+    const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(4) }, modelAvailable: true });
+    const fabricated = (text: string) => ({ category: "voice", text, evidence: `原文里根本没有的一句话${text}`, transfer: "transferable", reason: "通用" });
+    const generateText = fakeModel({
+      // 第一批：3 条全部编造
+      1: JSON.stringify({ rules: [fabricated("规则一一一"), fabricated("规则二二二"), fabricated("规则三三三")] }),
+      // 第二批：1 条真证据 + 2 条编造，丢弃过半
+      3: JSON.stringify({ rules: [
+        { category: "scene", text: "用具体的身体感受开场", evidence: "雨水顺着伞骨滴进鞋里3", transfer: "transferable", reason: "通用" },
+        fabricated("规则四四四"),
+        fabricated("规则五五五"),
+      ] }),
+    });
+    const run = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText });
+    const [first, second] = run.job.batches;
+    expect(first).toMatchObject({ status: "failed", ruleIds: [], explanation: { what: expect.stringContaining("3 条模型规则因证据未在原文找到被丢弃") } });
+    expect(first?.rejectedRules).toHaveLength(3);
+    expect(first?.rejectedRules?.[0]).toMatchObject({ text: "规则一一一", evidence: "原文里根本没有的一句话规则一一一", reason: expect.stringContaining("证据未在") });
+    expect(second).toMatchObject({ status: "done", explanation: { what: expect.stringContaining("仅收录 1 条") } });
+    expect(second?.ruleIds).toHaveLength(1);
+    expect(second?.rejectedRules).toHaveLength(2);
+    expect(run.summary).toMatchObject({
+      failed: 1,
+      done: 1,
+      rejectedRuleCount: 5,
+      warnings: [{ batchId: "batch-002" }],
+      rejectedExplanation: { what: expect.stringContaining("5 条模型规则因证据未在原文找到被丢弃") },
+    });
+    expect(run.summary.failures[0]?.batchId).toBe("batch-001");
+
+    // 落盘后可读回（schema 接受 rejectedRules），重试失败批次清掉旧的丢弃记录。
+    const stored = await loadStyleDistillationJob(root, created.jobId);
+    expect(stored.batches[0]?.rejectedRules).toHaveLength(3);
+    const retried = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText: fakeModel(), retryFailed: true });
+    expect(retried.job.batches[0]).toMatchObject({ status: "done" });
+    expect(retried.job.batches[0]?.rejectedRules).toBeUndefined();
+    expect(retried.summary.rejectedRuleCount).toBe(2);
+  });
+
   it("来源快照被改动时拒绝恢复", async () => {
     const root = await bookRoot();
     const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(2) }, modelAvailable: false });

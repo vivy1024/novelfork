@@ -228,6 +228,28 @@ describe("JingweiEntryEditor 档案式阅读 / 编辑切换", () => {
     expect(screen.getByRole("heading", { name: "新标题" })).toBeTruthy();
   });
 
+  it("保存成功但附带动作没做完（如图谱没同步）时显示提示，不当作保存失败", async () => {
+    stubEntryApi();
+    const onSave = vi.fn(async () => ({ notice: "条目已保存，但实体图谱没能同步；可在「章后事实」里手动重建实体索引。" }));
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "rd-4", title: "林照", contentMd: "人物", sectionId: "sec-1", status: "confirmed" }}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.change(await screen.findByPlaceholderText(/条目标题/), { target: { value: "林照（主角）" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    // 保存照常完成：回到阅读模式，没有错误条
+    await waitFor(() => expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy());
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((await screen.findByTestId("jingwei-save-notice")).textContent).toContain("实体图谱没能同步");
+  });
+
   it("取消编辑：无改动直接回阅读，有改动需确认放弃且不回写", async () => {
     stubEntryApi();
     const onSave = vi.fn(async () => undefined);

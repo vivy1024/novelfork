@@ -8,6 +8,8 @@ import "./styles/novelfork-themes.css";
 import "./styles/novelfork-motifs.css";
 // 嵌入的 Runtime（Mantine）界面改用 NovelFork 的设计令牌，见文件头说明。
 import "./styles/runtime-host-theme.css";
+// React Flow 画布的底色、点阵、小地图、控件接到同一组令牌，见文件头说明。
+import "./styles/canvas-theme.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";

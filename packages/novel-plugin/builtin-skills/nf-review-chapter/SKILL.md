@@ -20,10 +20,10 @@ tags:
 
 ## 审阅前的裁判源装载（不可跳过）
 
-1. 本章实际出场人物的人物传记（lore.read，category=characters）。
+1. 本章实际出场人物的人物传记（lore_read，category=characters）。
 2. 与本章背景相关的故事设定/规则（world-model / rules / power-system）。
-3. 近章记忆与时间线（memory.read，查角色状态、伏笔、事实链）。
-4. 本章 scene.spec 蓝图（若有）——核对承诺兑现。
+3. 近章记忆与时间线（memory_read，查角色状态、伏笔、事实链）。
+4. 本章 scene_spec 蓝图（若有）——核对承诺兑现。
 
 ## 五组检查
 
@@ -42,7 +42,7 @@ tags:
 
 ## 操作（NovelFork）
 
-1. `chapter.read` 读正文；`lore.read` + `memory.read` 装载裁判源。
+1. `chapter_read` 读正文；`lore_read` + `memory_read` 装载裁判源。
 2. 本 Agent 逐组检查，输出报告。
-3. 作者决定后：局部修正由本 Agent 生成新文本 → `rewrite.apply` 落盘；整章重写走 `chapter.write`。
-4. 同步提醒：若审阅发现新事实，建议作者 `memory.settle_range` 结算。
+3. 作者决定后：局部修正由本 Agent 生成新文本 → `rewrite_apply` 落盘；整章重写走 `chapter_write`。
+4. 同步提醒：若审阅发现新事实，建议作者 `memory_settle_range` 结算。

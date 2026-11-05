@@ -16,6 +16,7 @@ import {
   summarizeStyleDistillationBatches,
 } from "../engine/writing-layers/style-distillation-runner.js";
 import { compareStyleSources, comparisonInputsFromJobs } from "../engine/writing-layers/style-distillation-compare.js";
+import { ensureStyleDistillationAutoResume } from "../engine/writing-layers/style-distillation-auto-resume.js";
 import { loadStylePreset, StylePresetError } from "../engine/writing-layers/style-preset-store.js";
 import type { HostTextGenerationAvailability, RouterContext } from "./context.js";
 
@@ -90,6 +91,20 @@ function errorResponse(c: Context, error: unknown) {
   throw error;
 }
 
+/**
+ * 本次请求的登录用户（宿主写在 c.get("user").sub 上的稳定 id）。蒸馏的后台续跑据此只替发起人续跑。
+ * 拿不到时返回 undefined：没有身份就不替任何人续跑。
+ */
+function requestActorId(c: Context): string | undefined {
+  try {
+    const user = (c as unknown as { get(key: string): unknown }).get("user") as { sub?: unknown } | undefined;
+    const id = typeof user?.sub === "string" ? user.sub.trim() : "";
+    return id ? id.slice(0, 200) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function cleanupPreviews(): void {
   const cutoff = Date.now();
   for (const [id, preview] of previews) if (preview.expiresAt <= cutoff) previews.delete(id);
@@ -143,7 +158,11 @@ function serializeJob(
     job,
     expectedRevision,
     batches: summarizeStyleDistillationBatches(job),
-    ...(modelAvailable === false && job.status === "paused" ? { explanation: modelUnavailableExplanation(unavailable) } : {}),
+    ...(modelAvailable === false && job.status === "paused"
+      ? { explanation: modelUnavailableExplanation(unavailable) }
+      : job.autoResume?.explanation && (job.status === "paused" || job.status === "failed")
+        ? { explanation: job.autoResume.explanation }
+        : {}),
     result: { ...job, expectedRevision },
   };
 }
@@ -159,8 +178,11 @@ export function createStyleDistillationsRouter(
    * 与 writing-modes 同一条服务端模型路径：宿主把生成能力绑定到当前登录用户（用量记在该用户名下）。
    * 后台批次沿用这次请求解析出的生成器，因此请求返回后批次仍按同一用户计量。
    */
-  async function resolveGenerator(c: Context): Promise<{ generateText?: RuntimeTextGenerator; unavailable?: UnavailableGeneration }> {
-    if (options.resolveTextGenerator) return { generateText: await options.resolveTextGenerator(c) };
+  async function resolveGenerator(c: Context): Promise<{ generateText?: RuntimeTextGenerator; unavailable?: UnavailableGeneration; actorId?: string }> {
+    if (options.resolveTextGenerator) {
+      const actorId = requestActorId(c);
+      return { generateText: await options.resolveTextGenerator(c), ...(actorId ? { actorId } : {}) };
+    }
     if (!ctx.resolveTextGeneration) return {};
     const generation = await ctx.resolveTextGeneration(c).catch((error): UnavailableGeneration => ({
       available: false,
@@ -170,12 +192,25 @@ export function createStyleDistillationsRouter(
     }));
     if (!generation.available) return { unavailable: generation };
     const generate = generation.generateText;
-    return { generateText: async (request) => ({ text: (await generate(request)).text }) };
+    // 计量用户以宿主给的为准；宿主没给时退回请求上的登录身份。
+    const actorId = generation.actorId?.trim() || requestActorId(c);
+    // 截断标记与输出用量原样传给批次解析：用满输出上限要报「被截断」，而不是「没有 JSON」。
+    return {
+      ...(actorId ? { actorId } : {}),
+      generateText: async (request) => {
+        const result = await generate(request);
+        return {
+          text: result.text,
+          ...(result.outputTruncated ? { outputTruncated: true } : {}),
+          ...(typeof result.usage?.completionTokens === "number" ? { usage: { completionTokens: result.usage.completionTokens } } : {}),
+        };
+      },
+    };
   }
 
   /** 后台跑批次：请求先返回 running，前端轮询任务文件看进度；失败原因写进批次。 */
-  function runInBackground(bookRoot: string, jobId: string, generateText: RuntimeTextGenerator, retryFailed: boolean): void {
-    void runStyleDistillationBatches({ bookRoot, jobId, generateText, retryFailed }).catch((error: unknown) => {
+  function runInBackground(bookRoot: string, jobId: string, generateText: RuntimeTextGenerator, retryFailed: boolean, initiatorId?: string): void {
+    void runStyleDistillationBatches({ bookRoot, jobId, generateText, retryFailed, ...(initiatorId ? { initiatorId } : {}) }).catch((error: unknown) => {
       // 顶层不能静默：单批失败已写进批次记录，但跑到这里的错误（如 updateJob 自身落盘失败）
       // 不会让任何批次留痕，任务会停在 running 悬案。按本包 logger 口径（见 narrative-memory
       // 路由的 [narrative-memory] console.error）留下任务 id 与错误，供排查恢复。
@@ -183,6 +218,32 @@ export function createStyleDistillationsRouter(
       console.error(`[style-distillations] 后台批次执行失败（任务 ${jobId}）：${detail}`);
     });
   }
+
+  /**
+   * 进程重启后的自动续跑：本进程第一次访问某本书的蒸馏接口时扫描一次，把上次执行者中途消失
+   * （任务文件仍是 running、运行锁无人持有）的任务放回后台续跑。模型按本次请求的用户解析，
+   * 与新建 / 手动继续同一口径；没有模型时停下并把原因写进任务。详见 style-distillation-auto-resume.ts。
+   */
+  app.use("/api/books/:bookId/style/distillations/*", async (c, next) => {
+    let bookRoot: string | null = null;
+    try {
+      bookRoot = resolveBookRoot(c.req.param("bookId") ?? "");
+    } catch {
+      // 书根解析失败交给具体路由报错。
+    }
+    if (bookRoot) {
+      const actorId = requestActorId(c);
+      await ensureStyleDistillationAutoResume({
+        bookRoot,
+        ...(actorId ? { actorId } : {}),
+        resolveGenerator: async () => {
+          const { generateText, unavailable } = await resolveGenerator(c);
+          return { ...(generateText ? { generateText } : {}), ...(unavailable ? { unavailableMessage: unavailable.message } : {}) };
+        },
+      });
+    }
+    await next();
+  });
 
   app.post("/api/books/:bookId/style/distillations/preview", async (c) => {
     try {
@@ -216,6 +277,7 @@ export function createStyleDistillationsRouter(
           sampleCount: job.samples.length,
           batches: summarizeStyleDistillationBatches(job),
           createdAt: job.createdAt,
+          ...(job.autoResume?.explanation ? { autoResumeExplanation: job.autoResume.explanation } : {}),
         })),
         corruptedJobIds,
       });
@@ -252,9 +314,11 @@ export function createStyleDistillationsRouter(
         throw new StyleDistillationError("预览已过期，请重新预览参考文本。", "STYLE_DISTILLATION_NOT_FOUND");
       }
       const bookRoot = resolveBookRoot(bookId);
-      const { generateText, unavailable } = await resolveGenerator(c);
-      const created = await createStyleDistillationJob({ bookRoot, bookId, source: input, modelAvailable: Boolean(generateText) });
-      if (generateText) runInBackground(bookRoot, created.jobId, generateText, false);
+      const { generateText, unavailable, actorId } = await resolveGenerator(c);
+      const created = await createStyleDistillationJob({
+        bookRoot, bookId, source: input, modelAvailable: Boolean(generateText), ...(actorId ? { initiatorId: actorId } : {}),
+      });
+      if (generateText) runInBackground(bookRoot, created.jobId, generateText, false, actorId);
       const job = await readStyleDistillationJob(bookRoot, created.jobId);
       const current = await loadStylePreset(bookRoot);
       return c.json(serializeJob(job, current.revision, Boolean(generateText), unavailable), 201);
@@ -284,7 +348,7 @@ export function createStyleDistillationsRouter(
       if (existing.status === "running") {
         throw new StyleDistillationError("该文风蒸馏任务正在处理中，请等待当前批次完成。", "STYLE_DISTILLATION_BUSY");
       }
-      const { generateText, unavailable } = await resolveGenerator(c);
+      const { generateText, unavailable, actorId } = await resolveGenerator(c);
       if (!generateText) {
         const message = unavailable
           ? `无法继续模型批次：${unavailable.message}`
@@ -295,8 +359,12 @@ export function createStyleDistillationsRouter(
           explanation: modelUnavailableExplanation(unavailable),
         }, 422);
       }
-      runInBackground(bookRoot, jobId, generateText, body.retryFailed === true);
-      const job = await readStyleDistillationJob(bookRoot, jobId);
+      // 手动继续的人接手成为发起人：之后的模型批次计到他名下，自动续跑也只替他续跑。
+      runInBackground(bookRoot, jobId, generateText, body.retryFailed === true, actorId);
+      const read = await readStyleDistillationJob(bookRoot, jobId);
+      // 自动续跑达到上限而标 failed 的任务：手动继续会重新开放（执行者首次落盘前文件里还是 failed），
+      // 这里按已开始处理返回，避免网页把刚开始的续跑误判为失败。
+      const job = read.status === "failed" ? { ...read, status: "running" as const } : read;
       return c.json(serializeJob(job, (await loadStylePreset(bookRoot)).revision, true), 202);
     } catch (error) {
       return errorResponse(c, error);

@@ -18,7 +18,10 @@ import { z } from "zod";
 import { CHAPTERS_DIRECTORY, readChapterIndex } from "../writing-resource/chapter-layout.js";
 import { resolveChapterFile } from "../writing-resource/chapter-path-guard.js";
 import { createStylePreset, STYLE_SCENE_TYPES, type StylePreset } from "./style-preset.js";
-import { loadStylePreset, saveStylePreset, type LoadedStylePreset } from "./style-preset-store.js";
+import { loadStylePreset, saveStylePreset, StylePresetError, type LoadedStylePreset } from "./style-preset-store.js";
+import {
+  computeVaultFingerprint, fingerprintRefreshStatus, stampExternalBasis, type FingerprintRefreshStatus,
+} from "./style-vault-fingerprint.js";
 import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 
 export const STYLE_VAULT_RELATIVE_DIR = join("story", "style-vault");
@@ -77,102 +80,9 @@ async function listDraftChapters(bookRoot: string): Promise<Set<number>> {
   return chapters;
 }
 
-// ─── 纯函数：逐句比对与段落对齐 ─────────────────────────────────────────
-
-function normalize(text: string): string {
-  return text.replace(/\r\n?/gu, "\n").replace(/[ \t　]+/gu, "").trim();
-}
-
-/** 按中文句末标点与换行切句；标点留在句尾，空句丢弃。 */
-export function splitSentences(text: string): string[] {
-  return normalize(text)
-    .split(/(?<=[。！？!?…])|\n+/u)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0);
-}
-
-export interface AuthorShare {
-  /** 当前正文中原样来自 AI 原稿的字数。 */
-  readonly aiChars: number;
-  /** 当前正文中作者改写或新写的字数。 */
-  readonly authorChars: number;
-  readonly totalChars: number;
-  /** 作者占比 0–1；正文为空时为 0。 */
-  readonly authorRatio: number;
-}
-
-/**
- * 逐句比对：原稿里的句子按出现次数计入多重集合，当前正文的句子能在集合里匹配到就算 AI（匹配一次消耗一次），
- * 否则算作者。删掉的 AI 句子不计入当前正文，自然不影响占比。
- */
-export function computeAuthorShare(aiText: string, currentText: string): AuthorShare {
-  const pool = new Map<string, number>();
-  for (const sentence of splitSentences(aiText)) pool.set(sentence, (pool.get(sentence) ?? 0) + 1);
-  let aiChars = 0;
-  let authorChars = 0;
-  for (const sentence of splitSentences(currentText)) {
-    const left = pool.get(sentence) ?? 0;
-    if (left > 0) {
-      pool.set(sentence, left - 1);
-      aiChars += sentence.length;
-    } else {
-      authorChars += sentence.length;
-    }
-  }
-  const totalChars = aiChars + authorChars;
-  return { aiChars, authorChars, totalChars, authorRatio: totalChars > 0 ? authorChars / totalChars : 0 };
-}
-
-function bigrams(text: string): Set<string> {
-  const compact = normalize(text).replace(/\s+/gu, "");
-  const grams = new Set<string>();
-  for (let i = 0; i < compact.length - 1; i += 1) grams.add(compact.slice(i, i + 2));
-  return grams;
-}
-
-function similarity(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  let shared = 0;
-  for (const gram of a) if (b.has(gram)) shared += 1;
-  return shared / (a.size + b.size - shared);
-}
-
-export interface RevisionPair {
-  readonly aiText: string;
-  readonly authorText: string;
-  /** 两段的字符二元组相似度 0–1：太低是另起炉灶，太高是没怎么改。 */
-  readonly similarity: number;
-}
-
-// 网文段落普遍很短（一两句对白就是一段），下限不能按出版物的段落长度定。
-const MIN_PARAGRAPH_CHARS = 12;
-const MIN_SIMILARITY = 0.25;
-const MAX_SIMILARITY = 0.9;
-
-/**
- * 按段对齐改稿：每个当前段落找最相似的原稿段落，相似度落在「改过但还认得出」区间的记为一对。
- * 同一原稿段只配一次；结果按改动幅度从大到小排序。
- */
-export function extractRevisionPairs(aiText: string, currentText: string, limit = 8): RevisionPair[] {
-  const paragraphs = (text: string) => normalize(text).split(/\n+/u).map((item) => item.trim()).filter((item) => item.length >= MIN_PARAGRAPH_CHARS);
-  const aiParagraphs = paragraphs(aiText).map((text) => ({ text, grams: bigrams(text) }));
-  const used = new Set<number>();
-  const pairs: RevisionPair[] = [];
-  for (const current of paragraphs(currentText)) {
-    const grams = bigrams(current);
-    let best = -1;
-    let bestScore = 0;
-    aiParagraphs.forEach((candidate, index) => {
-      if (used.has(index)) return;
-      const score = similarity(grams, candidate.grams);
-      if (score > bestScore) { bestScore = score; best = index; }
-    });
-    if (best < 0 || bestScore < MIN_SIMILARITY || bestScore >= MAX_SIMILARITY) continue;
-    used.add(best);
-    pairs.push({ aiText: aiParagraphs[best]!.text, authorText: current, similarity: Math.round(bestScore * 1000) / 1000 });
-  }
-  return pairs.sort((a, b) => a.similarity - b.similarity).slice(0, limit);
-}
+// 逐句比对与段落对齐的纯函数在 style-vault-share.ts（前端实时徽标共用）。
+export { computeAuthorShare, extractRevisionPairs, splitSentences, type AuthorShare, type RevisionPair } from "./style-vault-share.js";
+import { computeAuthorShare, extractRevisionPairs, type AuthorShare, type RevisionPair } from "./style-vault-share.js";
 
 // ─── 全书视图 ───────────────────────────────────────────────────────────
 
@@ -262,19 +172,76 @@ export function revisionSampleId(chapterNumber: number, authorText: string): str
   return `rev-${chapterNumber}-${createHash("sha256").update(authorText).digest("hex").slice(0, 10)}`;
 }
 
+export interface FingerprintRefreshResult {
+  /** refreshed：本次已重算；pending：未到阈值；skipped：到了阈值但放弃（见 reason），指纹保持原样。 */
+  readonly outcome: "refreshed" | "pending" | "skipped";
+  /** 写入后（或放弃时按当时预设）的计数状态。 */
+  readonly status: FingerprintRefreshStatus;
+  readonly reason?: string;
+}
+
+export type AdoptRevisionResult = LoadedStylePreset & { readonly fingerprintRefresh: FingerprintRefreshResult };
+
+function revisionSamplesOf(preset: StylePreset | null) {
+  return preset?.sources.find((source) => source.id === AUTHOR_REVISION_SOURCE_ID)?.samples ?? [];
+}
+
+/** 文风金库面板展示用：当前指纹已计入多少段作者改稿、还差多少段更新。预设读不出时返回 null，不拖垮占比视图。 */
+export async function readVaultFingerprintStatus(bookRoot: string): Promise<FingerprintRefreshStatus | null> {
+  try {
+    const loaded = await loadStylePreset(bookRoot);
+    return fingerprintRefreshStatus(loaded.preset?.fingerprint ?? null, revisionSamplesOf(loaded.preset));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 新增作者改稿达阈值时重算统计指纹。只替换 fingerprint，指南、范文、来源规则原样保留；
+ * 以调用方读到的版本号写入：期间作者又保存过预设时放弃本次重算并给出原因，绝不覆盖作者刚保存的内容。
+ * 放弃不影响已完成的采纳，下一次采纳时会按最新预设重新判断。
+ */
+export async function refreshFingerprintFromVault(
+  bookRoot: string,
+  snapshot: LoadedStylePreset,
+  now: Date = new Date(),
+): Promise<{ readonly loaded: LoadedStylePreset; readonly result: FingerprintRefreshResult }> {
+  const preset = snapshot.preset;
+  const samples = revisionSamplesOf(preset);
+  const status = fingerprintRefreshStatus(preset?.fingerprint ?? null, samples);
+  if (!preset || !status.due) return { loaded: snapshot, result: { outcome: "pending", status } };
+  try {
+    const saved = await saveStylePreset(bookRoot, { ...preset, fingerprint: computeVaultFingerprint(samples, now) }, snapshot.revision);
+    return {
+      loaded: saved,
+      result: { outcome: "refreshed", status: fingerprintRefreshStatus(saved.preset?.fingerprint ?? null, samples) },
+    };
+  } catch (error) {
+    const reason = error instanceof StylePresetError && error.code === "STYLE_PRESET_CONFLICT"
+      ? "文风预设在采纳后又被保存过，本次没有自动更新统计指纹，以免覆盖刚保存的内容；下次采纳时会按最新预设重新计算。"
+      : `自动更新统计指纹失败，指纹保持原样：${error instanceof Error ? error.message : String(error)}`;
+    console.warn(`[style-vault] ${reason}`);
+    return { loaded: snapshot, result: { outcome: "skipped", status, reason } };
+  }
+}
+
 /**
  * 把作者点名的改稿段写进预设的「作者改稿」来源。作者主动采纳即视为确认，标 confirmed + 可迁移；
  * 同一段重复采纳按内容去重。版本不一致时由 saveStylePreset 抛 STYLE_PRESET_CONFLICT，不覆盖别处的修改。
+ * 采纳写入成功后再判断是否到了重算统计指纹的阈值（见 style-vault-fingerprint.ts）。
  */
 export async function adoptRevisionSamples(
   bookRoot: string,
   inputs: readonly AdoptRevisionInput[],
   expectedRevision: string | null,
-): Promise<LoadedStylePreset> {
+  options: { readonly now?: Date } = {},
+): Promise<AdoptRevisionResult> {
+  const now = options.now ?? new Date();
   const loaded = await loadStylePreset(bookRoot);
   const preset: StylePreset = loaded.preset ?? createStylePreset();
   const existing = preset.sources.find((source) => source.id === AUTHOR_REVISION_SOURCE_ID);
   const samples = [...(existing?.samples ?? [])];
+  const baselineIds = samples.map((sample) => sample.id);
   for (const input of inputs) {
     const id = revisionSampleId(input.chapterNumber, input.authorText);
     if (samples.some((sample) => sample.id === id)) continue;
@@ -290,9 +257,14 @@ export async function adoptRevisionSamples(
   // 预设单来源最多 100 段：超出时保留最新采纳的，旧的让位（顺序即采纳先后）。
   const kept = samples.slice(-100);
   const source = { id: AUTHOR_REVISION_SOURCE_ID, title: "作者改稿", rules: existing?.rules ?? [], samples: kept };
+  const added = samples.length > baselineIds.length;
   const next: StylePreset = {
     ...preset,
     sources: [source, ...preset.sources.filter((item) => item.id !== AUTHOR_REVISION_SOURCE_ID)],
+    // 指纹来自别处（手动提取 / 蒸馏）且尚未记来历时，以采纳前的范文为起点开始计数，不把旧范文算作新增。
+    fingerprint: added ? stampExternalBasis(preset.fingerprint, baselineIds, now) : preset.fingerprint,
   };
-  return saveStylePreset(bookRoot, next, expectedRevision);
+  const saved = await saveStylePreset(bookRoot, next, expectedRevision);
+  const refreshed = await refreshFingerprintFromVault(bookRoot, saved, now);
+  return { ...refreshed.loaded, fingerprintRefresh: refreshed.result };
 }

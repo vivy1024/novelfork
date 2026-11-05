@@ -138,7 +138,7 @@ describe("待确认聚合路由", () => {
     expect(response.status).toBe(200);
     const summary = await summaryOf(response);
     expect(summary.total).toBe(0);
-    expect(summary.groups.map((group) => group.kind)).toEqual(["conflict", "voice", "styleRule", "foreshadow", "event", "fact", "revision", "storyline"]);
+    expect(summary.groups.map((group) => group.kind)).toEqual(["conflict", "voice", "styleRule", "character", "foreshadow", "event", "fact", "revision", "storyline"]);
     for (const group of summary.groups) {
       expect(group.count).toBe(0);
       expect(group.items).toEqual([]);
@@ -183,6 +183,15 @@ describe("待确认聚合路由", () => {
     });
     await createEntry(storage, { title: "山门之谜", category: "foreshadowing", status: "confirmed", fields: {} });
 
+    // 人物草稿：旧稿导入起草的 characters + needs-review；已确认的人物不出现。
+    await createEntry(storage, {
+      title: "林照",
+      category: "characters",
+      layer: "dynamic",
+      status: "needs-review",
+      fields: { draftSource: "manuscript-import", firstChapter: 2, occurrences: 6 },
+    });
+
     // 待审叙事事件：最新章的是「本章提议」，更早章的归到事实/关系草案。
     insertNarrativeEvent(storage, event({ id: "ev-latest", subject: "陆沉", predicate: "学会", object: "御剑", chapterNumber: 12 }));
     insertNarrativeEvent(storage, event({ id: "ev-earlier-rel", subject: "陆沉", predicate: "信任", object: "苏晚晴", chapterNumber: 3, eventType: "relationship_changed" }));
@@ -206,7 +215,12 @@ describe("待确认聚合路由", () => {
     const response = await server.request("/api/books/book-1/pending-review");
     expect(response.status).toBe(200);
     const summary = await summaryOf(response);
-    expect(summary.total).toBe(5 + revisionCount);
+    expect(summary.total).toBe(6 + revisionCount);
+
+    const character = groupOf(summary, "character");
+    expect(character.count).toBe(1);
+    expect(character.items[0]).toMatchObject({ location: "第 2 章首次出现", target: { kind: "jingwei-entry" } });
+    expect(character.items[0]!.summary).toContain("林照（正文出现 6 次）");
 
     const voice = groupOf(summary, "voice");
     expect(voice.count).toBe(1);

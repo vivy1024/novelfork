@@ -1,7 +1,7 @@
 ---
 id: nf-design-volume-outline
 name: 设计分卷大纲
-description: 把总纲拆成分卷与章清单：上级分配的内容必须全量落地，每卷有目标与章号区间，每章有明确任务。写入经纬 outline，可由 outline.volume 维护当前卷。
+description: 把总纲拆成分卷与章清单：上级分配的内容必须全量落地，每卷有目标与章号区间，每章有明确任务。写入经纬 outline，可由 outline_volume 维护当前卷。
 kind: plot
 mode: manual
 version: 1.0.0
@@ -59,7 +59,7 @@ tags:
 
 ## 操作（NovelFork）
 
-1. `lore.read` 读总纲（category=outline）与伏笔（foreshadowing）。
+1. `lore_read` 读总纲（category=outline）与伏笔（foreshadowing）。
 2. 本 Agent 按上述结构生成卷纲与章清单。
-3. `outline.volume` 写入并设为当前卷；`lore.write`（outline）补充细节时带 reason。
-4. 写章时当前卷目标自动进入 preflight 与 scene.spec 上下文。
+3. `outline_volume` 写入并设为当前卷；`lore_write`（outline）补充细节时带 reason。
+4. 写章时当前卷目标自动进入 preflight 与 scene_spec 上下文。

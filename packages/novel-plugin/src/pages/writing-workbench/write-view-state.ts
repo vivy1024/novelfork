@@ -6,6 +6,7 @@
  */
 
 import type { ViewId } from "./ide/use-panel-manager";
+import { toWireToolName } from "../../engine/workflows/run-brief";
 
 export type ReadyLight = "green" | "yellow" | "red" | "unknown";
 
@@ -345,14 +346,14 @@ export function planFixAction(
       const to = Math.max(1, context.formalChapterCount ?? Math.max(1, context.chapterNumber - 1));
       return {
         kind: "narrator",
-        message: `近章记忆为空。请用 memory.settle_range 回填第 1–${to} 章的叙事记忆，完成后重新 write.preflight 并告诉我结果。`,
+        message: `近章记忆为空。请用 ${toWireToolName("memory.settle_range")} 回填第 1–${to} 章的叙事记忆，完成后重新 ${toWireToolName("write.preflight")} 并告诉我结果。`,
         label: "补结算历史章节",
       };
     }
     case "set-volume":
       return {
         kind: "narrator",
-        message: "经纬里还没有卷纲。请用 outline.volume(action=suggest) 生成草案给我确认，我确认后再 set。",
+        message: `经纬里还没有卷纲。请用 ${toWireToolName("outline.volume")}(action=suggest) 生成草案给我确认，我确认后再 set。`,
         label: "生成卷纲草案",
       };
     // 待确认事件属于故事脉络工作区的章后事实队列。

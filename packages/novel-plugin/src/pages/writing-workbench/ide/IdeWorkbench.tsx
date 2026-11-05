@@ -67,6 +67,7 @@ import {
   type IdeLayoutMode,
 } from "./ide-layout-state";
 import { enterFocusMode, exitFocusMode, FOCUS_MODE_IDLE, type FocusModeState } from "./focus-mode";
+import { toWireToolName } from "../../../engine/workflows/run-brief";
 
 /**
  * T3 · 提拔回写的大纲 fields 合并：保留 volumeNumber/goal 等既有字段，
@@ -935,6 +936,15 @@ export function IdeWorkbench({
   }, []);
 
   // 按章节号跳转（下一章页、推进板、章后事实等的来源章）：在资源/文件树中找到章节节点并打开
+  // 写作台占比徽标 → 「技能文风」中央区的文风金库，展开该章。
+  const [styleVaultFocusChapter, setStyleVaultFocusChapter] = useState<number | null>(null);
+  // keybindingActions 定义在后面（依赖更多回调）；这里经 ref 调它的 switchView。
+  const keybindingActionsRef = useRef<{ switchView: (view: SidebarView) => void } | null>(null);
+  const handleOpenStyleVault = useCallback((chapterNumber: number) => {
+    setStyleVaultFocusChapter(chapterNumber);
+    keybindingActionsRef.current?.switchView("skills-style");
+  }, []);
+
   const handleJumpToChapter = useCallback((chapterNumber: number) => {
     // 章节节点来源有二：资源树（metadata.chapterNumber）与文件树（chapters/NNNN_*.md）
     const findChapterNode = (ns: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
@@ -1015,6 +1025,13 @@ export function IdeWorkbench({
         }
         // 保存后刷新侧栏树，避免改分类/状态/层级后树漂移
         void loadLoreSections();
+        // 确认人物条目会顺带回填出场并重建实体索引；那一步失败时条目已保存，只是图谱没同步——
+        // 服务端用 entityLink.ok=false 带回说明，这里交给编辑器作为提示显示，不然作者以为已经进了图谱。
+        const saved = await response.json().catch(() => null) as { entityLink?: { ok?: boolean; explanation?: string } } | null;
+        if (saved?.entityLink && saved.entityLink.ok === false) {
+          return { notice: saved.entityLink.explanation ?? "条目已保存，但实体图谱没能同步；可在「章后事实」里手动重建实体索引。" };
+        }
+        return undefined;
       },
       onDelete: async (entryId: string) => {
         const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
@@ -1290,6 +1307,7 @@ export function IdeWorkbench({
       setPaletteOpen(true);
     },
   }), [handleChatToggle, handleCloseTab, leaveFocusModeWithoutRestore, setShowSettings, showPanel, toggleFocusMode]);
+  keybindingActionsRef.current = keybindingActions;
   useIdeKeybindings(keybindingActions);
 
   // ── 命令面板 ──
@@ -1303,7 +1321,7 @@ export function IdeWorkbench({
     // 导入是写操作：交给叙述者执行，保留 Runtime 的权限确认；没有叙述者会话时明说而不静默。
     openImportWizard: onSendToNarrator
       ? () => { void onSendToNarrator(
-        "我要导入一本已有的旧书继续写。请先问我要导入的文本或文件，然后用 pipeline.import_chapters（autoSettle+extractBrief）导入；拆书产物先留在 needs-review，等我确认再入 canon。",
+        `我要导入一本已有的旧书继续写。请先问我要导入的文本或文件，然后用 ${toWireToolName("pipeline.import_chapters")}（autoSettle+extractBrief）导入；拆书产物先留在 needs-review，等我确认再入 canon。`,
       ); }
       : () => { void alertDialog({ title: "导入旧书", description: "先在对话里开启叙述者会话，再导入旧书。" }); },
     sendToNarrator: (message: string) => { void onSendToNarrator?.(message); },
@@ -1632,6 +1650,7 @@ export function IdeWorkbench({
       toolbarSlotRef={toolbarSlotRef}
       onJumpToChapter={handleJumpToChapter}
       onOpenWriteView={() => keybindingActions.switchView("write")}
+      onOpenStyleVault={handleOpenStyleVault}
       onOpenJingweiEntry={handleOpenJingweiEntry}
       onOpenEntityDetail={handleOpenEntityFromGraph}
       onOpenEntityDrawer={handleOpenEntityDrawer}
@@ -1856,7 +1875,7 @@ export function IdeWorkbench({
                           fetchJson={styleDistillationFetch}
                           onAdopted={() => window.dispatchEvent(new CustomEvent("novelfork:style-preset-updated", { detail: { bookId } }))}
                         />
-                        <StyleVaultPanel bookId={bookId} />
+                        <StyleVaultPanel bookId={bookId} focusChapter={styleVaultFocusChapter} />
                       </div>
                     ) : activeNode || multiTabNodes.length > 0 ? (
                       <>
@@ -1878,6 +1897,7 @@ export function IdeWorkbench({
                               isActive={tabId === ideTabs.activeTabId}
                               onJumpToChapter={handleJumpToChapter}
                               onOpenWriteView={() => keybindingActions.switchView("write")}
+      onOpenStyleVault={handleOpenStyleVault}
                               onOpenJingweiEntry={handleOpenJingweiEntry}
                               onOpenEntityDetail={handleOpenEntityFromGraph}
                               onOpenEntityDrawer={handleOpenEntityDrawer}
@@ -1937,6 +1957,7 @@ export function IdeWorkbench({
                         jingweiActions={jingweiActions}
                         onJumpToChapter={handleJumpToChapter}
                         onOpenWriteView={() => keybindingActions.switchView("write")}
+      onOpenStyleVault={handleOpenStyleVault}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={handleOpenEntityFromGraph}
                         onOpenEntityDrawer={handleOpenEntityDrawer}

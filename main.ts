@@ -1,8 +1,9 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-// 三个协议模块都刻意零副作用（不开库、不读设置），静态导入不会提前触发产品启动。
+// 四个协议模块都刻意零副作用（不开库、不读设置），静态导入不会提前触发产品启动。
 import { DB_INTEGRITY_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/db/integrity-protocol.ts";
+import { DB_SNAPSHOT_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/db/snapshot-protocol.ts";
 import { WATCHER_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/lib/watcher/worker-protocol.ts";
 import { PLUGIN_RUNTIME_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/plugin-runtime-worker.ts";
 
@@ -15,6 +16,7 @@ import { PLUGIN_RUNTIME_WORKER_FLAG } from "./packages/narrafork-runtime-private
 //   产品 root 入口也必须遵守同一个契约。flag 名直接引用 Runtime 常量，不手抄。
 const WORKER_FLAGS = [
   DB_INTEGRITY_WORKER_FLAG,
+  DB_SNAPSHOT_WORKER_FLAG,
   WATCHER_WORKER_FLAG,
   PLUGIN_RUNTIME_WORKER_FLAG,
 ] as const;
@@ -77,6 +79,11 @@ const { settings: runtimeSettings } = await import(
   "./packages/narrafork-runtime-private/server/lib/settings/index.ts"
 );
 runtimeSettings.server.openBrowser = "off";
+
+// Runtime 0.9 起，Windows 编译产物默认先进入图形化管理器（不监听端口，再以 `--serve`
+// 拉起服务子进程）。NovelFork 有自己的桌面窗口，产品可执行文件始终直接跑服务：
+// 显式带上 `--serve`，让 Runtime 的启动分流走服务模式。
+if (!process.argv.includes("--serve")) process.argv.push("--serve");
 
 // Keep the specifier literal so Bun includes the complete Runtime dependency graph
 // in the root executable without maintaining a second Runtime implementation package.

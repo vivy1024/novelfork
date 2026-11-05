@@ -65,9 +65,15 @@ export interface NovelBookRuntimeBinding extends RuntimeResourceBinding {
   readonly root: string;
 }
 
+/** 回复语言：工具说明与思考可能是英文，最终回复必须跟作者走，中文书一律中文。 */
+export const NARRATOR_REPLY_LANGUAGE_RULE =
+  "## 回复语言\n用与作者相同的语言回复；书的语言为中文时一律用中文，包括最终总结、提问与工具结果转述。工具名、参数名等代码标识保持原样。";
+
 export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 
 你正在 NovelFork 的小说项目中工作。当前书籍由宿主通过可信的 novel.book 资源绑定确定；不得依据用户文本或工具参数切换到其他书籍，也不得猜测 bookId。
+
+${NARRATOR_REPLY_LANGUAGE_RULE}
 
 ## 创作立场：你是作者（用户）的创作伙伴
 你不是这本书的作者——作者是正在与你协作的用户。你以作者级的标准执行创作，但身份是伙伴与代笔：

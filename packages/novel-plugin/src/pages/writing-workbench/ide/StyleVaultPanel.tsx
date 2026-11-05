@@ -6,7 +6,7 @@
  *   写入前读取预设版本号，冲突时提示重新载入，不覆盖别处的修改。
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -29,9 +29,27 @@ export interface VaultChapter {
   readonly error?: string;
 }
 
+export interface FingerprintRefreshStatus {
+  readonly basis: "author-revisions" | "external" | "none";
+  readonly includedSamples: number;
+  readonly pendingSamples: number;
+  readonly pendingChars: number;
+  readonly remainingSamples: number;
+  readonly due: boolean;
+  readonly thresholds: { readonly samples: number; readonly chars: number };
+}
+
+interface FingerprintRefreshResult {
+  readonly outcome: "refreshed" | "pending" | "skipped";
+  readonly status: FingerprintRefreshStatus;
+  readonly reason?: string;
+}
+
 export interface VaultSummary {
   readonly chapters?: readonly VaultChapter[];
   readonly overallAuthorRatio?: number | null;
+  /** 统计指纹与作者改稿的计数状态；预设读不出时为 null。 */
+  readonly fingerprintRefresh?: FingerprintRefreshStatus | null;
 }
 
 interface RevisionPair {
@@ -55,6 +73,27 @@ const SCENE_TYPE_OPTIONS = [
 
 function percent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
+}
+
+/** 统计指纹计数的作者可见说明：已根据多少段更新 / 还差多少段。文案只在这里生成，面板与采纳结果共用。 */
+export function describeFingerprintStatus(status: FingerprintRefreshStatus): string {
+  const remaining = `再采纳 ${status.remainingSamples} 段（或新增满 ${status.thresholds.chars} 字）后自动更新统计指纹。`;
+  if (status.basis === "author-revisions") {
+    return `统计指纹已根据 ${status.includedSamples} 段作者改稿更新${status.pendingSamples > 0 ? `，此后新增 ${status.pendingSamples} 段` : ""}；${remaining}`;
+  }
+  if (status.basis === "external") {
+    return status.pendingSamples > 0
+      ? `当前统计指纹来自手动提取或蒸馏；已新增 ${status.pendingSamples} 段作者改稿，${remaining}`
+      : `当前统计指纹来自手动提取或蒸馏；之后采纳的作者改稿攒够 ${status.thresholds.samples} 段（或 ${status.thresholds.chars} 字）会自动更新统计指纹。`;
+  }
+  return `还没有统计指纹；${remaining}`;
+}
+
+function describeRefreshResult(result: FingerprintRefreshResult | undefined): string {
+  if (!result) return "";
+  if (result.outcome === "refreshed") return `已根据 ${result.status.includedSamples} 段作者改稿更新统计指纹（文风指南与范文不变）。`;
+  if (result.outcome === "skipped") return result.reason ?? "本次没有更新统计指纹。";
+  return describeFingerprintStatus(result.status);
 }
 
 export function vaultPath(bookId: string): string {
@@ -87,7 +126,7 @@ export function ChapterRevisions({ bookId, chapterNumber, onAdopted }: { readonl
     setMessage(null);
     try {
       const preset = await fetchJson<{ revision: string | null }>(`/api/books/${encodeURIComponent(bookId)}/style/preset`);
-      await fetchJson(`${vaultPath(bookId)}/adopt`, {
+      const adopted = await fetchJson<{ fingerprintRefresh?: FingerprintRefreshResult }>(`${vaultPath(bookId)}/adopt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -100,7 +139,8 @@ export function ChapterRevisions({ bookId, chapterNumber, onAdopted }: { readonl
           })),
         }),
       });
-      setMessage({ tone: "ok", text: `已把 ${selected.size} 段改稿采纳为本书范文，下一章写作时会优先作为示例。` });
+      const refreshNote = describeRefreshResult(adopted?.fingerprintRefresh);
+      setMessage({ tone: "ok", text: `已把 ${selected.size} 段改稿采纳为本书范文，下一章写作时会优先作为示例。${refreshNote}` });
       setSelected(new Set());
       invalidateApiPaths([`/api/books/${encodeURIComponent(bookId)}/style/preset`]);
       window.dispatchEvent(new CustomEvent("novelfork:style-preset-updated", { detail: { bookId } }));
@@ -163,9 +203,17 @@ export function ChapterRevisions({ bookId, chapterNumber, onAdopted }: { readonl
   );
 }
 
-export function StyleVaultPanel({ bookId }: { readonly bookId: string }) {
+export function StyleVaultPanel({ bookId, focusChapter }: { readonly bookId: string; readonly focusChapter?: number | null }) {
   const { data, loading } = useApi<VaultSummary>(vaultPath(bookId));
-  const [openChapter, setOpenChapter] = useState<number | null>(null);
+  const [openChapter, setOpenChapter] = useState<number | null>(focusChapter ?? null);
+  const focusRef = useRef<HTMLDivElement | null>(null);
+  // 从写作台占比徽标跳来：展开该章并滚到视野里。
+  useEffect(() => {
+    if (typeof focusChapter === "number") setOpenChapter(focusChapter);
+  }, [focusChapter]);
+  useEffect(() => {
+    if (typeof focusChapter === "number" && data) focusRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [data, focusChapter]);
   const drafted = (data?.chapters ?? []).filter((chapter) => chapter.hasAiDraft);
 
   return (
@@ -181,13 +229,20 @@ export function StyleVaultPanel({ bookId }: { readonly bookId: string }) {
       </CardHeader>
       <CardContent className="space-y-1">
         {loading ? <p className="text-xs text-muted-foreground">读取中…</p> : null}
+        {data?.fingerprintRefresh ? (
+          <p className="text-2xs text-muted-foreground" aria-label="统计指纹更新状态">{describeFingerprintStatus(data.fingerprintRefresh)}</p>
+        ) : null}
         {!loading && drafted.length === 0 ? (
           <p className="text-xs text-muted-foreground">还没有 AI 写的章节。叙述者写完一章后，这里会出现 AI 原稿与你改后的对照。</p>
         ) : null}
         {drafted.map((chapter) => {
           const open = openChapter === chapter.chapterNumber;
           return (
-            <div key={chapter.chapterNumber} className="rounded-md border border-border/50">
+            <div
+              key={chapter.chapterNumber}
+              ref={chapter.chapterNumber === focusChapter ? focusRef : undefined}
+              className={chapter.chapterNumber === focusChapter ? "rounded-md border border-primary/60" : "rounded-md border border-border/50"}
+            >
               <button
                 type="button"
                 className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted/40"
