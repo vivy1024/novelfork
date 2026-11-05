@@ -22,18 +22,34 @@ const nodes: readonly WorkbenchResourceNode[] = [
 afterEach(() => cleanup());
 
 describe("WorkbenchResourceTree", () => {
-  it("渲染 readonly/unsupported/edit/delete/apply capability 标记", () => {
+  it("只标出只读 / 不支持这类限制，可编辑、可删除这类常态不占行宽", () => {
     render(<WorkbenchResourceTree nodes={nodes} selectedNodeId="chapter:2" onOpen={vi.fn()} />);
 
     expect(screen.getByText("第一章")).toBeTruthy();
-    expect(screen.getAllByText("可编辑")).toHaveLength(2);
-    expect(screen.getAllByText("只读")).toHaveLength(2);
+    // 「未知资源」既只读又不支持，只显示更强的「不支持」。
+    expect(screen.getAllByText("只读")).toHaveLength(1);
     expect(screen.getByText("不支持")).toBeTruthy();
-    expect(screen.getByText("可删除")).toBeTruthy();
+    expect(screen.queryByText("可编辑")).toBeNull();
+    expect(screen.queryByText("可删除")).toBeNull();
     expect(screen.queryByText("可应用")).toBeNull();
     const selected = screen.getByRole("button", { name: /第二章/ });
     expect(selected.getAttribute("aria-current")).toBe("true");
     expect(selected.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("文件名占满剩余宽度、带完整名称提示，普通文件用文件图标而不是闪光图标", () => {
+    const caps = { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false };
+    const fileNodes: readonly WorkbenchResourceNode[] = [
+      { id: "file:long", kind: "file", title: "道统统一详表_合并版.md", path: "道统统一详表_合并版.md", capabilities: caps },
+    ];
+    const { container } = render(<WorkbenchResourceTree nodes={fileNodes} onOpen={vi.fn()} toolbar={false} />);
+
+    const name = screen.getByText("道统统一详表_合并版.md");
+    expect(name.getAttribute("title")).toBe("道统统一详表_合并版.md");
+    expect(name.className).toContain("flex-1");
+    expect(name.className).toContain("min-w-0");
+    expect(container.querySelector(".lucide-sparkles")).toBeNull();
+    expect(container.querySelector(".lucide-file")).toBeTruthy();
   });
 
   it("toolbar=false 用于固定清单：不显示搜索/排序，节点保持传入顺序，分组显示 lucide 图标", () => {

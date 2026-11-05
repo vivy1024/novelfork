@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Wrench, GitFork, Target, ScanSearch, ShieldCheck, Settings2, type LucideIcon } from "lucide-react";
+import { ChevronRight, ChevronDown, File, FileText, BookOpen, Scroll, Globe, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Wrench, GitFork, Target, ScanSearch, ShieldCheck, Settings2, type LucideIcon } from "lucide-react";
 import type { ToolGroupIcon, WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
 import { JingweiEmptyState } from "./JingweiEmptyState";
 import { getResourceContextMenuItems } from "./ide/context-menu-registry";
@@ -64,21 +64,27 @@ function NodeIcon({ node }: { node: WorkbenchResourceNode }) {
     case "story-map": return <GitFork className="size-4 text-success" />;
     case "tool": return <Wrench className="size-4 text-indigo-500" />;
     case "tool-group": return <FolderOpen className="size-4 text-indigo-400" />;
-    default: return <Sparkles className="size-4 text-muted-foreground" />;
+    case "file": return node.metadata?.isDirectory === true
+      ? <FolderOpen className="size-4 text-muted-foreground" />
+      : <File className="size-4 text-muted-foreground" />;
+    default: return <File className="size-4 text-muted-foreground" />;
   }
 }
 
 const CREATABLE_KINDS: Set<WorkbenchResourceKind> = new Set(["jingwei-section", "group"]);
 
+/**
+ * 只标出限制（只读 / 不支持）。可编辑、可删除是常态，删除与应用走右键菜单；
+ * 常态徽标既不提供信息，还会在悬停前就占住行宽，把文件名挤成省略号。
+ */
 function CapabilityBadges({ node }: { node: WorkbenchResourceNode }) {
   if (!node.capabilities.open) return null;
+  const { readonly, unsupported } = node.capabilities;
+  if (!readonly && !unsupported) return null;
   return (
-    <span className="ml-auto flex items-center gap-1 opacity-0 group-hover/node:opacity-100 transition-opacity">
-      {node.capabilities.edit ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">可编辑</Badge> : null}
-      {node.capabilities.readonly ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">只读</Badge> : null}
-      {node.capabilities.unsupported ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">不支持</Badge> : null}
-      {node.capabilities.delete ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">可删除</Badge> : null}
-      {node.capabilities.apply ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">可应用</Badge> : null}
+    <span className="ml-auto flex shrink-0 items-center gap-1 opacity-0 group-hover/node:opacity-100 group-focus-within/node:opacity-100 transition-opacity">
+      {unsupported ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">不支持</Badge>
+        : readonly ? <Badge variant="secondary" className="text-2xs px-1 py-0 h-4">只读</Badge> : null}
     </span>
   );
 }
@@ -389,7 +395,7 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
             </button>
           ) : <span className="w-3.5 shrink-0" />}
           <NodeIcon node={node} />
-          <span className="truncate text-sm font-medium text-muted-foreground">{node.title}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground" title={node.title}>{node.title}</span>
           {canCreate && (
             <button type="button" title={`新建${node.title}条目`}
               className="ml-auto shrink-0 rounded p-0.5 text-muted-foreground opacity-0 group-hover/section:opacity-100 hover:bg-primary/10 hover:text-primary transition-all"
@@ -439,7 +445,7 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
           </button>
         ) : <span className="w-3.5 shrink-0" />}
         <NodeIcon node={node} />
-        <span className="truncate text-sm">{node.title}</span>
+        <span className="min-w-0 flex-1 truncate text-left text-sm" title={node.title}>{node.title}</span>
         <CapabilityBadges node={node} />
       </Button>
       {expanded && hasChildren && (
