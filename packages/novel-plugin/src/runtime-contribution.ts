@@ -541,7 +541,12 @@ async function executeReadyToolImpl(
         return fail("invalid-input", "chapterNumber 必须是整数。");
       }
       return toRuntimeToolResult(await handleChapterRead(
-        { bookId: binding.bookId, chapterNumber: injectedInput.chapterNumber },
+        {
+          bookId: binding.bookId,
+          chapterNumber: injectedInput.chapterNumber,
+          ...(typeof injectedInput.offset === "number" ? { offset: injectedInput.offset } : {}),
+          ...(typeof injectedInput.limit === "number" ? { limit: injectedInput.limit } : {}),
+        },
         undefined,
         { bookRoot: binding.root },
       ));

@@ -422,4 +422,51 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
     expect(read.ok).toBe(true);
     expect(read.data?.content).toContain("青铜铃");
   });
+
+  it("工具结果不回显整章正文：只带路径、sha256、字节与首尾摘录", async () => {
+    const { projectRoot, bookRoot } = await createBook();
+    const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
+    seedRecentProgress(storage);
+
+    // 探针句只出现在正文中段：首尾摘录各 60 字，碰不到它。
+    const probe = "PROBE-正文中段探针-7f3a";
+    const half = "林舟沿石阶向上，青铜铃在风里发出清响。".repeat(75);
+    const content = `【地点】林舟抵达山门石阶。\n${half}${probe}${half}`;
+    const context: ToolExecutionContext = {
+      runtimeProjectId: "pipeline-test",
+      projectRoot,
+      projectType: "novel",
+      enabledPluginIds: ["novel-plugin"],
+      resourceBindings: {},
+    };
+    const result = await executeRuntimeDomainTool(
+      "pipeline.write",
+      { sceneSpec, content },
+      { bookId: "trusted", root: bookRoot },
+      context,
+    );
+
+    expect(result).not.toBeNull();
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(probe);
+    expect(serialized).not.toContain(half);
+    const data = result?.data as Record<string, unknown>;
+    expect(data).toMatchObject({
+      saved: true,
+      chapterNumber: 4,
+      sha256: createHash("sha256").update(content.trim(), "utf8").digest("hex"),
+      bytes: Buffer.byteLength(content.trim(), "utf8"),
+      path: expect.stringMatching(/^chapters\/.*\.md$/u),
+    });
+    const excerpt = data.excerpt as { head: string; tail: string };
+    expect(Array.from(excerpt.head).length + Array.from(excerpt.tail).length).toBeLessThanOrEqual(120);
+    expect(content.startsWith(excerpt.head)).toBe(true);
+
+    // 需要全文时按章号读回，sha256 与写入结果一致。
+    const read = await handleChapterRead({ bookId: "trusted", chapterNumber: 4 }, undefined, { bookRoot, storage });
+    expect(read.data?.content).toContain(probe);
+    expect(read.data?.sha256).toBe(data.sha256);
+  });
 });

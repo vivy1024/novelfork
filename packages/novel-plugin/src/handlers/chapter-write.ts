@@ -16,6 +16,7 @@ import { createWritingResourceFileStore } from "../engine/writing-resource/file-
 import { applyChapterContentChange } from "../engine/writing-resource/chapter-change-effects.js";
 import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 import { saveChapterAiDraft } from "../engine/writing-layers/style-vault.js";
+import { digestProse } from "../engine/writing-resource/prose-digest.js";
 
 export interface ChapterWriteInput {
   bookId: string;
@@ -73,9 +74,18 @@ export type ChapterWriteResult =
         bookId: string;
         chapterNumber: number;
         fileName: string;
+        /** 章节文件在书目录下的相对路径（chapters/…）。 */
+        path: string;
         wordCount: number;
         updatedAt: string;
+        /** 落盘正文的 sha256（UTF-8 原样字节），即下次写入的 expectedHash。 */
         hash: string;
+        /** 与 hash 相同；统一命名，便于和 pipeline.write / chapter.read 对齐。 */
+        sha256: string;
+        bytes: number;
+        chars: number;
+        /** 首尾摘录（合计 ≤120 字）。结果不回显整章正文，需要全文时用 chapter.read。 */
+        excerpt: { head: string; tail: string };
         length: ChapterLengthData;
         writingSkillWarnings: WritingSkillViolation[];
       };
@@ -291,7 +301,8 @@ export async function handleChapterWrite(
       source: "chapter.write",
     }).then(() => null, (error: unknown) => `AI 原稿未保存，本章人工占比将无法计算：${error instanceof Error ? error.message : String(error)}`);
 
-    const hash = createHash("sha256").update(input.content, "utf8").digest("hex");
+    const prose = digestProse(input.content);
+    const fileName = typeof updated.metadata.fileName === "string" ? updated.metadata.fileName : `${updated.id}.md`;
 
     return {
       ok: true,
@@ -299,10 +310,15 @@ export async function handleChapterWrite(
       data: {
         bookId: input.bookId,
         chapterNumber: input.chapterNumber,
-        fileName: typeof updated.metadata.fileName === "string" ? updated.metadata.fileName : `${updated.id}.md`,
+        fileName,
+        path: typeof updated.metadata.chapterPath === "string" ? updated.metadata.chapterPath : `chapters/${fileName}`,
         wordCount,
         updatedAt,
-        hash,
+        hash: prose.sha256,
+        sha256: prose.sha256,
+        bytes: prose.bytes,
+        chars: prose.chars,
+        excerpt: { head: prose.head, tail: prose.tail },
         length,
         writingSkillWarnings: validation.filter((violation) => violation.severity === "warning"),
         ...(vaultWarning ? { vaultWarning } : {}),

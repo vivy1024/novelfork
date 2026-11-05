@@ -1042,6 +1042,12 @@ async function pipelineWrite(
     chapterNumber: result.chapterNumber,
     title: result.title,
     wordCount: result.wordCount,
+    // 只回正文指纹与首尾摘录；整章正文以章节文件为准，需要时用 chapter.read 读取。
+    ...(result.path ? { path: result.path } : {}),
+    sha256: result.prose.sha256,
+    bytes: result.prose.bytes,
+    chars: result.prose.chars,
+    excerpt: { head: result.prose.head, tail: result.prose.tail },
     auditPassed: result.auditResult.passed,
     auditIssueCategories: result.auditIssueCategories,
     factCheckRevised: result.factCheckRevised,

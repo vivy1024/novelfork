@@ -100,6 +100,39 @@ describe("handleChapterWrite", () => {
     expect(index[0].wordCount).toBe(result.data.wordCount);
   });
 
+  it("结果不回显整章正文：只带 path、sha256、字节与 ≤120 字首尾摘录；AI 原稿按内容寻址保存", async () => {
+    const probe = "PROBE-章节中段探针";
+    const half = "这是测试正文。".repeat(70);
+    const content = `${half}${probe}${half}`;
+    const bookRoot = await createBook([{ number: 1, content: "这是旧章节正文。".repeat(143) }]);
+    const storage = createStorage(bookRoot);
+
+    const result = await handleChapterWrite({ bookId: "book-1", chapterNumber: 1, content }, { bookRoot, storage });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(probe);
+    expect(serialized).not.toContain(half);
+    const sha256 = createHash("sha256").update(content, "utf8").digest("hex");
+    expect(result.data).toMatchObject({
+      path: "chapters/卷01/0001_第1章.md",
+      sha256,
+      hash: sha256,
+      bytes: Buffer.byteLength(content, "utf8"),
+      chars: Array.from(content).length,
+    });
+    expect(Array.from(result.data.excerpt.head).length + Array.from(result.data.excerpt.tail).length).toBeLessThanOrEqual(120);
+    expect(content.startsWith(result.data.excerpt.head)).toBe(true);
+    expect(content.endsWith(result.data.excerpt.tail)).toBe(true);
+
+    // 文风金库只留指针，正文在 blobs/<sha256>.txt。
+    const pointer = JSON.parse(await readFile(join(bookRoot, "story", "style-vault", "chapter-0001.json"), "utf8"));
+    expect(pointer).toMatchObject({ schemaVersion: 2, chapterNumber: 1, sha256, source: "chapter.write" });
+    expect(pointer.text).toBeUndefined();
+    expect(await readFile(join(bookRoot, "story", "style-vault", "blobs", `${sha256}.txt`), "utf8")).toBe(content);
+  });
+
   it("validates expectedHash CAS match before writing", async () => {
     const initialContent = "初始章节正文。".repeat(143); // 1001 字
     const bookRoot = await createBook([{ number: 1, content: initialContent }]);

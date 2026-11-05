@@ -31,6 +31,7 @@ import { findHardOverflowWarning, hardOverflowExplanation } from "../engine/narr
 import { preserveLatestWritingInjection } from "../engine/narrative-memory/writing-injection-preserve.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { saveChapterAiDraft } from "../engine/writing-layers/style-vault.js";
+import { digestProse, type ProseDigest } from "../engine/writing-resource/prose-digest.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { persistChapterAuditLog } from "../engine/tools/health/audit-log-persist.js";
@@ -121,7 +122,13 @@ export interface PipelineAuditIssueCategories {
 export interface PipelineWriteOutput {
   readonly ok: true;
   readonly bookId: string;
-  readonly content: string;
+  /**
+   * 落盘正文的摘要（sha256 / 字节 / 字数 / 首尾摘录）。不回显整章正文：结果会被存进会话库，
+   * 回显就多一份全文副本；需要全文时按 path 或章号读章节文件。
+   */
+  readonly prose: ProseDigest;
+  /** 章节文件在书目录下的相对路径（chapters/…）；取不到时缺省。 */
+  readonly path?: string;
   readonly title: string;
   readonly wordCount: number;
   readonly chapterNumber: number;
@@ -1282,6 +1289,9 @@ async function executePipelineWriteUnlocked(
     const chapterId = `chapter:${chapterNumber}`;
     let narrativeSettlement: ChapterSettlementResult | undefined;
     let settlementDispatch: PipelineSettlementDispatch | undefined;
+    let savedResource: { readonly metadata: Record<string, unknown> } | null | undefined;
+    // 落盘正文指纹：随工具结果返回，会话库里留下的是指纹而不是全文；后续可按它识别过期副本。
+    const prose = digestProse(finalContent);
     try {
       const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
       const storage = getStorageDatabase();
@@ -1319,9 +1329,9 @@ async function executePipelineWriteUnlocked(
           return baseline ? (current ? "stale" as const : "missing" as const) : "appeared" as const;
         }
         if (existing) {
-          await resourceService.update(bookId, existing.id, { title: writeOutput.title, content: finalContent, metadata });
+          savedResource = await resourceService.update(bookId, existing.id, { title: writeOutput.title, content: finalContent, metadata });
         } else {
-          await resourceService.create(bookId, {
+          savedResource = await resourceService.create(bookId, {
             id: chapterId,
             type: "chapter",
             status: "accepted",
@@ -1482,10 +1492,12 @@ async function executePipelineWriteUnlocked(
         : [{ stage: "章后结算", status: "skipped" as const, detail: "本次未派发结算" }]),
     ];
 
+    const savedPath = typeof savedResource?.metadata.chapterPath === "string" ? savedResource.metadata.chapterPath : undefined;
     return {
       ok: true,
       bookId,
-      content: finalContent,
+      prose,
+      ...(savedPath ? { path: savedPath } : {}),
       title: writeOutput.title,
       wordCount,
       chapterNumber,

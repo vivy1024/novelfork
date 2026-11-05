@@ -1,16 +1,18 @@
 /**
  * 文风金库（T2.7）—— AI 原稿与作者改稿的对照。
  *
- * - AI 写章（pipeline.write、叙述者 chapter.write）落盘时，另存一份原稿到
- *   story/style-vault/chapter-NNNN.json。正文的唯一权威仍是章节文件；原稿只是历史样本，
- *   同章 AI 重写时覆盖为最新一版，作者保存从不写原稿。
+ * - AI 写章（pipeline.write、叙述者 chapter.write）落盘时，另存一份原稿：
+ *   story/style-vault/chapter-NNNN.json 只是指针（sha256 / 字节 / 来源 / 时间），正文按 sha256
+ *   存在 story/style-vault/blobs/<sha256>.txt，同一份正文只存一次。旧版内联正文的 JSON 照常可读。
+ *   正文的唯一权威仍是章节文件；原稿只是历史样本，同章 AI 重写时指针改指最新一版，
+ *   不再被任何一章引用的旧正文随即删除；作者保存从不写原稿。
  * - 人工占比：把当前正文与原稿逐句比对，原样保留的句子计为 AI，其余计为作者；
  *   规则确定、可解释，不依赖模型，也不声称能代表外部检测器的判断。
  * - 改稿样本：按段对齐，找出「与原稿相似但作者改过」的段落，组成 AI 原文 → 作者改稿对，
  *   供作者确认后采纳为本书范文（采纳走文风预设的既有保存路径，不在这里写预设）。
  */
 
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
@@ -26,48 +28,149 @@ import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 
 export const STYLE_VAULT_RELATIVE_DIR = join("story", "style-vault");
 
-const AiDraftSchema = z.object({
+const AI_DRAFT_SOURCES = ["pipeline.write", "chapter.write"] as const;
+
+/** 旧格式（schemaVersion 1）：原稿正文内联在每章 JSON 里。只读兼容，不再写出。 */
+const AiDraftV1Schema = z.object({
   schemaVersion: z.literal(1),
   chapterNumber: z.number().int().positive(),
   text: z.string(),
-  source: z.enum(["pipeline.write", "chapter.write"]),
+  source: z.enum(AI_DRAFT_SOURCES),
   createdAt: z.string(),
 }).strict();
 
-export type ChapterAiDraft = z.infer<typeof AiDraftSchema>;
+/**
+ * 新格式（schemaVersion 2）：每章只留一个指针，正文按 sha256 存进 blobs/<sha256>.txt。
+ * 同一份正文（同章重写成同样内容、多章同文）只存一份。
+ */
+const AiDraftPointerSchema = z.object({
+  schemaVersion: z.literal(2),
+  chapterNumber: z.number().int().positive(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  bytes: z.number().int().nonnegative(),
+  source: z.enum(AI_DRAFT_SOURCES),
+  createdAt: z.string(),
+}).strict();
+
+type AiDraftPointer = z.infer<typeof AiDraftPointerSchema>;
+
+export interface ChapterAiDraft {
+  readonly chapterNumber: number;
+  readonly text: string;
+  readonly source: (typeof AI_DRAFT_SOURCES)[number];
+  readonly createdAt: string;
+  /** 原稿正文的 sha256；旧格式读出时现算。 */
+  readonly sha256: string;
+}
+
+/** 原稿正文的内容寻址目录（相对书目录）。随 story/style-vault/ 一起迁移。 */
+export const STYLE_VAULT_BLOB_RELATIVE_DIR = join(STYLE_VAULT_RELATIVE_DIR, "blobs");
 
 function draftFileName(chapterNumber: number): string {
   return `chapter-${String(chapterNumber).padStart(4, "0")}.json`;
 }
 
-/** 原子写：先写临时文件再改名，进程中断不会留下半个原稿。 */
-export async function saveChapterAiDraft(
-  bookRoot: string,
-  input: { readonly chapterNumber: number; readonly text: string; readonly source: ChapterAiDraft["source"]; readonly now?: Date },
-): Promise<void> {
-  const dir = join(bookRoot, STYLE_VAULT_RELATIVE_DIR);
-  await mkdir(dir, { recursive: true });
-  const draft: ChapterAiDraft = {
-    schemaVersion: 1,
-    chapterNumber: input.chapterNumber,
-    text: input.text,
-    source: input.source,
-    createdAt: (input.now ?? new Date()).toISOString(),
-  };
-  // 原子写（fsync + rename，Windows 瞬时占用自动重试）：写入中断时 AI 草稿只会是旧版或新版。
-  await writeFileAtomic(join(dir, draftFileName(input.chapterNumber)), `${JSON.stringify(draft, null, 2)}\n`);
+function sha256Of(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
-/** 没有原稿返回 null；原稿损坏时抛错，调用方如实报告，不当作「没有 AI 参与」。 */
-export async function readChapterAiDraft(bookRoot: string, chapterNumber: number): Promise<ChapterAiDraft | null> {
-  const raw = await readFile(join(bookRoot, STYLE_VAULT_RELATIVE_DIR, draftFileName(chapterNumber)), "utf8").catch((error: NodeJS.ErrnoException) => {
+function blobPath(bookRoot: string, sha256: string): string {
+  return join(bookRoot, STYLE_VAULT_BLOB_RELATIVE_DIR, `${sha256}.txt`);
+}
+
+async function readTextOrNull(path: string): Promise<string | null> {
+  return readFile(path, "utf8").catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return null;
     throw error;
   });
+}
+
+/** 读某章指针里记的 sha256；没有、旧格式或读不了都返回 null（只用于回收旧正文，不影响保存）。 */
+async function readPointerSha(path: string): Promise<string | null> {
+  try {
+    const raw = await readTextOrNull(path);
+    if (raw === null) return null;
+    const parsed = AiDraftPointerSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data.sha256 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 旧正文不再被任何一章引用时删掉；失败只告警，不影响已保存的新原稿。 */
+async function releaseBlobIfUnreferenced(bookRoot: string, sha256: string): Promise<void> {
+  const dir = join(bookRoot, STYLE_VAULT_RELATIVE_DIR);
+  const names = await readdir(dir).catch(() => [] as string[]);
+  for (const name of names) {
+    if (!/^chapter-\d{4,}\.json$/u.test(name)) continue;
+    if (await readPointerSha(join(dir, name)) === sha256) return;
+  }
+  await unlink(blobPath(bookRoot, sha256)).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") console.warn(`[style-vault] 旧原稿正文未能清理：${error.message}`);
+  });
+}
+
+/**
+ * 保存本章 AI 原稿。先写正文 blob（已存在同 sha256 的就不再写），再原子写指针；
+ * 任一步中断时，指针仍指向旧版或新版的完整正文，不会指向半个文件。
+ */
+export async function saveChapterAiDraft(
+  bookRoot: string,
+  input: { readonly chapterNumber: number; readonly text: string; readonly source: ChapterAiDraft["source"]; readonly now?: Date },
+): Promise<{ readonly sha256: string; readonly bytes: number; readonly deduplicated: boolean }> {
+  const dir = join(bookRoot, STYLE_VAULT_RELATIVE_DIR);
+  await mkdir(join(bookRoot, STYLE_VAULT_BLOB_RELATIVE_DIR), { recursive: true });
+  const sha256 = sha256Of(input.text);
+  const bytes = Buffer.byteLength(input.text, "utf8");
+  const target = blobPath(bookRoot, sha256);
+  const existing = await readTextOrNull(target);
+  // 内容寻址：同名 blob 内容必然相同；校验一次防的是被外部改坏的旧 blob。
+  const deduplicated = existing !== null && sha256Of(existing) === sha256;
+  if (!deduplicated) await writeFileAtomic(target, input.text);
+
+  const pointerPath = join(dir, draftFileName(input.chapterNumber));
+  const previousSha = await readPointerSha(pointerPath);
+  const pointer: AiDraftPointer = {
+    schemaVersion: 2,
+    chapterNumber: input.chapterNumber,
+    sha256,
+    bytes,
+    source: input.source,
+    createdAt: (input.now ?? new Date()).toISOString(),
+  };
+  // 原子写（fsync + rename，Windows 瞬时占用自动重试）：写入中断时指针只会是旧版或新版。
+  await writeFileAtomic(pointerPath, `${JSON.stringify(pointer, null, 2)}\n`);
+  if (previousSha && previousSha !== sha256) await releaseBlobIfUnreferenced(bookRoot, previousSha);
+  return { sha256, bytes, deduplicated };
+}
+
+/** 没有原稿返回 null；原稿损坏（格式不对、正文缺失或被改动）时抛错，调用方如实报告，不当作「没有 AI 参与」。 */
+export async function readChapterAiDraft(bookRoot: string, chapterNumber: number): Promise<ChapterAiDraft | null> {
+  const raw = await readTextOrNull(join(bookRoot, STYLE_VAULT_RELATIVE_DIR, draftFileName(chapterNumber)));
   if (raw === null) return null;
-  const parsed = AiDraftSchema.safeParse(JSON.parse(raw));
-  if (!parsed.success) throw new Error(`第 ${chapterNumber} 章的 AI 原稿文件格式不对，无法比对。`);
-  return parsed.data;
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new Error(`第 ${chapterNumber} 章的 AI 原稿文件格式不对，无法比对。`);
+  }
+  const legacy = AiDraftV1Schema.safeParse(json);
+  if (legacy.success) {
+    const { schemaVersion: _version, ...rest } = legacy.data;
+    return { ...rest, sha256: sha256Of(rest.text) };
+  }
+  const pointer = AiDraftPointerSchema.safeParse(json);
+  if (!pointer.success) throw new Error(`第 ${chapterNumber} 章的 AI 原稿文件格式不对，无法比对。`);
+  const text = await readTextOrNull(blobPath(bookRoot, pointer.data.sha256));
+  if (text === null) throw new Error(`第 ${chapterNumber} 章的 AI 原稿正文缺失，无法比对。`);
+  if (sha256Of(text) !== pointer.data.sha256) throw new Error(`第 ${chapterNumber} 章的 AI 原稿正文被改动过，无法比对。`);
+  return {
+    chapterNumber: pointer.data.chapterNumber,
+    text,
+    source: pointer.data.source,
+    createdAt: pointer.data.createdAt,
+    sha256: pointer.data.sha256,
+  };
 }
 
 async function listDraftChapters(bookRoot: string): Promise<Set<number>> {

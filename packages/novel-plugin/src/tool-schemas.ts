@@ -247,6 +247,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       bookId: stringSchema("书籍 ID。"),
       chapterNumber: numberSchema("章节序号。"),
+      offset: numberSchema("可选：从第几个字符开始读（0 起）。缺省读整章。"),
+      limit: numberSchema("可选：最多读多少个字符。长章可分段读，结果里的 range.hasMore 表示后面还有。"),
     },
     required: ["bookId", "chapterNumber"],
     additionalProperties: false,

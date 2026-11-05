@@ -1,4 +1,5 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +15,7 @@ import {
   readChapterAiDraft,
   readChapterVaultDetail,
   saveChapterAiDraft,
+  STYLE_VAULT_BLOB_RELATIVE_DIR,
   STYLE_VAULT_RELATIVE_DIR,
   summarizeStyleVault,
 } from "./style-vault.js";
@@ -86,6 +88,68 @@ describe("文风金库文件", () => {
 
     const detail = await readChapterVaultDetail(bookRoot, 1);
     expect(detail).toMatchObject({ hasAiDraft: true, revisionPairs: [] });
+  });
+
+  it("新格式：每章只存指针，正文按 sha256 存一份；同文多章去重", async () => {
+    const sha256 = createHash("sha256").update(aiText, "utf8").digest("hex");
+    const first = await saveChapterAiDraft(bookRoot, { chapterNumber: 1, text: aiText, source: "pipeline.write" });
+    const second = await saveChapterAiDraft(bookRoot, { chapterNumber: 2, text: aiText, source: "chapter.write" });
+    expect(first).toMatchObject({ sha256, bytes: Buffer.byteLength(aiText, "utf8"), deduplicated: false });
+    expect(second).toMatchObject({ sha256, deduplicated: true });
+
+    const pointer = JSON.parse(await readFile(join(bookRoot, STYLE_VAULT_RELATIVE_DIR, "chapter-0001.json"), "utf8"));
+    expect(pointer).toMatchObject({ schemaVersion: 2, chapterNumber: 1, sha256, source: "pipeline.write" });
+    expect(JSON.stringify(pointer)).not.toContain("雨落在旧站台上");
+    expect(await readdir(join(bookRoot, STYLE_VAULT_BLOB_RELATIVE_DIR))).toEqual([`${sha256}.txt`]);
+    expect(await readChapterAiDraft(bookRoot, 2)).toMatchObject({ chapterNumber: 2, text: aiText, sha256, source: "chapter.write" });
+  });
+
+  it("同章重写：旧正文无人引用时删除，仍被别章引用时保留", async () => {
+    const oldSha = createHash("sha256").update(aiText, "utf8").digest("hex");
+    await saveChapterAiDraft(bookRoot, { chapterNumber: 1, text: aiText, source: "pipeline.write" });
+    await saveChapterAiDraft(bookRoot, { chapterNumber: 2, text: aiText, source: "pipeline.write" });
+    const rewritten = `${aiText}
+新的一句。`;
+    const newSha = createHash("sha256").update(rewritten, "utf8").digest("hex");
+
+    await saveChapterAiDraft(bookRoot, { chapterNumber: 1, text: rewritten, source: "pipeline.write" });
+    expect((await readdir(join(bookRoot, STYLE_VAULT_BLOB_RELATIVE_DIR))).sort()).toEqual([`${oldSha}.txt`, `${newSha}.txt`].sort());
+
+    await saveChapterAiDraft(bookRoot, { chapterNumber: 2, text: rewritten, source: "pipeline.write" });
+    expect(await readdir(join(bookRoot, STYLE_VAULT_BLOB_RELATIVE_DIR))).toEqual([`${newSha}.txt`]);
+    expect((await readChapterAiDraft(bookRoot, 1))?.text).toBe(rewritten);
+  });
+
+  it("旧格式（正文内联）照常读出并参与人工占比；重写后升级为指针", async () => {
+    const edited = `${aiText}
+她没等到车。`;
+    await writeChapterIndex(bookRoot, [await chapter(1, "雨夜", edited)]);
+    await mkdir(join(bookRoot, STYLE_VAULT_RELATIVE_DIR), { recursive: true });
+    await writeFile(join(bookRoot, STYLE_VAULT_RELATIVE_DIR, "chapter-0001.json"), JSON.stringify({
+      schemaVersion: 1, chapterNumber: 1, text: aiText, source: "chapter.write", createdAt: "2026-09-01T00:00:00.000Z",
+    }), "utf8");
+
+    expect(await readChapterAiDraft(bookRoot, 1)).toMatchObject({
+      text: aiText, source: "chapter.write", sha256: createHash("sha256").update(aiText, "utf8").digest("hex"),
+    });
+    const summary = await summarizeStyleVault(bookRoot);
+    expect(summary.chapters[0]!.share!.authorChars).toBe("她没等到车。".length);
+
+    await saveChapterAiDraft(bookRoot, { chapterNumber: 1, text: aiText, source: "pipeline.write" });
+    const pointer = JSON.parse(await readFile(join(bookRoot, STYLE_VAULT_RELATIVE_DIR, "chapter-0001.json"), "utf8"));
+    expect(pointer.schemaVersion).toBe(2);
+    expect((await summarizeStyleVault(bookRoot)).chapters[0]!.share!.authorChars).toBe("她没等到车。".length);
+  });
+
+  it("指针在但正文缺失或被改动时如实报错", async () => {
+    await writeChapterIndex(bookRoot, [await chapter(1, "雨夜", aiText)]);
+    const { sha256 } = await saveChapterAiDraft(bookRoot, { chapterNumber: 1, text: aiText, source: "pipeline.write" });
+    const blob = join(bookRoot, STYLE_VAULT_BLOB_RELATIVE_DIR, `${sha256}.txt`);
+    await writeFile(blob, "被外部改过", "utf8");
+    await expect(readChapterAiDraft(bookRoot, 1)).rejects.toThrow("被改动过");
+    await rm(blob);
+    await expect(readChapterAiDraft(bookRoot, 1)).rejects.toThrow("正文缺失");
+    expect((await summarizeStyleVault(bookRoot)).chapters[0]).toMatchObject({ hasAiDraft: true, error: expect.stringContaining("正文缺失") });
   });
 
   it("原稿损坏时如实报错，不当作没有 AI 参与", async () => {
