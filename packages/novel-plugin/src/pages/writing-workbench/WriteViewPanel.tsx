@@ -9,7 +9,7 @@
  * 改 / 收尾针对最近写完的那一章。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Compass, Loader2, PenLine, RefreshCw, Sparkles, Workflow, XCircle } from "lucide-react";
+import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Compass, Loader2, PenLine, RefreshCw, Workflow, XCircle } from "lucide-react";
 import type { ViewId } from "./ide/use-panel-manager";
 
 import { SidebarPageHead } from "./ide/SidebarPageHead";
@@ -111,7 +111,7 @@ const LIGHT_STYLE: Record<WriteViewModel["light"], { bar: string; text: string; 
   green: { bar: "bg-success/15 border-success/40", text: "text-success", icon: CheckCircle2 },
   yellow: { bar: "bg-warning/15 border-warning/40", text: "text-warning", icon: AlertTriangle },
   red: { bar: "bg-destructive/15 border-destructive/40", text: "text-destructive", icon: XCircle },
-  unknown: { bar: "bg-muted border-border", text: "text-muted-foreground", icon: Sparkles },
+  unknown: { bar: "bg-muted border-border", text: "text-muted-foreground", icon: CircleDashed },
 };
 
 const CHECK_ICON: Record<ReadyCheckItem["state"], { glyph: string; cls: string }> = {

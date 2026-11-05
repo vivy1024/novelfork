@@ -383,8 +383,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
             <Badge variant="outline" className="text-2xs font-normal">只读</Badge>
           </CardTitle>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            契约存于 book.json 的 <code>narrativeContract</code>。当前 <code>PUT /api/books/:bookId</code> 的白名单不含该字段，
-            没有写入通道，因此这里只做展示；需要修改请手动编辑 book.json。
+            叙事契约暂时只能查看，不能在这里修改。
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -439,14 +438,14 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
               {settlementError ? <BlockError message={settlementError} /> : null}
               <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-xs font-medium">LLM 事件抽取</p>
+                  <p className="text-xs font-medium">模型事件抽取</p>
                   <p className="text-xs text-muted-foreground">关闭后章后结算只走规则抽取，更快但更粗。</p>
                 </div>
                 <Switch
                   checked={settlementBlock.data.useLlmExtraction ?? false}
                   disabled={savingKey !== null}
                   onCheckedChange={(next) => void toggleSettlement("useLlmExtraction", next)}
-                  aria-label="LLM 事件抽取"
+                  aria-label="模型事件抽取"
                 />
               </div>
               <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">

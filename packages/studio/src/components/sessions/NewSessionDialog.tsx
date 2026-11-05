@@ -69,7 +69,7 @@ const REASONING_OPTIONS = [
 ] as const;
 
 export function NewSessionDialog({ open, onOpenChange, onCreate, busy = false }: NewSessionDialogProps) {
-  const [title, setTitle] = useState("小说创作会话");
+  const [title, setTitle] = useState("小说创作对话");
   const [startInPlanMode, setStartInPlanMode] = useState(false);
   const [permissionMode, setPermissionMode] = useState<RuntimePermissionMode>("acceptEdits");
   const [reasoningEffort, setReasoningEffort] = useState<(typeof REASONING_OPTIONS)[number]["value"]>("default");
@@ -80,7 +80,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, busy = false }:
 
   useEffect(() => {
     if (!open) return;
-    setTitle("小说创作会话");
+    setTitle("小说创作对话");
     setStartInPlanMode(false);
     setPermissionMode("acceptEdits");
     setReasoningEffort("default");
@@ -117,7 +117,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, busy = false }:
     if (busy || modelsLoading) return;
     const trimmedCwd = cwd.trim();
     void onCreate({
-      title: title.trim() || "小说创作会话",
+      title: title.trim() || "小说创作对话",
       ...(model ? { model } : {}),
       permissionMode,
       ...(reasoningEffort === "default" ? {} : { reasoningEffort: reasoningEffort as RuntimeReasoningEffort }),
@@ -130,9 +130,9 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, busy = false }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto p-0" showCloseButton>
         <DialogHeader className="px-6 pt-6">
-          <DialogTitle>新建独立叙述者</DialogTitle>
+          <DialogTitle>新建独立对话</DialogTitle>
           <DialogDescription>
-            创建由 NovelFork Runtime 持久化的长期叙述者。书籍内叙述者仍由写作工作台管理。
+            不属于任何作品的对话；作品内的对话请在写作台里新建。
           </DialogDescription>
         </DialogHeader>
 
@@ -146,7 +146,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, busy = false }:
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Novelist · 小说创作</p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    写作、规划、审计、经纬管理和工具执行统一使用原生 Runtime 能力。
+                    可写作、规划、审稿和整理设定条目。
                   </p>
                 </div>
               </div>
@@ -191,18 +191,18 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, busy = false }:
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field data-disabled={modelsLoading || runtimeModels.length === 0}>
-                  <FieldLabel>运行时模型</FieldLabel>
+                  <FieldLabel>模型</FieldLabel>
                   {modelsLoading ? (
-                    <p className="text-sm text-muted-foreground">正在读取统一模型池…</p>
+                    <p className="text-sm text-muted-foreground">正在读取模型列表…</p>
                   ) : runtimeModels.length > 0 ? (
                     <SimpleSelect
-                      aria-label="运行时模型"
+                      aria-label="模型"
                       value={selectedRuntimeModelId}
                       onValueChange={setSelectedRuntimeModelId}
                       options={runtimeModels.map((model) => ({ value: model.modelId, label: runtimeModelLabel(model) }))}
                     />
                   ) : (
-                    <p className="text-sm text-muted-foreground">将跟随 Runtime 默认模型；可在设置中稍后配置。</p>
+                    <p className="text-sm text-muted-foreground">使用默认模型，可稍后在设置中更改。</p>
                   )}
                 </Field>
                 <Field>
@@ -225,7 +225,7 @@ export function NewSessionDialog({ open, onOpenChange, onCreate, busy = false }:
                   onChange={(event) => setCwd(event.currentTarget.value)}
                   placeholder="例如 D:\\novels\\my-book"
                 />
-                <FieldDescription>留空时由 Runtime 使用默认工作目录。</FieldDescription>
+                <FieldDescription>留空则使用默认目录。</FieldDescription>
               </Field>
             </FieldGroup>
           </div>

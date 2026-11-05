@@ -302,7 +302,6 @@ describe("IdeWorkbench 宿主打开请求", () => {
 
     fireEvent.click(storyline);
     const empty = await screen.findByTestId("view-empty-state");
-    expect(empty.textContent).toContain("回答「下一章写什么」");
     expect(empty.textContent).toContain("故事画布");
     expect(screen.queryByRole("button", { name: "展开左侧栏" })).toBeNull();
 

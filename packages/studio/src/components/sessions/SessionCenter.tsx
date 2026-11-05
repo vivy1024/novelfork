@@ -166,7 +166,7 @@ function confirmationText(action: ConfirmAction): {
 		case "delete":
 			return {
 				title: "永久删除叙述者？",
-				description: `「${action.narrator.title}」及其 Runtime 会话数据将永久删除，此操作不可撤销。`,
+				description: `「${action.narrator.title}」及其全部对话记录将永久删除，此操作不可撤销。`,
 				confirm: "永久删除",
 			};
 		case "batchArchive":
@@ -388,7 +388,7 @@ export function SessionCenter({
 		if (!action) return;
 		setConfirmAction(null);
 		if ("narrator" in action && isProtected(action.narrator)) {
-			setError("书籍叙述者由写作工作台管理，不能在会话中心执行此操作。");
+			setError("作品内的对话请在写作台里管理。");
 			return;
 		}
 		const ids = "narrator" in action ? [action.narrator.id] : [...action.ids];
@@ -437,8 +437,7 @@ export function SessionCenter({
 				<div>
 					<h1 className="text-2xl font-semibold">叙述者中心</h1>
 					<p className="mt-1 text-sm text-muted-foreground">
-						管理 Runtime
-						会话。书籍叙述者由服务端可信绑定保护，只能在写作工作台管理。
+						作品内的对话请在写作台里管理。
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
@@ -598,7 +597,7 @@ export function SessionCenter({
 
 			{loading ? (
 				<p role="status" className="text-sm text-muted-foreground">
-					正在加载 Runtime 叙述者…
+					正在加载对话…
 				</p>
 			) : narrators.length === 0 ? (
 				<Empty className="border">
@@ -841,7 +840,7 @@ export function SessionCenter({
 					<DialogHeader>
 						<DialogTitle>重命名叙述者</DialogTitle>
 						<DialogDescription>
-							标题会同步到 Runtime 和最近叙述者列表。
+							新标题会同步到最近列表。
 						</DialogDescription>
 					</DialogHeader>
 					<FieldGroup>
@@ -883,7 +882,7 @@ export function SessionCenter({
 					<DialogHeader>
 						<DialogTitle>Fork 叙述者</DialogTitle>
 						<DialogDescription>
-							从独立叙述者最新可分叉消息创建 Runtime 原生分支。
+							从最新一条消息复制出一份新对话。
 						</DialogDescription>
 					</DialogHeader>
 					<FieldGroup>

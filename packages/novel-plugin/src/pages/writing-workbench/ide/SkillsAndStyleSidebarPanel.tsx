@@ -282,7 +282,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
       <SidebarPageHead
         icon={Sparkles}
         title="技能文风"
-        purpose="点亮作者入口技能交给叙述者用；文风基准在这里维护"
+        purpose="选叙述者要用的技能，定本书文风基准"
       />
       <div className="flex shrink-0 items-center justify-between border-b border-border px-2 py-1.5 bg-muted/20">
         <div className="flex items-center gap-1">
@@ -340,7 +340,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
           className="mx-2 mt-2 flex shrink-0 items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-left text-xs text-warning transition-colors hover:bg-warning/15"
         >
           <ClipboardList className="size-3.5 shrink-0" />
-          <span className="flex-1">待确认 {pendingReviewTotal} 项：声线、文风规则、伏笔、事件与改稿等待你决定，不确认不生效。</span>
+          <span className="flex-1">待确认 {pendingReviewTotal} 项，确认后才生效。</span>
         </button>
       )}
 
@@ -444,8 +444,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
                 <span>从参考样文提取统计</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                贴入你满意的参考正文（建议 500-2000 字）。只提取句长节奏、对话密度、词汇丰富度等可复用统计特征，
-                不会把样文的专名、口癖或情节带进本书。
+                贴入 500–2000 字满意的正文，只提取句长、对话密度等统计，不带走专名和情节。
               </p>
               <Textarea
                 value={sampleText}
@@ -620,8 +619,7 @@ function StyleMemorySection({
         <span>记住这种写法</span>
       </div>
       <p className="text-xs text-muted-foreground">
-        贴入一段你认可的正文，配一句话注解。预览会推断写法规则与例句（纯统计，不调模型），
-        确认后写进文风预设的「手动写法记忆」来源；普通聊天不会写入。
+        贴入一段你认可的正文并写一句注解，预览确认后存进本书文风预设。
       </p>
       <Input
         value={note}
@@ -792,7 +790,7 @@ function TavernPresetImportSection({
         <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
       <p className="text-xs text-muted-foreground leading-relaxed">
-        粘贴酒馆 Chat Completion 预设 JSON。系统会自动展开宏变量（如 {"{{user}}"} $\to$ 作者）、识别并小说化提纯破限词，转换为标准写作技能。
+        粘贴酒馆预设内容，会转换成一个写作技能。
       </p>
 
       {!parsedResult ? (

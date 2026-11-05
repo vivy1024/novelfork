@@ -195,7 +195,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
       ) : null}
       {shown.length === 0 ? (
         <p className="mt-4 text-center text-xs text-muted-foreground" data-testid="dissect-draft-empty">
-          没有待确认的拆书草案。导入旧稿并跑过拆书后，这里会列出抽出的角色、地点、伏笔候选。
+          没有待确认的拆书草案。
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5" data-testid="dissect-draft-list">

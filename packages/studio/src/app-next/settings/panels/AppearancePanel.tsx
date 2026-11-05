@@ -25,9 +25,9 @@ export function AppearancePanel() {
   return (
     <SettingsPage
       title="书房主题"
-      description="NovelFork 的书房主题与明暗，嵌入的 Runtime 界面一同切换。"
+      description="选择界面配色与明暗。"
     >
-      <SettingsGroup title="书房主题" description="整套界面的配色、字体与纹样，叙述者面板等 Runtime 界面一同切换；每套主题都有浅色与深色。只影响当前设备。">
+      <SettingsGroup title="书房主题" description="每套主题都有浅色与深色。">
         <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="书房主题">
           {STYLE_THEMES.map((option) => {
             const selected = styleTheme === option.id;
@@ -63,7 +63,7 @@ export function AppearancePanel() {
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="明暗" description="主题设置仅影响当前设备上的显示效果；浏览器本地设置不会写入 Runtime。">
+      <SettingsGroup title="明暗" description="只影响当前设备。">
         <div className="grid gap-2 sm:grid-cols-3">
           {themes.map(({ value, label, icon: Icon }) => (
             <Button

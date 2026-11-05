@@ -55,8 +55,9 @@ describe("套路页：只剩 Runtime 原页一层", () => {
 
     expect(screen.queryByRole("tablist", { name: "套路页签" })).toBeNull();
     expect(screen.queryByText("本书设置")).toBeNull();
-    // 指向写作台的说明留在正文里，作者知道按书设置去哪。
-    expect(screen.getByText(/写作台 › 本书设置/)).not.toBeNull();
+    // 页面不再挂自我介绍横幅，只保留读屏用的标题。
+    expect(screen.queryByText(/写作台 › 本书设置/)).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "套路" })).not.toBeNull();
   });
 
   it("Runtime 原页内跳转同步进 Studio 地址，跳出范围的链接交给外壳", async () => {

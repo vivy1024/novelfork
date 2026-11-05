@@ -145,9 +145,9 @@ describe("WritingSkillsPanel 的按书启用", () => {
 
     const { container } = render(<WritingSkillsPanel bookId="book-a" />, { wrapper: Providers });
     await vi.waitFor(() => {
-      expect(container.textContent).toContain("启用态只对当前作品生效（当前已发现 2 个）");
+      expect(container.textContent).toContain("勾选只对当前作品生效（已启用 2 个）");
     });
-    expect(container.textContent).toContain("技能库与作者副本全局共享");
+    expect(container.textContent).toContain("取消勾选会删除本作品里的副本");
   });
 
   it("启用一个 catalog 技能写当前作品接口，不碰 book.json", async () => {

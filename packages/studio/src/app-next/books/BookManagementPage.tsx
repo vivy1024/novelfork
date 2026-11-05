@@ -194,7 +194,7 @@ export function BookManagementPage({
     try {
       const operation = await onRepairBook(bookId);
       setActionMessage(
-        `作品 ${operation.bookId} 的 Runtime 绑定已校验，当前状态：${operation.state}`,
+        operation.state === "ready" ? "作品已检查完毕，可以正常打开。" : "作品已检查，仍有问题未修复，请稍后重试。",
       );
     } catch (caught) {
       setActionError(
@@ -501,8 +501,7 @@ export function BookManagementPage({
           <DialogHeader>
             <DialogTitle>修正作品工作目录</DialogTitle>
             <DialogDescription>
-              当作品目录迁移或绑定路径错误时，选择正确的绝对路径。服务端会重写
-              book_root、Runtime 项目路径，并标记为外部 workspace。
+              作品文件夹搬过位置时，在这里重新指定它的完整路径。
               {rebindTarget ? (
                 <>
                   {" "}
@@ -606,7 +605,7 @@ export function BookManagementPage({
           <DialogHeader>
             <DialogTitle>永久删除作品</DialogTitle>
             <DialogDescription>
-              此操作会删除这本书在 NovelFork 里的全部数据、Runtime 会话和绑定，且无法撤销。
+              此操作会删除这本书的全部数据和对话记录，且无法撤销。
               NovelFork 管理的作品目录会一并删除；外部目录不会被删除，里面的文件保留不动。请输入作品名
               <strong className="mx-1 text-foreground">
                 {deleteTarget?.title}

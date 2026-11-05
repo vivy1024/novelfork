@@ -97,14 +97,13 @@ function RuntimeWorkspace({ book, client }: { readonly book: RuntimeBookSummary;
       <header className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
         <div>
           <h2 className="text-sm font-semibold">{book.title} · 工作台资源</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">P0 为只读视图；编辑能力由 Runtime 后续能力声明开放。</p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => void reload()} disabled={state.loading}>
           <RefreshCw className={`mr-1.5 size-3.5 ${state.loading ? "animate-spin" : ""}`} />刷新
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        {state.loading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载 Runtime 工作台资源…</p>}
+        {state.loading && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在加载工作台资源…</p>}
         {state.error && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">无法加载工作台资源：{state.error}</p>}
         {state.data && (
           <div className="max-w-3xl space-y-2">
@@ -226,13 +225,13 @@ function RuntimeP0Shell() {
       <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-muted/20">
         <div className="border-b border-border px-4 py-4">
           <p className="text-xs font-medium text-muted-foreground">NovelFork</p>
-          <h1 className="mt-0.5 text-lg font-semibold">Runtime 工作台</h1>
+          <h1 className="mt-0.5 text-lg font-semibold">工作台</h1>
           {bootstrap && <p className="mt-1 text-xs text-muted-foreground">模型：{bootstrap.model.setupRequired ? "需要配置" : bootstrap.model.label ?? "已就绪"}</p>}
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto p-2" aria-label="书籍与叙述者">
           {bootstrap && <Button type="button" variant="outline" className="mb-3 w-full justify-start" onClick={openCreateBook}><Plus className="mr-2 size-4" />新建作品</Button>}
           {loading && <p className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />加载工作台…</p>}
-          {!loading && bootstrap?.books.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Runtime 中没有可读取的书籍。</p>}
+          {!loading && bootstrap?.books.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">还没有作品。</p>}
           {bootstrap?.books.map((book) => {
             const active = book.id === selectedBookId;
             const narrators = bootstrap.narrators.filter((narrator) => narrator.bookId === book.id && narrator.capabilities.read);
@@ -253,7 +252,7 @@ function RuntimeP0Shell() {
         <div className="space-y-2 border-t border-border p-3">
           {provision && <ProvisionNotice operation={provision} error={provisionError} onRetry={() => void retryProvision()} retrying={creating} />}
           {selectedBook && bootstrap?.capabilities.workspace.read && <Button type="button" variant="outline" className="w-full justify-start" onClick={() => setView("workspace")}><FileText className="mr-2 size-4" />读取工作台资源</Button>}
-          <Button type="button" variant="outline" className="w-full justify-start" onClick={() => void reload()} disabled={loading}><RefreshCw className={`mr-2 size-4 ${loading ? "animate-spin" : ""}`} />刷新 Runtime 数据</Button>
+          <Button type="button" variant="outline" className="w-full justify-start" onClick={() => void reload()} disabled={loading}><RefreshCw className={`mr-2 size-4 ${loading ? "animate-spin" : ""}`} />刷新</Button>
         </div>
       </aside>
 
@@ -266,9 +265,7 @@ function RuntimeP0Shell() {
             <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6">
               <p className="text-xs font-medium text-muted-foreground">{selectedBook ? selectedBook.title : "NovelFork"}</p>
               <h2 className="mt-1 text-xl font-semibold">选择一个叙述者开始创作</h2>
-              <p className="mt-2 text-sm text-muted-foreground">叙述者、书籍和模型状态均来自 Runtime bootstrap；P0 不调用旧 Studio session、provider 或 onboarding 接口。</p>
-              {bootstrap?.model.setupRequired && <p className="mt-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">Runtime 模型尚未配置。请在 Runtime 管理端完成配置后刷新此页；P0 不提供 provider 或 settings 入口。</p>}
-              {selectedBook && <p className="mt-4 text-xs text-muted-foreground">每部作品由 Runtime provision 唯一的只读小说创作助手；P0 不提供叙述者创建、编辑或删除操作。</p>}
+              {bootstrap?.model.setupRequired && <p className="mt-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">还没有配置模型，请先在设置中添加模型后刷新此页。</p>}
             </div>
           </div>
         )}
@@ -278,7 +275,7 @@ function RuntimeP0Shell() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新建作品</DialogTitle>
-            <DialogDescription>只需填写书名。Runtime 会创建并绑定唯一的只读小说创作助手。</DialogDescription>
+            <DialogDescription>填写书名即可开始。</DialogDescription>
           </DialogHeader>
           <form onSubmit={(event) => { event.preventDefault(); void submitCreateBook(); }} className="space-y-4">
             <Input

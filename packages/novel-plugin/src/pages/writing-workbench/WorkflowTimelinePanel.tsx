@@ -475,7 +475,7 @@ export function WorkflowTimelinePanel({
         setActionError(`启用团队编排失败：${body?.summary ?? `HTTP ${res.status}`}`);
         return;
       }
-      setTeamNotice("团队编排已启用（内置 narrator-team）。现在组建工人团队，领导的叙述者会按简报把工人收编进来、把委派工序派下去。");
+      setTeamNotice("团队编排已启用，下一步组建工人团队。");
     } catch (err) {
       setTeamPlugin((prev) => ({ ...prev, status: "inactive" }));
       setActionError(`启用团队编排失败：${err instanceof Error ? err.message : String(err)}`);
@@ -498,7 +498,7 @@ export function WorkflowTimelinePanel({
         const created = res.members.filter((member) => member.created).length;
         const reused = res.members.length - created;
         setTeamNotice(
-          `工人团队就绪：${res.members.map((member) => member.title).join("、")}（新建 ${created}，复用 ${reused}）。领导的叙述者会按工序简报把它们收编进团队并派活。`,
+          `工人团队就绪：${res.members.map((member) => member.title).join("、")}（新建 ${created}，复用 ${reused}）。`,
         );
       }
     } catch (err) {
@@ -538,10 +538,10 @@ export function WorkflowTimelinePanel({
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Workflow className="size-5 text-primary" />
-            <h2 className="text-base font-semibold">创作工作流 · 执行</h2>
+            <h2 className="text-base font-semibold">创作工作流</h2>
           </div>
           <p className="text-xs text-muted-foreground">
-            按方案推进本章：工序可以并行、按结果分支、打回上游。每道工序能用什么工具、必须交什么由产品决定，需要确认的工序会停下来等你。
+            选好方案和章号后启动，需要你确认的工序会停下来等你。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -594,7 +594,7 @@ export function WorkflowTimelinePanel({
                 ? "画布上有未保存的修改，先保存或放弃再组建"
                 : (selectedRecipe && (selectedRecipe.revision ?? 0) === 0)
                   ? "方案还没保存（第 0 版），先保存再组建团队"
-                  : "按当前方案为本书建/复用工作流工人叙述者（标题前缀「工作流工人·」）；委派工序由叙述者把它们收编进团队后执行"
+                  : "为当前方案准备负责委派工序的工人"
             }
             className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
             data-testid="workflow-ensure-team"
@@ -619,7 +619,7 @@ export function WorkflowTimelinePanel({
         <div className="flex items-center gap-3 rounded-lg border border-info/60 bg-info/10 p-3 text-xs text-info" data-testid="workflow-team-plugin-banner">
           <Users className="size-4 shrink-0" />
           <span className="flex-1">
-            团队编排还没启用。委派工序（起草、对抗审查）需要 narrator-team 插件把活儿派给工人叙述者；现在未启用时会退回老式子代理。
+            团队编排还没启用：工作流仍能运行，但起草、对抗审查等委派工序不会派给工人。
           </span>
           {teamPlugin.status === "inactive" ? (
             <button
@@ -649,7 +649,7 @@ export function WorkflowTimelinePanel({
       {!narratorId ? (
         <div className="flex items-center gap-2 rounded-lg border border-warning/60 bg-warning/10 p-3 text-xs text-warning" data-testid="workflow-no-narrator">
           <AlertCircle className="size-4 shrink-0" />
-          <span>还没有打开本书的叙述者会话。工作流由叙述者执行，请先在写作页打开或新建叙述者会话再启动。</span>
+          <span>本书还没有打开的对话，请先在写作页打开或新建一个对话再启动。</span>
         </div>
       ) : null}
 

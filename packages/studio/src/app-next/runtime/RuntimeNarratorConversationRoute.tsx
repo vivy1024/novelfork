@@ -113,7 +113,7 @@ export function RuntimeNarratorConversationLoader({
       const standalone = await narratorClient.getNarrator(narratorId);
       if (!active) return;
       if (standalone.chapterId !== null || standalone.type !== "primary" || standalone.variant !== "primary") {
-        throw new Error("当前 Runtime 叙述者属于书籍或子代理，不能通过独立路由访问");
+        throw new Error("这个叙述者属于某部作品，请从作品里打开");
       }
       await narratorClient.openNarrator(standalone);
       if (!active) return;
@@ -134,7 +134,7 @@ export function RuntimeNarratorConversationLoader({
   }, [client, narratorClient, narratorId]);
 
   if (loading) {
-    return <p role="status" className="p-4 text-sm text-muted-foreground">正在连接 Runtime 叙述者…</p>;
+    return <p role="status" className="p-4 text-sm text-muted-foreground">正在打开对话…</p>;
   }
   if (!resolved) {
     return <p role="alert" className="p-4 text-sm text-destructive">{error ?? "叙述者不可用"}</p>;

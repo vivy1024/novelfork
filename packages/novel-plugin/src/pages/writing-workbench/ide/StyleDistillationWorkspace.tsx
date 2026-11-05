@@ -314,7 +314,7 @@ function normalisePreview(value: unknown): StyleDistillationPreviewResponse {
   const record = asRecord(value);
   if (!record) throw new Error("预览响应不是有效对象，请稍后重试。");
   const previewId = firstString(record.previewId);
-  if (!previewId) throw new Error("预览响应缺少 previewId，请让宿主更新文风蒸馏接口后重试。");
+  if (!previewId) throw new Error("预览没有返回结果，请重试。");
   const chapters = firstArray(record.chapters).map((chapter) => {
     const item = asRecord(chapter);
     return {
@@ -495,8 +495,8 @@ function estimatedOutput(preview: StyleDistillationPreviewResponse): string {
   const value = firstString(coverage?.estimatedOutput, coverage?.estimatedResult, coverage?.outputEstimate);
   if (value) return value;
   const count = asNumber(coverage?.estimatedRuleCount ?? coverage?.ruleCount);
-  if (count !== null) return `约 ${formatNumber(count)} 条审阅项与 1 份统计指纹`;
-  return "文风规则、范文与统计指纹";
+  if (count !== null) return `约 ${formatNumber(count)} 条审阅项与 1 份统计基线`;
+  return "文风规则、范文与统计基线";
 }
 
 function stageLabel(stage: Stage): string {
@@ -652,7 +652,7 @@ function BookStyleDistillationWorkspace({
       if (isFinished(status, current)) return normaliseReview(current);
       if (isFailed(status)) throw new Error(jobError(current) ?? "蒸馏任务失败，请检查输入后重试。");
       const id = jobId(current);
-      if (!id) throw new Error("蒸馏任务没有返回任务 ID，无法继续等待。");
+      if (!id) throw new Error("蒸馏没有正常开始，请重试。");
       if (attempt >= MAX_POLL_ATTEMPTS - 1) break;
       await new Promise<void>((resolve) => window.setTimeout(resolve, POLL_INTERVAL_MS));
       current = await fetchJson<unknown>(paths.job(id));
@@ -682,7 +682,7 @@ function BookStyleDistillationWorkspace({
       if (!mounted.current) return;
       const message = errorMessage(cause, "继续模型批次失败，请稍后重试。");
       setError(errorStatus(cause) === 422
-        ? `${message} 可在叙述者对话中让叙述者带上任务 ID 调用 style.distill_start 继续同一任务。`
+        ? `${message} 可以在对话里让叙述者继续这次蒸馏。`
         : message);
       setStage("review");
     } finally {
@@ -756,7 +756,7 @@ function BookStyleDistillationWorkspace({
     if (!review || busy || conflict) return;
     const id = review.expectedRevision;
     if (!reviewJobId.current) {
-      setError("缺少蒸馏任务 ID，无法采纳。请重新开始蒸馏。");
+      setError("找不到这次蒸馏，无法采纳，请重新开始。");
       return;
     }
     setBusy(true);
@@ -906,7 +906,7 @@ function BookStyleDistillationWorkspace({
           <Badge variant="outline">蒸馏</Badge>
         </div>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          从作者指定的参考文本中提取写法规则、范文和统计指纹。所有来源内容先进入审阅区，确认后再写入本书文风预设。
+          从参考文本中提取写法规则和范文，逐条确认后再存入本书文风预设。
         </p>
         <div className="flex flex-wrap gap-1.5" aria-label="蒸馏阶段">
           {(["input", "preview", "review"] as const).map((item, index) => (
@@ -929,7 +929,7 @@ function BookStyleDistillationWorkspace({
         <Card>
           <CardHeader>
             <CardTitle>准备参考文本</CardTitle>
-            <CardDescription>输入只用于本次蒸馏。先预览处理范围，再决定是否生成审阅包。</CardDescription>
+            <CardDescription>先预览处理范围，再决定是否开始。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -972,7 +972,7 @@ function BookStyleDistillationWorkspace({
             <Card aria-label="处理范围摘要">
               <CardHeader>
                 <CardTitle>处理范围</CardTitle>
-                <CardDescription>预览只读取参考文本，不会写入本书文风预设。</CardDescription>
+                <CardDescription>预览不会改动本书文风预设。</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 sm:grid-cols-2">
                 <MetricCard label="处理范围" value={coverageText(preview.coverage, preview.chapters)} />
@@ -984,7 +984,7 @@ function BookStyleDistillationWorkspace({
             <Card>
               <CardHeader>
                 <CardTitle>来源包预览</CardTitle>
-                <CardDescription>{preview.sourceName} · 将生成审阅用来源包，不会直接改写本书预设。</CardDescription>
+                <CardDescription>{preview.sourceName}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {preview.chapters.length > 0 ? (
@@ -1005,7 +1005,7 @@ function BookStyleDistillationWorkspace({
           <Card>
             <CardHeader>
               <CardTitle>确认后开始</CardTitle>
-              <CardDescription>蒸馏完成后会进入逐条审阅，确认项才会进入采纳请求。</CardDescription>
+              <CardDescription>蒸馏完成后逐条确认，只有确认的条目会被采纳。</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" disabled={busy} onClick={() => { setStage("input"); setError(null); }}>
@@ -1037,7 +1037,7 @@ function BookStyleDistillationWorkspace({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-medium">审阅来源：{review.sourceName}</p>
-              <p className="text-xs text-muted-foreground">确认规则或范文后才会随采纳请求发送；待审项目不会被选中。</p>
+              <p className="text-xs text-muted-foreground">只有确认过的规则和范文会被采纳。</p>
             </div>
             <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => { setStage("preview"); setError(null); setNotice(null); }}>
               <ArrowLeft className="size-3.5" />重新处理
@@ -1050,8 +1050,8 @@ function BookStyleDistillationWorkspace({
                 <CardTitle>模型批次</CardTitle>
                 <CardDescription>
                   {review.jobStatus === "paused"
-                    ? "还有未完成的批次；当前结果含已完成批次与确定性基线，可以先审阅，也可以继续。"
-                    : "每批结果单独保存；失败批次不影响已完成批次与确定性基线。"}
+                    ? "还有批次没跑完，可以先审阅已完成的部分，也可以继续。"
+                    : "失败的批次不影响已完成的结果。"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -1081,26 +1081,26 @@ function BookStyleDistillationWorkspace({
             <div className={`grid gap-4 ${multiSource ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
               {!multiSource && (
                 <Card>
-                  <CardHeader><CardTitle>写法规则</CardTitle><CardDescription>确认后按规则 ID 发送。作品专属内容可以确认，但不会进入通用指南。</CardDescription></CardHeader>
+                  <CardHeader><CardTitle>写法规则</CardTitle><CardDescription>作品专属内容可以确认，但不会进入通用写法指南。</CardDescription></CardHeader>
                   <CardContent className="space-y-3">
                     {review.rules.length > 0 ? review.rules.map((entry, index) => <ReviewEntry key={entry.id} entry={entry} disabled={busy} onToggle={() => toggleEntry("rules", index)} />) : <EmptyState text="暂无可审阅的写法规则。" />}
                   </CardContent>
                 </Card>
               )}
               <Card>
-                <CardHeader><CardTitle>范文</CardTitle><CardDescription>范文保留来源和场景证据，待审范文不会随采纳请求发送。</CardDescription></CardHeader>
+                <CardHeader><CardTitle>范文</CardTitle><CardDescription>只有确认过的范文会被采纳。</CardDescription></CardHeader>
                 <CardContent className="space-y-3">
                   {review.samples.length > 0 ? review.samples.map((entry, index) => <ReviewEntry key={entry.id} entry={entry} disabled={busy} onToggle={() => toggleEntry("samples", index)} />) : <EmptyState text="暂无可审阅的范文。" />}
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle>统计指纹</CardTitle><CardDescription>仅作为写后对照参考，不把数字当成机械句长配额。</CardDescription></CardHeader>
+                <CardHeader><CardTitle>统计基线</CardTitle><CardDescription>只作写后对照，不是硬性指标。</CardDescription></CardHeader>
                 <CardContent>
                   {displayableMetrics(review.fingerprint).length > 0 ? (
                     <div className="grid grid-cols-2 gap-2">
                       {displayableMetrics(review.fingerprint).map(([key, value]) => <div key={key} className="rounded-lg bg-muted/35 p-2"><span className="block text-xs text-muted-foreground">{metricLabel(key)}</span><span className="text-sm font-medium">{formatValue(value)}</span></div>)}
                     </div>
-                  ) : <EmptyState text="暂无统计指纹。" />}
+                  ) : <EmptyState text="暂无统计基线。" />}
                 </CardContent>
               </Card>
             </div>
@@ -1108,7 +1108,7 @@ function BookStyleDistillationWorkspace({
           <Card className="border-primary/30">
             <CardHeader>
               <CardTitle>采纳到本书文风预设</CardTitle>
-              <CardDescription>只发送已确认项目。作品专属项目可以确认并保存在来源证据中，但不会进入本书通用写法指南；待审项目不会被选中。</CardDescription>
+              <CardDescription>只采纳已确认的条目；作品专属条目不会进入通用写法指南。</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
@@ -1126,8 +1126,7 @@ function BookStyleDistillationWorkspace({
               <CardHeader>
                 <CardTitle>生成本书专属技能</CardTitle>
                 <CardDescription>
-                  把文风预设里「已确认且可迁移」的写法规则汇总成本书技能（.novelfork/skills/book-style-memory/SKILL.md），
-                  叙述者写作本书时按它加载；待审与作品专属条目不进入。重新生成会覆盖同一文件。
+                  把已确认的通用写法规则汇总成本书技能，叙述者写本书时会用上；重新生成会覆盖旧版。
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap items-center gap-2">
@@ -1138,10 +1137,10 @@ function BookStyleDistillationWorkspace({
                 {skillExport && (
                   <>
                     <p role="status" className="text-xs text-muted-foreground">
-                      已写入 .novelfork/skills/{skillExport.slug}/SKILL.md（{skillExport.ruleCount} 条规则{skillExport.sourceTitles.length > 0 ? `，来源：${skillExport.sourceTitles.join("、")}` : ""}）
+                      已生成本书技能（{skillExport.ruleCount} 条规则{skillExport.sourceTitles.length > 0 ? `，来源：${skillExport.sourceTitles.join("、")}` : ""}）
                     </p>
                     <Button type="button" size="sm" variant="outline" disabled={!skillExport.content} onClick={() => void copySkillContent()}>
-                      {copied ? "已复制" : "复制 SKILL.md 内容"}
+                      {copied ? "已复制" : "复制技能内容"}
                     </Button>
                   </>
                 )}
@@ -1291,7 +1290,7 @@ function SourceComparison({
       <div>
         <p className="text-sm font-medium">多来源比较：{comparison.sources.map((source) => source.sourceName).join("、")}</p>
         <p className="text-xs text-muted-foreground">
-          每个来源取最近一次蒸馏。按规则文本相似度与类别自动分组，不调用模型；分组只帮你对照，是否采纳仍逐条确认。
+          每个来源取最近一次蒸馏，相似的规则会自动分到一组，是否采纳仍逐条确认。
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
@@ -1335,7 +1334,7 @@ function SourceComparison({
         <Card aria-label="不应迁移">
           <CardHeader>
             <CardTitle>不应迁移（{comparison.nonTransferable.length}）</CardTitle>
-            <CardDescription>标为作品专属的条目。可以确认保存为来源证据，但不会进入本书通用写法指南。</CardDescription>
+            <CardDescription>作品专属条目，确认后也不会进入通用写法指南。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {comparison.nonTransferable.length > 0 ? comparison.nonTransferable.map((member) => (
@@ -1369,7 +1368,7 @@ function SourceStatistics({
       <CardHeader>
         <CardTitle>各来源统计对比</CardTitle>
         <CardDescription>
-          统计指纹与由它生成的基线规则，按来源原样并列，不参与上面的合并，也不代表各来源写法一致或不一致。数值只作写后对照，不当成机械配额。
+          各来源的统计基线并列对照，只作写后参考，不是硬性指标。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1394,7 +1393,7 @@ function SourceStatistics({
               </tbody>
             </table>
           </div>
-        ) : <EmptyState text="各来源都没有统计指纹。" />}
+        ) : <EmptyState text="各来源都没有统计基线。" />}
         <div className="grid gap-4 lg:grid-cols-3">
           {statistics.map((entry) => (
             <div key={entry.sourceId} className="space-y-2">

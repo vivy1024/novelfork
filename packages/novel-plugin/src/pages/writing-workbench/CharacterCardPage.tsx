@@ -27,7 +27,8 @@ import {
   Loader2,
   Pencil,
   User,
-  Sparkles,
+  Mountain,
+  Tag,
   Quote,
   Heart,
   Skull,
@@ -143,7 +144,7 @@ function eventDescription(event: NarrativeEventRecord): string {
   if (evidence) return evidence;
   return [stringOrUndefined(event.subject), stringOrUndefined(event.predicate), stringOrUndefined(event.object)]
     .filter(Boolean)
-    .join(" ") || "叙事记忆记录了一次角色状态变化。";
+    .join(" ") || "角色状态有变化。";
 }
 
 function factText(fact: NarrativeFactRecord): string {
@@ -431,7 +432,7 @@ function DevelopmentSection({
                 发展历程
                 <Badge variant="secondary" className="text-2xs font-normal">动态数据</Badge>
               </CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">按章节读取最近的状态变化、关键节点和关系演化；只读，不改经纬设定。</p>
+              <p className="mt-1 text-xs text-muted-foreground">按章节查看最近的状态、关键节点与关系变化。</p>
             </div>
             {bookId ? (
               <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={refresh} aria-label="刷新人物发展历程">
@@ -455,18 +456,12 @@ function DevelopmentSection({
               {/*
                * 空数据诚实诊断：当三路请求全部返回空时，明确告知用户原因——
                * 该角色从未被章后结算器记录过（未出场/未被识别），不是功能故障。
-               * 同时给出有数据的角色作为对照，让用户能立即自证功能是好的。
                */}
               {!snapshot?.evolution.length && !state?.realm && !state?.injury && !state?.resources.length && !snapshot?.relationships.length ? (
                 <div className="rounded-md border border-warning/40 bg-warning/[0.05] px-4 py-5 text-center space-y-2" data-testid="character-development-empty-diagnosis">
                   <p className="text-sm font-medium text-warning">该角色暂无任何章后结算记录</p>
                   <p className="text-xs leading-relaxed text-muted-foreground max-w-md mx-auto">
-                    叙事记忆只收录<strong>正文中实际出场</strong>并经章后结算的角色动态。
-                    「{characterName.trim() || "该角色"}」可能尚未正式登场，或结算器未从正文识别到 TA 的状态变化。
-                    经纬静态设定不受影响，写作召回仍会携带本卡的内核字段。
-                  </p>
-                  <p className="text-xs text-muted-foreground/80">
-                    想验证动态功能？打开一位已出场主角（如「薛行之」）即可看到发展历程与关系演化。
+                    「{characterName.trim() || "该角色"}」可能还没在正文里出场；出场后写完一章，这里就会有记录。
                   </p>
                 </div>
               ) : null}
@@ -479,7 +474,7 @@ function DevelopmentSection({
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">
                     <p className="text-xs font-medium text-muted-foreground">修为 / 境界</p>
-                    {state?.realm ? <FactLine fact={state.realm} icon={Sparkles} /> : <p className="text-xs text-muted-foreground">暂无动态记录</p>}
+                    {state?.realm ? <FactLine fact={state.realm} icon={Mountain} /> : <p className="text-xs text-muted-foreground">暂无动态记录</p>}
                   </div>
                   <div className="space-y-2 rounded-md border border-border/50 bg-background/55 p-2.5">
                     <p className="text-xs font-medium text-muted-foreground">持有物品 / 资源</p>
@@ -868,7 +863,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
             <div className="flex flex-wrap items-center gap-2 pt-2">
               {roleType && (
                 <Badge variant="secondary" className="text-xs">
-                  <Sparkles className="w-3 h-3 mr-1" />
+                  <Tag className="w-3 h-3 mr-1" />
                   {roleType}
                 </Badge>
               )}
@@ -938,8 +933,8 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
           <Card className="border-primary/30 bg-primary/[0.03]">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-primary" />
-                角色内核 — AI 写作时永远不会忘记的"魂"
+                <Heart className="w-4 h-4 text-primary" />
+                角色内核
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">

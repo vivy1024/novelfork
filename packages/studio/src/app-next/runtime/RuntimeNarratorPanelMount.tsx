@@ -69,7 +69,7 @@ export function RuntimeNativeNarratorPanelMount({
 	const onAction = useCallback(
 		(action: ToolResultAction) => {
 			if (!bookId) {
-				return Promise.reject(new Error("当前面板没有可信书籍绑定，无法执行结果卡操作。"));
+				return Promise.reject(new Error("当前对话没有关联作品，无法执行这项操作。"));
 			}
 			return executeToolResultAction(bookId, action);
 		},
@@ -112,7 +112,7 @@ export function RuntimeNativeNarratorPanelMount({
 						role="status"
 						className="grid h-full min-h-[160px] place-items-center p-4 text-sm text-muted-foreground"
 					>
-						正在加载原生 NarratorPanel…
+						正在加载对话…
 					</div>
 				}
 			>
@@ -153,7 +153,7 @@ export function RuntimeNarratorPanelMount({
 	if (narrator.bookId !== bookId || narrator.capabilities.read !== true) {
 		return (
 			<p role="alert" className="p-4 text-sm text-destructive">
-				当前 Runtime 叙述者不属于此书籍或不可访问
+				这个对话不属于本作品，或已无法打开
 			</p>
 		);
 	}
@@ -180,7 +180,7 @@ export function RuntimeStandaloneNarratorPanelMount({
 	) {
 		return (
 			<p role="alert" className="p-4 text-sm text-destructive">
-				当前 Runtime 叙述者不是可独立访问的主叙述者
+				这个对话无法单独打开
 			</p>
 		);
 	}

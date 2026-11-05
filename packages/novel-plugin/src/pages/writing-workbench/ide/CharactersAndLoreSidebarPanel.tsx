@@ -396,7 +396,7 @@ export function CharactersAndLoreSidebarPanel({
         {([
           { id: "characters", label: "角色册", count: charactersList.length, title: undefined },
           { id: "world", label: "世界录", count: worldList.length, title: undefined },
-          { id: "draft", label: "草案", count: draftCount, title: "拆书抽出的角色、地点与伏笔候选；确认后才写入设定" },
+          { id: "draft", label: "草案", count: draftCount, title: "拆书找到的候选条目，确认后才存入设定" },
         ] as const).map((tab) => (
           <button
             key={tab.id}
@@ -910,7 +910,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
       />
       <div className="flex items-center justify-between pt-0.5">
         <span className="text-2xs text-muted-foreground">
-          {text.trim().startsWith("{") ? "检测到 JSON 格式，将智能解析角色卡" : "Markdown 格式"}
+          {text.trim().startsWith("{") ? "识别为角色卡格式" : "Markdown 格式"}
         </span>
         <div className="flex items-center gap-1.5">
           <Button size="xs" variant="ghost" onClick={onClose}>取消</Button>

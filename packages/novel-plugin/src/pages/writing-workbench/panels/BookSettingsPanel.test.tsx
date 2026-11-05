@@ -138,12 +138,12 @@ describe("BookSettingsPanel 书籍层保存（只提交改动字段 + revision�
 });
 
 describe("BookSettingsPanel 的宿主插槽", () => {
-  it("宿主注入项目设置时渲染该分区，说明 Runtime 只覆盖技能与可选工具", async () => {
+  it("宿主注入项目设置时渲染该分区，并说明 MCP / 钩子只能统一设置", async () => {
     render(
       <BookSettingsPanel
         bookId="book-1"
         onBack={vi.fn()}
-        projectSettingsSlot={<div data-testid="project-settings-stub">Runtime 项目设置</div>}
+        projectSettingsSlot={<div data-testid="project-settings-stub">项目设置</div>}
       />,
     );
 
@@ -160,6 +160,6 @@ describe("BookSettingsPanel 的宿主插槽", () => {
 
     await screen.findByPlaceholderText("输入书名");
     expect(document.querySelector('[data-settings-section="runtime-project"]')).toBeNull();
-    expect(screen.queryByText("Runtime 项目设置")).toBeNull();
+    expect(screen.queryByText("本书技能与工具")).toBeNull();
   });
 });

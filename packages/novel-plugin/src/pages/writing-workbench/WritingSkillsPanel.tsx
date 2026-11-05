@@ -126,7 +126,7 @@ export function WritingSkillPathDetails() {
       <summary className="cursor-pointer select-none">目录路径与技术细节</summary>
       <div className="mt-1 space-y-1">
         <p>本书启用后的副本在作品目录的 <code>.novelfork/skills/</code>；作者副本与自装技能在{AUTHOR_SKILLS_DIR_HINT}。</p>
-        <p>技能的创建、改正文与删除在 Runtime 的「套路 › 项目技能」里做，两处写的是同一批文件。</p>
+        <p>新建、编辑与删除技能请到「套路 › 项目技能」，两处改的是同一批文件。</p>
       </div>
     </details>
   );
@@ -351,8 +351,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       */}
       <div className="text-2xs text-muted-foreground space-y-1" data-testid="writing-skills-scope-hint">
         <p>
-          技能库与作者副本全局共享；<span className="text-foreground">启用态只对当前作品生效（当前已发现 {projectSlugs.length} 个）</span>
-          ——勾选会把技能复制到当前作品，取消勾选删除对应副本。技能的正文编辑与新建在 Runtime 的「套路 › 项目技能」里做。
+          <span className="text-foreground">勾选只对当前作品生效（已启用 {projectSlugs.length} 个）</span>，取消勾选会删除本作品里的副本。
         </p>
         <WritingSkillPathDetails />
       </div>

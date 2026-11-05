@@ -168,7 +168,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(screen.queryByText("当前语境")).toBeNull();
     // 计数是真实章数与纲条目数，不是顶层节点数
     expect(screen.getByText("章节 1 · 大纲 1")).toBeTruthy();
-    expect(screen.getByText("第 12 章")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "第 12 章" })).toBeTruthy();
     expect(screen.getByText("第一卷：起点")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "第 12 章" }));
@@ -181,7 +181,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     renderPanel();
 
     expect(screen.getByTestId("sidebar-page-head-title").textContent).toBe("故事推进");
-    expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("盯住位置与下一步");
+    expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("看写到哪、下一步写什么");
     expect(screen.getByTestId("sidebar-page-head-sub").textContent).toContain("第 12 章");
     expect(screen.getByRole("button", { name: "打开故事画布" })).toBeTruthy();
   });
@@ -305,7 +305,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(onOpen).toHaveBeenCalledWith(volumeOutline);
   });
 
-  it("T3 身份链：已落稿纲显示 ✓徽标且隐藏提拔按钮，规划中显示 🗺，无目标号不标", () => {
+  it("T3 身份链：已落稿纲显示 ✓徽标且隐藏提拔按钮，显示「规划中」，无目标号不标", () => {
     const onAction = vi.fn();
     const draftedOutline = node("outline:drafted", "第 12 章：通道授权", "jingwei-entry");
     (draftedOutline as WorkbenchResourceNode & { metadata?: Record<string, unknown> }).metadata = {
@@ -331,10 +331,10 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
       />,
     );
 
-    // 已落稿：✓ 徽标；提拔按钮只对未落稿纲保留（下方对 🗺 纲的点击即验证）
+    // 已落稿：✓ 徽标；提拔按钮只对未落稿纲保留（下方对规划中纲的点击即验证）
     expect(screen.getByText("✓已落稿")).toBeTruthy();
     // 规划中：🗺 徽标 + 提拔按钮可用
-    expect(screen.getByText("🗺规划中")).toBeTruthy();
+    expect(screen.getByText("规划中")).toBeTruthy();
     const promoteButton = screen.getByTitle("将大纲提拔至手稿章节");
     fireEvent.click(promoteButton);
     expect(onAction).toHaveBeenCalledWith({ type: "promote-outline", node: plannedOutline });
@@ -414,7 +414,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     renderPanel({ bookTargetChapters: 200 });
     expect(screen.getByTestId("storyline-cockpit")).toBeTruthy();
     expect(screen.getByTestId("storyline-position-bar")).toBeTruthy();
-    expect(screen.getByText("📍 第 12 章")).toBeTruthy();
+    expect(screen.getByTestId("storyline-position-bar").textContent).toContain("第 12 章");
     expect(screen.getByText("/ 目标 200 章")).toBeTruthy();
     expect(screen.getByText("6%")).toBeTruthy();
   });

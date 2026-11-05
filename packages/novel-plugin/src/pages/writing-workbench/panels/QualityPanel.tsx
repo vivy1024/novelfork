@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, BarChart3 } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/hooks/use-api";
 import {
@@ -278,8 +278,8 @@ export function QualityPanel({ bookId }: QualityPanelProps) {
                   {ch.driftScore !== null ? ch.driftScore.toFixed(1) : "—"}
                 </td>
                 <td className="text-center px-2 py-1.5">
-                  {ch.auditStatus === "passed" && "✅"}
-                  {ch.auditStatus === "failed" && "⚠"}
+                  {ch.auditStatus === "passed" && <CheckCircle2 className="mx-auto size-3.5 text-success" aria-label="已通过" />}
+                  {ch.auditStatus === "failed" && <AlertTriangle className="mx-auto size-3.5 text-warning" aria-label="有问题" />}
                   {ch.auditStatus === null && "—"}
                 </td>
               </tr>

@@ -38,7 +38,7 @@ describe("技能与文风侧栏", () => {
     render(<SkillsAndStyleSidebarPanel bookId="book-a" />);
     const head = await screen.findByTestId("sidebar-page-head");
     expect(head.textContent).toContain("技能文风");
-    expect(head.textContent).toContain("文风基准在这里维护");
+    expect(head.textContent).toContain("定本书文风基准");
   });
 
   it("保留统计直方图和提取入口，更新预设版本后保存不自撞冲突", async () => {

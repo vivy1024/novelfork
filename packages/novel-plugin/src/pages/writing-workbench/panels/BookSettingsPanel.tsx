@@ -72,7 +72,7 @@ const LANGUAGE_OPTIONS = [{ value: "zh", label: "中文" }, { value: "en", label
 const ARC_TRACKING_OPTIONS = [
   { value: "off", label: "关闭" },
   { value: "rule", label: "规则引擎" },
-  { value: "llm", label: "LLM 精炼" },
+  { value: "llm", label: "模型精炼" },
 ] as const;
 
 function useDebounce<T extends (...args: never[]) => unknown>(fn: T, delay: number): T {
@@ -346,11 +346,11 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
                 placeholder="还没有卷纲。"
               />
               <p id="volume-outline-hint">
-                这里显示的是经纬「卷纲/大纲」条目的导出内容，在此处修改会在下次导出时被覆盖。要调整卷纲，请到经纬的「卷纲/大纲」分类里编辑，或让叙述者生成卷纲。
+                要改卷纲，请到设定条目的「卷纲/大纲」分类里编辑，或让叙述者生成。
               </p>
             </div>
             <label className="block space-y-1 text-xs text-muted-foreground">
-              <span>书籍硬规则与禁忌（book_rules.md）</span>
+              <span>书籍硬规则与禁忌</span>
               <Textarea
                 aria-label="书籍硬规则"
                 value={layers.bookRulesRaw}
@@ -369,10 +369,9 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
             ref={(node) => { sectionRefs.current["runtime-project"] = node; }}
           >
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Runtime 项目设置</h2>
+              <h2 className="text-sm font-semibold text-foreground">本书技能与工具</h2>
               <p className="text-xs text-muted-foreground">
-                这本书对应一个 Runtime 项目，技能与可选工具在 Runtime 自己的界面里按项目设置；这里嵌的就是它。
-                MCP 权限、钩子与规则文件 Runtime 目前只有全局界面，本书级暂不可改。
+                MCP 权限、钩子与规则文件只能在「套路」里统一设置，本书暂不能单独改。
               </p>
             </div>
             {projectSettingsSlot}
@@ -384,7 +383,7 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
           data-settings-section="narrative-memory"
           ref={(node) => { sectionRefs.current["narrative-memory"] = node; }}
         >
-          <div><h2 className="text-sm font-semibold text-foreground">叙事记忆</h2><p className="text-xs text-muted-foreground">管理章节结算、当前故事状态与写作前动态召回。</p></div>
+          <div><h2 className="text-sm font-semibold text-foreground">叙事记忆</h2><p className="text-xs text-muted-foreground">设置章后结算和写作前要带上的故事记忆。</p></div>
           <NarrativeMemorySettingsSection bookId={bookId} />
         </section>
       </div>

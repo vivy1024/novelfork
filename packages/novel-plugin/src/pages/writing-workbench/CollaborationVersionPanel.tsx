@@ -262,7 +262,7 @@ export function CollaborationVersionPanel({ bookId, repositoryPath }: { bookId: 
           </ol>
         ) : !loading ? (
           <p className="text-sm text-muted-foreground">
-            仓库路径已绑定（{resolvedRepoPath}）。当前产品 Runtime 未暴露 Git 提交历史 API，可在本地 Git 客户端查看。
+            提交历史暂时无法在这里查看，请用本地 Git 客户端打开 {resolvedRepoPath}。
           </p>
         ) : null}
       </Section>

@@ -165,7 +165,7 @@ describe("WriteInjectionSection（W6 写作注入）", () => {
 
     // 文风：指南卡片 tokens，声线卡「全局打包时被裁」标记
     expect(screen.getByText("文风指南")).toBeTruthy();
-    expect(screen.getByText(/全局打包时被裁，未进上下文/)).toBeTruthy();
+    expect(screen.getByText(/篇幅超限，未带上/)).toBeTruthy();
 
     // 声线：逐角色 + 字段 chips
     expect(screen.getByTestId("write-injection-voices").textContent).toContain("韩立");

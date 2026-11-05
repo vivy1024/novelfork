@@ -60,7 +60,7 @@ describe("BookManagementPage Runtime maintenance actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "修复绑定" }));
 
     await waitFor(() => expect(onRepairBook).toHaveBeenCalledWith("book-1"));
-    expect(await screen.findByText(/Runtime 绑定已校验/)).not.toBeNull();
+    expect(await screen.findByText(/作品已检查/)).not.toBeNull();
   });
 
   it("rebinds a listed book workspace through the product callback", async () => {

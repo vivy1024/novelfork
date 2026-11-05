@@ -80,7 +80,7 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
               <th className="px-2 py-1.5 font-medium">键</th>
               <th className="px-2 py-1.5 font-medium">显示名</th>
               <th className="px-2 py-1.5 font-medium">形态</th>
-              <th className="px-2 py-1.5 text-center font-medium">LLM 提取</th>
+              <th className="px-2 py-1.5 text-center font-medium">模型提取</th>
               <th className="px-2 py-1.5 text-center font-medium">写作注入</th>
               <th className="px-2 py-1.5 text-center font-medium">优先级</th>
               <th className="w-8 px-1 py-1.5"><span className="sr-only">删除</span></th>
@@ -118,7 +118,7 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
                     </Select>
                   </td>
                   <td className="px-2 py-1.5 text-center align-middle">
-                    <Switch checked={field.llmExtract} onCheckedChange={(checked) => updateRow(index, { llmExtract: checked })} aria-label={`LLM 提取 ${index + 1}`} />
+                    <Switch checked={field.llmExtract} onCheckedChange={(checked) => updateRow(index, { llmExtract: checked })} aria-label={`模型提取 ${index + 1}`} />
                   </td>
                   <td className="px-2 py-1.5 text-center align-middle">
                     <Switch checked={field.injectOnWrite} onCheckedChange={(checked) => updateRow(index, { injectOnWrite: checked })} aria-label={`写作注入 ${index + 1}`} />
@@ -150,7 +150,7 @@ export function CharacterKernelFieldsEditor({ fields, onChange }: CharacterKerne
       {duplicated.size > 0 && (
         <p className="text-xs text-destructive">存在重复字段键：{[...duplicated].join("、")}。重复键会导致内核取值互相覆盖。</p>
       )}
-      <p className="text-xs text-muted-foreground">优先级越小越先被预算裁剪；关闭「LLM 提取」的字段仅作者可填，不会被结算覆盖。</p>
+      <p className="text-xs text-muted-foreground">篇幅不够时优先级小的先省略；关掉「模型提取」的字段只由你填写，结算不会改动。</p>
     </div>
   );
 }

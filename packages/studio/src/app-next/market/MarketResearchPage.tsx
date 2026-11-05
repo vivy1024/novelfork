@@ -670,10 +670,10 @@ export function MarketResearchPage() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
             <TrendingUp className="size-5 text-primary" />
-            市场研究工作台
+            市场研究
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            采集起点/番茄公开榜单，原始快照整批落盘于本地 `~/.novelfork/market/snapshots/`。支持题材自由配置、列宽拖拽、下钻外链与深度数据分析。
+            扫一次起点、番茄的公开榜单，结果留在本机。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -687,9 +687,9 @@ export function MarketResearchPage() {
       {/* 1. 扫榜配置卡片 */}
       <Card className="shrink-0">
         <CardHeader>
-          <CardTitle>扫哪些榜与参数配置</CardTitle>
+          <CardTitle>扫哪些榜</CardTitle>
           <CardDescription>
-            每次每平台最多 2 个榜。题材和保留数量在读取/导出时生效，原始抓取数据始终完整保存在本机，换题材随时看。
+            每个平台每次最多扫 2 个榜，换题材不用重扫。
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -845,8 +845,8 @@ export function MarketResearchPage() {
       {/* 2. 榜单管理与自定义探测 */}
       <Card className="shrink-0" data-testid="market-rank-manager">
         <CardHeader>
-          <CardTitle>自定义榜单管理与链接探测</CardTitle>
-          <CardDescription>内置榜为基座；可登记自己的榜单 URL（必须为起点或番茄同域）。保存前可随时点击「探测链接」验证解析正确性。</CardDescription>
+          <CardTitle>自定义榜单</CardTitle>
+          <CardDescription>添加起点或番茄的榜单链接，保存前先点「探测链接」确认能读出书。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -919,7 +919,7 @@ export function MarketResearchPage() {
           {probeResult ? (
             <div className="rounded-md border bg-muted/30 p-3 text-xs">
               <div className="flex items-center justify-between font-medium">
-                <span>探测结果：{probeResult.ok ? "解析成功 ✅" : "解析未命中 ⚠️"}</span>
+                <span>探测结果：{probeResult.ok ? "解析成功" : "解析未命中"}</span>
                 {probeResult.error ? <span className="text-destructive">{probeResult.error}</span> : null}
               </div>
               {probeResult.sampleBooks && probeResult.sampleBooks.length > 0 ? (
@@ -979,9 +979,9 @@ export function MarketResearchPage() {
       {/* 3. 题材词库管理 */}
       <Card className="shrink-0" data-testid="market-lexicon-manager">
         <CardHeader>
-          <CardTitle>题材词库归一与别名管理</CardTitle>
+          <CardTitle>题材别名</CardTitle>
           <CardDescription>
-            三段式匹配规则：精确命中 &gt; 别名命中 &gt; 子串兜底。为标准题材扩充别名，防止因平台叫法不同漏算统计。
+            给题材加别名，平台叫法不同时也能算到一起。
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -1084,10 +1084,10 @@ export function MarketResearchPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12">排名</TableHead>
-                    <TableHead className="w-44">作品名（点击直达官方）</TableHead>
+                    <TableHead className="w-44">作品名</TableHead>
                     <TableHead className="w-24">作者</TableHead>
                     <TableHead className="w-20">题材</TableHead>
-                    <TableHead>简介（点击可展开全文）</TableHead>
+                    <TableHead>简介</TableHead>
                     <TableHead className="w-24">来源</TableHead>
                     <TableHead className="w-20">操作</TableHead>
                   </TableRow>
@@ -1202,7 +1202,7 @@ export function MarketResearchPage() {
           <div className="mb-3 flex items-center justify-between border-b pb-2">
             <div className="flex items-center gap-2">
               <BarChart3 className="size-4 text-primary" />
-              <h2 className="text-base font-semibold">市场深度分析报告</h2>
+              <h2 className="text-base font-semibold">市场分析</h2>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{analysis?.summary.total_books ?? 0} 本书</span>
@@ -1218,7 +1218,7 @@ export function MarketResearchPage() {
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 text-muted-foreground">
               <BarChart3 className="size-8 stroke-1 opacity-40" />
-              <p className="text-xs">暂无深度分析数据。请先执行一次有效扫榜。</p>
+              <p className="text-xs">还没有分析数据，先扫一次榜。</p>
             </div>
           )}
         </div>
@@ -1230,7 +1230,7 @@ export function MarketResearchPage() {
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
               <CardTitle className="text-base">《{sampleBookTitle}》公开前 3 章结构采样</CardTitle>
-              <CardDescription>提取对话比例、问句感叹句频次、金手指/系统词命中与黄金节奏</CardDescription>
+              <CardDescription>对话比例、问叹句、金手指与冲突词命中</CardDescription>
             </div>
             <Button size="xs" variant="outline" onClick={() => setSampleBookId(null)}>关闭</Button>
           </CardHeader>

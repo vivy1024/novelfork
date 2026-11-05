@@ -95,7 +95,7 @@ describe("RuntimeNarratorPanelMount", () => {
 
   it("统一拒绝不匹配的可信 bookId 或缺少 read capability", () => {
     const { rerender } = render(<RuntimeNarratorPanelMount bookId="book-2" narrator={narrator} />);
-    expect(screen.getByRole("alert").textContent).toContain("不属于此书籍");
+    expect(screen.getByRole("alert").textContent).toContain("不属于本作品");
     expect(screen.queryByTestId("native-narrator-panel-mock")).toBeNull();
 
     rerender(
@@ -104,7 +104,7 @@ describe("RuntimeNarratorPanelMount", () => {
         narrator={{ ...narrator, capabilities: { ...narrator.capabilities, read: false } }}
       />,
     );
-    expect(screen.getByRole("alert").textContent).toContain("不可访问");
+    expect(screen.getByRole("alert").textContent).toContain("已无法打开");
     expect(screen.queryByTestId("native-narrator-panel-mock")).toBeNull();
   });
 
@@ -137,7 +137,7 @@ describe("RuntimeNarratorPanelMount", () => {
     expect(await screen.findByTestId("native-narrator-panel-mock")).not.toBeNull();
 
     rerender(<RuntimeStandaloneNarratorPanelMount narrator={{ ...standalone, chapterId: "chapter-1" }} />);
-    expect(screen.getByRole("alert").textContent).toContain("不是可独立访问");
+    expect(screen.getByRole("alert").textContent).toContain("无法单独打开");
   });
 
   it("监听 #msg hash 变化并交给原生面板", async () => {

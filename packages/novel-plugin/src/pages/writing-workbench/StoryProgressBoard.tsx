@@ -467,7 +467,7 @@ function DebtLedger({
   if (debts.length === 0) {
     return (
       <p className="px-1 py-2 text-xs text-muted-foreground" data-testid="story-progress-debts-empty">
-        没有伏笔条目。埋点后这里会列出未回收的债。
+        还没有未回收的伏笔。
       </p>
     );
   }

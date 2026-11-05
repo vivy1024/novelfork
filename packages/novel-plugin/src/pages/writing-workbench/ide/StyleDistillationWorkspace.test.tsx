@@ -166,7 +166,7 @@ describe("StyleDistillationWorkspace", () => {
     expect(screen.getByText("新增 2 条待审规则")).toBeTruthy();
     expect(screen.getByText(/已合并到先出现的那条/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "继续未完成批次" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("style.distill_start"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("让叙述者继续这次蒸馏"));
     const resumeCall = request.mock.calls.find(([path]) => String(path).endsWith("/resume"));
     expect(resumeCall?.[0]).toBe("/api/books/book-1/style/distillations/jobs/job-2/resume");
     expect(JSON.parse(String(resumeCall?.[1]?.body))).toEqual({ retryFailed: false });
@@ -238,11 +238,11 @@ describe("StyleDistillationWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "采纳到本书文风预设" }));
     const exportButton = await screen.findByRole("button", { name: "生成本书专属技能" });
     fireEvent.click(exportButton);
-    await screen.findByText(/已写入 \.novelfork\/skills\/book-style-memory\/SKILL\.md（1 条规则，来源：参考作品 A）/);
+    await screen.findByText(/已生成本书技能（1 条规则，来源：参考作品 A）/);
     const exportCall = request.mock.calls.find(([path]) => String(path).endsWith("/skill-export"))!;
     expect(exportCall[0]).toBe("/api/books/book-1/style/skill-export");
     expect(exportCall[1]?.method).toBe("POST");
-    expect(screen.getByRole("button", { name: "复制 SKILL.md 内容" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复制技能内容" })).toBeTruthy();
   });
 
   it("多来源时并列「共同技法 / 来源差异 / 不应迁移」三列，每条带证据与出处；跨来源确认经同一采纳接口按版本串行提交", async () => {

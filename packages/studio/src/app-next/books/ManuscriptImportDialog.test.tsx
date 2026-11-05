@@ -176,7 +176,7 @@ describe("书架「导入旧稿」", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "继续导入" }));
     const drafts = await screen.findByTestId("manuscript-character-drafts");
-    expect(drafts.textContent).toContain("待你确认的人物草稿 2 个，确认后才会进入实体图谱与场景校验");
+    expect(drafts.textContent).toContain("待你确认的人物草稿 2 个，确认后才会生效");
     expect(drafts.textContent).toContain("从正文里统计到 2 个反复出现的人物");
     expect(drafts.textContent).toContain("实体图谱、关系图与场景校验只认已确认的人物条目");
     expect(drafts.textContent).toContain("林照（7 次）、沈默（4 次）");

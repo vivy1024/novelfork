@@ -127,7 +127,7 @@ describe("RuntimeNarratorConversationRoute", () => {
       />,
     );
 
-    expect((await screen.findByRole("alert")).textContent).toContain("不能通过独立路由访问");
+    expect((await screen.findByRole("alert")).textContent).toContain("请从作品里打开");
     expect(screen.queryByTestId("runtime-standalone-narrator-panel-mount-mock")).toBeNull();
     expect(narratorClient.openNarrator).not.toHaveBeenCalled();
     expect(onInvalidNarrator).toHaveBeenCalledWith("chapter-narrator");

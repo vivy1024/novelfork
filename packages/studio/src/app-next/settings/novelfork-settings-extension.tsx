@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { BookOpen } from "lucide-react";
 
 import type { EmbeddedSettingsExtension } from "@vivy1024/narrafork-runtime-bridge/frontend/runtime-page";
 
@@ -22,7 +22,7 @@ export const NOVELFORK_SETTINGS_EXTENSION: EmbeddedSettingsExtension = {
         {
           id: "embedding",
           label: "向量模型",
-          Icon: Sparkles,
+          Icon: BookOpen,
           Component: EmbeddingSettingsPanel,
         },
       ],

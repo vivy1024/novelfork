@@ -206,7 +206,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
     <div data-slot="narrative-memory-settings" className="flex flex-col gap-4">
       <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2.5">
         <div className="flex items-center gap-2 text-sm font-medium"><BrainCircuit className="size-4 text-primary" />动态事实与当前账本</div>
-        <p className="mt-1 text-xs text-muted-foreground">经纬负责静态设定；这里控制章节结算、旧事实失效和写作前动态召回。</p>
+        <p className="mt-1 text-xs text-muted-foreground">设置章后事实怎么结算、写作前带上哪些。</p>
       </div>
       {error && <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">{error}</p>}
 
@@ -216,7 +216,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
         <NarrativeMemoryToggle label="自动应用低风险事件" description="高置信、低风险的角色状态和情节变化直接进入账本。" checked={config.settlement.autoApplyLowRisk} onCheckedChange={(checked) => updateSettlement({ autoApplyLowRisk: checked })} disabled={!config.settlement.enabled} />
         <NarrativeMemoryToggle label="自动应用中风险事件" description="中风险事件无需作者审批即可结算；高风险事件仍保留人工确认。" checked={config.settlement.autoApplyMediumRisk} onCheckedChange={(checked) => updateSettlement({ autoApplyMediumRisk: checked })} disabled={!config.settlement.enabled} />
         <NarrativeMemoryToggle label="高风险事件始终待审" description="涉及世界规则、核心伏笔或不可逆变化时，始终进入作者确认队列。" checked={config.settlement.highRiskAlwaysPending} onCheckedChange={(checked) => updateSettlement({ highRiskAlwaysPending: checked })} disabled={!config.settlement.enabled} />
-        <NarrativeMemoryToggle label="使用 LLM 提取事件" description="关闭后仅使用规则与已有运行时状态提取章后事件。" checked={config.settlement.useLlmExtraction} onCheckedChange={(checked) => updateSettlement({ useLlmExtraction: checked })} disabled={!config.settlement.enabled} />
+        <NarrativeMemoryToggle label="用模型提取事件" description="关闭后只按规则提取章后事件。" checked={config.settlement.useLlmExtraction} onCheckedChange={(checked) => updateSettlement({ useLlmExtraction: checked })} disabled={!config.settlement.enabled} />
         <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2.5">
           <span className="min-w-0 text-sm font-medium">自动结算最低置信度</span>
           <Input aria-label="自动结算最低置信度" type="number" min={0} max={1} step={0.05} value={config.settlement.minConfidence} onChange={(event) => {
@@ -235,7 +235,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">角色内核</p>
         <NarrativeMemoryToggle
           label="启用角色内核"
-          description="章节结算时由 LLM 为出场角色重算动机、心境等长期状态；下一章写作前注入对应卡片。默认关闭，不影响既有书籍。"
+          description="结算时为出场角色更新动机、心境等长期状态，写下一章时带上。默认关闭。"
           checked={config.characterKernel.enabled}
           onCheckedChange={(checked) => updateKernel({ enabled: checked })}
         />
@@ -271,7 +271,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
         <NarrativeMemoryToggle label="Wave 重排" description="对已召回上下文进行关联扩展和能量重排，默认关闭以保证稳定预算。" checked={config.retrieval.waveEnabled} onCheckedChange={(checked) => updateRetrieval({ waveEnabled: checked })} />
         <div className="rounded-md border border-border p-3" data-testid="write-profile-caps">
           <p className="text-sm font-medium">写前七栏上限</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">控制写作前注入的角色、伏笔和近章条数。点名实体仍会保留，即使超过上限。</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">写作前最多带上多少角色、伏笔和近章；点名的角色超出也会保留。</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-3">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">核心角色
               <Input aria-label="核心角色上限" type="number" min={1} max={30} value={writeProfileCaps.coreCharacters} onChange={(event) => {

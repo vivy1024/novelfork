@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, FilePlus2, FileText, ListTree, Map as MapIcon, Route, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, FilePlus2, FileText, Compass, History, ListTree, Map as MapIcon, Route } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateApiPaths, useApi } from "@/hooks/use-api";
@@ -212,7 +212,7 @@ function StorylineResourceTree({
     const stateBadge = outlineState === "drafted"
       ? <span className="shrink-0 text-2xs text-success" title={`已对应第 ${targetChapter} 章`}>✓已落稿</span>
       : outlineState === "planned"
-        ? <span className="shrink-0 text-2xs text-muted-foreground" title={`规划为第 ${targetChapter} 章，尚未落稿`}>🗺规划中</span>
+        ? <span className="shrink-0 text-2xs text-muted-foreground" title={`规划为第 ${targetChapter} 章，尚未落稿`}>规划中</span>
         : null;
     return (
       <div key={node.id}>
@@ -353,7 +353,7 @@ function StorylineCockpit({
     <div className="shrink-0 border-b border-border bg-muted/20 px-2 py-1.5 space-y-1.5" data-testid="storyline-cockpit">
       {/* 行 A · 位置锚定 */}
       <div className="flex items-center gap-2" data-testid="storyline-position-bar">
-        <span className="text-2xs font-medium text-foreground">📍 第 {currentChapter} 章</span>
+        <span className="text-2xs font-medium text-foreground">第 {currentChapter} 章</span>
         {targetChapters !== undefined && targetChapters > 0 ? (
           <>
             <span className="text-2xs text-muted-foreground">/ 目标 {targetChapters} 章</span>
@@ -373,13 +373,13 @@ function StorylineCockpit({
         title={next.label}
         className="w-full flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-left text-2xs text-foreground transition-colors hover:bg-primary/10"
       >
-        <Sparkles className="size-3 shrink-0 text-primary" />
+        <Compass className="size-3 shrink-0 text-primary" />
         <span className="min-w-0 flex-1 truncate">{next.label}</span>
         <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
       </button>
       {/* 叙述者 seed 动作而没有叙述者通道时明说，不静默吞掉点击（口径同 NextChapterPanel 的 note） */}
       {next.key === "outline-empty" && !onSendToNarrator ? (
-        <p className="text-xs text-muted-foreground" data-testid="storyline-next-no-narrator">当前视图没接叙述者通道，这条建议点了发不出去；先在对话里开启叙述者会话。</p>
+        <p className="text-xs text-muted-foreground" data-testid="storyline-next-no-narrator">这里还没连上叙述者，请先打开一个对话再点这条建议。</p>
       ) : null}
     </div>
   );
@@ -470,7 +470,7 @@ export function StorylineAndPlanningSidebarPanel({
       <SidebarPageHead
         icon={Route}
         title="故事推进"
-        purpose="盯住位置与下一步；章节、大纲、章后事实在这里维护"
+        purpose="看写到哪、下一步写什么"
         status={currentChapter > 0 ? `第 ${currentChapter} 章` : undefined}
         action={
           <Button
@@ -523,7 +523,7 @@ export function StorylineAndPlanningSidebarPanel({
             )}
             onClick={() => setActiveSubTab("memory")}
           >
-            <Sparkles className="size-3.5 text-warning" />
+            <History className="size-3.5 text-warning" />
             <span className="truncate">章后事实</span>
           </Button>
 

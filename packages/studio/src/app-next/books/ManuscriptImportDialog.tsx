@@ -255,7 +255,7 @@ export function ManuscriptImportDialog({ open, resume, client, createBook, onClo
               <Field>
                 <FieldLabel htmlFor="manuscript-pattern">分章规则（可选）</FieldLabel>
                 <Input id="manuscript-pattern" value={pattern} onChange={(event) => setPattern(event.target.value)} placeholder="留空自动识别：第N章 / 第N回 / Chapter N" />
-                <FieldDescription>正则表达式，匹配章节标题所在的整行；第一个括号捕获标题。</FieldDescription>
+                <FieldDescription>按章节标题所在行匹配，一般留空即可。</FieldDescription>
               </Field>
             </FieldGroup>
           ) : null}
@@ -356,7 +356,7 @@ export function ManuscriptImportDialog({ open, resume, client, createBook, onClo
                   explanation={view.job.settlement.explanation}
                 />
               ) : null}
-              {running ? <p className="text-sm text-muted-foreground">逐章事实进行中，每章用 Runtime 默认模型从正文读出人物、关系和伏笔的变化；高风险变化会进「待确认」。</p> : null}
+              {running ? <p className="text-sm text-muted-foreground">逐章事实进行中，没把握的变化会放进「待确认」。</p> : null}
               {running && pollFailures >= 3 ? (
                 <p role="status" className="text-sm text-destructive">
                   连续 {pollFailures} 次没刷新到进度（可能断网或服务重启）。后台仍在跑的话进度不会丢；关掉导入页再从书架重新打开即可看到最新状态。
@@ -385,7 +385,7 @@ export function ManuscriptImportDialog({ open, resume, client, createBook, onClo
                   {view.job.report.characterDrafts && view.job.report.characterDrafts.pending > 0 ? (
                     <div className="mt-2 flex flex-col gap-2" data-testid="manuscript-character-drafts">
                       <ExplanationAlert
-                        title={`待你确认的人物草稿 ${view.job.report.characterDrafts.pending} 个，确认后才会进入实体图谱与场景校验`}
+                        title={`待你确认的人物草稿 ${view.job.report.characterDrafts.pending} 个，确认后才会生效`}
                         explanation={view.job.report.characterDrafts.explanation}
                       />
                       <p className="text-xs text-muted-foreground">

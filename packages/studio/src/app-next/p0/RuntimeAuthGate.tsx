@@ -289,9 +289,9 @@ function RuntimeLoginPage({ authStatus, onAuthenticated }: { readonly authStatus
             </div>
             {infoPanel ? (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground" role="note">
-                {infoPanel === "protocol" && "NovelFork Studio 仅作为 Runtime 的产品界面；账户、会话和小说数据由 Runtime 按当前实例策略处理。"}
-                {infoPanel === "privacy" && "登录凭据只提交给当前 Runtime；Studio 不记录密码、Passkey 响应或 Client Secret。登出和认证失效时会清除命名空间内的 Runtime 缓存。"}
-                {infoPanel === "security" && "Runtime 负责 JWT、disabled_at、管理员门禁、MFA 与 WebAuthn 校验；请在 HTTPS 或受信任的本机环境中使用 Passkey。"}
+                {infoPanel === "protocol" && "账户与作品数据保存在你当前连接的 NovelFork 服务上。"}
+                {infoPanel === "privacy" && "密码只发送给当前服务，本地不保存；退出登录时会清除本机缓存。"}
+                {infoPanel === "security" && "请在 HTTPS 或本机环境中使用 Passkey。"}
               </div>
             ) : null}
           </form>
@@ -360,14 +360,14 @@ export function RuntimeAuthGate({ children }: { readonly children: ReactNode }) 
   }, [status]);
 
   if (status === "checking") {
-    return <main className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">正在验证 Runtime 登录状态…</main>;
+    return <main className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">正在检查登录状态…</main>;
   }
   if (status === "error") {
-    return <main className="flex min-h-screen flex-col items-center justify-center gap-3 p-6"><p role="alert" className="text-sm text-destructive">无法验证 Runtime 登录状态：{error}</p><Button onClick={() => void check()}>重试</Button></main>;
+    return <main className="flex min-h-screen flex-col items-center justify-center gap-3 p-6"><p role="alert" className="text-sm text-destructive">无法检查登录状态：{error}</p><Button onClick={() => void check()}>重试</Button></main>;
   }
   if (status === "unauthenticated") {
     if (!publicAuth) {
-      return <main className="flex min-h-screen items-center justify-center p-6 text-sm text-destructive">无法读取 Runtime 注册状态。</main>;
+      return <main className="flex min-h-screen items-center justify-center p-6 text-sm text-destructive">无法读取注册状态，请刷新重试。</main>;
     }
     return <RuntimeLoginPage authStatus={publicAuth} onAuthenticated={() => { setStatus("authenticated"); }} />;
   }

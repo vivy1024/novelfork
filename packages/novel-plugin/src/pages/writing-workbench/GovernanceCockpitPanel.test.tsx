@@ -115,14 +115,14 @@ describe("GovernanceCockpitPanel", () => {
 
     // 契约只读展示 + 无写入通道提示。
     expect(screen.getByDisplayValue("凡人流逆袭")).toBeTruthy();
-    expect(screen.getByText(/手动编辑 book\.json/)).toBeTruthy();
+    expect(screen.getByText(/叙事契约暂时只能查看/)).toBeTruthy();
     const promiseInput = screen.getByDisplayValue("凡人流逆袭") as HTMLInputElement;
     expect(promiseInput.disabled).toBe(true);
     expect(screen.getByText("逆天")).toBeTruthy();
     expect(screen.getByDisplayValue(/层级 2 · 卷内可揭底牌/)).toBeTruthy();
 
     // 结算开关初始态来自 config。
-    const llmSwitch = screen.getByRole("switch", { name: "LLM 事件抽取" });
+    const llmSwitch = screen.getByRole("switch", { name: "模型事件抽取" });
     expect(llmSwitch.getAttribute("aria-checked")).toBe("true");
     const summarySwitch = screen.getByRole("switch", { name: "自动章节摘要" });
     expect(summarySwitch.getAttribute("aria-checked")).toBe("false");

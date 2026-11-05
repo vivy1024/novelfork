@@ -44,9 +44,7 @@ export function AboutPanel() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><CircuitBoard className="size-4 text-primary" />运行时构建标识</CardTitle>
-          <CardDescription>
-            当前正在服务本产品的 Runtime 构建信息。反馈问题时请附上这里的版本与提交号。
-          </CardDescription>
+          <CardDescription>反馈问题时请附上这里的版本与提交号。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           {healthError ? (
@@ -55,7 +53,7 @@ export function AboutPanel() {
             </p>
           ) : (
             <>
-              <MetadataItem icon={CircuitBoard} label="Runtime 版本" value={health?.version ?? "读取中…"} />
+              <MetadataItem icon={CircuitBoard} label="运行时版本" value={health?.version ?? "读取中…"} />
               <MetadataItem icon={GitCommitHorizontal} label="构建提交" value={health?.commit || "未提供"} />
               <MetadataItem icon={MonitorCog} label="运行平台" value={health?.platform ?? "读取中…"} />
               <MetadataItem
@@ -82,7 +80,7 @@ export function AboutPanel() {
         <RefreshCw className="mb-2 size-4 text-muted-foreground" />
         <AlertTitle>更新说明</AlertTitle>
         <AlertDescription>
-          NovelFork 当前采用标准桌面二进制 (Windows EXE) 发版模式，暂未开启在线增量热更新服务。如需升级，请前往官方 GitHub Releases 获得最新版发布文件。
+          暂不支持在线更新，请到 GitHub Releases 下载新版本。
         </AlertDescription>
       </Alert>
 

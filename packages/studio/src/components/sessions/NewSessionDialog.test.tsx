@@ -35,7 +35,7 @@ describe("NewSessionDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "创建叙述者" }));
 
     expect(onCreate).toHaveBeenCalledWith({
-      title: "小说创作会话",
+      title: "小说创作对话",
       model: "sub2api:gpt-5.6",
       permissionMode: "acceptEdits",
       startInPlanMode: false,
@@ -61,7 +61,7 @@ describe("NewSessionDialog", () => {
     fireEvent.click(await screen.findByRole("option", { name: "只读" }));
     fireEvent.pointerDown(screen.getByLabelText("推理强度"), { button: 0, ctrlKey: false, pointerType: "mouse" });
     fireEvent.click(await screen.findByRole("option", { name: "极高" }));
-    fireEvent.pointerDown(screen.getByLabelText("运行时模型"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.pointerDown(screen.getByLabelText("模型"), { button: 0, ctrlKey: false, pointerType: "mouse" });
     fireEvent.click(await screen.findByRole("option", { name: "Anthropic · Claude Sonnet 4.6" }));
 
     fireEvent.click(screen.getByRole("button", { name: "创建叙述者" }));
@@ -82,10 +82,10 @@ describe("NewSessionDialog", () => {
 
     render(<NewSessionDialog open onOpenChange={vi.fn()} onCreate={onCreate} />);
 
-    expect(await screen.findByText("将跟随 Runtime 默认模型；可在设置中稍后配置。")).toBeTruthy();
+    expect(await screen.findByText("使用默认模型，可稍后在设置中更改。")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "创建叙述者" }));
     expect(onCreate).toHaveBeenCalledWith({
-      title: "小说创作会话",
+      title: "小说创作对话",
       permissionMode: "acceptEdits",
       startInPlanMode: false,
     });

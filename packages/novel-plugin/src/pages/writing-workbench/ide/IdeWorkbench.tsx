@@ -10,7 +10,7 @@ import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import {
   FolderTree, Settings, X,
-  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, ChevronDown, MessageSquare, PenLine,
+  Clock, PlusCircle, Search, Sparkles, Feather, Lightbulb, ChevronRight, ChevronDown, MessageSquare, PenLine,
   BookOpen, Route, LayoutDashboard, TriangleAlert, Maximize2, Minimize2,
   type LucideIcon,
 } from "lucide-react";
@@ -218,7 +218,7 @@ const SIDEBAR_VIEWS: { id: SidebarView; icon: LucideIcon; label: string; title: 
   // 作者语言入口：作品基础统一角色册与世界录，故事推进统一章节/语境/演进。
   { id: "characters-lore", icon: BookOpen, label: "作品基础", title: "角色册与世界录", hasPageHead: true },
   { id: "storyline", icon: Route, label: "故事推进", title: "章节、语境与故事演进", hasPageHead: true },
-  { id: "skills-style", icon: Sparkles, label: "技能文风", title: "写作技能与文风", hasPageHead: true },
+  { id: "skills-style", icon: Feather, label: "技能文风", title: "写作技能与文风", hasPageHead: true },
 ];
 
 function filePathOf(node: WorkbenchResourceNode): string {
@@ -2221,7 +2221,7 @@ function ChatHeader({
             </button>
           )}
           {onSwitchToAgent && (
-            <button type="button" title="切换到 Agent 对话模式" aria-label="切换到 Agent 对话模式" onClick={onSwitchToAgent}
+            <button type="button" title="切换到对话模式" aria-label="切换到对话模式" onClick={onSwitchToAgent}
               className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
               <MessageSquare className="size-4" />
             </button>
@@ -2277,25 +2277,17 @@ function formatRelativeTime(dateStr: string): string {
 // ── 空白态 Tips ──────────────────────────────────────────
 
 const EMPTY_TIPS: { text: string }[] = [
-  { text: "第一次使用？在「学习中心」查看完整教程，5 分钟上手" },
-  { text: "新建书籍后，先录入核心设定到作品基础，AI 写作会更准确" },
-  { text: "试试说「帮我写下一章」，AI 会根据大纲和设定自动生成" },
-  { text: "写作管线会生成正式章节结果，可在章节编辑器里继续修订" },
-  { text: "可以用预设控制写作风格——武侠、言情、悬疑各有模板" },
-  { text: "写作卡壳？说「给我三个推进方向」让 AI 帮你打开思路" },
-  { text: "直接粘贴大纲，AI 会帮你拆分成章节结构" },
-  { text: "作品基础管理静态设定；时间线、关系变化和伏笔推进在故事推进里管理" },
-  { text: "静态作品设定写入核心规则需有来源；动态事实先进入待确认故事事件" },
-  { text: "用「检查一致性」让 AI 做 37 维连续性审查，找出逻辑漏洞" },
-  { text: "节奏分析、POV 视角——写作工具栏里都有" },
-  { text: "书籍健康度面板能一眼看出哪章需要修订" },
-  { text: "每本书可以有多个对话，写作对话和讨论对话分开更清晰" },
-  { text: "长对话变慢时，新建一个对话——AI 会自动继承上下文" },
-  { text: "子 Agent 可以并行跑多个任务，比如同时审查三章" },
-  { text: "在设置里配置模型偏好——不同任务可以用不同模型" },
-  { text: "Routines 能自动化重复工作——比如每章写完自动审查" },
-  { text: "Agent 有安全沙箱，敏感操作会先征求你的同意" },
-  { text: "支持 MCP 协议扩展工具，连接外部知识库或 API" },
+  { text: "第一次使用？在「学习中心」看看教程" },
+  { text: "先把核心设定录进作品基础，叙述者写得会更准" },
+  { text: "试试说「帮我写下一章」，叙述者会按大纲和设定起草" },
+  { text: "写好的章节可以在章节编辑器里继续修" },
+  { text: "写作卡壳？说「给我三个推进方向」" },
+  { text: "直接粘贴大纲，让叙述者拆成章节" },
+  { text: "时间线、关系变化和伏笔推进在「故事推进」里看" },
+  { text: "说「检查一致性」，让叙述者查前后矛盾" },
+  { text: "一本书可以开多个对话，写作和讨论分开更清楚" },
+  { text: "对话太长变慢时，新建一个对话" },
+  { text: "在设置里可以给不同任务选不同模型" },
 ];
 
 function ChatEmptyTip() {
@@ -2399,31 +2391,25 @@ function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate, ca
 }
 
 // ── ViewEmptyState（无激活 Tab 时的编辑区空态） ──
-// 空态模板：这里是什么 + 第一步点哪；侧栏收起时给一个展开按钮，免得「看左侧」指向一块看不见的地方。
+// 空态模板：只说第一步点哪；侧栏收起时给一个展开按钮，免得「看左侧」指向一块看不见的地方。
 
-const VIEW_EMPTY_COPY: Record<SidebarView, { purpose: string; steps: readonly string[] }> = {
+const VIEW_EMPTY_COPY: Record<SidebarView, { steps: readonly string[] }> = {
   write: {
-    purpose: "这里显示你正在写的章节。",
     steps: ["在左侧「写」里点「写第 N 章」，交给叙述者起草", "或在「改」里打开刚写完的一章继续修"],
   },
   resources: {
-    purpose: "这里显示作品总览、书里的文件和分析工具的结果。",
     steps: ["在左侧「文件」里点开任意文件", "或在「分析工具」里选一个工具，结果在这里打开"],
   },
   search: {
-    purpose: "在全书里找人名、地名或一句原文。",
     steps: ["在左侧搜索框输入关键词，点结果直接打开"],
   },
   "characters-lore": {
-    purpose: "角色、地点、势力和各类设定都在这里。",
     steps: ["在左侧「角色册」或「世界录」点开一张卡即可编辑", "「草案」里是拆书抽出、等你确认的条目"],
   },
   storyline: {
-    purpose: "回答「下一章写什么」：剧情线、伏笔和章后事实。",
     steps: ["在左侧点「打开故事画布」，看下一章建议和伏笔账本", "或在「章节与大纲」里打开某一章"],
   },
   "skills-style": {
-    purpose: "管理写作技能和本书文风。",
     steps: ["在左侧打开文风预设、文风金库或某个写作技能"],
   },
 };
@@ -2444,7 +2430,6 @@ function ViewEmptyState({ view, sidebarVisible, onShowSidebar }: {
         </span>
         <div className="flex flex-col gap-1">
           <p className="text-base font-semibold text-foreground">{meta.label}</p>
-          <p className="text-sm text-muted-foreground">{copy.purpose}</p>
         </div>
         <ol className="flex flex-col gap-1.5 text-sm text-foreground">
           {copy.steps.map((step, index) => (
@@ -2578,7 +2563,7 @@ function SearchPanel({ nodes, fileNodes, jingweiSections, memorySections, onOpen
           />
         </div>
         <p className="mt-1 px-1 text-xs leading-relaxed text-muted-foreground">
-          范围：章节正文、工作区资源、作品基础和故事推进
+          搜索章节正文、文件、作品基础和故事推进
         </p>
       </div>
       {/* 搜索结果列表 */}

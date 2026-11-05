@@ -380,7 +380,7 @@ function StoryStatusSummary({
       {factEditError ? <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{factEditError}</div> : null}
 
       {factPreview.length === 0 ? (
-        <p className="text-xs text-muted-foreground">还没有沉淀动态事实。写完一章后会自动出现角色状态、关系、伏笔等。</p>
+        <p className="text-xs text-muted-foreground">还没有章后事实，写完一章后会自动出现。</p>
       ) : entityGroups.length > 0 ? (
         <EntityStatusBoard
           bookId={bookId}
@@ -890,7 +890,7 @@ function RelationshipMatrix({ facts }: { facts: EntityFact[] }) {
   }, [facts]);
 
   if (rows.rels.length === 0) {
-    return <p className="text-xs text-muted-foreground">还没有关系事实。角色间关系变化会在章后结算自动沉淀。</p>;
+    return <p className="text-xs text-muted-foreground">还没有关系事实，写完一章后会自动出现。</p>;
   }
   if (rows.subjects.length > 30 || rows.objects.length > 30) {
     return <p className="text-xs text-muted-foreground">关系实体超过 30 个，建议切到「发展历程 › 骨架关系层」查看。</p>;
@@ -938,7 +938,7 @@ function HookBoard({ facts, currentChapter, onOpenChapter }: { facts: EntityFact
   }, [facts]);
 
   if (hooks.length === 0) {
-    return <p className="text-xs text-muted-foreground">还没有伏笔事实。伏笔的埋设与推进会在章后结算自动沉淀。</p>;
+    return <p className="text-xs text-muted-foreground">还没有伏笔事实，写完一章后会自动出现。</p>;
   }
 
   return (
@@ -1558,7 +1558,7 @@ export function NarrativeMemoryPanelShell({
       {error && <div className="rounded border border-destructive/30 bg-destructive/10 p-3 text-destructive">加载失败：{error}</div>}
       {empty && (
         <div className="rounded-lg border border-dashed border-border p-4 text-muted-foreground">
-          还没有章后事实。写完一章后会自动结算；这里只展示动态状态，不编辑作品基础。
+          还没有章后事实，写完一章后会自动出现。
         </div>
       )}
 
@@ -1656,7 +1656,7 @@ export function NarrativeMemoryPanelShell({
                 </button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">章后默认自动结算；这里通常只剩高风险/低置信度项，可不处理也不阻断写作。</p>
+            <p className="text-xs text-muted-foreground">章后默认自动结算，这里只剩没把握的变化，不处理也不影响写作。</p>
 
             {/* 置信度筛选 + 全选：批量处理低置信抽取时先筛再选。 */}
             <div className="flex flex-wrap items-center gap-1" aria-label="待确认置信度筛选">
@@ -1794,7 +1794,7 @@ export function NarrativeMemoryPanelShell({
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-hook-section">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold">伏笔事实 ({allEntityFacts.filter((f) => f.category === "hook").length})</h3>
-              <span className="text-2xs text-muted-foreground">章后沉淀的伏笔事实与推进</span>
+              <span className="text-2xs text-muted-foreground">伏笔的埋设与推进</span>
             </div>
             <HookBoard facts={allEntityFacts} currentChapter={currentChapter} onOpenChapter={onOpenChapter} />
           </section>
@@ -1804,9 +1804,8 @@ export function NarrativeMemoryPanelShell({
             <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
             <EvidenceChainLookup bookId={bookId} />
           </div>
-          <p className="text-xs text-muted-foreground">已自动应用或已驳回的章后事件，按最近优先展示。</p>
-          {historyEvents.length === 0 ? (
-            <p className="text-xs text-muted-foreground">暂无结算历史。写下一章后会自动出现。</p>
+                    {historyEvents.length === 0 ? (
+            <p className="text-xs text-muted-foreground">暂无结算历史。</p>
           ) : historyEvents.map((entry) => (
             <button
               key={`${entry.kind}:${entry.id}`}
@@ -1852,8 +1851,7 @@ export function NarrativeMemoryPanelShell({
           */}
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-line-approvals">
           <h3 className="text-xs font-semibold">叙事线审批 ({lineApprovals.length})</h3>
-          <p className="text-xs text-muted-foreground">叙事线节点与关系的变更审批记录，批准与驳回都会留痕。</p>
-          {lineApprovals.length === 0 ? (
+                    {lineApprovals.length === 0 ? (
             <p className="text-xs text-muted-foreground">暂无叙事线审批记录。在叙事线视图增删节点后会出现。</p>
           ) : lineApprovals.map((approval) => (
             <div
@@ -2084,12 +2082,12 @@ function InjectionReportView({ report }: { report: WriteInjectionReport }) {
                     <li key={card.id} className="flex flex-wrap items-center gap-1.5">
                       <span>{card.title}</span>
                       <span className="text-muted-foreground">约 {card.estimatedTokens} tokens</span>
-                      {card.droppedInPacking ? <span className="rounded bg-warning/20 px-1 py-px text-warning">全局打包时被裁，未进上下文</span> : null}
+                      {card.droppedInPacking ? <span className="rounded bg-warning/20 px-1 py-px text-warning">篇幅超限，未带上</span> : null}
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-muted-foreground">文风通道没有产出非范文卡片（无文风指南 / 声线 / 合规 / 本书设计）。</p>
+                <p className="text-muted-foreground">这次没有带上文风指南、声线或本书设计。</p>
               )
             ) : null}
 
@@ -2112,7 +2110,7 @@ function InjectionReportView({ report }: { report: WriteInjectionReport }) {
                 <p className="text-muted-foreground">注入了角色声线约束。</p>
               )
             ) : (
-              <p className="text-muted-foreground">本章没有注入角色声线（出场角色没有已确认的声线字段，或未配置）。</p>
+              <p className="text-muted-foreground">本章没有带上角色声线：出场角色还没有确认过声线。</p>
             )}
 
             {samples ? (
@@ -2260,7 +2258,7 @@ export function WriteInjectionSection({ bookId, currentChapter }: { bookId: stri
     <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-write-injection">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold">写作注入</h3>
-        <span className="text-2xs text-muted-foreground">写这一章时，模型上下文里实际有什么</span>
+        <span className="text-2xs text-muted-foreground">写这一章时实际带上了哪些资料</span>
       </div>
       <div className="flex items-center gap-1">
         <input
@@ -2399,7 +2397,7 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
         </Button>
       )}
       <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-        完整的故事状态、关系矩阵、结算历史与待确认队列在中央面板中管理。
+        在中央面板查看完整的故事状态与待确认项。
       </p>
     </div>
   );

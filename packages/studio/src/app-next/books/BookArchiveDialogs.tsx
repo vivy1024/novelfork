@@ -146,7 +146,7 @@ export function BookArchiveExportDialog({ book, loadModules, onExport, onClose, 
           <DialogDescription>
             把
             <strong className="mx-1 text-foreground">{book?.title}</strong>
-            打包成一个 .zip 档案，在另一台机器的「我的作品」里导入后即可继续写。叙述者会话属于 Runtime，不在档案内。
+            打包成一个 .zip 档案，在另一台机器的「我的作品」里导入后即可继续写。对话记录不会打包。
           </DialogDescription>
         </DialogHeader>
         <ModulePicker idPrefix="export-module" modules={modules} selected={selected} error={error} onToggle={toggle} />
@@ -273,7 +273,7 @@ export function BookArchiveImportDialog({ open, loadModules, onImport, onClose, 
           result.report ? (
             <ImportReportView report={result.report} />
           ) : (
-            <p className="text-sm">这份档案刚才已经提交过，这里返回的是先前导入的作品（{result.operation.bookId}）。</p>
+            <p className="text-sm">这份档案已经导入过，打开的是先前导入的作品。</p>
           )
         ) : (
           <FieldGroup>

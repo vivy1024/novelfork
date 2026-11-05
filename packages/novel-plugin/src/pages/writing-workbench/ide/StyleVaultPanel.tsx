@@ -77,22 +77,22 @@ function percent(ratio: number): string {
 
 /** 统计指纹计数的作者可见说明：已根据多少段更新 / 还差多少段。文案只在这里生成，面板与采纳结果共用。 */
 export function describeFingerprintStatus(status: FingerprintRefreshStatus): string {
-  const remaining = `再采纳 ${status.remainingSamples} 段（或新增满 ${status.thresholds.chars} 字）后自动更新统计指纹。`;
+  const remaining = `再采纳 ${status.remainingSamples} 段（或新增满 ${status.thresholds.chars} 字）后自动更新统计基线。`;
   if (status.basis === "author-revisions") {
-    return `统计指纹已根据 ${status.includedSamples} 段作者改稿更新${status.pendingSamples > 0 ? `，此后新增 ${status.pendingSamples} 段` : ""}；${remaining}`;
+    return `统计基线已根据 ${status.includedSamples} 段作者改稿更新${status.pendingSamples > 0 ? `，此后新增 ${status.pendingSamples} 段` : ""}；${remaining}`;
   }
   if (status.basis === "external") {
     return status.pendingSamples > 0
-      ? `当前统计指纹来自手动提取或蒸馏；已新增 ${status.pendingSamples} 段作者改稿，${remaining}`
-      : `当前统计指纹来自手动提取或蒸馏；之后采纳的作者改稿攒够 ${status.thresholds.samples} 段（或 ${status.thresholds.chars} 字）会自动更新统计指纹。`;
+      ? `当前统计基线来自手动提取或蒸馏；已新增 ${status.pendingSamples} 段作者改稿，${remaining}`
+      : `当前统计基线来自手动提取或蒸馏；之后采纳的作者改稿攒够 ${status.thresholds.samples} 段（或 ${status.thresholds.chars} 字）会自动更新统计基线。`;
   }
-  return `还没有统计指纹；${remaining}`;
+  return `还没有统计基线；${remaining}`;
 }
 
 function describeRefreshResult(result: FingerprintRefreshResult | undefined): string {
   if (!result) return "";
-  if (result.outcome === "refreshed") return `已根据 ${result.status.includedSamples} 段作者改稿更新统计指纹（文风指南与范文不变）。`;
-  if (result.outcome === "skipped") return result.reason ?? "本次没有更新统计指纹。";
+  if (result.outcome === "refreshed") return `已根据 ${result.status.includedSamples} 段作者改稿更新统计基线（文风指南与范文不变）。`;
+  if (result.outcome === "skipped") return result.reason ?? "本次没有更新统计基线。";
   return describeFingerprintStatus(result.status);
 }
 
@@ -230,10 +230,10 @@ export function StyleVaultPanel({ bookId, focusChapter }: { readonly bookId: str
       <CardContent className="space-y-1">
         {loading ? <p className="text-xs text-muted-foreground">读取中…</p> : null}
         {data?.fingerprintRefresh ? (
-          <p className="text-2xs text-muted-foreground" aria-label="统计指纹更新状态">{describeFingerprintStatus(data.fingerprintRefresh)}</p>
+          <p className="text-2xs text-muted-foreground" aria-label="统计基线更新状态">{describeFingerprintStatus(data.fingerprintRefresh)}</p>
         ) : null}
         {!loading && drafted.length === 0 ? (
-          <p className="text-xs text-muted-foreground">还没有 AI 写的章节。叙述者写完一章后，这里会出现 AI 原稿与你改后的对照。</p>
+          <p className="text-xs text-muted-foreground">叙述者写完一章后，这里会出现原稿与你改后的对照。</p>
         ) : null}
         {drafted.map((chapter) => {
           const open = openChapter === chapter.chapterNumber;
