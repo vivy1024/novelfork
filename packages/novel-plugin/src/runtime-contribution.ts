@@ -57,6 +57,7 @@ import {
   type NovelRuntimeToolCatalogEntry,
 } from "./handlers/tool-registry.js";
 import { NOVEL_LEARNING_CONTRIBUTION } from "./learning-contribution.js";
+import { getModelFacingToolSchema } from "./tool-schemas.js";
 
 export interface NovelBookRuntimeBinding extends RuntimeResourceBinding {
   readonly kind: "novel.book";
@@ -765,6 +766,21 @@ async function executeReadyTool(
   return executeReadyToolImpl(tool, input, context);
 }
 
+/**
+ * 模型看到精简 schema，服务端按目录里的完整 schema 校验；两者相同时只给 inputSchema。
+ */
+function runtimeInputSchemas(tool: NovelRuntimeToolCatalogEntry): {
+  inputSchema: PortableJsonSchema;
+  validationInputSchema?: PortableJsonSchema;
+} {
+  const modelSchema = getModelFacingToolSchema(tool.name) ?? tool.inputSchema;
+  if (modelSchema === tool.inputSchema) return { inputSchema: toRuntimeInputSchema(tool.inputSchema) };
+  return {
+    inputSchema: toRuntimeInputSchema(modelSchema),
+    validationInputSchema: toRuntimeInputSchema(tool.inputSchema),
+  };
+}
+
 const READY_RUNTIME_TOOLS = NOVEL_RUNTIME_TOOL_CATALOG.filter(
   (tool): tool is NovelRuntimeToolCatalogEntry & { readonly runtimeStatus: "ready" } => tool.runtimeStatus === "ready",
 );
@@ -786,7 +802,7 @@ export const NOVEL_RUNTIME_CONTRIBUTION: RuntimePluginContribution = {
     definition: {
       name: tool.name,
       description: tool.description,
-      inputSchema: toRuntimeInputSchema(tool.inputSchema),
+      ...runtimeInputSchemas(tool),
       renderer: tool.renderer,
       risk: tool.risk,
       enabledForModes: tool.enabledForModes,

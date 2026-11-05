@@ -1028,3 +1028,40 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
 
 NOVEL_TOOL_SCHEMAS["lore.read"] = NOVEL_TOOL_SCHEMAS["jingwei.read"]!;
 NOVEL_TOOL_SCHEMAS["lore.write"] = NOVEL_TOOL_SCHEMAS["jingwei.write"]!;
+
+/**
+ * 面向模型的精简 schema：sceneSpec 子结构（约 1.9k 字符）只在 scene.spec 里完整出现一次，
+ * 下游工具改成「原样回传」的开放对象；acknowledgedSkills 是不参与门禁的兼容字段，不再展示给模型。
+ *
+ * 只精简展示，不放宽校验：服务端仍用 NOVEL_TOOL_SCHEMAS 里的完整 schema 校验（见
+ * runtime-contribution 的 validationInputSchema），蓝图结构错了照样被拦，兼容字段照样接受。
+ */
+const SCENE_SPEC_PASSTHROUGH_SCHEMA = { type: "object", description: "原样传入 scene_spec 返回的 sceneSpec。" };
+const SCENE_SPEC_PASSTHROUGH_TOOLS: readonly string[] = ["write.preflight", "pipeline.write", "chapter.audit"];
+const MODEL_HIDDEN_COMPAT_FIELDS: readonly string[] = ["acknowledgedSkills"];
+
+function toModelFacingSchema(name: string, schema: ToolInputSchema): ToolInputSchema {
+  const properties: Record<string, unknown> = { ...schema.properties };
+  let changed = false;
+  if (SCENE_SPEC_PASSTHROUGH_TOOLS.includes(name) && properties.sceneSpec) {
+    const optional = !(schema.required ?? []).includes("sceneSpec");
+    properties.sceneSpec = optional
+      ? { ...SCENE_SPEC_PASSTHROUGH_SCHEMA, description: `可选：${SCENE_SPEC_PASSTHROUGH_SCHEMA.description}` }
+      : SCENE_SPEC_PASSTHROUGH_SCHEMA;
+    changed = true;
+  }
+  for (const field of MODEL_HIDDEN_COMPAT_FIELDS) {
+    if (field in properties) {
+      delete properties[field];
+      changed = true;
+    }
+  }
+  return changed ? { ...schema, properties } : schema;
+}
+
+/** 模型看到的 schema；与 NOVEL_TOOL_SCHEMAS（服务端校验用的完整 schema）不同的工具才另给一份。 */
+export function getModelFacingToolSchema(name: string): ToolInputSchema | undefined {
+  const schema = NOVEL_TOOL_SCHEMAS[name];
+  return schema ? toModelFacingSchema(name, schema) : undefined;
+}
+

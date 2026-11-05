@@ -272,7 +272,31 @@ describe("novel Runtime contribution", () => {
   it("does not expose host-controlled fields in any model schema", () => {
     for (const contribution of NOVEL_RUNTIME_CONTRIBUTION.tools ?? []) {
       expectModelSchemaIsBounded(contribution.definition.inputSchema);
+      if (contribution.definition.validationInputSchema) {
+        expectModelSchemaIsBounded(contribution.definition.validationInputSchema);
+      }
     }
+  });
+
+  it("精简的模型 schema 只去掉展示，完整校验 schema 随贡献一起交给宿主", () => {
+    const definitions = new Map((NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((entry) => [entry.definition.name, entry.definition]));
+    const trimmed = [...definitions.values()].filter((definition) => definition.validationInputSchema).map((definition) => definition.name);
+    expect(trimmed.sort()).toEqual(["chapter.audit", "pipeline.write", "write.preflight"]);
+    for (const name of trimmed) {
+      const definition = definitions.get(name)!;
+      const model = definition.inputSchema.properties as Record<string, Record<string, unknown>>;
+      const full = definition.validationInputSchema!.properties as Record<string, Record<string, unknown>>;
+      // 校验用的完整 schema 保留蓝图结构与兼容字段；字段集合只多不少。
+      expect(full.sceneSpec?.properties).toBeDefined();
+      expect(model.sceneSpec?.properties).toBeUndefined();
+      expect(Object.keys(model).every((key) => key in full)).toBe(true);
+      expect(definition.inputSchema.required).toEqual(definition.validationInputSchema!.required);
+    }
+    expect(definitions.get("pipeline.write")!.validationInputSchema!.properties).toHaveProperty("acknowledgedSkills");
+    expect(definitions.get("pipeline.write")!.inputSchema.properties).not.toHaveProperty("acknowledgedSkills");
+    // scene.spec 不精简：蓝图结构只在这里完整出现一次。
+    expect(definitions.get("scene.spec")!.validationInputSchema).toBeUndefined();
+    expect((definitions.get("scene.spec")!.inputSchema.properties as Record<string, Record<string, unknown>>).sceneSpec?.properties).toBeDefined();
   });
 
   it("publishes stable NUG-compatible NovelFork tool schemas", () => {

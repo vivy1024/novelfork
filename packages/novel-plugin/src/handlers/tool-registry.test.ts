@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  getNovelToolRoutineId,
-  listNovelToolRoutines,
   NOVEL_RUNTIME_TOOL_CATALOG,
   NOVEL_SESSION_TOOL_DEFINITIONS,
-  NOVEL_TOOL_ROUTINES,
 } from "./tool-registry";
+import {
+  getNovelToolRoutineId,
+  LEGACY_NOVEL_TOOL_ROUTINE_GROUPS,
+  listNovelToolRoutines,
+  NOVEL_TOOL_ROUTINE_TOOL_NAMES,
+  NOVEL_TOOL_ROUTINES,
+} from "./tool-routines";
 
 function tool(name: string) {
   return NOVEL_SESSION_TOOL_DEFINITIONS.find((definition) => definition.name === name);
@@ -255,51 +259,86 @@ describe("T-05a 既有行为守护：book.dissect 的 resolveRisk 不变", () =>
 });
 
 /**
- * 小说工具在 NarraFork「可选工具」里按套路管理：Runtime 只认套路的模式、/load 与持久化加载，
- * 产品不再自己决定哪些工具常驻。分组由工具自身的 visibility / risk / 名称推出，不另存清单。
+ * 小说工具在 NarraFork「可选工具」里逐个管理：一个工具一个套路，作者可单独设手动 / 自动 / 常驻。
+ * Runtime 只认套路的模式、/load 与持久化加载，产品不再自己决定哪些工具常驻。
  */
-describe("小说工具套路分组", () => {
+describe("小说工具套路（一个工具一个）", () => {
   const ready = NOVEL_RUNTIME_TOOL_CATALOG.filter((entry) => entry.runtimeStatus === "ready");
   const routines = listNovelToolRoutines(ready);
   const routineOf = (name: string) => routines.find((routine) => routine.toolNames.includes(name));
+  // 与 Runtime product-host/tool-routines.ts 的 PRODUCT_TOOL_ROUTINE_ID 同一规则。
+  const RUNTIME_ROUTINE_ID = /^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/;
 
-  it("每个贡献给 Runtime 的小说工具恰好属于一个套路，且不超过 5 组", () => {
+  it("每个贡献给 Runtime 的小说工具恰好属于一个套路，每个套路只含一个工具", () => {
     const all = routines.flatMap((routine) => routine.toolNames);
     expect(new Set(all).size).toBe(all.length);
     expect([...all].sort()).toEqual(ready.map((entry) => entry.name).sort());
-    expect(routines.length).toBeLessThanOrEqual(5);
-    expect(routines.every((routine) => routine.toolNames.length > 0)).toBe(true);
+    expect(routines.every((routine) => routine.toolNames.length === 1)).toBe(true);
+    // 档位表与目录一一对应：新增工具必须登记档位，删掉的工具不能留下孤儿档位。
+    expect([...NOVEL_TOOL_ROUTINE_TOOL_NAMES].sort()).toEqual(ready.map((entry) => entry.name).sort());
+    expect(NOVEL_TOOL_ROUTINES).toHaveLength(ready.length);
   });
 
-  it("套路 id 带 novelfork 命名空间、全小写，中英文名称与说明齐全", () => {
+  it("套路 id 是 novelfork.<工具名>（下划线换连字符），能通过 Runtime 的 id 校验且互不重复", () => {
+    expect(getNovelToolRoutineId("memory.settle_range")).toBe("novelfork.memory.settle-range");
+    expect(getNovelToolRoutineId("character.voice.read")).toBe("novelfork.character.voice.read");
+    const ids = NOVEL_TOOL_ROUTINES.map((routine) => routine.id);
+    expect(new Set(ids).size).toBe(ids.length);
     for (const routine of NOVEL_TOOL_ROUTINES) {
-      expect(routine.id).toMatch(/^novelfork\.[a-z0-9-]+$/);
-      expect(routine.nameZh.trim()).not.toBe("");
+      expect(routine.id).toMatch(RUNTIME_ROUTINE_ID);
+      expect(routine.id.startsWith("novelfork.")).toBe(true);
+      expect(routine.nameZh).toMatch(/^[^·]+·.+$/u);
       expect(routine.nameEn.trim()).not.toBe("");
       expect(routine.descriptionZh.trim()).not.toBe("");
       expect(routine.descriptionEn.trim()).not.toBe("");
     }
+    // 不与旧组 id 冲突，迁移前后两套 id 不会互相遮挡。
+    for (const legacy of Object.keys(LEGACY_NOVEL_TOOL_ROUTINE_GROUPS)) expect(ids).not.toContain(legacy);
   });
 
-  it("作者工具默认常驻，高级工具默认手动", () => {
-    for (const entry of ready) {
-      const routine = routineOf(entry.name);
-      expect(routine?.defaultMode).toBe(entry.visibility === "author" ? "resident" : "manual");
+  it("默认档位：作者核心工具常驻，维护 / 诊断 / 市场 / 低频工具手动", () => {
+    const resident = [
+      "cockpit.snapshot", "chapter.read", "chapter.write", "chapter.list", "pipeline.write", "write.preflight",
+      "scene.spec", "chapter.audit", "rewrite.apply", "lore.read", "lore.write", "memory.read", "memory.search",
+      "memory.settle_chapter", "memory.settle_range", "hooks.manage", "outline.volume",
+      "workflow.get_current_step", "workflow.submit_step_output", "workflow.report_blocker", "workflow.start_run",
+    ];
+    const manual = [
+      "chapter.discard_range", "memory.bulk_delete", "memory.bulk_approve", "memory.update", "memory.delete",
+      "skills.import_legacy", "memory.list", "memory.stats", "memory.export", "memory.dedup", "memory.read_entry",
+      "jingwei.audit", "market.scan", "market.query", "market.ranks", "market.sample_public_chapters",
+      "style.distill_preview", "style.distill_start", "style.distill_status", "style.distill_adopt",
+      "book.dissect", "pipeline.import_chapters", "workflow.edit_recipe", "publish.check",
+      "skills.recommend", "skills.check_compliance", "character.voice.draft",
+    ];
+    for (const name of resident) expect(routineOf(name)?.defaultMode, name).toBe("resident");
+    for (const name of manual) expect(routineOf(name)?.defaultMode, name).toBe("manual");
+    // 运行中的工作流靠这些工具推进，一律常驻。
+    for (const entry of ready.filter((tool) => tool.name.startsWith("workflow.") && tool.name !== "workflow.edit_recipe")) {
+      expect(routineOf(entry.name)?.defaultMode, entry.name).toBe("resident");
+    }
+    // 破坏性工具不能常驻。
+    for (const entry of ready.filter((tool) => tool.risk === "destructive")) {
+      expect(routineOf(entry.name)?.defaultMode, entry.name).toBe("manual");
     }
   });
 
-  it("工作流工具留在小说创作组（进行中的运行靠它们提交工序），市场调研单独成组", () => {
-    expect(routineOf("workflow.submit_step_output")?.id).toBe("novelfork.writing");
-    expect(routineOf("pipeline.write")?.id).toBe("novelfork.writing");
-    expect(routineOf("market.scan")?.id).toBe("novelfork.market");
-    expect(getNovelToolRoutineId({ name: "market.ranks", visibility: "author", risk: "read" })).toBe("novelfork.market");
+  it("套路名带分组前缀，便于在可选工具页成组阅读", () => {
+    expect(routineOf("pipeline.write")?.nameZh).toBe("创作·写章落盘");
+    expect(routineOf("market.scan")?.nameZh).toBe("市场·扫榜");
+    expect(routineOf("workflow.submit_step_output")?.nameZh).toBe("工作流·提交工序产物");
   });
 
-  it("高级工具按是否只读分成资料诊断与小说维护", () => {
-    expect(routineOf("memory.search")?.id).toBe("novelfork.memory-inspect");
-    expect(routineOf("jingwei.audit")?.id).toBe("novelfork.memory-inspect");
-    expect(routineOf("memory.bulk_delete")?.id).toBe("novelfork.maintenance");
-    expect(routineOf("chapter.discard_range")?.id).toBe("novelfork.maintenance");
-    expect(routineOf("memory.settle_range")?.id).toBe("novelfork.maintenance");
+  it("旧组成员冻结为旧版分组规则，供档位迁移使用", () => {
+    const legacy = LEGACY_NOVEL_TOOL_ROUTINE_GROUPS;
+    const all = Object.values(legacy).flat();
+    expect(new Set(all).size).toBe(all.length);
+    expect([...all].sort()).toEqual(ready.map((entry) => entry.name).sort());
+    expect(legacy["novelfork.writing"]).toEqual(expect.arrayContaining(["pipeline.write", "workflow.submit_step_output"]));
+    expect(legacy["novelfork.market"]).toEqual(expect.arrayContaining(["market.scan", "market.ranks"]));
+    expect(legacy["novelfork.memory-inspect"]).toEqual(expect.arrayContaining(["memory.search", "jingwei.audit"]));
+    expect(legacy["novelfork.maintenance"]).toEqual(
+      expect.arrayContaining(["memory.bulk_delete", "chapter.discard_range", "memory.settle_range"]),
+    );
   });
 });

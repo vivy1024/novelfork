@@ -544,24 +544,76 @@ RUNTIME_WRITING_SKILL_MARKER
 		expect(getNovelRuntimeToolPermissionPolicy("Terminal")).toBeNull();
 	});
 
-	test("groups every contributed tool into exactly one NarraFork tool routine, by registry name", () => {
+	test("contributes one NarraFork tool routine per contributed tool, by registry name", () => {
 		const routines = getNovelRuntimeToolRoutines();
 		const registered = adapter.toolDefinitions().map((tool) => tool.name).sort();
 		const grouped = routines.flatMap((routine) => routine.toolNames);
 		expect(new Set(grouped).size).toBe(grouped.length);
 		expect([...grouped].sort()).toEqual(registered);
+		expect(routines.every((routine) => routine.toolNames.length === 1)).toBe(true);
 
-		const byId = new Map(routines.map((routine) => [routine.id, routine]));
-		expect(byId.get("novelfork.writing")?.defaultMode).toBe("resident");
-		expect(byId.get("novelfork.writing")?.toolNames).toContain("pipeline_write");
-		expect(byId.get("novelfork.writing")?.toolNames).toContain("workflow_submit_step_output");
-		expect(byId.get("novelfork.market")?.toolNames).toContain("market_scan");
-		expect(byId.get("novelfork.maintenance")?.defaultMode).toBe("manual");
-		expect(byId.get("novelfork.maintenance")?.toolNames).toContain("memory_bulk_delete");
-		expect(byId.get("novelfork.memory-inspect")?.toolNames).toContain("memory_search");
+		const byTool = new Map(routines.map((routine) => [routine.toolNames[0], routine]));
+		expect(byTool.get("pipeline_write")).toMatchObject({ id: "novelfork.pipeline.write", defaultMode: "resident" });
+		expect(byTool.get("workflow_submit_step_output")?.defaultMode).toBe("resident");
+		expect(byTool.get("market_scan")).toMatchObject({ id: "novelfork.market.scan", defaultMode: "manual" });
+		expect(byTool.get("memory_bulk_delete")?.defaultMode).toBe("manual");
+		expect(byTool.get("memory_settle_range")?.id).toBe("novelfork.memory.settle-range");
 		for (const routine of routines) {
+			// 与 Runtime product-host/tool-routines.ts 的 id 校验同一规则。
+			expect(routine.id).toMatch(/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/);
 			expect(routine.toolNames.every((name) => /^[A-Za-z0-9_-]{1,64}$/u.test(name))).toBe(true);
 		}
+	});
+
+	test("sceneSpec 只在 scene_spec 里完整展示，下游工具展示开放对象但服务端仍按完整蓝图校验", async () => {
+		const definitions = new Map(adapter.toolDefinitions().map((tool) => [tool.name, tool]));
+		const propertiesOf = (name: string) =>
+			(definitions.get(name)?.rawJsonSchema?.properties ?? {}) as Record<string, Record<string, unknown>>;
+		// scene_spec 保留完整结构。
+		expect(propertiesOf("scene_spec").sceneSpec?.properties).toBeDefined();
+		for (const name of ["pipeline_write", "write_preflight", "chapter_audit"]) {
+			const sceneSpec = propertiesOf(name).sceneSpec;
+			expect(sceneSpec?.type, name).toBe("object");
+			expect(sceneSpec?.properties, name).toBeUndefined();
+			expect(String(sceneSpec?.description), name).toContain("原样传入 scene_spec 返回的 sceneSpec");
+			// 兼容字段不再展示给模型。
+			expect(propertiesOf(name).acknowledgedSkills, name).toBeUndefined();
+		}
+		expect(propertiesOf("pipeline_write").sceneSpec?.description).not.toContain("可选");
+		expect(propertiesOf("write_preflight").sceneSpec?.description).toContain("可选");
+		expect(definitions.get("pipeline_write")?.rawJsonSchema?.required).toEqual(["sceneSpec", "content"]);
+
+		const validSpec = {
+			chapter: 2,
+			title: "雨夜",
+			wordTarget: 2000,
+			scenes: [{ characters: ["林舟"], location: "旧码头", conflict: "交货被截", outcome: "货丢了" }],
+			constraints: [],
+		};
+		const pipelineParameters = definitions.get("pipeline_write")!.parameters;
+		// Runtime 执行前的参数校验（parameters）仍是完整蓝图：结构错、多余字段一律拦下。
+		expect(pipelineParameters.safeParse({ sceneSpec: validSpec, content: "正文" }).success).toBe(true);
+		expect(pipelineParameters.safeParse({ sceneSpec: { ...validSpec, scenes: [{ location: "旧码头" }] }, content: "正文" }).success).toBe(false);
+		expect(pipelineParameters.safeParse({ sceneSpec: { ...validSpec, extra: 1 }, content: "正文" }).success).toBe(false);
+		expect(pipelineParameters.safeParse({ sceneSpec: "蓝图", content: "正文" }).success).toBe(false);
+		// 旧客户端还在传的兼容字段照样接受。
+		expect(pipelineParameters.safeParse({
+			sceneSpec: validSpec,
+			content: "正文",
+			acknowledgedSkills: [{ slug: "nf-write-chapter", quote: "引用" }],
+		}).success).toBe(true);
+		expect(definitions.get("chapter_audit")!.parameters.safeParse({ chapterNumber: 1, sceneSpec: { title: "缺字段" } }).success).toBe(false);
+		expect(definitions.get("write_preflight")!.parameters.safeParse({ sceneSpec: { ...validSpec, scenes: "x" } }).success).toBe(false);
+
+		// execute 内的复核同样走完整 schema，模型绕过 parameters 直接调用也拦得住。
+		bindNarrator();
+		const rejected = await adapter.execute(
+			"pipeline_write",
+			{ sceneSpec: { ...validSpec, scenes: [{ location: "旧码头" }] }, content: "正文" },
+			"narrator-a",
+		);
+		expect(rejected.isError).toBe(true);
+		expect(rejected.output).toContain("工具参数无效");
 	});
 
 	test("preserves provider alias mapping without duplicating ToolDefinitions", () => {

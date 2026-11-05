@@ -303,6 +303,11 @@ function boundBookRoot(context: RuntimeResolveContext | null): string | undefine
 	return typeof binding?.root === "string" && binding.root.trim() ? binding.root : undefined;
 }
 
+/** 服务端校验用的 schema：贡献给了完整 schema 就用它，否则用展示给模型的那份。 */
+function validationSchemaOf(definition: RuntimeToolContribution["definition"]): object {
+	return definition.validationInputSchema ?? definition.inputSchema;
+}
+
 function toRuntimeRisk(risk: string | undefined): RuntimeToolRisk {
 	if (risk === "read" || risk === "draft-write" || risk === "confirmed-write" || risk === "destructive") return risk;
 	// An incomplete or future contribution must not silently become a read tool.
@@ -529,18 +534,11 @@ export class NovelRuntimeHostAdapter {
 	}
 
 	/**
-	 * 小说工具在 NarraFork「可选工具」里的套路（分组与默认档位见 NOVEL_TOOL_ROUTINES）。
+	 * 小说工具在 NarraFork「可选工具」里的套路：一个工具一个（id 与默认档位见 novel-plugin 的 tool-routines）。
 	 * 只含真正贡献给 Runtime 的工具，名字用 Runtime 注册名（点号换成下划线）。
 	 */
 	toolRoutines(): RuntimeProductToolRoutineContribution[] {
-		const contributed = (NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => {
-			const policy = getNovelToolPermissionPolicy(tool.definition.name);
-			return {
-				name: tool.definition.name,
-				visibility: policy?.visibility ?? "advanced",
-				risk: toRuntimeRisk(policy?.risk ?? tool.definition.risk),
-			};
-		});
+		const contributed = (NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => ({ name: tool.definition.name }));
 		return listNovelToolRoutines(contributed).map((routine) => ({
 			id: routine.id,
 			nameEn: routine.nameEn,
@@ -690,7 +688,8 @@ export class NovelRuntimeHostAdapter {
 		return {
 			name: wireToolName,
 			description: this.toModelFacingText(definition.description),
-			parameters: this.validatorFor(definition.inputSchema),
+			// 模型看 inputSchema（可能已精简）；Runtime 执行前的参数校验与 execute 里的复核都用完整 schema。
+			parameters: this.validatorFor(validationSchemaOf(definition)),
 			rawJsonSchema: definition.inputSchema as Record<string, unknown>,
 			execute: (args, ctx) => this.execute(wireToolName, args, ctx),
 			metadata: {
@@ -714,7 +713,7 @@ export class NovelRuntimeHostAdapter {
 		}
 
 		try {
-			const parsed = this.validatorFor(tool.definition.inputSchema).safeParse(input);
+			const parsed = this.validatorFor(validationSchemaOf(tool.definition)).safeParse(input);
 			if (parsed.success) return { success: true, data: parsed.data as Record<string, unknown> };
 			return { success: false, summary: `工具参数无效：${parsed.error.message}` };
 		} catch (error) {

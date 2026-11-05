@@ -204,7 +204,7 @@ export {
 
 export { generateId } from "../../narrafork-runtime-private/server/lib/id";
 export { logger } from "../../narrafork-runtime-private/server/lib/logger";
-export { settings } from "../../narrafork-runtime-private/server/lib/settings";
+export { saveSettings, settings } from "../../narrafork-runtime-private/server/lib/settings";
 export { FOLLOW_DEFAULT_MODEL } from "../../narrafork-runtime-private/server/lib/settings/provider";
 export type {
 	McpToolPermission,
@@ -244,6 +244,17 @@ export type {
 	HookInput,
 	HookResult,
 } from "../../narrafork-runtime-private/server/services/hook-service";
+
+/** 可选工具套路的三档模式读写（Runtime 自己的 settings / 项目层都用这一套，旧白名单 / 黑名单随之同步）。 */
+export {
+	applyToolRoutineMode,
+	clearToolRoutineMode,
+	normalizeToolRoutineMode,
+} from "../../narrafork-runtime-private/shared/routine-modes";
+export type {
+	ResolvedRoutineModeConfig,
+	RoutineModeConfig,
+} from "../../narrafork-runtime-private/shared/routine-modes";
 
 export {
 	disableRoutineForProject,

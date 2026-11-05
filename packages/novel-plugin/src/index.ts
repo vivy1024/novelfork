@@ -93,18 +93,22 @@ export type {
 export { NOVEL_HANDLER_DECLARATIONS, isNovelPluginTool, getHandlerDeclaration } from "./handler-registry.js";
 export type { NovelHandlerDeclaration } from "./handler-registry.js";
 
+export { getNovelToolPermissionPolicy } from "./handlers/tool-registry.js";
+export type { NovelToolPermissionPolicy } from "./handlers/tool-registry.js";
 export {
-  getNovelToolPermissionPolicy,
+  getNovelToolRoutine,
   getNovelToolRoutineId,
+  LEGACY_NOVEL_TOOL_ROUTINE_GROUPS,
   listNovelToolRoutines,
+  NOVEL_TOOL_ROUTINE_TOOL_NAMES,
   NOVEL_TOOL_ROUTINES,
-} from "./handlers/tool-registry.js";
+} from "./handlers/tool-routines.js";
 export type {
-  NovelToolPermissionPolicy,
+  LegacyNovelToolRoutineGroupId,
   NovelToolRoutineDefinition,
   NovelToolRoutineId,
   NovelToolRoutineMode,
-} from "./handlers/tool-registry.js";
+} from "./handlers/tool-routines.js";
 
 /**
  * 小说工具名列表 — 从 NOVEL_TOOL_SCHEMAS 动态生成，确保与 schema 定义同步。

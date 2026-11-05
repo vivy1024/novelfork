@@ -334,6 +334,34 @@ export const settings: {
 	agent: { defaultModel: string; disabledProviders?: readonly string[]; [key: string]: unknown };
 	[key: string]: any;
 };
+/** 整体写回 Runtime 全局设置（settings.json）；传入的对象会成为新的设置单例内容。 */
+export function saveSettings(newSettings: typeof settings): void;
+/** 可选工具套路在全局 settings.routines 与项目 chapterSettings.routines 里的存储形态。 */
+export interface RoutineModeConfig {
+	disabledRoutines?: string[];
+	enabledRoutines?: string[];
+	toolModes?: Record<string, string>;
+}
+export type ResolvedRoutineModeConfig<T extends RoutineModeConfig> = Omit<
+	T,
+	"disabledRoutines" | "enabledRoutines" | "toolModes"
+> & {
+	disabledRoutines: string[];
+	enabledRoutines: string[];
+	toolModes: Record<string, string>;
+};
+/** 写入一个套路的模式并同步旧白名单 / 黑名单（resident 进白名单，manual 进黑名单，auto 都不进）。 */
+export function applyToolRoutineMode<T extends RoutineModeConfig>(
+	config: T,
+	routineId: string,
+	mode: RuntimeProductToolRoutineMode,
+): ResolvedRoutineModeConfig<T>;
+/** 去掉这一层对某个套路的全部表态（跟随上一层）。 */
+export function clearToolRoutineMode<T extends RoutineModeConfig>(
+	config: T,
+	routineId: string,
+): ResolvedRoutineModeConfig<T>;
+export function normalizeToolRoutineMode(raw: unknown): RuntimeProductToolRoutineMode | null;
 export const logger: any;
 export const hookService: any;
 export const skillService: any;

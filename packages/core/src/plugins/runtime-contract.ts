@@ -56,7 +56,13 @@ export type RuntimeToolRisk =
 export interface RuntimeToolDefinition {
   readonly name: string;
   readonly description: string;
+  /** 展示给模型的输入 schema。 */
   readonly inputSchema: PortableJsonSchema;
+  /**
+   * 可选：服务端校验用的完整 schema。展示给模型的 inputSchema 为省上下文做了精简（如原样回传的
+   * 大对象只写成开放 object）时，宿主必须用它校验，不能因为精简放宽校验。缺省时按 inputSchema 校验。
+   */
+  readonly validationInputSchema?: PortableJsonSchema;
   readonly scope?: string;
   readonly risk?: RuntimeToolRisk | string;
   readonly enabledForModes?: readonly string[];

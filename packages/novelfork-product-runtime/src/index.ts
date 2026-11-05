@@ -38,6 +38,7 @@ import { migrateLegacySessions } from "./services/legacy-session-migration";
 import { reconcileBookProjectOwners } from "./services/book-project-owner";
 import { repairLegacyToolCallOutputJson } from "./services/legacy-tool-output-repair";
 import { moveLegacyBundledSkillCopies } from "./services/legacy-skill-copies";
+import { migrateLegacyNovelToolRoutines } from "./services/legacy-tool-routine-migration";
 import { shouldBypassBookGuard } from "./services/book-guard-bypass";
 import {
 	assertBookProjectMutationAllowed,
@@ -123,6 +124,8 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 		repairLegacyToolCallOutputJson(storage);
 		// 旧版「编辑内置技能」留下的未改动副本会以全局技能出现；逐字一致的才移到备份目录。
 		await moveLegacyBundledSkillCopies(storage);
+		// 小说工具套路由四个分组改成一个工具一个：把作者对旧组设过的档位展开到组内各工具（一次性，失败只告警）。
+		await migrateLegacyNovelToolRoutines(storage);
 		await migrateLegacySessions();
 		// 给本次修复前建的书补上 Runtime 项目 owner（幂等；只补 owner 仍为空的）。
 		await reconcileBookProjectOwners();
