@@ -4,7 +4,16 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { narrativeFactSlotKey, normalizeSlotPart } from "../engine/narrative-memory/slot-key.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
-import { ensureNarrativeMemorySchema, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
+import {
+  ensureNarrativeMemorySchema,
+  NARRATIVE_EVENT_TRASH_RETENTION_DAYS,
+  updateNarrativeEventStatus,
+} from "../engine/narrative-memory/storage.js";
+import {
+  deleteNarrativeMemoryEntries,
+  reconcileSettlementLedger,
+  type DeleteNarrativeMemoryEntriesResult,
+} from "../engine/narrative-memory/ledger-consistency.js";
 import {
   NarrativeEventRiskLevelSchema,
   NarrativeEventSchema,
@@ -624,8 +633,30 @@ export async function handleMemoryStats(input: MemoryStatsInput, storageOverride
     latestSettledChapter,
     duplicateRisk,
     latestUpdatedAt: timestamps.at(-1),
+    ledgerHealth: await readLedgerHealth(storage, bookId, input.bookRoot),
   };
   return ok("已统计叙事记忆。", { stats });
+}
+
+/**
+ * 结算台账健康度：只读（dryRun）跑一遍整本对账，报告孤儿行与失效台账，不写库。
+ * 修复走显式入口（POST narrative-memory/settlement-ledger/reconcile）。
+ */
+async function readLedgerHealth(storage: StorageDatabase, bookId: string, bookRoot: string | undefined) {
+  try {
+    const report = await reconcileSettlementLedger(storage, { bookId, ...(bookRoot?.trim() ? { bookRoot } : {}), dryRun: true });
+    const orphanRows = Object.values(report.removedRows).reduce((sum, count) => sum + count, 0);
+    return {
+      ok: report.missingChapters.length === 0 && report.orphanedLedgerChapters.length === 0,
+      chapterListKnown: report.chapterListKnown,
+      missingChapters: report.missingChapters,
+      orphanRows,
+      orphanedLedgerChapters: report.orphanedLedgerChapters,
+      staleLedgerChapters: report.staleLedgerChapters,
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function countBy(rows: readonly Record<string, any>[], field: string): Record<string, number> {
@@ -772,8 +803,38 @@ export async function handleMemoryDelete(input: MemoryDeleteInput): Promise<Tool
   const storage = getStorage();
   const before = getEntry(storage, bookId, kind, id);
   if (!before) return fail("not-found", `未找到 ${kind}:${id}。`);
-  storage.sqlite.prepare(`DELETE FROM ${kind === "fact" ? "narrative_fact" : "narrative_event"} WHERE book_id = ? AND id = ?`).run(bookId, id);
-  return ok(`已删除 ${kind}:${id}。`, { deleted: { kind, id }, audit: { reason, before: toEntry(kind, before as any) } });
+  let cascade: DeleteNarrativeMemoryEntriesResult;
+  try {
+    cascade = deleteNarrativeMemoryEntries(storage, { bookId, kind, ids: [id], reason });
+  } catch (error) {
+    return fail("delete-failed", `删除 ${kind}:${id} 失败，已整体回滚：${error instanceof Error ? error.message : String(error)}`);
+  }
+  return ok(`已删除 ${kind}:${id}。${deleteCascadeNote(cascade)}`, {
+    deleted: { kind, id },
+    audit: { reason, before: toEntry(kind, before as any) },
+    cascade: cascadeSummary(cascade),
+  });
+}
+
+function cascadeSummary(cascade: DeleteNarrativeMemoryEntriesResult) {
+  return {
+    trashed: cascade.trashed,
+    affectedChapters: cascade.affectedChapters,
+    ledgerPrunedChapters: cascade.ledger.prunedChapters,
+    ledgerStaleChapters: cascade.ledger.staleChapters,
+    entityIndexRefreshed: cascade.entityIndexRefreshed,
+    ...(cascade.warnings.length > 0 ? { warnings: cascade.warnings } : {}),
+  };
+}
+
+function deleteCascadeNote(cascade: DeleteNarrativeMemoryEntriesResult): string {
+  if (cascade.deleted.length === 0) return "";
+  const parts: string[] = [];
+  if (cascade.trashed) parts.push(`事件已移入回收站，保留 ${NARRATIVE_EVENT_TRASH_RETENTION_DAYS} 天可撤销`);
+  if (cascade.ledger.staleChapters.length > 0) {
+    parts.push(`第 ${cascade.ledger.staleChapters.join("、")} 章的结算记录已失效，可重新结算`);
+  }
+  return parts.length > 0 ? `${parts.join("；")}。` : "";
 }
 
 function normalizeIds(ids: readonly string[] | undefined): string[] {
@@ -884,15 +945,24 @@ export async function handleMemoryBulkDelete(input: MemoryBulkDeleteInput): Prom
     : kind === "fact"
       ? listFacts(storage, { bookId, kind, layer: filter.layer, category: filter.category, chapterRange: filter.chapterRange, query: filter.query, limit })
       : listEvents(storage, { bookId, kind, status: filter.status, category: filter.category, chapterRange: filter.chapterRange, query: filter.query, limit });
-  const deleted: any[] = [];
-  const failed: any[] = [];
-  for (const record of records.slice(0, limit)) {
-    try {
-      storage.sqlite.prepare(`DELETE FROM ${kind === "fact" ? "narrative_fact" : "narrative_event"} WHERE book_id = ? AND id = ?`).run(bookId, record.id);
-      deleted.push({ kind, id: record.id });
-    } catch (error) {
-      failed.push({ kind, id: record.id, error: error instanceof Error ? error.message : String(error) });
-    }
+  const missing = ids.length > 0 ? ids.filter((id) => !records.some((record) => record.id === id)) : [];
+  // 整批一个事务：中途出错整体回滚，不留半删状态；台账与实体索引随删除一起收敛。
+  let cascade: DeleteNarrativeMemoryEntriesResult;
+  try {
+    cascade = deleteNarrativeMemoryEntries(storage, { bookId, kind, ids: records.slice(0, limit).map((record) => record.id), reason });
+  } catch (error) {
+    return fail("delete-failed", `批量删除失败，已整体回滚，没有删除任何条目：${error instanceof Error ? error.message : String(error)}`);
   }
-  return ok(`批量删除完成：${deleted.length} 成功，${failed.length} 失败。`, { deleted, failed, skipped: [], reason });
+  const deleted = cascade.deleted.map((id) => ({ kind, id }));
+  const failed = [
+    ...missing.map((id) => ({ kind, id, error: "not-found" })),
+    ...cascade.failed.map((item) => ({ kind, id: item.id, error: item.error })),
+  ];
+  return ok(`批量删除完成：${deleted.length} 成功，${failed.length} 失败。${deleteCascadeNote(cascade)}`, {
+    deleted,
+    failed,
+    skipped: [],
+    reason,
+    cascade: cascadeSummary(cascade),
+  });
 }

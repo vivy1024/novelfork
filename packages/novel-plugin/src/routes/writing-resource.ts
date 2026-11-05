@@ -6,6 +6,7 @@ import {
 } from "../engine/writing-resource/service.js";
 import type { ChapterStoreErrorCode, ChapterStoreExplanation } from "../engine/writing-resource/chapter-layout.js";
 import { resolveChapterVolumeDirectory } from "../handlers/outline-volume.js";
+import { chapterNumberFromResourceId, discardChapterResource } from "../handlers/chapter-discard-range.js";
 import type {
   ListWritingResourcesFilter,
   WritingResourceStatus,
@@ -123,6 +124,23 @@ export function createWritingResourceRouter(options: WritingResourceRouterOption
     const resourceId = c.req.param("resourceId");
     const current = await service.getById(bookId, resourceId);
     if (!current || current.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
+    // 正式章（文件存储）走删章级联：先清该章记忆与结算台账，再把正文归档留底；只删文件会留下孤儿记忆。
+    const chapterNumber = chapterNumberFromResourceId(current.id);
+    if (chapterNumber && options.resolveBookDir) {
+      const discarded = await discardChapterResource({
+        bookId,
+        bookRoot: options.resolveBookDir(bookId),
+        chapterNumber,
+        storage: getStorageDatabase(),
+      });
+      if (!discarded.ok) {
+        return c.json({
+          error: { code: "CHAPTER_DELETE_FAILED", message: discarded.summary },
+          ...(discarded.explanation ? { explanation: discarded.explanation } : {}),
+        }, 409);
+      }
+      return c.json({ ok: true, resourceId: current.id });
+    }
     const resource = await service.softDelete(bookId, current.id);
     return c.json({ ok: true, resourceId: resource.id });
   });

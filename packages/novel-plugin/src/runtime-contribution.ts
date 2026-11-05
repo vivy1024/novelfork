@@ -705,6 +705,40 @@ async function executeReadyToolImpl(
         return toRuntimeToolResult({ ok: true, summary: `已归档资源「${resource.title}」。`, data: { resource } });
       }
       if (action === "delete") {
+        // 正式章：走删章级联（正文归档 + 记忆与结算台账同步清理），不能只删文件留下孤儿记忆。
+        const { chapterNumberFromResourceId, discardChapterResource } = await import("./handlers/chapter-discard-range.js");
+        const chapterNumber = chapterNumberFromResourceId(resourceId);
+        const current = chapterNumber ? await service.getById(binding.bookId, resourceId) : null;
+        if (chapterNumber && current && current.deletedAt === null) {
+          const discarded = await discardChapterResource({
+            bookId: binding.bookId,
+            bookRoot: requireBoundBookRoot(binding, binding.bookId),
+            chapterNumber,
+            storage,
+          });
+          if (!discarded.ok) {
+            return toRuntimeToolResult({
+              ok: false,
+              error: discarded.error ?? "chapter-delete-failed",
+              summary: discarded.summary,
+              data: { ...(discarded.explanation ? { explanation: discarded.explanation } : {}), details: discarded.details ?? [] },
+            });
+          }
+          const resource = { ...current, content: "", status: "archived" as const };
+          return toRuntimeToolResult({
+            ok: true,
+            summary: `已删除资源「${resource.title}」。正文已移入归档目录留底，这一章的叙事记忆与结算记录已一并清理。`,
+            data: {
+              resource,
+              cascade: {
+                deletedEvents: discarded.deletedEvents,
+                deletedFacts: discarded.deletedFacts,
+                deletedOrphans: discarded.deletedOrphans,
+                archived: discarded.deletedChapterFiles,
+              },
+            },
+          });
+        }
         const resource = await service.softDelete(binding.bookId, resourceId);
         return toRuntimeToolResult({ ok: true, summary: `已删除资源「${resource.title}」。`, data: { resource } });
       }

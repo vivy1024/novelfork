@@ -161,9 +161,70 @@ export function countSettledEventStatuses(
   return { total: rows.length, applied, pending, rejected, highRiskPending };
 }
 
+/**
+ * 台账失效标记。不加列，复用 content_fingerprint：写成 `stale:<原因>:<原指纹>`。
+ * 真实正文指纹是 64 位十六进制，不会以 `stale:` 开头，所以失效台账一定走「重新结算」；
+ * 结算次数与原指纹都保留，结算新鲜度视图也会把它显示成「需要重新结算」。
+ */
+export const STALE_LEDGER_FINGERPRINT_PREFIX = "stale:";
+
+export type StaleLedgerReason = "ledger-orphaned";
+
+export function parseStaleLedgerFingerprint(
+  fingerprint: string,
+): { reason: StaleLedgerReason; previousFingerprint: string } | undefined {
+  if (!fingerprint.startsWith(STALE_LEDGER_FINGERPRINT_PREFIX)) return undefined;
+  const rest = fingerprint.slice(STALE_LEDGER_FINGERPRINT_PREFIX.length);
+  const separator = rest.indexOf(":");
+  if (separator < 0) return { reason: "ledger-orphaned", previousFingerprint: rest };
+  return { reason: rest.slice(0, separator) as StaleLedgerReason, previousFingerprint: rest.slice(separator + 1) };
+}
+
+export function staleLedgerFingerprint(reason: StaleLedgerReason, previousFingerprint: string): string {
+  // 已失效的再次失效时不叠前缀，原指纹保持可追溯。
+  const parsed = parseStaleLedgerFingerprint(previousFingerprint);
+  return `${STALE_LEDGER_FINGERPRINT_PREFIX}${reason}:${parsed ? parsed.previousFingerprint : previousFingerprint}`;
+}
+
+function tableExists(storage: StorageDatabase, table: string): boolean {
+  return Boolean(storage.sqlite.prepare(`SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table));
+}
+
+/** 台账里记的事件还「在」几条：活跃表或回收站（待确认丢弃后可撤销）里有即算。 */
+export function countSurvivingLedgerEvents(
+  storage: StorageDatabase,
+  bookId: string,
+  eventIds: readonly string[],
+): number {
+  if (eventIds.length === 0) return 0;
+  const unique = [...new Set(eventIds)];
+  const withTrash = tableExists(storage, "narrative_event_trash");
+  let surviving = 0;
+  // 分批，避免超过 SQLite 参数上限。
+  for (let offset = 0; offset < unique.length; offset += 400) {
+    const batch = unique.slice(offset, offset + 400);
+    const placeholders = batch.map(() => "?").join(", ");
+    const sql = withTrash
+      ? `SELECT COUNT(*) AS count FROM (
+          SELECT id FROM narrative_event WHERE book_id = ? AND id IN (${placeholders})
+          UNION
+          SELECT id FROM narrative_event_trash WHERE book_id = ? AND id IN (${placeholders})
+        )`
+      : `SELECT COUNT(*) AS count FROM narrative_event WHERE book_id = ? AND id IN (${placeholders})`;
+    const params = withTrash ? [bookId, ...batch, bookId, ...batch] : [bookId, ...batch];
+    surviving += storage.sqlite.prepare<{ count: number }>(sql).get(...params)?.count ?? 0;
+  }
+  return surviving;
+}
+
 export type ChapterSettlementIdempotencyDecision = Readonly<{
   /** settle=首次结算；resettle=正文已变，需要重新抽取；skip=同章同内容，跳过。 */
   decision: "settle" | "resettle" | "skip";
+  /**
+   * decision=resettle 且不是因为正文变化或 force 时的原因：
+   * ledger-orphaned = 台账记过事件，但这些事件已被删光（活跃表与回收站里都没有），旧结算结论已不存在。
+   */
+  reason?: StaleLedgerReason;
   /** 本次正文的指纹。 */
   fingerprint: string;
   /** 台账中已有的记录（首次结算时为 undefined）。 */
@@ -191,12 +252,38 @@ export function decideChapterSettlementIdempotency(
 
   if (!record) return { decision: "settle", fingerprint };
 
+  // 已被标成失效的台账（记忆删除剔光了它的事件，或对账发现事件全部消失）：必须重新结算。
+  const stale = parseStaleLedgerFingerprint(record.contentFingerprint);
+  if (stale) {
+    const normalized = { ...record, contentFingerprint: stale.previousFingerprint };
+    return {
+      decision: "resettle",
+      fingerprint,
+      record: normalized,
+      previousFingerprint: stale.previousFingerprint,
+      reason: stale.reason,
+      ...(input.force ? { forced: true } : {}),
+    };
+  }
+
   if (record.contentFingerprint !== fingerprint) {
     return { decision: "resettle", fingerprint, record, previousFingerprint: record.contentFingerprint };
   }
 
   if (input.force) {
     return { decision: "resettle", fingerprint, record, previousFingerprint: record.contentFingerprint, forced: true };
+  }
+
+  // 台账记过事件，但它们在活跃表和回收站里一条都找不到（绕过删章流程直接删了记忆）：
+  // 「已结算」的结论已经不存在，跳过只会让这章永远补不回记忆。抽取为空的章（eventIds 为空）照常跳过。
+  if (record.eventIds.length > 0 && countSurvivingLedgerEvents(storage, input.bookId, record.eventIds) === 0) {
+    return {
+      decision: "resettle",
+      fingerprint,
+      record,
+      previousFingerprint: record.contentFingerprint,
+      reason: "ledger-orphaned",
+    };
   }
 
   return {

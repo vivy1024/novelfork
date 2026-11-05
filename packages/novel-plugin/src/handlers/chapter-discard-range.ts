@@ -477,6 +477,39 @@ async function resetHooksInRange(
   return { hooksReset, hooksNotes: notes };
 }
 
+/** 正式章（文件存储）的资源 id 形如 chapter:<章号>。 */
+export function chapterNumberFromResourceId(resourceId: string): number | undefined {
+  const match = /^chapter:(\d+)$/u.exec(resourceId.trim());
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * 删除单个正式章资源（resource.manage delete 与写作资源 DELETE 路由共用）。
+ * 不再直接 softDelete（那会直接删掉正文、不留底、不清记忆），而是走与「整段丢弃」同一条路径：
+ * 先清该章记忆与结算台账（单事务），再把正文归档进 chapters/_discarded，最后重建实体索引。
+ * 伏笔不动（resetHooks=none）：删一章不该顺手归档作者的伏笔条目，需要时用 chapter.discard_range 显式指定。
+ */
+export async function discardChapterResource(input: Readonly<{
+  bookId: string;
+  bookRoot: string;
+  chapterNumber: number;
+  storage?: StorageDatabase;
+  now?: () => Date;
+}>): Promise<ChapterDiscardRangeResult> {
+  return handleChapterDiscardRange({
+    bookId: input.bookId,
+    bookRoot: input.bookRoot,
+    fromChapter: input.chapterNumber,
+    toChapter: input.chapterNumber,
+    confirm: true,
+    resetHooks: "none",
+    ...(input.storage ? { storage: input.storage } : {}),
+    ...(input.now ? { now: input.now } : {}),
+  });
+}
+
 export async function handleChapterDiscardRange(input: ChapterDiscardRangeInput): Promise<ChapterDiscardRangeResult> {
   const bookId = input.bookId?.trim();
   if (!bookId) return fail("missing-book-id", "缺少 bookId。");

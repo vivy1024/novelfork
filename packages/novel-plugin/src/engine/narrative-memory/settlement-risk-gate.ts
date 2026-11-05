@@ -71,6 +71,8 @@ export type ChapterSettlementIdempotency = Readonly<{
   previousContentFingerprint?: string;
   /** outcome=resettled 且由 force 触发（正文本身没变）时为 true。 */
   forced?: boolean;
+  /** outcome=resettled 的非改写原因：ledger-orphaned = 上次结算产出的事件已被删光，台账失效。 */
+  reason?: "ledger-orphaned";
   /** outcome=resettled 时，被保护而未再次归约的、作者已裁决事件数。 */
   authorDecidedPreserved?: number;
 }>;

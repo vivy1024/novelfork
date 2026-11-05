@@ -687,7 +687,7 @@ action=create | update | delete | retire。
   }),
   sessionTool({
     name: "memory.delete",
-    description: "Narrative Memory 管理层删除工具。受控硬删除单条 fact/event；拒绝删除 log/vector；必须提供 reason。",
+    description: "Narrative Memory 管理层删除工具。受控删除单条 fact/event：event 移入回收站可撤销、同步从结算台账剔除（该章事件删光时台账失效、可重新结算）；fact 物理删除；拒绝删除 log/vector；必须提供 reason。删整章请用 chapter.discard_range，不要用它按章清记忆。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.delete"]),
     risk: "confirmed-write",
     renderer: "narrative-memory.admin",
@@ -707,7 +707,7 @@ action=create | update | delete | retire。
   }),
   sessionTool({
     name: "memory.bulk_delete",
-    description: "Narrative Memory 管理层批量删除工具。仅允许对显式筛选的 facts/events 硬删除；必须提供 filter 与 reason，禁止无条件全删。",
+    description: "Narrative Memory 管理层批量删除工具。仅允许对显式筛选的 facts/events 删除，整批一个事务：events 移入回收站可撤销并同步修正结算台账，facts 物理删除；必须提供 filter 与 reason，禁止无条件全删。删整章或一段章节请用 chapter.discard_range（会归档正文并清理全部章域记忆），不要用 chapterRange 批删代替。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.bulk_delete"]),
     risk: "confirmed-write",
     renderer: "narrative-memory.admin",
@@ -736,7 +736,7 @@ action=create | update | delete | retire。
   }),
   sessionTool({
     name: "resource.manage",
-    description: "正式章节结果管理。\n\naction=list：列出所有正式章节结果（传 filter 可过滤）\naction=archive：归档正式章节结果（不删除但标记不活跃）\naction=delete：永久删除正式章节结果\n\n使用时机：\n- 用户说「删掉这个章节」→ delete 或 archive\n- 用户想看有哪些章节 → list",
+    description: "正式章节结果管理。\n\naction=list：列出所有正式章节结果（传 filter 可过滤）\naction=archive：归档正式章节结果（不删除但标记不活跃）\naction=delete：删除正式章节结果（正文移入 chapters/_discarded 留底，该章叙事记忆与结算台账同步清理；连续多章请用 chapter.discard_range）\n\n使用时机：\n- 用户说「删掉这个章节」→ delete 或 archive\n- 用户想看有哪些章节 → list",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["resource.manage"]),
     risk: "confirmed-write",
     resolveRisk: (input) => input?.action === "list" ? "read" : input?.action === "delete" ? "destructive" : "confirmed-write",

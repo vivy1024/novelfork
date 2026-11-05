@@ -650,7 +650,9 @@ function explainResettled(
   return {
     whatHappened: decision.forced
       ? `第${input.chapterNumber}章正文没变，但这次按你的要求强制重新结算。`
-      : `第${input.chapterNumber}章正文自上次结算后已被改写，因此本次重新抽取了叙事事件。`,
+      : decision.reason === "ledger-orphaned"
+        ? `第${input.chapterNumber}章上次结算记下的叙事事件已经被删掉了，旧的结算记录不再成立，因此本次重新抽取了叙事事件。`
+        : `第${input.chapterNumber}章正文自上次结算后已被改写，因此本次重新抽取了叙事事件。`,
     whyItMatters: "内容变了，旧的结算结论就不再对应当前正文；这种重结算是正常的，不属于重复结算。",
     suggestedAction: `${preserved}检查新增的待审条目后批准或驳回即可。`,
   };
@@ -1304,6 +1306,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     ...(idempotency.record?.settledAt ? { previouslySettledAt: idempotency.record.settledAt } : {}),
     ...(resettled && idempotency.previousFingerprint ? { previousContentFingerprint: idempotency.previousFingerprint } : {}),
     ...(idempotency.forced ? { forced: true } : {}),
+    ...(resettled && idempotency.reason ? { reason: idempotency.reason } : {}),
     ...(resettled ? { authorDecidedPreserved: persisted.authorDecidedPreserved } : {}),
   };
 

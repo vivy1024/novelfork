@@ -30,6 +30,7 @@ import { readBookSettlementFreshness } from "../engine/narrative-memory/settleme
 import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import type { HostTextGenerationAvailability } from "./context.js";
 import { rebuildNarrativeEntityIndex } from "../engine/narrative-entity/entity-index.js";
+import { reconcileSettlementLedger } from "../engine/narrative-memory/ledger-consistency.js";
 import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embedding-provider.js";
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
@@ -522,6 +523,31 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       });
     } catch (error) {
       return c.json({ error: "backfill-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // 结算台账对账：清掉已删章节残留的台账、证据链、提及、结构分、检索日志，
+  // 把事件已被删光的台账标成失效以便重新结算。dryRun=1 只报告不写库；不在启动时自动跑。
+  app.post(`${base}/settlement-ledger/reconcile`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const dryRun = c.req.query("dryRun") === "1";
+    try {
+      const bookRoot = optionalBookRootFor(bookId);
+      const result = await reconcileSettlementLedger(storage(), { bookId, ...(bookRoot ? { bookRoot } : {}), dryRun });
+      const orphanRows = Object.values(result.removedRows).reduce((sum, count) => sum + count, 0);
+      const verb = dryRun ? "将" : "已";
+      return c.json({
+        ok: true,
+        ...result,
+        summary: result.missingChapters.length === 0 && result.orphanedLedgerChapters.length === 0
+          ? "结算记录与章节、叙事事件一致，不需要修复。"
+          : [
+            result.missingChapters.length > 0 ? `第 ${result.missingChapters.join("、")} 章已不存在，${verb}清理残留的 ${orphanRows} 条结算相关记录` : "",
+            result.orphanedLedgerChapters.length > 0 ? `第 ${result.orphanedLedgerChapters.join("、")} 章的叙事事件已被删光，${verb}标记为需要重新结算` : "",
+          ].filter(Boolean).join("；") + "。",
+      });
+    } catch (error) {
+      return c.json({ error: "settlement-ledger-reconcile-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 
@@ -1168,7 +1194,15 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
   app.get(`${base}/admin/search`, searchHandler);
 
   const statsHandler = async (c: Context): Promise<Response> => {
-    const result = await handleMemoryStats({ bookId: c.req.param("bookId") }, storage());
+    const bookId = c.req.param("bookId");
+    // 书目录只用于台账健康度的章节清单；解析失败不影响统计本身。
+    let bookRoot: string | undefined;
+    try {
+      bookRoot = optionalBookRootFor(bookId);
+    } catch {
+      bookRoot = undefined;
+    }
+    const result = await handleMemoryStats({ bookId, ...(bookRoot ? { bookRoot } : {}) }, storage());
     return respondHandler(c, result);
   };
   app.get(`${base}/stats`, statsHandler);
