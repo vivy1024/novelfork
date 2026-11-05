@@ -1,2 +1,5 @@
 # Git 钩子是 sh 脚本：任何平台检出都保持 LF，否则 CRLF 会让 sh 执行出错。
 .githooks/* text eol=lf
+# 内置写作技能会逐字打包进 EXE，并与开发目录逐字比对（novel-workflows.test.ts）；
+# Windows 上 autocrlf 检出成 CRLF 会让两边不一致，所以固定 LF。
+packages/novel-plugin/builtin-skills/** text eol=lf
