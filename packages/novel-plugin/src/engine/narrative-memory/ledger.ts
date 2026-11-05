@@ -58,8 +58,16 @@ export function queryCurrentNarrativeLedger(
   };
 }
 
+/** 事实的生效起点章：valid_from 优先，其次来源章；都没有时为 null。 */
+export function factStartChapter(fact: Pick<NarrativeFact, "validFromChapter" | "sourceChapter">): number | null {
+  return fact.validFromChapter ?? fact.sourceChapter ?? null;
+}
+
 /**
  * Close open facts that occupy the same ledger slot as `next`, ending at `closedAtChapter`.
+ * 槽位按受控谓词归一（slot-key.ts），「所在位置」「本章所在位置」这类不同写法的同一属性也会被关闭。
+ * 生效起点晚于 `closedAtChapter` 的 open 值是更新的状态（例如重结算旧章），不关闭；
+ * 写入后由 closeFactIfSupersededByLater 把新写的旧章值收尾。
  * Returns number of rows closed.
  */
 export function closeSupersededNarrativeFacts(
@@ -74,7 +82,11 @@ export function closeSupersededNarrativeFacts(
     openOnly: true,
     slotKey: slot,
     limit: 0,
-  }).filter((fact) => fact.id !== next.id);
+  }).filter((fact) => fact.id !== next.id)
+    .filter((fact) => {
+      const start = factStartChapter(fact);
+      return start === null || start <= closedAtChapter;
+    });
 
   if (candidates.length === 0) return 0;
   const now = new Date().toISOString();
@@ -90,4 +102,28 @@ export function closeSupersededNarrativeFacts(
     closed += 1;
   }
   return closed;
+}
+
+/**
+ * 写入后的收尾：同槽里已有生效起点更晚的 open 值时，刚写入的 `fact` 不是当前值，
+ * 把它关闭在下一个更晚值的起点章（与 reducer「旧值止于新值起点章」一致）。返回是否关闭。
+ */
+export function closeFactIfSupersededByLater(storage: StorageDatabase, fact: NarrativeFact): boolean {
+  ensureNarrativeMemorySchema(storage);
+  const start = factStartChapter(fact);
+  if (start === null || (fact.validUntilChapter !== undefined && fact.validUntilChapter !== null)) return false;
+  const later = queryNarrativeFacts(storage, {
+    bookId: fact.bookId,
+    openOnly: true,
+    slotKey: narrativeFactSlotKey(fact),
+    limit: 0,
+  })
+    .filter((other) => other.id !== fact.id)
+    .map((other) => factStartChapter(other))
+    .filter((chapter): chapter is number => chapter !== null && chapter > start);
+  if (later.length === 0) return false;
+  storage.sqlite.prepare(`
+    UPDATE narrative_fact SET valid_until_chapter = ?, updated_at = ? WHERE id = ? AND valid_until_chapter IS NULL
+  `).run(Math.min(...later), new Date().toISOString(), fact.id);
+  return true;
 }

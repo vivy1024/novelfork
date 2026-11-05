@@ -252,7 +252,7 @@ describe("lore-memory-boundary handlers", () => {
     const persisted = activeStorage!.sqlite.prepare(`SELECT subject, predicate, object, evidence_text AS evidenceText, subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId, status FROM narrative_event WHERE id = 'e-edit'`).get() as Record<string, unknown>;
     expect(persisted).toMatchObject({ subject: "韩立（伪装）", predicate: "心理状态", object: "更加谨慎", evidenceText: "韩立收敛气息，决定继续隐忍。", subjectEntryId: "entry-hanli", objectEntryId: "entry-cautious", status: "applied" });
     const written = queryNarrativeFacts(activeStorage!, { bookId: "book-1", entities: ["韩立（伪装）"] }).find((item) => item.sourceId === "e-edit");
-    expect(written).toMatchObject({ subject: "韩立（伪装）", predicate: "心理状态", object: "更加谨慎", evidenceText: "韩立收敛气息，决定继续隐忍。", subjectEntryId: "entry-hanli", objectEntryId: "entry-cautious" });
+    expect(written).toMatchObject({ subject: "韩立（伪装）", predicate: "情绪", object: "更加谨慎", evidenceText: "韩立收敛气息，决定继续隐忍。", subjectEntryId: "entry-hanli", objectEntryId: "entry-cautious" });
   });
 
   it("applies trusted book retrieval settings in memory.read", async () => {

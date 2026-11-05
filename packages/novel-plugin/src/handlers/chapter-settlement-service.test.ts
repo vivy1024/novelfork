@@ -942,7 +942,7 @@ it("即使 manual 事实的 source_id 与旧台账事件碰撞，作废也只针
         expect(openFactCount(storage, "药园")).toBe(0);
         expect(openFactCount(storage, "洞府"), "predecessor closed by the retired fact must reopen").toBe(1);
         const visible = queryNarrativeFacts(storage, { bookId: "book-1", currentChapter: 13, limit: 0 })
-          .filter((fact) => fact.subject === "韩立" && fact.predicate === "抵达")
+          .filter((fact) => fact.subject === "韩立" && fact.predicate === "所在")
           .map((fact) => fact.object);
         expect(visible).toEqual(["洞府"]);
       } finally {
@@ -1121,7 +1121,7 @@ it("即使 manual 事实的 source_id 与旧台账事件碰撞，作废也只针
         context.cards.map((card) => card.content).join("\n");
 
       // 对照（证明断言有鉴别力）：改写之前，旧元组确实会被召回进写作上下文。
-      expect(cardText(await assemble())).toContain("韩立 抵达 药园");
+      expect(cardText(await assemble())).toContain("韩立 所在 药园");
 
       // 改写：删掉这段情节，正文不再支持它。抽取为空，没有同槽位新值替代。
       const resettled = await settleConfirmedChapter({
@@ -1135,7 +1135,7 @@ it("即使 manual 事实的 source_id 与旧台账事件碰撞，作废也只针
       expect(resettled.idempotency).toMatchObject({ outcome: "resettled" });
 
       // 被测行为：改写之后，同样的组装不再召回被改写掉的元组。
-      expect(cardText(await assemble())).not.toContain("韩立 抵达 药园");
+      expect(cardText(await assemble())).not.toContain("韩立 所在 药园");
     } finally {
       storage.close();
     }

@@ -13,7 +13,7 @@ import {
   type NarrativeMemoryConfig,
 } from "../engine/narrative-memory/config.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
-import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
+import { collectChapterRelevantEntities, selectExtractorLedgerContext } from "../engine/narrative-memory/extractor-context.js";
 import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
 import { inferHookCausalLinks, parseCausedBy, resolveCausedByRefs } from "../engine/narrative-memory/causal-resolve.js";
 import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embedding-provider.js";
@@ -706,17 +706,6 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     );
   }
 
-  // 抽取前取出当前台账 open fact 快照，注入 LLM prompt 让其只抽增量、感知伏笔进度。
-  const currentLedger = queryCurrentNarrativeLedger(storage, {
-    bookId: input.bookId,
-    limit: 120,
-  }).items.map((fact) => ({
-    category: fact.category,
-    subject: fact.subject,
-    predicate: fact.predicate,
-    object: fact.object,
-  }));
-
   // 作者在 book.json 里明确关闭了 LLM 抽取：不抽也不假装成功，跳过并说明。
   if (!config.settlement.useLlmExtraction) {
     return skipped(
@@ -747,9 +736,26 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
 
   let extraction: ChapterEventExtractionResult;
   const entityDictionary = buildEntityDictionary(storage, input.bookId);
+  // 抽取前取出当前台账 open fact 快照，注入 LLM prompt 让其只抽增量、沿用已有槽位。
+  // 按本章出场实体挑选（不是只取最近更新的若干条），长书里久未出场的老角色回归时也能看到他的已有状态。
+  const relevantEntities = collectChapterRelevantEntities(storage, {
+    bookId: input.bookId,
+    chapterNumber: input.chapterNumber,
+    content: input.content,
+    entityDictionary,
+  });
+  const currentLedger = selectExtractorLedgerContext(storage, {
+    bookId: input.bookId,
+    chapterNumber: input.chapterNumber,
+    content: input.content,
+    entityDictionary,
+  });
   // 伏笔台账：把本章之前仍未回收的伏笔（经纬条目 + 已应用事件派生的阶段）交给抽取器，
-  // 让推进/触发/回收事件沿用伏笔名作 key，并挂回同一条目。
-  const openForeshadows = loadOpenForeshadowSnapshots(storage, input.bookId, input.chapterNumber);
+  // 让推进/触发/回收事件沿用伏笔名作 key，并挂回同一条目。本章提到的伏笔优先，不被上限挤掉。
+  const openForeshadows = loadOpenForeshadowSnapshots(storage, input.bookId, input.chapterNumber, {
+    chapterContent: input.content,
+    relevantNames: relevantEntities.names,
+  });
   try {
     // 实体身份链：结算前从经纬构建实体字典，注入抽取 prompt 并在写入端归一化。
     // 字典为空（书还没有实体条目/表未建）时 extractNarrativeEventsFromChapter 内部按无字典降级。

@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { upsertNarrativeFact } from "./facts.js";
-import { closeSupersededNarrativeFacts, narrativeFactSlotKey } from "./ledger.js";
+import { closeFactIfSupersededByLater, closeSupersededNarrativeFacts, narrativeFactSlotKey } from "./ledger.js";
+import { canonicalFactPredicate } from "./state-predicate.js";
 import { queryNarrativeFacts, updateNarrativeEventStatus } from "./storage.js";
 import type { NarrativeEvent, NarrativeEventType, NarrativeFact } from "./types.js";
 
@@ -88,13 +89,16 @@ function slotLockedByManualFact(storage: StorageDatabase, event: NarrativeEvent)
 
 function eventToFact(event: NarrativeEvent): NarrativeFact {
   const now = new Date().toISOString();
+  const category = factCategoryFor(event.eventType);
   return {
     id: factIdFor(event),
     bookId: event.bookId,
     subject: event.subject,
-    predicate: event.predicate,
+    // 状态类谓词写成受控槽位名（「本章所在位置」→「所在」、「当前修为」→「境界」），
+    // 台账与抽取 prompt 里同一属性只有一种写法；事件保留原谓词作证据。
+    predicate: canonicalFactPredicate({ category, predicate: event.predicate, object: event.object }),
     object: event.object,
-    category: factCategoryFor(event.eventType),
+    category,
     layer: "dynamic",
     confidence: event.confidence,
     sourceType: "event",
@@ -143,6 +147,9 @@ function applyOne(
     closeSupersededNarrativeFacts(storage, nextFact, event.chapterNumber);
   }
   upsertNarrativeFact(storage, nextFact);
+  if (options.closeSupersededFacts !== false) {
+    closeFactIfSupersededByLater(storage, nextFact);
+  }
   updateNarrativeEventStatus(storage, { id: event.id, status: "applied" });
   seenTuples.add(key);
   return { kind: "applied", id: event.id };

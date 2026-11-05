@@ -34,6 +34,7 @@ import { reconcileSettlementLedger } from "../engine/narrative-memory/ledger-con
 import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embedding-provider.js";
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
+import { recomputeNarrativeStateSlots } from "../engine/narrative-memory/slot-recompute.js";
 import {
   checkMountBelongsToBook,
   createScene,
@@ -578,6 +579,26 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       });
     } catch (error) {
       return c.json({ error: "entity-index-rebuild-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // 状态槽重算：按受控谓词并槽，关闭同一属性不同写法下挂着的旧值（只关闭不删除）。dryRun=1 只统计不写入。
+  app.post(`${base}/state-slots/recompute`, (c) => {
+    const bookId = c.req.param("bookId");
+    const dryRun = c.req.query("dryRun") === "1";
+    try {
+      const result = recomputeNarrativeStateSlots(storage(), bookId, { dryRun });
+      const verb = dryRun ? "将" : "已";
+      return c.json({
+        ok: true,
+        ...result,
+        summary: result.closed === 0 && result.rekeyed === 0
+          ? "人物状态没有重复的当前值，无需整理。"
+          : `检查 ${result.scanned} 条人物状态：${result.collapsedSlots} 处同一属性挂着多个当前值，${verb}保留最新值、关闭旧值 ${result.closed} 条（历史仍可查）。`
+            + (result.skippedManual > 0 ? ` 你手动写的 ${result.skippedManual} 条保持不动。` : ""),
+      });
+    } catch (error) {
+      return c.json({ error: "state-slot-recompute-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 

@@ -256,14 +256,29 @@ export const DEFAULT_OPEN_FORESHADOW_LIMIT = 60;
  */
 export function toOpenForeshadowSnapshots(
   states: readonly ForeshadowState[],
-  options: { readonly limit?: number } = {},
+  options: {
+    readonly limit?: number;
+    /** 本章正文：伏笔名直接出现在正文里的排最前。 */
+    readonly chapterContent?: string;
+    /** 本章相关实体名：触发条件 / 最近证据提到这些实体的排其次。 */
+    readonly relevantNames?: readonly string[];
+  } = {},
 ): OpenForeshadowSnapshot[] {
   const limit = Math.max(0, options.limit ?? DEFAULT_OPEN_FORESHADOW_LIMIT);
+  const content = options.chapterContent ?? "";
+  const names = (options.relevantNames ?? []).map((name) => name.trim()).filter((name) => name.length >= 2);
+  const relevance = (state: ForeshadowState): number => {
+    if (content && state.label.length >= 2 && content.includes(state.label)) return 2;
+    const text = `${state.triggerCondition ?? ""}\n${state.evidenceText ?? ""}`;
+    if (names.some((name) => text.includes(name))) return 1;
+    return 0;
+  };
   return states
     .filter((state): state is ForeshadowState & { phase: OpenForeshadowSnapshot["phase"] } => !isTerminal(state.phase))
-    .map((state, index) => ({ state, index }))
+    .map((state, index) => ({ state, index, relevance: relevance(state) }))
     .sort((left, right) =>
-      (left.state.setupChapter ?? Number.MAX_SAFE_INTEGER) - (right.state.setupChapter ?? Number.MAX_SAFE_INTEGER)
+      right.relevance - left.relevance
+      || (left.state.setupChapter ?? Number.MAX_SAFE_INTEGER) - (right.state.setupChapter ?? Number.MAX_SAFE_INTEGER)
       || left.index - right.index)
     .slice(0, limit)
     .map(({ state }) => ({
@@ -275,13 +290,17 @@ export function toOpenForeshadowSnapshots(
     }));
 }
 
-/** 本章结算前仍未回收的伏笔清单（只看本章之前的事件，重结算旧章不受未来章影响）。 */
+/**
+ * 本章结算前仍未回收的伏笔清单（只看本章之前的事件，重结算旧章不受未来章影响）。
+ * 传入 relevance 时按本章相关度排序后再截断：长书伏笔多于上限时，本章提到的伏笔不会被挤掉。
+ */
 export function loadOpenForeshadowSnapshots(
   storage: StorageDatabase,
   bookId: string,
   chapterNumber: number,
+  relevance: { readonly chapterContent?: string; readonly relevantNames?: readonly string[]; readonly limit?: number } = {},
 ): OpenForeshadowSnapshot[] {
-  return toOpenForeshadowSnapshots(loadForeshadowStates(storage, bookId, { beforeChapter: chapterNumber }));
+  return toOpenForeshadowSnapshots(loadForeshadowStates(storage, bookId, { beforeChapter: chapterNumber }), relevance);
 }
 
 /**

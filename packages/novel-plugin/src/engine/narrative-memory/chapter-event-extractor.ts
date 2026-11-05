@@ -147,6 +147,21 @@ function unpackExtractorPayload(payload: unknown): { events: readonly unknown[];
   return { events: [], mentionedEntities: [] };
 }
 
+/** 受控状态谓词在 prompt 里的写法：一属性一个词，附一句取值说明。 */
+const CANONICAL_STATE_PREDICATE_PROMPT = [
+  "所在（地点）",
+  "境界（修为 / 等级）",
+  "生死",
+  "去向",
+  "所属（门派 / 势力 / 阵营）",
+  "身份（职位 / 头衔）",
+  "伤势",
+  "情绪",
+  "持有（object 写物品；失去写 失去）",
+  "与某人的关系（谓词写「与X的关系」）",
+  "对某人的态度（谓词写「对X的态度」）",
+].join("、");
+
 const EXTRACTOR_SYSTEM_PROMPT = [
   "你是网文小说叙事记忆结算器。只从用户提供的正式章节正文中抽取动态叙事变化。",
   "返回严格 JSON 对象，不要输出解释。字段：",
@@ -158,8 +173,10 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   "若用户消息提供了「官方实体名单」：subject、object 与 mentionedEntities 必须优先使用名单中的名字或其列出的称呼；名单中没有的新实体才使用正文原名称。",
   "不要写入静态 Lore/canon；只提出 NarrativeEvent 草案。",
   "若提供了「当前叙事记忆台账」，events 只抽取相对台账发生变化或新增的状态；与台账一致、本章未改变的内容不要重复输出。mentionedEntities 不受此限制。",
-  "对人物状态类变化（修为/位置/情绪/伤势等），subject+predicate 标识状态槽位，object 是本章后的新值；同一槽位的新值会由系统自动作废旧值，你只需给出新值。",
-  "三个固定谓词必须照写，不要换同义词：生死（character_state_changed，object 只写 存活 / 死亡 / 复活 之一）；去向（character_state_changed，object 只写 离场 / 回归 之一，指人物离开或重新回到故事舞台）；所在（location_changed，object 写地点名，优先用官方实体名单里的地点名）。回忆、梦境、传闻里的人物不算本章状态变化，不要输出。",
+  "对人物状态类变化，subject+predicate 标识状态槽位，object 是本章后的新值；同一槽位的新值会由系统自动作废旧值，你只需给出新值。",
+  `状态谓词用受控写法，不加「本章 / 当前 / 主要」等修饰，不换同义词：${CANONICAL_STATE_PREDICATE_PROMPT}。其余状态才用简短名词作谓词。`,
+  "生死 object 只写 存活 / 死亡 / 复活 之一；去向 object 只写 离场 / 回归 之一（人物离开或重新回到故事舞台）；所在 用 location_changed，object 写地点名（优先用官方实体名单里的地点名）。回忆、梦境、传闻里的人物不算本章状态变化，不要输出。",
+  "台账里某实体已有同一属性时是更新：沿用台账里的 predicate 原样写，只换 object；台账没有的属性才新增。",
   "对关系变化（relationship_changed）：subject 与 object 都只写一方的名字（人物或势力，优先用官方实体名单里的名字），predicate 写两人之间的关系或变化，如「救下」「结为师徒」「反目」「暗中提防」。object 不要写描述句，经过与细节放进 evidenceText。一件事牵涉多人时拆成多条，每条一对。",
   "对伏笔：本章新埋用 hook_planted；已有伏笔被提及/推进但触发条件尚未满足用 hook_progressed；触发条件已出现、该兑现但尚未兑现用 hook_triggered（object 写触发条件）；被揭晓/回收用 hook_resolved。同一条伏笔的后续事件 causedBy 必须指向它更早的 planted/progressed/triggered。",
   "伏笔的 subject 就是它的 key：若用户消息提供了「本书未回收伏笔」，推进/触发/回收其中某条时 subject 必须原样写清单里的伏笔名，不要换说法；本章新埋的伏笔起一个简短、以后能沿用的名字作 subject。清单里的伏笔本章没有动静就不要输出。",
