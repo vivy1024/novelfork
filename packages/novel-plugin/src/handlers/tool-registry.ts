@@ -194,7 +194,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "write.preflight",
     description:
-      "写章前硬门预检 + 写前召回：组装最小上下文包（currentFocus、近章摘要/事实、本章伏笔、resolvedDirective、memoryHealth），对缺失输入硬拦截；通过时装配本章写作召回包，并在服务端记下本会话已召回这一章。\n\n使用时机：\n- 写新章前的第一步（先于 scene.spec / pipeline.write）；已有 scene.spec 蓝图时可把 sceneSpec 一并传入，召回按蓝图的角色/地点/伏笔取前情\n- 用户说「继续写」「下一章」时先核验上下文是否就绪\n- 生成正文之前必须先对本章调用 write.preflight：本会话没有这一章的写前召回，pipeline.write 会以 recall-required 拒写\n\n返回：\n- ok=true 时 recall.text 是本章写前召回包（硬规则、人物状态、知情边界、时间线、近章摘要、伏笔、事实、文风），生成正文以它为前情依据；召回记录由服务端自己保存和核对，不需要把任何凭证传给 pipeline.write（只对本会话本章有效，30 分钟内改稿重提可复用；换章或过期要重新 preflight）\n- ok=false 时 blockers 含 missing-directive / empty-recent-progress / high-risk-pending / book-not-found / memory-budget-overflow / recall-failed 等，必须停写；memory-budget-overflow 表示受保护资料装不进召回预算，在生成前就停下，请作者调大本书召回预算或精简受保护内容，不要自行削减或盲目重试；除 high-risk-pending 外只报告缺口，等作者补齐\n- high-risk-pending（高风险事件待确认）的放行流程：memory.events（action=list）取出事件 → AskUserQuestion 同步问作者（每次最多 4 条，多了分批），每条选「批准」或「驳回」→ 按作者的选择逐条调用 memory.events 的 approve / reject（是否还要作者再确认由 NarraFork 的权限模式决定），作者也可以直接在「待确认」面板处理 → 全部处理完再重新 write.preflight、再写。不跳过、不换工具绕过、不替作者选\n- ok=true 时可用 resolvedDirective 作为 scene.spec 的 userDirectives\n- needsUserConfirm=true：仅有 focus 默认句，需用户确认或 acceptFocusDefault=true\n\nWriting Skills 相关字段是告知，不是门禁：\n- requiredSkillAcknowledgements：本章相关的已启用技能清单。按各自 description 自行判断是否需要读；不读也能写章\n- writingSkillConstraints：这些技能声明的可机器校验条目（与保存前的合规校验同一份判据）。severity=error 的条目若不满足，章节保存时会被 writing-skill-compliance-failed 拒绝\n- warnings 里的 skills-not-acknowledged 只是提醒尚未加载哪些技能，不阻断\n\n不要用的时候：\n- 只是查询设定/进度（用 cockpit.snapshot / lore.read / memory.read）\n- 写后审修（chapter.audit / skills.check_compliance / rewrite.*）\n\n纪律：禁止用写作理论或外部项目总结代替 memory/lore。技能是否生效看成品能否通过 writingSkillConstraints 的逐条校验，不看是否交过引用。",
+      "写新章第一步：检查能不能写，并返回本章写前召回包（recall.text，后面生成正文以它为前情）。何时用：用户说写下一章、继续写；生成任何新正文之前（没对本章 preflight，pipeline.write 会以 recall-required 拒写；召回 30 分钟内有效）。何时别用：只是查设定或进度（用 cockpit.snapshot / lore.read）；写完后的审修。返回 ok=false 就停写，把 blockers 转述给作者；high-risk-pending 按系统提示的放行流程处理。needsUserConfirm=true 时，请作者确认一句本章指示，或传 acceptFocusDefault=true；resolvedDirective 可作为 scene.spec 的 userDirectives。writingSkillConstraints 里 severity=error 的条目，保存时会逐条校验。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["write.preflight"]),
     risk: "read",
     renderer: "write.preflight",
@@ -204,7 +204,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "memory.settle_range",
     description:
-      "对历史章节批量/补结算 Narrative Memory（事实抽取、状态回写）。用于填补正史数据空洞（例如 1–10 章漏结算）。\n\n行为：按章读取已有正文 → settleConfirmedChapter；幂等（同 id 事件复用）。\n\n使用时机：\n- write.preflight 报 empty-recent-progress\n- 用户要求回填旧章记忆\n\n不要用的时候：\n- 废稿正史：先 chapter.discard_range，不要给废稿养正史\n- 单章刚写完：pipeline.write 已自动结算",
+      "对历史章节批量补结算叙事记忆（事实抽取、状态回写），填补漏结算的空洞（例如 1–10 章）。按章读取已保存正文结算；重复调用不会重复写入。\n\n何时用：write.preflight 报 empty-recent-progress；作者要求回填旧章记忆。\n\n何时别用：要作废的试写章（先 chapter.discard_range）；单章刚写完（pipeline.write 已自动结算，失败时重试 memory.settle_chapter）。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.settle_range"]),
     risk: "confirmed-write",
     renderer: "narrative-memory.admin",
@@ -215,7 +215,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "memory.settle_chapter",
     description:
-      "单章章后结算：把刚落盘的一章正文抽成 NarrativeEvents，低风险直接应用，高风险进入待审。\n\n行为：只读取**已落盘**的正式章节正文（读不到就报 chapter-not-persisted 并拒绝结算），因此「先保存正文、再更新记忆」是硬约束而非约定。\n\n使用时机：\n- pipeline.write 保存成功后由管线自动发起，作为写章闭环的正常一步；结果在叙述者面板可见\n- 该次结算失败时重试同一章（结算失败不影响已保存的正文）\n\n不要用的时候：\n- 回填多章历史空洞：用 memory.settle_range\n- 正文尚未保存：先保存章节",
+      "单章章后结算：把已保存的一章正文抽成叙事事件，低风险直接应用，高风险进入待确认。只读已保存的正文，读不到就返回 chapter-not-persisted。\n\n何时用：pipeline.write 落盘后由管线自动发起；返回 settlementError 时由你重试本章；改稿改变了剧情事实后重新结算本章。\n\n何时别用：回填多章历史空洞（用 memory.settle_range）；正文还没保存。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.settle_chapter"]),
     risk: "confirmed-write",
     renderer: "narrative-memory.admin",
@@ -272,7 +272,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "chapter.write",
-    description: "受控覆盖指定的已存在章节正文。只能按章节序号写入当前可信书籍，不能创建任意文件或改写其他书籍；Runtime 会在真正写入前请求用户批准。",
+    description: "整章覆盖一章已存在的正文（按章节序号，只限当前书籍），写入前校验本书硬长度与技能错误项，并请作者批准。何时用：作者要求整章替换已有章节。何时别用：写新章（用 pipeline.write）；只改几段（用 rewrite.apply）。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["chapter.write"]),
     risk: "confirmed-write",
     renderer: "chapter.content",
@@ -291,7 +291,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   // --- 新增小说工具组 (5 tools) ---
   sessionTool({
     name: "chapter.audit",
-    description: "对单章执行质量审计，包括节奏分析、AI 味检测、伏笔到期检查、连续性检查。",
+    description: "审计一章已写好的正文：节奏、AI 味、伏笔到期、连续性、设定一致性、视角。只读，不改正文。何时用：写完或改完一章后自检；作者要求审稿。何时别用：还没写正文（先 pipeline.write）；要改文字（用 rewrite.apply）。不传 content 就读已保存的章节。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["chapter.audit"]),
     risk: "read",
     renderer: "chapter.audit",
@@ -309,7 +309,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "chapter.propose_revision",
-    description: "整章正文改动候选（T5.3）。整章或大范围改动必须先走它：交出 before/after 摘要与段落级统计，由作者在叙述者面板候选卡里逐项核对后才应用；本工具只产候选，从不直接改正文。adopt 时服务端按 originalHash 闸门防止覆盖最新正文。",
+    description: "整章或大范围改动的候选：交出改前改后摘要与段落级统计，由作者在叙述者面板的候选卡里逐项核对后才应用。本工具只产候选，不直接改正文；采用时若正文已被改过会拒绝覆盖。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["chapter.propose_revision"]),
     risk: "draft-write",
     renderer: "chapter.revision",
@@ -318,7 +318,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "lore.propose_update",
-    description: "经纬条目字段改动候选（T5.3）。任何设定字段改动必须先走它：按字段列出 before/after，由作者候选卡逐项核对后才应用（应用走 PUT entries 的 fieldsPatch 合并，其余字段原样保留）；本工具只产候选，从不直接改条目。",
+    description: "提出设定条目的字段修改候选：按字段列出改前和改后，由作者在候选卡里逐项确认后才生效。本工具不直接改条目，没列出的字段保持不变。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.propose_update"]),
     risk: "draft-write",
     renderer: "lore.update-proposal",
@@ -336,7 +336,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "rewrite.apply",
-    description: "将改写结果写回当前可信书籍中已存在章节的指定行号范围。支持 replace（替换）和 insert_after（行后插入）两种模式。",
+    description: "把你改好的文本写回已存在章节的指定行号范围，支持 replace（替换）和 insert_after（行后插入）。何时用：局部改写、审计后修正几段。何时别用：整章替换（用 chapter.write）；作者划词请求（用 chapter.propose_selection）。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["rewrite.apply"]),
     risk: "confirmed-write",
     renderer: "tool.rewrite-apply",
@@ -355,7 +355,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "book.dissect",
     description:
-      "按目的拆解已有正文，抽出经纬草稿。purpose：写后续 / 同人 / 改编 / AI漫剧剧本（默认写后续）。\n\n实体（人物、地点、势力、规则）进 dissection_staging，确认前不进正式经纬。动态事实（谁在哪、伏笔状态）走 settle，不写进经纬。\n\n默认只返回草案；apply=true 才写入经纬草稿；settle=true 才结算叙事记忆。",
+      "按目的拆解已有正文，抽出经纬草稿。purpose：写后续 / 同人 / 改编 / AI漫剧剧本（默认写后续）。\n\n实体（人物、地点、势力、规则）先进拆书候选区，作者确认前不进正式经纬。动态事实（谁在哪、伏笔状态）走 settle，不写进经纬。\n\n默认只返回草案；apply=true 才写入经纬草稿；settle=true 才结算叙事记忆。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["book.dissect"]),
     risk: "draft-write",
     resolveRisk: (input) => input?.apply === true || input?.settle === true ? "draft-write" : "read",
@@ -405,7 +405,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "arc.character",
     description:
-      "角色弧线工具。\n\naction=status（默认，只读）：列出各角色弧类型、当前阶段、beats 数、最后推进章，并给出弧线不一致/停滞告警；\naction=sync：按确定性规则从指定章正文抽取 beats 并写入动态弧线表。\n\n用途：长篇人物成长线可见与纠偏。写入 jingwei_character_arc（dynamic），不动 canon。",
+      "角色弧线工具。\n\naction=status（默认，只读）：列出各角色弧类型、当前阶段、beats 数、最后推进章，并给出弧线不一致/停滞告警；\naction=sync：按确定性规则从指定章正文抽取 beats 并写入角色弧线记录（动态层）。\n\n用途：长篇人物成长线可见与纠偏。不动 canon 设定。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["arc.character"]),
     risk: "confirmed-write",
     // 与 handler 的 parseAction 同口径（trim + 小写）。
@@ -450,7 +450,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "hooks.manage",
-    description: "伏笔统一管理：埋设、兑现、检查到期、列出所有伏笔。",
+    description: "伏笔管理：埋设、兑现、检查到期、列出、删除。何时用：本章埋下或兑现伏笔；想知道哪些伏笔该推进了（check_due）。何时别用：伏笔以外的动态字段推进（用 lore.progress）。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["hooks.manage"]),
     risk: "confirmed-write",
     resolveRisk: (input) => input?.action === "list" || input?.action === "check_due" ? "read" : "confirmed-write",
@@ -496,7 +496,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "pipeline.write",
-    description: "写作管线（v2）：接收当前 Agent 已写好的正文与 scene.spec 蓝图，校验、审计并保存为正式章节；工具不在内部生成正文。\n\n使用流程：\n1. 先 write.preflight（blockers 非空禁止继续），拿到 recall.text（服务端同时记下本会话已召回这一章）；技能清单与 writingSkillConstraints 是参考，不需要为了通过门禁去逐个读技能\n2. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）；scene.spec 会把技能的硬性条目并入 sceneSpec.constraints\n3. 依据 recall.text 的前情与蓝图生成正文，连同 sceneSpec 一起提交（不需要传凭证） → 一致性审计（含经纬 canon 设定核对）\n4. 正文落盘成功后自动发起一次 memory.settle_chapter 结算（面板可见的独立工具调用）\n\n硬门：\n- 本会话还没有对这一章做写前召回，或召回已超过 30 分钟 → recall-required（回 write.preflight 用本章章号重新召回再写）\n- 生成期间这一章的正式稿被作者或别处改过、删掉，或同号章被新建 → chapter-conflict（不覆盖；重新读取这一章，确认后再决定是否重写）\n- 已有正式章但近章记忆/摘要为空 → context-not-ready（先 memory.settle_range 或 chapter.discard_range）\n- 有待确认的高风险事件 → high-risk-pending（按 write.preflight 描述里的放行流程先让作者逐条批准或驳回，处理完再写；不跳过、不绕过）\n- 情节点预算不合规（合计低于/高于书籍章目标）→ beat-budget-invalid（回 scene.spec 重排预算，不要硬写）\n- 保存前按启用技能声明的 checks 校验成品，硬性违规 → writing-skill-compliance-failed（这是 Writing Skills 唯一的硬门；入口不再因「未提交技能引用」阻断）\n\n返回中的可观测字段：\n- publishHint.warnings：逐条列出违反了哪个技能的哪条要求；正文可能与经纬 canon 设定冲突之处也列在这里（关键词级提示，送人工复核、不拒存）\n- settlementDispatch：章后结算这一步工具调用的结果（工具名 / 是否成功）\n- settlementError：正文已保存但章后结算失败，重试 memory.settle_chapter 即可（正文已在库，不会丢稿）\n\n可选质量强化：\n- factCheckAutoRevise=true：审修后仍有事实/连续性 critical 时，额外做 1 轮事实专项 spot-fix + 复审\n- requireFactCheckPass=true：复审仍不过则 fact-check-failed 不保存\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」且 preflight ok 时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向\n- preflight blockers 非空时，或还没对本章调用 write.preflight 时",
+    description: "保存新章：接收你写好的完整正文与 scene.spec 蓝图，做校验、确定性审计（含经纬设定核对）并保存为正式章节；工具不生成也不改写正文。\n\n前置：本会话已对本章 write.preflight 且通过；已调用 scene.spec 拿到有效蓝图（会把技能的硬性条目并入 sceneSpec.constraints）。\n\n拒存返回码：\n- recall-required：本章没做写前召回或已超过 30 分钟，回 write.preflight 重新召回\n- chapter-conflict：生成期间这一章被作者改过、删掉或同号章被新建；不覆盖，重新读取这一章再决定\n- context-not-ready：已有正式章但近章记忆为空，先 memory.settle_range 或 chapter.discard_range\n- high-risk-pending：按系统提示的放行流程处理后再写\n- beat-budget-invalid：情节点预算与本章目标不符，回 scene.spec 重排\n- length-out-of-range：长度超出本书硬范围，改好再交\n- writing-skill-compliance-failed：成品违反技能里 severity=error 的条目，改好再交\n\n返回：publishHint.warnings 列出违反的技能要求与可能的设定冲突（只提示，不拒存）；settlementDispatch 是章后结算结果；settlementError 表示正文已保存但结算失败，重试 memory.settle_chapter。\n\n可选：requireFactCheckPass=true 时，审计仍有严重事实/连续性问题就拒存（fact-check-failed）。autoRevise、maxReviseRounds、factCheckAutoRevise、adversarialAudit 为兼容旧调用保留，当前不生效。\n\n何时别用：作者只是在问问题、查设定、讨论方向；preflight 未通过。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.write"]),
     risk: "confirmed-write",
     renderer: "pipeline.chapter-result",
@@ -505,13 +505,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "lore.read",
-    description: `Lore / 经纬静态设定读取工具。只读取作者显式维护的静态设定、规则、资料与备注，不返回完整动态剧情记忆。
-
-职责边界：
-- 适合读取人物设定、地点、势力、规则、物品、术语、作者备注、平台/书籍规则。
-- 默认排除 archived、draft、needs-review、participates_in_ai=0 或等价非活跃条目。
-- 写作、修订、审计前的动态叙事记忆召回请使用 memory.read。
-- 关系变化、时间线、角色弧线、伏笔状态和 Pending NarrativeEvents 不属于 Lore。`,
+    description: "Lore / 经纬静态设定读取工具。只读取作者显式维护的静态设定、规则、资料与备注，不返回完整动态剧情记忆。\n\n职责边界：\n- 适合读取人物设定、地点、势力、规则、物品、术语、作者备注、平台/书籍规则。\n- 默认排除已归档、草稿、待审或设为不参与 AI 的条目。\n- 写作、修订、审计前的动态叙事记忆召回请使用 memory.read。\n- 关系变化、时间线、角色弧线、伏笔状态和 Pending NarrativeEvents 不属于 Lore。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.read"]),
     risk: "read",
     renderer: "jingwei.read",
@@ -520,18 +514,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "lore.write",
-    description: `Lore / 经纬静态设定写入工具。用于创建或修改作者可审阅的静态设定。
-
-action=create | update | delete | retire。
-- create/update：写入静态设定；canon/rules 必须 reason + source/evidence。
-- delete：仅非 canon。
-- retire：退役错误/过期条目（含 canon）。不改 layer/正文；设 participates_in_ai=0 + archived。必须 reason；canon 另需 confirmCanonEdit=true。
-
-职责边界：
-- 适合写入 canon/reference/rules 类作者设定、世界规则、平台规则与作者备注。
-- Canon 不能硬删或降级 layer；错误 canon 用 retire，不要试图改 layer 绕过。
-- 动态事实、章节后抽取事实、诊断结果、市场材料、Pending NarrativeEvents 不得直接写入 Lore canon。
-- 动态叙事事实应进入 memory.events / Narrative Memory 事件流程。`,
+    description: "Lore / 经纬静态设定写入工具。用于创建或修改作者可审阅的静态设定。\n\naction=create | update | delete | retire。\n- create/update：写入静态设定；canon/rules 必须 reason + source/evidence。\n- delete：仅非 canon。\n- retire：退役错误/过期条目（含 canon）。不改 layer/正文；归档并设为不参与 AI。必须 reason；canon 另需 confirmCanonEdit=true。\n\n职责边界：\n- 适合写入 canon/reference/rules 类作者设定、世界规则、平台规则与作者备注。\n- Canon 不能硬删或降级 layer；错误 canon 用 retire，不要试图改 layer 绕过。\n- 动态事实、章节后抽取事实、诊断结果、市场材料、Pending NarrativeEvents 不得直接写入 Lore canon。\n- 动态叙事事实应进入 memory.events / Narrative Memory 事件流程。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.write"]),
     risk: "draft-write",
     // T-05a：delete/retire、canon 写入或覆盖（含按分类默认落 canon）、拆书候选晋升升为 confirmed-write；
@@ -565,21 +548,7 @@ action=create | update | delete | retire。
   }),
   sessionTool({
     name: "lore.progress",
-    description: `经纬字段演变工具。对 dynamic 分类条目做字段级推进（如伏笔 status 由「已埋设」推进为「部分揭示」、冲突阶段变化），每次演变写入 jingwei_progressions 台账（旧值/新值/章号/依据），可完整回溯。
-
-约束：
-- 只允许推进 dynamic 分类条目（outline / relationships / conflicts / foreshadowing / timeline / chapter-summaries）。
-- canon/reference 分类（角色人设、世界规则等）拒绝推进：必须走 lore.write 并注明理由，经作者确认。
-- fieldKey 必须命中条目 fields_json 里的真实字段键；新值是本章剧情后的状态。
-
-使用时机：
-- 伏笔兑现/推进（但 hooks.manage 更适合伏笔标准操作，这里用于其它动态字段）。
-- 冲突/时间线/卷纲的状态字段随剧情演变。
-- 需要在结构化字段里留「第 N 章发生了什么变化」的推进痕迹。
-
-不要用的时候：
-- 静态设定修改：用 lore.write。
-- 伏笔的标准埋设/兑现：优先 hooks.manage。`,
+    description: "经纬字段演变工具。对 dynamic 分类条目做字段级推进（如伏笔 status 由「已埋设」推进为「部分揭示」、冲突阶段变化），每次演变记入字段演变台账（旧值/新值/章号/依据），可完整回溯。\n\n约束：\n- 只允许推进 dynamic 分类条目（outline / relationships / conflicts / foreshadowing / timeline / chapter-summaries）。\n- canon/reference 分类（角色人设、世界规则等）拒绝推进：必须走 lore.write 并注明理由，经作者确认。\n- fieldKey 必须是条目里已有的字段键；新值是本章剧情后的状态。\n\n使用时机：\n- 冲突/时间线/卷纲的状态字段随剧情演变。\n- 需要在结构化字段里留「第 N 章发生了什么变化」的推进痕迹。\n\n不要用的时候：\n- 静态设定修改：用 lore.write。\n- 伏笔的标准埋设/兑现：优先 hooks.manage。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.progress"]),
     risk: "draft-write",
     renderer: "jingwei.write",
@@ -717,7 +686,7 @@ action=create | update | delete | retire。
   }),
   sessionTool({
     name: "jingwei.audit",
-    description: "经纬审计门禁。检查静态设定条目是否满足 active + confirmed + participates_in_ai 的 AI 读取门禁，并报告 draft、needs-review、archived、分区禁用或条目禁用等问题。只读，不会修改经纬。",
+    description: "经纬审计门禁。检查静态设定条目是否满足 active + confirmed + 参与 AI 的读取门禁，并报告草稿、待审、已归档、分区禁用或条目禁用等问题。只读，不会修改经纬。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.audit"]),
     risk: "read",
     renderer: "jingwei.audit",
@@ -727,7 +696,7 @@ action=create | update | delete | retire。
   }),
   sessionTool({
     name: "scene.spec",
-    description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 必须先 write.preflight；blockers 非空禁止调用本工具\n2. 用 preflight.resolvedDirective（或用户确认后的一句指示）作为 userDirectives\n3. 可选：lore.read(scope=brief) 静态设定、memory.read 动态记忆\n4. 再调用 scene.spec 生成蓝图\n\n硬约束：\n- userDirectives 必须是一句明确本章目标（≥8 字），禁止塞写作理论/文风大道理\n- 仅有 focus 默认句时需 acceptFocusDefault=true 或补用户句\n- 已有正式章但近章记忆空时会 context-not-ready\n\n不要用的时候：\n- 用户没有要求写章节时\n- preflight 未通过时\n\n注意：软门（文风/去 AI）留在写后 audit/revise；pipeline.write 成功后自动章后结算。",
+    description: "校验你写的结构化本章蓝图（Scene Spec）；pipeline.write 只接受通过校验的蓝图。\n\n流程：先 write.preflight（blockers 非空不调用本工具）→ 用 resolvedDirective 或作者确认的一句指示作为 userDirectives → 需要时用 lore.read(scope=brief) 补静态设定、memory.read 补动态记忆 → 提交蓝图。\n\n硬约束：\n- userDirectives 必须是一句明确的本章目标（≥8 字），不要塞写作理论或文风大道理\n- 只有 focus 默认句时需 acceptFocusDefault=true 或补作者的话\n- 已有正式章但近章记忆空时返回 context-not-ready\n\n何时别用：作者没要求写章；preflight 未通过。文风、去 AI 味等软要求留到写后审修；章后结算由 pipeline.write 自动发起。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["scene.spec"]),
     risk: "read",
     renderer: "scene.spec",

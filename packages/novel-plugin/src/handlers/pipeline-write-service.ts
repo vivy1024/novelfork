@@ -654,7 +654,7 @@ export function buildPipelineContextPackage(input: BuildPipelineContextPackageIn
               : `[第${hook.dueChapter}章应推进] ${hook.title} — ${hook.excerpt}`),
           }))
         : []),
-      ...(input.jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情（legacy compatibility）", excerpt: declareAsRecallData("jingwei_context", input.jingweiContext) }] : []),
+      ...(input.jingweiContext ? [{ source: "jingwei", reason: "补充经纬上下文：人物、设定、伏笔与前情", excerpt: declareAsRecallData("jingwei_context", input.jingweiContext) }] : []),
       ...(input.previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: declareAsRecallData("prev_chapter_tail", input.previousChapterTail) }] : []),
     ],
   };

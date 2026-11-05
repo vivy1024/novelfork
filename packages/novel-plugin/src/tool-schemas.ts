@@ -275,7 +275,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       chapterNumber: numberSchema("章节序号。"),
       content: stringSchema("章节正文（可选，不传则自动读取已保存章节）。"),
       sceneSpec: sceneSpecSchema,
-      canonEntries: arraySchema("Canon 层条目列表（可选，用于 H2 canon violation 检查）。", {
+      canonEntries: arraySchema("Canon 层条目列表（可选，用于设定一致性检查）。", {
         type: "object",
         properties: {
           title: stringSchema("Canon 条目标题。"),
@@ -285,8 +285,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
         required: ["title", "contentMd"],
         additionalProperties: false,
       }),
-      povCharacter: stringSchema("当前 POV 角色名（可选，用于 H7 POV violation 检查）。"),
-      wordTarget: numberSchema("目标字数（可选，用于 S1 字数范围检查）。"),
+      povCharacter: stringSchema("当前视角角色名（可选，用于视角一致性检查）。"),
+      wordTarget: numberSchema("目标字数（可选，用于字数范围检查）。"),
       checks: arraySchema("要执行的检查项（可选，默认全部）。可选值: continuity, rhythm, ai_taste, hooks, character, canon, pov", { type: "string" }),
     },
     required: ["bookId", "chapterNumber"],
@@ -334,7 +334,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       bookId: stringSchema("书籍 ID。"),
       entryId: stringSchema("要改的经纬条目 id。"),
-      fieldsPatch: { type: "object", description: "要改的字段集合（至少一个键）；应用时按 fieldsPatch 合并，其余字段原样保留。" },
+      fieldsPatch: { type: "object", description: "要改的字段集合（至少一个键）；只改列出的字段，其余字段保持不变。" },
       reason: stringSchema("为什么这么改；随候选展示给作者。"),
     },
     required: ["bookId", "entryId", "fieldsPatch", "reason"],
@@ -576,13 +576,13 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       content: stringSchema("当前 Runtime Agent 已完成的章节正文；pipeline.write 只做校验与保存，不在工具内部生成。"),
       jingweiContext: stringSchema("按 scene spec 补读的经纬上下文文本（可选）。"),
       previousChapterTail: stringSchema("前一章末尾 500 字（可选，用于衔接）。"),
-      autoRevise: booleanSchema("是否自动修订审计不过的 critical 问题。默认 true。"),
+      autoRevise: booleanSchema("兼容旧调用，当前不生效：工具不改写正文，审计问题由你修改后重新提交。"),
       // T-13（D1）：continueWithHighRiskPending 已删除——高风险待确认事件只能由作者处理后放行，模型不能自我放行。
-      adversarialAudit: booleanSchema("是否启用多视角对抗式审计。"),
-      maxReviseRounds: numberSchema("最大自动修订轮数。"),
+      adversarialAudit: booleanSchema("兼容旧调用，当前不生效。"),
+      maxReviseRounds: numberSchema("兼容旧调用，当前不生效。"),
       acknowledgedSkills: acknowledgedSkillsSchema,
-      requireFactCheckPass: booleanSchema("若仍有 critical 事实/连续性 S1 未清，则拒绝保存正式章（默认 false，只标 needsHumanReview）。"),
-      factCheckAutoRevise: booleanSchema("普通审修后若仍有 critical 事实/连续性问题，额外触发 1 轮事实专项 spot-fix + 复审（默认 false）。"),
+      requireFactCheckPass: booleanSchema("审计仍有严重事实/连续性问题时拒绝保存（默认 false，只标记待人工复核）。"),
+      factCheckAutoRevise: booleanSchema("兼容旧调用，当前不生效。"),
     },
     required: ["bookId", "sceneSpec", "content"],
     additionalProperties: false,

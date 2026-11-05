@@ -35,7 +35,7 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(tool("lore.relate")?.visibility).toBe("author");
     expect(tool("lore.relate")?.runtimeStatus).toBe("ready");
 
-    expect(tool("lore.progress")?.description).toContain("jingwei_progressions");
+    expect(tool("lore.progress")?.description).toContain("字段演变台账");
     expect(tool("lore.progress")?.description).toContain("canon");
     expect(tool("lore.progress")?.risk).toBe("draft-write");
     expect(tool("lore.progress")?.renderer).toBe("jingwei.write");
@@ -64,7 +64,7 @@ describe("novel tool registry lore/memory boundary", () => {
 
   it("registers jingwei.audit as a read-only lore audit gate", () => {
     expect(tool("jingwei.audit")?.description).toContain("审计门禁");
-    expect(tool("jingwei.audit")?.description).toContain("active + confirmed + participates_in_ai");
+    expect(tool("jingwei.audit")?.description).toContain("active + confirmed + 参与 AI");
     expect(tool("jingwei.audit")?.risk).toBe("read");
     expect(tool("jingwei.audit")?.visibility).toBe("advanced");
   });

@@ -50,6 +50,11 @@ import { exportBookStyleSkill, StyleSkillExportError } from "../engine/writing-s
 
 type UnavailableGeneration = Extract<HostTextGenerationAvailability, { available: false }>;
 
+/** 写作模式子模型调用共用的系统提示；只按本次要的输出替换中间一句。 */
+function writingModeSystemPrompt(output: string): string {
+  return `你是 NovelFork 的小说创作执行模型。${output}，不要复述提示词。`;
+}
+
 const HOST_WITHOUT_TEXT_GENERATION: UnavailableGeneration = {
   available: false,
   code: "MODEL_HOST_UNSUPPORTED",
@@ -363,7 +368,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       return c.json(buildPromptPreviewResponse(prompt, { bookId, writingMode: mode, ...unavailableFields(generation) }));
     }
     const response = await generate(generation, { messages: [
-      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出可供用户复制、合并或明确应用到正式章节/多版本流程的正文内容，不要复述提示词。" },
+      { role: "system", content: writingModeSystemPrompt("请只输出可供用户复制、合并或明确应用到正式章节/多版本流程的正文内容") },
       { role: "user", content: prompt },
     ], temperature: 0.7, maxTokens: 2048 });
 
@@ -400,7 +405,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const response = await generate(generation, { messages: [
       {
         role: "system",
-        content: "你是 NovelFork 的小说创作执行模型。请只输出可供用户复制、合并或明确应用到正式章节/多版本流程的正文、对话或大纲内容，不要复述提示词。",
+        content: writingModeSystemPrompt("请只输出可供用户复制、合并或明确应用到正式章节/多版本流程的正文、对话或大纲内容"),
       },
       { role: "user", content: prompt },
     ], temperature, maxTokens });
@@ -455,7 +460,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       return c.json(buildPromptPreviewResponse(prompt, { bookId, ...unavailableFields(generation) }));
     }
     const response = await generate(generation, { messages: [
-      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出符合角色性格的对话内容，不要复述提示词。" },
+      { role: "system", content: writingModeSystemPrompt("请只输出符合角色性格的对话内容") },
       { role: "user", content: prompt },
     ], temperature: 0.8, maxTokens: 2048 });
 
@@ -507,7 +512,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     let model = generation.model;
     for (const prompt of prompts) {
       const response = await generate(generation, { messages: [
-        { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出变体内容，不要复述提示词。" },
+        { role: "system", content: writingModeSystemPrompt("请只输出变体内容") },
         { role: "user", content: prompt },
       ], temperature: 0.9, maxTokens: 2048 });
       model = response.model ?? model;
@@ -541,7 +546,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       return c.json(buildPromptPreviewResponse(prompt, { bookId, ...unavailableFields(generation) }));
     }
     const response = await generate(generation, { messages: [
-      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请输出大纲分支建议，不要复述提示词。" },
+      { role: "system", content: writingModeSystemPrompt("请输出大纲分支建议") },
       { role: "user", content: prompt },
     ], temperature: 0.8, maxTokens: 2048 });
 
@@ -584,7 +589,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       return c.json(buildPromptPreviewResponse(prompt, { bookId, branchId, ...unavailableFields(generation) }));
     }
     const response = await generate(generation, { messages: [
-      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请输出扩展后的章节大纲，不要复述提示词。" },
+      { role: "system", content: writingModeSystemPrompt("请输出扩展后的章节大纲") },
       { role: "user", content: prompt },
     ], temperature: 0.7, maxTokens: 3072 });
 

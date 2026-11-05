@@ -202,7 +202,7 @@ function buildExtractorUserPrompt(input: ChapterEventExtractorInput): string {
   const foreshadowBlock = input.openForeshadows && input.openForeshadows.length > 0
     ? `\n\n本书未回收伏笔（推进/触发/回收时 subject 原样写下列伏笔名）：\n${formatOpenForeshadows(input.openForeshadows)}`
     : "";
-  return `bookId: ${input.bookId}\nchapterNumber: ${input.chapterNumber}\ntitle: ${input.title ?? ""}${entityBlock}${foreshadowBlock}${ledgerBlock}\n\n正式章节正文：\n${input.content.slice(0, 20_000)}`;
+  return `chapterNumber: ${input.chapterNumber}\ntitle: ${input.title ?? ""}${entityBlock}${foreshadowBlock}${ledgerBlock}\n\n正式章节正文：\n${input.content.slice(0, 20_000)}`;
 }
 
 /**

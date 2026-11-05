@@ -45,4 +45,4 @@ tags:
 1. `chapter_read` 读正文；`lore_read` + `memory_read` 装载裁判源。
 2. 本 Agent 逐组检查，输出报告。
 3. 作者决定后：局部修正由本 Agent 生成新文本 → `rewrite_apply` 落盘；整章重写走 `chapter_write`。
-4. 同步提醒：若审阅发现新事实，建议作者 `memory_settle_range` 结算。
+4. 若按审阅意见改动了剧情事实，落盘后由你调用 `memory_settle_chapter` 重新结算本章。

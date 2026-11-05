@@ -57,7 +57,7 @@ checks:
 2. `lore_read` 查出场角色/地点/规则；需要补看某一栏（如某角色的近况）时再用 `memory_read`——写前必查，禁止现编设定。
 3. 提交 `scene_spec` 蓝图（含 beatBudget），校验通过后**以写前召回包为前情依据**生成本章正文。
 4. `pipeline_write` 提交正文：落盘、审计（含经纬设定核对）、章后结算由工具完成。这一章没先做第 1 步、或召回已超过 30 分钟，会被 `recall-required` 拦下，回第 1 步重新 preflight；返回 `chapter-conflict` 说明这一章在你写的时候被作者改过，先重新读这一章，不要硬覆盖。
-5. 写后同轮清零：结算失败（settlementError）时 `memory_settle_range` 补；新角色/新设定用 `lore_write` 落经纬待作者确认。
+5. 写后同轮清零：结算失败（settlementError）时由你重试 `memory_settle_chapter` 结算本章；新角色/新设定用 `lore_write` 落经纬待作者确认。
 
 ## 禁止
 
