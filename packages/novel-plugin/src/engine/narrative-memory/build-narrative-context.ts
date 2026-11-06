@@ -8,7 +8,8 @@ import { packNarrativeContext, resolveNarrativeChannelBudgets, type NarrativeBud
 import { runChannelWithTimeout, type ChannelResult, type NarrativeRetrievalChannel } from "./channels.js";
 import { createFactsChannel } from "./channels/facts-channel.js";
 import { createHardChannel } from "./channels/hard-channel.js";
-import { createHooksChannel } from "./channels/hooks-channel.js";
+import { createHooksChannel, DORMANT_HOOK_TAG } from "./channels/hooks-channel.js";
+import { recordHookReminders } from "./foreshadow-reminders.js";
 import { createKnowledgeChannel } from "./channels/knowledge-channel.js";
 import { createRecentSummaryChannel } from "./channels/recent-summary-channel.js";
 import { createSceneSpecChannel } from "./channels/scene-spec-channel.js";
@@ -511,6 +512,15 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     trimReasons,
     writeProfile,
   });
+
+  // 休眠伏笔提醒轮转：写章召回里真正装进包的提醒卡，记下「第 N 章提醒过」，下一章起轮到别的伏笔。
+  // 只记写章（write_chapter），诊断 / 审计 / 改稿的召回不推动轮转；轮转只看本章之前的记录，同章重跑结果不变。
+  if (parsed.purpose === "write_chapter" && currentChapter !== undefined) {
+    const remindedIds = budget.cards
+      .filter((item) => item.card.channel === "hooks" && item.card.tags.includes(DORMANT_HOOK_TAG))
+      .map((item) => item.card.sourceId);
+    if (remindedIds.length > 0) recordHookReminders(input.storage, parsed.bookId, currentChapter, remindedIds);
+  }
 
   persistNarrativeRetrievalLog(input.storage, {
     id: input.retrievalLogId ?? `narrative-retrieval:${parsed.bookId}:${crypto.randomUUID()}`,

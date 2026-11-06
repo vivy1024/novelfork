@@ -608,6 +608,34 @@ describe("scene.spec hard gate descriptions", () => {
   });
 });
 
+describe("write.preflight 本章到期伏笔", () => {
+  it("预定回收区间覆盖本章的伏笔进 dueForeshadows 与召回文本的「本章到期伏笔」段；老条目不受影响", async () => {
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    activeStorage!.sqlite.exec(`ALTER TABLE story_jingwei_entry ADD COLUMN status TEXT; ALTER TABLE story_jingwei_entry ADD COLUMN lifecycle TEXT;`);
+    const insert = activeStorage!.sqlite.prepare(`INSERT INTO story_jingwei_entry (id, book_id, title, content_md, fields_json, category, status) VALUES (?, 'book-1', ?, ?, ?, 'foreshadowing', 'confirmed')`);
+    insert.run("hook-due", "师父的遗言", "师父临终只说了半句话。", JSON.stringify({ status: "已埋设", targetRange: "1-3", payoffConstraint: "由大师兄转述" }));
+    insert.run("hook-old", "断剑", "断剑另一半下落不明。", JSON.stringify({ status: "已埋设", plantedChapter: 1 }));
+    insert.run("hook-done", "旧债", "已经还清。", JSON.stringify({ status: "已回收", targetRange: "1-3" }));
+    const bookRoot = join(tmpdir(), `novelfork-preflight-due-${crypto.randomUUID()}`);
+    tempDirs.push(bookRoot);
+    await mkdir(bookRoot, { recursive: true });
+    const result = await handleWritePreflight({
+      bookId: "book-1",
+      chapterNumber: 1,
+      userDirectives: "开篇写主角回到师门，大师兄欲言又止。",
+      storage: activeStorage,
+      bookRoot,
+      buildRecall: true,
+      cockpitState: cockpitState({ formalChapterCount: 0, focus: null }),
+    });
+    expect(result.dueForeshadows?.map((hook) => hook.entryId)).toEqual(["hook-due"]);
+    expect(result.warningItems.some((item) => item.message.includes("本章到期伏笔 1 条"))).toBe(true);
+    expect(result.blockers).toEqual([]);
+    expect(result.recall?.text).toContain("【本章到期伏笔】");
+    expect(result.recall?.text).toContain("由大师兄转述");
+  });
+});
+
 describe("write.preflight 带出本章规划留白（T2.6）", () => {
   it("作者在场景上存的留白出现在结果的 sceneGaps 里；没有留白时省略", async () => {
     const { handleWritePreflight } = await import("./write-preflight.js");

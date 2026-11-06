@@ -184,6 +184,37 @@ describe("hooks channel", () => {
     }
   });
 
+  it("第 300 章：200 条久未推进的无关 Runtime 伏笔不再一刀切 +65 挤掉本章场景点名的伏笔", async () => {
+    const storage = await createStorage();
+    try {
+      const stale = Array.from({ length: 200 }, (_, index) => ({
+        hookId: `stale-${String(index).padStart(3, "0")}`,
+        startChapter: 1 + (index % 50),
+        type: "minor",
+        status: "open" as const,
+        lastAdvancedChapter: 1 + (index % 50),
+        expectedPayoff: `旧事${index}`,
+        notes: "很久没提",
+      }));
+      const relevant = { hookId: "bell-hook", startChapter: 296, type: "mystery", status: "open" as const, lastAdvancedChapter: 298, expectedPayoff: "铜铃夜响", notes: "铜铃与青石镇有关" };
+      const runtimeSnapshot = { ...snapshot(), hooks: { hooks: [...stale, relevant] } } as RuntimeStateSnapshot;
+      const result = await createHooksChannel().run({
+        storage,
+        bookId: "book-1",
+        currentChapter: 300,
+        runtimeSnapshot,
+        sceneSpec: { ...sceneSpec, chapter: 300, scenes: [{ ...sceneSpec.scenes[0]!, location: "青石镇", hooks_used: ["铜铃夜响"] }] },
+        entities: ["韩立"],
+        limit: 24,
+      });
+      const ids = result.cards.map((card) => card.sourceId);
+      expect(ids).toHaveLength(24);
+      expect(ids[0]).toBe("bell-hook");
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns skipped warning when no hooks are available", async () => {
     const storage = await createStorage();
     try {

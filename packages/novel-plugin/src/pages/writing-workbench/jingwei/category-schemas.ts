@@ -30,6 +30,8 @@ export interface CategoryFieldSchema {
   type: JingweiFieldType;
   required: boolean;
   options?: string[];
+  /** select 选项的显示名（存储值 → 显示名）；缺省直接显示存储值。 */
+  optionLabels?: Record<string, string>;
   helpText?: string;
 }
 
@@ -117,6 +119,11 @@ export const CATEGORY_FIELD_SCHEMAS: Partial<Record<JingweiCategory, CategoryFie
     { key: "plantedChapter", label: "埋设章节", type: "chapter", required: true },
     { key: "status", label: "状态", type: "text", required: false, helpText: "如：已埋设、部分揭示、已回收" },
     { key: "description", label: "描述", type: "textarea", required: true },
+    { key: "importance", label: "分量", type: "select", required: false, options: ["high", "med", "low"], optionLabels: { high: "高", med: "中", low: "低" }, helpText: "分量高的更常被提醒" },
+    { key: "targetRange", label: "预定回收", type: "text", required: false, helpText: "章号或区间，如 120 或 120-140" },
+    { key: "triggerKeywords", label: "触发词", type: "tags", required: false, helpText: "写到这些人物、物件、地点时会想起它" },
+    { key: "triggerCondition", label: "触发条件", type: "textarea", required: false },
+    { key: "payoffConstraint", label: "回收要求", type: "textarea", required: false, helpText: "回收时必须成立的事" },
   ],
   timeline: [
     { key: "name", label: "事件名称", type: "text", required: true },

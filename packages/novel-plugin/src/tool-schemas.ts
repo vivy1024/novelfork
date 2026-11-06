@@ -84,6 +84,15 @@ const chapterRangeSchema = {
   additionalProperties: false,
 };
 
+/** 伏笔条目的可选结构化字段（经纬 fields_json）；都可不填，老条目照常工作。 */
+const foreshadowFieldProperties = {
+  triggerCondition: stringSchema("伏笔：什么情况下该想起/触发它（一句话）。"),
+  triggerKeywords: arraySchema("伏笔：触发词（人物/物件/地点）。本章提到时优先召回。", { type: "string" }),
+  targetRange: stringSchema("伏笔：预定回收章或区间，如 \"120\" 或 \"120-140\"。到期时写前提示「本章到期伏笔」。"),
+  payoffConstraint: stringSchema("伏笔：回收时必须成立的事。"),
+  importance: enumSchema(["low", "med", "high"], "伏笔分量：low | med | high，影响召回排序与休眠提醒频率。"),
+};
+
 const sceneSpecSchema = {
   type: "object",
   description: "由 scene.spec 生成的结构化写作蓝图。",
@@ -543,6 +552,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       hookId: stringSchema("伏笔 ID（payoff/delete 时需要）。"),
       chapterNumber: numberSchema("章节号（plant/check_due 时使用）。"),
       description: stringSchema("伏笔描述（plant 时需要）。"),
+      ...foreshadowFieldProperties,
     },
     required: ["bookId", "action"],
     additionalProperties: false,
@@ -628,6 +638,17 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       tags: arraySchema("标签列表。", { type: "string" }),
       visibility: stringSchema("可见性规则：global | tracked | nested。默认 tracked。"),
       relatedEntryIds: arraySchema("关联条目 ID 列表。", { type: "string" }),
+      fields: {
+        type: "object",
+        description: "结构化字段（整体写入）。伏笔条目可带下列可选键，其余分类按各自字段。",
+        properties: {
+          name: stringSchema("名称。"),
+          status: stringSchema("状态（伏笔：已埋设 / 部分揭示 / 已回收 等）。"),
+          plantedChapter: numberSchema("伏笔：埋设章。"),
+          ...foreshadowFieldProperties,
+        },
+        additionalProperties: true,
+      },
       entryId: stringSchema("条目 ID（delete/retire 时可用，按 ID 精确操作）。"),
       mode: stringSchema("写入模式：overwrite（覆盖，默认）、append（追加到已有内容末尾）。"),
       confirmCanonEdit: booleanSchema("修改或退役 Canon 条目时必须设为 true"),
@@ -898,7 +919,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       bookId: stringSchema("书籍 ID。"),
       entryId: stringSchema("要推进的经纬条目 ID（与 title 二选一）。"),
       title: stringSchema("要推进的经纬条目标题（与 entryId 二选一，标题精确匹配）。"),
-      fieldKey: stringSchema("要推进的结构化字段键（如 status / phase / relationType）。"),
+      fieldKey: stringSchema("要推进的结构化字段键（如 status / phase / relationType）。伏笔还可用 triggerCondition / triggerKeywords（逗号分隔）/ targetRange（如 120-140）/ payoffConstraint / importance（low|med|high）。"),
       oldValue: stringSchema("旧值（可选；不传时按当前值记录）。"),
       newValue: stringSchema("新值（必填）。"),
       chapterNumber: numberSchema("发生变化的章节号（用于溯源）。"),

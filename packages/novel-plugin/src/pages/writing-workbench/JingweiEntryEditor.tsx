@@ -171,6 +171,12 @@ function parseStringArray(value: unknown): string[] {
   }
 }
 
+/** 阅读态显示：select 字段按 optionLabels 显示中文名。 */
+function fieldValueToDisplay(value: unknown, field: CategoryFieldSchema): string {
+  const raw = fieldValueToInput(value, field);
+  return field.optionLabels?.[raw] ?? raw;
+}
+
 function fieldValueToInput(value: unknown, field: CategoryFieldSchema): string {
   if (value == null) return "";
   if (field.type === "tags" || field.type === "multi-select") {
@@ -223,8 +229,10 @@ function JingweiSchemaField({
           className={controlClass}
         >
           <option value="">未选择</option>
+          {/* 库里存的值不在选项里时（老数据、手写值）也显示出来，不被当成「未选择」悄悄覆盖 */}
+          {display && !(field.options ?? []).includes(display) ? <option value={display}>{display}</option> : null}
           {(field.options ?? []).map((option) => (
-            <option key={option} value={option}>{option}</option>
+            <option key={option} value={option}>{field.optionLabels?.[option] ?? option}</option>
           ))}
         </select>
       ) : field.type === "boolean" ? (
@@ -855,7 +863,7 @@ function JingweiEntryEditorForm({
               {filledSchemaFields.map((field) => (
                 <div key={field.key} className="flex gap-3">
                   <dt className="w-20 shrink-0 pt-0.5 text-xs text-muted-foreground">{field.label}</dt>
-                  <dd className="min-w-0 flex-1 whitespace-pre-line text-sm">{fieldValueToInput(fields[field.key], field)}</dd>
+                  <dd className="min-w-0 flex-1 whitespace-pre-line text-sm">{fieldValueToDisplay(fields[field.key], field)}</dd>
                 </div>
               ))}
             </dl>

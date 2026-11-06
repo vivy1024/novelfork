@@ -161,3 +161,55 @@ export async function seedLongBook(storage: StorageDatabase, updatedOrder: "old-
   await seedChapterSummaries(storage, 300, updatedOrder);
   await seedVolumeOutline(storage, 6, 50);
 }
+
+export interface LongBookHookSeed {
+  readonly id: string;
+  readonly title: string;
+  readonly plantedChapter: number;
+  readonly contentMd?: string;
+  /** 经纬条目 fields_json 额外字段（triggerKeywords / targetRange / importance 等）；老条目不传。 */
+  readonly fields?: Record<string, unknown>;
+  readonly importance?: number;
+}
+
+/** 写入一批经纬伏笔条目（foreshadowing 分类，已确认、参与 AI）。 */
+export async function seedForeshadowHooks(storage: StorageDatabase, hooks: readonly LongBookHookSeed[]): Promise<void> {
+  await ensureSection(storage, "sec-hooks", "foreshadowing", "伏笔");
+  const repo = createStoryJingweiEntryRepository(storage);
+  const now = new Date(baseTime);
+  for (const hook of hooks) {
+    await repo.create({
+      id: hook.id,
+      bookId: LONG_BOOK_ID,
+      sectionId: "sec-hooks",
+      title: hook.title,
+      contentMd: hook.contentMd ?? `${hook.title}：第${hook.plantedChapter}章埋下，尚未回收。`,
+      summaryMd: null,
+      tags: [],
+      aliases: [],
+      customFields: {},
+      relatedChapterNumbers: [hook.plantedChapter],
+      relatedEntryIds: [],
+      visibilityRule: { type: "tracked" },
+      participatesInAi: true,
+      tokenBudget: null,
+      priorityTier: "relevant",
+      importance: hook.importance ?? 40,
+      summaryL0: null,
+      createdAt: now,
+      updatedAt: now,
+      category: "foreshadowing",
+      fields: { status: "已埋设", plantedChapter: hook.plantedChapter, ...(hook.fields ?? {}) },
+    });
+  }
+}
+
+/** 200 条与任何本章都无关、早早埋下又没推进的长线伏笔（「旧账 k」）。 */
+export function dormantFillerHooks(count = 200): LongBookHookSeed[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `filler-${String(index + 1).padStart(3, "0")}`,
+    title: `旧账${index + 1}`,
+    plantedChapter: 1 + (index % 100),
+    contentMd: `旧账${index + 1}：一件早年的小事，暂未交代。`,
+  }));
+}

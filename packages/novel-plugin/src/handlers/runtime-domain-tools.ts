@@ -798,6 +798,22 @@ async function characterConsistency(
   });
 }
 
+/** hooks.manage plant 可选带的伏笔结构化字段（与 lore.write fields 同名）。 */
+function pickForeshadowFields(input: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const key of ["triggerCondition", "targetRange", "payoffConstraint", "importance"] as const) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) picked[key] = value.trim();
+    else if (key === "targetRange" && typeof value === "number" && Number.isInteger(value) && value > 0) picked[key] = String(value);
+  }
+  const keywords = input.triggerKeywords;
+  const list = Array.isArray(keywords)
+    ? keywords.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+    : typeof keywords === "string" ? keywords.split(/[,，、]/u).map((item) => item.trim()).filter(Boolean) : [];
+  if (list.length > 0) picked.triggerKeywords = list;
+  return picked;
+}
+
 async function hooksManage(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
@@ -815,6 +831,7 @@ async function hooksManage(
       done: isDone,
       text: entry.title,
       contentMd: entry.contentMd,
+      fields: entry.fields,
       plantedChapter,
       payoffChapter,
       status: String(entry.fields.status ?? (isDone ? "paid_off" : "planted")),
@@ -864,6 +881,7 @@ async function hooksManage(
         fields: {
           status: "planted",
           ...(chapterNumber ? { plantedChapter: chapterNumber } : {}),
+          ...pickForeshadowFields(input),
         },
         changedBy: "hooks.manage",
         reason: "plant-hook",
@@ -883,7 +901,9 @@ async function hooksManage(
         category: "foreshadowing",
         title: selected.text,
         contentMd: selected.contentMd || selected.text,
+        // 保留条目上已有字段（触发条件、预定回收区间、回收要求等），只改状态与章号
         fields: {
+          ...selected.fields,
           status: "paid_off",
           ...(selected.plantedChapter ? { plantedChapter: selected.plantedChapter } : {}),
           ...(chapterNumber ? { payoffChapter: chapterNumber } : {}),

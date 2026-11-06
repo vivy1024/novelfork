@@ -88,6 +88,8 @@ export function scoreNarrativeContextCard(card: NarrativeContextCard, context: N
     chapterProximityBoost: chapterProximityBoost(card, context.currentChapter),
     importanceBoost: card.importance / 2 + card.priority / 5,
     ftsBoost: existing.ftsBoost ?? 0,
+    // hooks 通道算好的伏笔相关度（触发词 / 到期 / 分量），让伏笔在全局排序与七栏上限里按本章相关度竞争
+    hookRelevanceBoost: card.channel === "hooks" ? existing.hookRelevanceBoost ?? 0 : 0,
     factConfidenceBoost: existing.factConfidenceBoost ?? (card.sourceType === "fact" ? (card.score ?? 0) * 10 : 0),
     recencyBoost: recencyBoost(card, context.now ?? new Date()),
     recentChangeBoost: recentChangeBoost(card, context.currentChapter),

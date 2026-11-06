@@ -36,8 +36,7 @@ import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtim
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { persistChapterAuditLog } from "../engine/tools/health/audit-log-persist.js";
 import { replaceChapterScenes, sceneFromSpec } from "../engine/narrative-memory/scene-store.js";
-import { selectDueHooks, type DueHookInput } from "../engine/narrative-memory/foreshadow-phase.js";
-import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
+import { describeDueForeshadow, loadDueForeshadows } from "../engine/narrative-memory/foreshadow-due.js";
 import { loadForeshadowStates } from "../engine/narrative-taxonomy/foreshadow-states.js";
 import { isPlaceholderFocusDoc, readCurrentFocusDocFromStorage } from "../engine/jingwei/current-focus.js";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
@@ -582,40 +581,19 @@ function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): Co
 }
 
 /**
- * T2 到期窗口取数：读 foreshadowing 条目，交给 selectDueHooks 纯函数筛选排序；
- * 已触发未兑现的伏笔排在最前（枪已上膛）。字典式失败容错：查不到返回空。
+ * 到期伏笔取数：与 write.preflight「本章到期伏笔」同一口径（foreshadow-due：预定回收区间 targetRange /
+ * 旧 targetChapter 覆盖、已过或临近本章，且未回收）；已触发未兑现的伏笔排在最前（枪已上膛）。
+ * 字典式失败容错：查不到返回空。
  */
 function collectDueHooks(storage: StorageDatabase, bookId: string, currentChapter: number): Array<{ title: string; excerpt: string; dueChapter: number; armed?: boolean }> {
   try {
-    const categories = getJingweiCategoryAliases("foreshadowing");
-    const rows = storage.sqlite.prepare<{ title: string; content_md: string | null; fields_json: string | null }>(`
-      SELECT title, content_md, fields_json
-      FROM story_jingwei_entry
-      WHERE book_id = ? AND category IN (${sqlInPlaceholders(categories)}) AND deleted_at IS NULL
-    `).all(bookId, ...categories);
-
-    const inputs: DueHookInput[] = rows.map((row) => {
-      let fields: Record<string, unknown> = {};
-      try {
-        fields = JSON.parse(row.fields_json ?? "{}") as Record<string, unknown>;
-      } catch {
-        fields = {};
-      }
-      const name = typeof fields.name === "string" && fields.name.trim() ? fields.name.trim() : row.title;
-      return {
-        title: name,
-        status: typeof fields.status === "string" ? fields.status : "已埋设",
-        targetChapter: typeof fields.targetChapter === "number" ? fields.targetChapter : undefined,
-        seedText: String(row.content_md ?? "").slice(0, 120) || undefined,
-      };
-    });
-    const due = selectDueHooks(inputs, currentChapter).map((hook) => ({
+    const due = loadDueForeshadows(storage, bookId, currentChapter).map((hook) => ({
       title: hook.title,
-      excerpt: hook.seedText ?? "（无种子文本，详见经纬里的伏笔条目）",
-      dueChapter: hook.dueChapter,
+      excerpt: describeDueForeshadow(hook),
+      dueChapter: hook.range.to,
     }));
     // 已触发未兑现：阶段由经纬伏笔条目 + 关联的已应用 hook 事件派生（见 foreshadow-states）
-    const triggered = loadForeshadowStates(storage, bookId)
+    const triggered = loadForeshadowStates(storage, bookId, { beforeChapter: currentChapter })
       .filter((state) => state.phase === "triggered")
       .map((state) => ({
         title: state.label,
@@ -655,10 +633,10 @@ export function buildPipelineContextPackage(input: BuildPipelineContextPackageIn
             source: `runtime/hook_debt#${hook.title}`,
             reason: hook.armed
               ? "已触发未兑现的伏笔（枪已上膛，本章必须推进或兑现）"
-              : "本章应推进的伏笔（到期窗口内，强制关注）",
+              : "本章到期伏笔（预定回收区间已到本章附近，强制关注）",
             excerpt: declareAsRecallData("hook_debt", hook.armed
               ? `[已触发] ${hook.title} — ${hook.excerpt}`
-              : `[第${hook.dueChapter}章应推进] ${hook.title} — ${hook.excerpt}`),
+              : `[本章到期] ${hook.title} — ${hook.excerpt}`),
           }))
         : []),
       ...(input.jingweiContext ? [{ source: "jingwei", reason: "补充经纬上下文：人物、设定、伏笔与前情", excerpt: declareAsRecallData("jingwei_context", input.jingweiContext) }] : []),

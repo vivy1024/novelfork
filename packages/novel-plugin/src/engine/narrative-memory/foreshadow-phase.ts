@@ -7,6 +7,8 @@
  *   按到期章号升序取 top3 注入写前上下文（激活 runtime/hook_debt 死管道）。
  */
 
+import { HOOK_IMPORTANCE_MULTIPLIER, resolveHookImportance, type HookImportance } from "./foreshadow-ledger.js";
+
 export type ForeshadowPhase = "development" | "convergence" | "finale";
 
 const CONVERGENCE_THRESHOLD = 0.75;
@@ -69,6 +71,7 @@ export function selectDueHooks(
 }
 
 /** 长线伏笔休眠阈值：超过这么多章没被推进的未回收伏笔，写前提醒作者别忘了。 */
+// 提醒按「多久没被想起」轮转，见 selectDormantHooks。
 export const DEFAULT_DORMANT_HOOK_CHAPTERS = 30;
 export const DEFAULT_DORMANT_HOOK_LIMIT = 3;
 
@@ -86,6 +89,10 @@ export interface DormantHookInput {
   readonly targetChapter?: number;
   /** 经纬条目重要度（0–100，默认 40）。 */
   readonly importance?: number;
+  /** 伏笔分量（条目 fields.importance：low/med/high）；填了优先于 importance 数值。 */
+  readonly hookImportance?: HookImportance;
+  /** 当前章之前最近一次被休眠提醒的章（条目 fields.remindedChapters 派生）。 */
+  readonly lastRemindedChapter?: number;
   readonly seedText?: string;
 }
 
@@ -101,9 +108,11 @@ function validChapter(value: number | undefined): value is number {
 
 /**
  * 休眠长线伏笔：未回收、埋设章 < currentChapter，且距最近一次推进 ≥ thresholdChapters 章。
- * 排序：埋得越久（currentChapter - setupChapter）与重要度越高越优先——
- *   优先分 = 悬置章数 × (0.5 + importance/100)；同分按埋设章升序。截取 limit。
- * 只看 currentChapter 之前的推进记录（修旧章时，未来章的推进不算）。
+ * 轮转排序：按「多久没被想起」——距 max(最近一次提醒, 最近一次推进, 埋设章) 的章数 × 分量系数
+ *   （低 0.7 / 中 1 / 高 1.4）；同分按埋设章升序、标题。截取 limit。
+ * 被提醒过的伏笔等待章数归零、排到队尾，于是池子里每条都会轮到：N 条休眠、每章 k 条时，
+ * 同分量的伏笔大约每 N/k 章出现一次，高分量的更勤。
+ * 只看 currentChapter 之前的推进与提醒记录（修旧章 / 同章重跑召回时结果不变）。
  */
 export function selectDormantHooks(
   entries: readonly DormantHookInput[],
@@ -124,8 +133,10 @@ export function selectDormantHooks(
         : entry.setupChapter;
       const idleChapters = currentChapter - progress;
       if (idleChapters < threshold) return [];
-      const importance = Math.min(100, Math.max(0, entry.importance ?? 40));
-      const rank = (currentChapter - entry.setupChapter) * (0.5 + importance / 100);
+      const reminded = validChapter(entry.lastRemindedChapter) && entry.lastRemindedChapter < currentChapter ? entry.lastRemindedChapter : 0;
+      const waited = currentChapter - Math.max(progress, reminded);
+      const tier = entry.hookImportance ?? resolveHookImportance({ triggerKeywords: [], remindedChapters: [] }, entry.importance);
+      const rank = waited * HOOK_IMPORTANCE_MULTIPLIER[tier];
       return [{ ...entry, setupChapter: entry.setupChapter, idleChapters, rank }];
     })
     .sort((a, b) => b.rank - a.rank || a.setupChapter - b.setupChapter || a.title.localeCompare(b.title))
