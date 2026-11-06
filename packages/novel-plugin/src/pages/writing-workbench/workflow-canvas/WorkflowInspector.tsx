@@ -170,7 +170,7 @@ function StepFields({ step, editable, onOps }: { step: WorkflowStepNode; editabl
       {step.executionMode === "subagent" ? (
         <label className={labelClass}>
           子代理
-          <CommitInput ariaLabel="子代理" value={step.agentId ?? ""} disabled={!editable} placeholder="子代理 id" onCommit={(text) => update({ agentId: text.trim() || null })} />
+          <CommitInput ariaLabel="子代理" value={step.agentId ?? ""} disabled={!editable} placeholder="子代理名称" onCommit={(text) => update({ agentId: text.trim() || null })} />
         </label>
       ) : null}
       <label className={labelClass}>

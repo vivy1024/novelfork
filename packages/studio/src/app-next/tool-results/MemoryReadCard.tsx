@@ -114,7 +114,7 @@ export const MemoryReadCard: ToolResultRenderer = (context: ToolResultRendererCo
   return (
     <ToolResultSurface
       testId="tool-result-memory-read"
-      title="叙事记忆召回"
+      title="写作前参考"
       icon={<BrainCircuit className="size-4 text-primary" />}
       meta={`${cards.length} 张卡${totalTokens !== null ? ` · 约 ${totalTokens} tokens` : ""}`}
     >

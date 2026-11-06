@@ -78,8 +78,8 @@ function ImportPanel({ bookId, onClose, onImported }: { bookId: string; onClose:
   return (
     <div className="flex flex-col gap-2 border-t border-border p-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium">导入经纬</span>
-        <Button size="xs" variant="ghost" onClick={onClose}><X className="size-3" /></Button>
+        <span className="text-xs font-medium">导入设定</span>
+        <Button size="xs" variant="ghost" aria-label="关闭" onClick={onClose}><X className="size-3" /></Button>
       </div>
       <p className="text-xs text-muted-foreground">粘贴 Markdown，按 ## 标题拆分为多条条目。</p>
       <select className="h-7 text-xs border rounded px-2 bg-background" value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -128,7 +128,7 @@ function InjectionPreview({ bookId, onClose }: { bookId: string; onClose: () => 
     <div className="border-t border-border p-2">
       <div className="flex items-center justify-between">
         <span className="text-2xs font-medium text-muted-foreground">AI 注入预览</span>
-        <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
+        <Button size="xs" variant="ghost" aria-label="关闭" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
       <div className="flex items-center gap-1 mt-1">
         <span className="text-2xs text-muted-foreground">第</span>

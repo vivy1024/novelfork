@@ -70,7 +70,7 @@ export function ChapterSettlementBanner({ bookId, chapterNumber, content, onAskR
       data-testid="chapter-stale-banner"
     >
       <AlertTriangle className="size-3.5 shrink-0" />
-      <span className="min-w-0 flex-1">本章正文在结算后已被修改——叙事记忆可能过期，建议重新结算。</span>
+      <span className="min-w-0 flex-1">本章正文在结算后改过，章后事实可能过时，建议重新结算。</span>
       <Button
         size="xs"
         variant="outline"

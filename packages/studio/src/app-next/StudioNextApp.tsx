@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import {
   Component,
   lazy,
@@ -131,9 +132,6 @@ function ShellPlaceholder({
       className="flex h-full flex-1 flex-col p-6"
       data-testid="agent-shell-route"
     >
-      <p className="text-xs font-medium text-muted-foreground">
-        NovelFork Next
-      </p>
       <h1 className="mt-2 text-2xl font-semibold">{title}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
     </section>
@@ -280,7 +278,7 @@ function HomeRouteLive({
     try {
       const bookId = runtimeProductMode
         ? await (() => {
-            if (!onCreateRuntimeBook) throw new Error("Runtime 创建作品入口不可用");
+            if (!onCreateRuntimeBook) throw new Error("暂时无法新建作品，请刷新后重试");
             return onCreateRuntimeBook(input.title, input.projectInit);
           })()
         : await (async () => {
@@ -305,9 +303,6 @@ function HomeRouteLive({
     >
       <header className="space-y-4">
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            NovelFork Next
-          </p>
           <h1 className="nf-display text-3xl">作者首页</h1>
         </div>
 
@@ -367,7 +362,7 @@ function HomeRouteLive({
 
       {!loading && !runtimeStatus?.hasUsableModel && (
         <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 flex items-center gap-3">
-          <span className="text-warning text-lg">⚠️</span>
+          <AlertTriangle className="size-5 shrink-0 text-warning" aria-hidden="true" />
           <div className="flex-1">
             <p className="text-sm font-medium text-warning">
               AI 模型尚未就绪
@@ -395,7 +390,7 @@ function HomeRouteLive({
 
       <div className="grid gap-3 sm:grid-cols-2 max-w-md">
         <HomeStatCard label="作品数" value={`${books.length} 本`} />
-        <HomeStatCard label="会话数" value={`${sessions.length} 条`} />
+        <HomeStatCard label="对话数" value={`${sessions.length} 条`} />
       </div>
 
       {onboardingStatus && !onboardingStatus.dismissedGettingStarted && (
@@ -441,7 +436,7 @@ function HomeRouteLive({
 
       {!loading && books.length === 0 && sessions.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
-          还没有可用内容，先新建作品或新建会话。
+          还没有内容，先新建一本作品。
         </div>
       ) : null}
     </section>

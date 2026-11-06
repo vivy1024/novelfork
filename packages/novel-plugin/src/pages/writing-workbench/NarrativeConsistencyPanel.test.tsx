@@ -130,7 +130,7 @@ describe("NarrativeConsistencyPanel", () => {
     expect(screen.getByText(REALM_FINDING.explanation.whyItMatters)).toBeTruthy();
     expect(screen.getByText(REALM_FINDING.explanation.suggestedAction)).toBeTruthy();
     // 两边取值同时在场，作者不用点开就知道分歧是什么。
-    expect(screen.getByText("经纬：金丹")).toBeTruthy();
+    expect(screen.getByText("设定：金丹")).toBeTruthy();
     expect(screen.getByText("现状：筑基")).toBeTruthy();
   });
 

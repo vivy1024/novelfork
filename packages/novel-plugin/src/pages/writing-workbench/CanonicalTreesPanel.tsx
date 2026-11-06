@@ -476,7 +476,7 @@ export function CanonicalTreesPanel({
             />
           </div>
           {query ? (
-            <Button size="xs" variant="ghost" className="h-6 px-1 text-2xs" onClick={() => setQuery("")}>
+            <Button size="xs" variant="ghost" className="h-6 px-1 text-2xs" aria-label="清空搜索" onClick={() => setQuery("")}>
               <X className="size-3" />
             </Button>
           ) : null}

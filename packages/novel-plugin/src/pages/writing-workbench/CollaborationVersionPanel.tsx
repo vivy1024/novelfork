@@ -92,7 +92,7 @@ function SessionNodeView({ node, depth = 0 }: { node: SessionTreeNode; depth?: n
           <span className="rounded bg-secondary px-1.5 py-0.5 text-2xs text-secondary-foreground">{node.session.status}</span>
         </div>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span>{node.session.agentId || "未指定 Agent"}</span>
+          <span>{node.session.agentId || "未指定叙述者"}</span>
           <span>{formatLastModified(node.session.lastModified)}</span>
         </div>
       </div>
@@ -240,12 +240,12 @@ export function CollaborationVersionPanel({ bookId, repositoryPath }: { bookId: 
                 );
               })}
             </div>
-          ) : !loading ? <p className="text-sm text-muted-foreground">没有可显示的 worktree。</p> : null}
+          ) : !loading ? <p className="text-sm text-muted-foreground">没有工作副本。</p> : null}
       </Section>
 
       <Section title="Git 提交版本时间轴">
         {!resolvedRepoPath ? (
-          <p className="text-sm text-muted-foreground">未绑定 repositoryPath，无法读取提交历史。</p>
+          <p className="text-sm text-muted-foreground">这本书还没有关联版本库，看不到提交历史。</p>
         ) : errors.commits ? (
           <p role="alert" className="text-sm text-destructive">{errors.commits}</p>
         ) : commits.length > 0 ? (

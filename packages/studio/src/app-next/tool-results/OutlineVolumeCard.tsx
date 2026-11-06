@@ -68,7 +68,7 @@ export const OutlineVolumeCard: ToolResultRenderer = (context: ToolResultRendere
       meta={`${rows.length} 卷`}
     >
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{summary || "经纬里还没有卷纲。可以用 outline.volume(action=suggest) 生成草案。"}</p>
+        <p className="text-xs text-muted-foreground">{summary || "还没有卷纲，可以让叙述者先起草一份。"}</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {rows.map((volume) => (
@@ -91,7 +91,7 @@ export const OutlineVolumeCard: ToolResultRenderer = (context: ToolResultRendere
       {isSuggestion && (
         <>
           <Separator />
-          <p className="text-xs text-muted-foreground">这是草案，还没写进经纬。确认后用 outline.volume(action=set) 保存。</p>
+          <p className="text-xs text-muted-foreground">这是草案，还没保存，确认后让叙述者保存。</p>
         </>
       )}
 

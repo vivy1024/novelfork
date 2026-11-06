@@ -153,6 +153,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
               type="button"
               className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
               onClick={onClose}
+              aria-label="关闭"
               data-testid="dissect-draft-close"
             >
               <X className="size-3.5" />
@@ -161,7 +162,7 @@ export function DissectDraftPanel({ bookId, onClose, onChanged }: DissectDraftPa
         </div>
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">
-        拆书时会从原文抽出角色、地点、势力、伏笔候选。确认（promote）后写入正式设定，参与写作注入；驳回（reject）后废弃。这本没有处理完的草案不会进入正文。
+        拆书从原文抽出的角色、地点、势力和伏笔，确认后才成为正式设定，驳回即丢弃。
       </p>
       {note ? (
         <p

@@ -23,7 +23,7 @@ function SaveIndicator({ status }: { status: "saved" | "saving" | "dirty" }) {
   const colorMap = {
     saved: "bg-success",
     saving: "bg-warning animate-spin",
-    dirty: "bg-orange-400",
+    dirty: "bg-warning",
   } as const;
 
   const labelMap = {
@@ -78,7 +78,7 @@ export function StatusBar({
   }, [data]);
 
   const chapterLabel = health ? `${health.chapterCount} 章` : "— 章";
-  const alertLabel = health?.alertCount ? `⚠ ${health.alertCount}` : "";
+  const alertLabel = health?.alertCount ? `${health.alertCount} 项告警` : "";
   const cursorLabel =
     cursorLine != null && cursorColumn != null ? `${cursorLine}:${cursorColumn}` : null;
 

@@ -379,7 +379,7 @@ export function ManuscriptImportDialog({ open, resume, client, createBook, onClo
                 <div className="rounded-lg border p-3 text-sm" data-testid="manuscript-report">
                   <p className="font-medium">导入报告</p>
                   <p className="mt-1">
-                    {view.job.report.chapterCount} 章，已有叙事记忆 {view.job.report.settledChapters} 章；事件 {view.job.report.eventCount} 条（待审 {view.job.report.pendingEventCount}，其中高风险 {view.job.report.highRiskPendingCount}）；
+                    {view.job.report.chapterCount} 章，已结算 {view.job.report.settledChapters} 章；事件 {view.job.report.eventCount} 条（待审 {view.job.report.pendingEventCount}，其中高风险 {view.job.report.highRiskPendingCount}）；
                     实体 {view.job.report.entityCount} 个、关系 {view.job.report.relationCount} 条；伏笔 {view.job.report.foreshadow.total} 条；剧情线 {view.job.report.storylines.length} 条；全书待确认 {view.job.report.pendingReviewTotal} 项。
                   </p>
                   {view.job.report.characterDrafts && view.job.report.characterDrafts.pending > 0 ? (

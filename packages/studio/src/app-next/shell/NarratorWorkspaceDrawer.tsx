@@ -121,8 +121,8 @@ export function NarratorWorkspaceDrawer({
         data-testid="narrator-workspace-drawer"
       >
         <SheetHeader className="border-b border-border px-4 py-3 text-left">
-          <SheetTitle>会话工作区</SheetTitle>
-          <SheetDescription>切换最近叙述者，或从完整会话列表继续工作。</SheetDescription>
+          <SheetTitle>对话</SheetTitle>
+          <SheetDescription>切换最近的对话，或打开完整列表。</SheetDescription>
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
@@ -147,7 +147,7 @@ export function NarratorWorkspaceDrawer({
             </div>
 
             {recentNarrators.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-muted-foreground">暂无最近会话</p>
+              <p className="px-2 py-3 text-xs text-muted-foreground">暂无最近对话</p>
             ) : recentNarrators.map(({ tab, narratorId, session }) => {
               const active = narratorId === activeNarratorId;
               const stale = session === null || session.status !== "active";
@@ -196,7 +196,7 @@ export function NarratorWorkspaceDrawer({
                     <span className="block truncate text-sm font-medium">{tab.title}</span>
                     <span className="block truncate text-2xs text-muted-foreground">
                       {stale
-                        ? "会话已失效，可关闭此最近项"
+                        ? "对话已不存在，可以关掉这一项"
                         : session.projectName
                           ? `书籍 · ${session.projectName}`
                           : "独立叙述者"}
@@ -235,7 +235,7 @@ export function NarratorWorkspaceDrawer({
           <section aria-label="独立叙述者" className="mt-5 space-y-1">
             <h2 className="px-1 py-1 text-xs font-semibold text-muted-foreground">独立叙述者</h2>
             {standaloneSessions.length === 0 ? (
-              <p className="px-2 py-2 text-xs text-muted-foreground">暂无独立会话</p>
+              <p className="px-2 py-2 text-xs text-muted-foreground">暂无独立对话</p>
             ) : standaloneSessions.map((session) => (
               <SessionButton
                 key={session.id}

@@ -402,7 +402,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
               className="h-6 gap-1"
               onClick={() => setActiveTab("adversarial")}
             >
-              <ShieldCheck className="size-3 text-purple-600 dark:text-purple-400" />
+              <ShieldCheck className="size-3 text-primary" />
               <span className="text-2xs font-medium">对抗审查</span>
             </Button>
             <Button
@@ -554,7 +554,7 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                 <Button
                   variant="outline"
                   size="xs"
-                  className="gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800"
+                  className="gap-1 border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
                   disabled={adversarialRunning || !content?.trim()}
                   onClick={() => void handleRunAdversarialAudit()}
                 >
@@ -573,8 +573,8 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                 </p>
               )}
               <div className="grid grid-cols-3 gap-2 text-2xs">
-                <div className="rounded border border-purple-500/20 bg-purple-500/5 p-2">
-                  <p className="font-medium text-purple-700 dark:text-purple-300">A. 连续性审查官</p>
+                <div className="rounded border border-primary/20 bg-primary/5 p-2">
+                  <p className="font-medium text-primary">A. 连续性审查官</p>
                   <p className="mt-0.5 text-muted-foreground">带工具查证前文，严查战力崩塌、时间线冲突与角色OOC</p>
                 </div>
                 <div className="rounded border border-info/20 bg-info/5 p-2">

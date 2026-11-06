@@ -32,7 +32,6 @@ import {
   RefreshCw,
   ScrollText,
   Settings2,
-  ShieldCheck,
 } from "lucide-react";
 
 import { computeForeshadowingDebt } from "../../engine/jingwei/foreshadowing-debt";
@@ -321,10 +320,10 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
       <div className="flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
           <Gauge className="size-4 text-primary" />
-          叙事治理驾驶舱
+          全书体检
           <Badge variant="secondary" className="text-2xs font-normal">全书口径</Badge>
         </h2>
-        <Button variant="ghost" size="sm" className="gap-1.5" onClick={load} aria-label="刷新治理驾驶舱">
+        <Button variant="ghost" size="sm" className="gap-1.5" onClick={load} aria-label="刷新全书体检">
           <RefreshCw className="size-3.5" />刷新
         </Button>
       </div>
@@ -348,14 +347,14 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
           label="伏笔回收率"
           value={healthBlock.status === "loading" ? "…" : formatPercent(recoveryPercent)}
           tone={rateToneClass(recoveryPercent)}
-          hint={healthBlock.status === "error" ? "健康度不可用" : "来自 /health hookRecoveryRate"}
+          hint={healthBlock.status === "error" ? "健康度不可用" : "已回收伏笔占比"}
           testId="metric-hook-recovery"
         />
         <MetricCard
-          label="治理健康"
+          label="告警"
           value={healthBlock.status === "loading" ? "…" : governanceIssues === 0 ? "无告警" : `${governanceIssues} 项`}
           tone={governanceIssues === 0 ? "text-success" : governanceIssues > 3 ? "text-destructive" : "text-warning"}
-          hint={overdueCount > 0 ? `含 ${overdueCount} 条超期伏笔` : "warnings + 超期伏笔合计"}
+          hint={overdueCount > 0 ? `含 ${overdueCount} 条超期伏笔` : "告警与超期伏笔合计"}
           testId="metric-governance-health"
         />
       </div>
@@ -424,7 +423,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
             <Settings2 className="size-4" />
             结算与召回设置
           </CardTitle>
-          <p className="mt-1 text-xs text-muted-foreground">写回 narrative-memory config，立即影响下一章结算行为。</p>
+          <p className="mt-1 text-xs text-muted-foreground">改动从下一章结算起生效。</p>
         </CardHeader>
         <CardContent className="space-y-2">
           {settlementBlock.status === "loading" ? (
@@ -451,7 +450,7 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
               <div className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2">
                 <div className="min-w-0">
                   <p className="text-xs font-medium">自动章节摘要</p>
-                  <p className="text-xs text-muted-foreground">结算完成后生成本章摘要，供下一章 recent-summary 召回。</p>
+                  <p className="text-xs text-muted-foreground">结算完成后生成本章摘要，写下一章时参考。</p>
                 </div>
                 <Switch
                   checked={settlementBlock.data.autoChapterSummary ?? false}
@@ -465,10 +464,6 @@ export function GovernanceCockpitPanel({ bookId, className }: GovernanceCockpitP
         </CardContent>
       </Card>
 
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <ShieldCheck className="size-3" />
-        全部数据来自既有接口：<code>/api/books/:bookId</code>、<code>/jingwei/entries</code>、<code>/health</code>、<code>/narrative-memory/config</code>。
-      </p>
     </div>
   );
 }

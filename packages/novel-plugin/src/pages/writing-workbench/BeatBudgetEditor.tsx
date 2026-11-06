@@ -56,7 +56,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
     <div className="flex flex-col gap-1.5" data-testid="beat-budget-editor">
       {beats.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          还没有情节点。不拆点时只有「本章总字数」一个约束，容易平均用力。
+          还没有情节点。
         </p>
       )}
 

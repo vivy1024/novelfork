@@ -89,7 +89,7 @@ export interface ConnectionFeedbackProps {
 export function ConnectionFeedback({ status, label }: ConnectionFeedbackProps) {
   const colors: Record<ConnectionFeedbackProps["status"], string> = {
     connected: "bg-success",
-    disconnected: "bg-gray-400",
+    disconnected: "bg-muted-foreground",
     connecting: "bg-warning animate-pulse",
     error: "bg-destructive",
   };

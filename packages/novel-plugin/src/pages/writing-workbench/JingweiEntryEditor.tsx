@@ -775,7 +775,7 @@ function JingweiEntryEditorForm({
             <div className="text-center py-8 text-muted-foreground">
               <Link2 className="size-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm">暂无关联条目</p>
-              <p className="text-xs mt-1">用于静态设定条目之间的引用跳转；剧情关系变化请在叙事记忆中查看</p>
+              <p className="text-xs mt-1">设定条目之间的引用；剧情里的关系变化在章后事实里看</p>
             </div>
           )}
         </div>
@@ -948,10 +948,10 @@ function JingweiEntryEditorForm({
                 <SelectItem value="auto">自动（按规则推断）</SelectItem>
                 <SelectItem value="core">核心（始终注入）</SelectItem>
                 <SelectItem value="relevant">相关（按匹配注入）</SelectItem>
-                <SelectItem value="reference">参考（仅 full 模式）</SelectItem>
+                <SelectItem value="reference">参考（仅完整上下文）</SelectItem>
               </SelectContent>
             </Select>
-            <p className="mt-1 text-xs text-muted-foreground">核心条目始终被 Agent 看到；参考条目仅在 full 模式下注入。</p>
+            <p className="mt-1 text-xs text-muted-foreground">核心条目每次写作都会带上；参考条目只在完整上下文时带上。</p>
           </div>
 
           {isJingweiEntry && (
@@ -1019,7 +1019,7 @@ function JingweiEntryEditorForm({
                   {aliases.map((alias, index) => (
                     <Badge key={`${alias}-${index}`} variant="secondary" className="text-2xs gap-0.5 pr-1">
                       {alias}
-                      <button type="button" onClick={() => setAliases((prev) => prev.filter((_, i) => i !== index))} className="ml-0.5 hover:text-destructive">
+                      <button type="button" aria-label={`删除别名 ${alias}`} onClick={() => setAliases((prev) => prev.filter((_, i) => i !== index))} className="ml-0.5 hover:text-destructive">
                         <X className="size-2.5" />
                       </button>
                     </Badge>
@@ -1038,7 +1038,7 @@ function JingweiEntryEditorForm({
                     className="h-6 w-28 text-2xs border-none bg-transparent px-1 focus-visible:ring-0"
                   />
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">别名用于经纬检索召回，多个别名回车分隔。</p>
+                <p className="mt-1 text-xs text-muted-foreground">写作时按别名也能找到这个条目，多个别名回车分隔。</p>
               </div>
             </>
           )}

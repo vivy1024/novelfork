@@ -200,7 +200,7 @@ export const LoreTreeCard: ToolResultRenderer = (context: ToolResultRendererCont
         </Suspense>
       ) : (
         <p className="text-xs text-muted-foreground" data-testid="tool-result-lore-tree-no-entries">
-          这次读取没有返回经纬条目
+          这次没有读到设定条目
           {events.count > 0
             ? `，但带回了 ${events.count} 个事件（第 ${events.chapters[0] ?? "?"}–${events.chapters[events.chapters.length - 1] ?? "?"} 章）。`
             : "。"}

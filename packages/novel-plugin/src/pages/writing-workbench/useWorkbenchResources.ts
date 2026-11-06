@@ -156,7 +156,7 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     icon: "shield-check",
     tools: [
       { id: "tool:compliance", title: "投稿风险自检", toolPanel: "compliance" },
-      { id: "tool:governance", title: "叙事治理驾驶舱", toolPanel: "governance" },
+      { id: "tool:governance", title: "全书体检", toolPanel: "governance" },
     ],
   },
   {
@@ -164,7 +164,7 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     title: "运行与协同",
     icon: "settings",
     tools: [
-      { id: "tool:runtime", title: "底层状态总览", toolPanel: "runtime" },
+      { id: "tool:runtime", title: "故事状态总览", toolPanel: "runtime" },
       { id: "tool:collaboration-version", title: "协作与版本", toolPanel: "collaboration-version" },
     ],
   },

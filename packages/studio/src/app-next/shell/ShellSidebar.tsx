@@ -353,8 +353,7 @@ export function ShellSidebar({
           <div className="flex items-center justify-between border-b border-border px-2 py-2" role="banner">
             <div className="min-w-0 px-1">
               <p className="nf-display truncate text-base">NovelFork Studio</p>
-              <p className="text-xs text-muted-foreground">Agent Shell</p>
-            </div>
+                          </div>
             <Button
               type="button"
               variant="ghost"
@@ -370,7 +369,7 @@ export function ShellSidebar({
         {/* Content */}
         <div className={cn("flex flex-1 flex-col overflow-y-auto", isCollapsed ? "items-center gap-2 overflow-x-hidden py-2" : "gap-4 px-1.5 py-3")}>
           {/* Books section */}
-          <section className={cn("flex flex-col", isCollapsed ? "items-center gap-0.5" : "gap-1")} aria-label="叙事线（书籍）">
+          <section className={cn("flex flex-col", isCollapsed ? "items-center gap-0.5" : "gap-1")} aria-label="我的作品">
             {!isCollapsed && (
               <button
                 type="button"
@@ -378,7 +377,7 @@ export function ShellSidebar({
                 onClick={() => onNavigate({ kind: "books" })}
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                叙事线（书籍）
+                我的作品
               </button>
             )}
             {isCollapsed && (
@@ -418,7 +417,7 @@ export function ShellSidebar({
               <div className="flex items-center justify-between px-2">
                 <h2 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                   <MessageSquareText className="h-3.5 w-3.5" />
-                  最近会话
+                  最近对话
                 </h2>
                 <div className="flex items-center gap-0.5">
                   {recentNarratorItems.length > 0 && onClearInactiveRecentTabs ? (
@@ -441,8 +440,8 @@ export function ShellSidebar({
                       size="icon-xs"
                       className="size-5 text-muted-foreground hover:text-primary"
                       onClick={onOpenSessionDrawer}
-                      title="打开会话抽屉"
-                      aria-label="打开会话抽屉"
+                      title="打开对话列表"
+                      aria-label="打开对话列表"
                     >
                       <PanelRightOpen />
                     </Button>
@@ -462,7 +461,7 @@ export function ShellSidebar({
               </div>
             )}
             {isCollapsed && onOpenSessionDrawer && (
-              <ShellRailItem icon={railIcon(MessageSquareText, false)} label="会话" onClick={onOpenSessionDrawer} />
+              <ShellRailItem icon={railIcon(MessageSquareText, false)} label="对话" onClick={onOpenSessionDrawer} />
             )}
             {visibleNarratorItems.length > 0
               ? visibleNarratorItems.map((item) => {
@@ -493,9 +492,9 @@ export function ShellSidebar({
                   />
                 );
               })
-              : !isCollapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无最近会话</p>
+              : !isCollapsed && <p className="px-2 py-1 text-xs text-muted-foreground">暂无最近对话</p>
             }
-            {!isCollapsed && hiddenNarratorCount > 0 && <p className="px-2 py-1 text-xs text-muted-foreground">还有 {hiddenNarratorCount} 个会话</p>}
+            {!isCollapsed && hiddenNarratorCount > 0 && <p className="px-2 py-1 text-xs text-muted-foreground">还有 {hiddenNarratorCount} 个对话</p>}
             {!isCollapsed && (
               <Button
                 variant="link"

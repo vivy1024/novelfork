@@ -331,7 +331,7 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
 
         {settlement && (
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">叙事记忆</span>
+            <span className="font-medium text-foreground">章后事实</span>
             <span>抽取 {getNumber(settlement.extracted) ?? 0}</span>
             <span>自动沉淀 {getNumber(settlement.autoApplied) ?? 0}</span>
             <span>待审 {getNumber(settlement.pending) ?? 0}</span>

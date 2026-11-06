@@ -52,7 +52,7 @@ describe("StoryTimeAxisPanel 故事时间轴", () => {
   it("没有任何时间说法 → 说明结算后会出现，不补假数据", async () => {
     stubFetch({ ok: true, points: [], promises: [], conflicts: [], summary: "" });
     render(<StoryTimeAxisPanel bookId="book-1" />);
-    await waitFor(() => expect(screen.getByTestId("story-time-empty").textContent).toContain("结算章节时会从正文读出"));
+    await waitFor(() => expect(screen.getByTestId("story-time-empty").textContent).toContain("结算章节后会出现"));
   });
 
   it("接口出错 → 错误态带重试", async () => {

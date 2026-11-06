@@ -787,7 +787,7 @@ function TavernPresetImportSection({
           <FileCode2 className="size-3.5 text-primary" />
           <span>导入酒馆预设 (SillyTavern Preset)</span>
         </div>
-        <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
+        <Button size="xs" variant="ghost" aria-label="关闭" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
       <p className="text-xs text-muted-foreground leading-relaxed">
         粘贴酒馆预设内容，会转换成一个写作技能。

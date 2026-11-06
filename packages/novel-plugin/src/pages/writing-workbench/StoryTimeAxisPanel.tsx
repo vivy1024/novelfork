@@ -45,7 +45,7 @@ export function StoryTimeAxisPanel({ bookId }: StoryTimeAxisPanelProps) {
         <AlertCircle className="size-5 text-muted-foreground" />
         <p className="text-xs text-muted-foreground">
           {state.status === "ready"
-            ? "还没有记下故事里的时间。结算章节时会从正文读出「三天后」「天元三年春」这类说法，按章排成时间轴。"
+            ? "还没有故事时间，结算章节后会出现。"
             : `故事时间暂时没读通（${state.message}）。`}
         </p>
         {state.status === "error" ? (

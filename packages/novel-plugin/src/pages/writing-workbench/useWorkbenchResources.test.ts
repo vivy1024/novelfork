@@ -90,7 +90,7 @@ describe("buildWorkbenchResourceTree", () => {
     expect(flat.get("tool:tension")).toMatchObject({ title: "张力曲线", metadata: { toolPanel: "tension" } });
     expect(flat.get("tool:quality")).toMatchObject({ title: "质量中心", metadata: { toolPanel: "quality" } });
     expect(flat.get("tool:compliance")).toMatchObject({ title: "投稿风险自检", metadata: { toolPanel: "compliance" } });
-    expect(flat.get("tool:governance")).toMatchObject({ title: "叙事治理驾驶舱", metadata: { toolPanel: "governance" } });
+    expect(flat.get("tool:governance")).toMatchObject({ title: "全书体检", metadata: { toolPanel: "governance" } });
     expect(flat.get("tool:collaboration-version")).toMatchObject({
       title: "协作与版本",
       metadata: { toolPanel: "collaboration-version" },

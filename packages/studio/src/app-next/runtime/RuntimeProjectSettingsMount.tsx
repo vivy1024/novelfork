@@ -33,7 +33,7 @@ export function RuntimeProjectSettingsMount({ projectId }: RuntimeProjectSetting
 			<Suspense
 				fallback={
 					<div role="status" className="p-4 text-sm text-muted-foreground">
-						正在加载 Runtime 项目设置…
+						正在加载项目设置…
 					</div>
 				}
 			>

@@ -140,6 +140,6 @@ describe("因果画布", () => {
   it("没有场景时说明场景从哪里来", () => {
     mockFetch(() => undefined);
     renderCanvas({ ...baseStructure, scenes: [], mounts: [] } as NarrativeStructurePayload);
-    expect(screen.getByTestId("causal-canvas-empty").textContent).toContain("写作管线");
+    expect(screen.getByTestId("causal-canvas-empty").textContent).toContain("写完一章后会出现");
   });
 });

@@ -71,7 +71,7 @@ function arcTypeLabel(type: string): string {
 const SOURCE_BADGE_STYLES: Record<string, string> = {
   manual: "bg-muted text-muted-foreground",
   "auto-rule": "bg-info/10 text-info",
-  "auto-llm": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "auto-llm": "bg-primary/10 text-primary",
 };
 
 const SOURCE_LABELS: Record<string, string> = {

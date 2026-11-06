@@ -156,7 +156,7 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm flex items-center gap-1.5">
-            <Activity className="size-4 text-orange-500" />
+            <Activity className="size-4 text-warning" />
             张力心电图
             <span className="text-2xs font-normal text-muted-foreground">· 节奏是否崩了</span>
           </CardTitle>
@@ -202,7 +202,7 @@ export function TensionCurvePanel({ bookId, className, onJumpToChapter }: Tensio
 
         {entries.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground" data-testid="tension-curve-empty">
-            暂无张力数据——写完章节并结算后自动生成；评分失败的章会显示为虚线灰柱。
+            还没有张力分，写完一章并结算后会出现。
           </p>
         ) : (
           <>

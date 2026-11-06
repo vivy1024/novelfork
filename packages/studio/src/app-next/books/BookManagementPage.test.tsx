@@ -115,7 +115,7 @@ describe("BookManagementPage Runtime maintenance actions", () => {
     );
 
     fireEvent.click(screen.getAllByRole("button", { name: "接管旧作品" })[0]);
-    fireEvent.change(screen.getByLabelText("Book ID"), { target: { value: "legacy-book" } });
+    fireEvent.change(screen.getByLabelText("作品编号"), { target: { value: "legacy-book" } });
     fireEvent.click(screen.getByRole("button", { name: "确认接管" }));
 
     await waitFor(() => expect(onClaimLegacyBook).toHaveBeenCalledWith("legacy-book"));
@@ -140,14 +140,14 @@ describe("BookManagementPage Runtime maintenance actions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "删除" }));
     const dialog = await screen.findByRole("dialog");
-    expect(dialog.textContent).toContain("外部目录不会被删除");
-    expect(dialog.textContent).toContain("NovelFork 管理的作品目录");
+    expect(dialog.textContent).toContain("放在你自己文件夹里的文件保留不动");
+    expect(dialog.textContent).toContain("放在默认位置的作品文件会一并删除");
     expect(dialog.textContent).not.toContain("会删除作品文件");
 
     fireEvent.change(screen.getByLabelText("作品名"), { target: { value: "长夜" } });
     fireEvent.click(screen.getByRole("button", { name: "永久删除" }));
 
     await waitFor(() => expect(onDeleteBook).toHaveBeenCalledWith("book-1"));
-    expect(await screen.findByText(/作品 长夜 已删除.*外部目录不会被删除/)).not.toBeNull();
+    expect(await screen.findByText(/作品 长夜 已删除.*你自己文件夹里的文件保留不动/)).not.toBeNull();
   });
 });

@@ -269,7 +269,7 @@ function WorldDynamicsSection({
               实体动态
               <Badge variant="secondary" className="text-2xs font-normal">动态数据</Badge>
             </CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">来自叙事记忆的只读召回；不改经纬静态设定。</p>
+            <p className="mt-1 text-xs text-muted-foreground">按章节整理的章后事实，只读，不改设定条目。</p>
           </div>
           {bookId ? (
             <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={refresh} aria-label="刷新实体动态">
@@ -281,7 +281,7 @@ function WorldDynamicsSection({
       <CardContent className="space-y-4">
         {state.status === "loading" ? (
           <div className="flex items-center gap-2 rounded-md border border-dashed border-border/70 px-3 py-5 text-xs text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />正在读取叙事记忆……
+            <Loader2 className="size-4 animate-spin" />正在读取章后事实……
           </div>
         ) : state.status === "error" ? (
           <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/[0.04] px-3 py-3 text-xs text-destructive">
@@ -294,8 +294,8 @@ function WorldDynamicsSection({
               <div className="rounded-md border border-warning/40 bg-warning/[0.05] px-4 py-4 text-center" data-testid="world-dynamics-empty">
                 <p className="text-sm font-medium text-warning">该实体暂无章后结算记录</p>
                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-                  叙事记忆只收录正文中实际出现并经章后结算的动态。「{selfName.trim() || "该实体"}」可能尚未登场，
-                  或结算器未从正文识别到与它相关的变化。静态设定不受影响。
+                  章后事实只收录正文里实际写到、并已结算的变化。「{selfName.trim() || "该实体"}」可能尚未登场，
+                  或结算时没从正文里找到和它有关的变化。
                 </p>
               </div>
             ) : null}

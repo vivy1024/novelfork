@@ -33,7 +33,7 @@ const AVAILABLE_TOOLS: Tool[] = [
   { name: "Browser", enabled: false, description: "控制浏览器执行多步操作", loadCommand: "/load browser" },
   { name: "ShareFile", enabled: false, description: "生成临时下载链接", loadCommand: "/load share_file" },
   { name: "ForkNarrator", enabled: false, description: "分叉独立叙述者工作流", loadCommand: "/load fork_narrator" },
-  { name: "NarraForkAdmin", enabled: false, description: "管理 NarraFork 服务器设置", loadCommand: "/load narrafork_admin" },
+  { name: "NarraForkAdmin", enabled: false, description: "管理服务器设置", loadCommand: "/load narrafork_admin" },
   // 团队协作（默认关闭）
   { name: "TeamCreate", enabled: false, description: "创建代理团队" },
   { name: "TeamDelete", enabled: false, description: "删除代理团队" },

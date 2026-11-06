@@ -1056,7 +1056,7 @@ export function StoryProgressBoard({
       <div className="flex shrink-0 items-center gap-2 px-1 pb-1">
         <BookOpen className="size-3 text-muted-foreground" />
         <span className="text-2xs text-muted-foreground">
-          第 {board.currentChapter} 章 · {board.lanes.length} 条线 · 数据来自经纬与叙事记忆
+          第 {board.currentChapter} 章 · {board.lanes.length} 条线
         </span>
         <Button size="xs" variant="ghost" className="ml-auto h-6 gap-1 px-1.5 text-2xs" onClick={reload}>
           <RefreshCw className="size-3" /> 刷新

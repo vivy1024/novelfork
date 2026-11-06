@@ -74,7 +74,7 @@ describe("ChapterContextRail", () => {
     expect(screen.getByRole("button", { name: "打开角色 林舟" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "打开角色 沈砚" })).toBeNull();
     expect(screen.getByText("青铜戒指之谜")).toBeTruthy();
-    expect(screen.getByText("⚠️ 青铜戒指之谜（第5章埋设，已5章未推进）")).toBeTruthy();
+    expect(screen.getByText("青铜戒指之谜（第5章埋设，已5章未推进）")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "打开角色 林舟" }));
     expect(onOpenJingweiEntry).toHaveBeenCalledWith("char-1");

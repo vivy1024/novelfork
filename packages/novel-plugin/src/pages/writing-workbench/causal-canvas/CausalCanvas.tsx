@@ -342,7 +342,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
           </ReactFlow>
           {graph.scenes.length === 0 ? (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-muted-foreground" data-testid="causal-canvas-empty">
-              还没有场景。写作管线会把每章的场景蓝图落成场景；也可以在「推进」看板上给剧情线加节拍。
+              还没有场景，写完一章后会出现。
             </div>
           ) : null}
         </div>

@@ -155,7 +155,7 @@ export function BookManagementPage({
     try {
       const operation = await onClaimLegacyBook(bookId);
       setActionMessage(
-        `旧作品 ${operation.bookId} 已接管，当前状态：${operation.state}`,
+        `旧作品 ${operation.bookId} 已接管`,
       );
       setLegacyBookId("");
       setClaimOpen(false);
@@ -175,9 +175,9 @@ export function BookManagementPage({
     setActionError(null);
     try {
       if (!onImportBook) return;
-      const operation = await onImportBook(sourcePath);
+      await onImportBook(sourcePath);
       setActionMessage(
-        `作品 ${operation.bookId} 已导入，当前状态：${operation.state}`,
+        "作品已导入",
       );
       setImportPath("");
       setImportOpen(false);
@@ -212,9 +212,9 @@ export function BookManagementPage({
     setActionBookId(rebindTarget.id);
     setActionError(null);
     try {
-      const result = await onRebindBookWorkspace(rebindTarget.id, workspaceRoot);
+      await onRebindBookWorkspace(rebindTarget.id, workspaceRoot);
       setActionMessage(
-        `作品 ${result.bookId} 工作目录已修正为：${workspaceRoot}`,
+        `工作目录已修正为：${workspaceRoot}`,
       );
       setRebindTarget(null);
       setRebindPath("");
@@ -235,7 +235,7 @@ export function BookManagementPage({
       await onDeleteBook(deleteTarget.id);
       // 书籍摘要尚未告诉前端这本书是否位于外部目录，先用对两种书都成立的说法。
       setActionMessage(
-        `作品 ${deleteTarget.title} 已删除：NovelFork 里的数据与绑定已清除，NovelFork 管理的作品目录一并删除；外部目录不会被删除。`,
+        `作品 ${deleteTarget.title} 已删除；你自己文件夹里的文件保留不动。`,
       );
       setDeleteTarget(null);
       setDeleteConfirmation("");
@@ -521,7 +521,7 @@ export function BookManagementPage({
                   id="rebind-book-path"
                   value={rebindPath}
                   onChange={(event) => setRebindPath(event.target.value)}
-                  placeholder="选择包含 book.json 的作品目录"
+                  placeholder="选择这本书所在的文件夹"
                 />
                 <Button
                   type="button"
@@ -532,7 +532,7 @@ export function BookManagementPage({
                 </Button>
               </div>
               <FieldDescription>
-                目录内 book.json 的 id 必须与当前作品一致；修正后不会移动文件。
+                必须是这本书原来的文件夹；修正后不会移动文件。
               </FieldDescription>
             </Field>
           </FieldGroup>
@@ -569,7 +569,7 @@ export function BookManagementPage({
           <DialogHeader>
             <DialogTitle>导入已有作品</DialogTitle>
             <DialogDescription>
-              选择包含 book.json 的作品目录；导入后可在工作台继续编辑。
+              选择作品所在的文件夹，导入后可以接着写。
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
@@ -606,7 +606,7 @@ export function BookManagementPage({
             <DialogTitle>永久删除作品</DialogTitle>
             <DialogDescription>
               此操作会删除这本书的全部数据和对话记录，且无法撤销。
-              NovelFork 管理的作品目录会一并删除；外部目录不会被删除，里面的文件保留不动。请输入作品名
+              放在默认位置的作品文件会一并删除；放在你自己文件夹里的文件保留不动。请输入作品名
               <strong className="mx-1 text-foreground">
                 {deleteTarget?.title}
               </strong>
@@ -657,7 +657,7 @@ export function BookManagementPage({
           </DialogHeader>
           <FieldGroup>
             <Field data-invalid={Boolean(actionError)}>
-              <FieldLabel htmlFor="legacy-book-id">Book ID</FieldLabel>
+              <FieldLabel htmlFor="legacy-book-id">作品编号</FieldLabel>
               <Input
                 id="legacy-book-id"
                 value={legacyBookId}

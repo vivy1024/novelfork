@@ -94,8 +94,8 @@ describe("book.dissect 采纳卡", () => {
     expect(screen.getByText("第 1–30 章")).toBeTruthy();
     expect(screen.getByText("人物 2")).toBeTruthy();
     expect(screen.getByText("林舟、苏晚")).toBeTruthy();
-    expect(screen.getByText("needs-review（待确认）")).toBeTruthy();
-    expect(screen.getByText("已同时结算叙事记忆。")).toBeTruthy();
+    expect(screen.getByText("待确认")).toBeTruthy();
+    expect(screen.getByText("已同时结算章后事实。")).toBeTruthy();
     expect(screen.getByText("进入山门试炼")).toBeTruthy();
   });
 
@@ -105,7 +105,7 @@ describe("book.dissect 采纳卡", () => {
       result: { renderer: "book.dissect", data: { ok: true, applied: false, draft: { characters: ["林舟"] } } },
     })}</>);
 
-    expect(screen.getByText(/仅预览，未写入暂存/)).toBeTruthy();
+    expect(screen.getByText(/这只是预览，还没保存/)).toBeTruthy();
   });
 
   it("staging 卡可直接触发 promote/reject，且不转交 bookId", async () => {
@@ -206,7 +206,7 @@ describe("outline.volume 卷纲卡", () => {
 
     expect(screen.getByTestId("tool-result-outline-volume")).toBeTruthy();
     expect(screen.getByText("卷纲草案（未保存）")).toBeTruthy();
-    expect(screen.getByText(/确认后用 outline.volume\(action=set\) 保存/)).toBeTruthy();
+    expect(screen.getByText(/确认后让叙述者保存/)).toBeTruthy();
     expect(screen.getByText("第 1–60 章")).toBeTruthy();
   });
 

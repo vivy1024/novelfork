@@ -651,7 +651,7 @@ function SearchResults({
         {loading ? <Loader2 className="size-3 animate-spin" /> : <span className="text-2xs text-muted-foreground">{results.length} 条</span>}
       </div>
       {results.length === 0 && !loading ? (
-        <p className="text-xs text-muted-foreground">没有匹配的叙事记忆。</p>
+        <p className="text-xs text-muted-foreground">没有匹配的章后事实。</p>
       ) : results.map((entry) => (
         <button key={`${entry.kind}:${entry.id}`} type="button" onClick={() => onOpen?.(entry)} className="block w-full rounded border border-border/60 p-2 text-left hover:bg-muted">
           <div className="flex items-center justify-between gap-2">
@@ -1852,7 +1852,7 @@ export function NarrativeMemoryPanelShell({
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-line-approvals">
           <h3 className="text-xs font-semibold">叙事线审批 ({lineApprovals.length})</h3>
                     {lineApprovals.length === 0 ? (
-            <p className="text-xs text-muted-foreground">暂无叙事线审批记录。在叙事线视图增删节点后会出现。</p>
+            <p className="text-xs text-muted-foreground">暂无叙事线修改记录。</p>
           ) : lineApprovals.map((approval) => (
             <div
               key={approval.previewId}
@@ -2072,7 +2072,7 @@ function InjectionReportView({ report }: { report: WriteInjectionReport }) {
         {!report.style.recorded ? (
           <p className="text-muted-foreground">这次召回没有跑到文风通道。</p>
         ) : report.style.status === "skipped" ? (
-          <p className="text-muted-foreground">文风通道在本书叙事记忆配置里被关闭了。</p>
+          <p className="text-muted-foreground">本书设置里关掉了文风这一项。</p>
         ) : (
           <>
             {report.style.fixedCardsRecorded ? (

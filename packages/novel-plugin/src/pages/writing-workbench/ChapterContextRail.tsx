@@ -434,8 +434,9 @@ export function ChapterContextRail({
         {dueForeshadowings.length > 0 ? (
           <ul className="flex flex-col gap-1 px-3 py-2.5">
             {dueForeshadowings.map((foreshadowing) => (
-              <li key={foreshadowing.id} className="text-xs leading-relaxed text-warning">
-                ⚠️ {foreshadowing.name}（第{foreshadowing.plantedChapter}章埋设，已{foreshadowing.suspenseChapters}章未推进）
+              <li key={foreshadowing.id} className="flex items-start gap-1 text-xs leading-relaxed text-warning">
+                <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                <span>{foreshadowing.name}（第{foreshadowing.plantedChapter}章埋设，已{foreshadowing.suspenseChapters}章未推进）</span>
               </li>
             ))}
           </ul>

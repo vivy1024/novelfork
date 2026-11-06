@@ -121,7 +121,7 @@ export function ForeshadowThresholdField({ initial, onSave }: ForeshadowThreshol
       {check.ok ? (
         <p className="text-xs text-muted-foreground">
           伏笔埋下后悬置满 {check.value.watchChapters} 章开始提醒，满 {check.value.overdueChapters} 章判为超期。
-          快节奏的书可以调小，慢热长篇可以调大；伏笔看板、推进看板、驾驶舱与写前简报都按这里判定。
+          快节奏的书可以调小，慢热长篇可以调大；伏笔看板、推进看板、全书体检与写前简报都按这里判定。
         </p>
       ) : (
         <p className="text-xs text-destructive" data-testid="foreshadow-threshold-error">

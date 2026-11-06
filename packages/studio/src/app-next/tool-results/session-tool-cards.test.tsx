@@ -107,7 +107,7 @@ describe("scene.spec 写作蓝图卡", () => {
     expect(screen.getByText("写作蓝图 · 第12章")).toBeTruthy();
     expect(screen.getByText("在账单上发现4800元转出（信息揭示）")).toBeTruthy();
     expect(screen.getByText("情节点预算合计 300 字，低于本章目标 3000 字。")).toBeTruthy();
-    expect(screen.getByText(/beat-budget-invalid/)).toBeTruthy();
+    expect(screen.getByText(/写章会被拒绝/)).toBeTruthy();
     expect(screen.getByTestId("secondary-model-calls")).toBeTruthy();
     expect(screen.getByText("test-provider/test-current-model")).toBeTruthy();
     expect(screen.getAllByText("1200 tokens")).toHaveLength(2);
@@ -191,7 +191,7 @@ describe("pipeline.write 结果卡", () => {
     expect(screen.getByText("第4章 铃声之后")).toBeTruthy();
     expect(screen.getByText("自动修订 1 轮")).toBeTruthy();
     expect(screen.getByText("需要人工复核")).toBeTruthy();
-    expect(screen.getByText("叙事记忆")).toBeTruthy();
+    expect(screen.getByText("章后事实")).toBeTruthy();
     expect(screen.getByText("2 次")).toBeTruthy();
     expect(screen.getByText("3000 tokens")).toBeTruthy();
     expect(screen.getByText("建议抽查关键事实。")).toBeTruthy();
@@ -303,7 +303,7 @@ describe("memory.graph / lore.read 故事树卡", () => {
     // 这份 fixture 只有 facts/events、没有经纬条目：facts 是动态三元组，不当条目塞进树，
     // 于是树为空并如实说明，同时 relationship 类事实仍派生出关系边。
     const notice = screen.getByTestId("tool-result-lore-tree-no-entries");
-    expect(notice.textContent).toContain("没有返回经纬条目");
+    expect(notice.textContent).toContain("没有读到设定条目");
     expect(notice.textContent).toContain("1 个事件");
     expect(screen.getByText("1 条关系 · 1 个事件 · 共现 1 · 因果 1 · 伏笔 1")).toBeTruthy();
   });

@@ -237,22 +237,22 @@ function BookDissectCardView({
           pendingStaging.length > 0 ? (
             <>
               <p>
-                已写入拆书暂存 <Badge variant="outline">needs-review（待确认）</Badge>
-                {pendingStaging.length} 条。点提升才进正式经纬，点拒绝则丢弃；脏候选不会进入写作召回。
+                已存为待确认草稿 <Badge variant="outline">待确认</Badge>
+                {pendingStaging.length} 条。确认后才成为正式设定，拒绝即丢弃。
               </p>
               <StagingCandidateList candidates={pendingStaging} onAction={onAction} />
               {!onAction && <p>当前面板未绑定书籍，无法直接确认，请在作品叙述者里操作。</p>}
             </>
           ) : (
             <p>
-              已写入拆书暂存，状态为 <Badge variant="outline">needs-review（待确认）</Badge>。
-              用 lore.write 确认提升后才进正式经纬；脏候选不会进入写作召回。
+              已存为待确认草稿 <Badge variant="outline">待确认</Badge>。
+              在作品基础里确认后才成为正式设定。
             </p>
           )
         ) : (
-          <p>仅预览，未写入暂存。确认后用 book.dissect(apply=true) 落入 dissection_staging。</p>
+          <p>这只是预览，还没保存。</p>
         )}
-        {settled && <p>已同时结算叙事记忆。</p>}
+        {settled && <p>已同时结算章后事实。</p>}
         {summary && <p>{summary}</p>}
       </div>
 

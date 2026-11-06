@@ -29,7 +29,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
-  Sparkles,
+  Activity,
   Swords,
   Trash2,
   UserCheck,
@@ -374,7 +374,7 @@ function FactsTab({
     <div className="space-y-2.5">
       <div className="flex items-center justify-between gap-2 px-0.5">
         <div className="flex items-center gap-1.5">
-          <Sparkles className="size-3 text-primary" />
+          <Activity className="size-3 text-primary" />
           <span className="text-xs font-semibold">目前的状态</span>
           <span className="text-2xs text-muted-foreground">
             ({liveFacts.length} 条{currentChapter !== undefined ? ` · 截至第 ${currentChapter} 章` : ""})

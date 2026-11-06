@@ -444,7 +444,7 @@ function DevelopmentSection({
         <CardContent className="space-y-4">
           {loadState.status === "loading" ? (
             <div className="flex items-center gap-2 rounded-md border border-dashed border-border/70 px-3 py-5 text-xs text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />正在读取叙事记忆……
+              <Loader2 className="size-4 animate-spin" />正在读取章后事实……
             </div>
           ) : loadState.status === "error" ? (
             <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/[0.04] px-3 py-3 text-xs text-destructive">

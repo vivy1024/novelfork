@@ -376,7 +376,7 @@ export function JingweiCanonPanel({
   return (
     <Card data-testid="jingwei-canon-panel">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">经纬设定</CardTitle>
+        <CardTitle className="text-base">设定条目</CardTitle>
         <p className="text-xs text-muted-foreground">分类、层级、可见性、关联和历史。卡片视图不再把这些藏掉。</p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -595,7 +595,7 @@ export function JingweiCanonPanel({
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">暂无关联条目。关联会写回经纬，AI 注入时一并带上。</p>
+            <p className="text-xs text-muted-foreground">暂无关联条目。</p>
           )}
         </div>
 

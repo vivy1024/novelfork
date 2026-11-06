@@ -252,7 +252,7 @@ function MarkdownResourceBody({
 function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   const isNarrativeMemory = node.metadata?.isNarrativeMemoryEntry === true;
   return (
-    <ViewerShell node={node} label={isNarrativeMemory ? "叙事记忆" : "Markdown 文件"}>
+    <ViewerShell node={node} label={isNarrativeMemory ? "章后事实" : "Markdown 文件"}>
       <MarkdownResourceBody node={node} onContentChange={options.onContentChange} bookId={options.bookId} />
     </ViewerShell>
   );
@@ -315,7 +315,7 @@ function renderNarrativeMemoryEntry(node: WorkbenchResourceNode) {
   ].filter(([, value]) => value !== undefined && value !== "");
 
   return (
-    <ViewerShell node={node} label="叙事记忆详情">
+    <ViewerShell node={node} label="章后事实详情">
       <div className="space-y-3 p-4">
         {detailError ? (
           <div role="alert" className="rounded border border-warning/30 bg-warning/10 p-2 text-xs text-warning">
@@ -437,7 +437,7 @@ function NarrativeLineView({ node, bookId }: { node: WorkbenchResourceNode; book
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
         <p className="text-sm">暂无叙事线数据</p>
-        <p className="text-xs mt-1">通过 Agent 对话生成叙事线</p>
+        <p className="text-xs mt-1">在对话里让叙述者整理叙事线</p>
       </div>
     );
   }
@@ -550,7 +550,7 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">伏笔线 ({foreshadows.length})</h4>
           {foreshadows.map((f) => (
             <div key={f.id} className="flex items-center gap-2 rounded border border-border p-2 text-xs">
-              <span className={`inline-block size-2 rounded-full ${f.status === "paid-off" ? "bg-success" : f.status === "due" ? "bg-orange-500" : f.status === "abandoned" ? "bg-gray-400" : "bg-info"}`} />
+              <span className={`inline-block size-2 rounded-full ${f.status === "paid-off" ? "bg-success" : f.status === "due" ? "bg-warning" : f.status === "abandoned" ? "bg-muted-foreground" : "bg-info"}`} />
               <span className="font-medium">{f.title}</span>
               {f.dueChapter && <span className="text-muted-foreground">预计第{f.dueChapter}章</span>}
               <span className="text-muted-foreground ml-auto">{f.status}</span>
@@ -827,7 +827,7 @@ function renderImageFile(node: WorkbenchResourceNode, options: ResourceViewerRen
         {rawUrl ? (
           <img src={rawUrl} alt={node.title} className="max-h-full max-w-full object-contain" />
         ) : (
-          <div className="text-sm text-muted-foreground">缺少书籍 ID，无法预览图片</div>
+          <div className="text-sm text-muted-foreground">无法预览这张图片</div>
         )}
       </div>
     </ViewerShell>

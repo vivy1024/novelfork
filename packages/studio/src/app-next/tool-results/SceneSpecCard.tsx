@@ -237,7 +237,7 @@ export const SceneSpecCard: ToolResultRenderer = (context: ToolResultRendererCon
       <SecondaryModelCalls value={data.modelCalls} />
 
       {blockers.length > 0 && (
-        <p className="text-xs text-destructive">预算判为不合规，pipeline.write 会以 beat-budget-invalid 拒绝，请先重排预算再写章。</p>
+        <p className="text-xs text-destructive">情节点预算不合规，写章会被拒绝，请先重排预算。</p>
       )}
     </ToolResultSurface>
   );

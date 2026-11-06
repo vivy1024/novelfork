@@ -337,7 +337,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   if (allSkills.length === 0) {
     return (
       <div className="text-xs text-muted-foreground py-4 space-y-1" data-testid="writing-skills-empty">
-        <p>没有可用的写作技能。内置写作技能随产品提供；你也可以在自己的作者技能目录里自建或安装（每个技能是一个带 SKILL.md 的文件夹）。</p>
+        <p>没有可用的写作技能，可以在「套路 › 项目技能」里新建或安装。</p>
         <WritingSkillPathDetails />
       </div>
     );
@@ -362,7 +362,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
         <p className="text-xs font-medium text-foreground">本书已启用 {enabledSkills.length}</p>
         {enabledSkills.length === 0 ? (
           <p className="text-xs text-muted-foreground py-1" data-testid="writing-skills-enabled-empty">
-            还没有启用任何写作技能。启用后，相关要求会在写章前注入并作为成品校验依据。
+            还没有启用写作技能。
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-2">

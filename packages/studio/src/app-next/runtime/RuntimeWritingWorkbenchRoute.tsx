@@ -465,7 +465,7 @@ export function RuntimeWritingWorkbenchRoute({
   }, [bookId]);
 
   const handleSave = useCallback(async (node: WorkbenchResourceNode, content: string) => {
-    if (!node.capabilities.edit) throw new Error("此 Runtime 资源不可编辑");
+    if (!node.capabilities.edit) throw new Error("这个文件不能编辑");
     const generation = actionGenerationRef.current;
     const controller = new AbortController();
     actionControllersRef.current.add(controller);
@@ -568,15 +568,14 @@ export function RuntimeWritingWorkbenchRoute({
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col" data-testid="runtime-writing-workbench">
-      <div className="flex items-center gap-3 border-b border-border px-4 py-2">
-        <p className="text-sm text-muted-foreground">章节、作品基础、写作资源与故事推进</p>
-        {openNotice ? (
+      {openNotice ? (
+        <div className="flex items-center gap-3 border-b border-border px-4 py-2">
           <p className="ml-auto flex items-center gap-2 text-xs text-warning" role="status" data-testid="workbench-open-notice">
             {openNotice}
             <button type="button" className="underline-offset-2 hover:underline" onClick={() => setOpenNotice(null)}>知道了</button>
           </p>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       {loading ? <p className="p-4 text-sm text-muted-foreground" role="status">正在加载工作台…</p> : null}
       {error ? <p className="p-4 text-sm text-destructive" role="alert">工作台加载失败：{error}</p> : null}
       {!loading && !error ? (

@@ -727,7 +727,7 @@ describe("NarrativeMemoryPanelShell", () => {
     );
 
     // 平铺结构：空台账直接可见并给出解释文案。
-    expect(screen.getByTestId("narrative-line-approvals").textContent).toContain("在叙事线视图增删节点后会出现");
+    expect(screen.getByTestId("narrative-line-approvals").textContent).toContain("暂无叙事线修改记录");
   });
 });
 

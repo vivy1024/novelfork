@@ -1091,7 +1091,7 @@ function DefaultCockpitView({ bookId, currentChapter, onJumpToChapter }: { bookI
           <div className="rounded-lg border border-border bg-card p-3">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-semibold text-foreground">质量监控</h3>
-              <button type="button" onClick={() => setExpandedPanel(null)} className="text-muted-foreground hover:text-foreground transition-colors">
+              <button type="button" aria-label="收起面板" onClick={() => setExpandedPanel(null)} className="text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronUp className="size-3.5" />
               </button>
             </div>
@@ -1155,7 +1155,7 @@ function CockpitOverview({ bookId }: { bookId: string }) {
       <section className="rounded-lg border border-border bg-card p-3">
         <h3 className="mb-2 text-xs font-semibold text-foreground">近期章节结果</h3>
         {chapterResults.length === 0 ? (
-          <p className="text-xs text-muted-foreground">暂无章节结果。让 AI 写一章后会出现在这里。</p>
+          <p className="text-xs text-muted-foreground">还没有章节结果，写完一章后会出现。</p>
         ) : (
           <ul className="space-y-2">
             {chapterResults.map(item => (

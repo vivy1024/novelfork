@@ -122,10 +122,10 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
       const payload = await fetchJson<{ config?: NarrativeMemorySettings; error?: string }>(
         `/api/books/${encodeURIComponent(bookId)}/narrative-memory/config`,
       );
-      if (!payload.config) throw new Error(payload.error ?? "无法加载叙事记忆配置");
+      if (!payload.config) throw new Error(payload.error ?? "无法读取章后事实设置");
       setConfig(payload.config);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "无法加载叙事记忆配置");
+      setError(cause instanceof Error ? cause.message : "无法读取章后事实设置");
     } finally {
       setLoading(false);
     }
@@ -157,11 +157,11 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
           body: JSON.stringify({ config: body }),
         },
       );
-      if (!payload.config) throw new Error(payload.error ?? "无法保存叙事记忆配置");
+      if (!payload.config) throw new Error(payload.error ?? "无法保存章后事实设置");
       setConfig(payload.config);
       setSaved(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "无法保存叙事记忆配置");
+      setError(cause instanceof Error ? cause.message : "无法保存章后事实设置");
     } finally {
       setSaving(false);
     }
@@ -172,7 +172,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-8">
         <AlertCircle className="size-6 text-muted-foreground/50" />
-        <p className="text-sm text-muted-foreground">{error ?? "无法加载叙事记忆配置"}</p>
+        <p className="text-sm text-muted-foreground">{error ?? "无法读取章后事实设置"}</p>
         <Button size="sm" variant="outline" onClick={() => void load()}>重试</Button>
       </div>
     );
@@ -256,7 +256,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">写前召回</p>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">Token 预算
-            <Input aria-label="叙事记忆 token 预算" type="number" min={500} max={100000} step={500} value={config.retrieval.maxTokens} onChange={(event) => {
+            <Input aria-label="写作前上下文的长度上限" type="number" min={500} max={100000} step={500} value={config.retrieval.maxTokens} onChange={(event) => {
               const value = Number(event.target.value);
               if (Number.isInteger(value) && value >= 500 && value <= 100000) updateRetrieval({ maxTokens: value });
             }} className="h-8 w-24 text-right" />
@@ -318,7 +318,7 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
         {saved && <span className="text-xs text-primary">已保存</span>}
         <Button size="sm" onClick={() => void save()} disabled={saving}>
           {saving && <Loader2 className="mr-1 size-3.5 animate-spin" />}
-          保存叙事记忆设置
+          保存章后事实设置
         </Button>
       </div>
     </div>

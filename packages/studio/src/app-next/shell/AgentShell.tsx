@@ -209,13 +209,12 @@ export function AgentShell({
           </Sheet>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">NovelFork Studio</p>
-            <p className="truncate text-xs text-muted-foreground">Agent Shell</p>
-          </div>
+                      </div>
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="打开会话抽屉"
+            aria-label="打开对话列表"
             aria-expanded={sessionDrawerOpen}
             onClick={() => setSessionDrawerOpen(true)}
           >

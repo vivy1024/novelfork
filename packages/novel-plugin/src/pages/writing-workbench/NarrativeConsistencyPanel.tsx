@@ -173,7 +173,7 @@ export function NarrativeConsistencyPanel({
             叙事体检
           </div>
           <p className="text-xs text-muted-foreground">
-            对照经纬设定、叙事记忆现状与章间场景衔接，找出对不上的地方。结果每次现算，只提示不拦写作。
+            对照设定条目、章后事实和前后章衔接，找出对不上的地方。只提示，不拦写作。
           </p>
         </div>
         <button
@@ -284,7 +284,7 @@ function EmptyState({
       <CheckCircle2 className="size-7 text-success" />
       <span className="text-2xs font-medium">未检出纰漏</span>
       <p className="max-w-[36ch] text-xs text-muted-foreground">
-        {summary || "经纬设定与叙事记忆现状一致。"}
+        {summary || "设定条目与章后事实一致。"}
       </p>
       {ignoredCount > 0 && (
         <button type="button" onClick={onToggleIgnored} className="text-xs text-muted-foreground hover:text-foreground">
@@ -386,7 +386,7 @@ function FindingCard({
           <div className="flex flex-wrap items-center gap-1.5 text-2xs">
             <span className="text-muted-foreground">{finding.entity}</span>
             {finding.jingweiValue && (
-              <span className="rounded bg-muted px-1.5 py-0.5">经纬：{finding.jingweiValue}</span>
+              <span className="rounded bg-muted px-1.5 py-0.5">设定：{finding.jingweiValue}</span>
             )}
             {finding.memoryValue && (
               <span className="rounded bg-warning/15 px-1.5 py-0.5 text-warning">

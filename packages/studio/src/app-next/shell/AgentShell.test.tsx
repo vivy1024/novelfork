@@ -71,7 +71,7 @@ describe("AgentShell", () => {
 
     const sidebar = screen.getByTestId("shell-sidebar");
     expect(sidebar.getAttribute("data-collapsed")).toBe("true");
-    const expected = ["展开侧栏", "我的作品", "第一本书", "会话", "独立叙述者", "搜索", "套路", "知识库", "定时任务", "学习", "市场", "设置", "退出登录"];
+    const expected = ["展开侧栏", "我的作品", "第一本书", "对话", "独立叙述者", "搜索", "套路", "知识库", "定时任务", "学习", "市场", "设置", "退出登录"];
     const railButtons = within(sidebar).getAllByRole("button");
     expect(railButtons.map((button) => button.getAttribute("aria-label"))).toEqual(expected);
     for (const button of railButtons) {
@@ -86,8 +86,8 @@ describe("AgentShell", () => {
     expect(onNavigate).toHaveBeenCalledWith({ kind: "knowledge" });
     fireEvent.click(within(sidebar).getByRole("button", { name: "退出登录" }));
     expect(onLogout).toHaveBeenCalledTimes(1);
-    fireEvent.click(within(sidebar).getByRole("button", { name: "会话" }));
-    expect(screen.getByRole("dialog", { name: "会话工作区" })).toBeTruthy();
+    fireEvent.click(within(sidebar).getByRole("button", { name: "对话" }));
+    expect(screen.getByRole("dialog", { name: "对话" })).toBeTruthy();
   });
 
   it("keeps the expand toggle working and restores the full sidebar", () => {
@@ -102,7 +102,7 @@ describe("AgentShell", () => {
     expect(sidebar.className).toContain("w-[250px]");
     expect(sidebar.getAttribute("data-collapsed")).toBe("false");
     expect(within(sidebar).getByRole("button", { name: "折叠侧栏" })).toBeTruthy();
-    expect(sidebar.textContent).toContain("叙事线（书籍）");
+    expect(sidebar.textContent).toContain("我的作品");
   });
 
   it("keeps the expanded shell rail on non-workbench routes", () => {
@@ -151,7 +151,7 @@ describe("AgentShell", () => {
     expect(sidebar.textContent).toContain("最近会话 1");
     expect(sidebar.textContent).toContain("最近会话 5");
     expect(sidebar.textContent).not.toContain("历史会话 6");
-    expect(sidebar.textContent).toContain("还有 3 个会话");
+    expect(sidebar.textContent).toContain("还有 3 个对话");
 
     fireEvent.click(screen.getByRole("button", { name: "查看全部叙述者" }));
     expect(onNavigate).toHaveBeenCalledWith({ kind: "sessions" });
@@ -180,11 +180,11 @@ describe("AgentShell", () => {
 
     expect(screen.getByTestId("shell-sidebar").textContent).toContain("独立叙述者");
     expect(screen.getByTestId("shell-sidebar").textContent).toContain("书籍主叙述者");
-    fireEvent.click(screen.getAllByRole("button", { name: "打开会话抽屉" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "打开对话列表" })[0]);
 
-    const drawer = screen.getByRole("dialog", { name: "会话工作区" });
+    const drawer = screen.getByRole("dialog", { name: "对话" });
     expect(drawer.textContent).toContain("失效会话");
-    expect(drawer.textContent).toContain("会话已失效");
+    expect(drawer.textContent).toContain("对话已不存在");
     fireEvent.click(within(drawer).getByRole("button", { name: "关闭最近项 失效会话" }));
     expect(onRemoveRecentTab).toHaveBeenCalledWith(expect.objectContaining({ id: "gone" }));
 
@@ -193,7 +193,7 @@ describe("AgentShell", () => {
     expect(bookRecentButton).toBeTruthy();
     fireEvent.click(bookRecentButton as HTMLButtonElement);
     expect(onNavigate).toHaveBeenCalledWith({ kind: "narrator", sessionId: "s1" });
-    expect(screen.queryByRole("dialog", { name: "会话工作区" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "对话" })).toBeNull();
   });
 
   it("pins and reorders recent tabs and navigates with Ctrl+Arrow keys", () => {
@@ -263,14 +263,14 @@ describe("AgentShell", () => {
 
     const mobileHeader = document.querySelector('[data-slot="mobile-shell-header"]');
     expect(mobileHeader).toBeTruthy();
-    fireEvent.click(within(mobileHeader as HTMLElement).getByRole("button", { name: "打开会话抽屉" }));
+    fireEvent.click(within(mobileHeader as HTMLElement).getByRole("button", { name: "打开对话列表" }));
     expect(screen.getByTestId("mobile-conversation-body")).toBeTruthy();
 
-    const drawer = screen.getByRole("dialog", { name: "会话工作区" });
+    const drawer = screen.getByRole("dialog", { name: "对话" });
     fireEvent.click(within(drawer).getByRole("button", { name: /书籍主叙述者/ }));
     expect(onNavigate).toHaveBeenCalledWith({ kind: "narrator", sessionId: "s1" });
     expect(screen.getByTestId("mobile-conversation-body")).toBeTruthy();
-    expect(screen.queryByRole("dialog", { name: "会话工作区" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "对话" })).toBeNull();
   });
 
   it("opens the mobile shell as a labelled sheet and closes it after navigation", () => {

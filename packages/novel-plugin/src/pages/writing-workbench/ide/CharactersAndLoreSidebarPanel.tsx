@@ -430,7 +430,7 @@ export function CharactersAndLoreSidebarPanel({
             <span className="text-2xs font-semibold text-foreground">
               {isCharacterTab ? "新建角色卡" : "新建设定条目"}
             </span>
-            <Button size="xs" variant="ghost" onClick={() => setCreatingChar(false)} className="h-4 w-4 p-0">
+            <Button size="xs" variant="ghost" aria-label="取消新建" onClick={() => setCreatingChar(false)} className="h-4 w-4 p-0">
               <X className="size-3" />
             </Button>
           </div>
@@ -1100,7 +1100,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
     <div className="flex flex-col gap-2 border-b border-border p-2.5 bg-muted/30">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold">导入设定 / 酒馆角色卡</span>
-        <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
+        <Button size="xs" variant="ghost" aria-label="关闭" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
       <p className="text-xs text-muted-foreground leading-relaxed">
         支持粘贴 Markdown（按 ## 拆分）或酒馆角色卡 JSON（自动转换为多维人物档案）。
@@ -1168,7 +1168,7 @@ function InjectionPreviewSection({ bookId, onClose }: { bookId: string; onClose:
     <div className="border-b border-border p-2.5 bg-muted/30">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold">AI 设定注入预览</span>
-        <Button size="xs" variant="ghost" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
+        <Button size="xs" variant="ghost" aria-label="关闭" onClick={onClose} className="h-5 w-5 p-0"><X className="size-3" /></Button>
       </div>
       <div className="flex items-center gap-1 mt-1.5">
         <span className="text-2xs text-muted-foreground">第</span>

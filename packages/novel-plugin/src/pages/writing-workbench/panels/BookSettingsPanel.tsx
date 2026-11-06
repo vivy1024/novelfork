@@ -330,7 +330,7 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
   return (
     <div className="flex h-full flex-col bg-background">
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0"><ArrowLeft className="size-4" /></Button>
+        <Button variant="ghost" size="sm" aria-label="返回" onClick={onBack} className="shrink-0"><ArrowLeft className="size-4" /></Button>
         <h1 className="text-sm font-semibold text-foreground">书籍设置</h1>
         {saveStatus.state === "saving" && <span className="ml-auto text-2xs text-muted-foreground">保存中...</span>}
         {saveStatus.state === "saved" && <span className="ml-auto text-2xs text-success">已保存</span>}
@@ -491,7 +491,7 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
           data-settings-section="narrative-memory"
           ref={(node) => { sectionRefs.current["narrative-memory"] = node; }}
         >
-          <div><h2 className="text-sm font-semibold text-foreground">叙事记忆</h2><p className="text-xs text-muted-foreground">设置章后结算和写作前要带上的故事记忆。</p></div>
+          <div><h2 className="text-sm font-semibold text-foreground">章后事实</h2><p className="text-xs text-muted-foreground">设置章后怎么结算、写作前带上哪些。</p></div>
           <NarrativeMemorySettingsSection bookId={bookId} />
         </section>
       </div>

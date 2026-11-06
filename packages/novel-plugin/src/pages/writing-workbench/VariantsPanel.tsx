@@ -91,7 +91,7 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
       {/* Header */}
       <div className="flex items-center gap-2">
         {onClose && (
-          <Button variant="ghost" size="icon" className="size-6" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="size-6" aria-label="返回" onClick={onClose}>
             <ArrowLeft className="size-3.5" />
           </Button>
         )}
