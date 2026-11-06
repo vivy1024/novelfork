@@ -33,6 +33,7 @@ export const STEP_KIND_LABEL: Record<NovelWorkflowStepKind, string> = {
   "writer-generate": "起草正文",
   "adversarial-audit": "对抗审查",
   audit: "审查",
+  "outline-plan": "大纲推演",
   "post-settlement": "章后结算",
   "canvas-open": "结果整理",
   "custom-tool": "自定义工具",

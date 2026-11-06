@@ -34,6 +34,7 @@ const ALLOWED_STEP_KINDS = new Set<NovelWorkflowStepKind>([
   "writer-generate",
   "adversarial-audit",
   "audit",
+  "outline-plan",
   "post-settlement",
   "canvas-open",
   "custom-tool",

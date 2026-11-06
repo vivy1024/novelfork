@@ -493,6 +493,37 @@ describe("工作流工人闸门（修 A：工人不得直写权威源）", () =>
 		expect(auditor).not.toContain('stepId="draft"');
 	});
 
+	test("新增模板（读者 / 文风 / 市场 / 大纲 / 通用）同样认得出；大纲工序的简报要求 kind=outline", async () => {
+		await saveWorkflowRecipes(bookRoot, [{
+			id: "outline-gate",
+			name: "大纲门禁",
+			commandId: "/novel:outline-gate",
+			description: "测试用",
+			steps: [
+				{ id: "plan", kind: "outline-plan", label: "推演大纲", enabled: true, executionMode: "subagent", requiresApproval: true },
+			],
+			resultStrategy: "version-result",
+			requireFinalApproval: false,
+			maxRetries: 0,
+		}]);
+		const started = await startWorkflowRun({
+			storage: getStorageDatabase(), bookId: "book-a", bookRoot, recipeId: "outline-gate", chapterNumber: 5, narratorId: "leader-a",
+		});
+		if (!started.ok) throw new Error(started.explanation.what);
+		const seams = (template: string) => ({ readDelegation: async () => ({ parentNarratorId: "leader-a", template }) });
+		for (const template of ["nf-reader-critic", "nf-style-keeper", "nf-market-analyst", "nf-outline-planner", "nf-general"]) {
+			expect(await resolveWorkflowDelegation("sub-1", "book-a", seams(template)), template).toMatchObject({ template });
+		}
+		const planner = workflowDelegatedExtension(started.data, "nf-outline-planner").content;
+		expect(planner).toContain('stepId="plan"');
+		expect(planner).toContain('kind="outline"');
+		expect(workflowDelegatedExtension(started.data, "nf-general").content).toContain("没有分给你的进行中工序");
+		// 通用帮手的候选工具是草稿级写入：运行期间照样被工人闸门拦下
+		for (const tool of ["chapter.propose_revision", "lore.propose_update"]) {
+			expect(explainWorkerWorkflowDenial(started.data, tool, "draft-write")).not.toBeNull();
+		}
+	});
+
 	test("工人标记按 traits 认人（改名也认得出），字符串/数组两种存储都能读", () => {
 		expect(isWorkflowWorkerByTrait([WORKFLOW_WORKER_TRAIT])).toBe(true);
 		expect(isWorkflowWorkerByTrait(JSON.stringify([WORKFLOW_WORKER_TRAIT]))).toBe(true);

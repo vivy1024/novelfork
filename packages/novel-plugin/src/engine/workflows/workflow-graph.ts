@@ -405,7 +405,7 @@ export type WorkflowOpsResult =
   | { readonly ok: false; readonly failedIndex: number; readonly explanation: WorkflowExplanationText };
 
 const STEP_KINDS: readonly NovelWorkflowStepKind[] = [
-  "context-load", "guided-plan", "approval-gate", "writer-generate", "adversarial-audit", "audit", "post-settlement", "canvas-open", "custom-tool",
+  "context-load", "guided-plan", "approval-gate", "writer-generate", "adversarial-audit", "audit", "outline-plan", "post-settlement", "canvas-open", "custom-tool",
 ];
 const NODE_TYPES: readonly WorkflowNodeType[] = ["start", "end", "step", "join"];
 /** update_node 不允许改的字段：id 与类型决定了节点身份，改它们应删掉重建。 */

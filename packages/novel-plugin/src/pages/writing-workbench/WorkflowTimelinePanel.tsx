@@ -23,6 +23,7 @@ import { stepNodes, type WorkflowGraphEdge, type WorkflowGraphNode, type Workflo
 import { blankRecipe, copyRecipe, uniqueRecipeId, type CanvasRunStep } from "./workflow-canvas/workflow-canvas-model";
 import { WorkflowCanvas } from "./workflow-canvas/WorkflowCanvas";
 import { WorkflowRecipeEditor } from "./workflow-canvas/WorkflowRecipeEditor";
+import { OutlineCandidatePreview } from "../workflows/OutlineCandidatePreview";
 import { writesChapter } from "../workflows/workflow-step-list-model";
 
 export interface WorkflowTimelinePanelProps {
@@ -56,7 +57,7 @@ interface RunStepView {
   readonly requiresApproval: boolean;
   /** 工序可调用的工具；含落盘工具的工序失败不能跳过（见 writesChapter）。 */
   readonly tools?: readonly string[];
-  readonly expectedOutput: "scene-spec" | "prose" | "audit" | "other" | null;
+  readonly expectedOutput: "scene-spec" | "prose" | "audit" | "outline" | "other" | null;
   /** 分支工序本轮提交给出的结果。 */
   readonly outcome?: string;
   readonly note?: Explanation;
@@ -75,7 +76,7 @@ interface RunSummaryView {
 interface CandidateView {
   readonly id: string;
   readonly stepId: string;
-  readonly kind: "scene-spec" | "prose" | "audit" | "other";
+  readonly kind: "scene-spec" | "prose" | "audit" | "outline" | "other";
   readonly payload: unknown;
   readonly validation: unknown;
   readonly decision: "pending" | "approved" | "rejected";
@@ -197,6 +198,7 @@ function CandidatePreview({ candidate }: { candidate: CandidateView }) {
       </div>
     );
   }
+  if (candidate.kind === "outline") return <OutlineCandidatePreview payload={payload} />;
   if (candidate.kind === "scene-spec") {
     const spec = record(payload.sceneSpec) ?? {};
     const scenes = Array.isArray(spec.scenes) ? spec.scenes.map(record).filter(Boolean) as Record<string, unknown>[] : [];

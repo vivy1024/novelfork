@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   FANQIE_XUANHUAN_SERIAL_RECIPE,
+  BUILTIN_REVIEW_REJECT_EDGES,
   NOVEL_BUILTIN_WORKFLOWS,
   type NovelWorkflowRecipe,
 } from "./novel-workflows";
@@ -18,6 +19,9 @@ import {
 } from "./run-state-machine";
 import { checkWorkflowGraph, linearRecipeToGraph } from "./workflow-graph";
 import { buildWorkflowRunBrief } from "./run-brief";
+
+/** 蓝图 → 正文 → 审校 → 落盘的连载类方案（有写-审-改打回线）。 */
+const SERIAL_RECIPES = NOVEL_BUILTIN_WORKFLOWS.filter((recipe) => BUILTIN_REVIEW_REJECT_EDGES[recipe.id]);
 
 const failNote = { what: "审校未通过", why: "冲突没有升级", action: "按意见修改" };
 
@@ -49,8 +53,8 @@ function advanceToDraft(r: ReturnType<typeof run>) {
 }
 
 describe("内置方案：写-审-改打回线", () => {
-  it("三个内置方案都从审校连回写正文的工序，且结构合法", () => {
-    for (const recipe of NOVEL_BUILTIN_WORKFLOWS) {
+  it("连载类内置方案都从审校连回写正文的工序，且结构合法", () => {
+    for (const recipe of SERIAL_RECIPES) {
       const reject = recipe.edges.filter((edge) => edge.kind === "reject");
       expect(reject, recipe.id).toHaveLength(1);
       expect(reject[0]!.target, recipe.id).toBe("step-draft");
@@ -150,7 +154,7 @@ function advanceToSettlement(r: ReturnType<typeof run>) {
 const writeBlocked = { what: "pipeline.write 被写前预检拦下：empty-recent-progress", why: "近章记忆为空", action: "先结算近章再落盘" };
 
 describe("落盘工序失败不能静默跳过", () => {
-  it.each(NOVEL_BUILTIN_WORKFLOWS.map((recipe) => [recipe.id, recipe] as const))(
+  it.each(SERIAL_RECIPES.map((recipe) => [recipe.id, recipe] as const))(
     "%s：落盘工序报告阻塞后运行受阻（不是完成），结算步不被跳过",
     (_id, recipe) => {
       const r = run(recipe);

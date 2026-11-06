@@ -7,6 +7,7 @@ import * as coreModule from "@vivy1024/novelfork-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
+import { NOVEL_BUILTIN_WORKFLOWS } from "../engine/workflows/novel-workflows.js";
 import { WORKFLOW_RECIPES_RELATIVE_PATH } from "../engine/workflows/workflow-store.js";
 import { executeRuntimeDomainTool, type TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 
@@ -56,10 +57,10 @@ const buildOps = [
 ];
 
 describe("工作流方案工具（叙述者侧）", () => {
-  it("列出方案：未配置时就是三个内置方案，都已发布", async () => {
+  it("列出方案：未配置时就是全部内置方案，都已发布", async () => {
     const listed = await call("workflow_list_recipes", {});
     expect(listed.ok).toBe(true);
-    expect(listed.data!.recipes).toHaveLength(3);
+    expect(listed.data!.recipes).toHaveLength(NOVEL_BUILTIN_WORKFLOWS.length);
     expect(listed.data!.recipes.every((recipe: { status: string; issueCount: number }) => recipe.status === "published" && recipe.issueCount === 0)).toBe(true);
   });
 
@@ -98,7 +99,7 @@ describe("工作流方案工具（叙述者侧）", () => {
     expect(rejected).toMatchObject({ ok: false, error: "ops-rejected" });
     expect(rejected.data!.failedIndex).toBe(6);
     const listed = await call("workflow_list_recipes", {});
-    expect(listed.data!.recipes).toHaveLength(3);
+    expect(listed.data!.recipes).toHaveLength(NOVEL_BUILTIN_WORKFLOWS.length);
   });
 
   it("按旧版本号修改草稿会被拒，提示重新读取", async () => {

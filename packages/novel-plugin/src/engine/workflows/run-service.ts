@@ -6,7 +6,7 @@
  * 其余类别只留在候选表：
  *   prose → 作为「已批准正文」钉住；之后的落盘工序调用 pipeline.write / chapter.write 时，
  *           产品适配器要求写入内容与它逐字一致（见 findApprovedProseMismatch）
- *   audit / other → 仅供作者查看
+ *   audit / outline / other → 仅供作者查看（outline 经作者确认后由叙述者自己落到卷纲，引擎不代写）
  * 任何提交之前，权威源零变化；提交与状态迁移在同一事务里，失败整体回滚。
  */
 
@@ -46,6 +46,8 @@ import { readWorkflowRecipes } from "./workflow-store.js";
 
 const MAX_PROSE_CHARS = 200_000;
 const MAX_SUMMARY_CHARS = 20_000;
+/** 大纲候选单次最多推演的章数。 */
+const MAX_OUTLINE_CHAPTERS = 30;
 
 export type WorkflowServiceResult<T> = WorkflowStoreResult<T>;
 
@@ -225,6 +227,34 @@ export function validateWorkflowCandidate(
         value: {
           payload: { passed: body.passed, summary: body.summary.trim().slice(0, MAX_SUMMARY_CHARS), issues },
           validation: { issueCount: issues.length, errorCount: errors },
+        },
+      };
+    }
+    case "outline": {
+      const summary = typeof body.summary === "string" ? body.summary.trim() : "";
+      const chapters = Array.isArray(body.chapters) ? body.chapters.map(record).filter((item): item is Record<string, unknown> => item !== null) : [];
+      const numbered = chapters.filter((item) => typeof item.chapter === "number" && Number.isInteger(item.chapter) && item.chapter > 0);
+      if (!summary || numbered.length === 0 || numbered.length !== chapters.length) {
+        return { ok: false, explanation: {
+          what: "大纲候选结构不合格",
+          why: "作者要靠调整思路与逐章安排决定采不采纳；缺 summary、没有章，或某章缺正整数章号都没法核对",
+          action: "提交 { summary: \"调整思路\", chapters: [{ chapter: 章号, goal, conflict, hooks }], risks: [...] }，每章都带章号",
+        } };
+      }
+      if (numbered.length > MAX_OUTLINE_CHAPTERS) {
+        return { ok: false, explanation: {
+          what: `大纲候选一次推演了 ${numbered.length} 章`,
+          why: `单次上限 ${MAX_OUTLINE_CHAPTERS} 章，推得太远多半要重推`,
+          action: `只推演接下来最多 ${MAX_OUTLINE_CHAPTERS} 章后重交`,
+        } };
+      }
+      const sorted = [...numbered].sort((a, b) => (a.chapter as number) - (b.chapter as number));
+      const risks = Array.isArray(body.risks) ? body.risks.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+      return {
+        ok: true,
+        value: {
+          payload: { ...body, summary: summary.slice(0, MAX_SUMMARY_CHARS), chapters: sorted, risks },
+          validation: { chapterCount: sorted.length, fromChapter: sorted[0]!.chapter, toChapter: sorted.at(-1)!.chapter },
         },
       };
     }

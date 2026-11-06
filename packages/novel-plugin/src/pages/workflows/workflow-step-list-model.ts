@@ -34,6 +34,7 @@ export const STEP_KIND_OPTIONS: ReadonlyArray<{ value: NovelWorkflowStepKind; la
   { value: "writer-generate", label: "写正文", hint: "按蓝图写出本章完整正文" },
   { value: "audit", label: "审校", hint: "检查正文，给出通过与否和问题清单" },
   { value: "adversarial-audit", label: "多视角审校", hint: "连续性、节奏、文字几路一起审" },
+  { value: "outline-plan", label: "大纲推演", hint: "推演后续几章的大纲，交你确认" },
   { value: "approval-gate", label: "作者确认", hint: "停下来等你放行" },
   { value: "post-settlement", label: "章后结算", hint: "落盘后整理伏笔、人物状态与时间线" },
   { value: "canvas-open", label: "结果整理", hint: "汇总这一章的产物" },

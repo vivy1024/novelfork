@@ -31,9 +31,10 @@ export type WorkflowRunStatus = "running" | "awaiting_approval" | "blocked" | "d
 /** bypassed：所在分支没被选中，这道工序不会执行。skipped：执行路径上被跳过，流程照常往下走。 */
 export type WorkflowStepStatus = "pending" | "running" | "awaiting_approval" | "done" | "skipped" | "bypassed" | "failed";
 export type WorkflowExecutorKind = "narrator" | "subagent" | "domain-tool" | "manual-gate";
-export type WorkflowCandidateKind = "scene-spec" | "prose" | "audit" | "other";
+/** outline：后续若干章的大纲调整候选，只留在候选表供作者确认，不写卷纲。 */
+export type WorkflowCandidateKind = "scene-spec" | "prose" | "audit" | "outline" | "other";
 
-export const WORKFLOW_CANDIDATE_KINDS: readonly WorkflowCandidateKind[] = ["scene-spec", "prose", "audit", "other"];
+export const WORKFLOW_CANDIDATE_KINDS: readonly WorkflowCandidateKind[] = ["scene-spec", "prose", "audit", "outline", "other"];
 export const ACTIVE_WORKFLOW_RUN_STATUSES: readonly WorkflowRunStatus[] = ["running", "awaiting_approval", "blocked"];
 
 export interface WorkflowExplanation {
@@ -116,6 +117,8 @@ export function expectedOutputFor(kind: NovelWorkflowStepKind): WorkflowCandidat
     case "audit":
     case "adversarial-audit":
       return "audit";
+    case "outline-plan":
+      return "outline";
     case "approval-gate":
       return null;
     default:
@@ -161,6 +164,12 @@ function hasDownstreamReviewGate(recipe: WorkflowGraphRecipe, stepId: string): b
   return stepNodes(recipe).some((node) =>
     descendants.has(node.id) && node.enabled && REVIEW_GATE_KINDS.includes(node.kind) && requiresAuthorDecision(node),
   );
+}
+
+/** 这道工序的正向下游有没有启用的写正文工序（审校意见可以直接交给它改）。 */
+export function hasDownstreamProseStep(recipe: WorkflowGraphRecipe, stepId: string): boolean {
+  const descendants = forwardDescendants(recipe, stepId);
+  return stepNodes(recipe).some((node) => descendants.has(node.id) && node.enabled && node.kind === "writer-generate");
 }
 
 /**
@@ -490,6 +499,13 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
         const rounds = current.autoReturns ?? 0;
         const rejectEdge = recipe.edges.find((edge) => edge.kind === "reject" && edge.source === current.stepId);
         const maxReturns = stepNodes(recipe).find((node) => node.id === current.stepId)?.maxAutoReturns ?? MAX_AUDIT_AUTO_RETURNS;
+        // 审校排在改稿之前（如「精修一章」先审已保存的章、再交返修）：意见本来就是给下游改稿用的，
+        // 不通过照常往下走，不打回、也不拦给作者；作者在改稿那一步确认。
+        if (!rejectEdge && hasDownstreamProseStep(recipe, current.stepId)) {
+          steps[index] = current.requiresApproval ? { ...withOutcome, status: "awaiting_approval" } : { ...withOutcome, status: "done" };
+          events.push({ type: current.requiresApproval ? "step_awaiting_approval" : "step_done", payload: { stepId: current.stepId, auditPassed: false } });
+          return done();
+        }
         if (rejectEdge && rounds < maxReturns) {
           resetFrom(recipe, steps, rejectEdge.target, action.audit.note);
           const auditIndex = steps.findIndex((step) => step.stepId === current.stepId);

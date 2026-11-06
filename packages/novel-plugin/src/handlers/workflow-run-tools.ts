@@ -25,6 +25,7 @@ import {
   getActiveWorkflowRunForNarrator,
   getLatestApprovedCandidate,
   getLatestCandidateOfKind,
+  listWorkflowRunCandidates,
   type WorkflowCandidateRecord,
   type WorkflowRunRecord,
   type WorkflowStoreResult,
@@ -110,6 +111,13 @@ function candidateMaterial(candidate: WorkflowCandidateRecord | null): Record<st
   };
 }
 
+/** 每道工序只留最近一份候选（候选按提交时间升序）。 */
+function latestPerStep(candidates: readonly WorkflowCandidateRecord[]): WorkflowCandidateRecord[] {
+  const byStep = new Map<string, WorkflowCandidateRecord>();
+  for (const candidate of candidates) byStep.set(candidate.stepId, candidate);
+  return [...byStep.values()];
+}
+
 /**
  * 委派子代理看到的运行视图：只有分给它的工序简报，以及做这道工序要用的上游候选原文
  * （蓝图、最近一版正文、最近一份审校）。正文原文只在这里给子代理，领导者那边只见候选 id。
@@ -139,6 +147,11 @@ export function toDelegatedWorkflowView(
       sceneSpec: candidateMaterial(getLatestApprovedCandidate(storage, run.id, "scene-spec")),
       prose: candidateMaterial(getLatestCandidateOfKind(storage, run.id, "prose")),
       audit: candidateMaterial(getLatestCandidateOfKind(storage, run.id, "audit")),
+      // 并行审校（如精修一章）：每道审校工序各取最近一份，返修要逐份落实。
+      audits: latestPerStep(listWorkflowRunCandidates(storage, run.id).filter((candidate) => candidate.kind === "audit")).map(candidateMaterial),
+      outline: candidateMaterial(getLatestCandidateOfKind(storage, run.id, "outline")),
+      // 自定义工序的小结（如市场分析），供下游大纲推演参考。
+      notes: latestPerStep(listWorkflowRunCandidates(storage, run.id).filter((candidate) => candidate.kind === "other")).map(candidateMaterial),
     },
   };
 }

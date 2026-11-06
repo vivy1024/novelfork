@@ -10,6 +10,7 @@ import { AlertCircle, BellRing, CheckCircle2, Circle, Clock, Loader2, Pause, Ref
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { OutlineCandidatePreview } from "./OutlineCandidatePreview";
 import { subagentNameZh, writesChapter } from "./workflow-step-list-model";
 import { errorExplanation, jsonInit, workflowRequest, type Explanation } from "./workflow-api";
 
@@ -41,7 +42,7 @@ interface RunStep {
 interface Candidate {
   readonly id: string;
   readonly stepId: string;
-  readonly kind: "scene-spec" | "prose" | "audit" | "other";
+  readonly kind: "scene-spec" | "prose" | "audit" | "outline" | "other";
   readonly payload: unknown;
   readonly validation: unknown;
   readonly decision: "pending" | "approved" | "rejected";
@@ -121,6 +122,7 @@ function CandidatePreview({ candidate }: { candidate: Candidate }) {
       </div>
     );
   }
+  if (candidate.kind === "outline") return <OutlineCandidatePreview payload={payload} />;
   if (candidate.kind === "scene-spec") {
     const scenes = Array.isArray(record(payload.sceneSpec).scenes) ? (record(payload.sceneSpec).scenes as unknown[]).map(record) : [];
     return (

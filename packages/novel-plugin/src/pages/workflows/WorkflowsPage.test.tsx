@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { NOVEL_SUBAGENT_ROSTER } from "../../engine/agents/roster.js";
 import { NOVEL_BUILTIN_WORKFLOWS } from "../../engine/workflows/novel-workflows.js";
 import { WorkflowsPage } from "./WorkflowsPage";
 import { WorkflowRunsPanel } from "./WorkflowRunsPanel";
@@ -96,6 +97,11 @@ describe("工作流页：方案列表", () => {
     expect(labels[0]).toBe("装配上下文与前置预检");
     expect(labels.at(-1)).toBe("章后状态与账本结算");
     expect(within(screen.getByTestId("workflow-step-step-draft")).getByDisplayValue("委派：执笔")).toBeTruthy();
+    // 「谁来做」下拉直接取名册：新增的帮手自动出现
+    const draftStep = screen.getByTestId("workflow-step-step-draft");
+    const options = within(draftStep).getAllByRole("option").map((option) => option.textContent);
+    for (const template of NOVEL_SUBAGENT_ROSTER) expect(options).toContain(`委派：${template.nameZh}`);
+    expect(options).toContain("大纲推演（推演后续几章的大纲，交你确认）");
   });
 });
 
@@ -169,14 +175,16 @@ describe("工作流页：本书默认", () => {
 });
 
 describe("工作流页：子代理一览", () => {
-  it("列出 8 个内置子代理的中文名与可用工具，不显示内部 id", async () => {
+  it("列出名册里全部内置子代理的中文名与可用工具，不显示内部 id", async () => {
     renderPage();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "子代理" }));
     fireEvent.click(screen.getByRole("tab", { name: "子代理" }));
     const roster = await screen.findByTestId("workflow-subagent-roster");
-    expect(within(roster).getAllByRole("listitem").filter((item) => item.dataset.testid?.startsWith("workflow-subagent-"))).toHaveLength(8);
+    expect(within(roster).getAllByRole("listitem").filter((item) => item.dataset.testid?.startsWith("workflow-subagent-"))).toHaveLength(NOVEL_SUBAGENT_ROSTER.length);
     expect(roster.textContent).toContain("执笔");
     expect(roster.textContent).toContain("结算核对");
+    // 名册新增的帮手自动出现在一览里
+    for (const name of ["读者视角", "市场视角", "文风把关", "大纲推演", "通用帮手"]) expect(roster.textContent).toContain(name);
     expect(roster.textContent).not.toContain("nf-");
   });
 });

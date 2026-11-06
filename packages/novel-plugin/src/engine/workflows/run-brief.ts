@@ -8,7 +8,7 @@
  */
 
 import type { WorkflowRunRecord } from "./run-store.js";
-import { runningSteps, type WorkflowCandidateKind, type WorkflowStepState } from "./run-state-machine.js";
+import { hasDownstreamProseStep, runningSteps, type WorkflowCandidateKind, type WorkflowStepState } from "./run-state-machine.js";
 import { workflowTeamIdForBook } from "./workflow-team.js";
 import { rosterTemplatesForStep } from "../agents/roster.js";
 import type { WorkflowStepNode } from "./workflow-graph.js";
@@ -21,6 +21,7 @@ const KIND_LABEL: Record<WorkflowCandidateKind, string> = {
   "scene-spec": "镜头蓝图",
   prose: "正文",
   audit: "审查结论",
+  outline: "大纲候选",
   other: "工序小结",
 };
 
@@ -29,6 +30,8 @@ const PAYLOAD_SHAPE: Record<WorkflowCandidateKind, string> = {
     '{ "sceneSpec": { "chapter": 章号, "title": "标题", "wordTarget": 字数, "scenes": [{ "characters": [], "location": "", "conflict": "", "mood": "", "outcome": "", "hooks_used": [], "hooks_planted": [] }], "constraints": [] } }',
   prose: '{ "title": "章节标题", "content": "完整正文" }',
   audit: '{ "passed": true 或 false, "summary": "结论", "issues": [{ "severity": "error | warning | info", "description": "问题与定位" }] }',
+  outline:
+    '{ "summary": "调整思路", "fromChapter": 起始章号, "chapters": [{ "chapter": 章号, "title": "暂定标题", "goal": "本章目标", "conflict": "冲突", "hooks": ["埋设或回收的伏笔"] }], "risks": ["与卷纲或设定的冲突"] }',
   other: '{ "summary": "本工序做了什么、结果如何" }',
 };
 
@@ -38,10 +41,16 @@ const DEFAULT_GOAL: Partial<Record<WorkflowStepState["kind"], string>> = {
   "writer-generate": "按已确认的蓝图写出本章完整正文。",
   audit: "审查本章正文的连续性、叙事与文本问题，给出结论与可定位的问题清单。",
   "adversarial-audit": "从连续性、叙事、去 AI 味等多个视角对抗审查本章正文，给出结论与问题清单。",
+  "outline-plan": "读卷纲、章摘要、伏笔与故事时间线，推演后续若干章的大纲调整（伏笔回收排期、节奏、冲突升级），交大纲候选给作者确认；不改卷纲与设定，不写正文。",
   "post-settlement": "把已确认的正文落盘并完成章后结算。",
   "canvas-open": "整理本章结果，供作者在画布中查看。",
   "custom-tool": "按本工序配置的工具完成指定操作。",
 };
+
+/** 审校排在改稿之前、没有打回线：意见交给下游改稿，不打回。 */
+function auditsBeforeRevision(run: WorkflowRunRecord, stepId: string): boolean {
+  return !run.recipe.edges.some((edge) => edge.kind === "reject" && edge.source === stepId) && hasDownstreamProseStep(run.recipe, stepId);
+}
 
 function recipeStepOf(run: WorkflowRunRecord, stepId: string): WorkflowStepNode | undefined {
   return run.recipe.nodes.find((node): node is WorkflowStepNode => node.type === "step" && node.id === stepId);
@@ -107,6 +116,8 @@ function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multi
   );
   if (step.tools.includes("pipeline.write")) {
     lines.push("落盘正文：调用 pipeline_write 时传 fromWorkflowRun=true，正文与蓝图由工具从本运行里作者已确认的候选取，不要再把正文贴进 content。");
+  } else if (step.tools.includes("chapter.write")) {
+    lines.push("覆盖已有章节：调用 chapter_write 时 content 原样使用 workflow_get_current_step 返回的 approvedProse.content（作者已确认的那一版），不要改动。");
   }
   if (recipeStep?.skills?.length) {
     lines.push(`需要遵循的写作技能：${recipeStep.skills.join("、")}（用 Skill 工具读取）。`);
@@ -121,7 +132,9 @@ function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multi
         : step.expectedOutput === "prose"
           ? "提交后进入审校；正文要等审校与作者确认后才会落盘。"
           : step.expectedOutput === "audit"
-            ? "审校不通过（passed=false）时会自动打回写正文的工序返修，返修轮数用完后交作者决定。"
+            ? auditsBeforeRevision(run, step.stepId)
+              ? "审校意见会交给下游的改稿工序落实；不通过（passed=false）也照常往下走，不打回。"
+              : "审校不通过（passed=false）时会自动打回写正文的工序返修，返修轮数用完后交作者决定。"
             : "提交通过校验后自动继续，返回结果里会给出新的简报。",
     );
   }
@@ -156,7 +169,7 @@ export function buildDelegatedStepBrief(run: WorkflowRunRecord, template: string
     }
     if (step.note) lines.push(`上一次的意见：${step.note.what}；${step.note.why}；建议：${step.note.action}`);
   }
-  lines.push("上游材料（蓝图、上一版正文、审校意见）在本工具结果的 upstream 字段里，按需取用。");
+  lines.push("上游材料（蓝图、上一版正文、各道审校的意见、大纲与市场分析）在本工具结果的 upstream 字段里，按需取用；上游没有正文时用 chapter_read 读已保存的本章。");
   lines.push("交还领导者时只写摘要与 candidateId，不贴正文。");
   return lines.join("\n");
 }
