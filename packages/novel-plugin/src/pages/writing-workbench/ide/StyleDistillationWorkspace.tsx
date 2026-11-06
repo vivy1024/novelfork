@@ -384,18 +384,23 @@ function normaliseStatus(value: unknown): StyleDistillationReviewStatus {
   return value === "confirmed" || value === "approved" || value === "已确认" ? "confirmed" : "needs-review";
 }
 
+function normaliseConfidence(value: unknown): StyleDistillationRule["confidence"] {
+  return value === "high" || value === "medium" || value === "low" ? value : undefined;
+}
+
 function normaliseEntry(value: unknown, kind: "rule" | "sample", index: number): StyleDistillationRule | StyleDistillationSample | null {
   const record = asRecord(value);
   if (!record) return null;
   const text = firstString(record.text, record.rule, record.content);
   if (!text) return null;
+  const confidence = normaliseConfidence(record.confidence);
   const entry = {
     id: firstString(record.id, kind === "rule" ? record.ruleId : record.sampleId) ?? `${kind}-${index + 1}`,
     text,
     evidence: firstString(record.evidence, record.reason, record.source) ?? "未提供证据",
     transfer: normaliseTransfer(record.transfer ?? record.transferability ?? record.scope),
     status: normaliseStatus(record.status ?? record.reviewStatus),
-    ...(record.confidence === "medium" || record.confidence === "low" || record.confidence === "high" ? { confidence: record.confidence } : {}),
+    ...(confidence ? { confidence } : {}),
   };
   return kind === "sample"
     ? { ...entry, sceneType: firstString(record.sceneType, record.scene, record.kind) ?? undefined }
