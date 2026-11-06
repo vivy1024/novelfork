@@ -127,7 +127,7 @@ describe("工作流页：编辑与校验", () => {
     await screen.findByTestId("workflow-mine-list");
     fireEvent.click(within(screen.getByTestId("workflow-mine-list")).getByRole("button"));
     await waitFor(() => expect(screen.getByLabelText("方案名称")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "上移「生成场景蓝图」" }));
+    fireEvent.click(screen.getByRole("button", { name: "上移「生成镜头蓝图」" }));
     fireEvent.click(screen.getByRole("button", { name: /保存草稿/ }));
     await waitFor(() => expect(calls.some((call) => call.method === "PUT" && call.url.includes("/workflow-recipes/mine"))).toBe(true));
     const saved = calls.find((call) => call.method === "PUT" && call.url.includes("/workflow-recipes/mine"))!.body as {
