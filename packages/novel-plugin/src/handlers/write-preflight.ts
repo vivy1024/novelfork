@@ -49,6 +49,7 @@ import { estimateTokens } from "../engine/jingwei/context/token-budget.js";
 import { fingerprintRecallPackage, recordWriteRecall } from "./recall-token.js";
 import { buildWriteChapterRecall, DEFAULT_WRITE_RECALL_MAX_TOKENS } from "./write-recall.js";
 import { loadDueForeshadows, renderDueForeshadowSection, type DueForeshadow } from "../engine/narrative-memory/foreshadow-due.js";
+import { ensureLayerAuthorityMigrated } from "../engine/writing-layers/layer-authority.js";
 import {
   describeWritingSkillAcknowledgementRequirement,
   explainWritingSkillAcknowledgementVerdict,
@@ -639,6 +640,10 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
   const storage = input.storage ?? getStorageDatabase();
   ensureNarrativeMemorySchema(storage);
   ensureJingweiLedgerSchema(storage);
+  // 当前聚焦 / 本书规则只认经纬：存量书第一次写前检查时把旧文件副本并进来（幂等，失败不阻断）。
+  if (input.bookRoot?.trim()) {
+    await ensureLayerAuthorityMigrated({ storage, bookId, bookRoot: input.bookRoot });
+  }
 
   let cockpitState = input.cockpitState;
   if (!cockpitState) {
@@ -674,6 +679,8 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
   const cockpit = createCockpitService({
     state: cockpitState,
     now: input.now,
+    // 与本次预检同一个库读当前聚焦（创作罗盘），不另取进程单例。
+    storage,
   });
 
   // T-13：book.json 存在却读不出（占用/权限）或内容损坏，是独立的写章阻断。

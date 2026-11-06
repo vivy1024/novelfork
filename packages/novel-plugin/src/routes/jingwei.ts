@@ -41,6 +41,9 @@ async function loadEngine(): Promise<EngineModule> {
   return import("../engine/index.js");
 }
 
+/** story/ 下不作为普通设定导入的控制文件（见 import-from-files）。 */
+const LAYER_CONTROL_FILES: ReadonlySet<string> = new Set(["author_intent.md", "current_focus.md", "book_rules.md"]);
+
 async function resolveStorage(options: CreateJingweiRouterOptions): Promise<StorageDatabase> {
   if (options.storage) return options.storage;
   return getStorageDatabase();
@@ -741,7 +744,6 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       "character_matrix.md": "character",
       "current_state.md": "special",
       "setting_guide.md": "worldview",
-      "book_rules.md": "special",
       "pending_hooks.md": "foreshadowing",
       "emotional_arcs.md": "plot",
       "subplot_board.md": "plot",
@@ -795,6 +797,8 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       });
     }
     const mdFiles = allFiles.filter((f) => f.endsWith(".md"));
+    const { ensureLayerAuthorityMigrated } = await import("../engine/writing-layers/layer-authority.js");
+    await ensureLayerAuthorityMigrated({ storage, bookId, bookRoot });
 
     let imported = 0;
     let updated = 0;
@@ -844,6 +848,12 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const timestamp = new Date();
 
     for (const fileName of mdFiles) {
+      // 作者意图 / 当前聚焦 / 本书规则各有唯一来源（作者意图文件、创作罗盘、「写作规则」分类），
+      // 不能再作为普通设定条目导入出第二份；旧文件里的聚焦与规则由下面的一次性迁移按规则并入。
+      if (LAYER_CONTROL_FILES.has(fileName)) {
+        skipped++;
+        continue;
+      }
       const content = await readFile(join(storyDir, fileName), "utf-8");
       // 跳过内容为空或只有标题的文件
       if (content.trim().length < 20) {

@@ -115,6 +115,18 @@ function initJingweiSchema(storage: StorageDatabase): void {
   `);
 }
 
+/** 本书规则的唯一来源是经纬「写作规则」分类：直接插一条已确认的巨型规则（本套件未建全文索引表，不走仓储）。 */
+function insertHugeBookRule(storage: StorageDatabase): void {
+  storage.sqlite.prepare(`
+    INSERT INTO story_jingwei_section (id, book_id, key, name, builtin_kind, created_at, updated_at)
+    VALUES ('sec-rules', 'book-1', 'rules', '写作规则', 'rules', 0, 0)
+  `).run();
+  storage.sqlite.prepare(`
+    INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, category, status, layer, created_at, updated_at)
+    VALUES ('rule-huge', 'book-1', 'sec-rules', '写作硬规则', ?, 'rules', 'confirmed', 'canon', 0, 0)
+  `).run("这是一份写作硬规则。".repeat(120));
+}
+
 async function createBookRoot(narrativeMemory: Record<string, unknown>): Promise<string> {
   const dir = join(tmpdir(), `novelfork-lore-memory-book-${crypto.randomUUID()}`);
   await mkdir(dir, { recursive: true });
@@ -559,11 +571,10 @@ describe("lore-memory-boundary handlers", () => {
     const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
     // hard 通道要读 jingwei 表；本测试套件的存储只建了叙事表，补上与仓储一致的建表。
     initJingweiSchema(activeStorage!);
-    // 硬规则卡走 hard 通道且不可整卡丢弃；一份巨型 book_rules.md 让
+    // 硬规则卡走 hard 通道且不可整卡丢弃；一条巨型「写作规则」条目让
     // 它降到 brief 也塞不进缩小后的 hard 预算（maxTokens 500 下 hard 份额 ~88 token）。
     const bookRoot = await createBookRoot({ retrieval: { maxTokens: 500 } });
-    await mkdir(join(bookRoot, "story"), { recursive: true });
-    await writeFile(join(bookRoot, "story", "book_rules.md"), "这是一份写作硬规则。".repeat(120), "utf8");
+    insertHugeBookRule(activeStorage!);
 
     const result = await handleMemoryRead({
       bookId: "book-1",
@@ -585,8 +596,7 @@ describe("lore-memory-boundary handlers", () => {
     const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
     initJingweiSchema(activeStorage!);
     const bookRoot = await createBookRoot({ retrieval: { maxTokens: 500 } });
-    await mkdir(join(bookRoot, "story"), { recursive: true });
-    await writeFile(join(bookRoot, "story", "book_rules.md"), "这是一份写作硬规则。".repeat(120), "utf8");
+    insertHugeBookRule(activeStorage!);
 
     const result = await handleMemoryRead({
       bookId: "book-1",

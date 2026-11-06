@@ -364,10 +364,10 @@ export class ContinuityAuditor extends BaseAgent {
       readGenreProfile(this.ctx.projectRoot, genreId),
       readBookLanguage(bookDir),
     ]);
-    const parsedRules = await readBookRules(bookDir);
+    const parsedRules = await readBookRules(bookDir, this.ctx.bookId);
     const bookRules = parsedRules?.rules ?? null;
 
-    // Fallback: use book_rules body when style_guide.md doesn't exist
+    // Fallback: use the book rules body (经纬写作规则) when style_guide.md doesn't exist
     const styleGuide = styleGuideRaw !== "(文件不存在)"
       ? styleGuideRaw
       : (parsedRules?.body ?? "(无文风指南)");

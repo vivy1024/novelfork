@@ -1911,6 +1911,9 @@ export function IdeWorkbench({
                           onBack={() => { setShowSettings(false); setSettingsSection(undefined); }}
                           {...(settingsSection ? { initialSection: settingsSection } : {})}
                           {...(bookSettingsSlot ? { projectSettingsSlot: bookSettingsSlot } : {})}
+                          // 当前聚焦 / 本书规则各只有一处能改：设置页只显示，按钮跳到唯一的编辑处。
+                          onOpenCompass={() => { setSettingsSection(undefined); keybindingActions.switchView("write"); }}
+                          onOpenBookRules={() => { setSettingsSection(undefined); handleOpenLorePanel("rules"); }}
                         />
                       </div>
                     ) : activeView === "skills-style" && bookId ? (

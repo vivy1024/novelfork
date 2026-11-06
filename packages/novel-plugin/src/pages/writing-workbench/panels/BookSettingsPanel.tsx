@@ -21,24 +21,67 @@ interface BookConfig {
   customSensitiveWords: string;
 }
 
-interface BookWritingLayers {
-  authorIntent: string;
-  currentFocus: string;
-  volumeOutline: string;
-  bookRulesRaw: string;
+interface BookRuleSummary {
+  id: string;
+  title: string;
+  content: string;
 }
 
-/** 可编辑的层字段。卷纲只读：权威在经纬「卷纲/大纲」条目，volume_outline.md 只是导出物。 */
-type EditableLayerField = "authorIntent" | "currentFocus" | "bookRulesRaw";
+interface LayerNotice {
+  field: "currentFocus" | "bookRules";
+  message: string;
+  legacyText?: string;
+}
+
+interface BookWritingLayers {
+  authorIntent: string;
+  /** 只读：来自创作罗盘（唯一来源）。 */
+  currentFocus: string;
+  /** 只读：来自经纬卷纲的导出。 */
+  volumeOutline: string;
+  /** 只读：设定里已确认的写作规则（唯一来源）。 */
+  bookRules: BookRuleSummary[];
+  notices: LayerNotice[];
+}
+
+/**
+ * 书籍设置里唯一可编辑的层字段是作者意图。
+ * 当前聚焦只在创作罗盘改，本书规则只在设定的「写作规则」里改，卷纲只在「卷纲/大纲」里改；这里只显示。
+ */
+type EditableLayerField = "authorIntent";
 
 function readRevisions(value: unknown): Partial<Record<EditableLayerField, string>> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const record = value as Record<string, unknown>;
-  const result: Partial<Record<EditableLayerField, string>> = {};
-  for (const field of ["authorIntent", "currentFocus", "bookRulesRaw"] as const) {
-    if (typeof record[field] === "string") result[field] = record[field] as string;
-  }
-  return result;
+  return typeof record.authorIntent === "string" ? { authorIntent: record.authorIntent } : {};
+}
+
+function readRules(value: unknown): BookRuleSummary[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.content !== "string" || !record.content.trim()) return [];
+    return [{
+      id: typeof record.id === "string" ? record.id : record.content,
+      title: typeof record.title === "string" ? record.title : "",
+      content: record.content,
+    }];
+  });
+}
+
+function readNotices(value: unknown): LayerNotice[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if ((record.field !== "currentFocus" && record.field !== "bookRules") || typeof record.message !== "string") return [];
+    return [{
+      field: record.field,
+      message: record.message,
+      ...(typeof record.legacyText === "string" && record.legacyText ? { legacyText: record.legacyText } : {}),
+    }];
+  });
 }
 
 /** 可被外部直接定位的分区（写作视图一键修用）。 */
@@ -60,6 +103,10 @@ export interface BookSettingsPanelProps {
    * 插件只负责给它一个位置。
    */
   projectSettingsSlot?: ReactNode;
+  /** 打开创作罗盘（当前聚焦的唯一编辑处）。缺省时只显示去哪里改的说明。 */
+  onOpenCompass?: () => void;
+  /** 打开设定的「写作规则」分类（本书规则的唯一编辑处）。 */
+  onOpenBookRules?: () => void;
 }
 
 const PLATFORM_OPTIONS = [
@@ -86,7 +133,7 @@ function useDebounce<T extends (...args: never[]) => unknown>(fn: T, delay: numb
   }, [delay]) as unknown as T;
 }
 
-export function BookSettingsPanel({ bookId, onBack, initialSection, projectSettingsSlot }: BookSettingsPanelProps) {
+export function BookSettingsPanel({ bookId, onBack, initialSection, projectSettingsSlot, onOpenCompass, onOpenBookRules }: BookSettingsPanelProps) {
   const [config, setConfig] = useState<BookConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -98,7 +145,8 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
     authorIntent: "",
     currentFocus: "",
     volumeOutline: "",
-    bookRulesRaw: "",
+    bookRules: [],
+    notices: [],
   });
   // 防抖保存读这几个 ref：保存时只取「改过的字段」的最新值和读取时拿到的 revision。
   const layersRef = useRef<BookWritingLayers>(layers);
@@ -154,9 +202,8 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
           authorIntent: typeof design.authorIntent === "string" ? design.authorIntent : "",
           currentFocus: typeof design.currentFocus === "string" ? design.currentFocus : "",
           volumeOutline: typeof design.volumeOutline === "string" ? design.volumeOutline : "",
-          bookRulesRaw: typeof data.bookRulesRaw === "string"
-            ? data.bookRulesRaw
-            : typeof data.bookRulesText === "string" ? data.bookRulesText : "",
+          bookRules: readRules(data.bookRules),
+          notices: readNotices(data.notices),
         };
         layersRef.current = next;
         layerRevisionsRef.current = readRevisions(data.revisions);
@@ -213,9 +260,8 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
     if (fields.length === 0) return;
     dirtyLayerFieldsRef.current = new Set();
     const values = layersRef.current;
-    const design: Partial<Record<"authorIntent" | "currentFocus", string>> = {};
+    const design: Partial<Record<EditableLayerField, string>> = {};
     if (fields.includes("authorIntent")) design.authorIntent = values.authorIntent;
-    if (fields.includes("currentFocus")) design.currentFocus = values.currentFocus;
     const revisions = Object.fromEntries(fields
       .filter((field) => layerRevisionsRef.current[field] !== undefined)
       .map((field) => [field, layerRevisionsRef.current[field]]));
@@ -226,7 +272,6 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(Object.keys(design).length > 0 ? { bookDesign: design } : {}),
-          ...(fields.includes("bookRulesRaw") ? { bookRulesRaw: values.bookRulesRaw } : {}),
           revisions,
         }),
       });
@@ -247,6 +292,17 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
     setLayers(layersRef.current);
     void saveLayers();
   }, [saveLayers]);
+  // 旧版迁移提示：作者点「知道了」后收起，服务端只改迁移记账，不动内容。
+  const dismissNotice = useCallback(async (field: LayerNotice["field"]) => {
+    const next = layersRef.current.notices.filter((notice) => notice.field !== field);
+    layersRef.current = { ...layersRef.current, notices: next };
+    setLayers(layersRef.current);
+    try {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/writing-layers/notices/${field}/dismiss`, { method: "POST" });
+    } catch {
+      // 收起失败只是下次打开还会再提示一次，不打断作者。
+    }
+  }, [bookId]);
   const reloadLayers = useCallback(() => {
     setLayerConflict(false);
     setSaveStatus({ state: "idle" });
@@ -302,7 +358,7 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
         >
           <div>
             <h2 className="text-sm font-semibold text-foreground">书籍层与规则层</h2>
-            <p className="text-xs text-muted-foreground">书籍设计属于本书立项与推进；书籍规则属于强制约束与禁忌。</p>
+            <p className="text-xs text-muted-foreground">作者意图在这里改；当前聚焦和本书规则各只有一处能改，这里只显示。</p>
           </div>
           {layerConflict && (
             <div role="alert" data-testid="writing-layers-conflict" className="flex items-start gap-2 rounded-lg border border-destructive/40 p-3 text-xs">
@@ -314,6 +370,15 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
               </div>
             </div>
           )}
+          {layers.notices.map((notice) => (
+            <div key={notice.field} role="status" data-testid={`writing-layers-notice-${notice.field}`} className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+              <p className="text-foreground">{notice.message}</p>
+              {notice.legacyText ? (
+                <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded border border-border bg-background p-2 font-sans text-foreground">{notice.legacyText}</pre>
+              ) : null}
+              <Button type="button" size="sm" variant="outline" onClick={() => void dismissNotice(notice.field)}>知道了</Button>
+            </div>
+          ))}
           <div className="space-y-3 rounded-lg border border-border p-4">
             <label className="block space-y-1 text-xs text-muted-foreground">
               <span>作者意图（长期创作方向）</span>
@@ -325,16 +390,18 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
                 placeholder="本书全书主线、终局追求和不可动摇的核心承诺。"
               />
             </label>
-            <label className="block space-y-1 text-xs text-muted-foreground">
-              <span>当前聚焦（近 1-3 章焦点）</span>
-              <Textarea
-                aria-label="当前聚焦"
-                value={layers.currentFocus}
-                onChange={(event) => updateLayers("currentFocus", event.target.value)}
-                className="min-h-20"
-                placeholder="接下来几章必须优先解决的冲突、揭示或推进目标。"
-              />
-            </label>
+            <div className="space-y-1 text-xs text-muted-foreground" data-testid="current-focus-summary">
+              <div className="flex items-center justify-between gap-2">
+                <span>当前聚焦（近 1-3 章）</span>
+                {onOpenCompass ? (
+                  <Button type="button" size="sm" variant="outline" onClick={onOpenCompass}>去创作罗盘修改</Button>
+                ) : null}
+              </div>
+              <p className="whitespace-pre-wrap rounded-md border border-border bg-muted/40 px-3 py-2 text-foreground">
+                {layers.currentFocus.trim() || "还没写当前聚焦。"}
+              </p>
+              <p>写章只按创作罗盘推进{onOpenCompass ? "。" : "，请到写作视图的创作罗盘里修改。"}</p>
+            </div>
             <div className="space-y-1 text-xs text-muted-foreground" data-testid="volume-outline-readonly">
               <span>分卷大纲摘要（只读）</span>
               <Textarea
@@ -349,16 +416,27 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
                 要改卷纲，请到设定条目的「卷纲/大纲」分类里编辑，或让叙述者生成。
               </p>
             </div>
-            <label className="block space-y-1 text-xs text-muted-foreground">
-              <span>书籍硬规则与禁忌</span>
-              <Textarea
-                aria-label="书籍硬规则"
-                value={layers.bookRulesRaw}
-                onChange={(event) => updateLayers("bookRulesRaw", event.target.value)}
-                className="min-h-24"
-                placeholder="主角性格锁定、行为禁区、战力上限等强制性写作约束。"
-              />
-            </label>
+            <div className="space-y-1 text-xs text-muted-foreground" data-testid="book-rules-summary">
+              <div className="flex items-center justify-between gap-2">
+                <span>本书规则与禁忌</span>
+                {onOpenBookRules ? (
+                  <Button type="button" size="sm" variant="outline" onClick={onOpenBookRules}>去写作规则修改</Button>
+                ) : null}
+              </div>
+              {layers.bookRules.length > 0 ? (
+                <ul className="space-y-1.5 rounded-md border border-border bg-muted/40 px-3 py-2 text-foreground">
+                  {layers.bookRules.map((rule) => (
+                    <li key={rule.id} className="space-y-0.5">
+                      {rule.title ? <p className="font-medium">{rule.title}</p> : null}
+                      <p className="line-clamp-3 whitespace-pre-wrap">{rule.content}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-foreground">还没有确认过的写作规则。</p>
+              )}
+              <p>写章只遵守设定里已确认的写作规则{onOpenBookRules ? "。" : "，请到「角色与设定」的写作规则里新建或修改。"}</p>
+            </div>
           </div>
         </section>
 

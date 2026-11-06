@@ -165,11 +165,12 @@ describe("StateManager.writeIfMissing（经 ensureControlDocumentsAt）", () => 
     expect(await readFile(intentPath, "utf-8")).toBe("作者自己写的长期方向。\n");
   });
 
-  it("文件不存在时创建默认模板", async () => {
+  it("文件不存在时创建作者意图模板；当前聚焦在经纬创作罗盘，不再生成文件", async () => {
     const bookDir = join(root, "book");
     const manager = new StateManager(root);
     await manager.ensureControlDocumentsAt(bookDir, "zh");
-    expect(await readFile(join(bookDir, "story", "current_focus.md"), "utf-8")).toContain("当前聚焦");
+    expect(await readFile(join(bookDir, "story", "author_intent.md"), "utf-8")).toContain("作者意图");
+    await expect(readFile(join(bookDir, "story", "current_focus.md"), "utf-8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

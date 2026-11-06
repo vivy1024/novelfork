@@ -129,11 +129,19 @@ export function getBuiltinGenresDir(): string {
 }
 
 /**
- * Load book_rules.md from the book's story directory.
- * Returns null if the file doesn't exist.
+ * 本书规则：唯一来源是经纬「写作规则」分类里生效的条目（不再读 story/book_rules.md）。
+ * 没有 bookId 或产品库未初始化时返回 null。
  */
-export async function readBookRules(bookDir: string): Promise<ParsedBookRules | null> {
-  return loadBookRules(bookDir);
+export async function readBookRules(bookDir: string, bookId?: string): Promise<ParsedBookRules | null> {
+  if (!bookId) return null;
+  let storage;
+  try {
+    const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+    storage = getStorageDatabase();
+  } catch {
+    return null;
+  }
+  return loadBookRules(bookDir, { storage, bookId });
 }
 
 export async function readBookLanguage(bookDir: string): Promise<"zh" | "en" | undefined> {

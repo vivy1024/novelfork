@@ -29,7 +29,7 @@ const JINGWEI_FILE_MAP: Readonly<Record<string, string>> = {
   pendingHooks: "pending_hooks.md",
   storyBible: "story_bible.md", // [CLEANUP] 已废弃，经纬 DB 替代
   volumeOutline: "volume_outline.md",
-  bookRules: "book_rules.md",
+  // bookRules 不再映射文件：本书规则的唯一来源是经纬「写作规则」分类，book_rules.md 不能再被写入。
 };
 
 export class FileSystemStorageAdapter implements StorageAdapter {
@@ -144,14 +144,12 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       pendingHooks,
       _storyBible,
       volumeOutline,
-      bookRules,
     ] = await Promise.all([
       readSafe(join(storyDir, "current_state.md")),
       readSafe(join(storyDir, "particle_ledger.md")),
       readSafe(join(storyDir, "pending_hooks.md")),
       Promise.resolve(""), // [CLEANUP] story_bible.md 已废弃，经纬 DB 替代
       readSafe(join(storyDir, "volume_outline.md")),
-      readSafe(join(storyDir, "book_rules.md")),
     ]);
 
     return {
@@ -160,7 +158,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       pendingHooks,
       storyBible: "", // [CLEANUP] story_bible.md 已废弃，经纬 DB 替代
       volumeOutline,
-      bookRules,
+      bookRules: "", // 本书规则在经纬「写作规则」分类，不读 book_rules.md
     };
   }
 

@@ -1113,20 +1113,17 @@ async function initializeExternalBookConfig(
 async function writeBookScaffold(bookRoot: string, operation: ProvisionOperation): Promise<void> {
 	const config = buildBookConfig(operation);
 	const isEnglish = config.language === "en";
+	// 当前聚焦（创作罗盘）与本书规则（「写作规则」分类）的唯一来源在经纬，不再生成 current_focus.md / book_rules.md。
 	const storyFiles: ReadonlyArray<[string, string]> = isEnglish
 		? [
-				["book_rules.md", "# Book Rules\n\nRecord writing constraints here.\n"],
 				["current_state.md", "# Current State\n\nNo chapters have been written yet.\n"],
 				["volume_outline.md", "# Volume Outline\n\n"],
 				["author_intent.md", "# Author Intent\n\n"],
-				["current_focus.md", "# Current Focus\n\n"],
 			]
 		: [
-				["book_rules.md", "# 写作规则\n\n在这里记录本书的写作约束、禁忌和统一口径。\n"],
 				["current_state.md", "# 当前状态\n\n尚未写入章节。\n"],
 				["volume_outline.md", "# 分卷大纲\n\n"],
 				["author_intent.md", "# 作者意图\n\n"],
-				["current_focus.md", "# 当前聚焦\n\n"],
 			];
 	await mkdir(join(bookRoot, "story", "runtime"), { recursive: true });
 	await mkdir(join(bookRoot, "chapters"), { recursive: true });

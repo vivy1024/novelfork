@@ -16,9 +16,9 @@ export interface JingweiFilesData {
 /** @deprecated Use JingweiFilesData instead */
 export type TruthFilesData = JingweiFilesData;
 
+/** 当前聚焦的唯一来源是经纬创作罗盘，不在控制文档里。 */
 export interface ControlDocuments {
   readonly authorIntent: string;
-  readonly currentFocus: string;
   readonly runtimeDir: string;
 }
 

@@ -52,7 +52,8 @@ export async function buildWriteChapterRecall(input: WriteChapterRecallInput): P
     ? input.memoryConfig
     : await loadNarrativeMemoryConfig(bookId, bookRoot).catch(() => null);
   const runtimeSnapshot = await loadRuntimeStateSnapshot(bookRoot).catch(() => undefined);
-  const writingLayers = await resolveWritingLayers({ bookRoot }).catch(() => null);
+  // 当前聚焦与本书规则只认经纬；本书规则由 hard 通道直接读经纬「写作规则」条目，这里不再另传一份。
+  const writingLayers = await resolveWritingLayers({ bookRoot, storage, bookId }).catch(() => null);
   // 结算后又被改过的章：其摘要与机器事实注入时标注可能过期（现算，读失败不阻断写作）。
   const staleSettlementChapters = await readBookSettlementFreshness(storage, bookId, bookRoot)
     .then((freshness) => freshness.staleChapters)
@@ -88,7 +89,6 @@ export async function buildWriteChapterRecall(input: WriteChapterRecallInput): P
         return embeddingConfig ? { semanticProvider: createSiliconFlowEmbeddingProvider(embeddingConfig) } : {};
       })()
       : {}),
-    ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
     ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
     ...(writingLayers?.stylePreset ? { stylePreset: writingLayers.stylePreset } : {}),
     ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),

@@ -35,7 +35,6 @@ export {
   loadBookDesign,
   saveBookDesign,
   loadBookRules,
-  saveBookRules,
   resolveWritingLayers,
 } from "./writing-layers/layer-store.js";
 export type { BookDesignDocuments, ResolvedWritingLayers } from "./writing-layers/layer-store.js";

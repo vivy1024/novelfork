@@ -38,7 +38,8 @@ import { persistChapterAuditLog } from "../engine/tools/health/audit-log-persist
 import { replaceChapterScenes, sceneFromSpec } from "../engine/narrative-memory/scene-store.js";
 import { describeDueForeshadow, loadDueForeshadows } from "../engine/narrative-memory/foreshadow-due.js";
 import { loadForeshadowStates } from "../engine/narrative-taxonomy/foreshadow-states.js";
-import { isPlaceholderFocusDoc, readCurrentFocusDocFromStorage } from "../engine/jingwei/current-focus.js";
+import { readCurrentFocusDocFromStorage } from "../engine/jingwei/current-focus.js";
+import { ensureLayerAuthorityMigrated } from "../engine/writing-layers/layer-authority.js";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { ChapterSettlementResult } from "../engine/narrative-memory/settlement-risk-gate.js";
 import type { ChapterEventExtractorInput } from "../engine/narrative-memory/chapter-event-extractor.js";
@@ -963,9 +964,12 @@ async function executePipelineWriteUnlocked(
     let authorIntentDoc = "";
     let currentFocusDoc = "";
     let volumeRanges: ReadonlyArray<{ readonly from: number; readonly to: number }> | undefined;
+    // 当前聚焦只认经纬创作罗盘（与 write.preflight / 驾驶舱同源）；旧 story/current_focus.md 先迁移再读，不再回退。
     try {
       const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-      const compass = readCurrentFocusDocFromStorage(getStorageDatabase(), bookId);
+      const storage = getStorageDatabase();
+      await ensureLayerAuthorityMigrated({ storage, bookId, bookRoot: bookDir });
+      const compass = readCurrentFocusDocFromStorage(storage, bookId);
       if (compass) currentFocusDoc = truncateDoc(compass);
     } catch (err) {
       logger?.warn(`[pipeline.write] Failed to load jingwei current-focus: ${err}`);
@@ -973,10 +977,6 @@ async function executePipelineWriteUnlocked(
     try {
       const ctrl = await state.loadControlDocuments(bookId);
       authorIntentDoc = truncateDoc(ctrl.authorIntent);
-      if (!currentFocusDoc) {
-        const markdownFocus = truncateDoc(ctrl.currentFocus);
-        currentFocusDoc = isPlaceholderFocusDoc(markdownFocus) ? "" : markdownFocus;
-      }
     } catch (err) {
       logger?.warn(`[pipeline.write] Failed to load control documents: ${err}`);
     }

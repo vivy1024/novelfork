@@ -30,6 +30,7 @@ describe("BookSettingsPanel book design and rules", () => {
           },
           bookRulesRaw: "主角必须隐忍",
           bookRulesText: "主角必须隐忍",
+          bookRules: [{ id: "rule-1", title: "人设锁定", content: "主角必须隐忍" }],
         };
       }
       return {
@@ -51,8 +52,11 @@ describe("BookSettingsPanel book design and rules", () => {
     expect(await screen.findByDisplayValue("凡人修仙录")).toBeTruthy();
     expect(screen.queryByTestId("author-profile-toggle")).toBeNull();
     expect(await screen.findByDisplayValue("长期写实主线")).toBeTruthy();
-    expect(screen.getByDisplayValue("药园试探")).toBeTruthy();
+    // 当前聚焦与本书规则只读显示（唯一编辑处在创作罗盘 / 设定的写作规则）。
+    expect(screen.getByTestId("current-focus-summary").textContent).toContain("药园试探");
+    expect(screen.queryByDisplayValue("药园试探")).toBeNull();
     expect(screen.getByDisplayValue("第一卷：七玄门")).toBeTruthy();
-    expect(screen.getByDisplayValue("主角必须隐忍")).toBeTruthy();
+    expect(screen.getByTestId("book-rules-summary").textContent).toContain("主角必须隐忍");
+    expect(screen.queryByDisplayValue("主角必须隐忍")).toBeNull();
   });
 });

@@ -73,25 +73,53 @@ describe("BookSettingsPanel 保存状态", () => {
   }, 15000);
 });
 
-describe("BookSettingsPanel 书籍层保存（只提交改动字段 + revision）", () => {
+describe("BookSettingsPanel 书籍层：作者意图可改，当前聚焦与本书规则只读", () => {
   function layersResponse() {
     return {
-      bookDesign: { authorIntent: "原意图", currentFocus: "原聚焦", volumeOutline: "第一卷：经纬导出" },
-      bookRulesRaw: "原规则",
-      revisions: { authorIntent: "rev-intent", currentFocus: "rev-focus", bookRulesRaw: "rev-rules" },
+      bookDesign: { authorIntent: "原意图", currentFocus: "罗盘里的聚焦", volumeOutline: "第一卷：经纬导出" },
+      bookRulesRaw: "主角必须隐忍",
+      bookRules: [{ id: "rule-1", title: "人设锁定", content: "主角必须隐忍" }],
+      notices: [],
+      revisions: { authorIntent: "rev-intent" },
     };
   }
 
-  it("改当前聚焦时 PUT 只带 currentFocus 及其 revision，不带卷纲和其它字段", async () => {
+  it("当前聚焦与本书规则只读显示，没有可编辑的输入框", async () => {
+    fetchJson.mockImplementation(async (url: string) => (url.includes("/writing-layers") ? layersResponse() : { book: { title: "测试书" } }));
+    render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} />);
+
+    const focus = await screen.findByTestId("current-focus-summary");
+    await waitFor(() => expect(focus.textContent).toContain("罗盘里的聚焦"));
+    expect(screen.queryByLabelText("当前聚焦")).toBeNull();
+    expect(screen.queryByDisplayValue("罗盘里的聚焦")).toBeNull();
+    const rules = screen.getByTestId("book-rules-summary");
+    expect(rules.textContent).toContain("人设锁定");
+    expect(rules.textContent).toContain("主角必须隐忍");
+    expect(screen.queryByLabelText("书籍硬规则")).toBeNull();
+    expect(screen.queryByDisplayValue("主角必须隐忍")).toBeNull();
+  });
+
+  it("按钮跳到唯一的编辑处：创作罗盘 / 写作规则", async () => {
+    fetchJson.mockImplementation(async (url: string) => (url.includes("/writing-layers") ? layersResponse() : { book: { title: "测试书" } }));
+    const onOpenCompass = vi.fn();
+    const onOpenBookRules = vi.fn();
+    render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} onOpenCompass={onOpenCompass} onOpenBookRules={onOpenBookRules} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "去创作罗盘修改" }));
+    fireEvent.click(screen.getByRole("button", { name: "去写作规则修改" }));
+    expect(onOpenCompass).toHaveBeenCalledTimes(1);
+    expect(onOpenBookRules).toHaveBeenCalledTimes(1);
+  });
+
+  it("改作者意图时 PUT 只带 authorIntent 及其 revision，不带当前聚焦、规则或卷纲", async () => {
     fetchJson.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (init?.method === "PUT") return { revisions: { currentFocus: "rev-focus-2" } };
+      if (init?.method === "PUT") return { revisions: { authorIntent: "rev-intent-2" } };
       if (url.includes("/writing-layers")) return layersResponse();
       return { book: { title: "测试书" } };
     });
     render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} />);
 
-    const focus = await screen.findByDisplayValue("原聚焦");
-    fireEvent.change(focus, { target: { value: "新聚焦" } });
+    fireEvent.change(await screen.findByDisplayValue("原意图"), { target: { value: "新意图" } });
 
     await waitFor(() => {
       expect(fetchJson.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT")).toBe(true);
@@ -99,10 +127,27 @@ describe("BookSettingsPanel 书籍层保存（只提交改动字段 + revision�
     const put = fetchJson.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")!;
     expect(String(put[0])).toContain("/writing-layers");
     expect(JSON.parse(String((put[1] as RequestInit).body))).toEqual({
-      bookDesign: { currentFocus: "新聚焦" },
-      revisions: { currentFocus: "rev-focus" },
+      bookDesign: { authorIntent: "新意图" },
+      revisions: { authorIntent: "rev-intent" },
     });
   }, 15000);
+
+  it("迁移留下的旧聚焦以提示显示，点「知道了」后收起并通知服务端", async () => {
+    fetchJson.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return { ok: true };
+      if (url.includes("/writing-layers")) {
+        return { ...layersResponse(), notices: [{ field: "currentFocus", message: "旧版设置里还有一份不同的当前聚焦。", legacyText: "旧聚焦正文" }] };
+      }
+      return { book: { title: "测试书" } };
+    });
+    render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} />);
+
+    const notice = await screen.findByTestId("writing-layers-notice-currentFocus");
+    expect(notice.textContent).toContain("旧聚焦正文");
+    fireEvent.click(screen.getByRole("button", { name: "知道了" }));
+    await waitFor(() => expect(screen.queryByTestId("writing-layers-notice-currentFocus")).toBeNull());
+    expect(fetchJson.mock.calls.some(([url, init]) => String(url).includes("/notices/currentFocus/dismiss") && (init as RequestInit | undefined)?.method === "POST")).toBe(true);
+  });
 
   it("卷纲只读显示，并引导到经纬「卷纲/大纲」编辑", async () => {
     fetchJson.mockImplementation(async (url: string) => (url.includes("/writing-layers") ? layersResponse() : { book: { title: "测试书" } }));

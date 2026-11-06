@@ -141,7 +141,7 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     ? await loadNarrativeMemoryConfig(bookId, bookRoot).catch(() => null)
     : null;
   const writingLayers = bookRoot
-    ? await resolveWritingLayers({ bookRoot }).catch(() => null)
+    ? await resolveWritingLayers({ bookRoot, storage, bookId }).catch(() => null)
     : null;
   const maxTokens = input.budgetTokens ?? memoryConfig?.retrieval.maxTokens;
   const namedEntities = [...(input.namedEntities ?? []), ...(input.entities ?? [])];
@@ -168,7 +168,6 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
         return embeddingConfig ? { semanticProvider: createSiliconFlowEmbeddingProvider(embeddingConfig) } : {};
       })()
       : {}),
-    ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
     ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
     ...(writingLayers?.stylePreset ? { stylePreset: writingLayers.stylePreset } : {}),
     ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),

@@ -981,7 +981,7 @@ describe("StateManager", () => {
   // -------------------------------------------------------------------------
 
   describe("ensureControlDocuments", () => {
-    it("creates author intent, current focus, and runtime directory", async () => {
+    it("creates author intent and runtime directory; current focus lives in jingwei, no file", async () => {
       await manager.ensureControlDocuments(
         "control-book",
         "# Initial Brief\n\nKeep the focus on mentor conflict.\n",
@@ -992,14 +992,10 @@ describe("StateManager", () => {
         join(storyDir, "author_intent.md"),
         "utf-8",
       );
-      const currentFocus = await readFile(
-        join(storyDir, "current_focus.md"),
-        "utf-8",
-      );
       const runtimeStat = await stat(join(storyDir, "runtime"));
 
       expect(authorIntent).toContain("mentor conflict");
-      expect(currentFocus).toContain("Current Focus");
+      await expect(stat(join(storyDir, "current_focus.md"))).rejects.toMatchObject({ code: "ENOENT" });
       expect(runtimeStat.isDirectory()).toBe(true);
     });
 
@@ -1015,7 +1011,7 @@ describe("StateManager", () => {
       const controlDocs = await manager.loadControlDocuments("legacy-book");
 
       expect(controlDocs.authorIntent).toContain("# Author Intent");
-      expect(controlDocs.currentFocus).toContain("# Current Focus");
+      expect(controlDocs).not.toHaveProperty("currentFocus");
       expect(controlDocs.runtimeDir).toBe(join(storyDir, "runtime"));
     });
 
@@ -1040,14 +1036,8 @@ describe("StateManager", () => {
         join(storyDir, "author_intent.md"),
         "utf-8",
       );
-      const currentFocus = await readFile(
-        join(storyDir, "current_focus.md"),
-        "utf-8",
-      );
-
       expect(authorIntent).toContain("# 作者意图");
-      expect(currentFocus).toContain("# 当前聚焦");
-      expect(currentFocus).not.toContain("# Current Focus");
+      await expect(stat(join(storyDir, "current_focus.md"))).rejects.toMatchObject({ code: "ENOENT" });
     });
 
     it("bootstraps structured runtime state from legacy markdown jingwei files", async () => {

@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   resolveWritingLayers,
   saveBookDesign,
-  saveBookRules,
 } from "./layer-store.js";
 
 const tempDirs: string[] = [];
@@ -23,25 +22,31 @@ afterEach(async () => {
 });
 
 describe("writing layers", () => {
-  it("keeps book design and rules isolated per book", async () => {
+  it("作者意图按书隔离", async () => {
     const bookA = await tempBook();
     const bookB = await tempBook();
-    await saveBookRules(bookA, "---\nprohibitions:\n  - 本书 A 禁忌\n---\nA 的专属规则。\n");
-    await saveBookRules(bookB, "---\nprohibitions:\n  - 本书 B 禁忌\n---\nB 的专属规则。\n");
-    await saveBookDesign(bookA, { authorIntent: "A 的长期方向。", currentFocus: "A 近三章推进药园。" });
-    await saveBookDesign(bookB, { authorIntent: "B 的长期方向。", currentFocus: "B 近三章推进朝堂。" });
+    await saveBookDesign(bookA, { authorIntent: "A 的长期方向。" });
+    await saveBookDesign(bookB, { authorIntent: "B 的长期方向。" });
 
     const resolvedA = await resolveWritingLayers({ bookRoot: bookA });
     const resolvedB = await resolveWritingLayers({ bookRoot: bookB });
 
-    expect(resolvedA.bookRulesText).toContain("本书 A 禁忌");
     expect(resolvedA.bookDesignText).toContain("A 的长期方向");
-    expect(resolvedB.bookRulesText).toContain("本书 B 禁忌");
-    expect(resolvedB.bookRulesText).not.toContain("本书 A 禁忌");
     expect(resolvedB.bookDesignText).toContain("B 的长期方向");
     expect(resolvedB.bookDesignText).not.toContain("A 的长期方向");
-    expect(resolvedB.bookRulesRaw).toContain("本书 B 禁忌");
-    expect(resolvedA.bookRulesRaw).toContain("本书 A 禁忌");
+  });
+
+  it("不传经纬存储时，旧 current_focus.md / book_rules.md 不再被当作当前聚焦与本书规则", async () => {
+    const bookRoot = await tempBook();
+    await writeFile(join(bookRoot, "story", "current_focus.md"), "旧聚焦\n", "utf8");
+    await writeFile(join(bookRoot, "story", "book_rules.md"), "---\nprohibitions:\n  - 旧禁忌\n---\n", "utf8");
+
+    const resolved = await resolveWritingLayers({ bookRoot });
+
+    expect(resolved.bookDesign.currentFocus).toBe("");
+    expect(resolved.bookDesignText).not.toContain("旧聚焦");
+    expect(resolved.bookRulesText).toBe("");
+    expect(resolved.bookRuleEntries).toEqual([]);
   });
 
   it("treats missing files as empty layers instead of failing", async () => {

@@ -87,7 +87,7 @@ ${NARRATOR_REPLY_LANGUAGE_RULE}
 - 经纬（静态设定）：这本书「是什么」——人设、世界观、力量体系、势力、卷纲、伏笔。lore.read 查询，lore.write 录入或更新（分类如 characters / world-model / factions / power-system / outline / foreshadowing），关系变化用 lore.relate，伏笔、冲突、时间线等动态字段的推进用 lore.progress。改设定必须经作者确认。不得用宿主通用的 KnowledgeSearch / KnowledgeCreate，也不得写本地 md 文件充当经纬。
 - 叙事记忆（动态事实）：这本书「发生了什么」——时间线、事实、事件、角色状态、近章进展。用 memory.read、memory.graph、memory.events 查询；待确认或高风险事件不得冒充已确认事实。
 - 写作技能（通用方法论）：怎么写好——文风、节奏、钩子、去 AI 味、平台规则。启用的技能物化在 .novelfork/skills/<slug>/SKILL.md，用 Skill 工具读取。
-- 边界：经纬只放静态设定，动态事实只进叙事记忆；方法论与设定不互相充当。本书立项、大纲、当前聚焦属于书籍设计，强制约束与禁忌属于书籍规则；文风只来自本书导入或拆书，不跨书注入口吻。
+- 边界：经纬只放静态设定，动态事实只进叙事记忆；方法论与设定不互相充当。当前聚焦只认创作罗盘（lore 分类 current-focus），强制约束与禁忌只认 rules 分类，不写 md 文件充当；文风只来自本书导入或拆书，不跨书注入口吻。
 
 ## 写新章
 1. 顺序：write.preflight →（作者确认一句本章指示）→ 按需读技能 → scene.spec → pipeline.write。

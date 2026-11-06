@@ -180,12 +180,6 @@ export class StateManager {
       : "# Author Intent\n\n(Describe the long-horizon vision for this book here.)\n";
   }
 
-  private static defaultCurrentFocus(language: "zh" | "en"): string {
-    return language === "zh"
-      ? "# 当前聚焦\n\n## 当前重点\n\n（描述接下来 1-3 章最需要优先推进的内容。）\n"
-      : "# Current Focus\n\n## Active Focus\n\n(Describe what the next 1-3 chapters should prioritize.)\n";
-  }
-
   async ensureControlDocuments(bookId: string, authorIntent?: string): Promise<void> {
     const language = await this.resolveControlDocumentLanguage(bookId);
     await this.ensureControlDocumentsAt(this.bookDir(bookId), language, authorIntent);
@@ -208,28 +202,21 @@ export class StateManager {
         ? authorIntent.trimEnd() + "\n"
         : StateManager.defaultAuthorIntent(language),
     );
-
-    await this.writeIfMissing(
-      join(storyDir, "current_focus.md"),
-      StateManager.defaultCurrentFocus(language),
-    );
+    // 当前聚焦的唯一来源是经纬创作罗盘，不再生成 story/current_focus.md。
   }
 
+  /** 作者意图（story/author_intent.md 是它唯一的来源）。当前聚焦在经纬创作罗盘，不经这里读。 */
   async loadControlDocuments(bookId: string): Promise<{
     authorIntent: string;
-    currentFocus: string;
     runtimeDir: string;
   }> {
     await this.ensureControlDocuments(bookId);
 
     const storyDir = join(this.bookDir(bookId), "story");
     const runtimeDir = join(storyDir, "runtime");
-    const [authorIntent, currentFocus] = await Promise.all([
-      readFile(join(storyDir, "author_intent.md"), "utf-8"),
-      readFile(join(storyDir, "current_focus.md"), "utf-8"),
-    ]);
+    const authorIntent = await readFile(join(storyDir, "author_intent.md"), "utf-8");
 
-    return { authorIntent, currentFocus, runtimeDir };
+    return { authorIntent, runtimeDir };
   }
 
   private async resolveControlDocumentLanguage(bookId: string): Promise<"zh" | "en"> {
@@ -668,7 +655,7 @@ export class StateManager {
       join(bookDir, "book.json"),
       // [CLEANUP] story_bible.md 已废弃，不再作为完整性检查条件
       join(bookDir, "story", "volume_outline.md"),
-      join(bookDir, "story", "book_rules.md"),
+      // book_rules.md 已不再生成（本书规则在经纬「写作规则」分类），不作为完整性条件。
       join(bookDir, "story", "current_state.md"),
       join(bookDir, "story", "pending_hooks.md"),
       join(bookDir, "chapters", "index.json"),
