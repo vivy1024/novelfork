@@ -1,6 +1,7 @@
 import { BookMarked, Plus, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { WorkbenchResourceKind } from "./useWorkbenchResources";
+import { RESOURCE_TYPE_TONE, toneIconClass, toneSoftBgClass } from "./category-tones";
 
 export interface JingweiEmptyStateProps {
   sectionKind: WorkbenchResourceKind;
@@ -46,8 +47,8 @@ export function JingweiEmptyState({ sectionTitle, onCreate }: JingweiEmptyStateP
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center">
-      <div className="flex items-center justify-center size-10 rounded-full bg-teal-500/10">
-        <BookMarked className="size-5 text-teal-500" />
+      <div className={`flex items-center justify-center size-10 rounded-full ${toneSoftBgClass(RESOURCE_TYPE_TONE.jingwei)}`}>
+        <BookMarked className={`size-5 ${toneIconClass(RESOURCE_TYPE_TONE.jingwei)}`} />
       </div>
       <div className="space-y-1.5">
         <h3 className="text-sm font-medium">{sectionTitle}（空）</h3>

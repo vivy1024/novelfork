@@ -67,6 +67,7 @@ import { AuthorShareBadge } from "./AuthorShareBadge";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import { createStoryProgressionNode, type WorkbenchResourceKind, type WorkbenchResourceNode } from "./useWorkbenchResources";
 import { toWireToolName } from "../../engine/workflows/run-brief";
+import { RESOURCE_TYPE_TONE, toneIconClass } from "./category-tones";
 
 export interface WorkbenchCanvasContext extends CanvasContext {
   activeResourceId: string | null;
@@ -1189,5 +1190,5 @@ function CockpitOverview({ bookId }: { bookId: string }) {
 }
 
 function PenLineIcon() {
-  return <FileText className="size-3.5 shrink-0 text-violet-500" />;
+  return <FileText className={`size-3.5 shrink-0 ${toneIconClass(RESOURCE_TYPE_TONE.draft)}`} />;
 }

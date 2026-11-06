@@ -6,6 +6,7 @@ import { ChevronRight, ChevronDown, File, FileText, BookOpen, Scroll, Globe, Lay
 import type { ToolGroupIcon, WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
 import { JingweiEmptyState } from "./JingweiEmptyState";
 import { getResourceContextMenuItems } from "./ide/context-menu-registry";
+import { RESOURCE_TYPE_TONE, toneIconClass } from "./category-tones";
 
 export interface ResourceTreeAction {
   type: "create" | "create-file" | "create-folder" | "rename" | "delete" | "open-side" | "copy-path" | "copy" | "cut" | "paste" | "generate-variant" | "scene-spec" | "move" | "promote-outline";
@@ -51,7 +52,7 @@ function NodeIcon({ node }: { node: WorkbenchResourceNode }) {
   const kind: WorkbenchResourceKind = node.kind;
   if (kind === "tool-group") {
     const GroupIcon = toolGroupIcon(node);
-    if (GroupIcon) return <GroupIcon className="size-4 text-indigo-400" data-icon={String(node.metadata?.icon)} />;
+    if (GroupIcon) return <GroupIcon className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.tool)}`} data-icon={String(node.metadata?.icon)} />;
   }
   switch (kind) {
     case "book": return <BookOpen className="size-4 text-primary" />;
@@ -59,11 +60,11 @@ function NodeIcon({ node }: { node: WorkbenchResourceNode }) {
     case "chapter": return <FileText className="size-4 text-info" />;
     case "jingwei": return <Scroll className="size-4 text-warning" />;
     case "story": return <Globe className="size-4 text-success" />;
-    case "jingwei-section": case "jingwei-entry": return <BookMarked className="size-4 text-teal-500" />;
-    case "narrative-line": return <Route className="size-4 text-rose-500" />;
+    case "jingwei-section": case "jingwei-entry": return <BookMarked className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.jingwei)}`} />;
+    case "narrative-line": return <Route className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.narrativeLine)}`} />;
     case "story-map": return <GitFork className="size-4 text-success" />;
-    case "tool": return <Wrench className="size-4 text-indigo-500" />;
-    case "tool-group": return <FolderOpen className="size-4 text-indigo-400" />;
+    case "tool": return <Wrench className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.tool)}`} />;
+    case "tool-group": return <FolderOpen className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.tool)}`} />;
     case "file": return node.metadata?.isDirectory === true
       ? <FolderOpen className="size-4 text-muted-foreground" />
       : <File className="size-4 text-muted-foreground" />;

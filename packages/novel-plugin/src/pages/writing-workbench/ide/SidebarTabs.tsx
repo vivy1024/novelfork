@@ -1,10 +1,12 @@
 /**
  * 侧栏页签条：真正的 tablist / tab 语义（aria-selected、aria-controls、方向键切换）。
  *
- * 作品基础、故事推进两块侧栏共用；窄侧栏下自动换行，不靠横向滚动藏页签。
+ * 作品基础、故事推进两块侧栏共用。页签固定单行、可横向滚动（窄侧栏下换行会把页签挤成两三行、
+ * 压掉内容区）；当前页签始终滚进可见区，溢出时两侧出现滚动按钮，方向键 / Home / End 也能逐个走到。
  * 面板一侧用 `sidebarTabPanelProps` 给内容区挂上 role=tabpanel 与对应的 aria-labelledby。
  */
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 export interface SidebarTabItem<Id extends string> {
   readonly id: Id;
@@ -51,6 +53,43 @@ export function SidebarTabs<Id extends string>({
   readonly testId?: string;
 }) {
   const buttonsRef = useRef(new Map<Id, HTMLButtonElement>());
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState({ left: false, right: false });
+
+  const updateOverflow = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const left = el.scrollLeft > 1;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+    setOverflow((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
+  }, []);
+
+  // 当前页签滚进可见区：切换、页签数变化、侧栏宽度变化时都对齐一次。
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const reveal = () => {
+      const button = buttonsRef.current.get(active);
+      if (button) {
+        const start = button.offsetLeft - el.offsetLeft;
+        const end = start + button.offsetWidth;
+        if (start < el.scrollLeft) el.scrollLeft = start;
+        else if (end > el.scrollLeft + el.clientWidth) el.scrollLeft = end - el.clientWidth;
+      }
+      updateOverflow();
+    };
+    reveal();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [active, tabs.length, updateOverflow]);
+
+  const scrollByPage = (direction: -1 | 1) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * Math.max(80, el.clientWidth * 0.7), behavior: "smooth" });
+  };
 
   // 方向键在页签之间移动并直接切换（WAI-ARIA 自动激活模式）；Home/End 跳到首尾。
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -66,14 +105,45 @@ export function SidebarTabs<Id extends string>({
     buttonsRef.current.get(target.id)?.focus();
   };
 
+  // 滚动按钮只给鼠标用（键盘已有方向键），不进 Tab 序列，也不读给读屏。
+  const scrollButton = (direction: -1 | 1) => (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-hidden="true"
+      title={direction < 0 ? "向左滚动页签" : "向右滚动页签"}
+      data-testid={testId ? `${testId}-scroll-${direction < 0 ? "left" : "right"}` : undefined}
+      onClick={() => scrollByPage(direction)}
+      className={`absolute inset-y-0 z-10 flex w-5 items-center justify-center text-muted-foreground hover:text-foreground ${
+        direction < 0 ? "left-0 bg-gradient-to-r" : "right-0 bg-gradient-to-l"
+      } from-card via-card/90 to-transparent`}
+    >
+      {direction < 0 ? <ChevronLeft className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+    </button>
+  );
+
   return (
     <div
+      className={size === "md"
+        ? "relative shrink-0 border-b border-border bg-muted/10"
+        : "relative shrink-0 border-b border-border/60"}
+      data-overflow-left={overflow.left || undefined}
+      data-overflow-right={overflow.right || undefined}
+    >
+    {overflow.left ? scrollButton(-1) : null}
+    <div
+      ref={scrollRef}
       role="tablist"
       aria-label={ariaLabel}
       data-testid={testId}
-      className={size === "md"
-        ? "shrink-0 flex flex-wrap items-end gap-0.5 border-b border-border px-2 pt-1.5 bg-muted/10"
-        : "shrink-0 flex flex-wrap gap-1 border-b border-border/60 px-2 py-1.5"}
+      onScroll={updateOverflow}
+      onWheel={(event) => {
+        // 竖向滚轮换算成横向，鼠标用户不必按 Shift
+        if (event.deltaY !== 0 && event.currentTarget.scrollWidth > event.currentTarget.clientWidth) event.currentTarget.scrollLeft += event.deltaY;
+      }}
+      className={`flex flex-nowrap overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${size === "md"
+        ? "items-end gap-0.5 px-2 pt-1.5"
+        : "gap-1 px-2 py-1.5"}`}
     >
       {tabs.map((tab, index) => {
         const selected = tab.id === active;
@@ -111,6 +181,8 @@ export function SidebarTabs<Id extends string>({
           </button>
         );
       })}
+    </div>
+    {overflow.right ? scrollButton(1) : null}
     </div>
   );
 }

@@ -6,6 +6,7 @@
  */
 import { Badge } from "@/components/ui/badge";
 import { Users, MapPin, Swords, Heart, Eye, EyeOff } from "lucide-react";
+import { RESOURCE_TYPE_TONE, toneIconClass } from "./category-tones";
 
 export interface SceneSpecScene {
   characters: string[];
@@ -68,13 +69,13 @@ export function SceneSpecPanel({ spec }: SceneSpecPanelProps) {
 
             {/* 冲突 */}
             <div className="flex items-start gap-1.5 text-2xs">
-              <Swords className="size-3 text-orange-500 shrink-0 mt-0.5" />
+              <Swords className={`size-3 ${toneIconClass(RESOURCE_TYPE_TONE.conflict)} shrink-0 mt-0.5`} />
               <span>{scene.conflict}</span>
             </div>
 
             {/* 情绪曲线 */}
             <div className="flex items-center gap-1.5 text-2xs">
-              <Heart className="size-3 text-pink-500 shrink-0" />
+              <Heart className={`size-3 ${toneIconClass(RESOURCE_TYPE_TONE.emotion)} shrink-0`} />
               <span className="italic text-muted-foreground">{scene.mood}</span>
             </div>
 

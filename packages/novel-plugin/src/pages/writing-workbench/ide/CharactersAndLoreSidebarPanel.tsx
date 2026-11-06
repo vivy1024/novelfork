@@ -465,7 +465,7 @@ export function CharactersAndLoreSidebarPanel({
         </div>
       )}
 
-      {/* 主视图 Tab：角色册 / 人物表 / 设定条目 / 草案。窄侧栏下换行，不藏页签 */}
+      {/* 主视图 Tab：角色册 / 人物表 / 设定条目 / 草案。单行横向滚动，当前页签自动滚进可见区 */}
       <SidebarTabs<MainTab>
         ariaLabel="作品基础视图"
         idPrefix="lore-main"

@@ -89,6 +89,23 @@ function runtimeShikiAssets(): Plugin {
   };
 }
 
+/**
+ * Runtime 的 @tiptap/react@3 被下面的 optimizeDeps.exclude 排除（两套 Tiptap 大版本并存），按原生 ESM
+ * 加载；它具名导入的 `use-sync-external-store/shim/*.js` 却是 CommonJS，不经预构建浏览器拿不到具名导出，
+ * 写作台一打开就报错。Studio 自身解析不到这个包，所以先用精确 alias 指到 Runtime 依赖里的那份，再列进
+ * optimizeDeps.include 让 Vite 预构建；Tiptap 的导入按同一 id 命中预构建产物。只读引用，不改 Runtime 文件。
+ */
+const runtimeSyncExternalStoreShims = (() => {
+  const shimRoot = resolve(runtimePaths.runtimeRoot, "node_modules/use-sync-external-store/shim");
+  const entries = [
+    { id: "use-sync-external-store/shim/index.js", find: /^use-sync-external-store\/shim(?:\/index(?:\.js)?)?$/, file: "index.js" },
+    { id: "use-sync-external-store/shim/with-selector.js", find: /^use-sync-external-store\/shim\/with-selector(?:\.js)?$/, file: "with-selector.js" },
+  ];
+  return entries
+    .map((entry) => ({ ...entry, replacement: join(shimRoot, entry.file) }))
+    .filter((entry) => existsSync(entry.replacement));
+})();
+
 const runtimePort = Number(process.env.NOVELFORK_RUNTIME_PORT ?? process.env.PORT ?? "7778");
 
 export default defineConfig({
@@ -107,7 +124,9 @@ export default defineConfig({
       "@tanstack/react-query",
       "@tanstack/react-router",
     ],
-    alias: {
+    alias: [
+      ...runtimeSyncExternalStoreShims.map(({ find, replacement }) => ({ find, replacement })),
+      ...Object.entries({
       // node 内置浏览器桩：core 的 server 侧模块会经根入口进入前端模块图，
       // 其具名 fs/crypto/module/os/events/zlib 导入若在摇树后幸存，撞上 vite 的
       // __vite-browser-external 空壳会让整个构建硬崩（且是否幸存取决于
@@ -139,13 +158,14 @@ export default defineConfig({
       "@vivy1024/novelfork-core/registry/command-executor": resolve(__dirname, "../core/src/registry/command-executor.ts"),
       "@vivy1024/novelfork-core/i18n": resolve(__dirname, "../core/src/i18n/index.ts"),
       "@": resolve(__dirname, "src"),
-    },
+      }).map(([find, replacement]) => ({ find, replacement })),
+    ],
   },
   // Studio embeds the Runtime frontend and the Novel plugin, which currently use
   // different Tiptap major versions. Let Vite resolve each package from its
   // importing workspace instead of collapsing both versions into one optimized dep.
   optimizeDeps: {
-    include: ["tiptap-markdown", "markdown-it-task-lists"],
+    include: ["tiptap-markdown", "markdown-it-task-lists", ...runtimeSyncExternalStoreShims.map(({ id }) => id)],
     exclude: [
       "@tiptap/core",
       "@tiptap/extension-code-block",
@@ -155,6 +175,22 @@ export default defineConfig({
       "@tiptap/pm",
       "@tiptap/react",
       "@tiptap/starter-kit",
+      // 两套 Tiptap 各带一份 ProseMirror。预构建会把裸 id 收成一份，Studio 的 Tiptap v2 与 Runtime 的
+      // Tiptap v3 于是共用一个 prosemirror-state，各自的 gapcursor 重复注册（Duplicate use of selection
+      // JSON ID gapcursor）。都按导入方所在依赖树解析，保持两份互不相干。
+      "prosemirror-changeset",
+      "prosemirror-commands",
+      "prosemirror-dropcursor",
+      "prosemirror-gapcursor",
+      "prosemirror-history",
+      "prosemirror-inputrules",
+      "prosemirror-keymap",
+      "prosemirror-model",
+      "prosemirror-schema-list",
+      "prosemirror-state",
+      "prosemirror-tables",
+      "prosemirror-transform",
+      "prosemirror-view",
     ],
   },
   // Runtime 0.8.x 前端引入模块 Worker（text-document-worker-client 等）；Vite 默认的

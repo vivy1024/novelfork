@@ -20,7 +20,8 @@ const STORAGE_PREFIX = "nf:ide-layout:v1:";
  */
 export const IDE_CHAT_PANE_MIN_WIDTH = 320;
 const MIN_SIZES: IdeLayoutSizes = { sidebar: 150, editor: 220, chat: IDE_CHAT_PANE_MIN_WIDTH };
-const FALLBACK_SIZES: IdeLayoutSizes = { sidebar: 220, editor: 800, chat: 320 };
+// 侧栏默认 260：220 时页头标题、用途句与页签都被挤（1280 视口下编辑区仍有约 450px）。
+const FALLBACK_SIZES: IdeLayoutSizes = { sidebar: 260, editor: 800, chat: 320 };
 
 /** 工作台容器宽度：三栏都能摊开。 */
 export const IDE_COMFORTABLE_MIN_WIDTH = 1100;

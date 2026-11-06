@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import type { TabKind, TabView } from "./use-ide-tabs";
+import { RESOURCE_TYPE_TONE, toneIconClass } from "../category-tones";
 
 export interface EditorTab {
   id: string;
@@ -47,10 +48,10 @@ interface EditorTabsProps {
 
 function tabIcon(kind: TabKind, view?: TabView) {
   // 叙事记忆条目现在归属经纬工作区，用 memory 图标区分于手写设定
-  if (kind === "memory-entry") return { Icon: Brain, color: "text-pink-500" };
+  if (kind === "memory-entry") return { Icon: Brain, color: toneIconClass(RESOURCE_TYPE_TONE.memory) };
   switch (kind) {
     case "chapter": return { Icon: FileText, color: "text-info" };
-    case "jingwei-entry": return { Icon: Scroll, color: "text-violet-500" };
+    case "jingwei-entry": return { Icon: Scroll, color: toneIconClass(RESOURCE_TYPE_TONE.jingweiEntryTab) };
     case "file": return { Icon: FileIcon, color: "text-info" };
     case "story-map": return { Icon: GitFork, color: "text-success" };
     case "tool": return { Icon: Wrench, color: "text-muted-foreground" };

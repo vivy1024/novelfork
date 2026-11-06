@@ -26,7 +26,7 @@ describe("ide layout state", () => {
   });
 
   it("normalizes malformed and undersized values", () => {
-    expect(normalizeIdeLayoutSizes([0, -1, Number.NaN])).toEqual({ sidebar: 220, editor: 800, chat: 320 });
+    expect(normalizeIdeLayoutSizes([0, -1, Number.NaN])).toEqual({ sidebar: 260, editor: 800, chat: 320 });
     // chat 240 低于对话栏下限（IDE_CHAT_PANE_MIN_WIDTH，320）：下限提高后一律夹到 320，
     // 否则恢复一个过窄的布局会把 composer 再挤回内容盒为 0 的状态。
     expect(normalizeIdeLayoutSizes([180.4, 300.6, 240.2])).toEqual({ sidebar: 180, editor: 301, chat: 320 });
@@ -36,7 +36,7 @@ describe("ide layout state", () => {
     const sizes = { sidebar: 312, editor: 901, chat: 427 };
     saveIdeLayoutSizes("book-a", sizes, storage);
     expect(ideLayoutSizesToArray(loadIdeLayoutSizes("book-a", undefined, storage))).toEqual([312, 901, 427]);
-    expect(loadIdeLayoutSizes("book-b", undefined, storage)).toEqual({ sidebar: 220, editor: 800, chat: 320 });
+    expect(loadIdeLayoutSizes("book-b", undefined, storage)).toEqual({ sidebar: 260, editor: 800, chat: 320 });
   });
 
   it("keeps the previous size when Allotment reports a hidden pane as zero", () => {

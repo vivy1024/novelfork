@@ -1765,7 +1765,7 @@ export function IdeWorkbench({
           onDragEnd={handleOuterLayoutDragEnd}
         >
           {/* Sidebar — 纯 DOM 面板管理,React 通过 portal 渲染内容 */}
-          <Allotment.Pane minSize={150} preferredSize={220} visible={!overlayPanes && sidebarVisible}>
+          <Allotment.Pane minSize={150} preferredSize={260} visible={!overlayPanes && sidebarVisible}>
             <div className="flex h-full flex-col border-r border-border bg-card">
               {/* Sidebar 标题：只给未接 SidebarPageHead 的面板兜底（资源、搜索）；接了页头的面板自带标题，不再叠加。 */}
               {!SIDEBAR_VIEWS.find(v => v.id === activeView)?.hasPageHead && (

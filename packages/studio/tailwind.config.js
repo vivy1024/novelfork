@@ -39,6 +39,9 @@ export default {
         warning: token("warning"),
         success: token("success"),
         info: token("info"),
+        // 分类色 chart-1…8（DESIGN.md，每套主题、每种明暗各一组）：经纬分类徽标、文件树与页签类型图标读它们，
+        // 映射集中在 novel-plugin 的 category-tones.ts。
+        ...Object.fromEntries(Array.from({ length: 8 }, (_, index) => [`chart-${index + 1}`, token(`chart-${index + 1}`)])),
         border: token("border"),
         input: token("input"),
         ring: token("ring"),

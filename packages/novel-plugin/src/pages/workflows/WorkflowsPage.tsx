@@ -204,7 +204,8 @@ function RecipesTab({ bookId }: { bookId: string }) {
             <ul className="space-y-1" data-testid="workflow-mine-list">{mine.map(recipeButton)}</ul>
           </div>
         </nav>
-        <div className="min-w-0 flex-1">
+        {/* 宽屏下工序卡不必铺满：限制编辑区最大宽度，字段与按钮不被拉得过开 */}
+        <div className="min-w-0 max-w-4xl flex-1">
           {selected ? (
             <WorkflowStepListEditor
               recipe={selected}

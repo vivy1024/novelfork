@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseDesignMd, renderThemeCss } from "../../scripts/design-tokens";
 import { STYLE_THEME_IDS } from "./style-themes";
+import { CATEGORY_TONE_BADGE_CLASSES, CATEGORY_TONE_INK_PERCENT } from "../../../novel-plugin/src/pages/writing-workbench/category-tones";
 
 // Windows 检出时 Git 可能把换行转成 CRLF，比较前统一成 LF。
 const readText = (path: string) => readFileSync(path, "utf8").replaceAll("\r\n", "\n");
@@ -101,6 +102,43 @@ describe("书房主题令牌", () => {
       }
     }
     for (let index = 1; index <= 8; index += 1) expect(themeCss).toContain(`--chart-${index}: `);
+  });
+
+  it("分类徽标（分类色混前景色的文字 + 分类色浅铺底）在每个主题、每种明暗下文字对比度 ≥ WCAG AA 4.5:1", () => {
+    const model = parseDesignMd(designMd);
+    const rgb = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+    const toHex = (channels: number[]) => `#${channels.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
+    // color-mix(in srgb, a p%, b)
+    const mix = (a: string, b: string, p: number) => {
+      const [x, y] = [rgb(a), rgb(b)];
+      return toHex(x.map((v, i) => v * p + y[i]! * (1 - p)));
+    };
+    const lum = (hex: string) => {
+      const [r, g, b] = rgb(hex).map((v) => v / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+    };
+    const contrast = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi! + 0.05) / (lo! + 0.05);
+    };
+    const ink = CATEGORY_TONE_INK_PERCENT / 100;
+    // 类名里写死的比例必须与常量一致，底色必须是 10% 浅铺
+    for (const [tone, className] of Object.entries(CATEGORY_TONE_BADGE_CLASSES)) {
+      if (tone === "neutral") continue;
+      expect(className, tone).toContain(`var(--${tone})_${CATEGORY_TONE_INK_PERCENT}%,var(--foreground)`);
+      expect(className, tone).toContain(`bg-${tone}/10`);
+    }
+    const prefixes = ["", "dark-", "shuhan-", "shuhan-dark-", "yegeng-", "yegeng-dark-"];
+    for (const prefix of prefixes) {
+      for (let index = 1; index <= 8; index += 1) {
+        const chart = model.colors[`${prefix}chart-${index}`]!;
+        const text = mix(chart, model.colors[`${prefix}foreground`]!, ink);
+        for (const surface of ["card", "background"]) {
+          const tinted = mix(chart, model.colors[`${prefix}${surface}`]!, 0.1);
+          expect(contrast(text, tinted), `${prefix}chart-${index} 徽标在 ${surface} 上`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
   });
 
   it("缺少必需颜色时报出具体令牌名", () => {

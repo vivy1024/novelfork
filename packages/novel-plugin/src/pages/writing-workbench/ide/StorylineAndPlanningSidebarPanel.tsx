@@ -618,11 +618,13 @@ export function StorylineAndPlanningSidebarPanel({
             variant="outline"
             className="h-7 gap-1 text-2xs"
             title="在中央打开故事画布：下一章 / 推进 / 故事树"
+            aria-label="打开故事画布"
             data-testid="storyline-open-canvas"
             onClick={openProgressionCanvas}
           >
             <MapIcon className="size-3.5 text-primary" />
-            打开故事画布
+            {/* 窄侧栏里按钮短一点，给页头标题留位；完整名字在 aria-label 与 title 里 */}
+            画布
           </Button>
         }
       />
@@ -636,7 +638,7 @@ export function StorylineAndPlanningSidebarPanel({
         onSendToNarrator={onSendToNarrator}
       />
 
-      {/* 页签：章节与大纲 + 各类随剧情推进的条目 + 章后事实；窄侧栏下换行 */}
+      {/* 页签：章节与大纲 + 各类随剧情推进的条目 + 章后事实；单行横向滚动，当前页签自动滚进可见区 */}
       <SidebarTabs<StorylineSubTab>
         ariaLabel="故事推进视图"
         idPrefix="storyline"

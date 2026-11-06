@@ -15,6 +15,7 @@ import { getImageRawUrl, isImageResourceNode } from "./image-resource";
 import { submitNarrativeLineChange } from "../narrative-line-proposals";
 import { memoryFactLabel } from "../lore-workspace-split";
 import { resourceDisplayTitle } from "../chapter-display-title";
+import { categoryTone, toneBadgeClass } from "../category-tones";
 
 export type ResourceViewerKind =
   | "chapter"
@@ -673,24 +674,6 @@ function renderNarrativeLine(node: WorkbenchResourceNode, options: ResourceViewe
 // JingweiCardViewer — structured card rendering for jingwei-section/entry
 // ---------------------------------------------------------------------------
 
-const CATEGORY_COLOR_MAP: Record<string, string> = {
-  blue: "bg-info/10 text-info",
-  orange: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  purple: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  yellow: "bg-warning/10 text-warning",
-  green: "bg-success/10 text-success",
-  red: "bg-destructive/10 text-destructive",
-  amber: "bg-warning/10 text-warning",
-  rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300",
-  emerald: "bg-success/10 text-success",
-  violet: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
-  sky: "bg-info/10 text-info",
-  pink: "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300",
-  indigo: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
-  cyan: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300",
-  slate: "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300",
-  stone: "bg-stone-100 text-stone-800 dark:bg-stone-900/30 dark:text-stone-300",
-};
 
 const VISIBILITY_LABELS: Record<string, string> = {
   global: "全局",
@@ -707,7 +690,8 @@ function JingweiCardViewer({ node }: { node: WorkbenchResourceNode }) {
   const relatedEntries = (meta.relatedEntries as Array<{ id: string; title: string }>) ?? [];
 
   const schema: CategorySchema | undefined = CATEGORY_SCHEMAS.find(s => s.id === categoryId);
-  const colorClass = schema ? (CATEGORY_COLOR_MAP[schema.color] ?? CATEGORY_COLOR_MAP.slate) : CATEGORY_COLOR_MAP.slate;
+  // 分类徽标色集中在 category-tones（DESIGN.md 分类色令牌），随书房主题与明暗切换
+  const colorClass = toneBadgeClass(categoryTone(schema?.color));
 
   // If no structured fields, fall back to markdown/text rendering
   if (!fieldsJson && !schema) {
