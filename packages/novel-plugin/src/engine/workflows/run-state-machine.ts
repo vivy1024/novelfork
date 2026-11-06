@@ -140,6 +140,17 @@ function isTerminal(status: WorkflowRunStatus): boolean {
 
 const REVIEW_GATE_KINDS: readonly NovelWorkflowStepKind[] = ["audit", "adversarial-audit", "approval-gate"];
 
+/** 把正文写进书里的小说工具（落盘工具）。 */
+export const CHAPTER_WRITE_TOOLS: ReadonlySet<string> = new Set(["pipeline.write", "chapter.write"]);
+
+/**
+ * 这道工序负责把正文写进书里（允许调用落盘工具）。
+ * 这类工序失败不能跳过：跳过等于作者批准的正文没进书，运行却显示完成。
+ */
+export function writesChapter(step: Pick<WorkflowStepState, "tools">): boolean {
+  return step.tools.some((tool) => CHAPTER_WRITE_TOOLS.has(tool));
+}
+
 /**
  * 写正文的工序之后有没有「作者确认」的审校 / 门禁工序。
  * 有的话正文在那里随审校一起确认；没有就必须在写正文这一步本身确认——正文永远不能
@@ -164,6 +175,9 @@ export function buildStepTemplates(recipe: WorkflowGraphRecipe): WorkflowStepSta
     .filter((id) => byId.has(id))
     .map((id, index) => {
       const step = byId.get(id)!;
+      const tools = [...(step.tools ?? [])];
+      // 落盘工序「失败时跳过」一律按停止处理（含旧书磁盘里存着 skip 的方案与库里进行中的运行）。
+      const onFailure = step.onFailure === "skip" && writesChapter({ tools }) ? "stop" : step.onFailure ?? "stop";
       return {
         stepId: step.id,
         ordinal: index + 1,
@@ -176,9 +190,9 @@ export function buildStepTemplates(recipe: WorkflowGraphRecipe): WorkflowStepSta
         ...(step.agentId ? { agentId: step.agentId } : {}),
         requiresApproval: requiresAuthorDecision(step)
           || (step.kind === "writer-generate" && !hasDownstreamReviewGate(recipe, step.id)),
-        onFailure: step.onFailure ?? "stop",
+        onFailure,
         enabled: step.enabled,
-        tools: [...(step.tools ?? [])],
+        tools,
         expectedOutput: expectedOutputFor(step.kind),
         outcomes: [...(step.outcomes ?? [])],
       };
@@ -352,6 +366,23 @@ function resetFrom(recipe: WorkflowGraphRecipe, steps: WorkflowStepState[], targ
   }
 }
 
+/**
+ * 受阻工序上游最近的、走到过的写正文工序（打回受阻落盘时的目标）。
+ * 「最近」按正向拓扑序取最后一个：多道写正文时打回离它最近的那一道。
+ */
+function upstreamProseStep(
+  recipe: WorkflowGraphRecipe,
+  steps: readonly WorkflowStepState[],
+  stepId: string,
+): WorkflowStepState | undefined {
+  const candidates = steps.filter((step) =>
+    step.expectedOutput === "prose"
+    && step.status === "done"
+    && forwardDescendants(recipe, step.stepId).has(stepId),
+  );
+  return candidates.sort((a, b) => a.ordinal - b.ordinal).at(-1);
+}
+
 /** 对运行执行一个动作。每次成功迁移 revision + 1。 */
 export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState, action: WorkflowRunAction): WorkflowTransition {
   if (isTerminal(state.status)) {
@@ -393,6 +424,14 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
           `「${current.label}」是分支工序，不能跳过`,
           "跳过就没有结果，不知道该走哪条分支",
           "选择重试，或取消运行",
+        );
+      }
+      if (writesChapter(current)) {
+        return reject(
+          "chapter-write-cannot-skip",
+          `「${current.label}」负责把正文写进书里，不能跳过`,
+          "跳过后运行会显示完成，但作者批准的正文并没有进书，章节索引里也没有这一章",
+          "排除阻塞原因后重试本工序；正文本身有问题（如字数不在硬范围内）时写明意见打回写正文；不想继续请取消运行",
         );
       }
       steps[failed] = { ...current, status: "skipped" };
@@ -500,11 +539,27 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
     }
 
     case "reject": {
+      if (current.status === "failed") {
+        // 受阻工序打回：落盘等工序因正文问题失败（字数超范围、写前预检拦下）时，
+        // 作者带意见把运行打回上游写正文的工序重做，而不是只能取消整个运行。
+        const proseTarget = upstreamProseStep(recipe, steps, current.stepId);
+        if (!proseTarget) {
+          return reject(
+            "nothing-to-reject",
+            `「${current.label}」受阻，但它的上游没有写正文的工序可以打回`,
+            "打回受阻工序只用于让上游重写正文；这道工序的问题与正文无关",
+            "排除阻塞原因后重试本工序，或取消运行",
+          );
+        }
+        resetFrom(recipe, steps, proseTarget.stepId, action.note);
+        events.push({ type: "step_rejected", payload: { stepId: current.stepId, note: action.note, returnTo: proseTarget.stepId, from: "failed" } });
+        return done();
+      }
       if (current.status !== "awaiting_approval") {
         return reject(
           "nothing-to-reject",
           `工序「${current.label}」没有待确认的产物`,
-          "只有提交后等待确认的工序才能打回",
+          "只有提交后等待确认的工序，或受阻且上游有写正文工序的工序才能打回",
           "等叙述者提交本工序产物后再打回",
         );
       }

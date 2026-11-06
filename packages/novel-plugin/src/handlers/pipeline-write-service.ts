@@ -9,7 +9,7 @@
  */
 
 import type { Logger, ContextPackage, RuleStack } from "@vivy1024/novelfork-core";
-import { StateManager, buildLengthSpec, countChapterLength, isOutsideHardRange, loadRuntimeStateSnapshot, findKnowledgeViolations, findTimelineConflicts } from "@vivy1024/novelfork-core";
+import { StateManager, buildLengthSpec, countChapterLength, loadRuntimeStateSnapshot, findKnowledgeViolations, findTimelineConflicts } from "@vivy1024/novelfork-core";
 import type { BookConfig } from "@vivy1024/novelfork-core";
 import type { RuntimeLoadedSkill } from "@vivy1024/novelfork-core/plugins";
 import type { AuditResult } from "../engine/agents/continuity.js";
@@ -48,6 +48,7 @@ import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
 import { formatAuthorExplanation, isAuthorFacingDetail } from "./diagnostic-explanation.js";
 import { isBookJsonUnreadable } from "./book-config-readable.js";
 import { checkHighRiskPendingBeforeWrite } from "./high-risk-pending-gate.js";
+import { checkChapterHardLength, describeLengthGap } from "./chapter-length-check.js";
 
 export interface PipelineCanvasArtifact {
   readonly id: string;
@@ -1104,12 +1105,17 @@ async function executePipelineWriteUnlocked(
     const factCheckRevised = false;
     const factCheckRound = 0;
     // 正式保存前只做长度硬校验；超出范围时返回错误，交由同一 Runtime Agent 修订后重试。
+    // 与工作流正文候选提交共用同一口径（chapter-length-check.ts），避免批准后才被字数拒。
     const finalLengthCount = countChapterLength(finalContent, lengthSpec.countingMode);
-    if (isOutsideHardRange(finalLengthCount, lengthSpec)) {
+    const lengthViolation = checkChapterHardLength(finalContent, {
+      chapterWordCount: book.chapterWordCount,
+      language: book.language === "en" ? "en" : "zh",
+    });
+    if (lengthViolation) {
       return {
         ok: false,
         code: "length-out-of-range",
-        error: `第${chapterNumber}章最终长度为 ${finalLengthCount}${lengthSpec.countingMode === "en_words" ? " words" : "字"}，不在本书 ${lengthSpec.target}${lengthSpec.countingMode === "en_words" ? " words" : "字"} 的硬范围 ${lengthSpec.hardMin}-${lengthSpec.hardMax} 内；未保存正式章节。`,
+        error: `第${chapterNumber}章最终长度为 ${lengthViolation.count}${lengthViolation.unit}，不在本书 ${lengthViolation.target}${lengthViolation.unit} 的硬范围 ${lengthViolation.hardMin}-${lengthViolation.hardMax} 内（${describeLengthGap(lengthViolation)}）；未保存正式章节。`,
       };
     }
 

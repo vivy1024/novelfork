@@ -137,6 +137,99 @@ describe("领导者简报", () => {
   });
 });
 
+/** 走到落盘工序：上下文 → 蓝图 → 正文 → 审校通过 → 作者放行。 */
+function advanceToSettlement(r: ReturnType<typeof run>) {
+  advanceToDraft(r);
+  r.apply({ type: "submit", stepId: "step-draft" });
+  const audit = r.state.steps.find((step) => step.expectedOutput === "audit")!.stepId;
+  r.apply({ type: "submit", stepId: audit, audit: { passed: true, note: failNote } });
+  r.apply({ type: "approve", stepId: audit });
+  expect(r.status("step-settlement")).toBe("running");
+}
+
+const writeBlocked = { what: "pipeline.write 被写前预检拦下：empty-recent-progress", why: "近章记忆为空", action: "先结算近章再落盘" };
+
+describe("落盘工序失败不能静默跳过", () => {
+  it.each(NOVEL_BUILTIN_WORKFLOWS.map((recipe) => [recipe.id, recipe] as const))(
+    "%s：落盘工序报告阻塞后运行受阻（不是完成），结算步不被跳过",
+    (_id, recipe) => {
+      const r = run(recipe);
+      advanceToSettlement(r);
+      r.apply({ type: "block", stepId: "step-settlement", explanation: writeBlocked });
+      expect(r.state.status).toBe("blocked");
+      expect(r.status("step-settlement")).toBe("failed");
+      expect(r.step("step-settlement").note).toEqual(writeBlocked);
+      expect(r.events).not.toContain("run_done");
+    },
+  );
+
+  it("方案里落盘工序存成「失败时跳过」（旧书磁盘方案）也按停止处理", () => {
+    const recipe = linearRecipeToGraph({
+      id: "legacy-skip",
+      name: "旧方案",
+      commandId: "/novel:legacy-skip",
+      description: "",
+      steps: [
+        { id: "draft", kind: "writer-generate", label: "写正文", enabled: true },
+        { id: "save", kind: "post-settlement", label: "落盘", enabled: true, tools: ["pipeline.write"], onFailure: "skip" },
+        { id: "note", kind: "custom-tool", label: "附注", enabled: true, onFailure: "skip" },
+      ],
+      resultStrategy: "formal-chapter",
+      requireFinalApproval: false,
+      maxRetries: 0,
+    });
+    const r = run(recipe);
+    expect(r.step("save").onFailure).toBe("stop");
+    // 不写章节的工序仍可按方案跳过。
+    expect(r.step("note").onFailure).toBe("skip");
+    r.apply({ type: "submit", stepId: "draft" });
+    r.apply({ type: "approve", stepId: "draft" });
+    r.apply({ type: "block", stepId: "save", explanation: writeBlocked });
+    expect(r.state.status).toBe("blocked");
+    expect(r.status("note")).toBe("pending");
+  });
+
+  it("作者不能跳过受阻的落盘工序（跳过等于批准的正文不进书却显示完成）", () => {
+    const r = run(FANQIE_XUANHUAN_SERIAL_RECIPE);
+    advanceToSettlement(r);
+    r.apply({ type: "block", stepId: "step-settlement", explanation: writeBlocked });
+    const skipped = transition(FANQIE_XUANHUAN_SERIAL_RECIPE, r.state, { type: "skip", stepId: "step-settlement" });
+    expect(skipped.ok).toBe(false);
+    if (!skipped.ok) {
+      expect(skipped.code).toBe("chapter-write-cannot-skip");
+      expect(skipped.explanation.action).toContain("打回");
+    }
+  });
+});
+
+describe("落盘受阻后作者打回写正文", () => {
+  const authorNote = { what: "作者打回了本工序的产物", why: "正文只有 154 字，远低于本书下限", action: "按意见修改后重新提交" };
+
+  it("落盘工序受阻时打回：回到写正文（带意见），审校与落盘重置", () => {
+    const r = run(FANQIE_XUANHUAN_SERIAL_RECIPE);
+    advanceToSettlement(r);
+    r.apply({ type: "block", stepId: "step-settlement", explanation: writeBlocked });
+    r.apply({ type: "reject", stepId: "step-settlement", note: authorNote });
+    expect(r.state.status).toBe("running");
+    expect(r.status("step-draft")).toBe("running");
+    expect(r.step("step-draft").note).toEqual(authorNote);
+    expect(r.status("step-adversarial-audit")).toBe("pending");
+    expect(r.status("step-settlement")).toBe("pending");
+    expect(r.step("step-settlement").note).toBeUndefined();
+  });
+
+  it("受阻工序上游没有写正文的工序时，打回给出可执行说明", () => {
+    const r = run(FANQIE_XUANHUAN_SERIAL_RECIPE);
+    r.apply({ type: "block", stepId: "step-context", explanation: writeBlocked });
+    const result = transition(FANQIE_XUANHUAN_SERIAL_RECIPE, r.state, { type: "reject", stepId: "step-context", note: authorNote });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("nothing-to-reject");
+      expect(result.explanation.action).toContain("重试");
+    }
+  });
+});
+
 describe("正文必须经作者确认", () => {
   it("写正文之后没有需要确认的审校 / 门禁时，写正文这一步自己要求确认", () => {
     const recipe = linearRecipeToGraph({

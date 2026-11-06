@@ -156,7 +156,7 @@ describe("工作流工具（内置子代理侧）", () => {
     expect(String(view.data!.brief)).toContain('stepId="step-draft"');
 
     const submitted = await callAsSubagent("workflow_submit_step_output", {
-      runRevision: run.state.revision, stepId: "step-draft", kind: "prose", payload: { title: "截货", content: "林舟看着货船沉下去。" },
+      runRevision: run.state.revision, stepId: "step-draft", kind: "prose", payload: { title: "截货", content: `林舟看着货船沉下去。${"夜".repeat(2000)}` },
     }, "nf-writer");
     expect(submitted.ok).toBe(true);
     expect(submitted.data!.candidateId).toMatch(/.+/);
@@ -164,6 +164,20 @@ describe("工作流工具（内置子代理侧）", () => {
     // 领导者侧：运行推进到审校，正文仍是待定候选
     const leader = await call("workflow_get_current_step", {});
     expect(leader.data).toMatchObject({ currentStepId: "step-adversarial-audit" });
+  });
+
+  it("正文候选按 book.json 硬范围校验（与 pipeline.write 同口径）：字数不够直接拒绝并说明差多少", async () => {
+    const run = await toDraft();
+    // 本书 2000 字 → 硬范围 1455-2545。
+    const short = await callAsSubagent("workflow_submit_step_output", {
+      runRevision: run.state.revision, stepId: "step-draft", kind: "prose", payload: { content: "短".repeat(154) },
+    }, "nf-writer");
+    expect(short).toMatchObject({ ok: false, error: "length-out-of-range" });
+    expect(short.summary).toContain("154字");
+    expect(short.summary).toContain("1455-2545");
+    expect(short.summary).toContain("还差 1301字");
+    const leader = await call("workflow_get_current_step", {});
+    expect(leader.data).toMatchObject({ runRevision: run.state.revision, currentStepId: "step-draft" });
   });
 
   it("模板与当前工序不对应：拒绝提交并说明", async () => {
@@ -187,7 +201,7 @@ describe("工作流工具（内置子代理侧）", () => {
   it("审校子代理提交不通过：运行自动打回写正文", async () => {
     let run = await toDraft();
     await callAsSubagent("workflow_submit_step_output", {
-      runRevision: run.state.revision, kind: "prose", payload: { content: "第一稿。" },
+      runRevision: run.state.revision, kind: "prose", payload: { content: `第一稿。${"雨".repeat(2000)}` },
     }, "nf-writer");
     run = (await import("../engine/workflows/run-store.js")).getActiveWorkflowRunForNarrator(storage, "narrator-1")!;
     const audit = await callAsSubagent("workflow_submit_step_output", {

@@ -15,6 +15,7 @@ import {
   rejectWorkflowStep,
   reportWorkflowBlocker,
   retryWorkflowStep,
+  skipWorkflowStep,
   startWorkflowRun,
   submitWorkflowStepOutput,
 } from "./run-service";
@@ -192,6 +193,84 @@ describe("创作工作流运行：服务端到端", () => {
     run = ok(cancelWorkflowRun({ storage, runId: run.id, expectedRevision: run.state.revision }));
     expect(run.state.status).toBe("cancelled");
     expect(getActiveWorkflowRunForNarrator(storage, "narrator-1")).toBeNull();
+  });
+
+  async function toDraftStep(storage: StorageDatabase, bookRoot: string): Promise<WorkflowRunRecord> {
+    let run = await startFanqie(storage, bookRoot);
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "other", payload: { summary: "上下文就绪" } }));
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "scene-spec", payload: { sceneSpec } }));
+    expect(run.state.currentStepId).toBe("step-draft");
+    return run;
+  }
+
+  // 本书 1000 字 → 硬范围 728–1272（与 pipeline.write 同一口径）。
+  const lengthRule = { chapterWordCount: 1000, language: "zh" as const };
+
+  it("正文候选提交时按本书硬范围校验字数：154 字被拒并说明差多少，运行原样", async () => {
+    const { storage, bookRoot } = await setup();
+    const run = await toDraftStep(storage, bookRoot);
+    const short = submitWorkflowStepOutput({
+      storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose",
+      payload: { content: "短".repeat(154) }, lengthRule,
+    });
+    expect(short.ok).toBe(false);
+    if (!short.ok) {
+      expect(short.code).toBe("length-out-of-range");
+      expect(short.explanation.what).toContain("154字");
+      expect(short.explanation.what).toContain("728-1272");
+      expect(short.explanation.what).toContain("还差 574字");
+    }
+    const after = getActiveWorkflowRunForNarrator(storage, "narrator-1")!;
+    expect(after.state.revision).toBe(run.state.revision);
+    expect(after.state.currentStepId).toBe("step-draft");
+    expect(getWorkflowRunDetail(storage, run.id)!.candidates.filter((c) => c.kind === "prose")).toHaveLength(0);
+
+    const long = submitWorkflowStepOutput({
+      storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose",
+      payload: { content: "长".repeat(1300) }, lengthRule,
+    });
+    expect(!long.ok && long.explanation.what).toContain("超出上限 28字");
+
+    const fine = ok(submitWorkflowStepOutput({
+      storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose",
+      payload: { content: "好".repeat(1000) }, lengthRule,
+    }));
+    expect(fine.state.currentStepId).toBe("step-adversarial-audit");
+  });
+
+  it("落盘工序受阻（如字数 / 写前预检）：运行受阻而非完成；作者可打回写正文重做", async () => {
+    const { storage, bookRoot } = await setup();
+    let run = await toDraftStep(storage, bookRoot);
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose", payload: { content: "萧炎一路杀出后山。" } }));
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "audit", payload: { passed: true, summary: "可以放行", issues: [] } }));
+    run = ok(approveWorkflowStep({ storage, runId: run.id, stepId: "step-adversarial-audit", expectedRevision: run.state.revision }));
+    expect(run.state.currentStepId).toBe("step-settlement");
+    expect(getApprovedProse(storage, run)).not.toBeNull();
+
+    // 叙述者照简报报告落盘被拦：运行停在落盘工序，不能显示完成。
+    run = ok(reportWorkflowBlocker({
+      storage, narratorId: "narrator-1", runRevision: run.state.revision,
+      explanation: { what: "pipeline.write 被拦下：length-out-of-range", why: "正文 154 字，不在 728-1272 内", action: "打回写正文补足字数" },
+    }));
+    expect(run.state.status).toBe("blocked");
+    expect(run.state.steps.find((step) => step.stepId === "step-settlement")!.status).toBe("failed");
+    expect(getActiveWorkflowRunForNarrator(storage, "narrator-1")).not.toBeNull();
+
+    // 跳过被拒：跳过等于批准的正文没进书却显示完成。
+    const skipped = skipWorkflowStep({ storage, runId: run.id, stepId: "step-settlement", expectedRevision: run.state.revision });
+    expect(!skipped.ok && skipped.code).toBe("chapter-write-cannot-skip");
+
+    // 版本过期的打回仍按乐观锁拒绝。
+    const stale = rejectWorkflowStep({ storage, runId: run.id, stepId: "step-settlement", expectedRevision: run.state.revision - 1, note: "补足字数" });
+    expect(!stale.ok && stale.code).toBe("revision-conflict");
+
+    run = ok(rejectWorkflowStep({ storage, runId: run.id, stepId: "step-settlement", expectedRevision: run.state.revision, note: "正文太短，补足到 800 字以上" }));
+    expect(run.state.status).toBe("running");
+    expect(run.state.currentStepId).toBe("step-draft");
+    expect(buildWorkflowRunBrief(run)).toContain("正文太短，补足到 800 字以上");
+    // 旧的已批准正文作废：重写的正文要重新经审校与作者确认才能落盘。
+    expect(getApprovedProse(storage, run)).toBeNull();
+    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { fromWorkflowRun: true })?.what).toContain("还没有经作者确认");
   });
 
   it("打回必须写意见", async () => {

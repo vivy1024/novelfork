@@ -14,6 +14,7 @@ import type { RuntimeToolResult, ToolExecutionContext } from "@vivy1024/novelfor
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { rosterTemplatesForStep } from "../engine/agents/roster.js";
+import type { ChapterLengthRule } from "./chapter-length-check.js";
 import { buildDelegatedStepBrief, buildWorkflowRunBrief } from "../engine/workflows/run-brief.js";
 import {
   getApprovedProse,
@@ -183,10 +184,15 @@ function activeRunFor(storage: StorageDatabase, binding: TrustedRuntimeBookBindi
   return run && run.bookId === binding.bookId ? run : null;
 }
 
-async function readChapterWordTarget(bookRoot: string): Promise<number | undefined> {
+/**
+ * 本书的字数设置（book.json，pipeline.write 用的同一份）：目标字数与硬范围规则。
+ * 读不到时两者都缺省——正文候选不做硬范围校验，落盘时 pipeline.write 仍会校验。
+ */
+async function readChapterLengthRule(bookRoot: string): Promise<ChapterLengthRule | undefined> {
   try {
-    const config = JSON.parse(await readFile(join(bookRoot, "book.json"), "utf8")) as { chapterWordCount?: unknown };
-    return typeof config.chapterWordCount === "number" && config.chapterWordCount > 0 ? config.chapterWordCount : undefined;
+    const config = JSON.parse(await readFile(join(bookRoot, "book.json"), "utf8")) as { chapterWordCount?: unknown; language?: unknown };
+    if (typeof config.chapterWordCount !== "number" || !Number.isSafeInteger(config.chapterWordCount) || config.chapterWordCount < 1) return undefined;
+    return { chapterWordCount: config.chapterWordCount, language: config.language === "en" ? "en" : "zh" };
   } catch {
     return undefined;
   }
@@ -265,7 +271,8 @@ export async function executeWorkflowRunTool(
   }
 
   if (normalized === "workflow.submit_step_output") {
-    const wordTarget = await readChapterWordTarget(binding.root);
+    const lengthRule = await readChapterLengthRule(binding.root);
+    const wordTarget = lengthRule?.chapterWordCount;
     const capture: { candidateId?: string } = {};
     const result = submitWorkflowStepOutput({
       storage,
@@ -276,6 +283,7 @@ export async function executeWorkflowRunTool(
       ...(typeof input.stepId === "string" && input.stepId.trim() ? { stepId: input.stepId.trim() } : {}),
       ...(typeof input.outcome === "string" && input.outcome.trim() ? { outcome: input.outcome.trim() } : {}),
       ...(wordTarget ? { wordTarget } : {}),
+      ...(lengthRule ? { lengthRule } : {}),
       ...(allowedStepIds ? { allowedStepIds } : {}),
       capture,
     });

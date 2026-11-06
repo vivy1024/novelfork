@@ -133,7 +133,8 @@ export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = builtinRecipe(
       label: "章后状态与账本结算",
       enabled: true,
       tools: ["pipeline.write", "resource.manage", "memory.settle_chapter"],
-      onFailure: "skip",
+      // 落盘失败不能跳过：跳过会让运行显示完成，但作者批准的正文没进书。
+      onFailure: "stop",
     },
   ],
   resultStrategy: "formal-chapter",
@@ -255,7 +256,7 @@ export const TRADITIONAL_XIANXIA_RECIPE: NovelWorkflowRecipe = builtinRecipe({
       label: "境界账本结算与伏笔落盘",
       enabled: true,
       tools: ["pipeline.write", "resource.manage", "memory.settle_chapter"],
-      onFailure: "skip",
+      onFailure: "stop",
     },
   ],
   resultStrategy: "formal-chapter",

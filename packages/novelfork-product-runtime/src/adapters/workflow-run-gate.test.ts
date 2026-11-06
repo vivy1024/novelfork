@@ -46,6 +46,9 @@ class MemoryResolver implements NovelRuntimeBindingResolver {
 	}
 }
 
+/** 作者批准的正文：落在本书 3000 字的硬范围内（正文候选提交时按与 pipeline.write 相同的口径校验字数）。 */
+const APPROVED_PROSE = `作者批准的正文。${"夜".repeat(3000)}`;
+
 let workRoot: string;
 let bookRoot: string;
 let adapter: NovelRuntimeAdapter;
@@ -157,13 +160,13 @@ describe("创作工作流对叙述者的约束", () => {
 		await startRun();
 		const submitted = await adapter.execute(
 			"workflow_submit_step_output",
-			{ runRevision: 0, kind: "prose", payload: { title: "开篇", content: "作者批准的正文。" } },
+			{ runRevision: 0, kind: "prose", payload: { title: "开篇", content: APPROVED_PROSE } },
 			"narrator-a",
 		);
 		expect(submitted.isError).toBe(false);
 		expect(parse(submitted.output)).toMatchObject({ ok: true, data: { runStatus: "awaiting_approval" } });
 
-		const waiting = await adapter.execute("chapter_write", { chapterNumber: 1, content: "作者批准的正文。" }, "narrator-a");
+		const waiting = await adapter.execute("chapter_write", { chapterNumber: 1, content: APPROVED_PROSE }, "narrator-a");
 		expect(String(parse(waiting.output).summary)).toContain("等作者确认");
 		expect(await adapter.resolveToolNames("narrator-a")).not.toContain("chapter_write");
 
@@ -177,12 +180,12 @@ describe("创作工作流对叙述者的约束", () => {
 		expect(parse(mismatch.output)).toMatchObject({ error: "workflow-step-disallowed" });
 		expect(String(parse(mismatch.output).summary)).toContain("不一致");
 
-		const matching = await adapter.execute("chapter_write", { chapterNumber: 1, content: "作者批准的正文。" }, "narrator-a");
+		const matching = await adapter.execute("chapter_write", { chapterNumber: 1, content: APPROVED_PROSE }, "narrator-a");
 		expect(parse(matching.output).error).not.toBe("workflow-step-disallowed");
 
 		// 取当前工序时带回已批准的正文，供落盘原样写入。
 		const current = await adapter.execute("workflow_get_current_step", {}, "narrator-a");
-		expect(parse(current.output)).toMatchObject({ data: { approvedProse: { title: "开篇", content: "作者批准的正文。" } } });
+		expect(parse(current.output)).toMatchObject({ data: { approvedProse: { title: "开篇", content: APPROVED_PROSE } } });
 	});
 
 	test("高级写类工具同样随工序收窄（只是可见性，启用状态由 Runtime 套路体系保留），调用时照样被拦", async () => {
@@ -304,7 +307,7 @@ describe("正文一致性校验的 fail-closed 闸门", () => {
 		const storage = getStorageDatabase();
 		const submitted = await adapter.execute(
 			"workflow_submit_step_output",
-			{ runRevision: 0, kind: "prose", payload: { title: "开篇", content: "作者批准的正文。" } },
+			{ runRevision: 0, kind: "prose", payload: { title: "开篇", content: APPROVED_PROSE } },
 			"narrator-a",
 		);
 		expect(submitted.isError).toBe(false);
@@ -314,7 +317,7 @@ describe("正文一致性校验的 fail-closed 闸门", () => {
 
 		// 故障注入：关掉产品库，一致性校验读不到已批准正文（getStorageDatabase 直接抛错）。
 		closeStorageDatabase();
-		const denial = explainWorkflowDenial(advanced, "chapter.write", "confirmed-write", { chapterNumber: 1, content: "作者批准的正文。" });
+		const denial = explainWorkflowDenial(advanced, "chapter.write", "confirmed-write", { chapterNumber: 1, content: APPROVED_PROSE });
 		expect(denial).not.toBeNull();
 		expect(denial!.what).toContain("无法校验");
 		expect(denial!.why).toContain("工作流存储");

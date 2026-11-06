@@ -12,6 +12,7 @@
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
+import { checkChapterHardLength, describeLengthGap, type ChapterLengthRule } from "../../handlers/chapter-length-check.js";
 import { parseSceneSpecValue } from "../../handlers/scene-spec-handler.js";
 import { replaceChapterScenes, sceneFromSpec } from "../narrative-memory/scene-store.js";
 import { buildWorkflowRunBrief } from "./run-brief.js";
@@ -137,8 +138,13 @@ function countChars(text: string): number {
 export function validateWorkflowCandidate(
   kind: WorkflowCandidateKind,
   payload: unknown,
-  context: { readonly chapterNumber: number; readonly wordTarget?: number },
-): { ok: true; value: CandidateValidation } | { ok: false; explanation: WorkflowExplanation } {
+  context: {
+    readonly chapterNumber: number;
+    readonly wordTarget?: number;
+    /** 本书字数硬范围规则；给了就按与 pipeline.write 相同的口径校验正文。 */
+    readonly lengthRule?: ChapterLengthRule;
+  },
+): { ok: true; value: CandidateValidation; code?: undefined } | { ok: false; explanation: WorkflowExplanation; code?: string } {
   const body = record(payload);
   if (!body) {
     return { ok: false, explanation: { what: "payload 必须是对象", why: "产物要按固定结构校验与展示", action: "按工序简报里的 payload 结构重新提交" } };
@@ -173,6 +179,23 @@ export function validateWorkflowCandidate(
           why: `单章上限 ${MAX_PROSE_CHARS} 字符，超出通常是把多章或上下文一起贴了进来`,
           action: "只提交本章正文",
         } };
+      }
+      if (context.lengthRule) {
+        // 与 pipeline.write 落盘前的硬校验同一函数：过不了落盘的正文，在这里就不让它进审校与作者确认。
+        const violation = checkChapterHardLength(content, context.lengthRule);
+        if (violation) {
+          return {
+            ok: false,
+            code: "length-out-of-range",
+            explanation: {
+              what: `正文 ${violation.count}${violation.unit}，不在本书 ${violation.target}${violation.unit} 的硬范围 ${violation.hardMin}-${violation.hardMax} 内（${describeLengthGap(violation)}）`,
+              why: "落盘（pipeline.write）按同一硬范围拒存；不合格的正文过了审校和作者确认也写不进书里",
+              action: violation.delta < 0
+                ? `补写到至少 ${violation.hardMin}${violation.unit}（目标 ${violation.target}${violation.unit}）后重交`
+                : `删减到不超过 ${violation.hardMax}${violation.unit}（目标 ${violation.target}${violation.unit}）后重交`,
+            },
+          };
+        }
       }
       const wordCount = countChars(content);
       const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -244,6 +267,8 @@ export interface SubmitStepOutputInput {
   /** 分支工序必填：取工序声明的结果之一。 */
   readonly outcome?: string;
   readonly wordTarget?: number;
+  /** 本书字数硬范围规则（book.json）；正文候选按它校验，口径与 pipeline.write 一致。 */
+  readonly lengthRule?: ChapterLengthRule;
   /** 提交成功时写入新候选的 id（返回给提交者，供领导者按 id 引用，不再转贴正文）。 */
   readonly capture?: { candidateId?: string };
   /** 委派子代理提交时：只允许提交这些工序（由调用方按模板与工序的对应关系算出）。 */
@@ -359,8 +384,9 @@ export function submitWorkflowStepOutput(input: SubmitStepOutputInput): Workflow
   const checked = validateWorkflowCandidate(kind, input.payload, {
     chapterNumber: run.chapterNumber,
     ...(input.wordTarget ? { wordTarget: input.wordTarget } : {}),
+    ...(input.lengthRule ? { lengthRule: input.lengthRule } : {}),
   });
-  if (!checked.ok) return invalid("candidate-invalid", checked.explanation);
+  if (!checked.ok) return invalid(checked.code ?? "candidate-invalid", checked.explanation);
 
   const audit = kind === "audit" ? auditVerdictOf(checked.value.payload) : undefined;
   return applyWorkflowAction(input.storage, run.id, input.runRevision, {
@@ -485,7 +511,17 @@ export function rejectWorkflowStep(
       const proseStepReset = current.state.steps.some((step) =>
         step.expectedOutput === "prose" && step.status !== "pending" && stepOf(next, step.stepId)?.status !== step.status,
       );
-      if (proseStepReset) decidePendingProse(input.storage, current.id, "rejected", note);
+      if (proseStepReset) {
+        decidePendingProse(input.storage, current.id, "rejected", note);
+        // 受阻的落盘工序打回：作者已批准过的那份正文也作废，重写的正文要重新审校、确认后才能落盘。
+        const failedStep = stepOf(current.state, input.stepId);
+        if (failedStep?.status === "failed") {
+          const approved = getLatestApprovedCandidate(input.storage, current.id, "prose");
+          if (approved) decideWorkflowCandidate(input.storage, { candidateId: approved.id, decision: "rejected", note });
+        }
+      }
+      // 受阻工序没有待确认的候选：本工序的候选（若有）保持原样。
+      if (stepOf(current.state, input.stepId)?.status === "failed") return;
       if (!candidate || candidate.decision !== "pending") return;
       decideWorkflowCandidate(input.storage, {
         candidateId: candidate.id,
