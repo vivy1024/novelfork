@@ -19,7 +19,13 @@ import {
   startWorkflowRun,
   submitWorkflowStepOutput,
 } from "./run-service";
-import { getActiveWorkflowRunForNarrator, type WorkflowRunRecord } from "./run-store";
+import {
+  compactFinishedWorkflowProseCandidates,
+  getActiveWorkflowRunForNarrator,
+  isCompactedProsePayload,
+  type WorkflowRunRecord,
+} from "./run-store";
+import { proseSha256 } from "../writing-resource/prose-digest";
 
 const tempDirs: string[] = [];
 const storages: StorageDatabase[] = [];
@@ -148,6 +154,52 @@ describe("创作工作流运行：服务端到端", () => {
     // 事件按 seq 连续递增，可用于增量拉取。
     expect(detail.events.map((e) => e.seq)).toEqual(detail.events.map((_, i) => i + 1));
     expect(getWorkflowRunDetail(storage, run.id, detail.events.length - 1)!.events).toHaveLength(1);
+
+    // 7. 运行结束后正文候选只留摘要与指纹（落盘工序已完成，章节文件是权威）；存量压缩无事可做。
+    const prose = detail.candidates.filter((c) => c.kind === "prose");
+    for (const candidate of prose) {
+      expect(isCompactedProsePayload(candidate.payload)).toBe(true);
+      expect(JSON.stringify(candidate.payload)).not.toContain("\"content\"");
+    }
+    expect((prose[1]!.payload as { compacted: { sha256: string } }).compacted.sha256).toBe(proseSha256("萧炎一路杀出后山。追兵更近了。"));
+    expect(compactFinishedWorkflowProseCandidates(storage).candidates).toEqual({ approved: 0, rejected: 0, pending: 0 });
+  });
+
+  it("运行进行中正文候选保留全文；取消后作废版压缩、已批准未落盘的保留；存量压缩可预演", async () => {
+    const { storage, bookRoot } = await setup();
+    let run = await startFanqie(storage, bookRoot);
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "other", payload: { summary: "上下文就绪" } }));
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "scene-spec", payload: { sceneSpec } }));
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose", payload: { title: "突围", content: "第一版正文。" } }));
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "audit", payload: { passed: false, summary: "重写", issues: [] } }));
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose", payload: { title: "突围", content: "第二版正文。" } }));
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "audit", payload: { passed: true, summary: "可以", issues: [] } }));
+    run = ok(approveWorkflowStep({ storage, runId: run.id, stepId: "step-adversarial-audit", expectedRevision: run.state.revision }));
+    // 进行中：落盘闸门仍能拿到全文。
+    expect(getApprovedProse(storage, run)).toEqual({ title: "突围", content: "第二版正文。" });
+    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "另一份" })).not.toBeNull();
+    expect(compactFinishedWorkflowProseCandidates(storage).candidates).toEqual({ approved: 0, rejected: 0, pending: 0 });
+
+    run = ok(cancelWorkflowRun({ storage, runId: run.id, expectedRevision: run.state.revision }));
+    const prose = getWorkflowRunDetail(storage, run.id)!.candidates.filter((c) => c.kind === "prose");
+    expect(prose.map((c) => c.decision)).toEqual(["rejected", "approved"]);
+    expect(isCompactedProsePayload(prose[0]!.payload)).toBe(true);
+    // 取消时已批准的正文没落盘过：它可能是唯一一份，保留全文。
+    expect(prose[1]!.payload).toEqual({ title: "突围", content: "第二版正文。" });
+
+    // 存量预演：模拟老库里结束运行的被打回正文仍带全文。
+    storage.sqlite
+      .prepare(`UPDATE workflow_run_candidates SET payload_json = ? WHERE id = ?`)
+      .run(JSON.stringify({ title: "突围", content: "第一版正文。".repeat(100) }), prose[0]!.id);
+    const preview = compactFinishedWorkflowProseCandidates(storage);
+    expect(preview).toMatchObject({ dryRun: true, runs: 1, candidates: { approved: 0, rejected: 1, pending: 0 } });
+    expect(preview.bytesAfter).toBeLessThan(preview.bytesBefore);
+    expect(JSON.stringify(getWorkflowRunDetail(storage, run.id)!.candidates[2]!.payload)).toContain("content");
+    const applied = compactFinishedWorkflowProseCandidates(storage, { dryRun: false });
+    expect(applied).toMatchObject({ dryRun: false, candidates: { rejected: 1 } });
+    const after = getWorkflowRunDetail(storage, run.id)!.candidates.filter((c) => c.kind === "prose");
+    expect(isCompactedProsePayload(after[0]!.payload)).toBe(true);
+    expect(after[1]!.payload).toEqual({ title: "突围", content: "第二版正文。" });
   });
 
   it("同一叙述者不能同时有两个进行中的运行", async () => {

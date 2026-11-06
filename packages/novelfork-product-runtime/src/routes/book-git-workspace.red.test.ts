@@ -169,6 +169,8 @@ describe("建书：受控目录按 NarraFork init 口径初始化为 git 仓库"
 		expect(gitignore).toContain(".worktrees/");
 		// 书的内容不进初始提交（与 NarraFork init 一致：只提交 .gitignore）。
 		expect((await git(root, ["ls-files"])).out.split("\n").filter(Boolean)).toEqual([".gitignore"]);
+		// 工作区快照排除规则写在 Runtime 私有目录下（被 .gitignore 挡在版本库外）。
+		expect(await readFile(join(root, ".narrafork", "snapshot-exclude"), "utf8")).toContain("*.txt");
 
 		expect((await deleteBook(app, created.json.bookId as string)).status).toBe(200);
 		expect(await exists(root)).toBe(false);

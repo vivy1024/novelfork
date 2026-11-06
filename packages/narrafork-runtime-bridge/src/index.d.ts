@@ -444,6 +444,9 @@ export const getDbPath: () => string;
 export const generateId: (...args: any[]) => string;
 export const requireAdmin: (...args: any[]) => any;
 export const deleteProjectById: (id: string) => Promise<void>;
+export function clearAgedToolCallPayloads(
+	olderThanDays: number,
+): Promise<{ changed: boolean; toolCalls: number; approxBytes: number; freedBytes: number }>;
 export const disableRoutineForProject: (...args: any[]) => Promise<void>;
 export const enableRoutineForProject: (...args: any[]) => Promise<void>;
 export const getProjectRoutineStatusesWithOverride: (...args: any[]) => any[];

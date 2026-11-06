@@ -11,6 +11,7 @@
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
+import { digestProse } from "../writing-resource/prose-digest.js";
 import type { NovelWorkflowRecipe } from "./novel-workflows.js";
 import { linearRecipeToGraph, WORKFLOW_GRAPH_SCHEMA_VERSION, type LegacyWorkflowRecipe } from "./workflow-graph.js";
 import {
@@ -606,6 +607,8 @@ export function applyWorkflowAction(
       if (Number(updated.changes) !== 1) throw new Error("revision-race");
       writeSteps(storage, runId, run.state.steps, next.steps, now);
       appendEvents(storage, runId, [...(effects.extraEvents ?? []), ...result.events], now);
+      // 运行结束：正文候选不再参与任何闸门，压成摘要与指纹（同一事务，失败整体回滚）。
+      if (finished) compactProseCandidatesOfRun(storage, runId, now);
     })();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -670,4 +673,137 @@ export function decideWorkflowCandidate(storage: StorageDatabase, input: DecideC
       input.committedRef ?? null,
       input.candidateId,
     );
+}
+
+// ─── 结束后的正文候选压缩 ─────────────────────────────────────────────────────
+
+/**
+ * 压缩后的正文候选 payload：只留标题、指纹与首尾摘录。
+ *
+ * 运行进行中，落盘闸门要用已批准正文的全文（fromWorkflowRun 取正文、内容不一致拦截），
+ * 所以候选在运行期间始终保留全文。运行结束（done / cancelled）后状态机不再接受任何动作，
+ * 闸门只看进行中的运行，全文不再有用途：被打回 / 作废的版本只是历史，已批准的那份
+ * 已落盘到章节文件（章节文件是正文权威）。保留全文只会让每一版正文在库里永久多一份副本。
+ */
+export interface CompactedProsePayload {
+  readonly title?: string;
+  readonly compacted: {
+    readonly sha256: string;
+    readonly bytes: number;
+    readonly chars: number;
+    readonly head: string;
+    readonly tail: string;
+    readonly at: number;
+  };
+}
+
+export function isCompactedProsePayload(payload: unknown): payload is CompactedProsePayload {
+  if (!payload || typeof payload !== "object") return false;
+  const compacted = (payload as Record<string, unknown>).compacted;
+  return Boolean(compacted) && typeof compacted === "object" && typeof (compacted as Record<string, unknown>).sha256 === "string";
+}
+
+function compactProsePayload(payloadJson: string, at: number): string | null {
+  const payload = parseJson<Record<string, unknown> | null>(payloadJson, null);
+  if (!payload || typeof payload.content !== "string") return null;
+  const digest = digestProse(payload.content);
+  const compacted: CompactedProsePayload = {
+    ...(typeof payload.title === "string" && payload.title ? { title: payload.title } : {}),
+    compacted: { sha256: digest.sha256, bytes: digest.bytes, chars: digest.chars, head: digest.head, tail: digest.tail, at },
+  };
+  return JSON.stringify(compacted);
+}
+
+const TERMINAL_RUN_STATUSES = ["done", "cancelled"] as const;
+const PROSE_LANDING_TOOLS = new Set(["pipeline.write", "chapter.write"]);
+
+/**
+ * 已批准的正文能否压缩：只有运行正常完成、且落盘工序（工具含 pipeline.write / chapter.write）
+ * 已完成时，章节文件里才一定有它。取消的运行、没有落盘工序的方案，已批准正文可能是唯一一份，保留全文。
+ */
+function approvedProseLanded(storage: StorageDatabase, runId: string): boolean {
+  const run = getWorkflowRun(storage, runId);
+  if (!run || run.state.status !== "done") return false;
+  return run.state.steps.some((step) => step.status === "done" && step.tools.some((tool) => PROSE_LANDING_TOOLS.has(tool)));
+}
+
+/** 只压缩已结束运行里仍带全文的正文候选；进行中的运行一律不动。返回压缩条数。 */
+function compactProseCandidatesOfRun(storage: StorageDatabase, runId: string, at: number): number {
+  const rows = storage.sqlite
+    .prepare<{ id: string; decision: string; payload_json: string }>(
+      `SELECT c.id, c.decision, c.payload_json FROM workflow_run_candidates c
+       JOIN workflow_runs r ON r.id = c.run_id
+       WHERE c.run_id = ? AND c.kind = 'prose' AND r.status IN ('done', 'cancelled')`,
+    )
+    .all(runId);
+  const update = storage.sqlite.prepare(`UPDATE workflow_run_candidates SET payload_json = ? WHERE id = ?`);
+  let landed: boolean | undefined;
+  let count = 0;
+  for (const row of rows) {
+    if (row.decision === "approved" && !(landed ??= approvedProseLanded(storage, runId))) continue;
+    const next = compactProsePayload(row.payload_json, at);
+    if (next === null) continue;
+    update.run(next, row.id);
+    count += 1;
+  }
+  return count;
+}
+
+export interface WorkflowCandidateCompactionReport {
+  readonly dryRun: boolean;
+  /** 涉及的已结束运行数。 */
+  readonly runs: number;
+  /** 可压缩（dryRun）/ 已压缩的正文候选数，按决定分。 */
+  readonly candidates: { readonly approved: number; readonly rejected: number; readonly pending: number };
+  readonly bytesBefore: number;
+  readonly bytesAfter: number;
+}
+
+/**
+ * 存量压缩：把已结束运行里仍带全文的正文候选压成摘要与指纹。
+ * dryRun（默认）只统计不写；正式执行在一个事务里完成。进行中的运行不受影响。
+ */
+export function compactFinishedWorkflowProseCandidates(
+  storage: StorageDatabase,
+  options: { readonly dryRun?: boolean; readonly bookId?: string; readonly now?: number } = {},
+): WorkflowCandidateCompactionReport {
+  ensureWorkflowRunSchema(storage);
+  const dryRun = options.dryRun !== false;
+  const at = options.now ?? Date.now();
+  const placeholders = TERMINAL_RUN_STATUSES.map(() => "?").join(", ");
+  const rows = storage.sqlite
+    .prepare<{ id: string; run_id: string; decision: string; payload_json: string }>(
+      `SELECT c.id, c.run_id, c.decision, c.payload_json FROM workflow_run_candidates c
+       JOIN workflow_runs r ON r.id = c.run_id
+       WHERE c.kind = 'prose' AND r.status IN (${placeholders})${options.bookId ? " AND r.book_id = ?" : ""}
+       ORDER BY c.submitted_at, c.rowid`,
+    )
+    .all(...TERMINAL_RUN_STATUSES, ...(options.bookId ? [options.bookId] : []));
+  const runs = new Set<string>();
+  const candidates = { approved: 0, rejected: 0, pending: 0 };
+  let bytesBefore = 0;
+  let bytesAfter = 0;
+  const updates: Array<{ id: string; payload: string }> = [];
+  const landedByRun = new Map<string, boolean>();
+  for (const row of rows) {
+    if (row.decision === "approved") {
+      if (!landedByRun.has(row.run_id)) landedByRun.set(row.run_id, approvedProseLanded(storage, row.run_id));
+      if (!landedByRun.get(row.run_id)) continue;
+    }
+    const next = compactProsePayload(row.payload_json, at);
+    if (next === null) continue;
+    runs.add(row.run_id);
+    const decision = row.decision === "approved" || row.decision === "rejected" ? row.decision : "pending";
+    candidates[decision] += 1;
+    bytesBefore += Buffer.byteLength(row.payload_json, "utf8");
+    bytesAfter += Buffer.byteLength(next, "utf8");
+    updates.push({ id: row.id, payload: next });
+  }
+  if (!dryRun && updates.length > 0) {
+    const update = storage.sqlite.prepare(`UPDATE workflow_run_candidates SET payload_json = ? WHERE id = ?`);
+    storage.sqlite.transaction(() => {
+      for (const item of updates) update.run(item.payload, item.id);
+    })();
+  }
+  return { dryRun, runs: runs.size, candidates, bytesBefore, bytesAfter };
 }

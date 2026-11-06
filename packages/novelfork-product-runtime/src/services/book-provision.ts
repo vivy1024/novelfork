@@ -82,6 +82,7 @@ import {
 	resolveTrustedBookRoot,
 } from "./book-binding";
 import { resolveRuntimeOwnerUserId } from "./book-project-owner";
+import { ensureBookSnapshotExclude } from "./book-snapshot-exclude";
 
 type ProvisionState =
 	| "reserved"
@@ -3089,6 +3090,8 @@ export class NovelForkProductBookService {
 		const gitWarning = (await isProductOwnedBookRoot(root))
 			? await initializeControlledBookGit(root, operation.actorUserId)
 			: null;
+		// 参考原著、表格、导出稿不进 Runtime 的工作区快照（外部目录也写：文件在 Runtime 私有的 .narrafork/ 下，不碰作者的 .gitignore）。
+		await ensureBookSnapshotExclude(root);
 		let current = operation;
 		// Runtime 0.9 起没有 chapters：叙述者直接以 context_project_id 归属项目。
 		// runtime_chapter_id 列保留在产品库里只为兼容旧记录，不再写入新值。

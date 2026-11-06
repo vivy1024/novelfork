@@ -294,6 +294,25 @@ export async function getPluginManager(): Promise<typeof import("../../narrafork
  * Delegates to the Runtime's own teardown (the same function behind
  * DELETE /api/projects/:id), so book deletion follows the Runtime schema as it evolves.
  */
+/**
+ * 按年龄清空旧工具调用的输入/输出（Runtime「设置 › 存储」里的同一个清理，默认 180 天）。
+ * 只把 payload 置空，不删行；文件历史回放用的检查点行不动。延迟加载，避免启动期求值清理服务。
+ */
+export async function clearAgedToolCallPayloads(
+	olderThanDays: number,
+): Promise<{ changed: boolean; toolCalls: number; approxBytes: number; freedBytes: number }> {
+	const { databaseCleanupService } = await import(
+		"../../narrafork-runtime-private/server/services/database-cleanup-service"
+	);
+	const result = await databaseCleanupService.executeCleanup("toolCallPayloads", { olderThanDays });
+	return {
+		changed: result.changed,
+		toolCalls: result.counts.toolCalls ?? 0,
+		approxBytes: result.approxBytes,
+		freedBytes: result.freedBytes,
+	};
+}
+
 export async function deleteProjectById(id: string): Promise<void> {
 	const { deleteProjectById: deleteRuntimeProjectById } = await import(
 		"../../narrafork-runtime-private/server/routes/projects"

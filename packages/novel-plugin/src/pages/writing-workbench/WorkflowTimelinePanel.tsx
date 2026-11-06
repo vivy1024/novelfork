@@ -25,6 +25,7 @@ import { WorkflowCanvas } from "./workflow-canvas/WorkflowCanvas";
 import { WorkflowRecipeEditor } from "./workflow-canvas/WorkflowRecipeEditor";
 import { OutlineCandidatePreview } from "../workflows/OutlineCandidatePreview";
 import { writesChapter } from "../workflows/workflow-step-list-model";
+import { compactedProsePreview } from "../workflows/WorkflowRunsPanel";
 
 export interface WorkflowTimelinePanelProps {
   bookId: string;
@@ -187,7 +188,7 @@ function CandidatePreview({ candidate }: { candidate: CandidateView }) {
   const validation = record(candidate.validation) ?? {};
   if (candidate.kind === "prose") {
     const title = typeof payload.title === "string" ? payload.title : "";
-    const content = typeof payload.content === "string" ? payload.content : "";
+    const content = typeof payload.content === "string" ? payload.content : compactedProsePreview(payload);
     return (
       <div className="space-y-1" data-testid="workflow-candidate-prose">
         <div className="text-xs text-muted-foreground">

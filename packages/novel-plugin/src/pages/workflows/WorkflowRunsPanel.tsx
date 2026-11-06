@@ -92,6 +92,14 @@ function StepIcon({ status }: { status: StepStatus }) {
   }
 }
 
+/** 运行结束后正文候选只留首尾摘录（全文以章节为准）。 */
+export function compactedProsePreview(payload: Record<string, unknown>): string {
+  const compacted = record(payload.compacted);
+  if (typeof compacted.head !== "string") return "";
+  const tail = typeof compacted.tail === "string" && compacted.tail ? `\n……\n${compacted.tail}` : "";
+  return `${compacted.head}${tail}\n\n（运行已结束，这一版只保留了开头与结尾，完整正文请看章节）`;
+}
+
 function CandidatePreview({ candidate }: { candidate: Candidate }) {
   const payload = record(candidate.payload);
   const validation = record(candidate.validation);
@@ -104,7 +112,7 @@ function CandidatePreview({ candidate }: { candidate: Candidate }) {
           {typeof validation.wordTarget === "number" ? ` / 目标 ${validation.wordTarget} 字` : ""}
         </div>
         <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded border bg-background p-2 text-xs leading-relaxed" tabIndex={0} aria-label="正文预览">
-          {typeof payload.content === "string" ? payload.content : ""}
+          {typeof payload.content === "string" ? payload.content : compactedProsePreview(payload)}
         </div>
       </div>
     );

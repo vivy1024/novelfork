@@ -3,8 +3,13 @@ import { listNovelSubagentTemplateContributions } from "@vivy1024/novelfork-nove
 import type { Context, Hono, Next } from "hono";
 import {
 	AppError,
+	logger,
 	type RuntimeProductIntegration,
 } from "@vivy1024/narrafork-runtime-bridge";
+import { getNovelForkProductDatabase } from "./db/database";
+import { getControlledBooksRoot } from "./services/book-binding";
+import { reconcileBookSnapshotExcludes } from "./services/book-snapshot-exclude";
+import { startToolPayloadRetention, stopToolPayloadRetention } from "./services/tool-payload-retention";
 import {
 	closeNovelRuntimeStorage,
 	initializeNovelRuntimeStorage,
@@ -131,8 +136,18 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 		await migrateLegacySessions();
 		// 给本次修复前建的书补上 Runtime 项目 owner（幂等；只补 owner 仍为空的）。
 		await reconcileBookProjectOwners();
+		// 给已有的书补上工作区快照排除规则（参考原著、表格、导出稿不进快照；幂等，失败只告警）。
+		await reconcileBookSnapshotExcludes(
+			await getNovelForkProductDatabase().query.bookRuntimeBindings.findMany(),
+			getControlledBooksRoot(),
+		).catch((error) => logger.warn("Book snapshot exclude reconciliation failed", { error: String(error) }));
+		// Runtime 的 180 天工具调用载荷清理只有手动入口：由产品每天检查一次（只置空旧载荷，不删行、不碰章节）。
+		startToolPayloadRetention({ storage });
 	},
-	shutdown: closeNovelRuntimeStorage,
+	shutdown: () => {
+		stopToolPayloadRetention();
+		return closeNovelRuntimeStorage();
+	},
 	mountAuthenticatedGuards(app: Hono): void {
 		// T-11：产品路径的请求体上限（默认 2 MiB，长文本入口 8 MiB，档案导入 256 MiB）。
 		// 必须先于书籍守卫与任何产品路由挂载；非产品路径（Runtime 自身的大体积路由）不受影响。
