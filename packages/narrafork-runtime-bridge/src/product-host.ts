@@ -4,6 +4,7 @@ export type {
 	RuntimeLearningContribution,
 	RuntimeLearningPresentation,
 	RuntimeProductAccessDeniedEvent,
+	RuntimeProductBranding,
 	RuntimeProductHostServices,
 	RuntimeProductIntegration,
 	RuntimeProductNarratorAdapter,

@@ -131,6 +131,11 @@ export interface RuntimeLearningDocumentOverride {
  * 产品如何呈现 Runtime 内置学习文档：品牌名替换、隐藏、逐篇覆盖、分类排序。
  * 只作用于内置文档，产品贡献的文档原样展示。旧版 Runtime 不认这个字段时忽略它。
  */
+export interface RuntimeProductBranding {
+	/** 反馈按钮打开的地址，只接受绝对 http(s) URL。 */
+	readonly feedbackUrl?: string;
+}
+
 export interface RuntimeLearningPresentation {
 	readonly brandName?: string;
 	readonly hiddenBuiltinDocIds?: readonly string[];
@@ -218,6 +223,8 @@ export interface RuntimeProductIntegration {
 	mountRuntimeBindingRoutes?: (app: any) => void;
 	learningContributions?: () => readonly RuntimeLearningContribution[];
 	learningPresentation?: () => RuntimeLearningPresentation;
+	/** 产品品牌：反馈入口等不由实例管理员改的产品属性。 */
+	branding?: () => RuntimeProductBranding;
 	narrator?: RuntimeProductNarratorAdapter;
 	canAccessNarratorState?: (input: { userId: string | undefined; narratorId: string }) => Promise<boolean>;
 	canAccessPermission?: (input: { userId: string | undefined; requestId: string }) => Promise<boolean>;

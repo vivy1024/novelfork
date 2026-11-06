@@ -180,6 +180,7 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 	// 学习中心里 Runtime 自带文档的呈现：品牌名换成 NovelFork、隐藏开发者向文档、按写书口径改写。
 	// 旧版 Runtime 不认这个字段时忽略它，学习中心退回 Runtime 原样内容。
 	learningPresentation: () => NOVELFORK_LEARNING_PRESENTATION,
+	branding: () => ({ feedbackUrl: "https://github.com/vivy1024/novelfork/issues" }),
 	// 内置子代理名册（只读模板，工具名为线上名）。不认识这个字段的旧版 Runtime 直接忽略它，
 	// 此时简报里的 Agent(subagent_type="nf-…") 会因模板不存在而退回只读，领导者按简报改为自己完成。
 	subagentTemplates: listNovelSubagentTemplateContributions,
