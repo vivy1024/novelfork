@@ -18,7 +18,7 @@ import {
 } from "../../engine/workflows/workflow-graph.js";
 import type { NovelWorkflowStepKind, NovelWorkflowStepOnFailure } from "../../engine/workflows/novel-workflows.js";
 import { NOVEL_BUILTIN_WORKFLOWS } from "../../engine/workflows/novel-workflows.js";
-import { expectedOutputFor, MAX_AUDIT_AUTO_RETURNS } from "../../engine/workflows/run-state-machine.js";
+import { CHAPTER_WRITE_TOOLS, expectedOutputFor, MAX_AUDIT_AUTO_RETURNS } from "../../engine/workflows/run-state-machine.js";
 import { isNovelSubagentTemplateId, NOVEL_SUBAGENT_ROSTER, rosterTemplatesForStep } from "../../engine/agents/roster.js";
 import { getNovelToolRoutine } from "../../handlers/tool-routines.js";
 
@@ -78,10 +78,10 @@ export function toolDisplayName(tool: string): string {
 }
 
 /**
- * 这道工序负责把正文写进书里（能调用落盘工具）。规则与引擎 run-state-machine 的 writesChapter 相同：
- * 这类工序失败不能跳过，受阻时可带意见打回写正文。变基到含 writesChapter 的引擎后改为直接引用。
+ * 这道工序负责把正文写进书里（能调用落盘工具）。落盘工具清单直接取自引擎 run-state-machine，
+ * 判定与引擎 writesChapter 一致（这里接受未声明 tools 的草稿工序）：这类工序失败不能跳过，受阻时可带意见打回写正文。
  */
-export const CHAPTER_WRITE_TOOLS: ReadonlySet<string> = new Set(["pipeline.write", "chapter.write"]);
+export { CHAPTER_WRITE_TOOLS };
 
 export function writesChapter(step: { readonly tools?: readonly string[] }): boolean {
   return (step.tools ?? []).some((tool) => CHAPTER_WRITE_TOOLS.has(tool));
