@@ -17,6 +17,10 @@ vi.mock("@vivy1024/narrafork-runtime-bridge/frontend/runtime-page", () => ({
   },
 }));
 
+vi.mock("@vivy1024/novelfork-novel-plugin/pages/workflows", () => ({
+  WorkflowsPage: (props: { selectedBookId: string | null }) => <div data-testid="workflows-page-mock" data-book={props.selectedBookId ?? ""} />,
+}));
+
 import { RoutinesNextPage, type RoutinesNextPageProps } from "./RoutinesNextPage";
 
 beforeEach(() => {
@@ -85,8 +89,28 @@ describe("套路页：只剩 Runtime 原页一层", () => {
     await screen.findByTestId("runtime-page-host-mock");
 
     expect(container.querySelector('[data-testid="routines-runtime-page"]')).not.toBeNull();
-    // 页签是历史遗留的 Studio 结构，删掉后不该有残留按钮。
+    // 旧的「本书设置」页签已删，不该有残留的 tab。
     expect(screen.queryByRole("tab")).toBeNull();
     fireEvent.click(container);
+  });
+});
+
+describe("套路页：工作流分区", () => {
+  it("顶部可切到「工作流」，路由带 panel", async () => {
+    const onNavigate = vi.fn();
+    renderPage({ onNavigate });
+    await screen.findByTestId("runtime-page-host-mock");
+    fireEvent.click(screen.getByRole("button", { name: "工作流" }));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: "routines", panel: "workflows" });
+  });
+
+  it("panel=workflows 时不挂 Runtime 原页，改挂工作流页；可切回通用套路", async () => {
+    const onNavigate = vi.fn();
+    renderPage({ route: { kind: "routines", panel: "workflows" }, onNavigate, books: [{ id: "b1", title: "书一" }], selectedBookId: "b1" });
+    expect(await screen.findByTestId("workflows-page-mock")).toBeTruthy();
+    expect(screen.queryByTestId("runtime-page-host-mock")).toBeNull();
+    expect(screen.getByRole("button", { name: "工作流" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(screen.getByRole("button", { name: "通用套路" }));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: "routines", path: "/routines" });
   });
 });

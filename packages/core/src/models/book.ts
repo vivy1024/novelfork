@@ -59,6 +59,8 @@ export const BookConfigSchema = z.object({
    * 伏笔债务阈值（章）：悬置达到 watchChapters 提醒临近，达到 overdueChapters 判超期。
    * 缺省或不合法时由 novel-plugin 的 resolveForeshadowDebtThresholds 回退到 5 / 12。
    */
+  /** 本书默认工作流方案 id（写作台启动时默认选它）；读写见 novel-plugin 的 book-default-workflow。 */
+  defaultWorkflowRecipeId: z.string().optional(),
   foreshadowDebtThresholds: z.object({
     watchChapters: z.number().int().min(1),
     overdueChapters: z.number().int().min(1),

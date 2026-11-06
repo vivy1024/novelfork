@@ -9,6 +9,7 @@ export type ShellRoute =
   | { readonly kind: "book"; readonly bookId: string }
   | { readonly kind: "sessions"; readonly create?: boolean }
   | RuntimePageRoute
+  | RoutinesPanelRoute
   | { readonly kind: "market" };
 
 /**
@@ -20,12 +21,16 @@ export type RuntimePageRoute = {
 }[RuntimePageSection];
 
 /**
- * 旧版 `/next/routines/novelfork/…` 的段名。
+ * 套路页里 NovelFork 自己的面板：`/next/routines/novelfork/<面板>`。
  *
- * 套路页曾经有 Studio 自己的「本书设置」面板，那一层已经删掉（按书的设置只剩写作台 › 本书设置，
- * 那里嵌的是 Runtime 自己的项目设置）。这个段名保留下来只是为了把老地址收回套路页，不再有合法面板。
+ * 目前只有「工作流」（按书管理写章流程）。曾经的「本书设置」面板已删，老地址收回套路页本身。
  */
 export const ROUTINES_NOVEL_PANEL_SEGMENT = "novelfork";
+
+export const ROUTINES_NOVEL_PANELS = ["workflows"] as const;
+export type RoutinesNovelPanel = (typeof ROUTINES_NOVEL_PANELS)[number];
+
+export type RoutinesPanelRoute = { readonly kind: "routines"; readonly panel: RoutinesNovelPanel };
 
 /**
  * 旧的 Studio 设置面板地址（段名即原面板 id）映射到产品侧栏页的 Runtime 路径。
@@ -59,6 +64,10 @@ export function runtimePageRoute(section: RuntimePageSection, path?: string): Ru
 
 /** 套路入口：只有 Runtime 原页一层（按书的设置已归写作台 › 本书设置）。 */
 export type RoutinesRoute = Extract<ShellRoute, { readonly kind: "routines" }>;
+
+function isRoutinesNovelPanel(value: string | undefined): value is RoutinesNovelPanel {
+  return value !== undefined && (ROUTINES_NOVEL_PANELS as readonly string[]).includes(value);
+}
 
 /** 设置入口：Runtime 原页（带 Runtime 子路径）；产品设置并入其侧栏，不另设地址。 */
 export type SettingsRoute = Extract<ShellRoute, { readonly kind: "settings" }>;
@@ -147,8 +156,11 @@ export function parseShellRoute(href = globalThis.location?.pathname ?? STUDIO_N
 
   const [, section, id] = parts;
   if (!section) return { kind: "home" };
-  // 老地址 `/next/routines/novelfork/<已删面板>` 收回套路页本身。
-  if (section === "routines" && id === ROUTINES_NOVEL_PANEL_SEGMENT) return { kind: "routines" };
+  // `/next/routines/novelfork/<面板>`：NovelFork 面板；已删面板的老地址收回套路页本身。
+  if (section === "routines" && id === ROUTINES_NOVEL_PANEL_SEGMENT) {
+    const panel = parts[3] ? decodeSegment(parts[3]) : undefined;
+    return isRoutinesNovelPanel(panel) ? { kind: "routines", panel } : { kind: "routines" };
+  }
   if (section === "settings") {
     const decodedId = id ? decodeSegment(id) : undefined;
     const legacyHostPath = decodedId ? LEGACY_SETTINGS_HOST_PATHS[decodedId] : undefined;
@@ -189,6 +201,7 @@ export function toShellPath(route: ShellRoute): string {
     case "sessions":
       return route.create ? `${STUDIO_NEXT_BASE_PATH}/sessions/new` : `${STUDIO_NEXT_BASE_PATH}/sessions`;
     case "routines":
+      if ("panel" in route) return `${STUDIO_NEXT_BASE_PATH}/routines/${ROUTINES_NOVEL_PANEL_SEGMENT}/${route.panel}`;
       return `${STUDIO_NEXT_BASE_PATH}${route.path ?? "/routines"}`;
     case "settings":
       return `${STUDIO_NEXT_BASE_PATH}${route.path ?? "/settings"}`;

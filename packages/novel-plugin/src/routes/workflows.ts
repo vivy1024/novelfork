@@ -3,12 +3,15 @@ import { Hono } from "hono";
 import {
   checkWorkflowGraph,
   deleteWorkflowRecipe,
+  readBookDefaultWorkflow,
   readWorkflowRecipes,
+  setBookDefaultWorkflow,
   saveWorkflowRecipe,
   saveWorkflowRecipes,
   WorkflowStoreError,
   type NovelWorkflowRecipe,
 } from "../engine/index.js";
+import { BookConfigUnreadableError } from "../engine/book-config/book-config-lock.js";
 import type { RouterContext } from "./context.js";
 
 export interface CreateWorkflowsRouterOptions {
@@ -148,6 +151,42 @@ export function createWorkflowsRouter(
       }
       const message = error instanceof Error ? error.message : String(error);
       return c.json({ error: message, code: "DELETE_WORKFLOW_FAILED" }, 500);
+    }
+  });
+
+  // 本书默认工作流：写作台启动「写下一章」时默认选它。记在 book.json，只能设成已发布的方案。
+  app.get("/api/books/:bookId/workflow-default", async (c) => {
+    try {
+      const bookId = sanitizeBookId(c.req.param("bookId"));
+      return c.json({ bookId, ...(await readBookDefaultWorkflow(resolveBookRoot(bookId))) });
+    } catch (error) {
+      if (error instanceof WorkflowStoreError) {
+        return c.json(storeErrorBody(error), error.status as 400 | 404 | 409 | 500);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message, code: "READ_WORKFLOW_DEFAULT_FAILED" }, 500);
+    }
+  });
+
+  app.put("/api/books/:bookId/workflow-default", async (c) => {
+    try {
+      const bookId = sanitizeBookId(c.req.param("bookId"));
+      const body = (await c.req.json().catch(() => null)) as { recipeId?: unknown } | null;
+      const recipeId = body?.recipeId;
+      if (!body || (recipeId !== null && typeof recipeId !== "string")) {
+        return c.json({ error: "recipeId must be a string or null", code: "INVALID_RECIPE_ID" }, 400);
+      }
+      const result = await setBookDefaultWorkflow(resolveBookRoot(bookId), recipeId);
+      return c.json({ ok: true, bookId, ...result });
+    } catch (error) {
+      if (error instanceof WorkflowStoreError) {
+        return c.json(storeErrorBody(error), error.status as 400 | 404 | 409 | 500);
+      }
+      if (error instanceof BookConfigUnreadableError) {
+        return c.json({ error: error.message, code: error.code }, 400);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message, code: "SAVE_WORKFLOW_DEFAULT_FAILED" }, 500);
     }
   });
 

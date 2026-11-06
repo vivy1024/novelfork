@@ -73,6 +73,8 @@ export interface NovelWorkflowStep {
   readonly parallelSubagents?: readonly NovelParallelSubagentConfig[];
   readonly requiresApproval?: boolean;
   readonly onFailure?: NovelWorkflowStepOnFailure;
+  /** 审校工序：不通过时沿打回线自动打回的最大轮数（0–5），缺省 MAX_AUDIT_AUTO_RETURNS。 */
+  readonly maxAutoReturns?: number;
 }
 
 /** 工作流方案：图结构（节点 + 连线 + 草稿 / 发布状态）。 */

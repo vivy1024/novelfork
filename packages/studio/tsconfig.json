@@ -24,6 +24,7 @@
       "@vivy1024/narrafork-runtime-bridge/frontend/notification-sound": ["../narrafork-runtime-bridge/src/frontend/notification-sound.ts"],
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/sidebar-tabs-model": ["../novel-plugin/src/pages/writing-workbench/ide/sidebar-tabs-model.ts"],
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench": ["../novel-plugin/src/pages/writing-workbench/index.ts"],
+      "@vivy1024/novelfork-novel-plugin/pages/workflows": ["../novel-plugin/src/pages/workflows/index.ts"],
       "@vivy1024/novelfork-novel-plugin/pages": ["../novel-plugin/src/pages/index.ts"]
     },
     "baseUrl": "."

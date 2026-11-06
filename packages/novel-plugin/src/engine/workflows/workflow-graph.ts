@@ -559,7 +559,7 @@ function pickStepFields(raw: Record<string, unknown>): PickResult {
   const fail = (what: string, action: string): PickResult => ({ ok: false, what, why: "工序字段类型不对会让运行时读错配置", action });
   const known = new Set([
     "id", "type", "label", "kind", "enabled", "executionMode", "agentId", "modelOverride", "tools", "skills",
-    "customPrompt", "parallelSubagents", "requiresApproval", "onFailure", "outcomes",
+    "customPrompt", "parallelSubagents", "requiresApproval", "onFailure", "outcomes", "maxAutoReturns",
   ]);
   for (const [key, field] of Object.entries(raw)) {
     if (!known.has(key)) return fail(`工序没有字段「${key}」`, `可改字段：${[...known].filter((k) => k !== "id" && k !== "type").join("、")}`);
@@ -579,6 +579,10 @@ function pickStepFields(raw: Record<string, unknown>): PickResult {
       case "customPrompt":
         if (typeof field !== "string") return fail(`${key} 必须是字符串`, `给 ${key} 一段文字`);
         value[key] = key === "customPrompt" ? field : field.trim();
+        break;
+      case "maxAutoReturns":
+        if (typeof field !== "number" || !Number.isInteger(field) || field < 0 || field > 5) return fail("maxAutoReturns 必须是 0–5 的整数", "给 maxAutoReturns 一个 0–5 的整数");
+        value[key] = field;
         break;
       case "executionMode":
         if (!EXECUTION_MODES.includes(field as NovelWorkflowExecutionMode)) return fail(`executionMode「${String(field)}」不合法`, `用 ${EXECUTION_MODES.join(" / ")} 之一`);

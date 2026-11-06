@@ -107,6 +107,8 @@ export interface BookSettingsPanelProps {
   onOpenCompass?: () => void;
   /** 打开设定的「写作规则」分类（本书规则的唯一编辑处）。 */
   onOpenBookRules?: () => void;
+  /** 打开「套路 › 工作流」改本书默认工作流。缺省时只显示去哪里改的说明。 */
+  onOpenWorkflows?: () => void;
 }
 
 const PLATFORM_OPTIONS = [
@@ -133,7 +135,23 @@ function useDebounce<T extends (...args: never[]) => unknown>(fn: T, delay: numb
   }, [delay]) as unknown as T;
 }
 
-export function BookSettingsPanel({ bookId, onBack, initialSection, projectSettingsSlot, onOpenCompass, onOpenBookRules }: BookSettingsPanelProps) {
+export function BookSettingsPanel({ bookId, onBack, initialSection, projectSettingsSlot, onOpenCompass, onOpenBookRules, onOpenWorkflows }: BookSettingsPanelProps) {
+  // 本书默认工作流：只读摘要，设置处在「套路 › 工作流」（book.json 的 defaultWorkflowRecipeId）。
+  const [defaultWorkflow, setDefaultWorkflow] = useState<{ name: string | null; notice: string | null } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setDefaultWorkflow(null);
+    fetchJson<{ recipeId?: string | null; recipeName?: string | null; notice?: { what?: string } }>(`/api/books/${encodeURIComponent(bookId)}/workflow-default`)
+      .then((data) => {
+        if (cancelled || !data) return;
+        setDefaultWorkflow({
+          name: data.recipeId && typeof data.recipeName === "string" ? data.recipeName : null,
+          notice: typeof data.notice?.what === "string" ? data.notice.what : null,
+        });
+      })
+      .catch(() => { if (!cancelled) setDefaultWorkflow({ name: null, notice: null }); });
+    return () => { cancelled = true; };
+  }, [bookId]);
   const [config, setConfig] = useState<BookConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -348,6 +366,18 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
             <label className="block space-y-1 text-xs text-muted-foreground">角色弧线追踪<Select value={config.arcTrackingMode} onValueChange={(value) => updateConfig("arcTrackingMode", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ARC_TRACKING_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></label>
             <label className="block space-y-1 text-xs text-muted-foreground">敏感词（每行一个）<Textarea value={config.customSensitiveWords} onChange={(event) => updateConfig("customSensitiveWords", event.target.value)} className="min-h-20" /></label>
             <ForeshadowThresholdField key={bookId} initial={foreshadowThresholdsRaw} onSave={saveForeshadowThresholds} />
+            <div className="space-y-1 text-xs text-muted-foreground" data-testid="book-settings-default-workflow">
+              <div>默认工作流</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-foreground">{defaultWorkflow?.name ?? "未设置（写章时自己选）"}</span>
+                {onOpenWorkflows ? (
+                  <Button type="button" variant="outline" size="xs" onClick={onOpenWorkflows}>去「套路 › 工作流」修改</Button>
+                ) : (
+                  <span>在「套路 › 工作流」里修改</span>
+                )}
+              </div>
+              {defaultWorkflow?.notice ? <div className="text-warning">{defaultWorkflow.notice}</div> : null}
+            </div>
           </div>}
         </section>
 

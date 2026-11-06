@@ -261,12 +261,21 @@ function validateStep(
     outcomes = raw.outcomes.map((item: string) => item.trim());
   }
 
+  let maxAutoReturns: number | undefined;
+  if (raw.maxAutoReturns !== undefined) {
+    if (typeof raw.maxAutoReturns !== "number" || !Number.isInteger(raw.maxAutoReturns) || raw.maxAutoReturns < 0 || raw.maxAutoReturns > 5) {
+      throw new WorkflowStoreError(`Recipe #${recipeIndex + 1} step "${id}" maxAutoReturns must be an integer between 0 and 5`);
+    }
+    maxAutoReturns = raw.maxAutoReturns;
+  }
+
   return {
     id,
     kind,
     label,
     enabled,
     ...(outcomes !== undefined ? { outcomes } : {}),
+    ...(maxAutoReturns !== undefined ? { maxAutoReturns } : {}),
     ...(executionMode !== undefined ? { executionMode } : {}),
     ...(agentId !== undefined ? { agentId } : {}),
     ...(modelOverride !== undefined ? { modelOverride } : {}),

@@ -534,6 +534,10 @@ function RouteMountPoint({
               onNavigateToConversation={onNavigateToConversation}
               onChanged={reloadRuntimeShell}
               client={runtimeClient}
+              onOpenWorkflows={() => {
+                onSelectBook(route.bookId);
+                onNavigate({ kind: "routines", panel: "workflows" });
+              }}
             />
           </Suspense>
         </LazyErrorBoundary>
@@ -641,6 +645,9 @@ function RouteMountPoint({
               route={route}
               onNavigate={onNavigate}
               onNavigateRuntimePath={onNavigateRuntimePath}
+              books={books}
+              selectedBookId={selectedBook?.id ?? null}
+              onSelectBook={onSelectBook}
             />
           </Suspense>
         </LazyErrorBoundary>

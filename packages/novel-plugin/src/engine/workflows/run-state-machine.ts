@@ -489,7 +489,8 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
         // 审校不通过：有打回线且轮数没用完时自动打回上游重写；否则交作者决定并带警告。
         const rounds = current.autoReturns ?? 0;
         const rejectEdge = recipe.edges.find((edge) => edge.kind === "reject" && edge.source === current.stepId);
-        if (rejectEdge && rounds < MAX_AUDIT_AUTO_RETURNS) {
+        const maxReturns = stepNodes(recipe).find((node) => node.id === current.stepId)?.maxAutoReturns ?? MAX_AUDIT_AUTO_RETURNS;
+        if (rejectEdge && rounds < maxReturns) {
           resetFrom(recipe, steps, rejectEdge.target, action.audit.note);
           const auditIndex = steps.findIndex((step) => step.stepId === current.stepId);
           steps[auditIndex] = { ...steps[auditIndex]!, autoReturns: rounds + 1 };
@@ -502,7 +503,7 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
         const warning: WorkflowExplanation = rejectEdge
           ? {
             what: `审校已自动打回 ${rounds} 轮，仍未通过`,
-            why: `自动返修最多 ${MAX_AUDIT_AUTO_RETURNS} 轮，再改下去多半是在原地打转`,
+            why: `自动返修最多 ${maxReturns} 轮，再改下去多半是在原地打转`,
             action: "看过审校意见后决定：放行，或写明意见打回重写",
           }
           : {

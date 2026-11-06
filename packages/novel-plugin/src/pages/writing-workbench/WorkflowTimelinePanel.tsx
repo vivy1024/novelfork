@@ -23,6 +23,7 @@ import { stepNodes, type WorkflowGraphEdge, type WorkflowGraphNode, type Workflo
 import { blankRecipe, copyRecipe, uniqueRecipeId, type CanvasRunStep } from "./workflow-canvas/workflow-canvas-model";
 import { WorkflowCanvas } from "./workflow-canvas/WorkflowCanvas";
 import { WorkflowRecipeEditor } from "./workflow-canvas/WorkflowRecipeEditor";
+import { writesChapter } from "../workflows/workflow-step-list-model";
 
 export interface WorkflowTimelinePanelProps {
   bookId: string;
@@ -53,6 +54,8 @@ interface RunStepView {
   readonly executorKind: "narrator" | "subagent" | "domain-tool" | "manual-gate";
   readonly agentId?: string;
   readonly requiresApproval: boolean;
+  /** 工序可调用的工具；含落盘工具的工序失败不能跳过（见 writesChapter）。 */
+  readonly tools?: readonly string[];
   readonly expectedOutput: "scene-spec" | "prose" | "audit" | "other" | null;
   /** 分支工序本轮提交给出的结果。 */
   readonly outcome?: string;
@@ -304,6 +307,7 @@ export function WorkflowTimelinePanel({
 }: WorkflowTimelinePanelProps) {
   const [recipes, setRecipes] = useState<readonly NovelWorkflowRecipe[]>([]);
   const [activeRecipeId, setActiveRecipeId] = useState("");
+  const [bookDefaultId, setBookDefaultId] = useState<string | null>(null);
   const [chapterInput, setChapterInput] = useState(String(currentChapter));
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -344,8 +348,17 @@ export function WorkflowTimelinePanel({
       const data = (await res.json()) as { recipes?: readonly NovelWorkflowRecipe[] };
       if (signal?.aborted) return;
       const fetched = Array.isArray(data.recipes) ? data.recipes : [];
+      // 本书默认工作流：没有手动选过时默认选它（可在下拉框里临时换）。读不到就按列表第一个。
+      const defaultId = await fetch(`${base}/workflow-default`, { signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body: { recipeId?: string | null } | null) => (typeof body?.recipeId === "string" ? body.recipeId : null))
+        .catch(() => null);
+      if (signal?.aborted) return;
       setRecipes(fetched);
-      setActiveRecipeId((prev) => (fetched.some((r) => r.id === prev) ? prev : fetched[0]?.id ?? ""));
+      setBookDefaultId(defaultId);
+      setActiveRecipeId((prev) => (fetched.some((r) => r.id === prev)
+        ? prev
+        : (defaultId && fetched.some((r) => r.id === defaultId) ? defaultId : fetched[0]?.id ?? "")));
 
       // 团队编排插件状态：决定要不要展示「一键启用」横幅（查不到不打扰）。
       fetch("/api/plugins/bundled/narrator-team/status", { signal })
@@ -558,7 +571,7 @@ export function WorkflowTimelinePanel({
             ) : (
               recipes.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name} ({stepNodes(r).filter((s) => s.enabled).length} 道工序){r.status === "draft" ? " · 草稿" : ""}{r.revision === 0 ? " · 未保存" : ""}
+                  {r.name} ({stepNodes(r).filter((s) => s.enabled).length} 道工序){r.id === bookDefaultId ? " · 本书默认" : ""}{r.status === "draft" ? " · 草稿" : ""}{r.revision === 0 ? " · 未保存" : ""}
                 </option>
               ))
             )}
@@ -757,6 +770,18 @@ export function WorkflowTimelinePanel({
                 <>
                   <div className="text-xs font-medium">「{step.label}」受阻</div>
                   {step.note ? <ExplanationBlock note={step.note} tone="error" /> : null}
+                  {writesChapter(step) ? (
+                    <>
+                      <p className="text-xs text-muted-foreground" data-testid="workflow-blocked-no-skip">这道工序负责把正文写进书里，不能跳过：跳过的话运行会显示完成，正文却没进书。正文本身有问题（比如字数不够）就写明意见打回重写。</p>
+                      <textarea
+                        aria-label="打回重写正文的意见"
+                        placeholder="写明正文哪里要改，比如还差多少字、哪段要补；意见会原样交给叙述者"
+                        value={rejectNotes[step.stepId] ?? ""}
+                        onChange={(e) => setRejectNotes((current) => ({ ...current, [step.stepId]: e.target.value }))}
+                        className="min-h-16 w-full rounded border bg-background p-2 text-xs"
+                      />
+                    </>
+                  ) : null}
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -767,15 +792,27 @@ export function WorkflowTimelinePanel({
                       <RotateCcw className="size-3.5" />
                       重试本工序
                     </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/skip`, { expectedRevision: revision, stepId: step.stepId }))}
-                      className="flex items-center gap-1 rounded border px-3 py-1 text-xs hover:bg-muted disabled:opacity-50"
-                    >
-                      <SkipForward className="size-3.5" />
-                      跳过
-                    </button>
+                    {writesChapter(step) ? (
+                      <button
+                        type="button"
+                        disabled={busy || !(rejectNotes[step.stepId] ?? "").trim()}
+                        onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/steps/${encodeURIComponent(step.stepId)}/reject`, { expectedRevision: revision, note: rejectNotes[step.stepId] ?? "" }))}
+                        className="flex items-center gap-1 rounded border px-3 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                      >
+                        <RotateCcw className="size-3.5" />
+                        打回重写正文
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void act(() => postJson<RunDetailView>(`${runPath}/skip`, { expectedRevision: revision, stepId: step.stepId }))}
+                        className="flex items-center gap-1 rounded border px-3 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                      >
+                        <SkipForward className="size-3.5" />
+                        跳过
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (

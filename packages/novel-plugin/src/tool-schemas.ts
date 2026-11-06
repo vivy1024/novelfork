@@ -1043,10 +1043,10 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
   "workflow.start_run": {
     type: "object",
     properties: {
-      recipeId: stringSchema("要运行的方案 id（必须已发布）。"),
+      recipeId: stringSchema("要运行的方案 id（必须已发布）；省略时用本书的默认工作流。"),
       chapterNumber: numberSchema("在第几章上运行。"),
     },
-    required: ["recipeId", "chapterNumber"],
+    required: ["chapterNumber"],
     additionalProperties: false,
   },
   "workflow.report_blocker": {

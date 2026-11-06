@@ -21,6 +21,7 @@ import {
   type WorkflowGraphRecipe,
 } from "../engine/workflows/workflow-graph.js";
 import { readWorkflowRecipes, saveWorkflowRecipe, WorkflowStoreError } from "../engine/workflows/workflow-store.js";
+import { readBookDefaultWorkflow } from "../engine/workflows/book-default-workflow.js";
 import type { TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 import { toWorkflowToolView } from "./workflow-run-tools.js";
 
@@ -128,12 +129,25 @@ export async function executeWorkflowRecipeTool(
     const narratorId = context.sessionId?.trim();
     if (!narratorId) return fail("missing-session", "缺少宿主注入的会话标识，无法启动工作流。");
     const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : Number.NaN;
+    let recipeId = typeof input.recipeId === "string" ? input.recipeId.trim() : "";
+    if (!recipeId) {
+      // 没指定方案：用作者给本书设的默认工作流。
+      const fallback = await readBookDefaultWorkflow(binding.root);
+      if (!fallback.recipeId) {
+        return explainedFailure("default-workflow-missing", fallback.notice ?? {
+          what: "本书还没有默认工作流",
+          why: "没指定方案时按本书默认工作流启动",
+          action: "先用 workflow_list_recipes 选一个已发布的方案，带 recipeId 启动",
+        });
+      }
+      recipeId = fallback.recipeId;
+    }
     const storage = getStorageDatabase();
     const started = await startWorkflowRun({
       storage,
       bookId: binding.bookId,
       bookRoot: binding.root,
-      recipeId: typeof input.recipeId === "string" ? input.recipeId.trim() : "",
+      recipeId,
       chapterNumber,
       narratorId,
     });

@@ -199,6 +199,8 @@ export interface IdeWorkbenchProps {
    * 插件不能反向依赖宿主，Runtime 界面只能由宿主动态注入；缺省时不渲染该分区。
    */
   bookSettingsSlot?: ReactNode;
+  /** 本书设置里「去『套路 › 工作流』修改」：由宿主决定怎么跳转。 */
+  onOpenWorkflows?: () => void;
   onSwitchToAgent?: () => void;
   /** 写作视图的「生成蓝图 / 直接写章」：把已确认的指示交给当前叙述者执行。 */
   onSendToNarrator?: (message: string) => Promise<void> | void;
@@ -332,6 +334,7 @@ export function IdeWorkbench({
   chapterActions,
   chatSlot,
   bookSettingsSlot,
+  onOpenWorkflows,
   onSwitchToAgent,
   onSendToNarrator,
   bookSessions,
@@ -1914,6 +1917,7 @@ export function IdeWorkbench({
                           // 当前聚焦 / 本书规则各只有一处能改：设置页只显示，按钮跳到唯一的编辑处。
                           onOpenCompass={() => { setSettingsSection(undefined); keybindingActions.switchView("write"); }}
                           onOpenBookRules={() => { setSettingsSection(undefined); handleOpenLorePanel("rules"); }}
+                          {...(onOpenWorkflows ? { onOpenWorkflows } : {})}
                         />
                       </div>
                     ) : activeView === "skills-style" && bookId ? (

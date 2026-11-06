@@ -34,7 +34,12 @@ describe("Agent Shell route parsing", () => {
     expect(toShellPath({ kind: "learn" })).toBe("/next/learn");
   });
 
-  it("套路页：只有 Runtime 原页子路径；老地址 /novelfork/… 一律收回套路页", () => {
+  it("套路页 › 工作流：/novelfork/workflows 是 NovelFork 面板，往返一致", () => {
+    expect(parseShellRoute("/next/routines/novelfork/workflows")).toEqual({ kind: "routines", panel: "workflows" });
+    expect(toShellPath({ kind: "routines", panel: "workflows" })).toBe("/next/routines/novelfork/workflows");
+  });
+
+  it("套路页：Runtime 原页子路径；已删面板的老地址 /novelfork/… 收回套路页", () => {
     expect(parseShellRoute("/next/routines/tool-permissions")).toEqual({ kind: "routines", path: "/routines/tool-permissions" });
     // 已删的 NovelFork 面板：段名保留只为把老地址收回来，不产生任何面板路由
     expect(parseShellRoute("/next/routines/novelfork/book")).toEqual({ kind: "routines" });

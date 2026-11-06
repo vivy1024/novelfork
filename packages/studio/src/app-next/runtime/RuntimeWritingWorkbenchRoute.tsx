@@ -26,6 +26,8 @@ export interface RuntimeWritingWorkbenchRouteProps {
   readonly onNavigateToConversation: (narratorId: string) => void;
   readonly onChanged?: () => void | Promise<void>;
   readonly client?: RuntimeProductClient;
+  /** 本书设置里跳到「套路 › 工作流」。 */
+  readonly onOpenWorkflows?: () => void;
 }
 
 function toNode(bookId: string, resource: RuntimeWorkspaceResource, title?: string): WorkbenchResourceNode {
@@ -257,6 +259,7 @@ export function RuntimeWritingWorkbenchRoute({
   onNavigateToConversation,
   onChanged,
   client: suppliedClient,
+  onOpenWorkflows,
 }: RuntimeWritingWorkbenchRouteProps) {
   const registerBeforeLeave = useWorkbenchNavigationGuard(bookId);
   const defaultClient = useMemo(() => createRuntimeProductClient(), []);
@@ -592,6 +595,7 @@ export function RuntimeWritingWorkbenchRoute({
           onBeforeLeaveChange={registerBeforeLeave}
           runtimeProductMode
           runtimeFetch={handleRuntimeFetch}
+          {...(onOpenWorkflows ? { onOpenWorkflows } : {})}
           {...(runtimeProjectId
             ? { bookSettingsSlot: <RuntimeProjectSettingsMount projectId={runtimeProjectId} /> }
             : {})}
