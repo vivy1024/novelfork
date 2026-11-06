@@ -38,6 +38,14 @@ const DEFAULT_RETRIEVAL_CHANNELS_CONFIG = {
   semantic: true,
   "character-kernel": true,
   "recent-summary": true,
+  "prose-evidence": true,
+};
+
+/** 原文证据：从近章窗口之前的正文里捞的段落数与总字数上限（默认 3 段 / 1200 字）。 */
+const DEFAULT_PROSE_EVIDENCE_CONFIG = {
+  maxPassages: 3,
+  maxChars: 1200,
+  recentWindow: 5,
 };
 
 const DEFAULT_RETRIEVAL_CONFIG = {
@@ -47,6 +55,7 @@ const DEFAULT_RETRIEVAL_CONFIG = {
   waveEnabled: false,
   semanticEnabled: false,
   writeProfile: DEFAULT_WRITE_PROFILE_CAPS,
+  proseEvidence: DEFAULT_PROSE_EVIDENCE_CONFIG,
 };
 
 const SettlementConfigSchema = z.object({
@@ -73,6 +82,7 @@ const RetrievalChannelsConfigSchema = z.object({
   semantic: z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG.semantic),
   "character-kernel": z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG["character-kernel"]),
   "recent-summary": z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG["recent-summary"]),
+  "prose-evidence": z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG["prose-evidence"]),
 }).default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG);
 
 const WriteProfileCapsSchema = z.object({
@@ -80,6 +90,13 @@ const WriteProfileCapsSchema = z.object({
   activeHooks: z.number().int().min(1).max(40).default(DEFAULT_WRITE_PROFILE_CAPS.activeHooks),
   recentSummaries: z.number().int().min(1).max(20).default(DEFAULT_WRITE_PROFILE_CAPS.recentSummaries),
 }).default(DEFAULT_WRITE_PROFILE_CAPS);
+
+const ProseEvidenceConfigSchema = z.object({
+  maxPassages: z.number().int().min(0).max(10).default(DEFAULT_PROSE_EVIDENCE_CONFIG.maxPassages),
+  maxChars: z.number().int().min(0).max(6000).default(DEFAULT_PROSE_EVIDENCE_CONFIG.maxChars),
+  /** 近章窗口：最近这么多章由近章摘要覆盖，原文证据只从更早的章里找。 */
+  recentWindow: z.number().int().min(0).max(100).default(DEFAULT_PROSE_EVIDENCE_CONFIG.recentWindow),
+}).default(DEFAULT_PROSE_EVIDENCE_CONFIG);
 
 const RetrievalConfigSchema = z.object({
   maxTokens: z.number().int().min(500).max(100_000).default(DEFAULT_RETRIEVAL_CONFIG.maxTokens),
@@ -94,6 +111,8 @@ const RetrievalConfigSchema = z.object({
   dormantHookLimit: z.number().int().min(0).max(20).optional(),
   /** 写前七栏条目上限：角色 / 伏笔 / 近章。点名实体仍可超过上限保留。 */
   writeProfile: WriteProfileCapsSchema,
+  /** 原文证据通道的段数 / 字数 / 近章窗口；开关在 channels["prose-evidence"]。 */
+  proseEvidence: ProseEvidenceConfigSchema,
 }).default(DEFAULT_RETRIEVAL_CONFIG);
 
 export const NarrativeMemoryConfigSchema = z.object({
@@ -112,9 +131,10 @@ export type NarrativeMemoryConfigPatch = {
   version?: 1;
   settlement?: Partial<NarrativeMemoryConfig["settlement"]>;
   ledger?: Partial<NarrativeMemoryConfig["ledger"]>;
-  retrieval?: Omit<Partial<NarrativeMemoryConfig["retrieval"]>, "channels" | "writeProfile"> & {
+  retrieval?: Omit<Partial<NarrativeMemoryConfig["retrieval"]>, "channels" | "writeProfile" | "proseEvidence"> & {
     channels?: Partial<NarrativeMemoryConfig["retrieval"]["channels"]>;
     writeProfile?: Partial<WriteProfileCaps>;
+    proseEvidence?: Partial<NarrativeMemoryConfig["retrieval"]["proseEvidence"]>;
   };
   characterKernel?: Partial<CharacterKernelConfig>;
 };
@@ -144,6 +164,10 @@ function deepMergeConfig(
       writeProfile: {
         ...base.retrieval.writeProfile,
         ...(patch.retrieval?.writeProfile ?? {}),
+      },
+      proseEvidence: {
+        ...base.retrieval.proseEvidence,
+        ...(patch.retrieval?.proseEvidence ?? {}),
       },
     },
     characterKernel: { ...base.characterKernel, ...(patch.characterKernel ?? {}) },

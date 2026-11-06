@@ -36,6 +36,7 @@ const RECALL_CHANNELS: readonly { readonly need: string; readonly channels: read
   { need: "已记下的叙事事实", channels: ["facts"] },
   { need: "范文 / 声线 / 文风边界", channels: ["style"] },
   { need: "按语义召回的相关记忆", channels: ["semantic"] },
+  { need: "旧章正文里的原句与细节", channels: ["prose-evidence"] },
 ];
 
 export interface ContextIndexCardSummary {

@@ -99,6 +99,9 @@ export async function buildWriteChapterRecall(input: WriteChapterRecallInput): P
     // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
     ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
     ...(memoryConfig?.retrieval.writeProfile ? { writeProfileCaps: memoryConfig.retrieval.writeProfile } : {}),
+    // 原文证据：按可信书根读章节正文；段数 / 字数 / 近章窗口按本书配置。
+    bookRoot,
+    ...(memoryConfig?.retrieval.proseEvidence ? { proseEvidence: memoryConfig.retrieval.proseEvidence } : {}),
     // 休眠长线伏笔提醒：按本书配置透传（未配置时 buildNarrativeContext 用默认 30 章 / 3 条）。
     // preflight 与 pipeline.write 都经这里，两边召回包同口径。
     ...(memoryConfig?.retrieval.dormantHookChapters !== undefined || memoryConfig?.retrieval.dormantHookLimit !== undefined

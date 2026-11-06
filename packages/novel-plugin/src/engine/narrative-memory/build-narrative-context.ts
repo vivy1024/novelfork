@@ -11,6 +11,7 @@ import { createHardChannel } from "./channels/hard-channel.js";
 import { createHooksChannel, DORMANT_HOOK_TAG } from "./channels/hooks-channel.js";
 import { recordHookReminders } from "./foreshadow-reminders.js";
 import { createKnowledgeChannel } from "./channels/knowledge-channel.js";
+import { createProseEvidenceChannel } from "./channels/prose-evidence-channel.js";
 import { createRecentSummaryChannel } from "./channels/recent-summary-channel.js";
 import { createSceneSpecChannel } from "./channels/scene-spec-channel.js";
 import { createSemanticChannel, type NarrativeEmbeddingProvider } from "./channels/semantic-channel.js";
@@ -94,6 +95,12 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
    * 调用方通常传 memoryConfig.retrieval.dormantHookChapters / dormantHookLimit。
    */
   dormantHooks?: Readonly<{ thresholdChapters?: number; limit?: number }>;
+  /**
+   * 书籍目录（可信绑定）。给了才有原文证据通道：从近章窗口之前的章节正文里捞少量相关段落。
+   * proseEvidence 是段数 / 字数 / 近章窗口，调用方通常传 memoryConfig.retrieval.proseEvidence。
+   */
+  bookRoot?: string;
+  proseEvidence?: Readonly<{ maxPassages?: number; maxChars?: number; recentWindow?: number }>;
 }>;
 
 function disabledChannelResult(channel: NarrativeContextChannel | "story-arc"): ChannelResult {
@@ -294,10 +301,11 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   const chapterScenes = styleEnabled
     ? loadChapterScenesForStyle(input.storage, parsed.bookId, currentChapter)
     : { scenes: [] };
-  const styleBudgetTokens = resolveNarrativeChannelBudgets({
+  const resolvedChannelBudgets = resolveNarrativeChannelBudgets({
     maxTokens: parsed.maxTokens,
     ...(input.budgetPolicy ?? {}),
-  }).style;
+  });
+  const styleBudgetTokens = resolvedChannelBudgets.style;
 
   // 角色内核的作者确认门控：只在内核通道启用时读取经纬已确认角色名单。
   const kernelConfig = input.characterKernelConfig;
@@ -442,6 +450,25 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         entities,
       }, timeoutMs)
       : disabledChannelResult("knowledge"),
+    // 原文证据通道：本章实体 / 蓝图关键词在近章窗口之前的章节正文里的字面命中，少量段落（默认 ≤3 段 / ≤1200 字），
+    // 按偏移回读章节文件，不存原文；预算走 budget.ts 的 prose-evidence 档，可降档、可丢弃。
+    !isOptionalChannelEnabled(input, "prose-evidence")
+      ? disabledChannelResult("prose-evidence")
+      : !input.bookRoot
+        ? { ...disabledChannelResult("prose-evidence"), warnings: ["prose-evidence channel 跳过：本次召回没有书籍目录，读不到章节正文。"] }
+        : runChannel(createProseEvidenceChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        bookRoot: input.bookRoot,
+        currentChapter,
+        sceneSpec,
+        sceneText: parsed.sceneText,
+        entities,
+        budgetTokens: resolvedChannelBudgets["prose-evidence"],
+        ...(input.proseEvidence?.maxPassages !== undefined ? { maxPassages: input.proseEvidence.maxPassages } : {}),
+        ...(input.proseEvidence?.maxChars !== undefined ? { maxChars: input.proseEvidence.maxChars } : {}),
+        ...(input.proseEvidence?.recentWindow !== undefined ? { recentWindow: input.proseEvidence.recentWindow } : {}),
+      }, timeoutMs),
   ]);
 
   const merged = mergeNarrativeContextCards(channelResults.flatMap((result) => result.cards), {

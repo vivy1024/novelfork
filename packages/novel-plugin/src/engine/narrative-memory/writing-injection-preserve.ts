@@ -38,7 +38,7 @@ type SectionKey = keyof NarrativeContextPackage["sections"];
 /** 与 diagnostics 的 SECTION_ORDER 同序，渲染顺序稳定。 */
 const SECTION_KEYS: readonly SectionKey[] = [
   "hard", "state", "timeline", "hooks", "facts", "style", "semantic",
-  "character-kernel", "recent-summary", "knowledge",
+  "character-kernel", "recent-summary", "knowledge", "prose-evidence",
 ];
 
 export interface WritingInjectionPreserveSnapshot {

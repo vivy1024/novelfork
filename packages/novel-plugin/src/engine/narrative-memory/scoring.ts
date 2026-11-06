@@ -16,6 +16,7 @@ const CHANNEL_BOOST: Record<string, number> = {
   style: 20,
   semantic: 35,
   "recent-summary": 50,
+  "prose-evidence": 40,
 };
 
 /**

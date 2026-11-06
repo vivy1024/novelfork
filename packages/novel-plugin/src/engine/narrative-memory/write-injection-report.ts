@@ -156,6 +156,7 @@ const CHANNEL_LABELS: Readonly<Record<string, string>> = {
   "character-kernel": "角色内核",
   "recent-summary": "近章摘要",
   knowledge: "知情边界",
+  "prose-evidence": "原文证据",
 };
 
 const PURPOSE_LABELS: Readonly<Record<NarrativeRetrievalPurpose, string>> = {

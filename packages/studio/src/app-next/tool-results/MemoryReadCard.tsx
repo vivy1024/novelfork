@@ -27,6 +27,7 @@ const CHANNEL_LABEL: Record<string, string> = {
   semantic: "语义",
   "character-kernel": "角色内核",
   "recent-summary": "近章",
+  "prose-evidence": "原文证据",
 };
 
 interface ProfileColumn {

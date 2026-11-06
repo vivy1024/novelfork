@@ -157,6 +157,7 @@ type CustomReadyRuntimeToolName =
   | "pipeline.write"
   | "memory.settle_range"
   | "memory.settle_chapter"
+  | "memory.search_text"
   | "market.scan"
   | "market.query"
   | "market.ranks"
@@ -536,6 +537,18 @@ async function executeReadyToolImpl(
         ...(result.ok ? {} : { error: result.error ?? "discard-range-failed" }),
         data: result,
       });
+    }
+    if (matchesToolName(tool.name, "memory.search_text")) {
+      const { handleMemorySearchText } = await import("./handlers/memory-search-text.js");
+      return toRuntimeToolResult(await handleMemorySearchText({
+        bookId: binding.bookId,
+        bookRoot: binding.root,
+        query: typeof injectedInput.query === "string" ? injectedInput.query : "",
+        ...(injectedInput.match === "any" || injectedInput.match === "all" ? { match: injectedInput.match } : {}),
+        ...(typeof injectedInput.fromChapter === "number" ? { fromChapter: injectedInput.fromChapter } : {}),
+        ...(typeof injectedInput.toChapter === "number" ? { toChapter: injectedInput.toChapter } : {}),
+        ...(typeof injectedInput.limit === "number" ? { limit: injectedInput.limit } : {}),
+      }));
     }
     if (matchesToolName(tool.name, "chapter.read")) {
       if (typeof injectedInput.chapterNumber !== "number" || !Number.isInteger(injectedInput.chapterNumber)) {

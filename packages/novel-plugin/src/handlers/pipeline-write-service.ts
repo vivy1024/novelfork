@@ -563,6 +563,7 @@ const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"
   "character-kernel": "出场角色此刻的动机、情绪和矛盾。",
   "recent-summary": "最近几章的剧情摘要，用来保持前情连续。",
   knowledge: "出场角色此刻知道什么、不知道什么（知情边界），防止知识越界。",
+  "prose-evidence": "从较早章节正文里找到的相关原文段落，用来核对旧细节（物件、誓言、伤痕等）。",
 };
 
 /**

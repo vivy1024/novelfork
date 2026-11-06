@@ -585,6 +585,34 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     }
   });
 
+  // 正文段落检索索引补建：首次搜索 / 召回时会自动分批补，这里供手动一次补齐。dryRun=1 只统计不写入。
+  // 索引只存章号、段落偏移与倒排词元，不存原文；正文以章节文件为准。
+  app.post(`${base}/chapter-passages/reindex`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const dryRun = c.req.query("dryRun") === "1";
+    try {
+      const { ensureBookPassageIndexFresh } = await import("../engine/narrative-memory/chapter-passage-index.js");
+      const result = await ensureBookPassageIndexFresh(storage(), bookId, bookRootFor(bookId), { dryRun, budgetMs: 60_000 });
+      const verb = dryRun ? "将" : "已";
+      return c.json({
+        ok: true,
+        dryRun,
+        totalChapters: result.totalChapters,
+        upToDate: result.upToDate,
+        reindexed: result.reindexed,
+        removed: result.removed,
+        pending: result.pending,
+        elapsedMs: result.elapsedMs,
+        summary: result.reindexed.length === 0 && result.removed.length === 0
+          ? `共 ${result.totalChapters} 章，正文搜索索引都是最新的。`
+          : `共 ${result.totalChapters} 章：${verb}重建 ${result.reindexed.length} 章的正文搜索索引，${verb}清掉 ${result.removed.length} 章已不存在的索引。`
+            + (result.pending.length > 0 ? ` 还有 ${result.pending.length} 章超出本次时间，再执行一次即可。` : ""),
+      });
+    } catch (error) {
+      return c.json({ error: "chapter-passage-reindex-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
   // 状态槽重算：按受控谓词并槽，关闭同一属性不同写法下挂着的旧值（只关闭不删除）。dryRun=1 只统计不写入。
   app.post(`${base}/state-slots/recompute`, (c) => {
     const bookId = c.req.param("bookId");

@@ -16,11 +16,14 @@ export const DEFAULT_NARRATIVE_CHANNEL_BUDGETS: Readonly<Record<NarrativeContext
   hooks: 6000,
   facts: 6000,
   style: 3000,
-  semantic: 6000,
+  // 原 6000 拆出 3400 给原文证据（prose-evidence）：总和不变，其它通道的缩放份额不变。
+  // 3400 × (24000 / 68100) ≈ 1198，默认召回预算下原文证据约 1200 字；语义通道默认关闭，让出的份额它用不上。
+  semantic: 2600,
   relationship: 3000,
   "character-kernel": 4500,
   "recent-summary": 3600,
   knowledge: 3000,
+  "prose-evidence": 3400,
 };
 
 /**
@@ -89,7 +92,7 @@ function scaleBudgets(budgets: Readonly<Record<NarrativeContextChannel, number>>
   const scaledArc = Math.floor(storyArc * scale);
   const allocated = Object.values(scaled).reduce((sum, value) => sum + value, 0) + scaledArc;
   let remainder = normalizedMax - allocated;
-  for (const channel of ["hard", "state", "timeline", "recent-summary", "hooks", "facts", "character-kernel", "knowledge", "semantic", "relationship", "style"] satisfies readonly NarrativeContextChannel[]) {
+  for (const channel of ["hard", "state", "timeline", "recent-summary", "hooks", "facts", "character-kernel", "knowledge", "prose-evidence", "semantic", "relationship", "style"] satisfies readonly NarrativeContextChannel[]) {
     if (remainder <= 0) break;
     scaled[channel] += 1;
     remainder -= 1;

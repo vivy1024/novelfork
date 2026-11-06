@@ -176,6 +176,8 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
     ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
     ...(memoryConfig?.retrieval.writeProfile ? { writeProfileCaps: memoryConfig.retrieval.writeProfile } : {}),
+    ...(bookRoot ? { bookRoot } : {}),
+    ...(memoryConfig?.retrieval.proseEvidence ? { proseEvidence: memoryConfig.retrieval.proseEvidence } : {}),
   });
 
   // T4.7：写作向召回的保护预算溢出，改「静默降级继续」为「显式报错」。

@@ -569,6 +569,18 @@ async function importChapters(
     }
     // 导入章节只接纳正文；不能顺带覆盖作者已确认的文风预设或旧统计基线。
 
+    // 原文段落检索索引：导入直接写章节文件、不经写作资源服务，这里补建；失败只留到下次检索自愈。
+    try {
+      const { indexChapterPassages } = await import("../engine/narrative-memory/chapter-passage-index.js");
+      const passageStorage = getStorageDatabase();
+      chapters.forEach((chapter, index) => {
+        const title = chapter.title || `第${startNumber + index}章`;
+        indexChapterPassages(passageStorage, binding.bookId, startNumber + index, `# ${title}\n\n${chapter.content}`);
+      });
+    } catch {
+      // 派生索引，不阻断导入。
+    }
+
     const firstChapter = startNumber;
     const lastChapter = startNumber + chapters.length - 1;
     const autoSettle = input.autoSettle !== false;

@@ -82,6 +82,7 @@ const NOVEL_TOOL_ROUTINE_SPECS: Readonly<Record<string, NovelToolRoutineSpec>> =
   "jingwei.audit": ["lore", "设定可用性诊断", "Lore audit", "排查某条设定为什么没进入写作上下文", "Diagnose why a lore entry is not used in writing", A],
   "memory.read": ["memory", "记忆召回", "Recall memory", "按通道补看近章事实、角色状态与伏笔", "Recall recent facts, character states and hooks", R],
   "memory.search": ["memory", "记忆搜索", "Search memory", "按关键词查正文里提过的事实与事件", "Search facts and events by keyword", R],
+  "memory.search_text": ["memory", "搜正文", "Search chapter text", "按关键词在章节正文里找旧细节，再按偏移读原文", "Find old details in chapter text, then read by offset", A],
   "memory.graph": ["memory", "记忆关系图", "Memory graph", "查看关系图、时间线、伏笔网络等动态图谱", "Read relationship, timeline and hook graphs", R],
   "memory.events": ["memory", "待确认事件", "Pending events", "列出、批准或驳回待确认的叙事事件", "List, approve or reject pending narrative events", R],
   "memory.settle_chapter": ["memory", "单章结算", "Settle chapter", "正文落盘后把一章抽成叙事事件（失败时重试）", "Settle one saved chapter into narrative events", R],

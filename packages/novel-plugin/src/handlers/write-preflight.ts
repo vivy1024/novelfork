@@ -447,7 +447,7 @@ function makeBookConfigUnreadableBlocker(readability: UnreadableBookConfig): Wri
 
 /** 召回包各通道按 diagnostics 的固定顺序拼成一份给模型看的文本；空通道略过。 */
 const RECALL_SECTION_ORDER = [
-  "hard", "character-kernel", "state", "knowledge", "timeline", "recent-summary", "hooks", "facts", "style", "semantic",
+  "hard", "character-kernel", "state", "knowledge", "timeline", "recent-summary", "hooks", "facts", "prose-evidence", "style", "semantic",
 ] as const;
 
 function renderRecallText(pack: NarrativeContextPackage, gapsText = "", dueText = ""): string {

@@ -6,7 +6,7 @@
  * updated_at 故意与章号逆序（旧章后更新），复现「按 updated_at 粗筛会挤掉近章」的问题。
  */
 
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,6 +21,8 @@ const baseTime = new Date("2026-06-22T00:00:00.000Z").getTime();
 
 export interface LongBookHandle {
   readonly storage: StorageDatabase;
+  /** 书籍目录（临时目录下）；seedLongBookChapterFiles 往这里写章节文件。 */
+  readonly bookRoot: string;
   readonly cleanup: () => Promise<void>;
 }
 
@@ -40,6 +42,7 @@ export async function createLongBookStorage(prefix = "novelfork-long-book"): Pro
   });
   return {
     storage,
+    bookRoot: join(dir, "book"),
     cleanup: async () => {
       try {
         storage.close();
@@ -212,4 +215,30 @@ export function dormantFillerHooks(count = 200): LongBookHookSeed[] {
     plantedChapter: 1 + (index % 100),
     contentMd: `旧账${index + 1}：一件早年的小事，暂未交代。`,
   }));
+}
+
+/** 第 N 章的默认正文：几段普通叙事（主角名到处都有，用来测「太常见的词不算证据」）。 */
+export function longBookChapterProse(chapter: number): string {
+  return [
+    `主角在第${chapter}章继续赶路，山道湿滑，风里带着松脂的味道。`,
+    `同行的人说起城里的传闻，主角只是听着，没有接话。夜里他们在破庙歇脚，火堆噼啪作响。`,
+    `天亮后雾气未散，主角收拾行囊，把干粮分给同伴，又沿着溪水往下游走了一程。`,
+  ].join("\n\n");
+}
+
+/**
+ * 按「chapters/卷NN/NNNN_标题.md」写章节文件（每卷 50 章）。overrides 给特定章换正文。
+ */
+export async function seedLongBookChapterFiles(
+  bookRoot: string,
+  totalChapters: number,
+  overrides: Readonly<Record<number, string>> = {},
+): Promise<void> {
+  for (let chapter = 1; chapter <= totalChapters; chapter += 1) {
+    const volume = `卷${String(Math.ceil(chapter / 50)).padStart(2, "0")}`;
+    const dir = join(bookRoot, "chapters", volume);
+    await mkdir(dir, { recursive: true });
+    const body = overrides[chapter] ?? longBookChapterProse(chapter);
+    await writeFile(join(dir, `${String(chapter).padStart(4, "0")}_章${chapter}.md`), `# 第${chapter}章\n\n${body}\n`, "utf8");
+  }
 }

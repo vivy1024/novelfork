@@ -10,6 +10,7 @@ export const NarrativeContextSourceTypeSchema = z.enum([
   "style",
   "scene-spec",
   "character-kernel",
+  "chapter-text",
 ]);
 export type NarrativeContextSourceType = z.infer<typeof NarrativeContextSourceTypeSchema>;
 
@@ -25,6 +26,7 @@ export const NarrativeContextChannelSchema = z.enum([
   "character-kernel",
   "recent-summary",
   "knowledge",
+  "prose-evidence",
 ]);
 export type NarrativeContextChannel = z.infer<typeof NarrativeContextChannelSchema>;
 
@@ -404,6 +406,7 @@ export const NarrativeContextPackageSchema = z.object({
     "character-kernel": z.string().default(""),
     "recent-summary": z.string().default(""),
     knowledge: z.string().default(""),
+    "prose-evidence": z.string().default(""),
   }),
   diagnostics: NarrativeRetrievalDiagnosticsSchema,
   writeProfile: WriteProfileSchema.optional(),
@@ -424,6 +427,7 @@ export type NarrativeContextPackage = Readonly<{
     "character-kernel": string;
     "recent-summary": string;
     knowledge: string;
+    "prose-evidence": string;
   }>;
   diagnostics: NarrativeRetrievalDiagnostics;
   writeProfile?: unknown;

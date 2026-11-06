@@ -9,6 +9,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 
 import { rebuildNarrativeEntityIndex } from "../engine/narrative-entity/entity-index.js";
+import { deleteChapterPassagesInRange } from "../engine/narrative-memory/chapter-passage-index.js";
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { ensureSettlementLedgerSchema } from "../engine/narrative-memory/settlement-idempotency.js";
 import { STYLE_VAULT_RELATIVE_DIR } from "../engine/writing-layers/style-vault.js";
@@ -356,6 +357,8 @@ function deleteMemoryInRange(
         WHERE book_id = ? AND chapter_number >= ? AND chapter_number <= ?
       `).run(bookId, from, to).changes;
     }
+    // 原文段落检索索引（派生物，不存原文）：随章一起删，不然搜索还会命中已删章的偏移。
+    deletedOrphans += deleteChapterPassagesInRange(storage, bookId, from, to);
 
     return { deletedEvents, deletedFacts, deletedLogs, reactivatedFacts, deletedOrphans };
   });

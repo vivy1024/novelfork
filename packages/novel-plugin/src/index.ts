@@ -130,6 +130,7 @@ const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "memory.list": "列出 Narrative Memory 条目",
   "memory.read_entry": "读取单条 Narrative Memory 条目",
   "memory.search": "搜索 Narrative Memory 条目",
+  "memory.search_text": "按关键词搜索章节正文段落",
   "memory.update": "更新 Narrative Memory fact/event",
   "memory.delete": "删除 Narrative Memory fact/event",
   "memory.dedup": "查找 Narrative Memory 重复候选",

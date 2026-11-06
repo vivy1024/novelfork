@@ -603,7 +603,7 @@ describe("lore-memory-boundary handlers", () => {
   });
 
   describe("T-05c：写作注入保留件只由完整写作注入覆盖", () => {
-    const ALL_CHANNELS = ["hard", "state", "relationship", "timeline", "hooks", "facts", "style", "semantic", "character-kernel", "recent-summary", "knowledge"];
+    const ALL_CHANNELS = ["hard", "state", "relationship", "timeline", "hooks", "facts", "style", "semantic", "character-kernel", "recent-summary", "knowledge", "prose-evidence"];
 
     async function readPreserved(bookRoot: string): Promise<string | null> {
       const { readFile } = await import("node:fs/promises");
