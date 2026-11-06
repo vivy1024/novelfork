@@ -202,6 +202,20 @@ describe("写作注入保留件（T4.7 尾巴）", () => {
     expect((await loadWritingInjectionPreserve(bookRoot, "book-1"))?.capturedAt).toBe("2026-10-15T00:00:00.000Z");
   });
 
+  it("提示缓存：同一份注入重复落盘，渲染文本逐字节一致（不带落盘时间）", async () => {
+    const bookRoot = makeBookRoot();
+    mkdirSync(join(bookRoot, "story"), { recursive: true });
+    const base = { version: 1, bookId: "book-1", purpose: "write_chapter", chapterNumber: 7, totalEstimatedTokens: 100, sections: makePack().sections };
+    const render = async (capturedAt: string) => {
+      writeFileSync(join(bookRoot, "story", WRITING_INJECTION_PRESERVE_FILE), JSON.stringify({ ...base, capturedAt }), "utf8");
+      return renderWritingInjectionPreserve((await loadWritingInjectionPreserve(bookRoot, "book-1"))!);
+    };
+    const first = await render("2026-10-15T00:00:00.000Z");
+    const second = await render("2026-10-16T08:30:00.000Z");
+    expect(second).toBe(first);
+    expect(first).not.toContain("2026-10-1");
+  });
+
   it("T-05c：正常落盘的保留件重新定界后与原注入一致，不重复叠加声明", async () => {
     const bookRoot = makeBookRoot();
     const sections = formatNarrativeSections(packNarrativeContext([

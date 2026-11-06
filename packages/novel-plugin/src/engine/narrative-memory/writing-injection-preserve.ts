@@ -177,7 +177,8 @@ export function renderWritingInjectionPreserve(
   const oversized = snapshot.totalEstimatedTokens > maxTokens;
   const header = [
     "【写作注入保留件 · 上次写作召回的原文快照】",
-    `最近一次写作注入（${PURPOSE_LABELS[snapshot.purpose] ?? snapshot.purpose}，${chapter}，${snapshot.capturedAt}，约 ${snapshot.totalEstimatedTokens} 估算 token）成功装配、真正进过上下文。`,
+    // 不渲染 capturedAt：时间戳对模型无用，却会让内容相同的重复注入也改写系统提示、打掉提示缓存。
+    `最近一次写作注入（${PURPOSE_LABELS[snapshot.purpose] ?? snapshot.purpose}，${chapter}，约 ${snapshot.totalEstimatedTokens} 估算 token）成功装配、真正进过上下文。`,
     ...(oversized
       ? [`原文约 ${snapshot.totalEstimatedTokens} 估算 token，超过保留件上限 ${maxTokens}，本趟整件不随系统提示重放（不是裁剪，原文完整在库）。需要对照时按资料索引卡的通道指针重取。`]
       : [

@@ -245,6 +245,38 @@ describe("NovelRuntimeAdapter", () => {
 		).toBe(false);
 	});
 
+	test("提示缓存：同一输入两次解析，系统提示扩展与工具声明逐字节一致，易变块排在稳定简报之后", async () => {
+		bindNarrator();
+		// 写作注入保留件是按章变化的易变块：落一份快照，确认它只出现在稳定简报之后。
+		await mkdir(join(bookRoot, "story"), { recursive: true });
+		await writeFile(join(bookRoot, "story", "writing-injection-preserved.json"), JSON.stringify({
+			version: 1,
+			bookId: "book-a",
+			purpose: "write_chapter",
+			chapterNumber: 3,
+			capturedAt: "2026-10-15T00:00:00.000Z",
+			totalEstimatedTokens: 10,
+			sections: { hard: "<hard_constraints>\n硬状态\n</hard_constraints>" },
+		}), "utf8");
+
+		const first = await adapter.resolveContribution("narrator-a");
+		const second = await adapter.resolveContribution("narrator-a");
+		const serializeTools = (resolved: typeof first) => JSON.stringify(resolved?.tools.map((tool) => tool.definition));
+		expect(JSON.stringify(second?.promptExtensions)).toBe(JSON.stringify(first?.promptExtensions));
+		expect(serializeTools(second)).toBe(serializeTools(first));
+		expect(JSON.stringify(adapter.toolDefinitions().map((tool) => [tool.name, tool.description, tool.rawJsonSchema])))
+			.toBe(JSON.stringify(adapter.toolDefinitions().map((tool) => [tool.name, tool.description, tool.rawJsonSchema])));
+
+		const contents = first?.promptExtensions.map((extension) => extension.content) ?? [];
+		expect(contents[0]).toContain("NovelFork 小说创作运行时");
+		// 稳定段不含任何按章变化的召回内容。
+		expect(contents[0]).not.toContain("硬状态");
+		const preserveIndex = contents.findIndex((content) => content.includes("写作注入保留件"));
+		expect(preserveIndex).toBeGreaterThan(0);
+		// 保留件不带落盘时间：内容相同的重复注入不该让系统提示变化。
+		expect(contents[preserveIndex]).not.toContain("2026-10-15");
+	});
+
 	test("does NOT inject project Writing Skill bodies into the prompt (native Skill tool only)", async () => {
 		const skillDir = join(bookRoot, ".novelfork", "skills", "integration-style");
 		await mkdir(skillDir, { recursive: true });
