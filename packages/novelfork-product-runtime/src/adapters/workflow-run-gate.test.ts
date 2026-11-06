@@ -34,6 +34,7 @@ import {
 	resolveWorkerWorkflowGate,
 	resolveWorkflowDelegation,
 	workflowDelegatedExtension,
+	WORKFLOW_BRIEF_EXTENSION_ID,
 	WORKFLOW_WORKER_TRAIT,
 	writingInjectionPreserveExtension,
 	WRITING_INJECTION_PRESERVE_EXTENSION_ID,
@@ -141,6 +142,18 @@ describe("创作工作流对叙述者的约束", () => {
 		expect(brief).toContain("当前工序（共 2 道）");
 		expect(brief).toContain("▶ 工序 1：写正文");
 		expect(brief).toContain('kind="prose"');
+	});
+
+	test("提示分段：工序简报用独立稳定 id 排在主提示之后，运行推进不改主提示", async () => {
+		const before = await adapter.resolveContribution("narrator-a");
+		await startRun();
+		const during = await adapter.resolveContribution("narrator-a");
+		const ids = during?.promptExtensions.map((extension) => extension.id) ?? [];
+		expect(ids[0]).toBe("novelfork-novel.core");
+		expect(ids).toContain(WORKFLOW_BRIEF_EXTENSION_ID);
+		expect(ids.indexOf(WORKFLOW_BRIEF_EXTENSION_ID)).toBe(ids.length - 1);
+		expect(new Set(ids).size).toBe(ids.length);
+		expect(during?.promptExtensions[0]?.content).toBe(before?.promptExtensions[0]?.content);
 	});
 
 	test("运行中调用本工序不允许的写入工具：直接拒绝并说明原因", async () => {

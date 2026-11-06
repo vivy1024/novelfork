@@ -91,7 +91,11 @@ export interface RuntimeResolveContext {
 
 export interface ResolvedRuntimeContributions {
 	readonly tools: readonly { readonly definition: Readonly<{ name: string }> }[];
-	readonly promptExtensions: readonly { readonly content: string }[];
+	/**
+	 * 带 id 的扩展在 Runtime 里各自成为上下文段 `product.<id>`（易变块变化只重发自己）；
+	 * 不带 id 的仍合并为一个 `product` 段。旧 Runtime 忽略 id。
+	 */
+	readonly promptExtensions: readonly { readonly id?: string; readonly content: string }[];
 }
 
 export type RuntimeLearningContribution = unknown;

@@ -369,7 +369,7 @@ export class NovelRuntimeHostAdapter {
 			return null;
 		}
 
-		const basePromptExtensions = resolved.promptExtensions.map((extension: { readonly content: string }) => ({
+		const basePromptExtensions = resolved.promptExtensions.map((extension) => ({
 			...extension,
 			content: this.toModelFacingText(extension.content),
 		}));

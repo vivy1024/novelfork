@@ -277,6 +277,38 @@ describe("NovelRuntimeAdapter", () => {
 		expect(contents[preserveIndex]).not.toContain("2026-10-15");
 	});
 
+	test("提示分段：每个扩展块带稳定 id，主提示排第一，易变块变化不动主提示", async () => {
+		bindNarrator();
+		const preservePath = join(bookRoot, "story", "writing-injection-preserved.json");
+		const writePreserve = (chapterNumber: number, hard: string) => writeFile(preservePath, JSON.stringify({
+			version: 1,
+			bookId: "book-a",
+			purpose: "write_chapter",
+			chapterNumber,
+			capturedAt: "2026-10-15T00:00:00.000Z",
+			totalEstimatedTokens: 10,
+			sections: { hard: `<hard_constraints>\n${hard}\n</hard_constraints>` },
+		}), "utf8");
+		await mkdir(join(bookRoot, "story"), { recursive: true });
+		await writePreserve(3, "硬状态甲");
+
+		const first = await adapter.resolveContribution("narrator-a");
+		const ids = first?.promptExtensions.map((extension) => extension.id) ?? [];
+		expect(ids).toEqual(["novelfork-novel.core", "novelfork.writing-injection"]);
+		// id 只用 Runtime 段名允许的字符，避免被改写成别的段名。
+		for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9._-]+$/u);
+
+		await writePreserve(4, "硬状态乙");
+		const second = await adapter.resolveContribution("narrator-a");
+		expect(second?.promptExtensions.map((extension) => extension.id)).toEqual(ids);
+		const byId = (resolved: typeof first) =>
+			new Map(resolved?.promptExtensions.map((extension) => [extension.id, extension.content]) ?? []);
+		// 易变块（写作注入保留件）换了，主提示逐字节不变。
+		expect(byId(second).get("novelfork-novel.core")).toBe(byId(first).get("novelfork-novel.core"));
+		expect(byId(second).get("novelfork.writing-injection")).not.toBe(byId(first).get("novelfork.writing-injection"));
+		expect(byId(second).get("novelfork.writing-injection")).toContain("硬状态乙");
+	});
+
 	test("does NOT inject project Writing Skill bodies into the prompt (native Skill tool only)", async () => {
 		const skillDir = join(bookRoot, ".novelfork", "skills", "integration-style");
 		await mkdir(skillDir, { recursive: true });

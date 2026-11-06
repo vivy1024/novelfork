@@ -32,8 +32,13 @@ import {
 	type WorkflowRunRecord,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 
-export const WORKFLOW_PROMPT_EXTENSION_ID = "novelfork.workflow-run";
-export const WORKFLOW_WORKER_PROMPT_EXTENSION_ID = "novelfork.workflow-worker";
+/**
+ * 工序简报的扩展 id。领导者 / 工人 / 内置子代理三种简报同一时刻只出一种，共用一个 id，
+ * 这样 Runtime 里它们落在同一个上下文段：简报变化只替换这一段，不牵动小说主提示。
+ */
+export const WORKFLOW_BRIEF_EXTENSION_ID = "novelfork.workflow-brief";
+export const WORKFLOW_PROMPT_EXTENSION_ID = WORKFLOW_BRIEF_EXTENSION_ID;
+export const WORKFLOW_WORKER_PROMPT_EXTENSION_ID = WORKFLOW_BRIEF_EXTENSION_ID;
 
 /**
  * 工作流工人叙述者的身份标记（建队时写在 traits 上，闸门据此认出本运行的工人）。
@@ -409,7 +414,7 @@ export function buildWorkflowWorkerBrief(run: WorkflowRunRecord): string {
 		.join("\n");
 }
 
-export const WORKFLOW_DELEGATED_PROMPT_EXTENSION_ID = "novelfork.workflow-delegated";
+export const WORKFLOW_DELEGATED_PROMPT_EXTENSION_ID = WORKFLOW_BRIEF_EXTENSION_ID;
 
 /** 内置子代理的工序简报（只讲当前分给该模板的工序）。 */
 export function workflowDelegatedExtension(run: WorkflowRunRecord, template: string): { id: string; content: string } {
@@ -424,7 +429,7 @@ export function workflowWorkerExtension(run: WorkflowRunRecord): { id: string; c
 	return { id: WORKFLOW_WORKER_PROMPT_EXTENSION_ID, content: buildWorkflowWorkerBrief(run) };
 }
 
-export const CONTEXT_INDEX_CARD_EXTENSION_ID = "novelfork.context-index-card";
+export const CONTEXT_INDEX_CARD_EXTENSION_ID = "novelfork.lore-index";
 
 /**
  * 资料索引卡（T4.7）：随每趟 resolveContribution 重建注入，会话压缩动不了它。
@@ -441,7 +446,7 @@ export function contextIndexCardExtension(bookId: string | undefined): { id: str
 	}
 }
 
-export const WRITING_INJECTION_PRESERVE_EXTENSION_ID = "novelfork.writing-injection-preserve";
+export const WRITING_INJECTION_PRESERVE_EXTENSION_ID = "novelfork.writing-injection";
 
 /**
  * 写作注入保留件（T4.7 尾巴）：最近一次写作注入的原文快照（memory.read write/revise、

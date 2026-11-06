@@ -803,7 +803,8 @@ export const NOVEL_RUNTIME_CONTRIBUTION: RuntimePluginContribution = {
   projectTypes: ["novel"],
   promptExtensions: [
     {
-      id: "novelfork-novel.workflow",
+      // 稳定 id：Runtime 把每个带 id 的扩展当成独立上下文段（product.<id>），改名会让会话重发整段。
+      id: "novelfork-novel.core",
       content: NOVEL_RUNTIME_SYSTEM_PROMPT,
       position: "after",
       order: 100,
