@@ -115,6 +115,7 @@ export const NOT_ARCHIVED_TABLES: readonly NotArchivedSpec[] = [
   { name: "narrative_context_vector", explanation: "实体向量缓存依赖本机配置的 embedding 模型；导入后可在叙事记忆里重新回填。" },
   { name: "narrative_event_trash", explanation: "待确认事件的回收站是本机临时数据：丢弃的记录只在本机保留一段时间等作者撤销，不随档案迁移。导入后新的书重新开始，回收站为空。" },
   { name: "narrative_consistency_ignore", explanation: "叙事体检里「忽略此条」的裁决按本书实体 id 记账（ent:<书 id>:…），导入后的新书实体 id 不同，对不上；导入后体检会重新检出，需要时再忽略一次。" },
+  { name: "narrative_arc_summary", explanation: "卷摘要与全书梗概由章摘要归纳而来，属于派生数据；导入后可在叙事记忆里重新生成（导入的书会带着章摘要）。" },
   { name: "narrative_retrieval_log", explanation: "上下文检索诊断日志只用于排查当次装配，不影响继续写作。" },
   { name: "request_log", explanation: "AI 调用用量与计费日志绑定源机器的账号和会话，不随作品迁移。" },
   { name: "workflow_runs", explanation: "工作流运行记录绑定源机器的叙述者会话，导入后无法继续执行；工作流方案本身在「工作流」模块里。" },

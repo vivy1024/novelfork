@@ -701,6 +701,29 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
       FOREIGN KEY (book_id) REFERENCES book(id) ON DELETE CASCADE` : ""}
     );
   `);
+
+  // 层级前情落盘（同步自迁移 0042）：模型据章摘要归纳的卷摘要 / 全书梗概，派生记录，见 arc-summary-store.ts。
+  storage.sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS narrative_arc_summary (
+      id TEXT PRIMARY KEY NOT NULL,
+      book_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      segment_id TEXT NOT NULL,
+      segment_title TEXT NOT NULL DEFAULT '',
+      chapter_from INTEGER NOT NULL,
+      chapter_to INTEGER NOT NULL,
+      source_chapters_json TEXT NOT NULL DEFAULT '[]',
+      input_fingerprint TEXT NOT NULL,
+      content_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'needs-review',
+      model TEXT,
+      generated_at INTEGER NOT NULL,
+      confirmed_at INTEGER${hasBookTable ? `,
+      FOREIGN KEY (book_id) REFERENCES book(id) ON DELETE CASCADE` : ""}
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_narrative_arc_summary_segment
+      ON narrative_arc_summary(book_id, kind, segment_id);
+  `);
 }
 
 /** 每个数据库连接只做一次存量谓词归一的 slot_key 重算。 */

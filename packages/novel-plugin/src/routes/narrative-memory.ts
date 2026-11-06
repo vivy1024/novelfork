@@ -35,6 +35,9 @@ import { refreshBookEntityEmbeddings } from "../engine/narrative-memory/embeddin
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { backfillHookCausalLinks } from "../engine/narrative-memory/causal-backfill.js";
 import { recomputeNarrativeStateSlots } from "../engine/narrative-memory/slot-recompute.js";
+import { confirmArcSummary, listArcSummaries } from "../engine/narrative-memory/arc-summary-store.js";
+import { backfillArcSummaries, planArcSummaries } from "../engine/narrative-memory/arc-summary-service.js";
+import { selectVolumeOutlineEntry } from "../handlers/outline-volume.js";
 import {
   checkMountBelongsToBook,
   createScene,
@@ -640,6 +643,107 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       });
     } catch (error) {
       return c.json({ error: "structure-score-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // 层级前情（卷摘要 / 全书梗概）：列出落盘记录及其是否过期，供作者审阅。
+  app.get(`${base}/arc-summaries`, (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const plan = planArcSummaries(storage(), bookId);
+      const records = listArcSummaries(storage(), bookId);
+      const stateById = new Map(plan.targets.map((target) => [`${target.kind === "synopsis" ? "synopsis" : "volume"}:${target.segmentId}`, target.state]));
+      const outline = selectVolumeOutlineEntry(storage(), bookId);
+      return c.json({
+        ok: true,
+        latestChapter: plan.latestChapter,
+        records: records.map((record) => ({ ...record, fresh: stateById.get(`${record.kind}:${record.segmentId}`) === "fresh" })),
+        targets: plan.targets.map(({ segment: _segment, segments: _segments, ...rest }) => rest),
+        volumeOutline: { entryId: outline.entry?.id ?? null, candidates: outline.candidates, rule: outline.rule },
+        summary: records.length === 0
+          ? "还没有生成卷摘要或全书梗概；写作时按章摘要现场拼接。"
+          : `已有 ${records.length} 条卷摘要 / 全书梗概，其中待确认 ${records.filter((record) => record.status === "needs-review").length} 条。`,
+      });
+    } catch (error) {
+      return c.json({ error: "arc-summaries-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // 作者确认一条卷摘要 / 全书梗概（章摘要已改过的不能确认，要先重新生成）。
+  app.post(`${base}/arc-summaries/:summaryId/confirm`, (c) => {
+    const bookId = c.req.param("bookId");
+    const summaryId = c.req.param("summaryId");
+    try {
+      const record = listArcSummaries(storage(), bookId).find((item) => item.id === summaryId);
+      if (!record) return c.json({ error: "not-found", summary: "没有找到这条摘要。" }, 404);
+      const fresh = planArcSummaries(storage(), bookId).targets.some((target) => (
+        `${target.kind === "synopsis" ? "synopsis" : "volume"}:${target.segmentId}` === `${record.kind}:${record.segmentId}` && target.state === "fresh"
+      ));
+      if (!fresh) {
+        return c.json({
+          ok: false,
+          code: "ARC_SUMMARY_STALE",
+          explanation: {
+            whatHappened: `「${record.segmentTitle}」的摘要是按旧的章摘要写的，章摘要后来改过。`,
+            whyItMatters: "确认一份过时的摘要，写作时会带着已经不成立的前情。",
+            suggestedAction: "先重新生成这一卷的摘要，再确认。",
+          },
+        }, 409);
+      }
+      const confirmed = confirmArcSummary(storage(), bookId, summaryId);
+      return c.json({ ok: true, record: confirmed, summary: `已确认「${record.segmentTitle}」的摘要。` });
+    } catch (error) {
+      return c.json({ error: "arc-summary-confirm-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // 存量回填：为已有书补卷摘要与全书梗概。dryRun=1 只报告缺失 / 过期，不调模型、不写库；不在启动时自动跑。
+  app.post(`${base}/arc-summaries/backfill`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const dryRun = c.req.query("dryRun") === "1";
+    const body = await readJson(c);
+    const maxVolumes = Number.isInteger(body.maxVolumes) && (body.maxVolumes as number) > 0 ? body.maxVolumes as number : undefined;
+    try {
+      if (dryRun) {
+        const result = await backfillArcSummaries({ storage: storage(), bookId, dryRun: true });
+        return c.json({
+          ok: true,
+          ...result,
+          summary: result.toGenerate === 0
+            ? "卷摘要与全书梗概都是最新的，不需要回填。"
+            : `将生成或更新 ${result.toGenerate} 条（缺失 ${result.targets.filter((target) => target.state === "missing").length}，章摘要已改过 ${result.targets.filter((target) => target.state === "stale").length}）。`,
+        });
+      }
+      const generation = options.resolveTextGeneration
+        ? await options.resolveTextGeneration(c).catch((): HostTextGenerationAvailability => ({
+          available: false, code: "MODEL_PROVIDER_UNAVAILABLE", message: "读取模型配置失败。", suggestedAction: "稍后重试。",
+        }))
+        : { available: false as const, code: "MODEL_NOT_CONFIGURED", message: "当前宿主没有提供服务端模型能力。", suggestedAction: "配置模型后再试。" };
+      if (!generation.available) {
+        return c.json({
+          ok: false,
+          code: generation.code,
+          explanation: {
+            whatHappened: `没有生成卷摘要：${generation.message}`,
+            whyItMatters: "卷摘要和全书梗概要靠模型从章摘要归纳；没有模型时写作仍按章摘要现场拼接。",
+            suggestedAction: generation.suggestedAction,
+          },
+        }, 422);
+      }
+      const result = await backfillArcSummaries({
+        storage: storage(), bookId, dryRun: false, generateText: generation.generateText,
+        ...(maxVolumes !== undefined ? { maxVolumes } : {}),
+      });
+      return c.json({
+        ok: true,
+        ...result,
+        summary: `已生成 ${result.generated.length} 条卷摘要 / 全书梗概，均为待确认`
+          + (result.failed.length > 0 ? `；${result.failed.length} 条失败，再点一次会只补失败的` : "")
+          + (result.skipped.length > 0 ? `；${result.skipped.length} 条暂未处理` : "")
+          + "。",
+      });
+    } catch (error) {
+      return c.json({ error: "arc-summary-backfill-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 

@@ -11,10 +11,7 @@ import { join } from "node:path";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 
-import {
-  findLedgerEntryByTitle,
-  upsertLedgerEntry,
-} from "./jingwei-ledger-store.js";
+import { upsertLedgerEntry } from "./jingwei-ledger-store.js";
 import {
   checkOverdraft,
   parseEndgameReserve,
@@ -22,6 +19,7 @@ import {
   type OverdraftReport,
 } from "./endgame-reserve.js";
 import { DEFAULT_VOLUME_DIRECTORY, volumeDirectoryName } from "../engine/writing-resource/chapter-layout.js";
+import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 
 export type VolumeStatus = "planned" | "active" | "done";
 export type MainlineBeatStatus = "planned" | "active" | "done";
@@ -316,12 +314,82 @@ export function renderVolumeMarkdown(outline: VolumeOutline): string {
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
-/** 从经纬账本读卷纲（权威源）。 */
+export interface VolumeOutlineCandidate {
+  readonly id: string;
+  readonly status: string;
+  readonly updatedAt: number;
+  readonly fields: Record<string, unknown>;
+}
+
+export interface VolumeOutlineSelection {
+  readonly entry: VolumeOutlineCandidate | null;
+  /** 参与比较的「卷纲」条目数（未删除）；>1 说明有重复，作者应合并。 */
+  readonly candidates: number;
+  readonly rule: string;
+}
+
+export const VOLUME_OUTLINE_SELECTION_RULE =
+  "只认标题为「卷纲」且未删除的经纬 outline 条目；跳过没有有效卷的；已确认优先于待确认，同状态取最近更新，再按条目 id 升序。";
+
+/**
+ * 从多条「卷纲」条目里选出权威的一条（纯函数，便于测试）。
+ * 历史库里同一本书会有多条「卷纲」（重复导入、机器草稿与作者确认版并存）；
+ * 此前按查询返回顺序取第一条，结果取决于库里的行序。规则见 VOLUME_OUTLINE_SELECTION_RULE。
+ */
+export function selectAuthoritativeVolumeOutline(candidates: readonly VolumeOutlineCandidate[]): VolumeOutlineSelection {
+  const usable = candidates.filter((entry) => normalizeVolumes(entry.fields.volumes as readonly unknown[] | undefined).length > 0);
+  const sorted = [...usable].sort((left, right) => {
+    const confirmed = Number(right.status === "confirmed") - Number(left.status === "confirmed");
+    if (confirmed !== 0) return confirmed;
+    if (right.updatedAt !== left.updatedAt) return right.updatedAt - left.updatedAt;
+    return left.id.localeCompare(right.id);
+  });
+  return { entry: sorted[0] ?? null, candidates: candidates.length, rule: VOLUME_OUTLINE_SELECTION_RULE };
+}
+
+function parseJsonObject(raw: string | null): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 读本书全部未删除的「卷纲」条目（按标题；entry_key 两种历史写法也算）。 */
+function listVolumeOutlineCandidates(storage: StorageDatabase, bookId: string): VolumeOutlineCandidate[] {
+  try {
+    const columns = new Set((storage.sqlite.prepare(`PRAGMA table_info("story_jingwei_entry")`).all() as Array<{ name: string }>).map((row) => row.name));
+    const keyClause = columns.has("entry_key") ? ` OR entry_key IN ('outline:${VOLUME_ENTRY_TITLE}', 'outline/${VOLUME_ENTRY_TITLE}')` : "";
+    const categories = getJingweiCategoryAliases("outline");
+    const rows = storage.sqlite.prepare(`
+      SELECT id, status, updated_at AS updatedAt, fields_json AS fieldsJson
+      FROM story_jingwei_entry
+      WHERE book_id = ? AND deleted_at IS NULL AND category IN (${sqlInPlaceholders(categories)})
+        AND (title = ?${keyClause})
+    `).all(bookId, ...categories, VOLUME_ENTRY_TITLE) as Array<{ id: string; status: string | null; updatedAt: number | null; fieldsJson: string | null }>;
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status ?? "confirmed",
+      updatedAt: row.updatedAt ?? 0,
+      fields: parseJsonObject(row.fieldsJson),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** 本书权威卷纲条目的选择结果（含重复条目数），供诊断展示。 */
+export function selectVolumeOutlineEntry(storage: StorageDatabase, bookId: string): VolumeOutlineSelection {
+  return selectAuthoritativeVolumeOutline(listVolumeOutlineCandidates(storage, bookId));
+}
+
+/** 从经纬账本读卷纲（权威源）；有多条「卷纲」时按 selectAuthoritativeVolumeOutline 的规则确定取哪条。 */
 function readOutlineFromLedger(
   storage: StorageDatabase,
   bookId: string,
 ): VolumeOutline | null {
-  const entry = findLedgerEntryByTitle(storage, bookId, "outline", VOLUME_ENTRY_TITLE);
+  const entry = selectVolumeOutlineEntry(storage, bookId).entry;
   if (!entry) return null;
   const volumes = normalizeVolumes(entry.fields.volumes as readonly unknown[] | undefined);
   if (volumes.length === 0) return null;

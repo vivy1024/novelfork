@@ -45,6 +45,8 @@ import {
   type SettlementRiskDecision,
 } from "../engine/narrative-memory/settlement-risk-gate.js";
 import { chapterSummaryKey } from "../engine/jingwei/entry-identity.js";
+import { markArcSummariesStaleForChapter } from "../engine/narrative-memory/arc-summary-store.js";
+import { scheduleArcSummaryRefresh, type ArcSummaryScheduler } from "../engine/narrative-memory/arc-summary-service.js";
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
@@ -74,6 +76,8 @@ export type ChapterSettlementOptions = Readonly<{
   targetChapters?: number;
   /** 结算后场景校验的实现；缺省为 runChapterSceneCheck（测试可注入以模拟失败）。 */
   sceneCheck?: typeof runChapterSceneCheck;
+  /** 章摘要写入后排队刷新卷摘要 / 全书梗概；缺省为后台队列 scheduleArcSummaryRefresh（测试可注入）。 */
+  arcSummaryScheduler?: ArcSummaryScheduler;
 }>;
 
 function idPart(value: string): string {
@@ -1297,6 +1301,19 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
             now: options.now?.() ?? new Date(),
           });
           warnings.push(`本章张力评分失败，已标记未评估（${TENSION_UNEVALUATED}）：${scored.reason}`);
+        }
+        // 层级前情：本章章摘要变了 → 覆盖本章的卷摘要 / 全书梗概标过期；再把刷新排进后台队列
+        // （卷写完或当前卷每满一段时生成卷摘要，必要时生成全书梗概）。排队即返回，不等模型，失败只记日志、下次重试。
+        try {
+          markArcSummariesStaleForChapter(storage, input.bookId, input.chapterNumber);
+          (options.arcSummaryScheduler ?? scheduleArcSummaryRefresh)({
+            storage,
+            bookId: input.bookId,
+            generateText: options.kernelGenerateText,
+            ...(options.now ? { now: options.now } : {}),
+          });
+        } catch (error) {
+          console.warn(`[chapter-settlement] 第${input.chapterNumber}章后层级前情刷新未能排队（不影响结算）：${error instanceof Error ? error.message : String(error)}`);
         }
       }
     } catch (error) {
