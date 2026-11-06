@@ -77,6 +77,7 @@ const CANONICAL_READY_TOOL_NAMES = [
   "memory.list",
   "memory.read_entry",
   "memory.search",
+  "memory.search_text",
   "memory.dedup",
   "memory.export",
   "memory.stats",

@@ -272,6 +272,7 @@ describe("写作注入保留件扩展（T4.7 尾巴）", () => {
 				"character-kernel": "",
 				"recent-summary": "",
 				knowledge: "",
+				"prose-evidence": "",
 			},
 			diagnostics: {
 				totalMs: 1,
