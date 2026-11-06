@@ -2,6 +2,7 @@ export { registerRuntimeProductIntegration } from "../../narrafork-runtime-priva
 export type {
 	ResolvedRuntimeContributions,
 	RuntimeLearningContribution,
+	RuntimeLearningPresentation,
 	RuntimeProductAccessDeniedEvent,
 	RuntimeProductHostServices,
 	RuntimeProductIntegration,

@@ -96,6 +96,50 @@ export interface ResolvedRuntimeContributions {
 
 export type RuntimeLearningContribution = unknown;
 
+/** 中英两份文案（与 Runtime 的 RuntimeLearningLocalizedText 同形）。 */
+export interface RuntimeLearningLocalizedText {
+	readonly en: string;
+	readonly "zh-CN": string;
+}
+
+/** 覆盖一篇 Runtime 内置学习文档的字段（与 Runtime 的 RuntimeLearningDocumentOverride 同形）。 */
+export interface RuntimeLearningDocumentOverride {
+	readonly category?: string;
+	readonly tags?: readonly string[];
+	readonly title?: RuntimeLearningLocalizedText;
+	readonly summary?: RuntimeLearningLocalizedText;
+	readonly sections?: readonly {
+		readonly title: RuntimeLearningLocalizedText;
+		readonly body: RuntimeLearningLocalizedText;
+	}[];
+	readonly workflow?: readonly RuntimeLearningLocalizedText[];
+	readonly bestPractices?: readonly RuntimeLearningLocalizedText[];
+	readonly pitfalls?: readonly RuntimeLearningLocalizedText[];
+	readonly agentHints?: readonly RuntimeLearningLocalizedText[];
+	readonly actions?: readonly {
+		readonly label: RuntimeLearningLocalizedText;
+		readonly description: RuntimeLearningLocalizedText;
+		readonly href: string;
+	}[];
+}
+
+/**
+ * 产品如何呈现 Runtime 内置学习文档：品牌名替换、隐藏、逐篇覆盖、分类排序。
+ * 只作用于内置文档，产品贡献的文档原样展示。旧版 Runtime 不认这个字段时忽略它。
+ */
+export interface RuntimeLearningPresentation {
+	readonly brandName?: string;
+	readonly hiddenBuiltinDocIds?: readonly string[];
+	readonly builtinDocOverrides?: Readonly<Record<string, RuntimeLearningDocumentOverride>>;
+	readonly builtinCategoryOverrides?: Readonly<
+		Record<
+			string,
+			{ readonly label?: RuntimeLearningLocalizedText; readonly description?: RuntimeLearningLocalizedText }
+		>
+	>;
+	readonly categoryOrder?: readonly string[];
+}
+
 /** NarraFork「可选工具」的三档。 */
 export type RuntimeProductToolRoutineMode = "manual" | "auto" | "resident";
 
@@ -169,6 +213,7 @@ export interface RuntimeProductIntegration {
 	mountAuthenticatedRoutes?: (app: any) => void;
 	mountRuntimeBindingRoutes?: (app: any) => void;
 	learningContributions?: () => readonly RuntimeLearningContribution[];
+	learningPresentation?: () => RuntimeLearningPresentation;
 	narrator?: RuntimeProductNarratorAdapter;
 	canAccessNarratorState?: (input: { userId: string | undefined; narratorId: string }) => Promise<boolean>;
 	canAccessPermission?: (input: { userId: string | undefined; requestId: string }) => Promise<boolean>;

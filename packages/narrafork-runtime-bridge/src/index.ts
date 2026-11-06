@@ -9,6 +9,7 @@ export { registerRuntimeProductIntegration } from "./product-host";
 export type {
 	ResolvedRuntimeContributions,
 	RuntimeLearningContribution,
+	RuntimeLearningPresentation,
 	RuntimeProductAccessDeniedEvent,
 	RuntimeProductHostServices,
 	RuntimeProductIntegration,
