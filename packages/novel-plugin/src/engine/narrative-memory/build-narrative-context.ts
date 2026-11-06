@@ -22,6 +22,7 @@ import { listScenesByChapter, type NarrativeScene } from "./scene-store.js";
 import { createTimelineChannel } from "./channels/timeline-channel.js";
 import { buildKernelCards, type KernelChannelInput } from "./channels/kernel-channel.js";
 import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry-repo.js";
+import type { StoryJingweiEntryRecord } from "../jingwei/types.js";
 import { normalizeCategory } from "../jingwei/unified-categories.js";
 import { stripParentheticalSuffix } from "./entity-dictionary.js";
 import { buildNarrativeRetrievalDiagnostics, formatNarrativeSections, persistNarrativeRetrievalLog } from "./diagnostics.js";
@@ -261,9 +262,8 @@ function applyWaveMemory(
  * 规范名与内核 characterId 同源：经纬标题剥离括号装饰后的名字。读取失败时返回空名单，
  * 即内核一律不注入（宁可少注入，也不把未确认的内核带入写作上下文）。
  */
-async function loadConfirmedCharacterNames(storage: StorageDatabase, bookId: string): Promise<string[]> {
+function confirmedCharacterNamesOf(entries: readonly StoryJingweiEntryRecord[]): string[] {
   try {
-    const entries = await createStoryJingweiEntryRepository(storage).listByBook(bookId);
     return entries
       .filter((entry) => normalizeCategory(entry.category).category === "characters" && entry.status === "confirmed")
       .map((entry) => stripParentheticalSuffix(entry.title) || entry.title);
@@ -310,13 +310,21 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   // 角色内核的作者确认门控：只在内核通道启用时读取经纬已确认角色名单。
   const kernelConfig = input.characterKernelConfig;
   const kernelEnabled = Boolean(kernelConfig?.enabled) && isOptionalChannelEnabled(input, "character-kernel");
-  const confirmedCharacterNames = kernelEnabled ? await loadConfirmedCharacterNames(input.storage, parsed.bookId) : [];
+  // 经纬条目整本只读一次，hard / state / hooks / timeline 与内核门控共用（长篇每读一遍都随条目数线性增长）。
+  let jingweiEntries: readonly StoryJingweiEntryRecord[] | undefined;
+  try {
+    jingweiEntries = await createStoryJingweiEntryRepository(input.storage).listByBook(parsed.bookId);
+  } catch {
+    jingweiEntries = undefined;
+  }
+  const confirmedCharacterNames = kernelEnabled ? confirmedCharacterNamesOf(jingweiEntries ?? []) : [];
 
   const storyArcEnabled = input.storyArc?.enabled !== false && isOptionalChannelEnabled(input, "timeline");
 
   const channelResults = await Promise.all([
     runChannel(createSceneSpecChannel(), { bookId: parsed.bookId, sceneSpec }, timeoutMs),
     runChannel(createHardChannel(), {
+      ...(jingweiEntries ? { jingweiEntries } : {}),
       storage: input.storage,
       bookId: parsed.bookId,
       sceneSpec,
@@ -325,6 +333,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     }, timeoutMs),
     isOptionalChannelEnabled(input, "state")
       ? runChannel(createStateChannel(), {
+        ...(jingweiEntries ? { jingweiEntries } : {}),
         storage: input.storage,
         bookId: parsed.bookId,
         currentChapter,
@@ -337,6 +346,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
       : disabledChannelResult("state"),
     isOptionalChannelEnabled(input, "hooks")
       ? runChannel(createHooksChannel(), {
+        ...(jingweiEntries ? { jingweiEntries } : {}),
         storage: input.storage,
         bookId: parsed.bookId,
         currentChapter,
@@ -352,6 +362,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
       : disabledChannelResult("hooks"),
     isOptionalChannelEnabled(input, "timeline")
       ? runChannel(createTimelineChannel(), {
+        ...(jingweiEntries ? { jingweiEntries } : {}),
         storage: input.storage,
         bookId: parsed.bookId,
         currentChapter,

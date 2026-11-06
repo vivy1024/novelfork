@@ -1518,3 +1518,56 @@ describe("结算后场景校验", () => {
     }
   });
 });
+
+describe("故事时间锚随结算落库", () => {
+  it("抽取的时间锚按章写入（证据核对原文），重结算整章替换，删章一并清掉", async () => {
+    const storage = await createSummaryStorage();
+    const bookRoot = join(tmpdir(), `novelfork-story-time-${crypto.randomUUID()}`);
+    await mkdir(join(bookRoot, "chapters"), { recursive: true });
+    tempDirs.push(bookRoot);
+    try {
+      const content = "三天后，韩立抵达药园。\n墨大夫说：三日后决战。";
+      const settled = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        content,
+        confirmedAt: "2026-07-02T00:00:00.000Z",
+      }, {
+        storage,
+        llmExtractor: async () => ({
+          events: [{ eventType: "location_changed", subject: "韩立", predicate: "所在", object: "药园", evidenceText: "三天后，韩立抵达药园。", confidence: 0.92, source: "settle" }],
+          mentionedEntities: ["韩立"],
+          timeAnchors: [
+            { kind: "relative", expression: "三天后", evidenceText: "三天后，韩立抵达药园。", confidence: 0.9, offsetDays: 3 },
+            { kind: "deadline", expression: "三日后决战", evidenceText: "三日后决战", confidence: 0.85, offsetDays: 3, event: "决战" },
+            { kind: "relative", expression: "十年后", evidenceText: "正文里没有这句", confidence: 0.9 },
+          ],
+        }),
+      });
+      expect(settled.status).toBe("completed");
+      const { readStoryTimeline } = await import("../engine/narrative-memory/story-time.js");
+      const timeline = readStoryTimeline(storage, "book-1");
+      expect(timeline.points.map((point) => point.expression)).toEqual(["三天后"]);
+      expect(timeline.promises.map((promise) => promise.event)).toEqual(["决战"]);
+
+      await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        content: "次日，韩立回山。",
+        confirmedAt: "2026-07-02T01:00:00.000Z",
+      }, {
+        storage,
+        llmExtractor: async () => ({ events: [], mentionedEntities: [], timeAnchors: [{ kind: "relative", expression: "次日", evidenceText: "次日，韩立回山。", confidence: 0.9 }] }),
+      });
+      const after = readStoryTimeline(storage, "book-1");
+      expect(after.points.map((point) => point.expression)).toEqual(["次日"]);
+      expect(after.promises).toEqual([]);
+
+      const discarded = await handleChapterDiscardRange({ bookId: "book-1", bookRoot, fromChapter: 12, toChapter: 12, confirm: true, storage });
+      expect(discarded.ok).toBe(true);
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_story_time_anchor").get()?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+});

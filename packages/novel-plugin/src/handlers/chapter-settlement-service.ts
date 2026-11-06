@@ -46,6 +46,7 @@ import {
 } from "../engine/narrative-memory/settlement-risk-gate.js";
 import { chapterSummaryKey } from "../engine/jingwei/entry-identity.js";
 import { markArcSummariesStaleForChapter } from "../engine/narrative-memory/arc-summary-store.js";
+import { replaceChapterStoryTimeAnchors } from "../engine/narrative-memory/story-time.js";
 import { scheduleArcSummaryRefresh, type ArcSummaryScheduler } from "../engine/narrative-memory/arc-summary-service.js";
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
@@ -1083,6 +1084,8 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
         );
         pruneSettlementArtifacts(storage, input.bookId, input.chapterNumber);
         replaceChapterMentions(storage, input.bookId, input.chapterNumber, extraction.mentionedEntities);
+        // 故事时间锚：与出场名单一样按章整批替换（时间轴与矛盾读取时现算）。
+        replaceChapterStoryTimeAnchors(storage, input.bookId, input.chapterNumber, extraction.timeAnchors ?? [], Date.parse(settledAt) || Date.now());
         // 新埋伏笔在经纬里没有条目时写成待审草稿（伏笔唯一权威是经纬条目）；失败不阻断结算
         try {
           const drafts = stageForeshadowDrafts(storage, input.bookId, eventResults, entityDictionary);

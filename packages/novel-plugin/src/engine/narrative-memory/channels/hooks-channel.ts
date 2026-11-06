@@ -27,6 +27,8 @@ import { NarrativeContextCardSchema, type NarrativeContextCard } from "../types.
 export interface HooksChannelInput {
   readonly storage: StorageDatabase;
   readonly bookId: string;
+  /** 本书经纬条目（装配时读一次传进来，免得每个通道各读一遍整本）；缺省时通道自己读。 */
+  readonly jingweiEntries?: readonly StoryJingweiEntryRecord[];
   readonly currentChapter?: number;
   readonly runtimeSnapshot?: RuntimeStateSnapshot;
   readonly pendingHooks?: readonly string[];
@@ -328,7 +330,7 @@ export function createHooksChannel(): NarrativeRetrievalChannel<HooksChannelInpu
 
       const sections = await createStoryJingweiSectionRepository(input.storage).listEnabledForAi(input.bookId);
       const sectionById = new Map(sections.map((section) => [section.id, section]));
-      const entries = await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
+      const entries = input.jingweiEntries ?? await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
       const states = loadStates(input);
       const stateById = new Map(states.map((state) => [state.entryId, state]));
       const dueHooks: DueForeshadow[] = [];

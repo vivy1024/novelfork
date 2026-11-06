@@ -119,3 +119,41 @@ describe("timeline channel", () => {
     }
   });
 });
+
+describe("timeline channel · 故事时间卡", () => {
+  it("给出当前故事时间、近期时间锚与本章相关的约定；不用本章及之后的锚", async () => {
+    const { replaceChapterStoryTimeAnchors } = await import("../story-time.js");
+    const storage = await createStorage();
+    try {
+      replaceChapterStoryTimeAnchors(storage, "book-1", 9, [
+        { kind: "absolute", expression: "天元三年春", evidenceText: "天元三年春", confidence: 0.9, calendar: { era: "天元", year: 3, season: "春" } },
+        { kind: "deadline", expression: "一月后宗门大比", evidenceText: "一月后宗门大比", confidence: 0.9, offsetDays: 30, event: "宗门大比" },
+      ]);
+      replaceChapterStoryTimeAnchors(storage, "book-1", 10, [
+        { kind: "deadline", expression: "三日后决战", evidenceText: "三日后决战", confidence: 0.9, offsetDays: 3, event: "决战" },
+      ]);
+      replaceChapterStoryTimeAnchors(storage, "book-1", 11, [
+        { kind: "relative", expression: "次日", evidenceText: "次日", confidence: 0.9 },
+      ]);
+      replaceChapterStoryTimeAnchors(storage, "book-1", 12, [
+        { kind: "relative", expression: "十年后", evidenceText: "十年后", confidence: 0.9, offsetDays: 3600 },
+      ]);
+      const result = await createTimelineChannel().run({ storage, bookId: "book-1", currentChapter: 12 });
+      const card = result.cards.find((item) => item.tags.includes("story-time"));
+      expect(card).toBeDefined();
+      expect(card!.content).toContain("当前故事时间：天元3年");
+      expect(card!.content).toContain("第11章「次日」");
+      expect(card!.content).toContain("「决战」");
+      expect(card!.content).toContain("还有 2 日");
+      // 宗门大比还有 29 日、本章没提：不列
+      expect(card!.content).not.toContain("宗门大比");
+      expect(card!.content).not.toContain("十年后");
+
+      // 本章蓝图提到宗门大比 → 远期约定也列出
+      const withScene = await createTimelineChannel().run({ storage, bookId: "book-1", currentChapter: 12, sceneText: "韩立准备宗门大比" });
+      expect(withScene.cards.find((item) => item.tags.includes("story-time"))!.content).toContain("宗门大比");
+    } finally {
+      storage.close();
+    }
+  });
+});

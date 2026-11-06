@@ -142,6 +142,9 @@ const KIND_LABELS: Record<string, string> = {
   "orphan-location": "地点孤立",
   "scene-dead-acts": "死亡 / 离场后又行动",
   "scene-location-jump": "地点跳变无过渡",
+  "time-reversal": "时间倒流",
+  "time-two-places": "同一时间身处两地",
+  "time-age-mismatch": "年龄对不上",
 };
 
 export function findingKindLabel(kind: string): string {

@@ -437,3 +437,35 @@ describe("narrative memory observability router", () => {
     }
   });
 });
+
+describe("story-timeline 路由", () => {
+  it("返回时间点、约定、矛盾与总述；throughChapter 截断", async () => {
+    const storage = await createStorage();
+    runStorageMigrations(storage, { migrationsDir: join(process.cwd(), "../core/src/storage/migrations") });
+    const { replaceChapterStoryTimeAnchors } = await import("../engine/narrative-memory/story-time.js");
+    const { createBookRepository } = await import("../engine/jingwei/repositories/book-repo.js");
+    const now = new Date("2026-06-22T00:00:00.000Z");
+    await createBookRepository(storage).create({ id: "book-1", name: "测试书", jingweiMode: "dynamic", currentChapter: 2, createdAt: now, updatedAt: now });
+    try {
+      replaceChapterStoryTimeAnchors(storage, "book-1", 1, [{ kind: "absolute", expression: "天元五年", evidenceText: "天元五年", confidence: 0.9, calendar: { era: "天元", year: 5 } }]);
+      replaceChapterStoryTimeAnchors(storage, "book-1", 2, [
+        { kind: "absolute", expression: "天元三年", evidenceText: "天元三年", confidence: 0.9, calendar: { era: "天元", year: 3 } },
+        { kind: "deadline", expression: "三日后决战", evidenceText: "三日后决战", confidence: 0.9, offsetDays: 3, event: "决战" },
+      ]);
+      const app = createNarrativeMemoryRouter({ storage });
+      const response = await app.request("http://localhost/api/books/book-1/narrative-memory/story-timeline");
+      expect(response.status).toBe(200);
+      const payload = await response.json() as any;
+      expect(payload.points).toHaveLength(2);
+      expect(payload.promises.map((item: any) => item.event)).toEqual(["决战"]);
+      expect(payload.conflicts.map((item: any) => item.kind)).toEqual(["time-reversal"]);
+      expect(payload.summary).toContain("可能的矛盾 1 处");
+
+      const early = await (await app.request("http://localhost/api/books/book-1/narrative-memory/story-timeline?throughChapter=1")).json() as any;
+      expect(early.points).toHaveLength(1);
+      expect(early.conflicts).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+});

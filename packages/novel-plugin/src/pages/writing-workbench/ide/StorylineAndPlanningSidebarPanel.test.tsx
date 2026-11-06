@@ -113,6 +113,10 @@ vi.mock("../ChapterTimelinePanel", () => ({
   ),
 }));
 
+vi.mock("../StoryTimeAxisPanel", () => ({
+  StoryTimeAxisPanel: ({ bookId }: { bookId: string }) => <div data-testid="mock-story-time">{bookId}</div>,
+}));
+
 vi.mock("../NarrativeMemoryPanel", () => ({
   NarrativeMemorySummary: ({ onOpenCenter }: { onOpenCenter?: () => void }) => (
     <button type="button" data-testid="mock-memory-summary" onClick={() => onOpenCenter?.()}>
@@ -294,6 +298,13 @@ describe("StorylineAndPlanningSidebarPanel 随剧情推进的条目页签", () =
     fireEvent.click(screen.getByRole("tab", { name: /^时间线/ }));
     fireEvent.click(screen.getByRole("tab", { name: "按章走势" }));
     expect(screen.getByTestId("mock-chapter-timeline").textContent).toBe("book-1·");
+  });
+
+  it("「时间线」页可切到故事时间轴", () => {
+    renderProgress(entries);
+    fireEvent.click(screen.getByRole("tab", { name: /^时间线/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "故事时间" }));
+    expect(screen.getByTestId("mock-story-time").textContent).toBe("book-1");
   });
 
   it("空页签给出一句提示", () => {

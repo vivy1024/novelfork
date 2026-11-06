@@ -38,6 +38,7 @@ import { recomputeNarrativeStateSlots } from "../engine/narrative-memory/slot-re
 import { confirmArcSummary, listArcSummaries } from "../engine/narrative-memory/arc-summary-store.js";
 import { backfillArcSummaries, planArcSummaries } from "../engine/narrative-memory/arc-summary-service.js";
 import { selectVolumeOutlineEntry } from "../handlers/outline-volume.js";
+import { readStoryTimeline } from "../engine/narrative-memory/story-time.js";
 import {
   checkMountBelongsToBook,
   createScene,
@@ -671,6 +672,23 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       });
     } catch (error) {
       return c.json({ error: "structure-score-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // 故事时间轴：各章时间说法推算出的时间点（带推算链）、约定时间与时间矛盾。只读，现算。
+  app.get(`${base}/story-timeline`, (c) => {
+    const bookId = c.req.param("bookId");
+    const throughChapter = queryInteger(c, "throughChapter", "chapter");
+    try {
+      const db = storage();
+      ensureNarrativeMemorySchema(db);
+      const snapshot = readStoryTimeline(db, bookId, throughChapter);
+      const summary = snapshot.points.length === 0 && snapshot.promises.length === 0
+        ? "还没有记下故事内的时间。结算章节时会从正文里读出「三天后」「天元三年春」这类说法。"
+        : `已记下 ${snapshot.points.length} 处时间说法${snapshot.currentLabel ? `，当前推到${snapshot.currentLabel}` : ""}；约定 ${snapshot.promises.length} 件；可能的矛盾 ${snapshot.conflicts.length} 处。`;
+      return c.json({ ok: true, ...snapshot, summary });
+    } catch (error) {
+      return c.json({ error: "story-timeline-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 

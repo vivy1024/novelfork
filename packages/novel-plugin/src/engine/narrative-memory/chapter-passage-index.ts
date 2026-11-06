@@ -14,6 +14,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { Stats } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -30,6 +31,9 @@ const PASSAGE_HARD_SPLIT_CHARS = 500;
 const PASSAGE_SPLIT_OVERLAP_CHARS = 60;
 /** 收窗后下一窗以上一窗末段开头（重叠一段），仅当末段足够短。 */
 const PASSAGE_OVERLAP_PARAGRAPH_MAX = 120;
+
+/** 新鲜度检查时并发 stat 的批大小。 */
+const STAT_BATCH = 64;
 
 const ensuredStorages = new WeakSet<object>();
 
@@ -328,13 +332,21 @@ export async function ensureBookPassageIndexFresh(
   const reindexed: number[] = [];
   const pending: number[] = [];
   const ordered = [...files.values()].sort((a, b) => a.number - b.number);
+  // stat 按批并发：逐章 await 时 1000 章光等 stat 就约 100ms，每次写前召回都要付一遍。
+  const statInfo = new Map<number, Stats | null>();
+  for (let offset = 0; offset < ordered.length; offset += STAT_BATCH) {
+    if (performance.now() - startedAt > budgetMs) break;
+    const batch = ordered.slice(offset, offset + STAT_BATCH);
+    const infos = await Promise.all(batch.map((file) => stat(join(bookRoot, file.relativePath)).catch(() => null)));
+    batch.forEach((file, index) => statInfo.set(file.number, infos[index] ?? null));
+  }
   for (const file of ordered) {
-    if (performance.now() - startedAt > budgetMs) {
+    if (!statInfo.has(file.number) || performance.now() - startedAt > budgetMs) {
       pending.push(file.number);
       continue;
     }
     const path = join(bookRoot, file.relativePath);
-    const info = await stat(path).catch(() => null);
+    const info = statInfo.get(file.number);
     if (!info) continue;
     const size = info.size;
     const mtimeMs = Math.floor(info.mtimeMs);
@@ -454,7 +466,10 @@ export function searchPassageCandidates(storage: StorageDatabase, input: SearchP
     SELECT p.id AS passageId, p.chapter_number AS chapterNumber, p.start_offset AS startOffset, p.end_offset AS endOffset,
            bm25(narrative_chapter_passage_fts, 0.0, 1.0) * -1 AS score
     FROM narrative_chapter_passage_fts
-    JOIN narrative_chapter_passage p ON p.id = narrative_chapter_passage_fts.rowid
+    -- CROSS JOIN 固定 FTS 在外层：先 MATCH 出命中行，再按 rowid 回段落表。
+    -- 普通 JOIN 时规划器会把段落表放外层（按书 + 章号区间走索引），对每一行再跑一遍 MATCH，
+    -- 1000 章（4000 段）一次检索约 230ms，且随段落数线性涨；固定顺序后与段落总数基本无关。
+    CROSS JOIN narrative_chapter_passage p ON p.id = narrative_chapter_passage_fts.rowid
     WHERE narrative_chapter_passage_fts MATCH ?
       AND p.book_id = ?
       AND p.chapter_number BETWEEN ? AND ?

@@ -10,10 +10,13 @@ import { estimateTokens } from "../../jingwei/context/token-budget.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
 import { chapterSummaryToContextCard, jingweiEntryToContextCard, runtimeStateToContextCards } from "../context-card.js";
 import { NarrativeContextCardSchema, type NarrativeContextCard } from "../types.js";
+import { readStoryTimeline, type StoryTimelineSnapshot, type StoryTimePromise } from "../story-time.js";
 
 export interface TimelineChannelInput {
   readonly storage: StorageDatabase;
   readonly bookId: string;
+  /** 本书经纬条目（装配时读一次传进来，免得每个通道各读一遍整本）；缺省时通道自己读。 */
+  readonly jingweiEntries?: readonly StoryJingweiEntryRecord[];
   readonly currentChapter?: number;
   readonly runtimeSnapshot?: RuntimeStateSnapshot;
   readonly previousChapterTail?: string;
@@ -21,6 +24,8 @@ export interface TimelineChannelInput {
   readonly sceneText?: string;
   readonly recentChapterCount?: number;
   readonly limit?: number;
+  /** 故事时间卡列几条近期时间锚（默认 5）。 */
+  readonly storyTimeRecentAnchors?: number;
 }
 
 function visibleChapterFor(currentChapter?: number): number | undefined {
@@ -73,6 +78,78 @@ function previousTailCard(input: TimelineChannelInput): NarrativeContextCard | u
   });
 }
 
+/** 约定临近窗口：还有这么多天以内的约定都列出（与本章无关也列，避免写过头）。 */
+const PROMISE_SOON_DAYS = 7;
+/** 已过期的约定在这么多天内仍提醒（可能还没兑现）。 */
+const PROMISE_OVERDUE_DAYS = 30;
+
+function promiseRelevantText(input: TimelineChannelInput): string {
+  const scenes = input.sceneSpec?.scenes.map((scene) => [scene.conflict, scene.outcome, scene.location, ...scene.characters].join(" ")) ?? [];
+  return [input.sceneText ?? "", input.sceneSpec?.title ?? "", ...scenes].join("\n");
+}
+
+/** 与本章相关的未来约定：临近（≤7 日）、刚过期（≤30 日），或约定的事在本章蓝图 / 场景里被提到。 */
+export function selectRelevantPromises(snapshot: StoryTimelineSnapshot, relevantText: string, limit = 4): StoryTimePromise[] {
+  const text = relevantText.replace(/\s+/gu, "");
+  const scored = snapshot.promises
+    .map((promise) => {
+      const mentioned = promise.event.length >= 2 && text.includes(promise.event.replace(/\s+/gu, ""));
+      const soon = promise.daysLeft >= 0 && promise.daysLeft <= PROMISE_SOON_DAYS;
+      const overdue = promise.daysLeft < 0 && promise.daysLeft >= -PROMISE_OVERDUE_DAYS;
+      const future = promise.daysLeft > PROMISE_SOON_DAYS;
+      const score = (mentioned ? 100 : 0) + (soon ? 50 - promise.daysLeft : 0) + (overdue ? 20 + promise.daysLeft / 10 : 0) + (future && mentioned ? 5 : 0);
+      return { promise, score, keep: mentioned || soon || overdue };
+    })
+    .filter((item) => item.keep)
+    .sort((a, b) => b.score - a.score || a.promise.dueDay - b.promise.dueDay);
+  return scored.slice(0, limit).map((item) => item.promise);
+}
+
+function promiseLine(promise: StoryTimePromise): string {
+  const when = promise.daysLeft > 0 ? `还有 ${promise.daysLeft} 日` : promise.daysLeft === 0 ? "就是今天" : `已过 ${-promise.daysLeft} 日`;
+  return `- 「${promise.event}」：第${promise.chapterNumber}章约定（${promise.expression}），${when}。原文：${promise.evidenceText}`;
+}
+
+/** 故事时间卡：当前故事时间 + 近期时间锚 + 与本章相关的约定；只用本章之前的章。 */
+function storyTimeCard(input: TimelineChannelInput): NarrativeContextCard | undefined {
+  const through = visibleChapterFor(input.currentChapter);
+  const snapshot = readStoryTimeline(input.storage, input.bookId, through);
+  if (snapshot.currentDay === undefined && snapshot.promises.length === 0) return undefined;
+  const recent = snapshot.points.slice(-Math.max(1, input.storyTimeRecentAnchors ?? 5));
+  const promises = selectRelevantPromises(snapshot, promiseRelevantText(input));
+  const lines: string[] = [];
+  if (snapshot.currentLabel) lines.push(`当前故事时间：${snapshot.currentLabel}（截至第${snapshot.currentChapter}章）。`);
+  if (recent.length > 0) {
+    lines.push("近期时间线：");
+    for (const point of recent) lines.push(`- 第${point.chapterNumber}章「${point.expression}」→ ${point.calendarLabel ?? `故事第 ${point.storyDay + 1} 日`}`);
+  }
+  if (promises.length > 0) {
+    lines.push("相关的约定时间（写本章时注意别写过头或忘了兑现）：");
+    lines.push(...promises.map(promiseLine));
+  }
+  const openConflicts = snapshot.conflicts.filter((conflict) => through === undefined || conflict.chapterNumber >= through - 20);
+  if (openConflicts.length > 0) lines.push(`近期时间线有 ${openConflicts.length} 处可能的矛盾待作者确认，本章不要沿着矛盾继续推算。`);
+  const content = lines.join("\n");
+  return NarrativeContextCardSchema.parse({
+    id: `story-time:${input.bookId}:${input.currentChapter ?? "unknown"}`,
+    bookId: input.bookId,
+    sourceType: "fact",
+    sourceId: "story-timeline",
+    channel: "timeline",
+    title: "故事时间",
+    content,
+    brief: (snapshot.currentLabel ? `当前故事时间：${snapshot.currentLabel}` : content).slice(0, 180),
+    tags: ["story-time", "timeline", ...(promises.length > 0 ? ["story-time-promise"] : [])],
+    entities: [],
+    priority: 90,
+    importance: 80,
+    accessCount: 0,
+    ...(through !== undefined ? { validFromChapter: snapshot.currentChapter ?? through, validUntilChapter: through } : {}),
+    reason: "故事时间轴：由各章时间说法推算的当前时间、近期时间锚与临近的约定，防止时间倒流或约定被遗忘。",
+    estimatedTokens: Math.max(1, estimateTokens(content)),
+  });
+}
+
 export function createTimelineChannel(): NarrativeRetrievalChannel<TimelineChannelInput> {
   return {
     name: "timeline",
@@ -84,6 +161,9 @@ export function createTimelineChannel(): NarrativeRetrievalChannel<TimelineChann
       const tail = previousTailCard(input);
       if (tail) cards.push(tail);
 
+      const storyTime = storyTimeCard(input);
+      if (storyTime) cards.push(storyTime);
+
       if (input.runtimeSnapshot) {
         cards.push(...runtimeStateToContextCards({
           bookId: input.bookId,
@@ -94,7 +174,7 @@ export function createTimelineChannel(): NarrativeRetrievalChannel<TimelineChann
 
       const sections = await createStoryJingweiSectionRepository(input.storage).listEnabledForAi(input.bookId);
       const sectionById = new Map(sections.map((section) => [section.id, section]));
-      const entries = await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
+      const entries = input.jingweiEntries ?? await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
       const visibleChapter = visibleChapterFor(input.currentChapter);
       const minRecentChapter = visibleChapter === undefined ? undefined : Math.max(0, visibleChapter - recentChapterCount + 1);
       const summaryEntries = entries

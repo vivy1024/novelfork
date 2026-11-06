@@ -6,12 +6,15 @@ import { createStoryJingweiSectionRepository } from "../../jingwei/repositories/
 import { classifyCanonScope } from "../canon-scope.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
 import { jingweiEntryToContextCard, sceneSpecToContextCards } from "../context-card.js";
+import type { StoryJingweiEntryRecord } from "../../jingwei/types.js";
 import { NarrativeContextCardSchema, type NarrativeContextCard } from "../types.js";
 import { estimateTokens } from "../../jingwei/context/token-budget.js";
 
 export interface HardChannelInput {
   readonly storage: StorageDatabase;
   readonly bookId: string;
+  /** 本书经纬条目（装配时读一次传进来，免得每个通道各读一遍整本）；缺省时通道自己读。 */
+  readonly jingweiEntries?: readonly StoryJingweiEntryRecord[];
   readonly sceneSpec?: SceneSpec;
   readonly bookRulesText?: string;
   readonly complianceRules?: readonly string[];
@@ -59,7 +62,7 @@ export function createHardChannel(): NarrativeRetrievalChannel<HardChannelInput>
 
       const sections = await createStoryJingweiSectionRepository(input.storage).listEnabledForAi(input.bookId);
       const sectionById = new Map(sections.map((section) => [section.id, section]));
-      const entries = await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
+      const entries = input.jingweiEntries ?? await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
       // 只有「全书硬规则」（故事基线 / 世界模型 / 能力体系 / 写作规则）全量进 hard；
       // 实体型 canon（角色 / 势力 / 地点 / 道具）交给 state 通道按本章出场相关性召回（可降档），
       // 否则长篇几百条人设会把不可丢弃的 hard 撑爆，触发超预算拒写。分类只看经纬分类表态。

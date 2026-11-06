@@ -23,7 +23,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { refreshNarrativeEntityIndex } from "../narrative-entity/entity-index.js";
 import { listChapterFiles } from "../writing-resource/chapter-layout.js";
 import {
-  countSurvivingLedgerEvents,
+  loadSurvivingEventIds,
   ensureSettlementLedgerSchema,
   parseStaleLedgerFingerprint,
   staleLedgerFingerprint,
@@ -217,6 +217,7 @@ const PER_CHAPTER_DERIVED_TABLES = [
   "narrative_chapter_settlement",
   "narrative_settlement_artifact",
   "narrative_chapter_mention",
+  "narrative_story_time_anchor",
   "narrative_structure_score",
   "narrative_retrieval_log",
 ] as const;
@@ -332,6 +333,7 @@ export async function reconcileSettlementLedger(
   // 2) 台账引用的事件全部消失
   const orphaned: number[] = [];
   const alreadyStale: number[] = [];
+  let surviving: Set<string> | undefined;
   for (const row of readLedgerRows(storage, bookId)) {
     if (chapterListKnown && !existingSet.has(row.chapterNumber)) continue; // 第 1 步会整行删掉
     if (parseStaleLedgerFingerprint(row.contentFingerprint)) {
@@ -340,7 +342,8 @@ export async function reconcileSettlementLedger(
     }
     const ids = parseIds(row.eventIdsJson);
     if (ids.length === 0) continue;
-    if (countSurvivingLedgerEvents(storage, bookId, ids) === 0) orphaned.push(row.chapterNumber);
+    surviving ??= loadSurvivingEventIds(storage, bookId);
+    if (!ids.some((id) => surviving!.has(id))) orphaned.push(row.chapterNumber);
   }
 
   const changed = missing.size > 0 || orphaned.length > 0;

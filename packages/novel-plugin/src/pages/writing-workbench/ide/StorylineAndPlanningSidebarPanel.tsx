@@ -22,6 +22,7 @@ import { SidebarPageHead } from "./SidebarPageHead";
 import { SidebarTabs, sidebarTabPanelProps } from "./SidebarTabs";
 import { STORYLINE_SUB_TAB_LABELS, type SidebarFocusRequest, type StorylineSubTab } from "./sidebar-tabs-model";
 import { ChapterTimelinePanel } from "../ChapterTimelinePanel";
+import { StoryTimeAxisPanel } from "../StoryTimeAxisPanel";
 import { useNarrativeStructure } from "../useNarrativeStructure";
 import { StaleSettlementList, freshnessPath, useStaleSettlementCount } from "./StaleSettlementList";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
@@ -513,7 +514,7 @@ export function StorylineAndPlanningSidebarPanel({
   useEffect(() => {
     if (focusTab) setActiveSubTab(focusTab);
   }, [focusSeq, focusTab]);
-  const [timelineMode, setTimelineMode] = useState<"entries" | "chapters">("entries");
+  const [timelineMode, setTimelineMode] = useState<"entries" | "story-time" | "chapters">("entries");
 
   // 推进类条目：从宿主分好的「推进」分区按分类取叶子。
   const progressEntries = useMemo(() => ({
@@ -749,7 +750,7 @@ export function StorylineAndPlanningSidebarPanel({
 
         {activeSubTab === "timeline" && (
           <section aria-label="时间线" className="flex h-full min-h-0 flex-col gap-1.5">
-            <SidebarTabs<"entries" | "chapters">
+            <SidebarTabs<"entries" | "story-time" | "chapters">
               ariaLabel="时间线视图"
               idPrefix="storyline-timeline"
               size="sm"
@@ -757,6 +758,7 @@ export function StorylineAndPlanningSidebarPanel({
               onChange={setTimelineMode}
               tabs={[
                 { id: "entries", label: "时间线条目", count: progressEntries.timeline.length },
+                { id: "story-time", label: "故事时间" },
                 { id: "chapters", label: "按章走势" },
               ]}
             />
@@ -772,6 +774,8 @@ export function StorylineAndPlanningSidebarPanel({
                     onOpen: () => onOpen(node),
                   }))}
                 />
+              ) : timelineMode === "story-time" ? (
+                <StoryTimeAxisPanel bookId={bookId} />
               ) : (
                 <ChapterTimelinePanel bookId={bookId} {...(currentChapter > 0 ? { currentChapter } : {})} />
               )}

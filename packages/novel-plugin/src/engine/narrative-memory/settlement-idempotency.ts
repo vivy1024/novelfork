@@ -217,6 +217,21 @@ export function countSurvivingLedgerEvents(
   return surviving;
 }
 
+/**
+ * 全书仍「在」的事件 id（活跃表 + 回收站），一次读出。对账逐章核对台账时用它代替逐章查询：
+ * 逐章查询每章要两次 prepare + 两次索引查找，1000 章约 600ms；一次读出后每章只是集合查找。
+ */
+export function loadSurvivingEventIds(storage: StorageDatabase, bookId: string): Set<string> {
+  const ids = new Set<string>();
+  if (tableExists(storage, "narrative_event")) {
+    for (const row of storage.sqlite.prepare<{ id: string }>(`SELECT id FROM narrative_event WHERE book_id = ?`).all(bookId)) ids.add(row.id);
+  }
+  if (tableExists(storage, "narrative_event_trash")) {
+    for (const row of storage.sqlite.prepare<{ id: string }>(`SELECT id FROM narrative_event_trash WHERE book_id = ?`).all(bookId)) ids.add(row.id);
+  }
+  return ids;
+}
+
 export type ChapterSettlementIdempotencyDecision = Readonly<{
   /** settle=首次结算；resettle=正文已变，需要重新抽取；skip=同章同内容，跳过。 */
   decision: "settle" | "resettle" | "skip";

@@ -14,6 +14,8 @@ import type { NarrativeContextCard } from "../types.js";
 export interface StateChannelInput {
   readonly storage: StorageDatabase;
   readonly bookId: string;
+  /** 本书经纬条目（装配时读一次传进来，免得每个通道各读一遍整本）；缺省时通道自己读。 */
+  readonly jingweiEntries?: readonly StoryJingweiEntryRecord[];
   readonly currentChapter?: number;
   readonly sceneSpec?: SceneSpec;
   readonly sceneText?: string;
@@ -107,7 +109,7 @@ export function createStateChannel(): NarrativeRetrievalChannel<StateChannelInpu
 
       const sections = await createStoryJingweiSectionRepository(input.storage).listEnabledForAi(input.bookId);
       const sectionById = new Map(sections.map((section) => [section.id, section]));
-      const entries = await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
+      const entries = input.jingweiEntries ?? await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
 
       // 实体型 canon（角色 / 势力 / 地点 / 道具；hard 通道已不再全量注入）：只取本章出场的。
       // 出场 = sceneSpec 角色/地点 + 点名实体 + 正文/计划文本里出现的条目名或别名。

@@ -10,6 +10,7 @@ import {
   parseMentionedEntityNames,
   type ChapterMention,
 } from "./chapter-mention.js";
+import { parseStoryTimeAnchorDrafts, type StoryTimeAnchorDraft } from "./story-time.js";
 
 /** 当前台账中的一条 open fact，注入抽取 prompt 让 LLM 感知已有状态，只抽增量。 */
 export type CurrentLedgerFactSnapshot = Readonly<{
@@ -64,6 +65,8 @@ export type ChapterEventExtractionResult = Readonly<{
   warnings: readonly string[];
   /** 本章全量出场，供共现图使用；与增量事件分列。 */
   mentionedEntities: readonly ChapterMention[];
+  /** 本章故事内时间锚（证据须是正文原文）；旧抽取器不给时为空数组。 */
+  timeAnchors: readonly StoryTimeAnchorDraft[];
 }>;
 
 function extractJsonArray(text: string): unknown[] {
@@ -85,6 +88,8 @@ export function parseLLMNarrativeEventDrafts(content: string): readonly unknown[
 export interface ParsedChapterExtraction {
   readonly events: readonly unknown[];
   readonly mentionedEntities: readonly string[];
+  /** 原样透传，校验在 extractNarrativeEventsFromChapter 里做（要对正文核证据）。 */
+  readonly timeAnchors?: readonly unknown[];
 }
 
 function toParsedExtraction(parsed: unknown): ParsedChapterExtraction {
@@ -92,7 +97,11 @@ function toParsedExtraction(parsed: unknown): ParsedChapterExtraction {
   if (parsed && typeof parsed === "object") {
     const record = parsed as Record<string, unknown>;
     const events = Array.isArray(record.events) ? record.events : [];
-    return { events, mentionedEntities: parseMentionedEntityNames(record.mentionedEntities) };
+    return {
+      events,
+      mentionedEntities: parseMentionedEntityNames(record.mentionedEntities),
+      ...(Array.isArray(record.timeAnchors) ? { timeAnchors: record.timeAnchors } : {}),
+    };
   }
   return { events: [], mentionedEntities: [] };
 }
@@ -137,14 +146,8 @@ export function parseLLMChapterExtraction(content: string): ParsedChapterExtract
   return parsed.ok ? toParsedExtraction(parsed.value) : { events: [], mentionedEntities: [] };
 }
 
-function unpackExtractorPayload(payload: unknown): { events: readonly unknown[]; mentionedEntities: readonly string[] } {
-  if (Array.isArray(payload)) return { events: payload, mentionedEntities: [] };
-  if (payload && typeof payload === "object") {
-    const record = payload as Record<string, unknown>;
-    const events = Array.isArray(record.events) ? record.events : [];
-    return { events, mentionedEntities: parseMentionedEntityNames(record.mentionedEntities) };
-  }
-  return { events: [], mentionedEntities: [] };
+function unpackExtractorPayload(payload: unknown): ParsedChapterExtraction {
+  return toParsedExtraction(payload);
 }
 
 /** 受控状态谓词在 prompt 里的写法：一属性一个词，附一句取值说明。 */
@@ -167,6 +170,13 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   "返回严格 JSON 对象，不要输出解释。字段：",
   "1. events：数组。每项字段 eventType, subject, predicate, object, evidenceText, confidence, source, causedBy。",
   "2. mentionedEntities：字符串数组。本章出场的全部实体（人物/地点/势力/物品），含未发生状态变化的配角。这一项要全量，与增量事件无关。",
+  "3. timeAnchors：数组，本章正文里的故事内时间说法（没有就给空数组）。每项字段 kind, expression, evidenceText, confidence，按 kind 补充：",
+  "   absolute=历法时间（「天元三年春」「腊月初八」），补 calendar: { era?, year?, season?(春/夏/秋/冬), month?, day? }，只填正文写明的部分；",
+  "   relative=相对上文过了多久（「三天后」「次日」「半月过去」「十年后」），补 offsetDays（天数，月按 30、年按 360 算）；",
+  "   simultaneous=与上一章同时（「与此同时」「同一时刻」），不补字段；",
+  "   deadline=约定在未来某时发生的事（「三日后决战」「下月十五开榜」），补 offsetDays（距本章此刻还有几天）与 event（约定的事，几个字）；",
+  "   age=人物年龄（「十六岁的韩立」），补 subject（人名，优先用官方实体名单）与 age（数字）。",
+  "   expression 写正文里的时间说法原样；evidenceText 必须是正文原文短摘录。回忆、梦境、他人转述里的时间不算，不要输出。按正文先后排列。",
   "eventType 只能是 character_state_changed, relationship_changed, location_changed, hook_planted, hook_progressed, hook_triggered, hook_resolved, world_fact_introduced, timeline_advanced。",
   "evidenceText 必须是章节正文中的原文短摘录，source 固定为 settle。没有证据就不要输出该事件。",
   "causedBy 是可选字符串数组：只填本章或台账里真正导致本事件的前驱。可用同批 events 的 0 起始序号、subject，或 subject|predicate。对不上就省略，禁止猜测。",
@@ -450,11 +460,12 @@ export async function extractNarrativeEventsFromChapter(input: ChapterEventExtra
   }
 
   const deduped = dedupeDrafts(linkForeshadowKeys(validDrafts, input.openForeshadows, warnings));
+  const timeAnchors = parseStoryTimeAnchorDrafts(llmPayload.timeAnchors ?? [], input.content, warnings);
   const mentionedEntities = collectChapterMentions({
     content: input.content,
     dictionary: input.entityDictionary,
     eventNames: deduped.drafts.flatMap((draft) => [draft.subject, draft.object]),
     llmNames: llmPayload.mentionedEntities,
   });
-  return { drafts: deduped.drafts, deduped: deduped.deduped, warnings, mentionedEntities };
+  return { drafts: deduped.drafts, deduped: deduped.deduped, warnings, mentionedEntities, timeAnchors };
 }

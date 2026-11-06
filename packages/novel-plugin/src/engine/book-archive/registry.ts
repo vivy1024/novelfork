@@ -90,6 +90,7 @@ export const ARCHIVE_TABLES: readonly ArchiveTableSpec[] = [
   { name: "narrative_chapter_settlement", module: "narrative" },
   { name: "character_kernel", module: "narrative" },
   { name: "narrative_chapter_mention", module: "narrative" },
+  { name: "narrative_story_time_anchor", module: "narrative" },
   { name: "narrative_storyline", module: "narrative" },
   { name: "narrative_scene", module: "narrative" },
   { name: "narrative_scene_storyline", module: "narrative", parent: { table: "narrative_scene", column: "scene_id" } },

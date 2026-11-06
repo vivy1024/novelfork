@@ -15,6 +15,10 @@ import { createStorageDatabase, runStorageMigrations, type StorageDatabase } fro
 import { createBookRepository } from "../jingwei/repositories/book-repo.js";
 import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "../jingwei/repositories/section-repo.js";
+import { upsertNarrativeFact } from "./facts.js";
+import { chapterContentFingerprint, ensureSettlementLedgerSchema } from "./settlement-idempotency.js";
+import { ensureNarrativeMemorySchema } from "./storage.js";
+import { ensureStoryTimeSchema, replaceChapterStoryTimeAnchors } from "./story-time.js";
 
 export const LONG_BOOK_ID = "book-long";
 const baseTime = new Date("2026-06-22T00:00:00.000Z").getTime();
@@ -242,3 +246,170 @@ export async function seedLongBookChapterFiles(
     await writeFile(join(dir, `${String(chapter).padStart(4, "0")}_章${chapter}.md`), `# 第${chapter}章\n\n${body}\n`, "utf8");
   }
 }
+
+// ---------------------------------------------------------------- 规模化合成书（百万字基准 / 300 章回归）
+
+/** 合成书的人物与地点池（名字互不包含，便于检索断言）。 */
+const SCALE_SURNAMES = ["慕容", "司马", "欧阳", "上官", "东方", "南宫", "诸葛", "令狐", "皇甫", "独孤"];
+const SCALE_GIVEN = ["青云", "落雪", "长风", "听潮", "照夜", "寒江"];
+export const SCALE_CHARACTERS = SCALE_SURNAMES.flatMap((surname) => SCALE_GIVEN.map((given) => `${surname}${given}`));
+export const SCALE_LOCATIONS = ["临", "安", "平", "永", "宁", "广"].flatMap((head) => ["川", "陵", "州", "阳", "泽"].map((tail) => `${head}${tail}城`));
+/** 第 N 章独有的线索词（纯数字段两侧是标点，分词后能按词组命中）。 */
+export function scaleClue(chapter: number): string {
+  return `信物${chapter}`;
+}
+
+/** 第 N 章合成正文：约 targetChars 字，按章轮换人物与地点，并带少量可检索的独特词。 */
+export function scaleChapterProse(chapter: number, targetChars = 1000): string {
+  const a = SCALE_CHARACTERS[chapter % SCALE_CHARACTERS.length]!;
+  const b = SCALE_CHARACTERS[(chapter * 7 + 3) % SCALE_CHARACTERS.length]!;
+  const place = SCALE_LOCATIONS[chapter % SCALE_LOCATIONS.length]!;
+  const paragraphs = [
+    `${a}在第${chapter}章来到${place}，城门下人来人往，叫卖声此起彼伏。他把斗笠压低，沿着青石街慢慢走。`,
+    `${b}早在茶楼等候，见他进来只点了点头。两人说起旧事，窗外雨声渐密，檐角的铜铃被风吹得叮当作响。`,
+    `夜里${a}独自翻看那卷残谱，第${chapter}页的批注写着“${scaleClue(chapter)}”藏于井底，他记下这句，没有声张。`,
+  ];
+  const parts: string[] = [];
+  let length = 0;
+  let round = 0;
+  while (length < targetChars) {
+    const paragraph = `${paragraphs[round % paragraphs.length]!}${round >= paragraphs.length ? `（续${round}）` : ""}`;
+    parts.push(paragraph);
+    length += paragraph.length;
+    round += 1;
+  }
+  return parts.join("\n\n");
+}
+
+export interface ScaleBookOptions {
+  readonly chapters: number;
+  /** 每章正文字数（默认 1000；百万字基准用 1000 章 × 1000 字）。 */
+  readonly charsPerChapter?: number;
+  readonly chaptersPerVolume?: number;
+  /** 每章事实 / 事件条数（默认 6）。 */
+  readonly factsPerChapter?: number;
+  /** 伏笔条数（默认 chapters / 4）。 */
+  readonly hooks?: number;
+  /** 写章节文件（段落检索、对账需要）；默认 true。 */
+  readonly writeFiles?: boolean;
+}
+
+export interface ScaleBookSeedStats {
+  readonly chapters: number;
+  readonly totalChars: number;
+  readonly facts: number;
+  readonly events: number;
+  readonly hooks: number;
+  readonly entities: number;
+  readonly seedMs: number;
+}
+
+/**
+ * 规模化合成书：章节文件 + 经纬（章摘要 / 卷纲 / 人物 / 地点 / 伏笔）+ 已应用事件与事实 + 出场 + 结算台账 + 时间锚。
+ * 事件 / 事实 / 台账直接批量写 SQL（一个事务），只为造数据快；读取路径走被测的真实代码。
+ */
+export async function seedScaleBook(handle: LongBookHandle, options: ScaleBookOptions): Promise<ScaleBookSeedStats> {
+  const started = performance.now();
+  const { storage, bookRoot } = handle;
+  const chapters = options.chapters;
+  const perVolume = options.chaptersPerVolume ?? 50;
+  const factsPerChapter = options.factsPerChapter ?? 6;
+  const hookCount = options.hooks ?? Math.floor(chapters / 4);
+  const chars = options.charsPerChapter ?? 1000;
+
+  storage.sqlite.prepare(`UPDATE book SET current_chapter = ? WHERE id = ?`).run(chapters, LONG_BOOK_ID);
+  await seedChapterSummaries(storage, chapters, "new-first");
+  await seedVolumeOutline(storage, Math.ceil(chapters / perVolume), perVolume);
+  await seedForeshadowHooks(storage, Array.from({ length: hookCount }, (_, index) => ({
+    id: `scale-hook-${index + 1}`,
+    title: scaleClue(index * 4 + 1),
+    plantedChapter: index * 4 + 1,
+    fields: { triggerKeywords: [scaleClue(index * 4 + 1)] },
+  })));
+  await ensureSection(storage, "sec-characters", "characters", "人物");
+  await ensureSection(storage, "sec-locations", "locations", "地点");
+  const repo = createStoryJingweiEntryRepository(storage);
+  const now = new Date(baseTime);
+  const entityEntries = [
+    ...SCALE_CHARACTERS.map((name, index) => ({ id: `scale-char-${index + 1}`, sectionId: "sec-characters", title: name, category: "characters" })),
+    ...SCALE_LOCATIONS.map((name, index) => ({ id: `scale-loc-${index + 1}`, sectionId: "sec-locations", title: name, category: "locations" })),
+  ];
+  for (const entry of entityEntries) {
+    await repo.create({
+      id: entry.id, bookId: LONG_BOOK_ID, sectionId: entry.sectionId, title: entry.title, contentMd: entry.title, summaryMd: null,
+      tags: [], aliases: [], customFields: {}, relatedChapterNumbers: [], relatedEntryIds: [], visibilityRule: { type: "tracked" },
+      participatesInAi: true, tokenBudget: null, priorityTier: "relevant", importance: 50, summaryL0: null,
+      createdAt: now, updatedAt: now, category: entry.category, fields: {},
+    });
+  }
+  const charId = (name: string) => `scale-char-${SCALE_CHARACTERS.indexOf(name) + 1}`;
+  const locId = (name: string) => `scale-loc-${SCALE_LOCATIONS.indexOf(name) + 1}`;
+
+  ensureNarrativeMemorySchema(storage);
+  ensureSettlementLedgerSchema(storage);
+  const insertEvent = storage.sqlite.prepare(`
+    INSERT INTO narrative_event (id, book_id, chapter_number, event_type, subject, predicate, object, evidence_text, confidence, source, status, risk_level, subject_entry_id, object_entry_id, created_at, applied_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0.9, 'settle', 'applied', 'low', ?, ?, ?, ?)
+  `);
+  const insertMention = storage.sqlite.prepare(`
+    INSERT OR IGNORE INTO narrative_chapter_mention (book_id, chapter_number, position, entity_name, entry_id, source) VALUES (?, ?, ?, ?, ?, 'llm')
+  `);
+  const insertLedger = storage.sqlite.prepare(`
+    INSERT OR REPLACE INTO narrative_chapter_settlement (book_id, chapter_number, content_fingerprint, settled_at, settlement_count, event_ids_json)
+    VALUES (?, ?, ?, '2026-10-01T00:00:00.000Z', 1, ?)
+  `);
+  let facts = 0;
+  let events = 0;
+  const bodies = new Map<number, string>();
+  storage.sqlite.transaction(() => {
+    for (let chapter = 1; chapter <= chapters; chapter += 1) {
+      const body = scaleChapterProse(chapter, chars);
+      bodies.set(chapter, body);
+      const at = new Date(baseTime + chapter * 60_000).toISOString();
+      const a = SCALE_CHARACTERS[chapter % SCALE_CHARACTERS.length]!;
+      const b = SCALE_CHARACTERS[(chapter * 7 + 3) % SCALE_CHARACTERS.length]!;
+      const place = SCALE_LOCATIONS[chapter % SCALE_LOCATIONS.length]!;
+      const ids: string[] = [];
+      for (let k = 0; k < factsPerChapter; k += 1) {
+        const id = `scale-ev-${chapter}-${k}`;
+        ids.push(id);
+        const kind = k % 3;
+        if (kind === 0) insertEvent.run(id, LONG_BOOK_ID, chapter, "location_changed", a, "所在", place, `${a}在第${chapter}章来到${place}`, charId(a), locId(place), at, at);
+        else if (kind === 1) insertEvent.run(id, LONG_BOOK_ID, chapter, "relationship_changed", a, `第${k}次会面`, b, `${b}早在茶楼等候`, charId(a), charId(b), at, at);
+        else insertEvent.run(id, LONG_BOOK_ID, chapter, "character_state_changed", b, "境界", `第${Math.floor(chapter / 20) + 1}重`, `${b}早在茶楼等候`, charId(b), null, at, at);
+        events += 1;
+        // 事实：同槽位新值关闭旧值（valid_until），模拟真实台账的开闭分布
+        const category = kind === 0 ? "location" : kind === 1 ? "relationship" : "character_state";
+        const subject = kind === 2 ? b : a;
+        const predicate = kind === 0 ? "所在" : kind === 1 ? `第${k}次会面` : "境界";
+        const object = kind === 0 ? place : kind === 1 ? b : `第${Math.floor(chapter / 20) + 1}重`;
+        upsertNarrativeFact(storage, {
+          id: `scale-fact-${chapter}-${k}`, bookId: LONG_BOOK_ID, subject, predicate, object, category, layer: "dynamic", confidence: 0.9,
+          sourceType: "event", sourceId: id, sourceChapter: chapter, validFromChapter: chapter,
+          ...(chapter < chapters - 30 && kind !== 1 ? { validUntilChapter: chapter + 1 } : {}),
+          evidenceText: `第${chapter}章`, createdAt: at, updatedAt: at,
+          ...(kind === 2 ? { subjectEntryId: charId(b) } : { subjectEntryId: charId(a) }),
+        });
+        facts += 1;
+      }
+      [a, b, place].forEach((name, position) => insertMention.run(LONG_BOOK_ID, chapter, position, name, name === place ? locId(place) : charId(name)));
+      insertLedger.run(LONG_BOOK_ID, chapter, chapterContentFingerprint(`# 第${chapter}章\n\n${body}\n`), JSON.stringify(ids));
+    }
+  })();
+  ensureStoryTimeSchema(storage);
+  storage.sqlite.transaction(() => {
+    for (let chapter = 1; chapter <= chapters; chapter += 1) {
+      replaceChapterStoryTimeAnchors(storage, LONG_BOOK_ID, chapter, chapter % 10 === 0
+        ? [{ kind: "deadline", expression: "三日后决战", evidenceText: "三日后", confidence: 0.8, offsetDays: 3, event: `决战${chapter}` }]
+        : [{ kind: "relative", expression: "次日", evidenceText: "次日", confidence: 0.9, offsetDays: 1 }]);
+    }
+  })();
+
+  if (options.writeFiles !== false) {
+    await seedLongBookChapterFiles(bookRoot, chapters, Object.fromEntries(bodies));
+  }
+  let totalChars = 0;
+  for (const body of bodies.values()) totalChars += body.length;
+  return { chapters, totalChars, facts, events, hooks: hookCount, entities: entityEntries.length, seedMs: Math.round(performance.now() - started) };
+}
+

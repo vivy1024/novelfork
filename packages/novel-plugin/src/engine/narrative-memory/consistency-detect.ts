@@ -12,6 +12,7 @@ import {
   type ConsistencyIgnoreKey,
   type SceneCheckFinding,
 } from "./scene-check.js";
+import { readStoryTimeline, type StoryTimeConflict, type StoryTimeConflictKind } from "./story-time.js";
 
 /**
  * 经纬 × 叙事记忆 一致性检测（纰漏检测 v1）。
@@ -24,7 +25,7 @@ import {
  * try/catch 兜底，旧表结构下静默降级为「无检测结果」，不阻断软提醒。
  */
 
-export type ConsistencyFindingKind = "realm-drift" | "orphan-location" | typeof SCENE_DEAD_ACTS | typeof SCENE_LOCATION_JUMP;
+export type ConsistencyFindingKind = "realm-drift" | "orphan-location" | typeof SCENE_DEAD_ACTS | typeof SCENE_LOCATION_JUMP | StoryTimeConflictKind;
 
 export interface ConsistencyFinding {
   readonly kind: ConsistencyFindingKind;
@@ -233,6 +234,23 @@ function fromSceneFinding(finding: SceneCheckFinding): Omit<ConsistencyFinding, 
   };
 }
 
+/** 故事时间矛盾 → 体检项（忽略键：实体 id 用 time:<人物>，记忆事实 id 用时间锚 id）。 */
+export function fromStoryTimeConflict(conflict: StoryTimeConflict): Omit<ConsistencyFinding, "ignoreKey"> {
+  return {
+    kind: conflict.kind,
+    severity: conflict.severity,
+    title: conflict.title,
+    detail: conflict.detail,
+    entity: conflict.entity,
+    entityId: `time:${conflict.entity}`,
+    chapterNumber: conflict.chapterNumber,
+    evidenceText: conflict.evidenceText,
+    factId: conflict.anchorId,
+    memoryChapter: conflict.otherChapter,
+    explanation: conflict.explanation,
+  };
+}
+
 export async function runConsistencyCheck(storage: StorageDatabase, input: ConsistencyCheckInput): Promise<ConsistencyCheckResult> {
   let jingweiFindings: ConsistencyFinding[];
   try {
@@ -256,6 +274,15 @@ export async function runConsistencyCheck(storage: StorageDatabase, input: Consi
     // 场景校验只提示不拦截；读失败时按「未检出」降级，不影响经纬侧检测。
     sceneFindings = [];
   }
+  let timeFindings: Omit<ConsistencyFinding, "ignoreKey">[];
+  try {
+    timeFindings = readStoryTimeline(storage, input.bookId, input.asOfChapter).conflicts
+      .filter((conflict) => !input.sceneChapters || input.sceneChapters.includes(conflict.chapterNumber))
+      .map(fromStoryTimeConflict);
+  } catch {
+    // 时间线读失败按「未检出」降级。
+    timeFindings = [];
+  }
   let ignoredKeys: Set<string>;
   try {
     ignoredKeys = new Set(listConsistencyIgnores(storage, input.bookId).map(ignoreKeyString));
@@ -264,7 +291,7 @@ export async function runConsistencyCheck(storage: StorageDatabase, input: Consi
   }
   const findings: ConsistencyFinding[] = [];
   const ignored: ConsistencyFinding[] = [];
-  for (const raw of [...jingweiFindings, ...sceneFindings]) {
+  for (const raw of [...jingweiFindings, ...sceneFindings, ...timeFindings]) {
     const finding: ConsistencyFinding = { ...raw, ignoreKey: consistencyIgnoreKeyOf(raw) };
     (ignoredKeys.has(ignoreKeyString(finding.ignoreKey!)) ? ignored : findings).push(finding);
   }
@@ -274,8 +301,8 @@ export async function runConsistencyCheck(storage: StorageDatabase, input: Consi
     findings,
     ignored,
     summary: findings.length === 0
-      ? `经纬设定、叙事记忆现状与场景衔接未发现纰漏。${ignoredNote}`
-      : `发现 ${findings.length} 处设定、现状或场景衔接上的可能矛盾。${ignoredNote}`,
+      ? `经纬设定、叙事记忆现状、场景衔接与故事时间未发现纰漏。${ignoredNote}`
+      : `发现 ${findings.length} 处设定、现状、场景衔接或故事时间上的可能矛盾。${ignoredNote}`,
   };
 }
 

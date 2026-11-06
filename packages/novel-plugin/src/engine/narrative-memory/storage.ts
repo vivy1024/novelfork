@@ -1,6 +1,8 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { z } from "zod";
 
+import { ensureStoryTimeSchema } from "./story-time.js";
+
 import {
   NarrativeEventSchema,
   NarrativeEventStatusSchema,
@@ -724,6 +726,9 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_narrative_arc_summary_segment
       ON narrative_arc_summary(book_id, kind, segment_id);
   `);
+
+  // 故事时间锚（同步自迁移 0043），见 story-time.ts。
+  ensureStoryTimeSchema(storage);
 }
 
 /** 每个数据库连接只做一次存量谓词归一的 slot_key 重算。 */
