@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     nodes: unknown[];
     selectedNode?: { id: string } | null;
     openRequest?: { bookId: string; node: { id: string }; seq: number } | null;
+    focusRequest?: { bookId: string; tab: string; seq: number } | null;
     chatSlot?: ReactNode;
     bookSessions?: readonly { id: string; title: string; updatedAt?: string }[];
     activeSessionId?: string | null;
@@ -31,7 +32,9 @@ vi.mock("./RuntimeNarratorPanelMount", () => ({
   },
 }));
 
-vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide", () => ({
+vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide", async () => ({
+  // 页签模型是纯函数，用真实实现
+  parseStorylineViewArtifact: (await import("@vivy1024/novelfork-novel-plugin/pages/writing-workbench/sidebar-tabs-model")).parseStorylineViewArtifact,
   IdeWorkbench: (props: (typeof mocks.workbenchProps)[number]) => {
     mocks.workbenchProps.push(props);
     return (
@@ -558,6 +561,16 @@ describe("RuntimeWritingWorkbenchRoute", () => {
       await waitFor(() => expect(screen.getByTestId("workbench-open-notice").textContent).toContain("没在资源树里找到「第九章」"));
       expect(screen.getByTestId("ide-workbench-mock")).toBeTruthy();
       expect(mocks.workbenchProps.at(-1)?.selectedNode ?? null).toBeNull();
+      expect(mocks.workbenchProps.at(-1)?.openRequest ?? null).toBeNull();
+    });
+
+    it("结果卡「去时间线看」把侧栏切到故事推进 › 时间线，不当成资源去找", async () => {
+      const client = { getWorkspace: vi.fn(async () => workspaceWith([1])), listNarrators: vi.fn(async () => [narrator]) };
+      renderRoute(client);
+      await screen.findByTestId("runtime-narrator-panel-mount-mock");
+      await act(async () => mocks.mountProps.at(-1)!.onOpenArtifact!({ kind: "workbench-view", id: "storyline:timeline", title: "故事推进 › 时间线" }));
+      await waitFor(() => expect(mocks.workbenchProps.at(-1)?.focusRequest).toEqual({ bookId: "book-1", tab: "timeline", seq: 1 }));
+      expect(screen.queryByTestId("workbench-open-notice")).toBeNull();
       expect(mocks.workbenchProps.at(-1)?.openRequest ?? null).toBeNull();
     });
   });

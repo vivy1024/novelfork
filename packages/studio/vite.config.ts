@@ -129,6 +129,7 @@ export default defineConfig({
       "@shared": runtimePaths.sharedRoot,
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/ide/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/writing-progress-event": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/writing-progress-event.ts"),
+      "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/sidebar-tabs-model": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/ide/sidebar-tabs-model.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages": resolve(__dirname, "../novel-plugin/src/pages/index.ts"),
       "@vivy1024/novelfork-core/storage": resolve(__dirname, "../core/src/storage/index.ts"),

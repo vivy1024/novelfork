@@ -19,7 +19,13 @@ function node(kind: WorkbenchResourceNode["kind"], metadata?: Record<string, unk
 
 describe("toTabView：侧栏每种入口节点的 tab 归属工作区", () => {
   it.each([
-    ["角色卡/世界录条目", node("jingwei-entry"), "characters-lore"],
+    ["角色卡/设定条目", node("jingwei-entry"), "characters-lore"],
+    ["静态设定条目（势力）", node("jingwei-entry", { category: "factions" }), "characters-lore"],
+    // 随剧情变化的条目列在故事推进的页签里，从那里点开时标签留在故事推进
+    ["伏笔条目", node("jingwei-entry", { category: "foreshadowing" }), "storyline"],
+    ["时间线条目", node("jingwei-entry", { category: "timeline" }), "storyline"],
+    ["章摘要条目", node("jingwei-entry", { category: "chapter-summaries" }), "storyline"],
+    ["卷纲条目", node("jingwei-entry", { category: "outline" }), "storyline"],
     ["经纬分区", node("jingwei-section"), "characters-lore"],
     ["经纬入口", node("jingwei"), "characters-lore"],
     ["故事画布（story-progression）", node("story-progression"), "storyline"],

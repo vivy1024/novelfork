@@ -1,8 +1,20 @@
 import { lazy, Suspense } from "react";
 import { FolderTree, Loader2 } from "lucide-react";
+import {
+  WORKBENCH_VIEW_ARTIFACT_KIND,
+  storylineViewArtifactId,
+} from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/sidebar-tabs-model";
 
+import { Button } from "@/components/ui/button";
 import { ToolResultSurface } from "./ToolResultSurface";
-import { asRecord, getNumber, getString, getToolResultData, type ToolResultRenderer, type ToolResultRendererContext } from "./types";
+import { asRecord, getNumber, getString, getToolResultData, type ToolResultArtifact, type ToolResultRenderer, type ToolResultRendererContext } from "./types";
+
+/** 「去时间线看」：写作工作台据此把侧栏切到故事推进 › 时间线。 */
+const STORYLINE_TIMELINE_ARTIFACT: ToolResultArtifact = {
+  kind: WORKBENCH_VIEW_ARTIFACT_KIND,
+  id: storylineViewArtifactId("timeline"),
+  title: "故事推进 › 时间线",
+};
 
 /**
  * lore.read / memory.graph 的树形结果卡。
@@ -200,10 +212,23 @@ export const LoreTreeCard: ToolResultRenderer = (context: ToolResultRendererCont
 
       {/* 事件是时序数据，不属于分类树；单独一行交代，避免混进层级 */}
       {hasTree && events.count > 0 ? (
-        <p className="text-xs text-muted-foreground" data-testid="tool-result-lore-tree-events">
-          另有 {events.count} 个叙事事件（第 {events.chapters[0]}–{events.chapters[events.chapters.length - 1]} 章），
-          属于时序数据，在「故事推进 › 时间线」里看。
-        </p>
+        <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground" data-testid="tool-result-lore-tree-events">
+          <span>
+            另有 {events.count} 个叙事事件（第 {events.chapters[0]}–{events.chapters[events.chapters.length - 1]} 章），
+            按章排在「故事推进 › 时间线」的「按章走势」里。
+          </span>
+          {/* 只有挂在写作工作台里的对话能切侧栏；独立对话页没有侧栏，只给文字说明 */}
+          {context.onOpenArtifact ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="tool-result-lore-tree-open-timeline"
+              onClick={() => context.onOpenArtifact?.(STORYLINE_TIMELINE_ARTIFACT)}
+            >
+              去时间线看
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </ToolResultSurface>
   );

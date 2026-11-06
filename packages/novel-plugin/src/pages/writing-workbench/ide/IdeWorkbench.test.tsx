@@ -23,6 +23,7 @@ const saveHarness = vi.hoisted(() => ({
   resourceTrees: [] as Array<ComponentProps<typeof import("../WorkbenchResourceTree").WorkbenchResourceTree>>,
   writeView: null as ComponentProps<typeof import("../WriteViewPanel").WriteViewPanel> | null,
   fileTreeNodes: [] as WorkbenchResourceNode[],
+  storyline: null as ComponentProps<typeof import("./StorylineAndPlanningSidebarPanel").StorylineAndPlanningSidebarPanel> | null,
 }));
 
 vi.mock("allotment", async () => {
@@ -136,7 +137,12 @@ vi.mock("../panels/BookSettingsPanel", () => ({ BookSettingsPanel: () => null })
 vi.mock("../NarrativeMemoryPanel", () => ({ NarrativeMemoryPanel: () => null }));
 vi.mock("./SkillsAndStyleSidebarPanel", () => ({ SkillsAndStyleSidebarPanel: () => null }));
 vi.mock("./CharactersAndLoreSidebarPanel", () => ({ CharactersAndLoreSidebarPanel: () => null }));
-vi.mock("./StorylineAndPlanningSidebarPanel", () => ({ StorylineAndPlanningSidebarPanel: () => null }));
+vi.mock("./StorylineAndPlanningSidebarPanel", () => ({
+  StorylineAndPlanningSidebarPanel: (props: ComponentProps<typeof import("./StorylineAndPlanningSidebarPanel").StorylineAndPlanningSidebarPanel>) => {
+    saveHarness.storyline = props;
+    return null;
+  },
+}));
 vi.mock("../EntityDetailDrawer", () => ({ EntityDetailDrawer: () => null }));
 vi.mock("../jingwei/JingweiSidebarToolbar", () => ({ JingweiSidebarToolbar: () => null }));
 vi.mock("../WriteViewPanel", () => ({
@@ -174,6 +180,7 @@ vi.mock("../lore-workspace-split", () => ({
     return [...byCategory.entries()].map(([category, list]) => ({ category, name: category, entries: list }));
   },
   memoryFactLabel: (value: string) => value,
+  workspaceForCategory: (value: string) => (["outline", "foreshadowing", "conflicts", "relationships", "timeline", "chapter-summaries"].includes(value) ? "progress" : "settings"),
 }));
 vi.mock("../../../engine/jingwei/unified-categories", () => ({ CATEGORY_META: [], normalizeCategory: (value: string) => value }));
 vi.mock("@/components/ui/toast", () => ({ toast: vi.fn() }));
@@ -1028,6 +1035,34 @@ describe("IdeWorkbench 静默交互修复", () => {
     expect(volumeSegment.className).toContain("cursor-pointer");
     fireEvent.click(volumeSegment);
     expect(onOpen).toHaveBeenCalledWith(volumeDir);
+  });
+
+  it("推进分区交给故事推进侧栏；一键修跳随剧情变化的分类、宿主 focusRequest 都落到对应页签", async () => {
+    saveHarness.renderPanels = true;
+    saveHarness.storyline = null;
+    const runtimeFetch = vi.fn(async (input: string) => {
+      if (input.includes("/jingwei/entries")) {
+        return { entries: [{ id: "t1", title: "前史", category: "timeline", contentMd: "" }, { id: "c1", title: "韩立", category: "characters", contentMd: "" }] };
+      }
+      if (input.includes("narrative-memory/facts")) return { facts: [] };
+      return {};
+    });
+    const { rerender } = render(<IdeWorkbench bookId="book-1" nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} runtimeFetch={runtimeFetch} />);
+    await screen.findByTestId("ide-workbench");
+    await waitFor(() => expect(saveHarness.commands?.openStorylineTab).toBeTypeOf("function"));
+    await waitFor(() => expect(saveHarness.storyline?.progressTreeNodes?.map((node) => node.id)).toEqual(["jingwei-workspace-progress"]));
+
+    act(() => { saveHarness.writeView!.onOpenLorePanel!("timeline"); });
+    await waitFor(() => expect(saveHarness.storyline?.focusRequest).toMatchObject({ tab: "timeline", seq: 1 }));
+
+    act(() => { saveHarness.commands!.openStorylineTab!("foreshadowing"); });
+    await waitFor(() => expect(saveHarness.storyline?.focusRequest).toMatchObject({ tab: "foreshadowing", seq: 2 }));
+
+    rerender(<IdeWorkbench bookId="book-1" nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} runtimeFetch={runtimeFetch} focusRequest={{ bookId: "book-1", tab: "chapter-summaries", seq: 1 }} />);
+    await waitFor(() => expect(saveHarness.storyline?.focusRequest).toMatchObject({ tab: "chapter-summaries", seq: 3 }));
+    // 别的书的请求不认
+    rerender(<IdeWorkbench bookId="book-1" nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} runtimeFetch={runtimeFetch} focusRequest={{ bookId: "book-2", tab: "timeline", seq: 2 }} />);
+    expect(saveHarness.storyline?.focusRequest).toMatchObject({ tab: "chapter-summaries", seq: 3 });
   });
 
   it("写作视图一键修跳分类：经统一打开链路解析嵌套的分类节点", async () => {

@@ -14,8 +14,8 @@ import { PanelManager, type PanelId } from "./panel-manager";
  *
  * 彻底消除经纬与叙事记忆技术割裂：
  * - `resources`：资源（书里的文件树 + 分析工具，无标签时中央显示作品总览）
- * - `characters-lore`：角色与设定（人物卡、世界观、门派势力）
- * - `storyline`：故事脉络（章节与大纲、章后事实待审；顶部打开故事画布：下一章 / 推进 / 故事树）
+ * - `characters-lore`：作品基础（角色册、人物表、按分类分页的设定条目、草案）
+ * - `storyline`：故事推进（章节与大纲、伏笔 / 矛盾 / 剧情线 / 关系 / 时间线 / 章摘要、章后事实；顶部打开故事画布）
  *
  * 旧版的 `explorer`（资源管理器）与 `tools`（分析工具）已合并为 `resources`；
  * 落盘的旧值只在 use-ide-tabs 的读取边界归一，运行时不再出现。

@@ -266,7 +266,7 @@ export const PANEL_CLASSIFICATIONS: readonly PanelClassification[] = [
     panel: "StorylineAndPlanningSidebarPanel",
     lens: "progression",
     role: "IDE 侧边栏大纲与推进导航",
-    explanation: { what: "章节与大纲、章后事实两个子页签，顶部是位置条、下一步提醒与「打开故事画布」", why: "在编写正文时快速对照大纲规划，下一章建议引用故事画布「下一章」页的同一份计划", action: "点击跳至大纲节点，或打开故事画布看下一章建议与伏笔账本" },
+    explanation: { what: "章节与大纲、伏笔、矛盾、剧情线、关系、时间线、章摘要、章后事实几个页签，顶部是位置条、下一步提醒与「打开故事画布」", why: "在编写正文时快速对照大纲规划，下一章建议引用故事画布「下一章」页的同一份计划", action: "点击跳至大纲节点，或打开故事画布看下一章建议与伏笔账本" },
   },
   {
     panel: "CreativeCompassPanel",

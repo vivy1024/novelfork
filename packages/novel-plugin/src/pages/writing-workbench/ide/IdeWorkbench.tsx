@@ -19,7 +19,7 @@ import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 import { createLoreTreesNode, createMemoryCenterNode, createStoryProgressionNode, createToolSectionNodes, createWorkflowNode } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
-import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
+import { groupEntriesByCategory, memoryFactLabel, workspaceForCategory } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
 import type { SelectionCandidate } from "../resource-viewers/ChapterEditor";
 import type { JingweiEntrySavePayload } from "../JingweiEntryEditor";
@@ -33,6 +33,7 @@ import { StyleDistillationWorkspace, type StyleDistillationFetchJson } from "./S
 import { StyleVaultPanel } from "./StyleVaultPanel";
 import { CharactersAndLoreSidebarPanel, type EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
+import { storylineTabForCategory, type SidebarFocusRequest, type StorylineSubTab } from "./sidebar-tabs-model";
 import { EntityDetailDrawer } from "../EntityDetailDrawer";
 import { JingweiSidebarToolbar } from "../jingwei/JingweiSidebarToolbar";
 import { WriteViewPanel } from "../WriteViewPanel";
@@ -113,6 +114,9 @@ export function toTabView(node: WorkbenchResourceNode): TabView {
   // 故事推进大屏画布与叙事记忆条目归入故事推进工作区。
   if (node.metadata?.isNarrativeMemoryEntry || node.metadata?.isMemoryCenter) return "storyline";
   if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "storyline";
+  // 随剧情变化的设定条目（伏笔 / 矛盾 / 时间线 / 章摘要 / 卷纲…）在故事推进里列着，
+  // 从那里点开时标签留在故事推进；归属只看 CATEGORY_META.defaultLayer。
+  if (node.kind === "jingwei-entry" && typeof node.metadata?.category === "string" && workspaceForCategory(node.metadata.category) === "progress") return "storyline";
   if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "characters-lore";
   return "resources";
 }
@@ -162,6 +166,12 @@ export interface WorkbenchOpenRequest {
   readonly seq: number;
 }
 
+export interface WorkbenchFocusRequest {
+  readonly bookId: string;
+  readonly tab: StorylineSubTab;
+  readonly seq: number;
+}
+
 export interface IdeWorkbenchProps {
   bookId?: string;
   repositoryPath?: string;
@@ -172,6 +182,8 @@ export interface IdeWorkbenchProps {
    * 每个 seq 只处理一次；bookId 与当前书不同的请求忽略。
    */
   openRequest?: WorkbenchOpenRequest | null;
+  /** 宿主要求把侧栏切到故事推进的某一页（如对话结果卡「在故事推进打开时间线」）；seq 变化才生效。 */
+  focusRequest?: WorkbenchFocusRequest | null;
   onOpen: (node: WorkbenchResourceNode) => void;
   onDeselectNode?: () => void;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
@@ -216,7 +228,7 @@ const SIDEBAR_VIEWS: { id: SidebarView; icon: LucideIcon; label: string; title: 
   { id: "resources", icon: FolderTree, label: "资源", title: "文件与分析工具" },
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
   // 作者语言入口：作品基础统一角色册与世界录，故事推进统一章节/语境/演进。
-  { id: "characters-lore", icon: BookOpen, label: "作品基础", title: "角色册与世界录", hasPageHead: true },
+  { id: "characters-lore", icon: BookOpen, label: "作品基础", title: "角色册、人物表与设定条目", hasPageHead: true },
   { id: "storyline", icon: Route, label: "故事推进", title: "章节、语境与故事演进", hasPageHead: true },
   { id: "skills-style", icon: Feather, label: "技能文风", title: "写作技能与文风", hasPageHead: true },
 ];
@@ -311,6 +323,7 @@ export function IdeWorkbench({
   nodes,
   selectedNode,
   openRequest,
+  focusRequest,
   onOpen,
   onSave,
   onCanvasContextChange,
@@ -656,6 +669,13 @@ export function IdeWorkbench({
 
   const chapterTreeNodes = useMemo(() => collectChapterTreeNodes(fileTree.nodes), [fileTree.nodes]);
   const outlineTreeNodes = useMemo(() => collectCategoryNodes(jingweiSections, "outline"), [jingweiSections]);
+  // 「推进」分区（伏笔 / 矛盾 / 关系 / 时间线 / 章摘要…）整组交给故事推进侧栏，按分类分页展示。
+  const progressTreeNodes = useMemo(
+    () => jingweiSections.filter((section) => section.metadata?.workspace === "progress"),
+    [jingweiSections],
+  );
+  // 外部（命令面板、写作视图一键修、对话结果卡）要求故事推进侧栏落在某一页。
+  const [storylineFocus, setStorylineFocus] = useState<SidebarFocusRequest<StorylineSubTab> | null>(null);
   // 章后事实中央面板节点（IA 收敛后的唯一权威入口；侧栏只放轻量摘要卡）。
   const memoryCenterNode = useMemo(() => (bookId ? createMemoryCenterNode(bookId) : null), [bookId]);
   // 故事推进大屏画布的默认节点（evolution 视图）；侧栏跳转会以带 preferredView 的节点覆盖缓存。
@@ -1220,7 +1240,21 @@ export function IdeWorkbench({
    * 角色与设定树分「设定」「推进」两个顶层分区（见 loadLoreSections），
    * 动态分类（outline 卷纲等）在「推进」分区下，同样可定位。
    */
+  const handleOpenStorylineTab = useCallback((tab: StorylineSubTab) => {
+    setShowSettings(false);
+    showPanel("storyline");
+    setSidebarVisible(true);
+    if (idePanesUseOverlay(layoutModeRef.current)) setChatVisible(false);
+    setStorylineFocus((previous) => ({ tab, seq: (previous?.seq ?? 0) + 1 }));
+  }, [showPanel, setShowSettings]);
+
   const handleOpenLorePanel = useCallback((category?: string) => {
+    // 随剧情变化的分类（伏笔 / 时间线 / 章摘要…）列在故事推进的对应页签，不在作品基础。
+    const storylineTab = category ? storylineTabForCategory(category) : undefined;
+    if (storylineTab) {
+      handleOpenStorylineTab(storylineTab);
+      return;
+    }
     setShowSettings(false);
     showPanel("characters-lore");
     setSidebarVisible(true);
@@ -1237,7 +1271,15 @@ export function IdeWorkbench({
       const target = findCategory(jingweiSections);
       if (target) handleOpen(target);
     }
-  }, [showPanel, jingweiSections, handleOpen, setShowSettings]);
+  }, [showPanel, jingweiSections, handleOpen, setShowSettings, handleOpenStorylineTab]);
+
+  // 宿主（对话结果卡「去故事推进看」）要求切到故事推进的某一页。
+  const handledFocusRequestRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focusRequest || focusRequest.bookId !== bookId || handledFocusRequestRef.current === focusRequest.seq) return;
+    handledFocusRequestRef.current = focusRequest.seq;
+    handleOpenStorylineTab(focusRequest.tab);
+  }, [focusRequest, bookId, handleOpenStorylineTab]);
 
   /**
    * 回到作品总览：「资源」侧栏顶部的「作品总览」，以及写作视图起书引导卡的「先回答建书十一问」。
@@ -1325,7 +1367,8 @@ export function IdeWorkbench({
       ); }
       : () => { void alertDialog({ title: "导入旧书", description: "先在对话里开启叙述者会话，再导入旧书。" }); },
     sendToNarrator: (message: string) => { void onSendToNarrator?.(message); },
-  }), [onSendToNarrator, alertDialog, keybindingActions, setShowSettings, handleCloseAllTabs]);
+    openStorylineTab: handleOpenStorylineTab,
+  }), [onSendToNarrator, alertDialog, keybindingActions, setShowSettings, handleCloseAllTabs, handleOpenStorylineTab]);
   const ideCommands = useIdeCommands(ideCommandOptions);
 
   // Quick Open: flatten file tree + jingwei entries into palette commands
@@ -1792,6 +1835,8 @@ export function IdeWorkbench({
                       bookId={bookId}
                       chapterTreeNodes={chapterTreeNodes}
                       outlineTreeNodes={outlineTreeNodes}
+                      progressTreeNodes={progressTreeNodes}
+                      focusRequest={storylineFocus}
                       selectedNodeId={activeNode?.id ?? null}
                       onOpen={handleOpen}
                       onSwitchView={(view) => keybindingActions.switchView(view)}
@@ -2404,10 +2449,10 @@ const VIEW_EMPTY_COPY: Record<SidebarView, { steps: readonly string[] }> = {
     steps: ["在左侧搜索框输入关键词，点结果直接打开"],
   },
   "characters-lore": {
-    steps: ["在左侧「角色册」或「世界录」点开一张卡即可编辑", "「草案」里是拆书抽出、等你确认的条目"],
+    steps: ["在左侧「角色册」「人物表」或「设定条目」点开一项即可编辑", "「草案」里是拆书抽出、等你确认的条目"],
   },
   storyline: {
-    steps: ["在左侧点「打开故事画布」，看下一章建议和伏笔账本", "或在「章节与大纲」里打开某一章"],
+    steps: ["在左侧点「打开故事画布」，看下一章建议和伏笔账本", "或在「章节与大纲」「伏笔」「时间线」等页签里点开一条"],
   },
   "skills-style": {
     steps: ["在左侧打开文风预设、文风金库或某个写作技能"],

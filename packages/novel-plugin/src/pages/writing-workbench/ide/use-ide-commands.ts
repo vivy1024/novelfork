@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import type { PaletteCommand } from "./command-palette";
 import type { ViewId } from "./use-panel-manager";
 import { toWireToolName } from "../../../engine/workflows/run-brief";
+import { STORYLINE_SUB_TAB_LABELS, STORYLINE_SUB_TABS, type StorylineSubTab } from "./sidebar-tabs-model";
 
 export interface IdeCommandOptions {
   switchView: (view: ViewId) => void;
@@ -21,6 +22,8 @@ export interface IdeCommandOptions {
    * 命令面板的写作类命令通过它触发，前端不自行执行写工具。
    */
   sendToNarrator?: (message: string) => void;
+  /** 切到故事推进并落在指定页签（伏笔 / 时间线 / 章摘要…）。 */
+  openStorylineTab?: (tab: StorylineSubTab) => void;
 }
 
 export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
@@ -47,6 +50,15 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         shortcut: "Ctrl+3",
         execute: () => options.switchView("storyline"),
       },
+      // 故事推进的各页签：命令面板里能直接搜「伏笔」「时间线」落到对应页
+      ...(options.openStorylineTab
+        ? STORYLINE_SUB_TABS.map((tab) => ({
+          id: `view.storyline.${tab}`,
+          label: `显示: 故事推进 › ${STORYLINE_SUB_TAB_LABELS[tab]}`,
+          category: "视图",
+          execute: () => options.openStorylineTab?.(tab),
+        }))
+        : []),
       {
         id: "view.skills-style",
         label: "显示: 技能与文风",
@@ -121,8 +133,8 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
       },
       {
         id: "characters-lore.refresh",
-        label: "刷新角色与设定数据",
-        category: "角色与设定",
+        label: "刷新作品基础数据",
+        category: "作品基础",
         execute: () => window.location.reload(),
       },
       {

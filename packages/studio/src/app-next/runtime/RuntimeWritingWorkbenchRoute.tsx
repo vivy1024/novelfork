@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { IdeWorkbench, type WorkbenchOpenRequest } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
+import { IdeWorkbench, parseStorylineViewArtifact, type WorkbenchFocusRequest, type WorkbenchOpenRequest } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
 import type {
   SelectionCandidate,
   WorkbenchCanvasContext,
@@ -264,6 +264,7 @@ export function RuntimeWritingWorkbenchRoute({
   const [nodes, setNodes] = useState<WorkbenchResourceNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<WorkbenchResourceNode | null>(null);
   const [openRequest, setOpenRequest] = useState<WorkbenchOpenRequest | null>(null);
+  const [focusRequest, setFocusRequest] = useState<WorkbenchFocusRequest | null>(null);
   const [selectionCandidate, setSelectionCandidate] = useState<SelectionCandidate | null>(null);
   const [narrators, setNarrators] = useState<Awaited<ReturnType<RuntimeProductClient["listNarrators"]>>>([]);
   const [activeNarratorId, setActiveNarratorId] = useState<string | null>(null);
@@ -416,6 +417,13 @@ export function RuntimeWritingWorkbenchRoute({
   // 选区候选额外把候选对象带进工作台，候选章打开的编辑器会出现对照与采用入口。
   const handleOpenArtifact = useCallback(async (artifact: ToolResultArtifact) => {
     const bookAtStart = currentBookIdRef.current;
+    // 结果卡「去故事推进看」：不是资源，只是把侧栏切到故事推进的某一页。
+    const storylineTab = parseStorylineViewArtifact(artifact);
+    if (storylineTab) {
+      setOpenNotice(null);
+      setFocusRequest((previous) => ({ bookId: bookAtStart, tab: storylineTab, seq: (previous?.seq ?? 0) + 1 }));
+      return;
+    }
     const candidate = parseSelectionCandidate(artifact, bookAtStart);
     if (artifact.kind === "selection-candidate" && !candidate) {
       setOpenNotice("这条选区候选来自别的书或数据不完整，没法送回编辑器；请在对话里查看候选正文。");
@@ -574,6 +582,7 @@ export function RuntimeWritingWorkbenchRoute({
           nodes={nodes}
           selectedNode={selectedNode}
           openRequest={openRequest}
+          focusRequest={focusRequest}
           selectionCandidate={selectionCandidate}
           onDismissSelectionCandidate={() => setSelectionCandidate(null)}
           onOpen={setSelectedNode}

@@ -19,7 +19,7 @@ vi.mock("../useNarrativeStructure", () => ({
 }));
 
 import { fetchCharacterKernels } from "../character-kernel-client";
-import { CharactersAndLoreSidebarPanel, cardReadableText } from "./CharactersAndLoreSidebarPanel";
+import { CharactersAndLoreSidebarPanel, cardReadableText, deriveCastRow } from "./CharactersAndLoreSidebarPanel";
 import type { EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 const capabilities = { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false };
@@ -239,7 +239,23 @@ describe("CharactersAndLoreSidebarPanel 卡面只放四样", () => {
 });
 
 describe("CharactersAndLoreSidebarPanel 作品基础分类", () => {
-  it("动态推进条目不进入角色册或世界录，势力归入世界录", () => {
+  it("主页签是真正的 tablist：角色册 / 人物表 / 设定条目 / 草案，选中项 aria-selected", () => {
+    renderPanel([characterNode("主角")], []);
+
+    const tablist = screen.getByRole("tablist", { name: "作品基础视图" });
+    expect(within(tablist).getAllByRole("tab").map((tab) => tab.textContent?.replace(/\d+$/u, ""))).toEqual(["角色册", "人物表", "设定条目", "草案"]);
+    expect(screen.getByRole("tab", { name: /角色册/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: /设定条目/ }).getAttribute("aria-selected")).toBe("false");
+    // 界面上不再有「世界录」
+    expect(screen.queryByText(/世界录/)).toBeNull();
+
+    // 方向键切页签
+    fireEvent.keyDown(screen.getByRole("tab", { name: /角色册/ }), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: /人物表/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel")).toBeTruthy();
+  });
+
+  it("动态推进条目不进入角色册或设定条目，势力归入设定条目", () => {
     renderPanel(
       [
         characterNode("主角"),
@@ -255,30 +271,59 @@ describe("CharactersAndLoreSidebarPanel 作品基础分类", () => {
     expect(screen.queryByText("第一章摘要")).toBeNull();
     expect(screen.queryByText("悬念伏笔")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /世界录/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /设定条目/ }));
     expect(screen.getByText("青云宗")).toBeTruthy();
     expect(screen.queryByText("第一章摘要")).toBeNull();
     expect(screen.queryByText("悬念伏笔")).toBeNull();
   });
 
-  it("按共享分类元数据显示中文标签并支持筛选", () => {
+  it("设定条目按分类分页：世界 / 势力 / 地点 / 道具 / 能力体系 / 本书规则 / 故事基线 / 参考资料，每页只列本类", () => {
     renderPanel(
-      [entryNode("宗门", "factions"), entryNode("青云山", "locations")],
+      [
+        entryNode("灵气潮汐", "world-model"),
+        entryNode("宗门", "factions"),
+        entryNode("青云山", "locations"),
+        entryNode("青铜戒", "props"),
+        entryNode("九层境界", "power-system"),
+        entryNode("不写感情线", "rules"),
+        entryNode("核心卖点", "premise"),
+        entryNode("唐代官制", "reference"),
+      ],
       [],
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /世界录/ }));
-    const filter = screen.getByTestId("world-category-filter");
-    expect(within(filter).getByRole("button", { name: /势力/ })).toBeTruthy();
-    expect(within(filter).getByRole("button", { name: /地点/ })).toBeTruthy();
-    expect(screen.getAllByText("势力").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("tab", { name: /设定条目/ }));
+    const categories = screen.getByRole("tablist", { name: "设定分类" });
+    expect(within(categories).getAllByRole("tab").map((tab) => tab.textContent?.replace(/\d+$/u, ""))).toEqual([
+      "全部", "世界", "势力", "地点", "道具", "能力体系", "本书规则", "故事基线", "参考资料",
+    ]);
+    expect(screen.getAllByTestId("lore-card")).toHaveLength(8);
 
-    fireEvent.click(within(filter).getByRole("button", { name: /地点/ }));
-    expect(screen.getByText("青云山")).toBeTruthy();
-    expect(screen.queryByText("宗门")).toBeNull();
+    const expectations: Array<[RegExp, string]> = [
+      [/^世界/, "灵气潮汐"], [/^势力/, "宗门"], [/^地点/, "青云山"], [/^道具/, "青铜戒"],
+      [/^能力体系/, "九层境界"], [/^本书规则/, "不写感情线"], [/^故事基线/, "核心卖点"], [/^参考资料/, "唐代官制"],
+    ];
+    for (const [tabName, title] of expectations) {
+      fireEvent.click(within(categories).getByRole("tab", { name: tabName }));
+      const cards = screen.getAllByTestId("lore-card");
+      expect(cards).toHaveLength(1);
+      expect(cards[0]!.textContent).toContain(title);
+      expect(within(categories).getByRole("tab", { name: tabName }).getAttribute("aria-selected")).toBe("true");
+    }
   });
 
-  it("世界录卡片的角标是分类名；条目正文不上卡面，中文状态字段可上、内部状态码不上", () => {
+  it("空分类也能点进去，空态说清是哪一类；新建时默认落在该分类", () => {
+    renderPanel([entryNode("宗门", "factions")], []);
+
+    fireEvent.click(screen.getByRole("tab", { name: /设定条目/ }));
+    fireEvent.click(within(screen.getByRole("tablist", { name: "设定分类" })).getByRole("tab", { name: /^地点/ }));
+    expect(screen.getByText("还没有「地点」条目。")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("lore-empty-create"));
+    expect((screen.getByRole("combobox", { name: "设定分类" }) as HTMLSelectElement).value).toBe("locations");
+  });
+
+  it("设定卡片的角标是分类名；条目正文不上卡面，中文状态字段可上、内部状态码不上", () => {
     renderPanel(
       [
         entryNode("天灵务局", "factions", "天灵务局成立于旧历三年，下设问询室……".repeat(5), { fields: { status: "戒严中" } }),
@@ -287,7 +332,7 @@ describe("CharactersAndLoreSidebarPanel 作品基础分类", () => {
       [],
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /世界录/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /设定条目/ }));
     const [faction, location] = screen.getAllByTestId("lore-card");
     expect(within(faction).getByTestId("lore-card-badge").textContent).toBe("势力");
     expect(within(faction).getByTestId("lore-card-status").textContent).toBe("状态戒严中");
@@ -297,16 +342,86 @@ describe("CharactersAndLoreSidebarPanel 作品基础分类", () => {
     expect(location.textContent).not.toContain("needs-review");
   });
 
-  it("世界录条目的最近一次出现取实体索引，不标「冷」", () => {
+  it("设定条目的最近一次出现取实体索引，不标「冷」", () => {
     structureMock.state = readyStructure({
       currentChapter: 40,
       entities: [{ id: "ent:w", canonicalName: "城西仓库", entityType: "location", entryId: "entry-warehouse", lastChapter: 3 }],
     });
     renderPanel([entryNode("城西仓库", "locations", "仓库", { entryId: "entry-warehouse" })], []);
 
-    fireEvent.click(screen.getByRole("button", { name: /世界录/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /设定条目/ }));
     expect(screen.getByTestId("lore-card-last-chapter").textContent).toBe("最近出现 第 3 章");
     expect(screen.queryByTestId("lore-card-cold")).toBeNull();
+  });
+});
+
+describe("CharactersAndLoreSidebarPanel 人物表", () => {
+  it("表头齐全；境界 / 位置 / 立场 / 存亡取章后事实里同槽最新一章，同义谓词归到同一列", () => {
+    structureMock.state = readyStructure({
+      currentChapter: 30,
+      entities: [{ id: "ent:1", canonicalName: "韩立", entityType: "character", entryId: "entry-han", lastChapter: 21 }],
+    });
+    renderPanel(
+      [characterNode("韩立", [], { entryId: "entry-han" }), characterNode("墨大夫")],
+      [
+        { subject: "韩立", predicate: "修为", object: "炼气七层", category: "character_state", validFromChapter: 3, sourceChapter: 3, sourceType: "event" },
+        { subject: "韩立", predicate: "当前境界", object: "筑基初期", category: "character_state", validFromChapter: 20, sourceChapter: 20, sourceType: "event" },
+        { subject: "韩立", predicate: "本章所在位置", object: "黄枫谷", category: "location", sourceChapter: 22, sourceType: "event" },
+        { subject: "韩立", predicate: "所属门派", object: "黄枫谷", category: "character_state", sourceChapter: 5, sourceType: "event" },
+        { subject: "墨大夫", predicate: "身亡", object: "被韩立所杀", category: "character_state", sourceChapter: 12, sourceType: "event" },
+      ],
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /人物表/ }));
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((th) => th.textContent)).toEqual([
+      "角色", "当前境界", "位置", "立场", "最近出场", "存亡",
+    ]);
+
+    const [han, mo] = within(table).getAllByTestId("cast-row");
+    const hanCells = within(han!).getAllByRole("cell").map((td) => td.textContent);
+    expect(within(han!).getByRole("rowheader").textContent).toBe("韩立");
+    expect(hanCells).toEqual(["筑基初期", "黄枫谷", "黄枫谷", "第 22 章", "—"]);
+    const moCells = within(mo!).getAllByRole("cell").map((td) => td.textContent);
+    expect(moCells).toEqual(["—", "—", "—", "第 12 章", "死亡"]);
+  });
+
+  it("默认按最近出场从近到远，没出场记录的排最后；点表头反过来；点角色名打开人物卡", () => {
+    const xue = characterNode("薛行之");
+    const { onOpen } = renderPanel(
+      [characterNode("苏澄"), characterNode("无名氏"), xue],
+      [
+        { subject: "苏澄", predicate: "位置", object: "城南", sourceChapter: 4, sourceType: "event" },
+        { subject: "薛行之", predicate: "位置", object: "问询室", sourceChapter: 9, sourceType: "event" },
+      ],
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /人物表/ }));
+    const names = () => screen.getAllByTestId("cast-row").map((row) => within(row).getByRole("rowheader").textContent);
+    expect(names()).toEqual(["薛行之", "苏澄", "无名氏"]);
+    expect(screen.getByRole("columnheader", { name: /最近出场/ }).getAttribute("aria-sort")).toBe("descending");
+
+    fireEvent.click(screen.getByTestId("cast-sort-last-chapter"));
+    expect(names()).toEqual(["苏澄", "薛行之", "无名氏"]);
+    expect(screen.getByRole("columnheader", { name: /最近出场/ }).getAttribute("aria-sort")).toBe("ascending");
+
+    fireEvent.click(screen.getByRole("button", { name: "薛行之" }));
+    expect(onOpen).toHaveBeenCalledWith(xue);
+  });
+
+  it("deriveCastRow：离场晚于生死记录时显示离场；死亡优先", () => {
+    expect(deriveCastRow({
+      facts: [
+        { subject: "甲", predicate: "存活", object: "", category: "character_state", sourceChapter: 2 },
+        { subject: "甲", predicate: "离开", object: "远赴北境", category: "character_state", sourceChapter: 5 },
+      ],
+    }).life).toBe("离场");
+    expect(deriveCastRow({
+      facts: [
+        { subject: "乙", predicate: "阵亡", object: "", category: "character_state", sourceChapter: 3 },
+        { subject: "乙", predicate: "离开", object: "", category: "character_state", sourceChapter: 6 },
+      ],
+    }).life).toBe("死亡");
   });
 });
 
@@ -352,11 +467,11 @@ describe("CharactersAndLoreSidebarPanel 点击打开", () => {
     expect(onOpen).toHaveBeenCalledWith(node);
   });
 
-  it("点击世界录条目时同样调用 onOpen", () => {
+  it("点击设定条目时同样调用 onOpen", () => {
     const node = entryNode("青云山", "locations");
     const { onOpen } = renderPanel([node], []);
 
-    fireEvent.click(screen.getByRole("button", { name: /世界录/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /设定条目/ }));
     fireEvent.click(screen.getByText("青云山"));
 
     expect(onOpen).toHaveBeenCalledTimes(1);

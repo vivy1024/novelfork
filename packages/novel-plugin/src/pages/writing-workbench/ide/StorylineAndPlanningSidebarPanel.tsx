@@ -19,6 +19,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateApiPaths, useApi } from "@/hooks/use-api";
 import { SidebarPageHead } from "./SidebarPageHead";
+import { SidebarTabs, sidebarTabPanelProps } from "./SidebarTabs";
+import { STORYLINE_SUB_TAB_LABELS, type SidebarFocusRequest, type StorylineSubTab } from "./sidebar-tabs-model";
+import { ChapterTimelinePanel } from "../ChapterTimelinePanel";
+import { useNarrativeStructure } from "../useNarrativeStructure";
 import { StaleSettlementList, freshnessPath, useStaleSettlementCount } from "./StaleSettlementList";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { NarrativeMemorySummary } from "../NarrativeMemoryPanel";
@@ -34,6 +38,13 @@ export interface StorylineAndPlanningSidebarPanelProps {
   bookId: string;
   chapterTreeNodes?: readonly WorkbenchResourceNode[];
   outlineTreeNodes?: readonly WorkbenchResourceNode[];
+  /**
+   * 设定条目「推进」分区（随剧情变化的分类组：伏笔 / 矛盾 / 关系 / 时间线 / 章摘要…），
+   * 由宿主按 CATEGORY_META.defaultLayer 分好；侧栏只按分类取叶子展示。
+   */
+  progressTreeNodes?: readonly WorkbenchResourceNode[];
+  /** 外部要求切到某一页（命令面板、对话结果卡）；seq 变化才生效。 */
+  focusRequest?: SidebarFocusRequest<StorylineSubTab> | null;
   selectedNodeId: string | null;
   onOpen: (node: WorkbenchResourceNode) => void;
   /**
@@ -256,7 +267,106 @@ function StorylineResourceTree({
   return nodes.length > 0 ? <div className="space-y-0.5">{nodes.map((node) => renderNode(node))}</div> : <p className="px-1 py-2 text-xs text-muted-foreground">{emptyLabel}</p>;
 }
 
-type StorylineSubTab = "outline" | "memory";
+/** 各推进页签空着时的提示。 */
+const PROGRESS_EMPTY_COPY: Record<"foreshadowing" | "conflicts" | "relationships" | "timeline" | "chapter-summaries", string> = {
+  foreshadowing: "还没有伏笔条目。写作时埋下的伏笔，结算后会出现在这里。",
+  conflicts: "还没有矛盾冲突条目。",
+  relationships: "还没有人物关系条目。",
+  timeline: "还没有时间线条目。导入的前史时间线也放在这里。",
+  "chapter-summaries": "还没有章摘要。每章结算后会写一条。",
+};
+
+/** 某个动态分类下的条目叶子（推进分区下的分类组 → 条目）。 */
+export function progressEntriesOf(groups: readonly WorkbenchResourceNode[], category: string): WorkbenchResourceNode[] {
+  const result: WorkbenchResourceNode[] = [];
+  const walk = (items: readonly WorkbenchResourceNode[], inCategory: boolean) => {
+    for (const item of items) {
+      const hit = inCategory || item.metadata?.category === category;
+      if (item.kind === "jingwei-entry") {
+        if (hit) result.push(item);
+        continue;
+      }
+      if (item.children) walk(item.children, hit);
+    }
+  };
+  walk(groups, false);
+  return result;
+}
+
+function entryFields(node: WorkbenchResourceNode): Record<string, unknown> {
+  const fields = node.metadata?.fields;
+  return fields && typeof fields === "object" ? fields as Record<string, unknown> : {};
+}
+
+/** 章摘要对应的章号：fields.chapterNumber 优先，其次标题里的「第 N 章」。 */
+function summaryChapterOf(node: WorkbenchResourceNode): number | undefined {
+  const fields = entryFields(node);
+  const raw = Number(fields.chapterNumber ?? fields.chapter_number);
+  if (Number.isInteger(raw) && raw > 0) return raw;
+  const match = /第\s*(\d+)\s*章/u.exec(node.title);
+  return match ? Number(match[1]) : undefined;
+}
+
+const FORESHADOW_URGENCY_LABEL: Record<string, { label: string; tone: string }> = {
+  overdue: { label: "超期", tone: "text-destructive" },
+  watch: { label: "临近", tone: "text-warning" },
+};
+
+const FORESHADOW_STATUS_LABEL: Record<string, string> = {
+  planted: "已埋",
+  triggered: "已触发",
+  paid_off: "已回收",
+};
+
+const STORYLINE_KIND_LABEL: Record<string, string> = {
+  main: "主线",
+  sub: "支线",
+  romance: "感情线",
+  faction: "势力线",
+  mystery: "悬疑线",
+  "character-arc": "角色弧",
+  other: "其他",
+};
+
+const STORYLINE_LIFECYCLE_LABEL: Record<string, string> = {
+  planned: "计划中",
+  active: "进行中",
+  paused: "暂停",
+  resolved: "已收束",
+  abandoned: "已放弃",
+};
+
+interface EntryListItem {
+  readonly key: string;
+  readonly title: string;
+  readonly meta?: string;
+  readonly badge?: { readonly label: string; readonly tone: string };
+  readonly onOpen: () => void;
+  readonly selected?: boolean;
+}
+
+/** 推进类条目的统一列表：一行一条，点开在中央编辑。 */
+function ProgressEntryList({ items, emptyLabel, testId }: { items: readonly EntryListItem[]; emptyLabel: string; testId: string }) {
+  if (items.length === 0) return <p className="px-1 py-2 text-xs text-muted-foreground" data-testid={`${testId}-empty`}>{emptyLabel}</p>;
+  return (
+    <ul className="space-y-0.5" data-testid={testId}>
+      {items.map((item) => (
+        <li key={item.key}>
+          <button
+            type="button"
+            onClick={item.onOpen}
+            aria-current={item.selected ? "true" : undefined}
+            className={`flex w-full min-w-0 items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${item.selected ? "bg-primary/5 text-primary" : ""}`}
+          >
+            <span className="min-w-0 flex-1 truncate" title={item.title}>{item.title}</span>
+            {item.meta ? <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">{item.meta}</span> : null}
+            {item.badge ? <span className={`shrink-0 text-2xs font-medium ${item.badge.tone}`}>{item.badge.label}</span> : null}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // 推进驾驶舱：位置锚定 + NEXT 下一步
@@ -389,13 +499,41 @@ export function StorylineAndPlanningSidebarPanel({
   bookId,
   chapterTreeNodes = [],
   outlineTreeNodes = [],
+  progressTreeNodes = [],
+  focusRequest,
   selectedNodeId,
   onOpen,
   onAction,
   onSendToNarrator,
   bookTargetChapters,
 }: StorylineAndPlanningSidebarPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<StorylineSubTab>("outline");
+  const [activeSubTab, setActiveSubTab] = useState<StorylineSubTab>(focusRequest?.tab ?? "outline");
+  const focusSeq = focusRequest?.seq;
+  const focusTab = focusRequest?.tab;
+  useEffect(() => {
+    if (focusTab) setActiveSubTab(focusTab);
+  }, [focusSeq, focusTab]);
+  const [timelineMode, setTimelineMode] = useState<"entries" | "chapters">("entries");
+
+  // 推进类条目：从宿主分好的「推进」分区按分类取叶子。
+  const progressEntries = useMemo(() => ({
+    foreshadowing: progressEntriesOf(progressTreeNodes, "foreshadowing"),
+    conflicts: progressEntriesOf(progressTreeNodes, "conflicts"),
+    relationships: progressEntriesOf(progressTreeNodes, "relationships"),
+    timeline: progressEntriesOf(progressTreeNodes, "timeline"),
+    "chapter-summaries": [...progressEntriesOf(progressTreeNodes, "chapter-summaries")].sort(
+      (left, right) => (summaryChapterOf(left) ?? Number.MAX_SAFE_INTEGER) - (summaryChapterOf(right) ?? Number.MAX_SAFE_INTEGER),
+    ),
+  }), [progressTreeNodes]);
+
+  // 伏笔债务与剧情线取全书叙事结构快照（与故事画布同一份数据，同一套超期口径）。
+  const { state: structureState, reload: reloadStructure } = useNarrativeStructure(bookId || undefined);
+  const structure = structureState.status === "ready" ? structureState.data : null;
+  const debtByEntryId = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof structure>["foreshadows"][number]>();
+    for (const debt of structure?.foreshadows ?? []) map.set(debt.entryId, debt);
+    return map;
+  }, [structure]);
 
   /** 打开统一的大屏「故事画布」：同一本书共用一个 Tab，落在「下一章」，其余视图在画布顶部切换。 */
   const openProgressionCanvas = () => {
@@ -426,6 +564,7 @@ export function StorylineAndPlanningSidebarPanel({
   const reloadNextChapterPlan = nextChapterPlan.reload;
   useWritingProgressRefresh(bookId, () => {
     reloadNextChapterPlan();
+    reloadStructure();
     invalidateApiPaths([
       `/api/books/${encodeURIComponent(bookId)}/jingwei/entries`,
       `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
@@ -496,42 +635,26 @@ export function StorylineAndPlanningSidebarPanel({
         onSendToNarrator={onSendToNarrator}
       />
 
-      {/* 顶部子标签切换导航（带常亮高亮） */}
-      <div className="shrink-0 border-b border-border bg-muted/20 p-2 space-y-2">
-
-        {/* 2 个核心功能 Tab 切换（带明确的高亮状态） */}
-        <div className="grid grid-cols-2 gap-1.5">
-          <Button
-            size="xs"
-            variant={activeSubTab === "outline" ? "default" : "outline"}
-            className={cn(
-              "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
-              activeSubTab === "outline" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
-            )}
-            onClick={() => setActiveSubTab("outline")}
-          >
-            <ListTree className="size-3.5 text-info" />
-            <span className="truncate">章节与大纲</span>
-          </Button>
-
-          <Button
-            size="xs"
-            variant={activeSubTab === "memory" ? "default" : "outline"}
-            className={cn(
-              "h-8 justify-start gap-1.5 text-2xs font-medium transition-colors",
-              activeSubTab === "memory" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
-            )}
-            onClick={() => setActiveSubTab("memory")}
-          >
-            <History className="size-3.5 text-warning" />
-            <span className="truncate">章后事实</span>
-          </Button>
-
-        </div>
-      </div>
+      {/* 页签：章节与大纲 + 各类随剧情推进的条目 + 章后事实；窄侧栏下换行 */}
+      <SidebarTabs<StorylineSubTab>
+        ariaLabel="故事推进视图"
+        idPrefix="storyline"
+        active={activeSubTab}
+        onChange={setActiveSubTab}
+        tabs={[
+          { id: "outline", label: STORYLINE_SUB_TAB_LABELS.outline, icon: <ListTree className="size-3 text-info" aria-hidden="true" /> },
+          { id: "foreshadowing", label: STORYLINE_SUB_TAB_LABELS.foreshadowing, count: progressEntries.foreshadowing.length },
+          { id: "conflicts", label: STORYLINE_SUB_TAB_LABELS.conflicts, count: progressEntries.conflicts.length },
+          { id: "storylines", label: STORYLINE_SUB_TAB_LABELS.storylines, ...(structure ? { count: structure.storylines.length } : {}) },
+          { id: "relationships", label: STORYLINE_SUB_TAB_LABELS.relationships, count: progressEntries.relationships.length },
+          { id: "timeline", label: STORYLINE_SUB_TAB_LABELS.timeline, count: progressEntries.timeline.length },
+          { id: "chapter-summaries", label: STORYLINE_SUB_TAB_LABELS["chapter-summaries"], count: progressEntries["chapter-summaries"].length },
+          { id: "memory", label: STORYLINE_SUB_TAB_LABELS.memory, icon: <History className="size-3 text-warning" aria-hidden="true" /> },
+        ]}
+      />
 
       {/* 主体内容区：根据选中的 SubTab 互斥渲染 */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2" {...sidebarTabPanelProps("storyline", activeSubTab)}>
         {activeSubTab === "outline" && (
           <section id="storyline-chapter-outline" className="rounded-lg border border-border bg-card p-2 space-y-2" data-testid="storyline-chapter-outline">
             <div className="flex items-center justify-between">
@@ -553,6 +676,124 @@ export function StorylineAndPlanningSidebarPanel({
               </div>
             </div>
           </section>
+        )}
+
+        {activeSubTab === "foreshadowing" && (
+          <section aria-label="伏笔" className="space-y-1.5">
+            <ProgressEntryList
+              testId="storyline-foreshadowing-list"
+              emptyLabel={PROGRESS_EMPTY_COPY.foreshadowing}
+              items={progressEntries.foreshadowing.map((node) => {
+                const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : "";
+                const debt = debtByEntryId.get(entryId);
+                const urgency = debt ? FORESHADOW_URGENCY_LABEL[debt.urgency] : undefined;
+                const status = debt ? FORESHADOW_STATUS_LABEL[debt.status] : undefined;
+                return {
+                  key: node.id,
+                  title: node.title,
+                  ...(debt?.plantedChapter !== undefined ? { meta: `埋于第 ${debt.plantedChapter} 章` } : {}),
+                  ...(urgency ? { badge: urgency } : status ? { badge: { label: status, tone: "text-muted-foreground" } } : {}),
+                  selected: selectedNodeId === node.id,
+                  onOpen: () => onOpen(node),
+                };
+              })}
+            />
+            <p className="px-1 text-2xs text-muted-foreground">要排进下一章或标记回收，去故事画布「下一章」的伏笔账本。</p>
+          </section>
+        )}
+
+        {(activeSubTab === "conflicts" || activeSubTab === "relationships") && (
+          <ProgressEntryList
+            testId={`storyline-${activeSubTab}-list`}
+            emptyLabel={PROGRESS_EMPTY_COPY[activeSubTab]}
+            items={progressEntries[activeSubTab].map((node) => {
+              const fields = entryFields(node);
+              const state = typeof fields.status === "string" && /\p{Script=Han}/u.test(fields.status) ? fields.status : undefined;
+              return {
+                key: node.id,
+                title: node.title,
+                ...(state ? { meta: state } : {}),
+                selected: selectedNodeId === node.id,
+                onOpen: () => onOpen(node),
+              };
+            })}
+          />
+        )}
+
+        {activeSubTab === "storylines" && (
+          <section aria-label="剧情线" className="space-y-1.5">
+            {structureState.status === "loading" ? (
+              <p className="px-1 py-2 text-xs text-muted-foreground" role="status">正在读取剧情线…</p>
+            ) : structureState.status === "error" ? (
+              <p className="px-1 py-2 text-xs text-muted-foreground" role="alert">剧情线没读出来（{structureState.message}），稍后再试。</p>
+            ) : (
+              <ProgressEntryList
+                testId="storyline-storylines-list"
+                emptyLabel="还没有剧情线。在故事画布「推进」页可以新建。"
+                items={(structure?.storylines ?? []).map((line) => {
+                  const kind = STORYLINE_KIND_LABEL[line.kind] ?? "";
+                  const lifecycle = STORYLINE_LIFECYCLE_LABEL[line.lifecycle] ?? "";
+                  return {
+                    key: line.id,
+                    title: line.name,
+                    meta: [kind, lifecycle].filter(Boolean).join(" · "),
+                    // 剧情线的编辑在故事画布「推进」页（以剧情线为行）
+                    onOpen: () => onOpen(createStoryProgressionNode(bookId, "board")),
+                  };
+                })}
+              />
+            )}
+            <p className="px-1 text-2xs text-muted-foreground">点一条剧情线，在故事画布「推进」页查看和调整。</p>
+          </section>
+        )}
+
+        {activeSubTab === "timeline" && (
+          <section aria-label="时间线" className="flex h-full min-h-0 flex-col gap-1.5">
+            <SidebarTabs<"entries" | "chapters">
+              ariaLabel="时间线视图"
+              idPrefix="storyline-timeline"
+              size="sm"
+              active={timelineMode}
+              onChange={setTimelineMode}
+              tabs={[
+                { id: "entries", label: "时间线条目", count: progressEntries.timeline.length },
+                { id: "chapters", label: "按章走势" },
+              ]}
+            />
+            <div className="min-h-0 flex-1" {...sidebarTabPanelProps("storyline-timeline", timelineMode)}>
+              {timelineMode === "entries" ? (
+                <ProgressEntryList
+                  testId="storyline-timeline-list"
+                  emptyLabel={PROGRESS_EMPTY_COPY.timeline}
+                  items={progressEntries.timeline.map((node) => ({
+                    key: node.id,
+                    title: node.title,
+                    selected: selectedNodeId === node.id,
+                    onOpen: () => onOpen(node),
+                  }))}
+                />
+              ) : (
+                <ChapterTimelinePanel bookId={bookId} {...(currentChapter > 0 ? { currentChapter } : {})} />
+              )}
+            </div>
+          </section>
+        )}
+
+        {activeSubTab === "chapter-summaries" && (
+          <ProgressEntryList
+            testId="storyline-chapter-summaries-list"
+            emptyLabel={PROGRESS_EMPTY_COPY["chapter-summaries"]}
+            items={progressEntries["chapter-summaries"].map((node) => {
+              const chapter = summaryChapterOf(node);
+              return {
+                key: node.id,
+                title: node.title,
+                ...(chapter !== undefined && !node.title.includes(`${chapter}`) ? { meta: `第 ${chapter} 章` } : {}),
+                selected: selectedNodeId === node.id,
+                onOpen: () => onOpen(node),
+              };
+            })}
+          />
         )}
 
         {activeSubTab === "memory" && (

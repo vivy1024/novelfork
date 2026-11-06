@@ -1,5 +1,6 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseStorylineViewArtifact } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/sidebar-tabs-model";
 
 import { renderToolResult, resolveToolResultRendererKey } from "./registry";
 
@@ -323,6 +324,37 @@ describe("memory.graph / lore.read 故事树卡", () => {
 
     expect(screen.getByTestId("tool-result-lore-tree")).toBeTruthy();
     expect(screen.getByText(/2 条条目/)).toBeTruthy();
+  });
+
+  const treeWithEvents = {
+    data: {
+      entries: [{ id: "c1", category: "characters", title: "林舟" }],
+      events: [
+        { id: "e1", chapterNumber: 3, eventType: "relationship_changed" },
+        { id: "e2", chapterNumber: 7, eventType: "hook_planted" },
+      ],
+    },
+  };
+
+  it("树卡带事件时，「去时间线看」交出故事推进 › 时间线的产物，工作台据此切侧栏", () => {
+    const onOpenArtifact = vi.fn();
+    render(<>{renderToolResult({ toolName: "lore.read", result: treeWithEvents, onOpenArtifact })}</>);
+
+    const events = screen.getByTestId("tool-result-lore-tree-events");
+    expect(events.textContent).toContain("2 个叙事事件（第 3–7 章）");
+    expect(events.textContent).toContain("故事推进 › 时间线");
+    fireEvent.click(screen.getByTestId("tool-result-lore-tree-open-timeline"));
+
+    expect(onOpenArtifact).toHaveBeenCalledTimes(1);
+    const artifact = onOpenArtifact.mock.calls[0]![0];
+    // 这份产物在工作台一侧必须能解析回真实存在的页签
+    expect(parseStorylineViewArtifact(artifact)).toBe("timeline");
+  });
+
+  it("独立对话页（没有工作台）只给文字说明，不放点了没反应的按钮", () => {
+    render(<>{renderToolResult({ toolName: "lore.read", result: treeWithEvents })}</>);
+    expect(screen.getByTestId("tool-result-lore-tree-events")).toBeTruthy();
+    expect(screen.queryByTestId("tool-result-lore-tree-open-timeline")).toBeNull();
   });
 });
 

@@ -1,5 +1,10 @@
 /**
- * 作品基础侧栏面板：角色册 / 世界录 / 草案三个 tab，下面是条目卡片。
+ * 作品基础侧栏面板：角色册 / 人物表 / 设定条目 / 草案四个 tab。
+ *
+ * - 角色册：角色卡片流；
+ * - 人物表：全部角色一张表（当前境界 / 位置 / 立场 / 最近出场 / 存亡），数据取已载入的章后事实与角色内核；
+ * - 设定条目：按分类分页（世界 / 势力 / 地点 / 道具 / 能力体系 / 本书规则 / 故事基线 / 参考资料），
+ *   分类是否属于这里只看 CATEGORY_META.defaultLayer（见 lore-workspace-split）；随剧情变化的分类在「故事推进」。
  *
  * 卡面纪律（docs/design/novelfork-frontend-final-board.html 屏 4）：每张卡只放
  * 1. 名称；2. 唯一一个角标（角色取「角色定位」，设定取分类）；3. 一行状态；4. 关键进度
@@ -9,6 +14,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   BookOpen,
   Eye,
   Network,
@@ -24,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/hooks/use-api";
 import { SidebarPageHead } from "./SidebarPageHead";
+import { SidebarTabs, sidebarTabPanelProps } from "./SidebarTabs";
 import { fetchCharacterKernels, type CharacterKernelSummary } from "../character-kernel-client";
 import { DissectDraftPanel } from "../DissectDraftPanel";
 import { useNarrativeStructure } from "../useNarrativeStructure";
@@ -35,6 +43,16 @@ import {
   parseCharacterVoice,
   type CharacterVoiceFieldStatus,
 } from "../../../engine/writing-layers/character-voice";
+import {
+  AFFILIATION_SLOT,
+  DEPARTURE_LEFT,
+  DEPARTURE_SLOT,
+  LIFE_DEAD,
+  LIFE_SLOT,
+  LOCATION_SLOT,
+  REALM_SLOT,
+  canonicalizeStatePredicate,
+} from "../../../engine/narrative-memory/state-predicate";
 import { workspaceForCategory } from "../lore-workspace-split";
 import { type ResourceTreeAction } from "../WorkbenchResourceTree";
 import { createLoreTreesNode, type WorkbenchResourceNode } from "../useWorkbenchResources";
@@ -69,12 +87,28 @@ export interface CharactersAndLoreSidebarPanelProps {
   onChanged?: () => void;
 }
 
-type MainTab = "characters" | "world" | "draft";
-type WorldCategoryFilter = JingweiCategory | "all";
+type MainTab = "characters" | "cast" | "settings" | "draft";
+type SettingsCategoryFilter = JingweiCategory | "all";
 
 const WORLD_CREATE_CATEGORY_META = CATEGORY_META.filter(
   (meta) => workspaceForCategory(meta.id) === "settings" && meta.allowCanon && meta.id !== "characters",
 );
+
+/**
+ * 「设定条目」的分类页签：顺序按作者查设定的习惯排，侧栏用短名。
+ * 哪些分类属于作品基础仍只由 CATEGORY_META.defaultLayer 决定；这里只管顺序和短名，
+ * 不在名单里的设定分类（如未分类）有条目时排在最后、用 CATEGORY_META 的名字。
+ */
+const SETTINGS_CATEGORY_TABS: ReadonlyArray<{ readonly id: JingweiCategory; readonly label: string }> = [
+  { id: "world-model", label: "世界" },
+  { id: "factions", label: "势力" },
+  { id: "locations", label: "地点" },
+  { id: "props", label: "道具" },
+  { id: "power-system", label: "能力体系" },
+  { id: "rules", label: "本书规则" },
+  { id: "premise", label: "故事基线" },
+  { id: "reference", label: "参考资料" },
+];
 
 function entryCategory(node: WorkbenchResourceNode): JingweiCategory {
   return normalizeCategory(String(node.metadata?.category ?? "unclassified")).category;
@@ -91,7 +125,8 @@ export function CharactersAndLoreSidebarPanel({
   onChanged,
 }: CharactersAndLoreSidebarPanelProps) {
   const [activeTab, setActiveTab] = useState<MainTab>("characters");
-  const [worldCategoryFilter, setWorldCategoryFilter] = useState<WorldCategoryFilter>("all");
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryFilter>("all");
+  const [castSortDirection, setCastSortDirection] = useState<"desc" | "asc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -209,25 +244,60 @@ export function CharactersAndLoreSidebarPanel({
     return { charactersList: chars, worldList: world };
   }, [allEntries]);
 
-  const worldCategoryOptions = useMemo(
-    () => CATEGORY_META.filter((meta) => worldList.some((entry) => entryCategory(entry) === meta.id)),
-    [worldList],
-  );
+  // 设定条目的分类页签：固定分类始终在（空的也能点进去新建），名单外的设定分类有条目时追加在后面。
+  const settingsCategoryTabs = useMemo(() => {
+    const counts = new Map<JingweiCategory, number>();
+    for (const entry of worldList) {
+      const category = entryCategory(entry);
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+    const fixed = SETTINGS_CATEGORY_TABS.map((tab) => ({ id: tab.id, label: tab.label, count: counts.get(tab.id) ?? 0 }));
+    const fixedIds = new Set<JingweiCategory>(SETTINGS_CATEGORY_TABS.map((tab) => tab.id));
+    const extra = CATEGORY_META
+      .filter((meta) => !fixedIds.has(meta.id) && (counts.get(meta.id) ?? 0) > 0)
+      .map((meta) => ({ id: meta.id, label: meta.name, count: counts.get(meta.id) ?? 0 }));
+    return [{ id: "all" as const, label: "全部", count: worldList.length }, ...fixed, ...extra];
+  }, [worldList]);
+  const settingsCategoryLabel = settingsCategoryTabs.find((tab) => tab.id === settingsCategory)?.label;
 
-  // 搜索 + 世界录分类过滤
-  const filteredList = useMemo(() => {
-    const source = activeTab === "characters"
-      ? charactersList
-      : worldList.filter((entry) => worldCategoryFilter === "all" || entryCategory(entry) === worldCategoryFilter);
-    if (!searchQuery.trim()) return source;
+  const selectSettingsCategory = (category: SettingsCategoryFilter) => {
+    setSettingsCategory(category);
+    // 新建设定时默认落在正在看的分类
+    if (category !== "all" && WORLD_CREATE_CATEGORY_META.some((meta) => meta.id === category)) setNewCharCategory(category);
+  };
+
+  const matchesSearch = useCallback((item: WorkbenchResourceNode) => {
     const q = searchQuery.toLowerCase().trim();
-    return source.filter((item) => {
-      const titleMatch = item.title.toLowerCase().includes(q);
-      const contentMatch = (item.content ?? "").toLowerCase().includes(q);
-      const summaryMatch = String(item.metadata?.summary ?? "").toLowerCase().includes(q);
-      return titleMatch || contentMatch || summaryMatch;
+    if (!q) return true;
+    const titleMatch = item.title.toLowerCase().includes(q);
+    const contentMatch = (item.content ?? "").toLowerCase().includes(q);
+    const summaryMatch = String(item.metadata?.summary ?? "").toLowerCase().includes(q);
+    return titleMatch || contentMatch || summaryMatch;
+  }, [searchQuery]);
+
+  // 搜索 + 设定分类过滤
+  const filteredList = useMemo(() => {
+    const source = activeTab === "characters" || activeTab === "cast"
+      ? charactersList
+      : worldList.filter((entry) => settingsCategory === "all" || entryCategory(entry) === settingsCategory);
+    return source.filter(matchesSearch);
+  }, [activeTab, charactersList, worldList, settingsCategory, matchesSearch]);
+
+  // 人物表：每个角色一行，数据与卡面同源（章后事实 + 实体索引），按最近出场排序。
+  const castRows = useMemo(() => {
+    if (activeTab !== "cast") return [];
+    const rows = filteredList.map((node) => {
+      const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : undefined;
+      return {
+        node,
+        row: deriveCastRow({
+          facts: factsForNode(node, entryId, factIndex),
+          ...(entryId && entityByEntryId.get(entryId) ? { entity: entityByEntryId.get(entryId) } : {}),
+        }),
+      };
     });
-  }, [activeTab, charactersList, worldList, worldCategoryFilter, searchQuery]);
+    return sortCastRows(rows, castSortDirection);
+  }, [activeTab, filteredList, factIndex, entityByEntryId, castSortDirection]);
 
   // 每张卡的卡面只在这里推导一次；同一 tab 里只要有一张卡有某一行，所有卡都留出这一行，保证等高。
   const cards = useMemo(() => {
@@ -253,6 +323,9 @@ export function CharactersAndLoreSidebarPanel({
     };
   }, [activeTab, filteredList, factIndex, kernelsByCharacterId, entityByEntryId, effectiveCurrentChapter]);
 
+  // 角色册与人物表新建的都是角色；设定条目与草案页新建设定。
+  const isCharacterTab = activeTab === "characters" || activeTab === "cast";
+
   // 新建角色/条目
   const handleCreateEntry = async () => {
     if (!newCharName.trim() || creatingBusy) return;
@@ -264,7 +337,7 @@ export function CharactersAndLoreSidebarPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: newCharName.trim(),
-          category: activeTab === "characters" ? "characters" : newCharCategory,
+          category: isCharacterTab ? "characters" : newCharCategory,
           contentMd: "",
         }),
       });
@@ -329,7 +402,7 @@ export function CharactersAndLoreSidebarPanel({
           onClick={() => setCreatingChar(true)}
         >
           <UserPlus className="size-3" />
-          {activeTab === "characters" ? "新角色" : "新设定"}
+          {isCharacterTab ? "新角色" : "新设定"}
         </Button>
       </div>
 
@@ -355,7 +428,7 @@ export function CharactersAndLoreSidebarPanel({
         <div className="border-b border-primary/30 bg-primary/5 p-2 space-y-2 shrink-0">
           <div className="flex items-center justify-between">
             <span className="text-2xs font-semibold text-foreground">
-              {activeTab === "characters" ? "新建角色卡" : "新建世界设定词条"}
+              {isCharacterTab ? "新建角色卡" : "新建设定条目"}
             </span>
             <Button size="xs" variant="ghost" onClick={() => setCreatingChar(false)} className="h-4 w-4 p-0">
               <X className="size-3" />
@@ -365,13 +438,14 @@ export function CharactersAndLoreSidebarPanel({
             <Input
               value={newCharName}
               onChange={(e) => setNewCharName(e.target.value)}
-              placeholder={activeTab === "characters" ? "输入角色名（如：韩立）" : "输入设定名称"}
+              placeholder={isCharacterTab ? "输入角色名（如：韩立）" : "输入设定名称"}
               className="h-7 text-xs flex-1"
               autoFocus
               onKeyDown={(e) => { if (e.key === "Enter") void handleCreateEntry(); }}
             />
-            {activeTab === "world" && (
+            {!isCharacterTab && (
               <select
+                aria-label="设定分类"
                 className="h-7 text-xs border border-border rounded px-1.5 bg-background text-muted-foreground"
                 value={newCharCategory}
                 onChange={(e) => setNewCharCategory(e.target.value)}
@@ -391,61 +465,36 @@ export function CharactersAndLoreSidebarPanel({
         </div>
       )}
 
-      {/* 主视图 Tab：角色册 / 世界录 / 草案。窄侧栏下不折行，放不下时横向滚动 */}
-      <div className="shrink-0 flex items-center gap-0.5 overflow-x-auto border-b border-border px-2 pt-1.5 bg-muted/10">
-        {([
-          { id: "characters", label: "角色册", count: charactersList.length, title: undefined },
-          { id: "world", label: "世界录", count: worldList.length, title: undefined },
+      {/* 主视图 Tab：角色册 / 人物表 / 设定条目 / 草案。窄侧栏下换行，不藏页签 */}
+      <SidebarTabs<MainTab>
+        ariaLabel="作品基础视图"
+        idPrefix="lore-main"
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { id: "characters", label: "角色册", count: charactersList.length },
+          { id: "cast", label: "人物表", title: "全部角色一张表：境界、位置、立场、最近出场、存亡" },
+          { id: "settings", label: "设定条目", count: worldList.length },
           { id: "draft", label: "草案", count: draftCount, title: "拆书找到的候选条目，确认后才存入设定" },
-        ] as const).map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            aria-pressed={activeTab === tab.id}
-            title={tab.title}
-            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t-md border-b-2 px-2 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              activeTab === tab.id
-                ? "border-primary bg-background text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab.label}
-            <span className={`tabular-nums font-normal ${activeTab === tab.id ? "text-primary/80" : "text-muted-foreground"}`}>{tab.count}</span>
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
-      {activeTab === "world" && worldCategoryOptions.length > 0 && (
-        <div className="shrink-0 flex gap-1 overflow-x-auto border-b border-border/60 px-2 py-1.5" data-testid="world-category-filter">
-          <button
-            type="button"
-            onClick={() => setWorldCategoryFilter("all")}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-xs transition-colors ${
-              worldCategoryFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            全部 ({worldList.length})
-          </button>
-          {worldCategoryOptions.map((meta) => {
-            const count = worldList.filter((entry) => entryCategory(entry) === meta.id).length;
-            return (
-              <button
-                key={meta.id}
-                type="button"
-                onClick={() => setWorldCategoryFilter(meta.id)}
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs transition-colors ${
-                  worldCategoryFilter === meta.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {meta.name} ({count})
-              </button>
-            );
-          })}
-        </div>
+      {/* 页签对应的整块内容（分类子页签 + 搜索 + 列表）是一个 tabpanel */}
+      <div className="flex min-h-0 flex-1 flex-col" {...sidebarTabPanelProps("lore-main", activeTab)}>
+      {activeTab === "settings" && (
+        <SidebarTabs<SettingsCategoryFilter>
+          ariaLabel="设定分类"
+          idPrefix="lore-settings"
+          size="sm"
+          testId="settings-category-tabs"
+          active={settingsCategory}
+          onChange={selectSettingsCategory}
+          tabs={settingsCategoryTabs}
+        />
       )}
 
       {/* 搜索框 */}
+      {activeTab !== "draft" && (
       <div className="shrink-0 p-2 border-b border-border/60">
         <div className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2 h-7">
           <Search className="size-3 text-muted-foreground shrink-0" />
@@ -453,25 +502,48 @@ export function CharactersAndLoreSidebarPanel({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={activeTab === "characters" ? "搜索角色名、性格、口癖…" : "搜索世界设定、门派、体系…"}
-            aria-label={activeTab === "characters" ? "搜索角色" : "搜索世界设定"}
+            placeholder={isCharacterTab ? "搜索角色名、性格、口癖…" : "搜索设定、门派、体系…"}
+            aria-label={isCharacterTab ? "搜索角色" : "搜索设定条目"}
             className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/60"
           />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery("")} className="text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => setSearchQuery("")} aria-label="清空搜索" className="text-muted-foreground hover:text-foreground">
               <X className="size-3" />
             </button>
           )}
         </div>
       </div>
+      )}
 
-      {/* 卡片流展示区：草案 tab 时替换为拆书草案确认面板，不动卡片流逻辑 */}
+      {/* 卡片流展示区：草案 tab 时替换为拆书草案确认面板；人物表 tab 时换成表格 */}
       {activeTab === "draft" ? (
         <div className="flex-1 min-h-0">
           <DissectDraftPanel bookId={bookId} onChanged={loadDraftCount} />
         </div>
+      ) : activeTab === "cast" ? (
+        <div className="flex-1 min-h-0 overflow-auto p-2">
+          {castRows.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-xs font-medium text-foreground">{searchQuery ? "没有找到匹配的角色" : "还没有角色卡。"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {searchQuery ? "换个关键词，或清空搜索后重试。" : "点「新角色」建立人物卡；写完一章并结算后，这里会填上境界、位置和出场。"}
+              </p>
+            </div>
+          ) : (
+            <CastTable
+              rows={castRows}
+              selectedNodeId={selectedNodeId}
+              sortDirection={castSortDirection}
+              onToggleSort={() => setCastSortDirection((value) => (value === "desc" ? "asc" : "desc"))}
+              onOpen={onOpen}
+            />
+          )}
+        </div>
       ) : (
-      <div className="flex-1 min-h-0 overflow-y-auto p-2">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto p-2"
+        {...(activeTab === "settings" ? sidebarTabPanelProps("lore-settings", settingsCategory) : {})}
+      >
         {cards.list.length === 0 ? (
           // 空态模板（设计板 emptybox）：还没有 X。做 Y 即可 Z。+ 一个主按钮
           <div className="flex flex-col items-center justify-center gap-1.5 py-12 text-center space-y-1.5">
@@ -479,14 +551,18 @@ export function CharactersAndLoreSidebarPanel({
               <UserRound className="size-5" strokeWidth={1.8} />
             </span>
             <p className="text-xs font-medium text-foreground">
-              {searchQuery ? "没有找到匹配的条目" : activeTab === "characters" ? "还没有角色卡。" : "还没有世界设定。"}
+              {searchQuery
+                ? "没有找到匹配的条目"
+                : activeTab === "characters"
+                  ? "还没有角色卡。"
+                  : settingsCategory === "all" ? "还没有设定条目。" : `还没有「${settingsCategoryLabel ?? ""}」条目。`}
             </p>
             <p className="text-xs text-muted-foreground max-w-xs">
               {searchQuery
                 ? "换个关键词，或清空搜索后重试。"
                 : activeTab === "characters"
                   ? "点「新角色」即可建立第一张人物卡；也可以从「导入」批量建。"
-                  : "点「新设定」即可添加第一条世界观与规则。"}
+                  : "点「新设定」即可添加第一条；也可以从「导入」批量建。"}
             </p>
             {!searchQuery && (
               <Button size="sm" className="mt-1" onClick={() => setCreatingChar(true)} data-testid="lore-empty-create">
@@ -514,7 +590,148 @@ export function CharactersAndLoreSidebarPanel({
         )}
       </div>
       )}
+      </div>
     </div>
+  );
+}
+
+// ─── 人物表：每个角色一行，列取受控状态槽（境界 / 所在 / 所属 / 生死 / 去向） ─────────────
+
+export interface CastRow {
+  readonly realm?: string;
+  readonly location?: string;
+  readonly stance?: string;
+  readonly lastChapter?: number;
+  /** 存亡：生死槽的归一取值（存活 / 死亡 / 复活），或去向槽的「离场」。 */
+  readonly life?: string;
+}
+
+const CAST_CELL_MAX_CHARS = 16;
+
+/**
+ * 人物表一行：每列取同槽最新一章的事实；谓词经结算时同一套受控槽归一（state-predicate），
+ * 所以「修为」「当前境界」都落在「境界」列。认不出的谓词不进表，留给角色卡详情。
+ */
+export function deriveCastRow(input: {
+  readonly facts: readonly EntityFactLite[];
+  readonly entity?: NarrativeEntityInfo;
+}): CastRow {
+  const best = new Map<string, { chapter: number; value: string }>();
+  const consider = (slot: string, value: string, chapter: number) => {
+    const previous = best.get(slot);
+    if (!previous || chapter >= previous.chapter) best.set(slot, { chapter, value });
+  };
+  for (const fact of input.facts) {
+    const canonical = canonicalizeStatePredicate({
+      // 没写类别或旧的通用 state 类按人物状态归一；位置类谓词在两类下都能命中
+      category: !fact.category || fact.category === "state" ? "character_state" : fact.category,
+      predicate: fact.predicate,
+      object: fact.object,
+    });
+    if (!canonical) continue;
+    const value = cardReadableText(canonical.value, CAST_CELL_MAX_CHARS);
+    if (!value) continue;
+    consider(canonical.slot, value, factChapter(fact));
+  }
+  const life = best.get(LIFE_SLOT);
+  const departure = best.get(DEPARTURE_SLOT);
+  // 死亡优先于离场；离场晚于最近一次生死记录时显示「离场」
+  const lifeValue = life?.value === LIFE_DEAD
+    ? LIFE_DEAD
+    : departure?.value === DEPARTURE_LEFT && (!life || departure.chapter >= life.chapter)
+      ? DEPARTURE_LEFT
+      : life?.value;
+  const lastChapter = lastAppearance(input.entity, input.facts);
+  return {
+    ...(best.get(REALM_SLOT) ? { realm: best.get(REALM_SLOT)!.value } : {}),
+    ...(best.get(LOCATION_SLOT) ? { location: best.get(LOCATION_SLOT)!.value } : {}),
+    ...(best.get(AFFILIATION_SLOT) ? { stance: best.get(AFFILIATION_SLOT)!.value } : {}),
+    ...(lastChapter !== undefined ? { lastChapter } : {}),
+    ...(lifeValue ? { life: lifeValue } : {}),
+  };
+}
+
+/** 按最近出场排序；没有出场记录的始终排在最后，同章按名字。 */
+export function sortCastRows<T extends { readonly node: WorkbenchResourceNode; readonly row: CastRow }>(
+  rows: readonly T[],
+  direction: "desc" | "asc",
+): T[] {
+  return [...rows].sort((left, right) => {
+    const a = left.row.lastChapter;
+    const b = right.row.lastChapter;
+    if (a === undefined && b !== undefined) return 1;
+    if (b === undefined && a !== undefined) return -1;
+    if (a !== undefined && b !== undefined && a !== b) return direction === "desc" ? b - a : a - b;
+    return left.node.title.localeCompare(right.node.title, "zh-CN");
+  });
+}
+
+function CastTable({
+  rows,
+  selectedNodeId,
+  sortDirection,
+  onToggleSort,
+  onOpen,
+}: {
+  rows: ReadonlyArray<{ readonly node: WorkbenchResourceNode; readonly row: CastRow }>;
+  selectedNodeId: string | null;
+  sortDirection: "desc" | "asc";
+  onToggleSort: () => void;
+  onOpen: (node: WorkbenchResourceNode) => void;
+}) {
+  const cell = (value: string | undefined) => value
+    ? <span className="block max-w-[8rem] truncate" title={value}>{value}</span>
+    : <span className="text-muted-foreground/60" aria-label="未记录">—</span>;
+  return (
+    <table className="w-full min-w-[22rem] border-collapse text-2xs" data-testid="cast-table">
+      <caption className="sr-only">人物表：每个角色的当前境界、位置、立场、最近出场章与存亡，点角色名打开人物卡</caption>
+      <thead>
+        <tr className="border-b border-border text-left text-muted-foreground">
+          <th scope="col" className="py-1 pr-2 font-medium">角色</th>
+          <th scope="col" className="py-1 pr-2 font-medium">当前境界</th>
+          <th scope="col" className="py-1 pr-2 font-medium">位置</th>
+          <th scope="col" className="py-1 pr-2 font-medium">立场</th>
+          <th scope="col" className="py-1 pr-2 font-medium" aria-sort={sortDirection === "desc" ? "descending" : "ascending"}>
+            <button
+              type="button"
+              onClick={onToggleSort}
+              className="inline-flex items-center gap-0.5 rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={sortDirection === "desc" ? "现在按最近出场从近到远，点一下反过来" : "现在按最近出场从远到近，点一下反过来"}
+              data-testid="cast-sort-last-chapter"
+            >
+              最近出场
+              {sortDirection === "desc" ? <ArrowDown className="size-3" aria-hidden="true" /> : <ArrowUp className="size-3" aria-hidden="true" />}
+            </button>
+          </th>
+          <th scope="col" className="py-1 font-medium">存亡</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ node, row }) => {
+          const selected = selectedNodeId === node.id;
+          return (
+            <tr key={node.id} className={`border-b border-border/50 ${selected ? "bg-primary/5" : "hover:bg-muted/40"}`} data-testid="cast-row">
+              <th scope="row" className="py-1 pr-2 text-left font-normal">
+                <button
+                  type="button"
+                  onClick={() => onOpen(node)}
+                  aria-current={selected ? "true" : undefined}
+                  className={`max-w-[7rem] truncate rounded text-left font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "text-primary" : "text-foreground"}`}
+                  title={`打开「${node.title}」的人物卡`}
+                >
+                  {node.title}
+                </button>
+              </th>
+              <td className="py-1 pr-2">{cell(row.realm)}</td>
+              <td className="py-1 pr-2">{cell(row.location)}</td>
+              <td className="py-1 pr-2">{cell(row.stance)}</td>
+              <td className="py-1 pr-2 tabular-nums">{row.lastChapter !== undefined ? `第 ${row.lastChapter} 章` : cell(undefined)}</td>
+              <td className={`py-1 ${row.life === LIFE_DEAD ? "text-destructive" : ""}`}>{cell(row.life)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -900,7 +1117,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
         <option value="rules">法则规则</option>
         <option value="locations">地理场景</option>
         <option value="props">重要物品</option>
-        <option value="timeline">前史时间线</option>
+        <option value="timeline">前史时间线（在「故事推进 › 时间线」查看）</option>
       </select>
       <Textarea
         value={text}

@@ -25,6 +25,7 @@ export default defineConfig({
       "@vivy1024/novelfork-core/i18n": resolve(__dirname, "../core/src/i18n/index.ts"),
       "@vivy1024/novelfork-core/utils/length-metrics": resolve(__dirname, "../core/src/utils/length-metrics.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/writing-progress-event": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/writing-progress-event.ts"),
+      "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/sidebar-tabs-model": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/ide/sidebar-tabs-model.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/ide/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/index.ts"),
       // 可选浏览器依赖在测试中用空 stub 替身（运行时仍走真实动态 import + try/catch 降级）

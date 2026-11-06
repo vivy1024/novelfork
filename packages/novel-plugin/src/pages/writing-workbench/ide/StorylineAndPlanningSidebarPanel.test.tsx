@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { orderOutlineTree, pruneStoryChapterTree, resolveNextAction, StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
@@ -98,6 +98,21 @@ function fixturePlan(): import("../next-chapter-plan").NextChapterPlan {
   };
 }
 
+// 全书叙事结构：伏笔债务与剧情线来自同一份快照。
+const structureHarness = vi.hoisted(() => ({
+  state: { status: "loading" } as import("../useNarrativeStructure").NarrativeStructureState,
+}));
+vi.mock("../useNarrativeStructure", () => ({
+  useNarrativeStructure: () => ({ state: structureHarness.state, reload: vi.fn() }),
+}));
+
+// 按章走势复用画布「下一章」页的同一个组件，这里只验它被挂上。
+vi.mock("../ChapterTimelinePanel", () => ({
+  ChapterTimelinePanel: ({ bookId, currentChapter }: { bookId: string; currentChapter?: number }) => (
+    <div data-testid="mock-chapter-timeline">{bookId}·{currentChapter}</div>
+  ),
+}));
+
 vi.mock("../NarrativeMemoryPanel", () => ({
   NarrativeMemorySummary: ({ onOpenCenter }: { onOpenCenter?: () => void }) => (
     <button type="button" data-testid="mock-memory-summary" onClick={() => onOpenCenter?.()}>
@@ -152,15 +167,167 @@ afterEach(() => {
   vi.restoreAllMocks();
   planHarness.plan = null;
   planHarness.calls = [];
+  structureHarness.state = { status: "loading" };
+});
+
+function progressEntry(id: string, title: string, category: string, fields: Record<string, unknown> = {}): WorkbenchResourceNode {
+  return { id: `jingwei-entry:${id}`, kind: "jingwei-entry", title, capabilities, metadata: { entryId: id, category, fields } };
+}
+
+/** 与 IdeWorkbench 一致的「推进」分区：workspace=progress 下按分类分组。 */
+function progressSection(entries: WorkbenchResourceNode[]): WorkbenchResourceNode {
+  const byCategory = new Map<string, WorkbenchResourceNode[]>();
+  for (const entry of entries) {
+    const category = String(entry.metadata?.category);
+    byCategory.set(category, [...(byCategory.get(category) ?? []), entry]);
+  }
+  return {
+    id: "jingwei-workspace-progress",
+    kind: "group",
+    title: "推进",
+    capabilities,
+    metadata: { workspace: "progress" },
+    children: [...byCategory.entries()].map(([category, list]) => ({
+      id: `jingwei-cat:${category}`, kind: "group", title: `${category} (${list.length})`, capabilities, metadata: { category }, children: list,
+    })),
+  };
+}
+
+function renderProgress(entries: WorkbenchResourceNode[], extra: Partial<import("react").ComponentProps<typeof StorylineAndPlanningSidebarPanel>> = {}) {
+  const onOpen = vi.fn();
+  const utils = render(
+    <StorylineAndPlanningSidebarPanel
+      bookId="book-1"
+      chapterTreeNodes={[]}
+      outlineTreeNodes={[]}
+      progressTreeNodes={[progressSection(entries)]}
+      selectedNodeId={null}
+      onOpen={onOpen}
+      {...extra}
+    />,
+  );
+  return { ...utils, onOpen };
+}
+
+function readyStructure(partial: { foreshadows?: unknown[]; storylines?: unknown[] }): import("../useNarrativeStructure").NarrativeStructureState {
+  return {
+    status: "ready",
+    data: {
+      ok: true, bookId: "book-1", currentChapter: 12, volumes: [], chapters: [], scenes: [], mounts: [], entities: [],
+      foreshadowThresholds: { approaching: 5, overdue: 12 },
+      foreshadows: partial.foreshadows ?? [],
+      storylines: partial.storylines ?? [],
+    } as never,
+  };
+}
+
+describe("StorylineAndPlanningSidebarPanel 随剧情推进的条目页签", () => {
+  const entries = [
+    progressEntry("fs-1", "青铜戒指之谜", "foreshadowing"),
+    progressEntry("cf-1", "通道授权争夺", "conflicts", { status: "进行中" }),
+    progressEntry("rel-1", "韩立与墨大夫", "relationships"),
+    progressEntry("tl-1", "前史：天灵务局成立", "timeline"),
+    progressEntry("cs-3", "雨夜摘要", "chapter-summaries", { chapterNumber: 3 }),
+    progressEntry("cs-1", "入城摘要", "chapter-summaries", { chapterNumber: 1 }),
+  ];
+
+  it("页签是 tablist：章节与大纲、伏笔、矛盾、剧情线、关系、时间线、章摘要、章后事实，带条数", () => {
+    renderProgress(entries);
+    const tablist = screen.getByRole("tablist", { name: "故事推进视图" });
+    expect(within(tablist).getAllByRole("tab").map((tab) => tab.textContent?.replace(/\d+$/u, ""))).toEqual([
+      "章节与大纲", "伏笔", "矛盾", "剧情线", "关系", "时间线", "章摘要", "章后事实",
+    ]);
+    expect(screen.getByRole("tab", { name: /^伏笔/ }).textContent).toBe("伏笔1");
+    expect(screen.getByRole("tab", { name: /^章摘要/ }).textContent).toBe("章摘要2");
+    // 界面上不出现内部分类名
+    expect(screen.queryByText(/经纬/)).toBeNull();
+  });
+
+  it.each([
+    ["矛盾", "storyline-conflicts-list", "通道授权争夺"],
+    ["关系", "storyline-relationships-list", "韩立与墨大夫"],
+    ["时间线", "storyline-timeline-list", "前史：天灵务局成立"],
+  ])("「%s」页只列本类条目，点开交给 onOpen", (tabName, listId, title) => {
+    const { onOpen } = renderProgress(entries);
+    fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${tabName}`) }));
+    const list = screen.getByTestId(listId);
+    expect(within(list).getAllByRole("button")).toHaveLength(1);
+    fireEvent.click(within(list).getByRole("button", { name: new RegExp(title) }));
+    expect(onOpen).toHaveBeenCalledWith(entries.find((entry) => entry.title === title));
+  });
+
+  it("「伏笔」页带上叙事结构里的埋设章与超期标；「章摘要」按章号排", () => {
+    structureHarness.state = readyStructure({
+      foreshadows: [{ id: "d1", entryId: "fs-1", title: "青铜戒指之谜", plantedChapter: 2, status: "planted", urgency: "overdue", reason: "已悬置 13 章" }],
+    });
+    renderProgress(entries);
+
+    fireEvent.click(screen.getByRole("tab", { name: /^伏笔/ }));
+    const row = within(screen.getByTestId("storyline-foreshadowing-list")).getByRole("button");
+    expect(row.textContent).toContain("埋于第 2 章");
+    expect(row.textContent).toContain("超期");
+
+    fireEvent.click(screen.getByRole("tab", { name: /^章摘要/ }));
+    const titles = within(screen.getByTestId("storyline-chapter-summaries-list")).getAllByRole("button").map((button) => button.textContent);
+    expect(titles[0]).toContain("入城摘要");
+    expect(titles[1]).toContain("雨夜摘要");
+  });
+
+  it("「剧情线」页列出叙事结构的剧情线，点开去故事画布「推进」页", () => {
+    structureHarness.state = readyStructure({
+      storylines: [{ id: "s1", name: "夺回师门", kind: "main", lifecycle: "active" }],
+    });
+    const { onOpen } = renderProgress(entries);
+    fireEvent.click(screen.getByRole("tab", { name: /^剧情线/ }));
+    const row = within(screen.getByTestId("storyline-storylines-list")).getByRole("button");
+    expect(row.textContent).toContain("夺回师门");
+    expect(row.textContent).toContain("主线 · 进行中");
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
+      id: "story-progression:book-1",
+      metadata: expect.objectContaining({ preferredView: "board" }),
+    }));
+  });
+
+  it("「时间线」页可切到按章走势，复用画布的同一个走势组件", () => {
+    renderProgress(entries);
+    fireEvent.click(screen.getByRole("tab", { name: /^时间线/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "按章走势" }));
+    expect(screen.getByTestId("mock-chapter-timeline").textContent).toBe("book-1·");
+  });
+
+  it("空页签给出一句提示", () => {
+    renderProgress([]);
+    fireEvent.click(screen.getByRole("tab", { name: /^伏笔/ }));
+    expect(screen.getByTestId("storyline-foreshadowing-list-empty").textContent).toContain("还没有伏笔条目");
+  });
+
+  it("focusRequest 切到指定页签；seq 变化才再次生效", () => {
+    const mainTab = (name: RegExp | string) => within(screen.getByRole("tablist", { name: "故事推进视图" })).getByRole("tab", { name });
+    const { rerender } = renderProgress(entries, { focusRequest: { tab: "timeline", seq: 1 } });
+    expect(mainTab(/^时间线/).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.click(mainTab("章节与大纲"));
+    // 同一个请求重渲染不会把作者拽回去
+    rerender(
+      <StorylineAndPlanningSidebarPanel bookId="book-1" progressTreeNodes={[progressSection(entries)]} selectedNodeId={null} onOpen={vi.fn()} focusRequest={{ tab: "timeline", seq: 1 }} />,
+    );
+    expect(mainTab("章节与大纲").getAttribute("aria-selected")).toBe("true");
+    rerender(
+      <StorylineAndPlanningSidebarPanel bookId="book-1" progressTreeNodes={[progressSection(entries)]} selectedNodeId={null} onOpen={vi.fn()} focusRequest={{ tab: "timeline", seq: 2 }} />,
+    );
+    expect(mainTab(/^时间线/).getAttribute("aria-selected")).toBe("true");
+  });
 });
 
 describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）", () => {
   it("默认展示章节与大纲 Tab，并点击叶子复用 onOpen", () => {
     const { onOpen, chapter, outline } = renderPanel();
 
-    expect(screen.getByRole("button", { name: "章节与大纲" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "章后事实" })).toBeTruthy();
-    // 只剩两个子页签：「故事画布」改成顶部按钮，「进度账本」与画布伏笔账本重复，已下线
+    expect(screen.getByRole("tab", { name: "章节与大纲" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "章后事实" })).toBeTruthy();
+    // 「故事画布」是顶部按钮不是页签，「进度账本」与画布伏笔账本重复，已下线
+    expect(screen.queryByRole("tab", { name: "故事画布" })).toBeNull();
     expect(screen.queryByRole("button", { name: "故事画布" })).toBeNull();
     expect(screen.queryByRole("button", { name: "进度账本" })).toBeNull();
     expect(screen.getByRole("button", { name: "打开故事画布" })).toBeTruthy();
@@ -354,7 +521,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
   it("章后事实 Tab 只渲染轻量摘要卡，点击摘要直达中央面板节点", () => {
     const { onOpen } = renderPanel();
 
-    fireEvent.click(screen.getByRole("button", { name: "章后事实" }));
+    fireEvent.click(screen.getByRole("tab", { name: "章后事实" }));
 
     // 摘要卡渲染，且完整面板不在侧栏内嵌
     fireEvent.click(screen.getByTestId("mock-memory-summary"));
@@ -370,7 +537,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     const { fetchJson } = await import("@/hooks/use-api");
     vi.mocked(fetchJson).mockResolvedValueOnce({ summary: "第 3 章已重新结算。" });
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "章后事实" }));
+    fireEvent.click(screen.getByRole("tab", { name: "章后事实" }));
 
     const region = screen.getByRole("region", { name: "记忆过期的章节" });
     expect(region.textContent).toContain("第 3 章 · 雨夜");

@@ -13,7 +13,8 @@
     "./pages": "./src/pages/index.ts",
     "./pages/writing-workbench": "./src/pages/writing-workbench/index.ts",
     "./pages/writing-workbench/ide": "./src/pages/writing-workbench/ide/index.ts",
-    "./pages/writing-workbench/writing-progress-event": "./src/pages/writing-workbench/writing-progress-event.ts"
+    "./pages/writing-workbench/writing-progress-event": "./src/pages/writing-workbench/writing-progress-event.ts",
+    "./pages/writing-workbench/sidebar-tabs-model": "./src/pages/writing-workbench/ide/sidebar-tabs-model.ts"
   },
   "scripts": {
     "test": "vitest run",
