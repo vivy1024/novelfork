@@ -39,6 +39,9 @@ import {
 	isToolVisibleForWorker,
 	lookupActiveWorkflowRun,
 	resolveWorkerWorkflowGate,
+	resolveWorkflowDelegation,
+	isDelegatedRunTool,
+	workflowDelegatedExtension,
 	workflowPromptExtension,
 	workflowWorkerExtension,
 	writingInjectionPreserveExtension,
@@ -381,17 +384,22 @@ export class NovelRuntimeHostAdapter {
 		const workerGate = await resolveWorkerWorkflowGate(narratorId, bookId);
 		const controllingRun = workerGate.kind === "controlled" ? workerGate.run : null;
 		const run = controllingRun ?? findActiveWorkflowRun(narratorId, bookId);
-		const workflowExtension = controllingRun
-			? workflowWorkerExtension(controllingRun)
-			: run
-				? workflowPromptExtension(run)
-				: null;
+		// 领导者派出的内置子代理：简报只讲分给它的工序（它可以提交那道工序的产物），
+		// 不用工人简报——后者叫它别提交，与内置子代理的职责相反。
+		const delegation = controllingRun ? await resolveWorkflowDelegation(narratorId, bookId) : null;
+		const workflowExtension = delegation
+			? workflowDelegatedExtension(delegation.run, delegation.template)
+			: controllingRun
+				? workflowWorkerExtension(controllingRun)
+				: run
+					? workflowPromptExtension(run)
+					: null;
 		// 资料索引卡（T4.7）：会话压缩折叠历史时它随本趟重建，模型随时可以按卡重取原文。
 		const indexCardExtension = contextIndexCardExtension(bookId);
 		// 写作注入保留件（T4.7 尾巴）：最近一次写作注入的原文快照同通道重建，压缩后案头仍有原件。
 		const preserveExtension = await writingInjectionPreserveExtension(boundBookRoot(context), bookId);
 		const visibleTools = controllingRun
-			? resolved.tools.filter((tool) => isToolVisibleForWorker(
+			? resolved.tools.filter((tool) => (delegation !== null && isDelegatedRunTool(tool.definition.name)) || isToolVisibleForWorker(
 				workerGate,
 				tool.definition.name,
 				toRuntimeRisk(tool.definition.risk),
@@ -630,6 +638,11 @@ export class NovelRuntimeHostAdapter {
 			}
 		}
 		const run = lookup.ok ? lookup.run : null;
+		// 委派身份只交给工作流工具：它据此按领导者的运行、只放行与模板对应的当前工序。
+		// 其它写类工具已被上面的工人闸门拦下，不会走到这里。
+		const delegation = workerGate.kind === "controlled" && canonicalToolName.startsWith("workflow.")
+			? await resolveWorkflowDelegation(narratorId, bookId)
+			: null;
 		if (run) {
 			let effectiveRisk: RuntimeToolRisk = runtimeRisk;
 			try {
@@ -657,6 +670,7 @@ export class NovelRuntimeHostAdapter {
 			const toolContext: PluginToolExecutionContext = {
 				...pluginContext,
 				sessionId: narratorId,
+				...(delegation ? { delegatedBy: { narratorId: delegation.narratorId, template: delegation.template } } : {}),
 				...(loadedSkills.length > 0 ? { loadedSkills } : {}),
 				...(hostExecution?.provider && hostExecution.model
 					? { model: { provider: hostExecution.provider, id: hostExecution.model } }

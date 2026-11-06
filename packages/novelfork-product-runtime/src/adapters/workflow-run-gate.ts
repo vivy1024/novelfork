@@ -16,9 +16,12 @@ import { db as runtimeDb, narrators } from "@vivy1024/narrafork-runtime-bridge";
 import { eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import {
 	buildContextIndexCard,
+	buildDelegatedStepBrief,
 	buildWorkflowRunBrief,
+	rosterTemplatesForStep,
 	findApprovedProseMismatch,
 	getActiveWorkflowRunForNarrator,
+	isNovelSubagentTemplateId,
 	listActiveWorkflowRunsForBook,
 	loadWritingInjectionPreserve,
 	renderWritingInjectionPreserve,
@@ -216,9 +219,74 @@ export function explainWorkerWorkflowDenial(
 	};
 }
 
+/** Runtime 子代理的委派身份：来自 Runtime 自己的叙述者行，不来自模型输入。 */
+export interface SubagentDelegationRecord {
+	readonly parentNarratorId: string;
+	readonly template: string;
+}
+
+/**
+ * 读叙述者行里的委派身份（type=subagent 才有）。读不到 / 不是子代理时为 null。
+ * 模板名取 `subagent_type`（Runtime 建子代理时写入、之后不变）。
+ */
+export async function readSubagentDelegation(narratorId: string): Promise<SubagentDelegationRecord | null> {
+	try {
+		const row = await runtimeDb.query.narrators.findFirst({
+			where: eq(narrators.id, narratorId),
+			columns: { type: true, subagentType: true, parentNarratorId: true },
+		});
+		if (!row || row.type !== "subagent") return null;
+		const parent = typeof row.parentNarratorId === "string" ? row.parentNarratorId : "";
+		const template = typeof row.subagentType === "string" ? row.subagentType : "";
+		return parent && template ? { parentNarratorId: parent, template } : null;
+	} catch {
+		return null;
+	}
+}
+
+export interface WorkflowDelegationSeams {
+	readonly readDelegation?: (narratorId: string) => Promise<SubagentDelegationRecord | null>;
+	readonly activeRunForNarrator?: (narratorId: string) => WorkflowRunRecord | null;
+}
+
+/**
+ * 内置子代理委派判定：叙述者是本书运行领导者派出的子代理、且由名册模板创建时，
+ * 返回交给工作流工具的委派身份（工具据此只放行与模板对应的当前工序）。
+ *
+ * 其它情况一律 null——包括模板不在名册里、父叙述者不是本书运行的领导者、
+ * 读不出运行。null 时子代理仍按工人闸门处理（写类全拦，只能汇报）。
+ * 当前工序是否真的分给它，由工作流工具在提交时按模板判定；这里只认身份。
+ */
+export async function resolveWorkflowDelegation(
+	narratorId: string,
+	bookId: string | undefined,
+	seams: WorkflowDelegationSeams = {},
+): Promise<{ readonly narratorId: string; readonly template: string; readonly run: WorkflowRunRecord } | null> {
+	if (!bookId) return null;
+	const delegation = await (seams.readDelegation ?? readSubagentDelegation)(narratorId);
+	if (!delegation || !isNovelSubagentTemplateId(delegation.template)) return null;
+	let run: WorkflowRunRecord | null;
+	try {
+		run = seams.activeRunForNarrator
+			? seams.activeRunForNarrator(delegation.parentNarratorId)
+			: getActiveWorkflowRunForNarrator(getStorageDatabase(), delegation.parentNarratorId);
+	} catch {
+		return null;
+	}
+	if (!run || run.bookId !== bookId) return null;
+	return { narratorId: delegation.parentNarratorId, template: delegation.template, run };
+}
+
 /** 由叙述者本人执行的进行中工序（委派子代理的工序不允许叙述者直接写入）。 */
 function directSteps(run: WorkflowRunRecord) {
 	return runningSteps(run.state).filter((step) => step.executorKind !== "subagent");
+}
+
+/** 内置子代理与状态机对话用的三个运行工具（提交 / 报阻塞是草稿级写入，工人可见性默认不露）。 */
+const DELEGATED_RUN_TOOLS = new Set(["workflow.get_current_step", "workflow.submit_step_output", "workflow.report_blocker"]);
+
+export function isDelegatedRunTool(canonicalName: string): boolean {
+	return DELEGATED_RUN_TOOLS.has(canonicalName);
 }
 
 /**
@@ -339,6 +407,16 @@ export function buildWorkflowWorkerBrief(run: WorkflowRunRecord): string {
 	]
 		.filter(Boolean)
 		.join("\n");
+}
+
+export const WORKFLOW_DELEGATED_PROMPT_EXTENSION_ID = "novelfork.workflow-delegated";
+
+/** 内置子代理的工序简报（只讲当前分给该模板的工序）。 */
+export function workflowDelegatedExtension(run: WorkflowRunRecord, template: string): { id: string; content: string } {
+	const stepIds = runningSteps(run.state)
+		.filter((step) => rosterTemplatesForStep(step).includes(template))
+		.map((step) => step.stepId);
+	return { id: WORKFLOW_DELEGATED_PROMPT_EXTENSION_ID, content: buildDelegatedStepBrief(run, template, stepIds) };
 }
 
 /** 工人侧的简报扩展；不是工人时由调用方跳过。 */

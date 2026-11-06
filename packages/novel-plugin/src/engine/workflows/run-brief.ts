@@ -10,6 +10,7 @@
 import type { WorkflowRunRecord } from "./run-store.js";
 import { runningSteps, type WorkflowCandidateKind, type WorkflowStepState } from "./run-state-machine.js";
 import { workflowTeamIdForBook } from "./workflow-team.js";
+import { rosterTemplatesForStep } from "../agents/roster.js";
 import type { WorkflowStepNode } from "./workflow-graph.js";
 
 export function toWireToolName(name: string): string {
@@ -59,6 +60,14 @@ function executionLine(
   recipeStep: { modelOverride?: string; parallelSubagents?: readonly { name: string }[] } | undefined,
 ): string {
   if (step.executorKind === "subagent") {
+    const templates = rosterTemplatesForStep(step);
+    const builtin = templates.length > 0
+      ? `执行方式（首选）：委派内置子代理——Agent(subagent_type="${templates[0]}"${recipeStep?.modelOverride ? `, model="${recipeStep.modelOverride}"` : ""})` +
+        `${templates.length > 1 ? `（按打回意见返修时可改派 subagent_type="${templates[1]}"）` : ""}。` +
+        `prompt 里只写本工序目标、stepId="${step.stepId}" 与需要它参考的候选 id，不要粘贴正文或蓝图原文（子代理用 workflow_get_current_step 自己取）。` +
+        "子代理会直接用 workflow_submit_step_output 提交本工序产物，交还你的是摘要与 candidateId；你不要再提交一遍，也不要把正文转贴给作者。" +
+        "内置子代理不可用（没有 Agent 工具或模板未加载）时按下面的次选办法。\n"
+      : "";
     const model = recipeStep?.modelOverride ? `，model=${recipeStep.modelOverride}` : "";
     const parallel = recipeStep?.parallelSubagents?.length
       ? `；并行子代理：${recipeStep.parallelSubagents.map((agent) => agent.name).join("、")}（团队里各自 team_dispatch，或各自 task(run_in_background=true)，汇总后一次提交）`
@@ -69,7 +78,8 @@ function executionLine(
       ? `团队 id 用 "${teamId}"（本书专用；team_setup / team_status 等工具的 teamId 参数都填它，不要用默认团队）；`
       : "";
     return (
-      `执行方式：委派工人执行（产物必须由你本人提交，工人不得直写权威源）——` +
+      builtin +
+      `${builtin ? "次选" : "执行方式"}：委派工人执行（产物必须由你本人提交，工人不得直写权威源）——` +
       `优先用团队编排工具（plugin__com_whisent_narrator-team__ 前缀）：① team_status 读现有编排，合并后 team_setup 写回（勿盲覆盖既有配置）；` +
       `${teamLine}` +
       `② team_dispatch 把本工序目标派给标题前缀「工作流工人·」的对应工人（角色 ${step.agentId ?? "writer"}${model}）；` +
@@ -95,6 +105,9 @@ function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multi
       ? `允许的写入工具：${writeTools.join("、")}（读类工具不受限）。`
       : "不允许调用任何写入工具（读类工具不受限）。",
   );
+  if (step.tools.includes("pipeline.write")) {
+    lines.push("落盘正文：调用 pipeline_write 时传 fromWorkflowRun=true，正文与蓝图由工具从本运行里作者已确认的候选取，不要再把正文贴进 content。");
+  }
   if (recipeStep?.skills?.length) {
     lines.push(`需要遵循的写作技能：${recipeStep.skills.join("、")}（用 Skill 工具读取）。`);
   }
@@ -103,13 +116,49 @@ function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multi
     const outcomeArg = step.outcomes.length > 0 ? `，outcome 取 ${step.outcomes.map((item) => `"${item}"`).join(" / ")} 之一（决定后续走哪条分支）` : "";
     lines.push(
       `必交产物：调用 workflow_submit_step_output，${stepArg}runRevision=${run.state.revision}，kind="${step.expectedOutput}"${outcomeArg}，payload=${PAYLOAD_SHAPE[step.expectedOutput]}`,
-      step.requiresApproval ? "提交后需要作者确认才继续。" : "提交通过校验后自动继续，返回结果里会给出新的简报。",
+      step.requiresApproval
+        ? "提交后需要作者确认才继续。"
+        : step.expectedOutput === "prose"
+          ? "提交后进入审校；正文要等审校与作者确认后才会落盘。"
+          : step.expectedOutput === "audit"
+            ? "审校不通过（passed=false）时会自动打回写正文的工序返修，返修轮数用完后交作者决定。"
+            : "提交通过校验后自动继续，返回结果里会给出新的简报。",
     );
   }
   if (step.note) {
     lines.push(`上一次的意见：${step.note.what}；${step.note.why}；建议：${step.note.action}`);
   }
   return lines;
+}
+
+/**
+ * 委派子代理的简报：只讲分给它的工序（目标、必交产物、上一次的意见），不讲团队编排与其它工序。
+ * allowedStepIds 为空时说明现在没有它能做的事。
+ */
+export function buildDelegatedStepBrief(run: WorkflowRunRecord, template: string, allowedStepIds: readonly string[]): string {
+  const lines = [
+    `【创作工作流 · 你是内置子代理 ${template}】`,
+    `运行 ${run.id}（版本 ${run.state.revision}）｜第 ${run.chapterNumber} 章｜方案「${run.recipe.name}」`,
+  ];
+  const steps = runningSteps(run.state).filter((step) => allowedStepIds.includes(step.stepId));
+  if (steps.length === 0) {
+    lines.push("现在没有分给你的进行中工序：不要提交任何产物，把情况写成一两句摘要交还领导者。");
+    return lines.join("\n");
+  }
+  for (const step of steps) {
+    const recipeStep = recipeStepOf(run, step.stepId);
+    lines.push(`▶ 工序：${step.label}（stepId="${step.stepId}"）`);
+    lines.push(`目标：${recipeStep?.customPrompt?.trim() || DEFAULT_GOAL[step.kind] || "完成本工序。"}`);
+    if (recipeStep?.skills?.length) lines.push(`需要遵循的写作技能：${recipeStep.skills.join("、")}（用 Skill 工具读取）。`);
+    if (step.expectedOutput) {
+      const outcomeArg = step.outcomes.length > 0 ? `，outcome 取 ${step.outcomes.map((item) => `"${item}"`).join(" / ")} 之一` : "";
+      lines.push(`必交产物：workflow_submit_step_output，stepId="${step.stepId}"，runRevision=${run.state.revision}，kind="${step.expectedOutput}"${outcomeArg}，payload=${PAYLOAD_SHAPE[step.expectedOutput]}`);
+    }
+    if (step.note) lines.push(`上一次的意见：${step.note.what}；${step.note.why}；建议：${step.note.action}`);
+  }
+  lines.push("上游材料（蓝图、上一版正文、审校意见）在本工具结果的 upstream 字段里，按需取用。");
+  lines.push("交还领导者时只写摘要与 candidateId，不贴正文。");
+  return lines.join("\n");
 }
 
 /** 生成工序简报。运行已结束时返回 null（不再注入任何约束）。 */

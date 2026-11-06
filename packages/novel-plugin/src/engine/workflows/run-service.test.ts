@@ -97,24 +97,31 @@ describe("创作工作流运行：服务端到端", () => {
     expect(sceneCount(storage, 7)).toBe(2);
     expect(run.state.currentStepId).toBe("step-draft");
 
-    // 3. 正文：无需确认，提交即作为「已批准正文」钉住。
+    // 3. 正文：提交后只是待定候选，审校与作者确认前不算批准，更不能落盘。
     run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose", payload: { title: "突围", content: "萧炎一路杀出后山。" } }));
-    expect(getApprovedProse(storage, run)).toEqual({ title: "突围", content: "萧炎一路杀出后山。" });
+    expect(getApprovedProse(storage, run)).toBeNull();
     expect(run.state.currentStepId).toBe("step-adversarial-audit");
+    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "萧炎一路杀出后山。" })?.what).toContain("还没有经作者确认");
 
-    // 4. 审查需要确认：打回后意见进入下一次简报，重交后批准。
-    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "audit", payload: { passed: false, summary: "节奏拖沓", issues: [] } }));
+    // 4. 审校不通过：自动打回写正文的工序，意见进入下一次简报（不经作者）。
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "audit", payload: { passed: false, summary: "节奏拖沓", issues: [{ severity: "error", description: "第二场冲突没有升级" }] } }));
+    expect(run.state.currentStepId).toBe("step-draft");
+    expect(buildWorkflowRunBrief(run)).toContain("第二场冲突没有升级");
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose", payload: { title: "突围", content: "萧炎一路杀出后山。追兵更近了。" } }));
+
+    // 审校通过后等作者确认；作者先打回审校本身（要求逐条列问题），重交后批准。
+    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "audit", payload: { passed: true, summary: "可以放行", issues: [] } }));
     expect(run.state.status).toBe("awaiting_approval");
     expect(buildWorkflowRunBrief(run)).toContain("停止产出");
-    run = ok(rejectWorkflowStep({ storage, runId: run.id, stepId: "step-adversarial-audit", expectedRevision: run.state.revision, note: "问题清单太空，逐条列出" }));
-    expect(buildWorkflowRunBrief(run)).toContain("问题清单太空");
-    run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "audit", payload: { passed: true, summary: "可以放行", issues: [{ severity: "info", description: "第三段略长" }] } }));
     run = ok(approveWorkflowStep({ storage, runId: run.id, stepId: "step-adversarial-audit", expectedRevision: run.state.revision }));
     expect(run.state.currentStepId).toBe("step-settlement");
+    // 作者在审校处放行，等于确认了它审过的那份正文。
+    expect(getApprovedProse(storage, run)).toEqual({ title: "突围", content: "萧炎一路杀出后山。追兵更近了。" });
 
-    // 5. 落盘守卫：写入内容必须与已批准正文一致。
+    // 5. 落盘守卫：写入内容必须与已批准正文一致；按引用落盘（不传正文）放行。
     expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "另一份正文" })).not.toBeNull();
-    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "  萧炎一路杀出后山。\r\n" })).toBeNull();
+    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "  萧炎一路杀出后山。追兵更近了。\r\n" })).toBeNull();
+    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { fromWorkflowRun: true })).toBeNull();
     expect(findApprovedProseMismatch(storage, run, "lore.write", { content: "随便" })).toBeNull();
 
     // 6. 最后一道因 requireFinalApproval 需要终审。
@@ -129,11 +136,13 @@ describe("创作工作流运行：服务端到端", () => {
     expect(detail.candidates.map((c) => [c.kind, c.decision])).toEqual([
       ["other", "approved"],
       ["scene-spec", "approved"],
+      ["prose", "rejected"],
+      ["audit", "approved"],
       ["prose", "approved"],
-      ["audit", "rejected"],
       ["audit", "approved"],
       ["other", "approved"],
     ]);
+    expect(detail.events.some((event) => event.type === "step_auto_returned")).toBe(true);
     expect(detail.candidates[1]!.committedRef).toBe("narrative_scene:chapter-7:2");
     // 事件按 seq 连续递增，可用于增量拉取。
     expect(detail.events.map((e) => e.seq)).toEqual(detail.events.map((_, i) => i + 1));

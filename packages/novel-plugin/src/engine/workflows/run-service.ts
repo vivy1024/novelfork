@@ -18,8 +18,10 @@ import { buildWorkflowRunBrief } from "./run-brief.js";
 import {
   runningSteps,
   WORKFLOW_CANDIDATE_KINDS,
+  type WorkflowAuditVerdict,
   type WorkflowCandidateKind,
   type WorkflowExplanation,
+  type WorkflowRunState,
   type WorkflowStepState,
 } from "./run-state-machine.js";
 import {
@@ -29,6 +31,7 @@ import {
   getActiveWorkflowRunForNarrator,
   getLatestApprovedCandidate,
   getLatestCandidate,
+  getLatestPendingCandidate,
   getWorkflowRun,
   insertWorkflowCandidate,
   listWorkflowRunCandidates,
@@ -241,6 +244,82 @@ export interface SubmitStepOutputInput {
   /** 分支工序必填：取工序声明的结果之一。 */
   readonly outcome?: string;
   readonly wordTarget?: number;
+  /** 提交成功时写入新候选的 id（返回给提交者，供领导者按 id 引用，不再转贴正文）。 */
+  readonly capture?: { candidateId?: string };
+  /** 委派子代理提交时：只允许提交这些工序（由调用方按模板与工序的对应关系算出）。 */
+  readonly allowedStepIds?: readonly string[];
+}
+
+/**
+ * 委派子代理只能操作分给它的工序：给了 stepId 就必须在名单里；没给时名单里恰好一道
+ * 进行中的工序才能推断。名单为空表示当前没有它能做的工序。
+ */
+function delegatedStepOf<T>(
+  run: WorkflowRunRecord,
+  stepId: string | undefined,
+  allowed: readonly string[],
+): { step: WorkflowStepState } | { error: WorkflowServiceResult<T> } {
+  const running = runningSteps(run.state).filter((step) => allowed.includes(step.stepId));
+  const denied = (what: string): { error: WorkflowServiceResult<T> } => ({
+    error: {
+      ok: false,
+      code: "step-not-delegated",
+      status: 409,
+      explanation: {
+        what,
+        why: "委派子代理只能提交分给它的那道工序，其余工序由领导者或对应的子代理负责",
+        action: "调用 workflow_get_current_step 确认分给你的 stepId；不是你的工序就把情况写进摘要交还领导者",
+      },
+    },
+  });
+  if (stepId) {
+    const step = running.find((candidate) => candidate.stepId === stepId);
+    return step ? { step } : denied(`工序「${stepId}」不是分给你的进行中工序`);
+  }
+  if (running.length === 1) return { step: running[0]! };
+  if (running.length === 0) return denied("现在没有分给你的进行中工序");
+  return { error: invalid("step-id-required", {
+    what: `有 ${running.length} 道分给你的工序同时进行`,
+    why: "不指明就不知道这份产物属于哪一道",
+    action: "带上 stepId 重新调用",
+  }) };
+}
+
+/** 审校不通过时进入上游简报的打回意见：取审校结论与前几条问题。 */
+function auditVerdictOf(payload: unknown): WorkflowAuditVerdict {
+  const body = record(payload) ?? {};
+  const passed = body.passed === true;
+  const issues = Array.isArray(body.issues) ? body.issues.map(record).filter((issue): issue is Record<string, unknown> => issue !== null) : [];
+  const listed = issues
+    .slice(0, 5)
+    .map((issue, index) => `${index + 1}. [${String(issue.severity ?? "info")}] ${String(issue.description ?? "").slice(0, 200)}`)
+    .join("；");
+  return {
+    passed,
+    note: {
+      what: `审校未通过：${String(body.summary ?? "").slice(0, 300)}`,
+      why: listed ? `问题：${listed}${issues.length > 5 ? `（另有 ${issues.length - 5} 条，见审校候选）` : ""}` : "审校认为本章正文需要修改",
+      action: "按审校意见逐条修改正文后重新提交；只改被指出的问题",
+    },
+  };
+}
+
+/** 审校 / 门禁类工序：作者在这里批准时，一并批准它审过的那份待定正文。 */
+const REVIEW_STEP_KINDS = new Set<WorkflowStepState["kind"]>(["audit", "adversarial-audit", "approval-gate"]);
+
+function decidePendingProse(
+  storage: StorageDatabase,
+  runId: string,
+  decision: "approved" | "rejected",
+  note?: string,
+): void {
+  const pending = getLatestPendingCandidate(storage, runId, "prose");
+  if (!pending) return;
+  decideWorkflowCandidate(storage, { candidateId: pending.id, decision, ...(note ? { note } : {}) });
+}
+
+function stepOf(state: WorkflowRunState, stepId: string): WorkflowStepState | undefined {
+  return state.steps.find((candidate) => candidate.stepId === stepId);
 }
 
 function noActiveRun<T>(): WorkflowServiceResult<T> {
@@ -254,7 +333,9 @@ function noActiveRun<T>(): WorkflowServiceResult<T> {
 export function submitWorkflowStepOutput(input: SubmitStepOutputInput): WorkflowServiceResult<WorkflowRunRecord> {
   const run = getActiveWorkflowRunForNarrator(input.storage, input.narratorId);
   if (!run) return noActiveRun();
-  const target = targetStepOf<WorkflowRunRecord>(run, input.stepId);
+  const target = input.allowedStepIds
+    ? delegatedStepOf<WorkflowRunRecord>(run, input.stepId, input.allowedStepIds)
+    : targetStepOf<WorkflowRunRecord>(run, input.stepId);
   if ("error" in target) return target.error;
   const { step } = target;
   if (!(WORKFLOW_CANDIDATE_KINDS as readonly string[]).includes(input.kind)) {
@@ -281,10 +362,12 @@ export function submitWorkflowStepOutput(input: SubmitStepOutputInput): Workflow
   });
   if (!checked.ok) return invalid("candidate-invalid", checked.explanation);
 
+  const audit = kind === "audit" ? auditVerdictOf(checked.value.payload) : undefined;
   return applyWorkflowAction(input.storage, run.id, input.runRevision, {
     type: "submit",
     stepId: step.stepId,
     ...(input.outcome !== undefined ? { outcome: input.outcome } : {}),
+    ...(audit ? { audit } : {}),
   }, {
     beforeCommit: ({ next }) => {
       const candidateId = insertWorkflowCandidate(input.storage, {
@@ -294,9 +377,17 @@ export function submitWorkflowStepOutput(input: SubmitStepOutputInput): Workflow
         payload: checked.value.payload,
         validation: checked.value.validation,
       });
+      if (input.capture) input.capture.candidateId = candidateId;
+      const nextStep = stepOf(next, step.stepId);
+      // 审校不通过、自动打回上游：这份审校意见已被采纳去返修，被审的正文作废。
+      if (audit && !audit.passed && nextStep?.status === "pending") {
+        decideWorkflowCandidate(input.storage, { candidateId, decision: "approved", note: "审校未通过，已自动打回重写" });
+        decidePendingProse(input.storage, run.id, "rejected", audit.note.what);
+        return;
+      }
       // 无需确认的工序：提交即批准，立即写进权威源。
-      const nextStep = next.steps.find((candidate) => candidate.stepId === step.stepId);
-      if (nextStep?.status === "done") {
+      // 正文例外：它只有经作者确认（本工序或下游审校 / 门禁）才算批准，提交时一律保持待定。
+      if (nextStep?.status === "done" && kind !== "prose") {
         const committedRef = commitCandidate(input.storage, run, { kind, payload: checked.value.payload });
         decideWorkflowCandidate(input.storage, { candidateId, decision: "approved", ...(committedRef ? { committedRef } : {}) });
       }
@@ -311,12 +402,16 @@ export interface ReportBlockerInput {
   readonly explanation: WorkflowExplanation;
   /** 并行时必填；只有一道进行中的工序时可省略。 */
   readonly stepId?: string;
+  /** 委派子代理报告阻塞时：只允许这些工序。 */
+  readonly allowedStepIds?: readonly string[];
 }
 
 export function reportWorkflowBlocker(input: ReportBlockerInput): WorkflowServiceResult<WorkflowRunRecord> {
   const run = getActiveWorkflowRunForNarrator(input.storage, input.narratorId);
   if (!run) return noActiveRun();
-  const target = targetStepOf<WorkflowRunRecord>(run, input.stepId);
+  const target = input.allowedStepIds
+    ? delegatedStepOf<WorkflowRunRecord>(run, input.stepId, input.allowedStepIds)
+    : targetStepOf<WorkflowRunRecord>(run, input.stepId);
   if ("error" in target) return target.error;
   const { step } = target;
   const { what, why, action } = input.explanation;
@@ -347,7 +442,11 @@ export function approveWorkflowStep(input: AuthorActionInput & { readonly stepId
   const candidate = run ? getLatestCandidate(input.storage, run.id, input.stepId) : null;
   return applyWorkflowAction(input.storage, input.runId, input.expectedRevision, { type: "approve", stepId: input.stepId }, {
     beforeCommit: ({ run: current }) => {
-      const step = current.state.steps.find((candidate) => candidate.stepId === input.stepId);
+      const step = stepOf(current.state, input.stepId);
+      // 作者在审校 / 门禁工序放行，等于认可了它审过的那份正文：一并批准，落盘工序才能引用它。
+      if (step && REVIEW_STEP_KINDS.has(step.kind)) {
+        decidePendingProse(input.storage, current.id, "approved", input.note);
+      }
       if (!candidate || step?.executorKind === "manual-gate" || candidate.decision !== "pending") return;
       const committedRef = commitCandidate(input.storage, current, candidate);
       decideWorkflowCandidate(input.storage, {
@@ -381,7 +480,12 @@ export function rejectWorkflowStep(
     stepId: input.stepId,
     note: { what: "作者打回了本工序的产物", why: `${note}${selectionText}`, action: "按意见修改后重新提交" },
   }, {
-    beforeCommit: () => {
+    beforeCommit: ({ run: current, next }) => {
+      // 打回让写正文的工序重做时，旧正文作废（不会再被当成待确认的版本）。
+      const proseStepReset = current.state.steps.some((step) =>
+        step.expectedOutput === "prose" && step.status !== "pending" && stepOf(next, step.stepId)?.status !== step.status,
+      );
+      if (proseStepReset) decidePendingProse(input.storage, current.id, "rejected", note);
       if (!candidate || candidate.decision !== "pending") return;
       decideWorkflowCandidate(input.storage, {
         candidateId: candidate.id,
@@ -446,7 +550,20 @@ export function findApprovedProseMismatch(
   if (!PROSE_WRITE_TOOLS.has(canonicalToolName)) return null;
   const approved = getLatestApprovedCandidate(storage, run.id, "prose");
   const approvedContent = typeof record(approved?.payload)?.content === "string" ? String(record(approved?.payload)?.content) : null;
-  if (approvedContent === null) return null;
+  if (approvedContent === null) {
+    // 方案里有写正文的工序，正文却还没经作者确认：此时落盘就是「提交即落盘」。
+    const proseOnPath = run.state.steps.some((step) =>
+      step.expectedOutput === "prose" && step.enabled && step.status !== "bypassed" && step.status !== "skipped",
+    );
+    if (!proseOnPath) return null;
+    return {
+      what: `${canonicalToolName} 被拦下：本运行的正文还没有经作者确认`,
+      why: "正文要先过审校与作者确认才能写进书里；现在落盘会让未审的内容成为正式章节",
+      action: "等作者在「写作 › 工作流」确认正文后，再用 pipeline_write（fromWorkflowRun=true）落盘",
+    };
+  }
+  // 引用已批准的候选：正文由工具自己从运行里取，不经模型转贴，天然一致。
+  if (input.fromWorkflowRun === true && (typeof input.content !== "string" || !input.content.trim())) return null;
   const content = typeof input.content === "string" ? input.content : "";
   if (normalizeProse(content) === normalizeProse(approvedContent)) return null;
   return {
@@ -454,6 +571,12 @@ export function findApprovedProseMismatch(
     why: "作者在「工作流」页批准的是另一份正文；落盘不同内容会让审过的和写进书里的对不上",
     action: "用 workflow_get_current_step 取回已批准的正文原样写入；若确需改动，先重新提交正文等作者确认",
   };
+}
+
+/** 本运行最近一份已落盘（已批准）的镜头蓝图。 */
+export function getApprovedSceneSpec(storage: StorageDatabase, run: WorkflowRunRecord): Record<string, unknown> | null {
+  const approved = getLatestApprovedCandidate(storage, run.id, "scene-spec");
+  return record(record(approved?.payload)?.sceneSpec);
 }
 
 /** 本运行已批准的正文（供落盘工序原样写入）。 */

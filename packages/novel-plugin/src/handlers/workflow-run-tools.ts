@@ -13,13 +13,21 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { RuntimeToolResult, ToolExecutionContext } from "@vivy1024/novelfork-core/plugins";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
-import { buildWorkflowRunBrief } from "../engine/workflows/run-brief.js";
+import { rosterTemplatesForStep } from "../engine/agents/roster.js";
+import { buildDelegatedStepBrief, buildWorkflowRunBrief } from "../engine/workflows/run-brief.js";
 import {
   getApprovedProse,
   reportWorkflowBlocker,
   submitWorkflowStepOutput,
 } from "../engine/workflows/run-service.js";
-import { getActiveWorkflowRunForNarrator, type WorkflowRunRecord, type WorkflowStoreResult } from "../engine/workflows/run-store.js";
+import {
+  getActiveWorkflowRunForNarrator,
+  getLatestApprovedCandidate,
+  getLatestCandidateOfKind,
+  type WorkflowCandidateRecord,
+  type WorkflowRunRecord,
+  type WorkflowStoreResult,
+} from "../engine/workflows/run-store.js";
 import { runningSteps, type WorkflowRunStatus, type WorkflowStepStatus } from "../engine/workflows/run-state-machine.js";
 import type { TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 
@@ -81,6 +89,89 @@ export function toWorkflowToolView(storage: StorageDatabase, run: WorkflowRunRec
   };
 }
 
+/** 运行里当前进行中、且期望由该模板完成的工序。 */
+export function delegatedStepIdsFor(run: WorkflowRunRecord, template: string): string[] {
+  return runningSteps(run.state)
+    .filter((step) => rosterTemplatesForStep(step).includes(template))
+    .map((step) => step.stepId);
+}
+
+const CANDIDATE_TEXT_LIMIT = 60_000;
+
+function candidateMaterial(candidate: WorkflowCandidateRecord | null): Record<string, unknown> | null {
+  if (!candidate) return null;
+  const text = JSON.stringify(candidate.payload ?? null);
+  return {
+    candidateId: candidate.id,
+    stepId: candidate.stepId,
+    decision: candidate.decision,
+    payload: text.length > CANDIDATE_TEXT_LIMIT ? { truncated: true, preview: text.slice(0, CANDIDATE_TEXT_LIMIT) } : candidate.payload,
+  };
+}
+
+/**
+ * 委派子代理看到的运行视图：只有分给它的工序简报，以及做这道工序要用的上游候选原文
+ * （蓝图、最近一版正文、最近一份审校）。正文原文只在这里给子代理，领导者那边只见候选 id。
+ */
+export function toDelegatedWorkflowView(
+  storage: StorageDatabase,
+  run: WorkflowRunRecord,
+  template: string,
+  allowedStepIds: readonly string[],
+): Record<string, unknown> {
+  const steps = run.state.steps.filter((step) => allowedStepIds.includes(step.stepId));
+  return {
+    runId: run.id,
+    runRevision: run.state.revision,
+    runStatus: run.state.status,
+    chapterNumber: run.chapterNumber,
+    template,
+    assignedSteps: steps.map((step) => ({
+      stepId: step.stepId,
+      label: step.label,
+      kind: step.expectedOutput,
+      ...(step.outcomes.length > 0 ? { outcomes: step.outcomes } : {}),
+      ...(step.note ? { note: step.note } : {}),
+    })),
+    brief: buildDelegatedStepBrief(run, template, allowedStepIds),
+    upstream: {
+      sceneSpec: candidateMaterial(getLatestApprovedCandidate(storage, run.id, "scene-spec")),
+      prose: candidateMaterial(getLatestCandidateOfKind(storage, run.id, "prose")),
+      audit: candidateMaterial(getLatestCandidateOfKind(storage, run.id, "audit")),
+    },
+  };
+}
+
+/** 子代理提交 / 报阻塞的结果：只回结论与候选 id，不回正文、不回领导者的整份简报。 */
+function fromStoreDelegated(
+  storage: StorageDatabase,
+  result: WorkflowStoreResult<WorkflowRunRecord>,
+  fallback: WorkflowRunRecord,
+  template: string,
+  candidateId: string | undefined,
+): RuntimeToolResult {
+  if (!result.ok) {
+    const { what, why, action } = result.explanation;
+    return fail(result.code, `${what}。${why}。${action}。`, {
+      explanation: result.explanation,
+      ...toDelegatedWorkflowView(storage, fallback, template, delegatedStepIdsFor(fallback, template)),
+    });
+  }
+  const next = result.data;
+  return {
+    ok: true,
+    summary: candidateId
+      ? `已提交（候选 ${candidateId}）。把 3–6 行摘要和这个候选 id 交还领导者即可，不要贴正文。`
+      : "已报告，交还领导者。",
+    data: {
+      runId: next.id,
+      runRevision: next.state.revision,
+      runStatus: next.state.status,
+      ...(candidateId ? { candidateId } : {}),
+    },
+  };
+}
+
 function resolveNarratorId(context: ToolExecutionContext): string | null {
   const id = context.sessionId?.trim();
   return id ? id : null;
@@ -137,16 +228,30 @@ export async function executeWorkflowRunTool(
   const normalized = WORKFLOW_RUN_TOOL_NAMES.find((name) => name.replace(/\./g, "_") === wire);
   if (!normalized) return null;
 
-  const narratorId = resolveNarratorId(context);
-  if (!narratorId) {
+  const sessionId = resolveNarratorId(context);
+  if (!sessionId) {
     return fail("missing-session", "缺少宿主注入的会话标识，无法定位工作流运行。");
   }
+  // 委派子代理（宿主按自己的记录解析，不来自模型输入）：运行属于它的领导者，
+  // 且它只能操作当前与自己模板对应的工序。
+  const delegation = context.delegatedBy;
+  const narratorId = delegation?.narratorId ?? sessionId;
   const storage = getStorageDatabase();
   const run = activeRunFor(storage, binding, narratorId);
+  const allowedStepIds = delegation && run ? delegatedStepIdsFor(run, delegation.template) : undefined;
 
   if (normalized === "workflow.get_current_step") {
     if (!run) {
       return { ok: true, summary: "当前没有进行中的创作工作流，按作者的普通指令继续即可。", data: { runStatus: "none", brief: null } };
+    }
+    if (delegation) {
+      return {
+        ok: true,
+        summary: allowedStepIds && allowedStepIds.length > 0
+          ? `第 ${run.chapterNumber} 章 · 分给你的工序：${allowedStepIds.join("、")}`
+          : `第 ${run.chapterNumber} 章 · 现在没有分给你的工序`,
+        data: toDelegatedWorkflowView(storage, run, delegation.template, allowedStepIds ?? []),
+      };
     }
     return { ok: true, summary: `第 ${run.chapterNumber} 章 · ${run.recipe.name}：${run.state.status}`, data: toWorkflowToolView(storage, run) };
   }
@@ -161,6 +266,7 @@ export async function executeWorkflowRunTool(
 
   if (normalized === "workflow.submit_step_output") {
     const wordTarget = await readChapterWordTarget(binding.root);
+    const capture: { candidateId?: string } = {};
     const result = submitWorkflowStepOutput({
       storage,
       narratorId,
@@ -170,8 +276,30 @@ export async function executeWorkflowRunTool(
       ...(typeof input.stepId === "string" && input.stepId.trim() ? { stepId: input.stepId.trim() } : {}),
       ...(typeof input.outcome === "string" && input.outcome.trim() ? { outcome: input.outcome.trim() } : {}),
       ...(wordTarget ? { wordTarget } : {}),
+      ...(allowedStepIds ? { allowedStepIds } : {}),
+      capture,
     });
-    return fromStore(storage, result, nextStepSummary, run);
+    if (delegation) return fromStoreDelegated(storage, result, run, delegation.template, capture.candidateId);
+    const view = fromStore(storage, result, nextStepSummary, run);
+    return result.ok && capture.candidateId
+      ? { ...view, data: { ...(view.data as Record<string, unknown>), candidateId: capture.candidateId } }
+      : view;
+  }
+
+  if (delegation) {
+    const result = reportWorkflowBlocker({
+      storage,
+      narratorId,
+      runRevision,
+      allowedStepIds: allowedStepIds ?? [],
+      ...(typeof input.stepId === "string" && input.stepId.trim() ? { stepId: input.stepId.trim() } : {}),
+      explanation: {
+        what: typeof input.what === "string" ? input.what : "",
+        why: typeof input.why === "string" ? input.why : "",
+        action: typeof input.action === "string" ? input.action : "",
+      },
+    });
+    return fromStoreDelegated(storage, result, run, delegation.template, undefined);
   }
 
   const result = reportWorkflowBlocker({

@@ -142,8 +142,25 @@ export interface RuntimeProductAccessDeniedEvent {
 	readonly narratorId?: string;
 }
 
+/**
+ * 产品贡献的内置子代理模板（只读）。Runtime 按自定义子代理 toolAccess="custom" 处理：
+ * 工具上限就是 tools（线上名），用户不能新建 / 改 / 删同名定义。
+ */
+export interface RuntimeProductSubagentTemplate {
+	/** 带产品命名空间的小写 id（如 `nf-writer`），即 Agent 的 subagent_type。 */
+	readonly id: string;
+	readonly nameZh: string;
+	readonly nameEn: string;
+	readonly description: string;
+	readonly tools: readonly string[];
+	readonly defaultModel?: string;
+	readonly prompt: string;
+}
+
 export interface RuntimeProductIntegration {
 	id: string;
+	/** 旧版 Runtime 不认这个字段时会忽略它（产品侧照常编译、降级为没有内置子代理）。 */
+	subagentTemplates?: () => readonly RuntimeProductSubagentTemplate[];
 	isProductNarrator?: (...args: any[]) => boolean;
 	resolveNarratorCwd?: (...args: any[]) => string | null;
 	initialize?: () => Promise<void> | void;

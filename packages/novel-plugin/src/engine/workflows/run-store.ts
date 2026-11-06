@@ -243,12 +243,22 @@ function toRecord(storage: StorageDatabase, row: RunRow): WorkflowRunRecord {
       .all(row.id)
       .map((step) => [step.step_id, step]),
   );
+  // 审校自动打回的轮数由事件派生：能派生的状态不另存。
+  const autoReturns = new Map<string, number>();
+  for (const event of storage.sqlite
+    .prepare<{ payload_json: string }>(`SELECT payload_json FROM workflow_run_events WHERE run_id = ? AND type = 'step_auto_returned'`)
+    .all(row.id)) {
+    const stepId = parseJson<{ stepId?: unknown }>(event.payload_json, {}).stepId;
+    if (typeof stepId === "string") autoReturns.set(stepId, (autoReturns.get(stepId) ?? 0) + 1);
+  }
   const steps: WorkflowStepState[] = buildStepTemplates(recipe).map((template) => {
     const saved = persisted.get(template.stepId);
-    if (!saved) return template;
+    const rounds = autoReturns.get(template.stepId);
+    const withRounds = rounds ? { ...template, autoReturns: rounds } : template;
+    if (!saved) return withRounds;
     const note = parseJson<unknown>(saved.explanation_json, null);
     return {
-      ...template,
+      ...withRounds,
       status: saved.status as WorkflowStepStatus,
       attempt: saved.attempt,
       ...(isExplanation(note) ? { note } : {}),
@@ -364,6 +374,37 @@ export function getLatestCandidate(
       `SELECT * FROM workflow_run_candidates WHERE run_id = ? AND step_id = ? ORDER BY submitted_at DESC, rowid DESC LIMIT 1`,
     )
     .get(runId, stepId);
+  return row ? toCandidate(row) : null;
+}
+
+/** 本运行里最近一份还在等待决定的某类候选（如审校前后的正文）。 */
+export function getLatestPendingCandidate(
+  storage: StorageDatabase,
+  runId: string,
+  kind: WorkflowCandidateKind,
+): WorkflowCandidateRecord | null {
+  ensureWorkflowRunSchema(storage);
+  const row = storage.sqlite
+    .prepare<CandidateRow>(
+      `SELECT * FROM workflow_run_candidates WHERE run_id = ? AND kind = ? AND decision = 'pending'
+       ORDER BY submitted_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(runId, kind);
+  return row ? toCandidate(row) : null;
+}
+
+/** 本运行里最近一份某类候选（不论决定）。 */
+export function getLatestCandidateOfKind(
+  storage: StorageDatabase,
+  runId: string,
+  kind: WorkflowCandidateKind,
+): WorkflowCandidateRecord | null {
+  ensureWorkflowRunSchema(storage);
+  const row = storage.sqlite
+    .prepare<CandidateRow>(
+      `SELECT * FROM workflow_run_candidates WHERE run_id = ? AND kind = ? ORDER BY submitted_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(runId, kind);
   return row ? toCandidate(row) : null;
 }
 

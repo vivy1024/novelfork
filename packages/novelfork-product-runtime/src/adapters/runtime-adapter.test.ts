@@ -581,7 +581,10 @@ RUNTIME_WRITING_SKILL_MARKER
 		}
 		expect(propertiesOf("pipeline_write").sceneSpec?.description).not.toContain("可选");
 		expect(propertiesOf("write_preflight").sceneSpec?.description).toContain("可选");
-		expect(definitions.get("pipeline_write")?.rawJsonSchema?.required).toEqual(["sceneSpec", "content"]);
+		// sceneSpec / content 改由 handler 强制：fromWorkflowRun=true 时从运行里的已确认候选取。
+		expect(definitions.get("pipeline_write")?.rawJsonSchema?.required ?? []).toEqual([]);
+		expect(String(propertiesOf("pipeline_write").sceneSpec?.description)).toContain("fromWorkflowRun=true 时省略");
+		expect(propertiesOf("pipeline_write").fromWorkflowRun?.type).toBe("boolean");
 
 		const validSpec = {
 			chapter: 2,

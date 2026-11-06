@@ -30,7 +30,10 @@ import {
 	isToolVisibleForWorker,
 	isWorkflowWorkerByTrait,
 	lookupActiveWorkflowRun,
+	isDelegatedRunTool,
 	resolveWorkerWorkflowGate,
+	resolveWorkflowDelegation,
+	workflowDelegatedExtension,
 	WORKFLOW_WORKER_TRAIT,
 	writingInjectionPreserveExtension,
 	WRITING_INJECTION_PRESERVE_EXTENSION_ID,
@@ -440,6 +443,50 @@ describe("工作流工人闸门（修 A：工人不得直写权威源）", () =>
 		expect(brief).toContain("没有这本书的写入权");
 		// 工人不跑状态机：不要诱导它去提交产物
 		expect(brief).toContain("不要调用 workflow_submit_step_output");
+	});
+
+	test("内置子代理委派：领导者派出的名册模板子代理认得出；其余情况不认（仍按工人收口）", async () => {
+		const run = await startRun("leader-a");
+		const seams = (template: string, parent = "leader-a") => ({
+			readDelegation: async () => ({ parentNarratorId: parent, template }),
+		});
+		const delegated = await resolveWorkflowDelegation("sub-1", "book-a", seams("nf-writer"));
+		expect(delegated).toMatchObject({ narratorId: "leader-a", template: "nf-writer" });
+		expect(delegated?.run.id).toBe(run.id);
+		// 不在名册里的模板（通用子代理、用户自定义）不认
+		expect(await resolveWorkflowDelegation("sub-1", "book-a", seams("general"))).toBeNull();
+		expect(await resolveWorkflowDelegation("sub-1", "book-a", seams("my-writer"))).toBeNull();
+		// 父叙述者不是本书运行的领导者
+		expect(await resolveWorkflowDelegation("sub-1", "book-a", seams("nf-writer", "someone-else"))).toBeNull();
+		// 别的书 / 没有绑定书
+		expect(await resolveWorkflowDelegation("sub-1", "book-b", seams("nf-writer"))).toBeNull();
+		expect(await resolveWorkflowDelegation("sub-1", undefined, seams("nf-writer"))).toBeNull();
+		// 不是子代理
+		expect(await resolveWorkflowDelegation("sub-1", "book-a", { readDelegation: async () => null })).toBeNull();
+	});
+
+	test("内置子代理：只露三个运行工具之外的读类；写入照样被工人闸门拦下", async () => {
+		const run = await startRun("leader-a");
+		expect(isDelegatedRunTool("workflow.submit_step_output")).toBe(true);
+		expect(isDelegatedRunTool("workflow.report_blocker")).toBe(true);
+		expect(isDelegatedRunTool("workflow.edit_recipe")).toBe(false);
+		expect(isDelegatedRunTool("pipeline.write")).toBe(false);
+		// 写类仍拒：委派身份只交给工作流工具，不放宽其它写入
+		for (const tool of ["chapter.write", "pipeline.write", "lore.write"]) {
+			expect(explainWorkerWorkflowDenial(run, tool, "confirmed-write")).not.toBeNull();
+		}
+	});
+
+	test("内置子代理简报：只讲分给该模板的工序；模板不对应时叫它别提交", async () => {
+		const run = await startRun("leader-a");
+		// gate-test 第一道是写正文（writer-generate）
+		const writer = workflowDelegatedExtension(run, "nf-writer").content;
+		expect(writer).toContain('stepId="draft"');
+		expect(writer).toContain("workflow_submit_step_output");
+		expect(writer).toContain("不贴正文");
+		const auditor = workflowDelegatedExtension(run, "nf-continuity-auditor").content;
+		expect(auditor).toContain("没有分给你的进行中工序");
+		expect(auditor).not.toContain('stepId="draft"');
 	});
 
 	test("工人标记按 traits 认人（改名也认得出），字符串/数组两种存储都能读", () => {

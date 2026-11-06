@@ -66,6 +66,18 @@ export interface WorkflowStepState {
   readonly outcome?: string;
   /** 最近一次打回意见或阻塞说明，会进入下一次工序简报。 */
   readonly note?: WorkflowExplanation;
+  /** 审校工序：因审校不通过自动打回上游的次数（由事件派生，不另存列）。 */
+  readonly autoReturns?: number;
+}
+
+/** 审校不通过时自动打回上游重写的最多轮数；用完后转作者确认并带警告。 */
+export const MAX_AUDIT_AUTO_RETURNS = 2;
+
+/** 审校结论：只在审校类工序提交时由服务层带上。 */
+export interface WorkflowAuditVerdict {
+  readonly passed: boolean;
+  /** 不通过时作为打回意见进入上游工序的简报。 */
+  readonly note: WorkflowExplanation;
 }
 
 export interface WorkflowRunState {
@@ -77,7 +89,7 @@ export interface WorkflowRunState {
 }
 
 export type WorkflowRunAction =
-  | { readonly type: "submit"; readonly stepId: string; readonly outcome?: string }
+  | { readonly type: "submit"; readonly stepId: string; readonly outcome?: string; readonly audit?: WorkflowAuditVerdict }
   | { readonly type: "approve"; readonly stepId: string }
   | { readonly type: "reject"; readonly stepId: string; readonly note: WorkflowExplanation }
   | { readonly type: "block"; readonly stepId: string; readonly explanation: WorkflowExplanation }
@@ -126,6 +138,20 @@ function isTerminal(status: WorkflowRunStatus): boolean {
   return status === "done" || status === "cancelled";
 }
 
+const REVIEW_GATE_KINDS: readonly NovelWorkflowStepKind[] = ["audit", "adversarial-audit", "approval-gate"];
+
+/**
+ * 写正文的工序之后有没有「作者确认」的审校 / 门禁工序。
+ * 有的话正文在那里随审校一起确认；没有就必须在写正文这一步本身确认——正文永远不能
+ * 不经作者确认就成为可落盘的版本。
+ */
+function hasDownstreamReviewGate(recipe: WorkflowGraphRecipe, stepId: string): boolean {
+  const descendants = forwardDescendants(recipe, stepId);
+  return stepNodes(recipe).some((node) =>
+    descendants.has(node.id) && node.enabled && REVIEW_GATE_KINDS.includes(node.kind) && requiresAuthorDecision(node),
+  );
+}
+
 /**
  * 由冻结的工作流派生工序模板（全部 pending、attempt 0），按正向拓扑序编号。
  * 建运行与从库里加载运行都用这一份映射，工序的静态属性只有一个来源。
@@ -148,7 +174,8 @@ export function buildStepTemplates(recipe: WorkflowGraphRecipe): WorkflowStepSta
         maxAttempts,
         executorKind: executorKindFor(step),
         ...(step.agentId ? { agentId: step.agentId } : {}),
-        requiresApproval: requiresAuthorDecision(step),
+        requiresApproval: requiresAuthorDecision(step)
+          || (step.kind === "writer-generate" && !hasDownstreamReviewGate(recipe, step.id)),
         onFailure: step.onFailure ?? "stop",
         enabled: step.enabled,
         tools: [...(step.tools ?? [])],
@@ -314,6 +341,17 @@ function staleStep(stepId: string, state: WorkflowRunState): WorkflowTransition 
   );
 }
 
+/** 打回上游：目标工序及其全部正向下游重置为待开始，目标工序带上意见。就地修改 steps。 */
+function resetFrom(recipe: WorkflowGraphRecipe, steps: WorkflowStepState[], targetId: string, note: WorkflowExplanation): void {
+  const reset = new Set([targetId, ...forwardDescendants(recipe, targetId)]);
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]!;
+    if (!reset.has(step.stepId)) continue;
+    const { outcome: _outcome, note: _note, ...rest } = step;
+    steps[i] = { ...rest, status: "pending", ...(step.stepId === targetId ? { note } : {}) };
+  }
+}
+
 /** 对运行执行一个动作。每次成功迁移 revision + 1。 */
 export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState, action: WorkflowRunAction): WorkflowTransition {
   if (isTerminal(state.status)) {
@@ -408,6 +446,35 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
       }
       events.push({ type: "candidate_submitted", payload: { stepId: current.stepId, ...(outcome ? { outcome } : {}) } });
       const withOutcome = { ...current, ...(outcome !== undefined ? { outcome } : {}) };
+      if (action.audit && !action.audit.passed && current.expectedOutput === "audit") {
+        // 审校不通过：有打回线且轮数没用完时自动打回上游重写；否则交作者决定并带警告。
+        const rounds = current.autoReturns ?? 0;
+        const rejectEdge = recipe.edges.find((edge) => edge.kind === "reject" && edge.source === current.stepId);
+        if (rejectEdge && rounds < MAX_AUDIT_AUTO_RETURNS) {
+          resetFrom(recipe, steps, rejectEdge.target, action.audit.note);
+          const auditIndex = steps.findIndex((step) => step.stepId === current.stepId);
+          steps[auditIndex] = { ...steps[auditIndex]!, autoReturns: rounds + 1 };
+          events.push({
+            type: "step_auto_returned",
+            payload: { stepId: current.stepId, returnTo: rejectEdge.target, round: rounds + 1, note: action.audit.note },
+          });
+          return done();
+        }
+        const warning: WorkflowExplanation = rejectEdge
+          ? {
+            what: `审校已自动打回 ${rounds} 轮，仍未通过`,
+            why: `自动返修最多 ${MAX_AUDIT_AUTO_RETURNS} 轮，再改下去多半是在原地打转`,
+            action: "看过审校意见后决定：放行，或写明意见打回重写",
+          }
+          : {
+            what: "审校未通过",
+            why: "方案没有为这道审校配置打回线，不能自动返修",
+            action: "看过审校意见后决定放行或取消；需要自动返修时，在画布上从审校连一条打回线到写正文的工序",
+          };
+        steps[index] = { ...withOutcome, status: "awaiting_approval", note: warning };
+        events.push({ type: "step_awaiting_approval", payload: { stepId: current.stepId, warning: warning.what } });
+        return done();
+      }
       if (current.requiresApproval) {
         steps[index] = { ...withOutcome, status: "awaiting_approval" };
         events.push({ type: "step_awaiting_approval", payload: { stepId: current.stepId } });
@@ -445,13 +512,7 @@ export function transition(recipe: WorkflowGraphRecipe, state: WorkflowRunState,
       if (rejectEdge) {
         // 打回上游：目标工序及其全部正向下游重置，从目标工序重做。
         const targetId = rejectEdge.target;
-        const reset = new Set([targetId, ...forwardDescendants(recipe, targetId)]);
-        for (let i = 0; i < steps.length; i++) {
-          const step = steps[i]!;
-          if (!reset.has(step.stepId)) continue;
-          const { outcome: _outcome, note: _note, ...rest } = step;
-          steps[i] = { ...rest, status: "pending", ...(step.stepId === targetId ? { note: action.note } : {}) };
-        }
+        resetFrom(recipe, steps, targetId, action.note);
         events.push({ type: "step_rejected", payload: { stepId: current.stepId, note: action.note, returnTo: targetId } });
         return done();
       }

@@ -143,6 +143,11 @@ describe("委派工序简报", () => {
     // 一本书一个团队：简报把 teamId 钉死到本书，避免多本书的工人被收编进同一个默认团队
     expect(brief).toContain(workflowTeamIdForBook("team-book"));
     expect(brief).toContain("不要用默认团队");
+    // P1：首选内置子代理，传候选 id 不传正文
+    expect(brief).toContain('Agent(subagent_type="nf-writer")');
+    expect(brief).toContain("candidateId");
+    expect(brief).toContain("不要粘贴正文");
+    expect(brief!.indexOf("nf-writer")).toBeLessThan(brief!.indexOf("team_dispatch"));
   });
 });
 

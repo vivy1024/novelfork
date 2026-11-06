@@ -1,4 +1,5 @@
 import { NOVEL_RUNTIME_CONTRIBUTION } from "@vivy1024/novelfork-novel-plugin";
+import { listNovelSubagentTemplateContributions } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { Context, Hono, Next } from "hono";
 import {
 	AppError,
@@ -160,6 +161,9 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 	},
 	learningContributions: () =>
 		NOVEL_RUNTIME_CONTRIBUTION.learning ? [NOVEL_RUNTIME_CONTRIBUTION.learning] : [],
+	// 内置子代理名册（只读模板，工具名为线上名）。不认识这个字段的旧版 Runtime 直接忽略它，
+	// 此时简报里的 Agent(subagent_type="nf-…") 会因模板不存在而退回只读，领导者按简报改为自己完成。
+	subagentTemplates: listNovelSubagentTemplateContributions,
 	narrator: {
 		resolve: (narratorId) => novelRuntimeAdapter.resolve(narratorId),
 		resolveContribution: (narratorId) => novelRuntimeAdapter.resolveContribution(narratorId),

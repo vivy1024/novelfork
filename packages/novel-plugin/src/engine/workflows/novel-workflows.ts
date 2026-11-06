@@ -7,6 +7,32 @@
 
 import { linearRecipeToGraph, type LegacyWorkflowRecipe, type WorkflowGraphRecipe } from "./workflow-graph.js";
 
+/**
+ * 写-审-改回路：审校工序连一条打回线回到写正文的工序。
+ * 审校不通过时状态机沿它自动打回（至多 MAX_AUDIT_AUTO_RETURNS 轮），作者打回也走这条线。
+ */
+export const BUILTIN_REVIEW_REJECT_EDGES: Readonly<Record<string, { readonly source: string; readonly target: string }>> = {
+  "fanqie-xuanhuan-serial": { source: "step-adversarial-audit", target: "step-draft" },
+  "zhihu-short-story": { source: "step-audit", target: "step-draft" },
+  "traditional-xianxia": { source: "step-audit", target: "step-draft" },
+};
+
+/** 给图补上写-审-改打回线（已有同源打回线、或两端工序不存在时原样返回）。 */
+export function withReviewRejectEdge(recipe: WorkflowGraphRecipe, link = BUILTIN_REVIEW_REJECT_EDGES[recipe.id]): WorkflowGraphRecipe {
+  if (!link) return recipe;
+  const has = (id: string) => recipe.nodes.some((node) => node.type === "step" && node.id === id);
+  if (!has(link.source) || !has(link.target)) return recipe;
+  if (recipe.edges.some((edge) => edge.kind === "reject" && edge.source === link.source)) return recipe;
+  return {
+    ...recipe,
+    edges: [...recipe.edges, { id: `r-${link.source}-${link.target}`, source: link.source, target: link.target, kind: "reject" }],
+  };
+}
+
+function builtinRecipe(legacy: LegacyWorkflowRecipe): WorkflowGraphRecipe {
+  return withReviewRejectEdge(linearRecipeToGraph(legacy));
+}
+
 export type NovelWorkflowStepKind =
   | "context-load"
   | "guided-plan"
@@ -55,7 +81,7 @@ export type NovelWorkflowRecipe = WorkflowGraphRecipe;
 /**
  * 番茄/起点爆款单章连载流
  */
-export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph({
+export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = builtinRecipe({
   id: "fanqie-xuanhuan-serial",
   name: "番茄/起点爆款单章连载流",
   commandId: "/novel:write-xuanhuan",
@@ -118,7 +144,7 @@ export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = linearRecipeTo
 /**
  * 知乎盐选 8000 字短篇虐渣反转流
  */
-export const ZHIHU_SHORT_STORY_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph({
+export const ZHIHU_SHORT_STORY_RECIPE: NovelWorkflowRecipe = builtinRecipe({
   id: "zhihu-short-story",
   name: "知乎盐选 8000 字短篇虐渣流",
   commandId: "/novel:write-short",
@@ -180,7 +206,7 @@ export const ZHIHU_SHORT_STORY_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph
 /**
  * 传统仙侠大长篇严谨推演流
  */
-export const TRADITIONAL_XIANXIA_RECIPE: NovelWorkflowRecipe = linearRecipeToGraph({
+export const TRADITIONAL_XIANXIA_RECIPE: NovelWorkflowRecipe = builtinRecipe({
   id: "traditional-xianxia",
   name: "传统仙侠大长篇严谨推演流",
   commandId: "/novel:write-xianxia",

@@ -585,8 +585,11 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       acknowledgedSkills: acknowledgedSkillsSchema,
       requireFactCheckPass: booleanSchema("审计仍有严重事实/连续性问题时拒绝保存（默认 false，只标记待人工复核）。"),
       factCheckAutoRevise: booleanSchema("兼容旧调用，当前不生效。"),
+      fromWorkflowRun: booleanSchema("创作工作流的落盘工序用：true 时正文与蓝图直接取自本运行里作者已确认的候选，不要再传 content / sceneSpec。"),
     },
-    required: ["bookId", "sceneSpec", "content"],
+    // sceneSpec / content 由 handler 强制（fromWorkflowRun=true 时改由运行里的已确认候选提供），
+    // schema 不再标必填，否则引用候选的调用在 Runtime 参数校验那一步就被拒。
+    required: ["bookId"],
     additionalProperties: false,
   },
   "jingwei.audit": {
@@ -1045,9 +1048,12 @@ function toModelFacingSchema(name: string, schema: ToolInputSchema): ToolInputSc
   let changed = false;
   if (SCENE_SPEC_PASSTHROUGH_TOOLS.includes(name) && properties.sceneSpec) {
     const optional = !(schema.required ?? []).includes("sceneSpec");
-    properties.sceneSpec = optional
-      ? { ...SCENE_SPEC_PASSTHROUGH_SCHEMA, description: `可选：${SCENE_SPEC_PASSTHROUGH_SCHEMA.description}` }
-      : SCENE_SPEC_PASSTHROUGH_SCHEMA;
+    properties.sceneSpec = name === "pipeline.write"
+      // pipeline.write 只在 fromWorkflowRun=true 时可省略，其余情况必传（由 handler 强制）。
+      ? { ...SCENE_SPEC_PASSTHROUGH_SCHEMA, description: `${SCENE_SPEC_PASSTHROUGH_SCHEMA.description}（fromWorkflowRun=true 时省略）` }
+      : optional
+        ? { ...SCENE_SPEC_PASSTHROUGH_SCHEMA, description: `可选：${SCENE_SPEC_PASSTHROUGH_SCHEMA.description}` }
+        : SCENE_SPEC_PASSTHROUGH_SCHEMA;
     changed = true;
   }
   for (const field of MODEL_HIDDEN_COMPAT_FIELDS) {

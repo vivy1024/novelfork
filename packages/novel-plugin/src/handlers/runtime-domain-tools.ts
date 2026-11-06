@@ -35,6 +35,8 @@ import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/c
 import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
 import { executeWorkflowRecipeTool } from "./workflow-recipe-tools.js";
 import { executeWorkflowRunTool } from "./workflow-run-tools.js";
+import { getApprovedProse, getApprovedSceneSpec } from "../engine/workflows/run-service.js";
+import { getActiveWorkflowRunForNarrator } from "../engine/workflows/run-store.js";
 import { executeStyleDistillationTool } from "./style-distill-tools.js";
 import { executeCharacterVoiceTool } from "./character-voice-tools.js";
 import { proposeSelectionCandidate } from "./selection-candidate-tools.js";
@@ -960,11 +962,43 @@ function createSettlementDispatcher(
   };
 }
 
+/**
+ * pipeline.write 的 fromWorkflowRun：正文与蓝图从本叙述者进行中运行的已确认候选取，
+ * 模型不必（也不应）把正文再贴一遍。运行按宿主注入的会话 id 定位，且必须属于当前绑定的书。
+ */
+function resolveWorkflowRunCandidates(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+  context: ToolExecutionContext,
+): { ok: true; input: Readonly<Record<string, unknown>> } | { ok: false; result: RuntimeToolResult } {
+  const narratorId = context.sessionId?.trim();
+  const storage = narratorId ? getStorageDatabase() : null;
+  const run = storage && narratorId ? getActiveWorkflowRunForNarrator(storage, narratorId) : null;
+  if (!storage || !run || run.bookId !== binding.bookId) {
+    return { ok: false, result: fail("no-active-run", "fromWorkflowRun=true 只能在本书进行中的创作工作流里使用；没有运行时请直接传 content 与 sceneSpec。") };
+  }
+  const prose = getApprovedProse(storage, run);
+  if (!prose) {
+    return { ok: false, result: fail("prose-not-approved", "本运行还没有作者确认过的正文，不能落盘。等作者在「写作 › 工作流」确认正文后再调用。") };
+  }
+  const sceneSpec = record(input.sceneSpec) ?? getApprovedSceneSpec(storage, run);
+  if (!sceneSpec) {
+    return { ok: false, result: fail("scene-spec-required", "本运行没有已落盘的镜头蓝图；请传入 sceneSpec。") };
+  }
+  const { fromWorkflowRun: _from, ...rest } = input;
+  return { ok: true, input: { ...rest, sceneSpec, content: prose.content } };
+}
+
 async function pipelineWrite(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
+  if (input.fromWorkflowRun === true) {
+    const resolved = resolveWorkflowRunCandidates(input, binding, context);
+    if (!resolved.ok) return resolved.result;
+    input = resolved.input;
+  }
   const sceneSpec = record(input.sceneSpec) as SceneSpec | undefined;
   if (!sceneSpec) {
     return fail("invalid-input", "sceneSpec 必填。", {

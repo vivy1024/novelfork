@@ -97,8 +97,20 @@ export interface RuntimeLoadedSkill {
   readonly contentHash?: string;
 }
 
+/**
+ * Trusted delegation identity of the calling session, resolved by the host from
+ * its own records (never from model input): the session is a delegated subagent
+ * of `narratorId`, created from delegation template `template`.
+ */
+export interface RuntimeDelegationContext {
+  readonly narratorId: string;
+  readonly template: string;
+}
+
 /** Context handed to a tool handler at execution time. */
 export interface ToolExecutionContext extends RuntimeResolveContext {
+  /** Present only when the calling session is a delegated subagent (host-resolved). */
+  readonly delegatedBy?: RuntimeDelegationContext;
   /** Skill evidence: skills actually invoked via the native Runtime Skill tool. */
   readonly loadedSkills?: readonly RuntimeLoadedSkill[];
   /** Model routing for text-generation-capable tools. */
