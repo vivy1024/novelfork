@@ -555,7 +555,7 @@ RUNTIME_WRITING_SKILL_MARKER
 		const byTool = new Map(routines.map((routine) => [routine.toolNames[0], routine]));
 		expect(byTool.get("pipeline_write")).toMatchObject({ id: "novelfork.pipeline.write", defaultMode: "resident" });
 		expect(byTool.get("workflow_submit_step_output")?.defaultMode).toBe("resident");
-		expect(byTool.get("market_scan")).toMatchObject({ id: "novelfork.market.scan", defaultMode: "manual" });
+		expect(byTool.get("market_scan")).toMatchObject({ id: "novelfork.market.scan", defaultMode: "auto" });
 		expect(byTool.get("memory_bulk_delete")?.defaultMode).toBe("manual");
 		expect(byTool.get("memory_settle_range")?.id).toBe("novelfork.memory.settle-range");
 		for (const routine of routines) {

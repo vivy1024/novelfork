@@ -296,22 +296,27 @@ describe("小说工具套路（一个工具一个）", () => {
     for (const legacy of Object.keys(LEGACY_NOVEL_TOOL_ROUTINE_GROUPS)) expect(ids).not.toContain(legacy);
   });
 
-  it("默认档位：作者核心工具常驻，维护 / 诊断 / 市场 / 低频工具手动", () => {
+  it("默认档位：作者核心工具常驻，被点名的低频工具自动，改删数据与纯诊断手动", () => {
     const resident = [
       "cockpit.snapshot", "chapter.read", "chapter.write", "chapter.list", "pipeline.write", "write.preflight",
       "scene.spec", "chapter.audit", "rewrite.apply", "lore.read", "lore.write", "memory.read", "memory.search",
       "memory.settle_chapter", "memory.settle_range", "hooks.manage", "outline.volume",
       "workflow.get_current_step", "workflow.submit_step_output", "workflow.report_blocker", "workflow.start_run",
     ];
+    // 写作台按钮、系统提示或内置技能会点名这些工具：手动档会让请求发出去后找不到工具，
+    // 常驻又白占每轮工具表，所以交给 ToolSearch 按需装载。
+    const auto = [
+      "publish.check", "character.voice.draft", "jingwei.audit", "memory.list", "memory.export", "memory.stats",
+      "style.distill_preview", "style.distill_start", "style.distill_status", "style.distill_adopt",
+      "skills.recommend", "skills.check_compliance", "pipeline.import_chapters", "book.dissect",
+      "market.scan", "market.query", "market.ranks", "market.sample_public_chapters", "workflow.edit_recipe",
+    ];
     const manual = [
       "chapter.discard_range", "memory.bulk_delete", "memory.bulk_approve", "memory.update", "memory.delete",
-      "skills.import_legacy", "memory.list", "memory.stats", "memory.export", "memory.dedup", "memory.read_entry",
-      "jingwei.audit", "market.scan", "market.query", "market.ranks", "market.sample_public_chapters",
-      "style.distill_preview", "style.distill_start", "style.distill_status", "style.distill_adopt",
-      "book.dissect", "pipeline.import_chapters", "workflow.edit_recipe", "publish.check",
-      "skills.recommend", "skills.check_compliance", "character.voice.draft",
+      "skills.import_legacy", "memory.dedup", "memory.read_entry",
     ];
     for (const name of resident) expect(routineOf(name)?.defaultMode, name).toBe("resident");
+    for (const name of auto) expect(routineOf(name)?.defaultMode, name).toBe("auto");
     for (const name of manual) expect(routineOf(name)?.defaultMode, name).toBe("manual");
     // 运行中的工作流靠这些工具推进，一律常驻。
     for (const entry of ready.filter((tool) => tool.name.startsWith("workflow.") && tool.name !== "workflow.edit_recipe")) {

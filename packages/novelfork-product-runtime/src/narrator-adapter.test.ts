@@ -31,7 +31,7 @@ describe("产品注册给 Runtime 的书籍叙述者适配器", () => {
 		expect(byTool.get("pipeline_write")).toMatchObject({ id: "novelfork.pipeline.write", defaultMode: "resident" });
 		expect(byTool.get("workflow_submit_step_output")?.defaultMode).toBe("resident");
 		expect(byTool.get("memory_bulk_delete")).toMatchObject({ id: "novelfork.memory.bulk-delete", defaultMode: "manual" });
-		expect(byTool.get("market_scan")?.defaultMode).toBe("manual");
+		expect(byTool.get("market_scan")?.defaultMode).toBe("auto");
 	});
 
 	test("Runtime 的套路校验全部接受（id 合法、工具都已注册、互不抢占）", async () => {
