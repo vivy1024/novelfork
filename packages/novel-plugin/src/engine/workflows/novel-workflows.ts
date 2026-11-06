@@ -110,7 +110,7 @@ export const FANQIE_XUANHUAN_SERIAL_RECIPE: NovelWorkflowRecipe = builtinRecipe(
     {
       id: "step-blueprint",
       kind: "guided-plan",
-      label: "生成场景蓝图",
+      label: "生成镜头蓝图",
       enabled: true,
       tools: ["scene.spec"],
       skills: ["爽点密度与分级", "强化章末钩子"],
