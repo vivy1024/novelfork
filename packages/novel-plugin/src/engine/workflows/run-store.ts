@@ -357,7 +357,7 @@ export function listWorkflowRunEvents(storage: StorageDatabase, runId: string, s
 export function listWorkflowRunCandidates(storage: StorageDatabase, runId: string): WorkflowCandidateRecord[] {
   ensureWorkflowRunSchema(storage);
   return storage.sqlite
-    .prepare<CandidateRow>(`SELECT * FROM workflow_run_candidates WHERE run_id = ? ORDER BY submitted_at, id`)
+    .prepare<CandidateRow>(`SELECT * FROM workflow_run_candidates WHERE run_id = ? ORDER BY submitted_at, rowid`)
     .all(runId)
     .map(toCandidate);
 }
