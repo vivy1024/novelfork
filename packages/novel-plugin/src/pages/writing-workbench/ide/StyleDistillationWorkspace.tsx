@@ -44,6 +44,7 @@ export interface StyleDistillationPreviewResponse {
   readonly chapters: readonly StyleDistillationPreviewChapter[];
   readonly coverage: unknown;
   readonly warnings: readonly string[];
+  readonly estimate: StyleDistillationEstimateView | null;
 }
 
 export type StyleDistillationReviewStatus = "needs-review" | "confirmed";
@@ -55,6 +56,21 @@ export interface StyleDistillationRule {
   readonly evidence: string;
   readonly transfer: StyleDistillationTransfer;
   readonly status: StyleDistillationReviewStatus;
+  /** 证据吻合程度（模型规则才有）：只差标点为 medium，只部分吻合为 low。 */
+  readonly confidence?: "high" | "medium" | "low";
+}
+
+/** 开跑前的用量估算（后端预览返回，叙述者预览同口径）。 */
+export interface StyleDistillationEstimateView {
+  readonly batchCount: number;
+  readonly maxOutputTokens: number;
+  readonly maxOutputChars: number;
+  readonly summary: string;
+}
+
+interface StopReason {
+  readonly what: string;
+  readonly next?: string;
 }
 
 export interface StyleDistillationSample extends StyleDistillationRule {
@@ -119,6 +135,10 @@ interface Review {
   samples: StyleDistillationSample[];
   fingerprint: Record<string, unknown>;
   conflicts: string[];
+  /** 可一键采纳的条目（可迁移、证据逐字吻合的模型规则），由后端按统一口径给出。 */
+  recommendedRuleIds: string[];
+  /** 任务停着（暂停 / 失败）的原因；后端没说明时为 null。 */
+  stopReason: StopReason | null;
 }
 
 type Stage = "input" | "preview" | "processing" | "review";
@@ -332,7 +352,28 @@ function normalisePreview(value: unknown): StyleDistillationPreviewResponse {
     chapters,
     coverage: record.coverage ?? null,
     warnings: normaliseWarnings(record.warnings),
+    estimate: normaliseEstimate(record.estimate),
   };
+}
+
+function normaliseEstimate(value: unknown): StyleDistillationEstimateView | null {
+  const record = asRecord(value);
+  const batchCount = asNumber(record?.batchCount);
+  if (!record || batchCount === null) return null;
+  return {
+    batchCount,
+    maxOutputTokens: asNumber(record.maxOutputTokens) ?? 0,
+    maxOutputChars: asNumber(record.maxOutputChars) ?? 0,
+    summary: firstString(record.summary) ?? "",
+  };
+}
+
+/** 任务停下的原因：接口顶层 explanation（含无模型、自动续跑、任务级失败）优先，其次是任务上记的 lastError。 */
+function stopReason(value: unknown): StopReason | null {
+  const job = unwrapJob(value);
+  const explanation = firstRecord(asRecord(value)?.explanation, job?.lastError);
+  const what = firstString(explanation?.what);
+  return what ? { what, next: firstString(explanation?.next) ?? undefined } : null;
 }
 
 function normaliseTransfer(value: unknown): StyleDistillationTransfer {
@@ -354,6 +395,7 @@ function normaliseEntry(value: unknown, kind: "rule" | "sample", index: number):
     evidence: firstString(record.evidence, record.reason, record.source) ?? "未提供证据",
     transfer: normaliseTransfer(record.transfer ?? record.transferability ?? record.scope),
     status: normaliseStatus(record.status ?? record.reviewStatus),
+    ...(record.confidence === "medium" || record.confidence === "low" || record.confidence === "high" ? { confidence: record.confidence } : {}),
   };
   return kind === "sample"
     ? { ...entry, sceneType: firstString(record.sceneType, record.scene, record.kind) ?? undefined }
@@ -432,6 +474,8 @@ function normaliseReview(value: unknown): Review {
       const item = asRecord(conflict);
       return firstString(item?.explanation, item?.message, item?.text, conflict) ?? "未说明的冲突";
     }),
+    recommendedRuleIds: stringList(asRecord(value)?.recommendedRuleIds).filter((id) => rules.some((rule) => rule.id === id)),
+    stopReason: stopReason(value),
   };
 }
 
@@ -446,6 +490,8 @@ function jobId(value: unknown): string | null {
 }
 
 function jobError(value: unknown): string | null {
+  const reason = stopReason(value);
+  if (reason) return [reason.what, reason.next].filter(Boolean).join(" ");
   const job = unwrapJob(value);
   const error = firstRecord(job?.error, job?.failure);
   return firstString(error?.explanation, error?.message, job?.error, job?.message);
@@ -524,6 +570,8 @@ function ReviewEntry({
         </Badge>
         <Badge variant={confirmed ? "default" : "outline"}>{confirmed ? "已确认" : "待审"}</Badge>
         {"sceneType" in entry && entry.sceneType && <Badge variant="outline">{sceneTypeLabel(entry.sceneType)}范文</Badge>}
+        {entry.confidence === "medium" && <Badge variant="outline">证据只差标点</Badge>}
+        {entry.confidence === "low" && <Badge variant="outline">证据部分吻合，请核对</Badge>}
       </div>
       <p className="whitespace-pre-wrap break-words text-sm leading-6">{entry.text}</p>
       <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">证据：{entry.evidence}</p>
@@ -593,6 +641,7 @@ function BookStyleDistillationWorkspace({
       job: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}`,
       resume: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/resume`,
       adopt: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/adopt`,
+      adoptRecommended: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/adopt-recommended`,
       compare: `/api/books/${encodedBookId}/style/distillations/compare`,
       skillExport: `/api/books/${encodedBookId}/style/skill-export`,
     };
@@ -792,22 +841,63 @@ function BookStyleDistillationWorkspace({
       if (!mounted.current) return;
       setReview((current) => current ? { ...current, expectedRevision: revision } : current);
       if (otherAdoptions.length > 0) void loadComparison(reviewJobId.current);
-      setNotice(otherAdoptions.length > 0
+      finishAdoption(response, otherAdoptions.length > 0
         ? `已采纳到本书文风预设（含另外 ${otherAdoptions.length} 个来源的选择变化）。作品专属内容仍保留在来源包中，不会进入通用写法指南。`
         : "已采纳到本书文风预设。作品专属内容仍保留在来源包中，不会进入通用写法指南。");
-      setAdopted(true);
-      setSkillExport(null);
-      setSkillError(null);
-      setCopied(false);
-      onAdopted?.(response);
     } catch (cause) {
+      if (mounted.current) handleAdoptError(cause);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  function finishAdoption(response: unknown, message: string) {
+    setNotice(message);
+    setAdopted(true);
+    setSkillExport(null);
+    setSkillError(null);
+    setCopied(false);
+    onAdopted?.(response);
+  }
+
+  function handleAdoptError(cause: unknown) {
+    if (errorStatus(cause) === 409) {
+      setConflict(true);
+      setError("采纳冲突：本书文风预设已有新版本。请重新蒸馏并确认当前选择后再采纳，避免覆盖他人的修改。");
+    } else {
+      setError(errorMessage(cause, "采纳失败，当前审阅选择已保留，请重试。"));
+    }
+  }
+
+  /** 一键采纳后端推荐的条目（可迁移、证据逐字吻合）；之前确认过的条目一并保留。 */
+  async function adoptRecommended() {
+    if (!review || busy || conflict || review.recommendedRuleIds.length === 0) return;
+    const id = reviewJobId.current;
+    if (!id) {
+      setError("找不到这次蒸馏，无法采纳，请重新开始。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetchJson<unknown>(paths.adoptRecommended(id), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: review.expectedRevision }),
+      });
       if (!mounted.current) return;
-      if (errorStatus(cause) === 409) {
-        setConflict(true);
-        setError("采纳冲突：本书文风预设已有新版本。请重新蒸馏并确认当前选择后再采纳，避免覆盖他人的修改。");
-      } else {
-        setError(errorMessage(cause, "采纳失败，当前审阅选择已保留，请重试。"));
-      }
+      const record = asRecord(response);
+      const adoptedIds = new Set([...stringList(record?.adoptedRuleIds), ...review.recommendedRuleIds]);
+      setReview((current) => current ? {
+        ...current,
+        expectedRevision: firstString(record?.revision) ?? current.expectedRevision,
+        rules: current.rules.map((rule) => adoptedIds.has(rule.id) ? { ...rule, status: "confirmed" } : rule),
+      } : current);
+      const guideCount = asNumber(record?.guideRuleCount) ?? review.recommendedRuleIds.length;
+      finishAdoption(response, `已采纳 ${review.recommendedRuleIds.length} 条推荐规则，本书文风指南现有 ${guideCount} 条来自这次蒸馏的写法。其余条目仍可逐条确认后再采纳。`);
+    } catch (cause) {
+      if (mounted.current) handleAdoptError(cause);
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -891,6 +981,10 @@ function BookStyleDistillationWorkspace({
   }
 
   const hasReviewItems = Boolean(review && (review.rules.length || review.samples.length || Object.keys(review.fingerprint).length));
+  // 规则与范文默认都待审；作者还没确认的条目都不会进入写作提示。
+  const pendingReviewCount = review
+    ? review.rules.filter((entry) => entry.status !== "confirmed").length + review.samples.filter((entry) => entry.status !== "confirmed").length
+    : 0;
   // 来源 ≥2 时并列「共同技法 / 来源差异 / 不应迁移」三列，替代单来源的写法规则列；单来源保持原样。
   // 比较只取每个来源的最新任务；当前审阅的不是本来源最新任务时，它的规则不在比较里，退回单来源审阅。
   const multiSource = comparison !== null && comparison.sources.length >= 2
@@ -979,6 +1073,15 @@ function BookStyleDistillationWorkspace({
                 <MetricCard label="章节数" value={`${formatNumber(preview.chapterCount)} 章`} />
                 <MetricCard label="字符数" value={`${formatNumber(preview.totalCharacters)} 字`} />
                 <MetricCard label="预计输出" value={estimatedOutput(preview)} />
+                {preview.estimate && (
+                  <>
+                    <MetricCard label="模型调用" value={`${formatNumber(preview.estimate.batchCount)} 次`} />
+                    <MetricCard label="输出上限" value={`约 ${formatNumber(preview.estimate.maxOutputTokens)} token`} />
+                    {preview.estimate.summary && (
+                      <p aria-label="用量估算" className="text-xs text-muted-foreground sm:col-span-2">{preview.estimate.summary}</p>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
             <Card>
@@ -1043,6 +1146,28 @@ function BookStyleDistillationWorkspace({
               <ArrowLeft className="size-3.5" />重新处理
             </Button>
           </div>
+          {!adopted && pendingReviewCount > 0 && (
+            <div role="status" aria-label="待审提醒" className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3 text-sm">
+              <p className="font-medium">{pendingReviewCount} 条待审，采纳前不会影响写作</p>
+              <p className="text-xs text-muted-foreground">
+                {review.recommendedRuleIds.length > 0
+                  ? `其中 ${review.recommendedRuleIds.length} 条是可迁移、证据与原文逐字对得上的写法，可以一键采纳；作品专属和证据只部分对得上的条目需要逐条看。`
+                  : "这次没有能一键采纳的条目，请逐条确认后再采纳。"}
+              </p>
+              {review.recommendedRuleIds.length > 0 && (
+                <Button type="button" size="sm" disabled={busy || conflict} onClick={() => void adoptRecommended()}>
+                  {busy && <Loader2 className="size-3.5 animate-spin" />}
+                  采纳全部可迁移的高置信条目（{review.recommendedRuleIds.length}）
+                </Button>
+              )}
+            </div>
+          )}
+          {review.stopReason && (review.jobStatus === "paused" || review.jobStatus === "failed") && (
+            <div role="alert" aria-label="停下的原因" className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/5 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>为什么停下：{review.stopReason.what}{review.stopReason.next ? ` 建议：${review.stopReason.next}` : ""}</span>
+            </div>
+          )}
           {review.conflicts.length > 0 && <WarningList warnings={review.conflicts} title="后端提示" />}
           {review.batches.length > 0 && (
             <Card aria-label="模型批次进度">
@@ -1050,7 +1175,9 @@ function BookStyleDistillationWorkspace({
                 <CardTitle>模型批次</CardTitle>
                 <CardDescription>
                   {review.jobStatus === "paused"
-                    ? "还有批次没跑完，可以先审阅已完成的部分，也可以继续。"
+                    ? review.stopReason
+                      ? "还有批次没跑完（原因见上方），可以先审阅已完成的部分，也可以继续。"
+                      : "还有批次没跑完，可以先审阅已完成的部分，也可以继续。"
                     : "失败的批次不影响已完成的结果。"}
                 </CardDescription>
               </CardHeader>

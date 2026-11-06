@@ -41,6 +41,9 @@ describe("叙述者文风蒸馏工具", () => {
     const { root, binding } = await setup();
     const preview = await executeStyleDistillationTool("style.distill_preview", { sourceName: "旧稿", chapters }, binding, context());
     expect(preview.ok).toBe(true);
+    // 与网页预览同一份估算：两章短文合成 1 批。
+    expect(preview).toMatchObject({ data: { estimate: { batchCount: 1, maxOutputTokens: 16_000, worstCaseModelCalls: 3 } } });
+    expect(preview.summary).toContain("将调用模型 1 次");
     expect(await import("node:fs/promises").then(({ readdir }) => readdir(join(root, "story")).catch(() => []))).toEqual([]);
 
     const lines: string[] = [];

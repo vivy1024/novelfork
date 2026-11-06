@@ -1,6 +1,7 @@
 import type { RuntimeToolResult, ToolExecutionContext } from "@vivy1024/novelfork-core/plugins";
 import {
   makePreviewSource,
+  normalizeStyleDistillationSource,
   StyleDistillationError,
   STYLE_RULE_CATEGORY_LABELS,
   type StyleDistillationJob,
@@ -10,9 +11,11 @@ import {
   adoptStyleDistillation,
   createStyleDistillationJob,
   readStyleDistillationJob,
+  recommendedStyleDistillationRuleIds,
   runStyleDistillationBatches,
   summarizeStyleDistillationBatches,
 } from "../engine/writing-layers/style-distillation-runner.js";
+import { estimateStyleDistillationRun } from "../engine/writing-layers/style-distillation-model.js";
 import { loadStylePreset, StylePresetError } from "../engine/writing-layers/style-preset-store.js";
 import type { TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 
@@ -77,7 +80,10 @@ function modelView(job: StyleDistillationJob, revision: string | null) {
         transfer: rule.transfer === "transferable" ? "可迁移" : "作品专属",
         status: rule.status,
         origin: rule.origin ?? "baseline",
+        ...(rule.origin === "model" ? { confidence: rule.confidence ?? "high" } : {}),
       })),
+      // 可迁移、证据逐字吻合的模型规则；作者同意「全部采纳推荐」时把这些 id 传给 style.distill_adopt。
+      recommendedRuleIds: recommendedStyleDistillationRuleIds(job),
       samples: job.samples.map((sample) => ({
         id: sample.id,
         sceneType: sample.sceneType,
@@ -225,8 +231,11 @@ export async function executeStyleDistillationTool(
   const name = toolName.replace(/^style_distill_/u, "style.distill_");
   try {
     if (name === "style.distill_preview") {
-      const source = makePreviewSource(sourceInput(input));
-      return ok("已预览参考文本范围；尚未写入本书文风。", source);
+      const sourceIn = sourceInput(input);
+      const source = makePreviewSource(sourceIn);
+      // 与网页预览同一份估算：开跑前告诉作者要调多少次模型、最多输出多少。
+      const estimate = estimateStyleDistillationRun(normalizeStyleDistillationSource(sourceIn).chapters);
+      return ok(`已预览参考文本范围；尚未写入本书文风。${estimate.summary}`, { ...source, estimate });
     }
     if (name === "style.distill_start") return await start(input, binding, context);
     if (name === "style.distill_status") {

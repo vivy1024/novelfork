@@ -9,13 +9,16 @@ import {
   type StyleDistillationSourceInput,
 } from "../engine/writing-layers/style-distillation.js";
 import {
+  adoptRecommendedStyleDistillation,
   adoptStyleDistillation,
   createStyleDistillationJob,
   readStyleDistillationJob,
+  recommendedStyleDistillationRuleIds,
   runStyleDistillationBatches,
   summarizeStyleDistillationBatches,
 } from "../engine/writing-layers/style-distillation-runner.js";
 import { compareStyleSources, comparisonInputsFromJobs } from "../engine/writing-layers/style-distillation-compare.js";
+import { estimateStyleDistillationRun } from "../engine/writing-layers/style-distillation-model.js";
 import { ensureStyleDistillationAutoResume } from "../engine/writing-layers/style-distillation-auto-resume.js";
 import { loadStylePreset, StylePresetError } from "../engine/writing-layers/style-preset-store.js";
 import type { HostTextGenerationAvailability, RouterContext } from "./context.js";
@@ -123,6 +126,8 @@ function previewResponse(preview: Preview["preview"], input: StyleDistillationSo
       characters: chapter.content.length,
     })),
     coverage: normalized.coverage,
+    // 开跑前的用量估算：与建任务同一切批，叙述者 style.distill_preview 返回同一份。
+    estimate: estimateStyleDistillationRun(normalized.chapters),
     warnings: [
       "预览只读取本次参考文本，不会修改本书文风预设。",
       "蒸馏结果会先进入审阅区；作品专属内容不会进入通用写法指南。",
@@ -148,6 +153,13 @@ function modelUnavailableExplanation(unavailable?: UnavailableGeneration) {
   };
 }
 
+/** 任务停着（暂停 / 失败）时说明原因：任务级执行失败优先，其次是自动续跑停下的原因。 */
+function pausedExplanation(job: StyleDistillationJob) {
+  if (job.status !== "paused" && job.status !== "failed") return undefined;
+  if (job.lastError) return { what: job.lastError.what, why: job.lastError.why, next: job.lastError.next };
+  return job.autoResume?.explanation;
+}
+
 function serializeJob(
   job: StyleDistillationJob,
   expectedRevision: string | null,
@@ -160,9 +172,11 @@ function serializeJob(
     batches: summarizeStyleDistillationBatches(job),
     ...(modelAvailable === false && job.status === "paused"
       ? { explanation: modelUnavailableExplanation(unavailable) }
-      : job.autoResume?.explanation && (job.status === "paused" || job.status === "failed")
-        ? { explanation: job.autoResume.explanation }
+      : pausedExplanation(job)
+        ? { explanation: pausedExplanation(job) }
         : {}),
+    // 一键采纳的候选：可迁移、证据逐字吻合的模型规则（口径见 recommendedStyleDistillationRuleIds）。
+    recommendedRuleIds: recommendedStyleDistillationRuleIds(job),
     result: { ...job, expectedRevision },
   };
 }
@@ -211,8 +225,8 @@ export function createStyleDistillationsRouter(
   /** 后台跑批次：请求先返回 running，前端轮询任务文件看进度；失败原因写进批次。 */
   function runInBackground(bookRoot: string, jobId: string, generateText: RuntimeTextGenerator, retryFailed: boolean, initiatorId?: string): void {
     void runStyleDistillationBatches({ bookRoot, jobId, generateText, retryFailed, ...(initiatorId ? { initiatorId } : {}) }).catch((error: unknown) => {
-      // 顶层不能静默：单批失败已写进批次记录，但跑到这里的错误（如 updateJob 自身落盘失败）
-      // 不会让任何批次留痕，任务会停在 running 悬案。按本包 logger 口径（见 narrative-memory
+      // 顶层不能静默：单批失败已写进批次记录，任务级失败由运行器尽量写进任务的 lastError（界面据此说明停下的原因）；
+      // 任务文件本身写不进去时（如 updateJob 落盘失败）只剩日志。按本包 logger 口径（见 narrative-memory
       // 路由的 [narrative-memory] console.error）留下任务 id 与错误，供排查恢复。
       const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
       console.error(`[style-distillations] 后台批次执行失败（任务 ${jobId}）：${detail}`);
@@ -278,6 +292,7 @@ export function createStyleDistillationsRouter(
           batches: summarizeStyleDistillationBatches(job),
           createdAt: job.createdAt,
           ...(job.autoResume?.explanation ? { autoResumeExplanation: job.autoResume.explanation } : {}),
+          ...(pausedExplanation(job) ? { explanation: pausedExplanation(job) } : {}),
         })),
         corruptedJobIds,
       });
@@ -392,6 +407,35 @@ export function createStyleDistillationsRouter(
         expectedRevision: body.expectedRevision as string | null,
       });
       return c.json({ ...result.preset, guideRuleCount: result.guideRuleCount, sourceOnlyCount: result.sourceOnlyCount });
+    } catch (error) {
+      return errorResponse(c, error);
+    }
+  });
+
+  // 一键采纳推荐条目（可迁移、证据逐字吻合的模型规则）；与逐条采纳共用同一个采纳函数与版本校验。
+  app.post("/api/books/:bookId/style/distillations/jobs/:jobId/adopt-recommended", async (c) => {
+    try {
+      const bookRoot = resolveBookRoot(c.req.param("bookId"));
+      const body = bodyRecord(await c.req.json().catch(() => null));
+      if (!body || !Object.hasOwn(body, "expectedRevision") || (body.expectedRevision !== null && typeof body.expectedRevision !== "string")) {
+        return c.json({ error: "采纳必须携带 expectedRevision。", code: "STYLE_PRESET_INVALID", explanation: {
+          what: "采纳请求缺少读取预设时的版本号。",
+          why: "没有版本号就无法判断预设是否已被别处改过，可能静默覆盖作者的修改。",
+          next: "重新载入任务与预设后再采纳。",
+        } }, 400);
+      }
+      const result = await adoptRecommendedStyleDistillation({
+        bookRoot,
+        jobId: c.req.param("jobId"),
+        expectedRevision: body.expectedRevision as string | null,
+      });
+      return c.json({
+        ...result.preset,
+        guideRuleCount: result.guideRuleCount,
+        sourceOnlyCount: result.sourceOnlyCount,
+        adoptedRuleIds: result.job.adoption?.ruleIds ?? [],
+        recommendedRuleIds: result.recommendedRuleIds,
+      });
     } catch (error) {
       return errorResponse(c, error);
     }

@@ -62,3 +62,20 @@ export function normalizeEvidenceWithMap(text: string): NormalizedEvidenceText {
 export function normalizeEvidenceForMatch(text: string): string {
   return normalizeEvidenceWithMap(text).value;
 }
+
+/**
+ * 宽松比对：在逐字归一的基础上再删去全部标点与符号（模型常补、删或换逗号句号）。
+ * 映射随之过滤，仍可取回原文片段。
+ */
+export function stripEvidencePunctuation(normalized: NormalizedEvidenceText): NormalizedEvidenceText {
+  const chars: string[] = [];
+  const starts: number[] = [];
+  const ends: number[] = [];
+  [...normalized.value].forEach((char, index) => {
+    if (/^[\p{P}\p{S}]$/u.test(char)) return;
+    chars.push(char);
+    starts.push(normalized.starts[index]!);
+    ends.push(normalized.ends[index]!);
+  });
+  return { value: chars.join(""), starts, ends };
+}

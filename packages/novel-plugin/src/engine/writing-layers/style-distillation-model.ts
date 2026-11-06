@@ -3,13 +3,19 @@ import { z } from "zod";
 import type { RuntimeTextGenerationRequest } from "@vivy1024/novelfork-core/plugins";
 import { modelJsonFailureAdvice, parseModelJson, type ModelJsonFailureReason } from "../model-output/lenient-json.js";
 import {
+  planStyleDistillationBatches,
   STYLE_DISTILLATION_CHAPTER_CHAR_LIMIT,
   STYLE_MODEL_RULE_CATEGORIES,
   type DistillableChapter,
   type StyleDistillationExplanation,
   type StyleRuleCategory,
 } from "./style-distillation.js";
-import { normalizeEvidenceForMatch, normalizeEvidenceWithMap } from "./style-distillation-normalize.js";
+import {
+  normalizeEvidenceForMatch,
+  normalizeEvidenceWithMap,
+  stripEvidencePunctuation,
+  type NormalizedEvidenceText,
+} from "./style-distillation-normalize.js";
 import { collectSourceTerms, findSourceTerms, type SourceTermIndex } from "./style-distillation-terms.js";
 
 /**
@@ -34,6 +40,51 @@ export const STYLE_DISTILLATION_MAX_RULES_PER_BATCH = 12;
  * 声明了更低上限的模型不会因此被拒。
  */
 export const STYLE_DISTILLATION_BATCH_MAX_TOKENS = 16_000;
+
+/** 每批 JSON 正文的字符数上限估算（12 条 × 约 380 字符，见上方体量估算）；不含思考型模型的推理。 */
+export const STYLE_DISTILLATION_BATCH_OUTPUT_CHAR_ESTIMATE = 4_600;
+
+export interface StyleDistillationRunEstimate {
+  /** 计划的模型批次数（每批一次模型调用）。 */
+  readonly batchCount: number;
+  /** 送进模型的正文字数（每章按单章上限截断后合计）。 */
+  readonly inputChars: number;
+  /** 输出 token 上限合计：每批最多 STYLE_DISTILLATION_BATCH_MAX_TOKENS，含思考型模型的推理。 */
+  readonly maxOutputTokens: number;
+  /** 规则 JSON 正文的输出字数上限估算（不含推理）。 */
+  readonly maxOutputChars: number;
+  /** 最坏情况：每批都被截断、按半批重试（每批 3 次调用）时的调用次数与输出 token 上限。 */
+  readonly worstCaseModelCalls: number;
+  readonly worstCaseOutputTokens: number;
+  readonly perBatchMaxOutputTokens: number;
+  /** 给作者看的一句话。 */
+  readonly summary: string;
+}
+
+/**
+ * 开跑前的用量估算：按与建任务完全相同的切批（planStyleDistillationBatches），
+ * 网页预览与叙述者 style.distill_preview 共用这一个函数，数字一致。
+ */
+export function estimateStyleDistillationRun(chapters: readonly DistillableChapter[]): StyleDistillationRunEstimate {
+  const batches = planStyleDistillationBatches(chapters);
+  const batchCount = batches.length;
+  const inputChars = batches.reduce((sum, batch) => sum + batch.charCount, 0);
+  const maxOutputTokens = batchCount * STYLE_DISTILLATION_BATCH_MAX_TOKENS;
+  const maxOutputChars = batchCount * STYLE_DISTILLATION_BATCH_OUTPUT_CHAR_ESTIMATE;
+  const format = (value: number) => new Intl.NumberFormat("zh-CN").format(value);
+  return {
+    batchCount,
+    inputChars,
+    maxOutputTokens,
+    maxOutputChars,
+    worstCaseModelCalls: batchCount * 3,
+    worstCaseOutputTokens: maxOutputTokens * 3,
+    perBatchMaxOutputTokens: STYLE_DISTILLATION_BATCH_MAX_TOKENS,
+    summary: batchCount === 0
+      ? "没有可送给模型的正文，只生成统计基线。"
+      : `将调用模型 ${format(batchCount)} 次，送入约 ${format(inputChars)} 字；输出最多约 ${format(maxOutputTokens)} token（规则正文约 ${format(maxOutputChars)} 字，其余是思考型模型的推理）。个别批次输出不完整时会拆成两半各重试一次。`,
+  };
+}
 
 /** 输出 token 达到上限的这个比例即视为被截断（宿主不报 outputTruncated 时的兜底判定）。 */
 export const STYLE_DISTILLATION_TRUNCATION_USAGE_RATIO = 0.98;
@@ -91,6 +142,8 @@ export interface ExtractedStyleRule {
   readonly evidence: string;
   readonly transfer: "transferable" | "source-only";
   readonly reason: string;
+  /** 证据吻合程度，见 gradeStyleEvidence。 */
+  readonly confidence: StyleEvidenceConfidence;
 }
 
 /** 因证据未在原文中找到而未收录的模型规则，原样保留供作者审阅（证据是模型给的原话，未经回查）。 */
@@ -117,7 +170,22 @@ export type StyleBatchExtraction =
     /** 证据校验未通过的规则；缺省视为没有。 */
     readonly rejected?: readonly RejectedStyleRule[];
   }
-  | { readonly ok: false; readonly explanation: StyleDistillationExplanation };
+  | {
+    readonly ok: false;
+    readonly explanation: StyleDistillationExplanation;
+    /**
+     * 失败类别：truncated / unparseable（没有 JSON、JSON 无效或全部条目不合格）可以靠缩小批次缓解，
+     * 运行器会按半批重试一次；model-error（调用失败）与 source（来源快照问题）不重试。
+     */
+    readonly kind: StyleBatchFailureKind;
+  };
+
+export type StyleBatchFailureKind = "truncated" | "unparseable" | "model-error" | "source";
+
+/** 这几类失败缩小批次后可能成功。 */
+export function isStyleBatchFailureShrinkable(kind: StyleBatchFailureKind): boolean {
+  return kind === "truncated" || kind === "unparseable";
+}
 
 const SYSTEM_PROMPT = `你是 NovelFork 的文风分析助手。任务：从作者提供的参考正文中提取可以指导写作的「写法规则」。只分析表达方法，不复述剧情，不整理人物、地点或世界设定。
 
@@ -164,6 +232,92 @@ export interface LocatedStyleEvidence {
  * （引号与括引号一律忽略（换样式或省略都不计），全半角、ASCII 大小写、常见繁简异体、空白不计差异，见 style-distillation-normalize），
  * 返回的片段仍取自原文原字。
  */
+/**
+ * 证据吻合程度决定规则的置信度：
+ * - high：逐字命中（已忽略引号、空白、全半角、繁简）；
+ * - medium：只差标点（模型补、删或换了逗号句号）；
+ * - low：只有一段连续片段（≥8 字且至少占证据一半）在原文出现，模型可能拼接或改写了其余部分。
+ */
+export type StyleEvidenceConfidence = "high" | "medium" | "low";
+
+export interface GradedStyleEvidence extends LocatedStyleEvidence {
+  readonly confidence: StyleEvidenceConfidence;
+}
+
+/** 部分吻合的最短连续片段字数与占证据的最低比例。 */
+export const STYLE_EVIDENCE_PARTIAL_MIN_CHARS = 8;
+export const STYLE_EVIDENCE_PARTIAL_MIN_RATIO = 0.5;
+
+function splitEvidence(evidence: string): string[] {
+  return evidence.trim().split(/…+|\.{3,}/u);
+}
+
+/** 只差标点：两边去掉全部标点后，每段仍按顺序在同一章出现。 */
+function locateIgnoringPunctuation(evidence: string, chapters: readonly DistillableChapter[]): LocatedStyleEvidence | null {
+  const segments = splitEvidence(evidence)
+    .map((segment) => stripEvidencePunctuation(normalizeEvidenceWithMap(segment)).value)
+    .filter((segment) => segment.length >= 2);
+  if (segments.length === 0) return null;
+  for (const chapter of chapters) {
+    const content = stripEvidencePunctuation(normalizeEvidenceWithMap(chapter.content));
+    const pieces: string[] = [];
+    let cursor = 0;
+    let matched = true;
+    for (const segment of segments) {
+      const at = content.value.indexOf(segment, cursor);
+      if (at < 0) { matched = false; break; }
+      const first = [...content.value.slice(0, at)].length;
+      const last = first + [...segment].length - 1;
+      pieces.push(chapter.content.slice(content.starts[first], content.ends[last]));
+      cursor = at + segment.length;
+    }
+    if (matched) return { chapterNumber: chapter.number, excerpt: pieces.join("……") };
+  }
+  return null;
+}
+
+/** 最长公共连续片段（按码点）；证据 ≤400 字、单章 ≤12000 字，单行 DP 足够快。 */
+function longestCommonRun(needle: readonly string[], haystack: readonly string[]): { length: number; end: number } {
+  let best = { length: 0, end: -1 };
+  let previous = new Uint16Array(needle.length + 1);
+  let current = new Uint16Array(needle.length + 1);
+  for (let h = 0; h < haystack.length; h += 1) {
+    for (let n = 1; n <= needle.length; n += 1) {
+      current[n] = needle[n - 1] === haystack[h] ? previous[n - 1]! + 1 : 0;
+      if (current[n]! > best.length) best = { length: current[n]!, end: h };
+    }
+    [previous, current] = [current, previous];
+    current.fill(0);
+  }
+  return best;
+}
+
+/** 部分吻合：取证据与原文的最长连续公共片段，够长才收，返回原文里的那一段。 */
+function locatePartially(evidence: string, chapters: readonly DistillableChapter[]): LocatedStyleEvidence | null {
+  const needle = [...stripEvidencePunctuation(normalizeEvidenceWithMap(evidence.replace(/…+|\.{3,}/gu, ""))).value];
+  const required = Math.max(STYLE_EVIDENCE_PARTIAL_MIN_CHARS, Math.ceil(needle.length * STYLE_EVIDENCE_PARTIAL_MIN_RATIO));
+  if (needle.length < required) return null;
+  let best: { chapter: DistillableChapter; content: NormalizedEvidenceText; length: number; end: number } | null = null;
+  for (const chapter of chapters) {
+    const content = stripEvidencePunctuation(normalizeEvidenceWithMap(chapter.content));
+    const run = longestCommonRun(needle, [...content.value]);
+    if (run.length >= required && run.length > (best?.length ?? 0)) best = { chapter, content, ...run };
+  }
+  if (!best) return null;
+  const first = best.end - best.length + 1;
+  return { chapterNumber: best.chapter.number, excerpt: best.chapter.content.slice(best.content.starts[first], best.content.ends[best.end]) };
+}
+
+/** 按 high → medium → low 逐级回查证据；都不吻合时返回 null（规则被丢弃）。 */
+export function gradeStyleEvidence(evidence: string, chapters: readonly DistillableChapter[]): GradedStyleEvidence | null {
+  const exact = locateStyleEvidenceInChapters(evidence, chapters);
+  if (exact) return { ...exact, confidence: "high" };
+  const loose = locateIgnoringPunctuation(evidence, chapters);
+  if (loose) return { ...loose, confidence: "medium" };
+  const partial = locatePartially(evidence, chapters);
+  return partial ? { ...partial, confidence: "low" } : null;
+}
+
 export function locateStyleEvidenceInChapters(
   evidence: string,
   chapters: readonly DistillableChapter[],
@@ -207,8 +361,8 @@ function issueSummary(error: z.ZodError): string {
   }).join("；");
 }
 
-function failure(what: string, why: string, next: string): StyleBatchExtraction {
-  return { ok: false, explanation: { what: what.slice(0, 4_000), why, next } };
+function failure(kind: StyleBatchFailureKind, what: string, why: string, next: string): StyleBatchExtraction {
+  return { ok: false, kind, explanation: { what: what.slice(0, 4_000), why, next } };
 }
 
 const JSON_FAILURE_WHY: Readonly<Record<ModelJsonFailureReason, string>> = {
@@ -226,6 +380,7 @@ const TRUNCATED_NEXT = "重试本批；仍被截断时缩小参考文本范围�
 /** 输出被截断（宿主报告或输出 token 用满上限）时，不论解析成什么样都按截断报告。 */
 function truncatedFailure(detail: string): StyleBatchExtraction {
   return failure(
+    "truncated",
     `模型输出被截断：${detail}`,
     `${JSON_FAILURE_WHY.truncated}思考型模型的推理也计入输出上限，推理过长时正文 JSON 可能一个字都来不及写。`,
     TRUNCATED_NEXT,
@@ -257,11 +412,12 @@ export function parseStyleDistillationBatchOutput(
         ? `输出达到了长度上限（${STYLE_DISTILLATION_BATCH_MAX_TOKENS} token），没有写出完整的 JSON。`
         : parsedJson.message.replace(/^模型输出被截断：/u, ""));
     }
-    return failure(parsedJson.message, JSON_FAILURE_WHY[parsedJson.reason], modelJsonFailureAdvice(parsedJson.reason));
+    return failure("unparseable", parsedJson.message, JSON_FAILURE_WHY[parsedJson.reason], modelJsonFailureAdvice(parsedJson.reason));
   }
   const shape = StyleDistillationModelOutputSchema.safeParse(parsedJson.value);
   if (!shape.success) {
     return failure(
+      "unparseable",
       `模型输出不符合规则格式：${issueSummary(shape.error)}`,
       "每条规则都必须带类别、逐字证据和可迁移判断，缺项的输出不能进入审阅。",
       "重试本批；多次失败时换用输出更稳定的模型。",
@@ -292,6 +448,7 @@ export function parseStyleDistillationBatchOutput(
   });
   if (valid.length === 0 && firstError) {
     return failure(
+      "unparseable",
       `模型输出不符合规则格式：${issueSummary(firstError)}`,
       "每条规则都必须带类别、逐字证据和可迁移判断，缺项的输出不能进入审阅。",
       "重试本批；多次失败时换用输出更稳定的模型。",
@@ -302,7 +459,12 @@ export function parseStyleDistillationBatchOutput(
   const rules: ExtractedStyleRule[] = [];
   const rejected: RejectedStyleRule[] = [];
   for (const candidate of valid) {
-    const located = locateStyleEvidenceInChapters(candidate.evidence, chapters);
+    const located = gradeStyleEvidence(candidate.evidence, chapters);
+    if (located && located.confidence !== "high") {
+      issues.push(located.confidence === "medium"
+        ? `「${candidate.text.slice(0, 60)}」的证据与原文只差标点，已按原文收录，置信度降为中。`
+        : `「${candidate.text.slice(0, 60)}」的证据只有一部分在原文中找到，已按找到的原文片段收录，置信度降为低，采纳前请核对。`);
+    }
     if (!located) {
       issues.push(`未收录「${candidate.text.slice(0, 60)}」：证据未在本批原文中逐字找到，可能是模型改写或编造。`);
       rejected.push({ category: candidate.category, text: candidate.text, evidence: candidate.evidence, reason: "证据未在本批原文中逐字找到" });
@@ -324,6 +486,7 @@ export function parseStyleDistillationBatchOutput(
       evidence: `第${located.chapterNumber}章原文：「${located.excerpt}」`,
       transfer,
       reason,
+      confidence: located.confidence,
     });
   }
   if (candidates.length === 0) issues.push("模型认为本批没有可提取的写法规则。");
@@ -332,10 +495,8 @@ export function parseStyleDistillationBatchOutput(
 
 export type StyleBatchEvidenceAssessment =
   | { readonly level: "ok" }
-  /** 部分规则被丢弃且占比超过阈值：批次完成，但带提醒。 */
-  | { readonly level: "warning"; readonly explanation: StyleDistillationExplanation }
-  /** 模型给出的规则全部因证据被丢弃：按失败批次处理，可重试。 */
-  | { readonly level: "failed"; readonly explanation: StyleDistillationExplanation };
+  /** 规则被丢弃占比超过阈值（含全部丢弃）：批次完成，但带提醒；重试失败批次时一并重跑全部丢弃的批次。 */
+  | { readonly level: "warning"; readonly explanation: StyleDistillationExplanation };
 
 /** 判断一批的证据丢弃情况是否需要作者关注；文案统一在这里，前端与叙述者不自造。 */
 export function assessStyleBatchEvidence(
@@ -345,9 +506,10 @@ export function assessStyleBatchEvidence(
   if (rejected <= 0) return { level: "ok" };
   const total = kept + rejected;
   const what = `${rejected} 条模型规则因证据未在原文找到被丢弃${kept > 0 ? `，仅收录 ${kept} 条` : "，本批没有收录任何规则"}。`;
-  const why = "证据必须是原文里的逐字片段，对不上的规则可能是模型改写或编造原文，不能进入审阅；但大面积对不上也可能是模型改了原文的写法（如繁简、引号），不应当作正常完成。";
-  const next = "展开本批「被丢弃的规则」查看模型给出的证据与原文差在哪里；重试本批，多次仍大面积丢弃时换用更忠于原文的模型。";
-  if (kept === 0) return { level: "failed", explanation: { what, why, next } };
+  const why = "证据要能在原文里找到（逐字、只差标点或至少有一大段连续吻合），对不上的规则可能是模型改写或编造原文，不能进入审阅；大面积对不上不应当作正常完成。";
+  const next = "展开本批「被丢弃的规则」查看模型给出的证据与原文差在哪里；可以重试失败批次（本批也会重跑），多次仍大面积丢弃时换用更忠于原文的模型。";
+  // 模型输出能解析、只是证据全对不上：本批照常结束并提醒，不算失败批次（失败只留给输出不可用的情况）。
+  if (kept === 0) return { level: "warning", explanation: { what, why, next } };
   if (rejected / total > STYLE_DISTILLATION_EVIDENCE_REJECTION_ATTENTION_RATIO) {
     return { level: "warning", explanation: { what, why, next } };
   }
@@ -377,6 +539,7 @@ export async function extractStyleRulesFromBatch(input: {
     outputTruncated = isStyleDistillationOutputTruncated(response);
   } catch (error) {
     return failure(
+      "model-error",
       `模型调用失败：${error instanceof Error ? error.message : String(error)}`,
       "本批没有拿到模型结果，已完成的批次与确定性基线不受影响。",
       "检查模型配置或网络后，继续任务并重试失败批次。",

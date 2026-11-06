@@ -365,7 +365,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "style.distill_preview",
-    description: "预览参考文本的章节范围与可分析覆盖，不保存正文、不修改本书文风。作者确认范围后再使用 style.distill_start。",
+    description: "预览参考文本的章节范围与可分析覆盖，并返回用量估算 estimate（模型调用次数、送入字数、输出 token 上限），不保存正文、不修改本书文风。先把估算告诉作者，作者确认范围后再使用 style.distill_start。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["style.distill_preview"]),
     risk: "read", renderer: "generic", enabledForModes: ALL_SESSION_PERMISSION_MODES, scope: "novel",
   }),
@@ -377,7 +377,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "style.distill_status",
-    description: "读取指定文风蒸馏任务的状态、来源证据、规则、范文和统计指纹。",
+    description: "读取指定文风蒸馏任务的状态、来源证据、规则、范文和统计指纹。reviewItems.recommendedRuleIds 是可迁移且证据逐字吻合的模型规则；作者同意「全部采纳推荐」时把它们传给 style.distill_adopt。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["style.distill_status"]),
     risk: "read", renderer: "generic", enabledForModes: ALL_SESSION_PERMISSION_MODES, scope: "novel",
   }),

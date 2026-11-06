@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { DistillableChapter } from "./style-distillation.js";
+import { planStyleDistillationBatches, type DistillableChapter } from "./style-distillation.js";
 import {
   assessStyleBatchEvidence,
+  estimateStyleDistillationRun,
+  STYLE_DISTILLATION_BATCH_OUTPUT_CHAR_ESTIMATE,
   extractStyleRulesFromBatch,
+  gradeStyleEvidence,
   isStyleDistillationOutputTruncated,
   locateStyleEvidenceInChapters,
   parseStyleDistillationBatchOutput,
@@ -130,9 +133,53 @@ describe("D2 证据比对的归一", () => {
   });
 });
 
+describe("S2 开跑前的用量估算", () => {
+  it("按与建任务相同的切批算批数、送入字数与输出上限", () => {
+    const chapters = Array.from({ length: 7 }, (_, index) => ({ number: index + 1, title: `第${index + 1}章`, content: "字".repeat(5_000) }));
+    const estimate = estimateStyleDistillationRun([...chapters, { number: 8, title: "空", content: "" }, { number: 9, title: "超长", content: "字".repeat(30_000) }]);
+    // 5000×7 → 每批两章；超长章截到 12000 单独一批：共 5 批。
+    expect(estimate.batchCount).toBe(planStyleDistillationBatches([...chapters, { number: 9, title: "超长", content: "字".repeat(30_000) }]).length);
+    expect(estimate.batchCount).toBe(5);
+    expect(estimate.inputChars).toBe(5_000 * 7 + 12_000);
+    expect(estimate.maxOutputTokens).toBe(5 * STYLE_DISTILLATION_BATCH_MAX_TOKENS);
+    expect(estimate.maxOutputChars).toBe(5 * STYLE_DISTILLATION_BATCH_OUTPUT_CHAR_ESTIMATE);
+    expect(estimate.worstCaseModelCalls).toBe(15);
+    expect(estimate.summary).toContain("将调用模型 5 次");
+  });
+
+  it("没有正文时不调用模型", () => {
+    expect(estimateStyleDistillationRun([{ number: 1, title: "空", content: "" }])).toMatchObject({ batchCount: 0, maxOutputTokens: 0, summary: expect.stringContaining("只生成统计基线") });
+  });
+});
+
+describe("M1 证据分级吻合", () => {
+  const plain: DistillableChapter = { number: 3, title: "巷", content: "风从巷口灌进来，灯影晃了一下。她把伞收起来，雨水顺着伞骨滴进鞋里。" };
+
+  it("逐字命中为高、只差标点为中、部分连续片段吻合为低，片段取原文原字", () => {
+    expect(gradeStyleEvidence("风从巷口灌进来，灯影晃了一下", [plain])).toMatchObject({ confidence: "high" });
+    expect(gradeStyleEvidence("风从巷口灌进来。灯影晃了一下！", [plain])).toEqual({ chapterNumber: 3, excerpt: "风从巷口灌进来，灯影晃了一下", confidence: "medium" });
+    expect(gradeStyleEvidence("她把伞收起来，雨水顺着伞骨滴进鞋里，冷得发抖", [plain])).toEqual({ chapterNumber: 3, excerpt: "她把伞收起来，雨水顺着伞骨滴进鞋里", confidence: "low" });
+  });
+
+  it("吻合片段太短或不到证据一半时仍丢弃", () => {
+    // 「风从巷口」只有 4 字吻合
+    expect(gradeStyleEvidence("风从巷口有一辆马车驶过停在门前", [plain])).toBeNull();
+    // 吻合 8 字，但证据有 20 多字，不到一半
+    expect(gradeStyleEvidence("雨水顺着伞骨滴进鞋里后来她一个人走了很远很远的路才回到家", [plain])).toBeNull();
+  });
+
+  it("解析结果带上置信度；坏输出带失败类别供运行器决定是否半批重试", () => {
+    const result = parseStyleDistillationBatchOutput(JSON.stringify({ rules: [rule("风从巷口灌进来。灯影晃了一下")] }), [plain]);
+    expect(result).toMatchObject({ ok: true, rules: [{ confidence: "medium" }] });
+    expect(parseStyleDistillationBatchOutput("没有 JSON", [plain])).toMatchObject({ ok: false, kind: "unparseable" });
+    expect(parseStyleDistillationBatchOutput("", [plain], { outputTruncated: true })).toMatchObject({ ok: false, kind: "truncated" });
+  });
+});
+
 describe("D3 证据丢弃的关注判定", () => {
   it("全部丢弃判失败、过半丢弃判提醒、少量丢弃照常", () => {
-    expect(assessStyleBatchEvidence(0, 10)).toMatchObject({ level: "failed", explanation: { what: expect.stringContaining("10 条模型规则因证据未在原文找到被丢弃") } });
+    // 输出可解析时全部丢弃也只是提醒，不判失败批次（失败只留给输出不可用）。
+    expect(assessStyleBatchEvidence(0, 10)).toMatchObject({ level: "warning", explanation: { what: expect.stringContaining("10 条模型规则因证据未在原文找到被丢弃") } });
     expect(assessStyleBatchEvidence(2, 5)).toMatchObject({ level: "warning", explanation: { what: expect.stringContaining("仅收录 2 条") } });
     expect(assessStyleBatchEvidence(5, 2)).toEqual({ level: "ok" });
     expect(assessStyleBatchEvidence(3, 0)).toEqual({ level: "ok" });

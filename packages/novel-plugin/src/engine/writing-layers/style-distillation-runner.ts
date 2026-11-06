@@ -10,6 +10,7 @@ import {
   saveStyleDistillationJob,
   saveStyleDistillationSourceSnapshot,
   settleStyleDistillationJobState,
+  STYLE_DISTILLATION_CHAPTER_CHAR_LIMIT,
   StyleDistillationError,
   StyleDistillationJobSchema,
   type DistillableChapter,
@@ -18,13 +19,20 @@ import {
   type StyleDistillationRule,
   type StyleDistillationSourceInput,
 } from "./style-distillation.js";
-import { assessStyleBatchEvidence, extractStyleRulesFromBatch, type StyleBatchExtraction } from "./style-distillation-model.js";
+import {
+  assessStyleBatchEvidence,
+  extractStyleRulesFromBatch,
+  isStyleBatchFailureShrinkable,
+  type StyleBatchExtraction,
+} from "./style-distillation-model.js";
+import { collectSourceTerms } from "./style-distillation-terms.js";
 import {
   acquireStyleDistillationLock,
   inspectStyleDistillationLock,
   type StyleDistillationLockHandle,
   type StyleDistillationLockOwner,
 } from "./style-distillation-lock.js";
+import { mergeDistilledFingerprint } from "./style-fingerprint-merge.js";
 import { createStylePreset, type StylePreset } from "./style-preset.js";
 import { loadStylePreset, saveStylePreset, StylePresetError, type LoadedStylePreset } from "./style-preset-store.js";
 
@@ -110,6 +118,11 @@ export interface StyleDistillationRunSummary {
   readonly rejectedExplanation?: { readonly what: string; readonly why: string; readonly next: string };
 }
 
+/** 已结束但一条规则都没收、且有被丢弃条目的批次：模型输出可用，证据全部对不上。 */
+export function isAllRejectedBatch(batch: StyleDistillationBatch): boolean {
+  return batch.status === "done" && batch.ruleIds.length === 0 && (batch.rejectedRules?.length ?? 0) > 0;
+}
+
 export function summarizeStyleDistillationBatches(job: StyleDistillationJob): StyleDistillationRunSummary {
   const count = (status: StyleDistillationBatch["status"]) => job.batches.filter((batch) => batch.status === status).length;
   const rejectedRuleCount = job.batches.reduce((sum, batch) => sum + (batch.rejectedRules?.length ?? 0), 0);
@@ -131,7 +144,7 @@ export function summarizeStyleDistillationBatches(job: StyleDistillationJob): St
         rejectedExplanation: {
           what: `${rejectedRuleCount} 条模型规则因证据未在原文找到被丢弃（涉及 ${rejectedBatches} 批）。`,
           why: "证据对不上原文的规则可能是模型改写或编造，不进入审阅；被丢弃的条目与原因保存在对应批次里。",
-          next: "在模型批次里展开「被丢弃的规则」核对；整批被丢弃的批次已标为失败，可重试失败批次。",
+          next: "在模型批次里展开「被丢弃的规则」核对；重试失败批次时，一条都没收录的批次也会重跑。",
         },
       }
       : {}),
@@ -159,17 +172,107 @@ export function normalizedRuleKey(text: string): string {
   return text.replace(/[\s\p{P}\p{S}]+/gu, "").toLowerCase();
 }
 
+/** 一批的抽取结果，以及是否经过半批重试、第一次失败的原因。 */
+interface BatchAttempt {
+  readonly result: StyleBatchExtraction;
+  readonly splitRetried: boolean;
+  readonly firstFailure?: StyleDistillationBatch["explanation"];
+}
+
+/** 把一批章节切成两半；只有一章时把该章正文（按送模型的上限截断后）对半切，章号不变。 */
+export function splitStyleDistillationBatch(chapters: readonly DistillableChapter[]): [DistillableChapter[], DistillableChapter[]] | null {
+  if (chapters.length >= 2) {
+    const middle = Math.ceil(chapters.length / 2);
+    return [chapters.slice(0, middle), chapters.slice(middle)];
+  }
+  const only = chapters[0];
+  if (!only) return null;
+  const content = only.content.slice(0, STYLE_DISTILLATION_CHAPTER_CHAR_LIMIT);
+  if (content.length < 400) return null;
+  // 在中点附近的句末切开，不留半句。
+  const middle = Math.floor(content.length / 2);
+  const window = content.slice(middle, Math.min(content.length, middle + 300));
+  const end = window.search(/[。！？…\n]/u);
+  const cut = end >= 0 ? middle + end + 1 : middle;
+  return [
+    [{ ...only, title: `${only.title}（前半）`, content: content.slice(0, cut) }],
+    [{ ...only, title: `${only.title}（后半）`, content: content.slice(cut) }],
+  ];
+}
+
+/**
+ * 抽取一批；输出被截断或无法解析时按半批重试一次（两半各调一次模型），结果合并回本批。
+ * 两半都失败才判本批失败；只有一半成功时照常完成，并在 issues 里写明另一半的原因。
+ */
+async function extractBatchWithSplitRetry(input: {
+  readonly generateText: RuntimeTextGenerator;
+  readonly sourceName: string;
+  readonly chapters: readonly DistillableChapter[];
+}): Promise<BatchAttempt> {
+  const sourceTerms = collectSourceTerms(input.chapters);
+  const first = await extractStyleRulesFromBatch({ ...input, sourceTerms });
+  if (first.ok || !isStyleBatchFailureShrinkable(first.kind)) return { result: first, splitRetried: false };
+  const halves = splitStyleDistillationBatch(input.chapters);
+  if (!halves) return { result: first, splitRetried: false };
+  const parts = [];
+  for (const half of halves) parts.push(await extractStyleRulesFromBatch({ ...input, chapters: half, sourceTerms }));
+  const succeeded = parts.filter((part): part is Extract<StyleBatchExtraction, { ok: true }> => part.ok);
+  const firstFailure = first.explanation;
+  if (succeeded.length === 0) {
+    const last = parts.find((part): part is Extract<StyleBatchExtraction, { ok: false }> => !part.ok) ?? first;
+    return {
+      splitRetried: true,
+      firstFailure,
+      result: {
+        ...last,
+        explanation: {
+          what: `${last.explanation.what}（已按半批重试一次，两半都没有成功）`.slice(0, 4_000),
+          why: last.explanation.why,
+          next: last.explanation.next,
+        },
+      },
+    };
+  }
+  const issues = [`整批输出${first.kind === "truncated" ? "被截断" : "无法解析"}（${firstFailure.what.slice(0, 200)}），已按半批重新抽取。`];
+  parts.forEach((part, index) => {
+    if (!part.ok) issues.push(`${index === 0 ? "前" : "后"}半批仍未成功：${part.explanation.what.slice(0, 300)}`);
+  });
+  return {
+    splitRetried: true,
+    firstFailure,
+    result: {
+      ok: true,
+      rules: succeeded.flatMap((part) => part.rules),
+      rejected: succeeded.flatMap((part) => part.rejected ?? []),
+      issues: [...issues, ...succeeded.flatMap((part) => part.issues)],
+    },
+  };
+}
+
 /** 把一批模型结果并入任务：去重、分配 ID、守住规则上限，全部理由写进批次 issues。 */
 function applyBatchResult(
   job: StyleDistillationJob,
   batchId: string,
-  result: StyleBatchExtraction,
+  attempt: BatchAttempt,
 ): StyleDistillationJob {
+  const { result } = attempt;
   const finishedAt = new Date().toISOString();
+  // 失败原因单独留一份 lastError：之后重试成功，作者仍能看到上次卡在哪里。
+  const lastError = attempt.firstFailure ? { ...attempt.firstFailure, at: finishedAt } : undefined;
   const batches = job.batches.map((batch) => {
     if (batch.id !== batchId) return batch;
     if (!result.ok) {
-      return { ...batch, status: "failed" as const, ruleIds: [], issues: [], rejectedRules: undefined, explanation: result.explanation, finishedAt };
+      return {
+        ...batch,
+        status: "failed" as const,
+        ruleIds: [],
+        issues: [],
+        rejectedRules: undefined,
+        explanation: result.explanation,
+        lastError: { ...result.explanation, at: finishedAt },
+        splitRetried: attempt.splitRetried || undefined,
+        finishedAt,
+      };
     }
     return batch;
   });
@@ -181,24 +284,8 @@ function applyBatchResult(
     evidence: rule.evidence.slice(0, 4_000),
     reason: rule.reason.slice(0, 4_000),
   }));
+  // 输出能解析时，哪怕证据全部对不上也不判整批失败：本批照常结束并带提醒（见 assessStyleBatchEvidence）。
   const assessment = assessStyleBatchEvidence(result.rules.length, result.rejected?.length ?? 0);
-  if (assessment.level === "failed") {
-    // 模型规则全部因证据被丢弃：不能当成正常完成；保留被丢弃条目与原因供审阅，可重试本批。
-    return {
-      ...job,
-      batches: batches.map((batch) => batch.id === batchId
-        ? {
-          ...batch,
-          status: "failed" as const,
-          ruleIds: [],
-          issues: result.issues.slice(0, 30).map((issue) => issue.slice(0, 4_000)),
-          rejectedRules,
-          explanation: assessment.explanation,
-          finishedAt,
-        }
-        : batch),
-    };
-  }
 
   const existing = new Set(job.rules.map((rule) => normalizedRuleKey(rule.text)));
   const rules: StyleDistillationRule[] = [...job.rules];
@@ -228,6 +315,7 @@ function applyBatchResult(
       origin: "model",
       batchId,
       reason: extracted.reason,
+      confidence: extracted.confidence,
     });
   });
   return {
@@ -242,6 +330,8 @@ function applyBatchResult(
         rejectedRules: rejectedRules.length > 0 ? rejectedRules : undefined,
         // done 批次的 explanation 只用于「需要关注」的提醒（过半规则因证据被丢弃）。
         explanation: assessment.level === "warning" ? assessment.explanation : undefined,
+        ...(lastError ? { lastError } : {}),
+        splitRetried: attempt.splitRetried || undefined,
         finishedAt,
       }
       : batch),
@@ -275,6 +365,24 @@ export interface StyleDistillationRunResult {
   readonly summary: StyleDistillationRunSummary;
 }
 
+/** 任务级执行错误 → 给作者看的说明；单批的模型错误已写进批次，不走这里。 */
+export function styleDistillationRunErrorExplanation(error: unknown): { what: string; why: string; next: string } {
+  const message = (error instanceof Error ? error.message : String(error)).slice(0, 1_000);
+  if (error instanceof StyleDistillationError) {
+    if (error.code === "STYLE_DISTILLATION_SOURCE_MISSING") {
+      return { what: message, why: "继续抽取需要建任务时保存的参考文本，它缺失或被改动后无法确认拿的是同一份原文。", next: "重新粘贴参考文本，新建一次蒸馏。" };
+    }
+    if (error.code === "STYLE_DISTILLATION_BUSY") {
+      return { what: message, why: "同一次蒸馏同时只能有一处在跑，避免结果互相覆盖。", next: "稍等片刻再刷新；仍停着时点「继续未完成批次」。" };
+    }
+  }
+  return {
+    what: `蒸馏在批次之间停下了：${message}`,
+    why: "这不是某一批模型输出的问题，而是保存进度或读取任务时出错，已完成的批次不受影响。",
+    next: "点「继续未完成批次」再试；反复出现时检查磁盘空间与书籍目录权限。",
+  };
+}
+
 /**
  * 从未完成批次继续执行。调用时同步登记本进程运行者，所以 HTTP 可以不等待它结束就返回 running 状态；
  * 随后获取跨进程运行锁。同一任务已有运行者（本进程或别的进程）时直接拒绝，不并发写同一个任务文件。
@@ -296,12 +404,15 @@ export function runStyleDistillationBatches(options: RunStyleDistillationOptions
       try {
         processed = await runBatches(options, acquired.handle);
       } catch (error) {
-        await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState(current, false)).catch(() => undefined);
+        // 任务级失败写进 lastError，界面据此说明为什么停下；写不进去（如任务文件已丢）时由调用方记日志。
+        const lastError = { ...styleDistillationRunErrorExplanation(error), at: new Date().toISOString() };
+        await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState({ ...current, lastError }, false)).catch(() => undefined);
         throw error;
       }
       // 释放运行锁之前结算：未完成批次变为 paused，全部结束变为 ready/adopted；自动续跑完整跑完则清零计数。
+      // 本轮跑通即清掉上次的任务级失败。
       const job = await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState(
-        options.autoResume ? { ...current, autoResume: undefined } : current,
+        { ...(options.autoResume ? { ...current, autoResume: undefined } : current), lastError: undefined },
         false,
       ));
       return { job, processedBatchIds: processed, summary: summarizeStyleDistillationBatches(job) };
@@ -330,7 +441,8 @@ async function runBatches(options: RunStyleDistillationOptions, lock: StyleDisti
     ...(!options.autoResume && options.initiatorId?.trim() ? { initiatorId: options.initiatorId.trim().slice(0, 200) } : {}),
     batches: job.batches.map((batch) => {
       if (batch.status === "running") return { ...batch, status: "pending" as const };
-      if (options.retryFailed && batch.status === "failed") {
+      // 重试失败批次时，规则全部因证据被丢弃的批次（已结束但一条没收）也一并重跑。
+      if (options.retryFailed && (batch.status === "failed" || isAllRejectedBatch(batch))) {
         return { ...batch, status: "pending" as const, explanation: undefined, rejectedRules: undefined };
       }
       return batch;
@@ -357,22 +469,65 @@ async function runBatches(options: RunStyleDistillationOptions, lock: StyleDisti
     const batchChapters = next.chapterNumbers
       .map((number) => byNumber.get(number))
       .filter((chapter): chapter is DistillableChapter => chapter !== undefined);
-    const result: StyleBatchExtraction = batchChapters.length === next.chapterNumbers.length
-      ? await extractStyleRulesFromBatch({ generateText: options.generateText, sourceName: job.sourceName, chapters: batchChapters })
+    const attempt: BatchAttempt = batchChapters.length === next.chapterNumbers.length
+      ? await extractBatchWithSplitRetry({ generateText: options.generateText, sourceName: job.sourceName, chapters: batchChapters })
       : {
-        ok: false,
-        explanation: {
-          what: "来源快照缺少本批章节。",
-          why: "批次计划与来源快照不一致，继续抽取会拿错文本。",
-          next: "重新提交参考文本新建任务。",
+        splitRetried: false,
+        result: {
+          ok: false,
+          kind: "source",
+          explanation: {
+            what: "来源快照缺少本批章节。",
+            why: "批次计划与来源快照不一致，继续抽取会拿错文本。",
+            next: "重新提交参考文本新建任务。",
+          },
         },
       };
-    const updated = await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState(applyBatchResult(current, next.id, result), true));
+    const updated = await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState(applyBatchResult(current, next.id, attempt), true));
     processed.push(next.id);
     const batch = updated.batches.find((item) => item.id === next.id);
     if (batch) options.onProgress?.(updated, batch);
   }
   return processed;
+}
+
+/**
+ * 「一键采纳」的候选口径：模型抽取的、可迁移的、证据逐字吻合（confidence 为 high，旧任务没有该字段按 high）的规则。
+ * 排除：作品专属（含专名后检降级的）、证据只差标点或只部分吻合的、确定性统计基线（统计只作写后对照）。
+ */
+export function isRecommendedStyleDistillationRule(rule: StyleDistillationRule): boolean {
+  return rule.origin === "model"
+    && rule.transfer === "transferable"
+    && (rule.confidence ?? "high") === "high";
+}
+
+export function recommendedStyleDistillationRuleIds(job: StyleDistillationJob): string[] {
+  return job.rules.filter(isRecommendedStyleDistillationRule).map((rule) => rule.id);
+}
+
+/**
+ * 一键采纳全部推荐条目：在上次已采纳的条目之上加入推荐规则（不撤回作者之前确认过的），
+ * 走与逐条采纳完全相同的 adoptStyleDistillation。
+ */
+export async function adoptRecommendedStyleDistillation(input: {
+  readonly bookRoot: string;
+  readonly jobId: string;
+  readonly expectedRevision: string | null;
+}): Promise<AdoptStyleDistillationResult & { readonly recommendedRuleIds: readonly string[] }> {
+  const job = await readStyleDistillationJob(input.bookRoot, input.jobId);
+  const recommended = recommendedStyleDistillationRuleIds(job);
+  if (recommended.length === 0) {
+    throw new StyleDistillationError("这次蒸馏没有可一键采纳的条目（可迁移且证据逐字吻合的规则）；请逐条审阅后采纳。", "STYLE_DISTILLATION_INVALID_INPUT");
+  }
+  const result = await adoptStyleDistillation({
+    bookRoot: input.bookRoot,
+    jobId: input.jobId,
+    // 预设单来源最多 100 条规则：先保留作者之前确认的，再按顺序补推荐条目。
+    ruleIds: [...new Set([...(job.adoption?.ruleIds ?? []), ...recommended])].slice(0, 100),
+    sampleIds: job.adoption?.sampleIds ?? [],
+    expectedRevision: input.expectedRevision,
+  });
+  return { ...result, recommendedRuleIds: recommended };
 }
 
 export interface AdoptStyleDistillationInput {
@@ -426,7 +581,15 @@ export async function adoptStyleDistillation(input: AdoptStyleDistillationInput)
       title: job.sourceName,
       rules: job.rules
         .filter((rule) => ruleIds.includes(rule.id))
-        .map((rule) => ({ text: rule.text, evidence: rule.evidence, transfer: rule.transfer, status: "confirmed" as const })),
+        .map((rule) => ({
+          text: rule.text,
+          evidence: rule.evidence,
+          transfer: rule.transfer,
+          status: "confirmed" as const,
+          // 类别与置信度随规则进预设：合成指南按类别限条数、同类内高置信优先。
+          ...(rule.category ? { category: rule.category } : {}),
+          ...(rule.confidence ? { confidence: rule.confidence } : {}),
+        })),
       samples: job.samples
         .filter((sample) => sampleIds.includes(sample.id))
         .map((sample) => ({ ...sample, status: "confirmed" as const })),
@@ -435,7 +598,13 @@ export async function adoptStyleDistillation(input: AdoptStyleDistillationInput)
     const preset = await saveStylePreset(input.bookRoot, {
       ...existing,
       sources: [...existing.sources.filter((item) => item.id !== source.id), source],
-      fingerprint: job.fingerprint ?? existing.fingerprint,
+      // 多来源采纳：按来源字数加权合并统计指纹，而不是让最后一次采纳覆盖前面的来源。
+      fingerprint: mergeDistilledFingerprint({
+        existing: existing.fingerprint,
+        sourceId: job.sourceId,
+        sourceChars: job.coverage.sourceCharCount,
+        fingerprint: job.fingerprint,
+      }),
     }, input.expectedRevision);
     const adoptedAt = new Date().toISOString();
     const adopted = await saveStyleDistillationJob(input.bookRoot, StyleDistillationJobSchema.parse(settleStyleDistillationJobState({

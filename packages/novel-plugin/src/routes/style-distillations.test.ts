@@ -31,8 +31,9 @@ describe("文风自动蒸馏路由", () => {
       body: JSON.stringify({ sourceName: "参考稿", text }),
     });
     expect(previewResponse.status).toBe(200);
-    const preview = await previewResponse.json() as { previewId: string; chapterCount: number; totalCharacters: number };
-    expect(preview).toMatchObject({ chapterCount: 2, totalCharacters: expect.any(Number) });
+    const preview = await previewResponse.json() as { previewId: string; chapterCount: number; totalCharacters: number; estimate: { batchCount: number; maxOutputTokens: number; summary: string } };
+    expect(preview).toMatchObject({ chapterCount: 2, totalCharacters: expect.any(Number), estimate: { batchCount: 1, maxOutputTokens: 16_000 } });
+    expect(preview.estimate.summary).toContain("将调用模型 1 次");
     expect(await import("node:fs/promises").then(({ readdir }) => readdir(join(bookRoot, "story")).catch(() => []))).toEqual([]);
 
     const createdResponse = await router.request("/api/books/book-a/style/distillations/jobs", {
@@ -102,6 +103,55 @@ describe("文风自动蒸馏路由", () => {
 
     const adoptUnknown = await post(`/api/books/book-a/style/distillations/jobs/${paused.job.jobId}/adopt`, { expectedRevision: null, confirmedRuleIds: ["不存在"] });
     expect(adoptUnknown.status).toBe(400);
+
+    // 一键采纳推荐条目：任务视图给出推荐 id，接口按同一口径采纳并进入指南。
+    const ready = await (await router.request(`/api/books/book-a/style/distillations/jobs/${created.job.jobId}`)).json() as { recommendedRuleIds: string[] };
+    expect(ready.recommendedRuleIds).toHaveLength(1);
+    const missingRevision = await post(`/api/books/book-a/style/distillations/jobs/${created.job.jobId}/adopt-recommended`, {});
+    expect(missingRevision.status).toBe(400);
+    const recommended = await post(`/api/books/book-a/style/distillations/jobs/${created.job.jobId}/adopt-recommended`, { expectedRevision: null });
+    expect(recommended.status).toBe(200);
+    const adopted = await recommended.json() as { guideText: string; adoptedRuleIds: string[]; guideRuleCount: number };
+    expect(adopted).toMatchObject({ adoptedRuleIds: ready.recommendedRuleIds, guideRuleCount: 1 });
+    expect(adopted.guideText).toContain("用一个小动作收住情绪");
+    // 没有推荐条目的任务（只有基线）拒绝一键采纳。
+    const none = await post(`/api/books/book-a/style/distillations/jobs/${paused.job.jobId}/adopt-recommended`, { expectedRevision: (await loadStylePreset(bookRoot)).revision });
+    expect(none.status).toBe(400);
+  });
+
+  it("任务级失败（来源快照缺失）写进任务，暂停时接口带出原因", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nf-style-distill-route-"));
+    roots.push(root);
+    const bookRoot = join(root, "book-a");
+    await mkdir(bookRoot, { recursive: true });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const generateText = vi.fn(async () => ({ text: JSON.stringify({ rules: [] }) }));
+      let available = false;
+      const router = createStyleDistillationsRouter({
+        state: { bookDir: () => bookRoot }, root, getSessionLlm: async () => undefined,
+      } as unknown as RouterContext, { resolveBookRoot: () => bookRoot, resolveTextGenerator: async () => available ? generateText : undefined });
+      const created = await (await router.request("/api/books/book-a/style/distillations/jobs", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sourceName: "旧稿", text: "第一章 雨夜\n她停在门前，听见雨声。" }),
+      })).json() as { job: { jobId: string } };
+      await rm(join(bookRoot, "story", "style-distillations", `${created.job.jobId}.source.json`));
+      available = true;
+      await router.request(`/api/books/book-a/style/distillations/jobs/${created.job.jobId}/resume`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+      });
+      let view: { job: { status: string; lastError?: { what: string } }; explanation?: { what: string; next: string } } | null = null;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        view = await (await router.request(`/api/books/book-a/style/distillations/jobs/${created.job.jobId}`)).json() as typeof view;
+        if (view?.job.lastError) break;
+        await new Promise((done) => setTimeout(done, 10));
+      }
+      expect(view).toMatchObject({ job: { status: "paused" }, explanation: { what: expect.stringContaining("来源快照"), next: expect.stringContaining("重新粘贴") } });
+      const list = await (await router.request("/api/books/book-a/style/distillations/jobs")).json() as { jobs: { explanation?: { what: string } }[] };
+      expect(list.jobs[0]?.explanation?.what).toContain("来源快照");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("预览和作业拒绝过大或过期输入，采纳版本冲突返回 409", async () => {

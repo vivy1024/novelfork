@@ -81,6 +81,11 @@ export const StyleDistillationSourceSchema = z.object({
     batchId: z.string().trim().min(1).max(40).optional(),
     /** 模型给出的「可迁移 / 作品专属」判断理由。 */
     reason: sourceText.optional(),
+    /**
+     * 证据吻合程度（仅模型规则）：high 逐字命中，medium 只差标点，low 只有部分连续片段吻合。
+     * 旧任务文件没有此字段，按 high 看待。
+     */
+    confidence: z.enum(["high", "medium", "low"]).optional(),
   }).strict()).max(MAX_STYLE_DISTILLATION_RULES),
   samples: z.array(z.object({
     id: z.string().trim().min(1).max(120),
@@ -116,6 +121,13 @@ export const StyleDistillationBatchSchema = z.object({
    * 批次结果照常收录。
    */
   explanation: explanation.optional(),
+  /**
+   * 最近一次失败的原因，重试或下次成功后仍保留，便于回看「上次为什么没跑通」；
+   * 与 explanation 不同，它不随状态清空。旧任务文件没有此字段。
+   */
+  lastError: explanation.extend({ at: z.string().datetime() }).strict().optional(),
+  /** 本批输出被截断或无法解析后，按半批重新抽取过（结果已合并进本批）。 */
+  splitRetried: z.boolean().optional(),
   startedAt: z.string().datetime().optional(),
   finishedAt: z.string().datetime().optional(),
 }).strict();
@@ -151,6 +163,11 @@ export const StyleDistillationJobSchema = StyleDistillationSourceSchema.extend({
    * 旧任务文件与没有登录身份的入口（叙述者工具）没有此字段，这类任务不自动续跑，留给作者手动继续。
    */
   initiatorId: z.string().trim().min(1).max(200).optional(),
+  /**
+   * 任务级的最近一次执行失败（不属于任何单批的错误，如来源快照缺失、任务文件写入失败、运行锁被接管）。
+   * 后台执行者把原因写在这里，界面据此说明「为什么停下」，不再只显示暂停。成功跑完一轮后清除。
+   */
+  lastError: explanation.extend({ at: z.string().datetime() }).strict().optional(),
 }).strict();
 
 export type StyleDistillationSource = z.infer<typeof StyleDistillationSourceSchema>;

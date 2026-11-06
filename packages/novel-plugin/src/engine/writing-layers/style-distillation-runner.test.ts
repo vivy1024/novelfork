@@ -11,9 +11,11 @@ import {
 } from "./style-distillation.js";
 import { locateStyleEvidence, parseStyleDistillationBatchOutput } from "./style-distillation-model.js";
 import {
+  adoptRecommendedStyleDistillation,
   adoptStyleDistillation,
   createStyleDistillationJob,
   readStyleDistillationJob,
+  recommendedStyleDistillationRuleIds,
   runStyleDistillationBatches,
 } from "./style-distillation-runner.js";
 import { loadStylePreset, saveStylePreset } from "./style-preset-store.js";
@@ -127,11 +129,21 @@ describe("文风蒸馏模型批次", () => {
     const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(6) }, modelAvailable: true });
     expect(created.batches).toHaveLength(3);
 
-    const broken = fakeModel({ 1: "{\"rules\": [{\"category\": \"voice\"}]}" });
+    // 第 1、2 章不论整批还是半批都回坏输出：半批重试后两半都失败，本批才判失败。
+    const bad = "{\"rules\": [{\"category\": \"voice\"}]}";
+    const broken = fakeModel({ 1: bad, 2: bad });
     const first = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText: broken, maxBatches: 2 });
     expect(first.processedBatchIds).toEqual(["batch-001", "batch-002"]);
     expect(first.job.status).toBe("paused");
-    expect(first.job.batches[0]).toMatchObject({ status: "failed", attempts: 1, explanation: { what: expect.stringContaining("不符合规则格式") } });
+    expect(first.job.batches[0]).toMatchObject({
+      status: "failed",
+      attempts: 1,
+      splitRetried: true,
+      explanation: { what: expect.stringContaining("不符合规则格式") },
+      lastError: { what: expect.stringContaining("两半都没有成功"), at: expect.any(String) },
+    });
+    // 整批 1 次 + 两个半批各 1 次，再加第二批 1 次。
+    expect(broken).toHaveBeenCalledTimes(4);
     expect(first.summary.failures[0]?.explanation?.next).toBeTruthy();
 
     // 模拟进程在第三批进行中退出：磁盘上残留 running，读视图应呈现为待处理、可恢复。
@@ -155,6 +167,79 @@ describe("文风蒸馏模型批次", () => {
     expect(retried.job.batches[0]?.explanation).toBeUndefined();
   });
 
+  it("整批输出被截断或无法解析时按半批重试一次，救回的规则照常收录并说明", async () => {
+    const root = await bookRoot();
+    const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(2) }, modelAvailable: true });
+    expect(created.batches).toHaveLength(1);
+    const base = fakeModel();
+    // 两章一起送时输出写到一半就停（截断）；单章送时正常。
+    const generateText = vi.fn(async (request: Parameters<RuntimeTextGenerator>[0]) => {
+      const user = request.messages.find((message) => message.role === "user")?.content ?? "";
+      if (chapterNumbersFromPrompt(user).length > 1) return { text: "{\"rules\":[{\"category\":\"voice\",\"text\":\"叙述" };
+      return base(request);
+    }) as unknown as RuntimeTextGenerator;
+    const run = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText });
+    const batch = run.job.batches[0]!;
+    expect(batch).toMatchObject({ status: "done", splitRetried: true, lastError: { what: expect.stringContaining("截断") } });
+    expect(batch.issues[0]).toContain("已按半批重新抽取");
+    // 两个半批各回两条，rhythm 那条重复合并：收 3 条。
+    expect(batch.ruleIds).toHaveLength(3);
+    expect(run.summary.failed).toBe(0);
+  });
+
+  it("单章批次被截断时把该章正文对半切重试", async () => {
+    const root = await bookRoot();
+    const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(1, 4_000) }, modelAvailable: true });
+    const prompts: string[] = [];
+    const generateText = vi.fn(async (request: Parameters<RuntimeTextGenerator>[0]) => {
+      const user = request.messages.find((message) => message.role === "user")?.content ?? "";
+      prompts.push(user);
+      if (prompts.length === 1) return { text: "", outputTruncated: true };
+      return { text: JSON.stringify({ rules: [{ category: "rhythm", text: "环境句短促重复，制造压迫感", evidence: "风从巷口灌进来，灯影晃了一下。", transfer: "transferable", reason: "通用" }] }) };
+    }) as unknown as RuntimeTextGenerator;
+    const run = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText });
+    expect(generateText).toHaveBeenCalledTimes(3);
+    expect(prompts[1]).toContain("（前半）");
+    expect(prompts[2]).toContain("（后半）");
+    expect(prompts[1]!.length).toBeLessThan(prompts[0]!.length);
+    expect(run.job.batches[0]).toMatchObject({ status: "done", splitRetried: true });
+  });
+
+  it("证据只差标点或只有部分吻合的规则降置信收录，不再连累整批", async () => {
+    const root = await bookRoot();
+    const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(1, 200) }, modelAvailable: true });
+    const generateText = fakeModel({ 1: JSON.stringify({ rules: [
+      { category: "scene", text: "用具体的身体感受开场", evidence: "她把伞收起来，雨水顺着伞骨滴进鞋里1", transfer: "transferable", reason: "通用" },
+      // 换了标点：逗号写成句号
+      { category: "rhythm", text: "环境句短促", evidence: "风从巷口灌进来。灯影晃了一下", transfer: "transferable", reason: "通用" },
+      // 前半句是原文，后半句是模型补的
+      { category: "voice", text: "环境先行，人物后到", evidence: "风从巷口灌进来，灯影晃了一下，她的心也跟着沉了下去", transfer: "transferable", reason: "通用" },
+      { category: "voice", text: "纯属编造", evidence: "原文里根本不存在的整段话语", transfer: "transferable", reason: "通用" },
+    ] }) });
+    const run = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText });
+    const model = run.job.rules.filter((rule) => rule.origin === "model");
+    expect(model.map((rule) => rule.confidence)).toEqual(["high", "medium", "low"]);
+    expect(model[2]?.evidence).toBe("第1章原文：「风从巷口灌进来，灯影晃了一下」");
+    expect(run.job.batches[0]).toMatchObject({ status: "done" });
+    expect(run.job.batches[0]?.rejectedRules).toHaveLength(1);
+    expect(run.job.batches[0]?.issues.join("")).toContain("置信度降为低");
+  });
+
+  it("批次之间的任务级失败写进任务的 lastError，下次跑通后清除", async () => {
+    const root = await bookRoot();
+    const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(2) }, modelAvailable: true });
+    const snapshot = join(root, STYLE_DISTILLATIONS_RELATIVE_DIR, `${created.jobId}.source.json`);
+    const original = await readFile(snapshot, "utf8");
+    await rm(snapshot);
+    await expect(runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText: fakeModel() }))
+      .rejects.toMatchObject({ code: "STYLE_DISTILLATION_SOURCE_MISSING" });
+    const failed = await readStyleDistillationJob(root, created.jobId);
+    expect(failed).toMatchObject({ status: "paused", lastError: { what: expect.stringContaining("来源快照"), next: expect.stringContaining("重新粘贴"), at: expect.any(String) } });
+    await writeFile(snapshot, original, "utf8");
+    const run = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText: fakeModel() });
+    expect(run.job.lastError).toBeUndefined();
+  });
+
   it("模型调用抛错时本批失败，其余批次继续；同一任务不允许并发运行", async () => {
     const root = await bookRoot();
     const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(4) }, modelAvailable: true });
@@ -172,7 +257,7 @@ describe("文风蒸馏模型批次", () => {
     expect(result.job.batches[1]?.status).toBe("done");
   });
 
-  it("整批模型规则都因证据被丢弃：批次标失败、保留被丢弃条目，任务汇总写明丢弃条数；过半丢弃的批次完成但带提醒", async () => {
+  it("整批模型规则都因证据被丢弃：批次照常结束但带提醒、保留被丢弃条目，重试失败批次时一并重跑；过半丢弃的批次完成但带提醒", async () => {
     const root = await bookRoot();
     const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(4) }, modelAvailable: true });
     const fabricated = (text: string) => ({ category: "voice", text, evidence: `原文里根本没有的一句话${text}`, transfer: "transferable", reason: "通用" });
@@ -188,20 +273,19 @@ describe("文风蒸馏模型批次", () => {
     });
     const run = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText });
     const [first, second] = run.job.batches;
-    expect(first).toMatchObject({ status: "failed", ruleIds: [], explanation: { what: expect.stringContaining("3 条模型规则因证据未在原文找到被丢弃") } });
+    expect(first).toMatchObject({ status: "done", ruleIds: [], explanation: { what: expect.stringContaining("3 条模型规则因证据未在原文找到被丢弃") } });
     expect(first?.rejectedRules).toHaveLength(3);
     expect(first?.rejectedRules?.[0]).toMatchObject({ text: "规则一一一", evidence: "原文里根本没有的一句话规则一一一", reason: expect.stringContaining("证据未在") });
     expect(second).toMatchObject({ status: "done", explanation: { what: expect.stringContaining("仅收录 1 条") } });
     expect(second?.ruleIds).toHaveLength(1);
     expect(second?.rejectedRules).toHaveLength(2);
     expect(run.summary).toMatchObject({
-      failed: 1,
-      done: 1,
+      failed: 0,
+      done: 2,
       rejectedRuleCount: 5,
-      warnings: [{ batchId: "batch-002" }],
+      warnings: [{ batchId: "batch-001" }, { batchId: "batch-002" }],
       rejectedExplanation: { what: expect.stringContaining("5 条模型规则因证据未在原文找到被丢弃") },
     });
-    expect(run.summary.failures[0]?.batchId).toBe("batch-001");
 
     // 落盘后可读回（schema 接受 rejectedRules），重试失败批次清掉旧的丢弃记录。
     const stored = await loadStyleDistillationJob(root, created.jobId);
@@ -210,6 +294,37 @@ describe("文风蒸馏模型批次", () => {
     expect(retried.job.batches[0]).toMatchObject({ status: "done" });
     expect(retried.job.batches[0]?.rejectedRules).toBeUndefined();
     expect(retried.summary.rejectedRuleCount).toBe(2);
+  });
+
+  it("一键采纳只收可迁移、证据逐字吻合的模型规则，保留作者之前确认的条目；两个来源的指纹按字数加权合并", async () => {
+    const root = await bookRoot();
+    const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(1, 200) }, modelAvailable: true });
+    const generateText = fakeModel({ 1: JSON.stringify({ rules: [
+      { category: "scene", text: "用具体的身体感受开场", evidence: "雨水顺着伞骨滴进鞋里1", transfer: "transferable", reason: "通用" },
+      { category: "rhythm", text: "环境句短促", evidence: "风从巷口灌进来。灯影晃了一下", transfer: "transferable", reason: "通用" },
+      { category: "voice", text: "伞的意象贯穿全篇", evidence: "她把伞收起来", transfer: "source-only", reason: "本作意象" },
+    ] }) });
+    const run = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText });
+    const [exact, loose, sourceOnly] = run.job.rules.filter((rule) => rule.origin === "model");
+    expect(recommendedStyleDistillationRuleIds(run.job)).toEqual([exact!.id]);
+
+    // 作者先手动确认了一条中置信规则；一键采纳在此基础上补推荐条目，不撤回它。
+    const manual = await adoptStyleDistillation({ bookRoot: root, jobId: created.jobId, ruleIds: [loose!.id], sampleIds: [], expectedRevision: null });
+    const result = await adoptRecommendedStyleDistillation({ bookRoot: root, jobId: created.jobId, expectedRevision: manual.preset.revision });
+    expect(result.job.adoption?.ruleIds.sort()).toEqual([exact!.id, loose!.id].sort());
+    expect(result.preset.guideText).toContain("用具体的身体感受开场");
+    expect(result.preset.guideText).not.toContain(sourceOnly!.text);
+
+    // 第二个来源采纳后，指纹不是被覆盖，而是按两边字数加权。
+    const other = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "另一稿", chapters: [{ number: 1, title: "一", content: "短句。短句。短句。".repeat(400) }] }, modelAvailable: false });
+    const merged = await adoptStyleDistillation({ bookRoot: root, jobId: other.jobId, ruleIds: [], sampleIds: [], expectedRevision: result.preset.revision });
+    const fingerprint = merged.preset.preset!.fingerprint! as Record<string, unknown>;
+    expect((fingerprint.distilledSources as { sourceId: string }[]).map((item) => item.sourceId)).toEqual([created.sourceId, other.sourceId]);
+    expect(fingerprint.avgSentenceLength).not.toBe((other.fingerprint as Record<string, unknown>).avgSentenceLength);
+    expect(fingerprint.avgSentenceLength).not.toBe((created.fingerprint as Record<string, unknown>).avgSentenceLength);
+
+    await expect(adoptRecommendedStyleDistillation({ bookRoot: root, jobId: other.jobId, expectedRevision: merged.preset.revision }))
+      .rejects.toMatchObject({ code: "STYLE_DISTILLATION_INVALID_INPUT" });
   });
 
   it("来源快照被改动时拒绝恢复", async () => {
@@ -242,6 +357,9 @@ describe("文风蒸馏模型批次", () => {
     const source = result.preset.preset!.sources[0]!;
     expect(source.rules.map((rule) => rule.text)).toEqual([transferable.text, sourceOnly.text]);
     expect(source.rules.map((rule) => rule.text)).not.toContain(untouched.text);
+
+    // 采纳的规则带上类别，合成指南按类别限条数。
+    expect(source.rules[0]).toMatchObject({ category: "scene", confidence: "high" });
 
     // 预设被别处改过：旧版本号采纳必须冲突，不覆盖。
     await saveStylePreset(root, { ...createStylePreset(), name: "作者改过" }, result.preset.revision);

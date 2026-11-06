@@ -368,6 +368,86 @@ describe("StyleDistillationWorkspace", () => {
     expect(screen.queryByText(/共同技法/)).toBeNull();
   });
 
+  it("开始前显示模型调用次数与输出上限估算", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/preview")) return { ...preview, estimate: { batchCount: 4, maxOutputTokens: 64_000, maxOutputChars: 18_400, summary: "将调用模型 4 次，送入约 2,400 字。" } };
+      throw new Error(`unexpected request: ${path}`);
+    });
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    fillDraft();
+    fireEvent.click(screen.getByRole("button", { name: "预览处理范围" }));
+    await screen.findByText("第 3–4 章");
+    expect(screen.getByText("4 次")).toBeTruthy();
+    expect(screen.getByText("约 64,000 token")).toBeTruthy();
+    expect(screen.getByLabelText("用量估算").textContent).toContain("将调用模型 4 次");
+  });
+
+  it("完成后提示 N 条待审、采纳前不影响写作，并可一键采纳推荐条目", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    const readyJob = {
+      job: {
+        jobId: "job-9", status: "ready", sourceName: "参考作品 A",
+        rules: [
+          { id: "m-high", text: "让动作承载情绪", evidence: "第3章原文：「她停在门前」", transfer: "transferable", status: "needs-review", origin: "model", confidence: "high" },
+          { id: "m-low", text: "环境先行人物后到", evidence: "第3章原文：「风从巷口」", transfer: "transferable", status: "needs-review", origin: "model", confidence: "low" },
+          { id: "m-loose", text: "句末留白", evidence: "第3章原文：「灯影晃了一下」", transfer: "transferable", status: "needs-review", origin: "model", confidence: "medium" },
+        ],
+        samples: [{ id: "sample-1", sceneType: "general", text: "范文", evidence: "第3章", transfer: "source-only", status: "needs-review" }],
+        fingerprint: {}, batches: [],
+      },
+      expectedRevision: null,
+      recommendedRuleIds: ["m-high"],
+    };
+    request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/preview")) return preview;
+      if (path.endsWith("/jobs")) return readyJob;
+      if (path.endsWith("/adopt-recommended")) return { revision: "rev-2", guideRuleCount: 1, adoptedRuleIds: ["m-high"] };
+      if (path.endsWith("/compare")) return { sources: [] };
+      throw new Error(`unexpected request: ${path}`);
+    });
+    const onAdopted = vi.fn();
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} onAdopted={onAdopted} />);
+    await openReview(request);
+    const banner = screen.getByLabelText("待审提醒");
+    expect(banner.textContent).toContain("4 条待审，采纳前不会影响写作");
+    expect(screen.getByText("证据部分吻合，请核对")).toBeTruthy();
+    expect(screen.getByText("证据只差标点")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "采纳全部可迁移的高置信条目（1）" }));
+    await screen.findByText(/已采纳 1 条推荐规则/);
+    const call = request.mock.calls.find(([path]) => String(path).endsWith("/adopt-recommended"))!;
+    expect(call[0]).toBe("/api/books/book-1/style/distillations/jobs/job-9/adopt-recommended");
+    expect(JSON.parse(String(call[1]?.body))).toEqual({ expectedRevision: null });
+    expect(screen.getByRole("button", { name: "撤回确认：让动作承载情绪" })).toBeTruthy();
+    expect(screen.queryByLabelText("待审提醒")).toBeNull();
+    expect(onAdopted).toHaveBeenCalled();
+  });
+
+  it("暂停的任务显示停下的原因，而不是只写暂停", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>();
+    request.mockImplementation(async (path: string) => {
+      if (path.endsWith("/preview")) return preview;
+      if (path.endsWith("/jobs")) return {
+        job: {
+          jobId: "job-10", status: "paused", sourceName: "参考作品 A", rules: job.result.rules, samples: [], fingerprint: {},
+          batches: [{ id: "batch-001", chapterNumbers: [3], status: "pending", ruleIds: [], issues: [] }],
+          lastError: { what: "该任务没有可用的来源快照，无法继续模型批次。", why: "…", next: "重新粘贴参考文本，新建一次蒸馏。", at: "2026-10-20T00:00:00.000Z" },
+        },
+        expectedRevision: null,
+      };
+      if (path.endsWith("/compare")) return { sources: [] };
+      throw new Error(`unexpected request: ${path}`);
+    });
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    await openReview(request);
+    const reason = screen.getByLabelText("停下的原因");
+    expect(reason.textContent).toContain("为什么停下：该任务没有可用的来源快照");
+    expect(reason.textContent).toContain("建议：重新粘贴参考文本");
+    // 没有推荐条目时横幅提示逐条确认，不给一键按钮。
+    expect(screen.getByLabelText("待审提醒").textContent).toContain("没有能一键采纳的条目");
+    expect(screen.queryByRole("button", { name: /采纳全部可迁移/ })).toBeNull();
+  });
+
   it("切回输入阶段保留来源名称、标题规则和参考文本草稿", async () => {
     const request = vi.fn<StyleDistillationFetchJson>();
     seedPreviewRequest(request);
