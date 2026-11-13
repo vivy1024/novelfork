@@ -42,17 +42,18 @@ export interface WorkspaceReferenceFile {
   readonly modifiedAt: string;
 }
 
-/** 不跟随目录链接；文件链接仍经真实路径守卫。最多返回稳定文件名顺序的 200 项。 */
+/** 不跟随目录链接；文件链接仍经真实路径守卫。同层文件优先于子目录，最多返回 200 项。 */
 export async function listWorkspaceReferenceFiles(bookRoot: string): Promise<WorkspaceReferenceFile[]> {
   const root = await realpath(bookRoot);
   const files: WorkspaceReferenceFile[] = [];
   async function visit(dir: string): Promise<void> {
     const entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    const subdirs: string[] = [];
     for (const entry of entries) {
       if (files.length >= 200) return;
       if (SCAN_SKIP.has(entry.name.toLowerCase())) continue;
       const path = join(dir, entry.name);
-      if (entry.isDirectory()) { await visit(path); continue; }
+      if (entry.isDirectory()) { subdirs.push(path); continue; }
       if (!/\.(?:txt|md)$/iu.test(extname(entry.name))) continue;
       try {
         const actual = await resolveSafeBookFilePath(root, path);
@@ -61,6 +62,10 @@ export async function listWorkspaceReferenceFiles(bookRoot: string): Promise<Wor
       } catch (error) {
         if (!(error instanceof BookTextFileError) && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
+    }
+    for (const subdir of subdirs) {
+      if (files.length >= 200) return;
+      await visit(subdir);
     }
   }
   await visit(root);

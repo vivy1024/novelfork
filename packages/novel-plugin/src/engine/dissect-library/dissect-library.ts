@@ -216,11 +216,17 @@ export async function getDissectLibraryTree(root: string) {
   const referenceFiles: { path: string; title: string; bytes: number }[] = [];
   async function sources(path: string, depth: number) {
     if (depth > 5 || referenceFiles.length >= 500) return;
+    const subdirs: string[] = [];
     for (const entry of await readdir(await confined(root, path), { withFileTypes: true })) {
-      if (entry.isSymbolicLink() || entry.name.startsWith(".") || ["node_modules", "dissect-library"].includes(entry.name)) continue;
+      if (referenceFiles.length >= 500) return;
+      if (entry.isSymbolicLink() || entry.name.startsWith(".") || ["node_modules", "dissect-library", "chapters", "story"].includes(entry.name)) continue;
       const rel = path ? `${path}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) await sources(rel, depth + 1);
+      if (entry.isDirectory()) subdirs.push(rel);
       else if (/\.(txt|md)$/i.test(entry.name)) { const info = await stat(await confined(root, rel)); if (info.size <= MAX_DISSECT_BYTES) referenceFiles.push({ path: rel, title: entry.name, bytes: info.size }); }
+    }
+    for (const subdir of subdirs) {
+      if (referenceFiles.length >= 500) return;
+      await sources(subdir, depth + 1);
     }
   }
   await sources("", 0);
