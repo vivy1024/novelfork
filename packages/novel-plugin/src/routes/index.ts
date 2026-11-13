@@ -22,6 +22,8 @@ export {
   type CreateCharacterVoiceRouterOptions,
 } from "./character-voice.js";
 export { createWritingModesRouter } from "./writing-modes.js";
+export { createStylePresetRouter, type CreateStylePresetRouterOptions } from "./style-preset.js";
+export { createMechanismCardsRouter, type CreateMechanismCardsRouterOptions } from "./mechanism-cards.js";
 export { createStyleDistillationsRouter, type CreateStyleDistillationsRouterOptions } from "./style-distillations.js";
 export { createPipelineRouter, createPipelineRun, updatePipelineStage, completePipelineRun } from "./pipeline.js";
 export { createFilterRouter, type CreateFilterRouterOptions } from "./filter.js";

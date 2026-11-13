@@ -26,8 +26,13 @@ export const StylePresetSchema = z.object({
   sources: z.array(z.object({
     id: z.string().trim().min(1).max(120),
     title: z.string().trim().min(1).max(200),
+    role: z.enum(["primary_voice", "register_overlay"]).optional(),
+    triggerTags: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+    forbiddenSourceTerms: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
     rules: z.array(z.object({
       text,
+      doExample: text.optional(),
+      dontExample: text.optional(),
       ...reviewed,
       /** 写法类别（蒸馏规则带出；手写与旧规则没有，按综合计）。合成指南按类别限条数。 */
       category: z.enum(STYLE_GUIDE_RULE_CATEGORIES).optional(),
@@ -37,6 +42,7 @@ export const StylePresetSchema = z.object({
     samples: z.array(z.object({
       id: z.string().trim().min(1).max(120),
       sceneType: z.enum(STYLE_SCENE_TYPES),
+      registerTag: z.enum(["dialogue_banter", "institution_exploitation", "bill_inventory", "combat_counter", "ancient_scripture", "general"]).optional(),
       text,
       ...reviewed,
     }).strict()).max(100),
@@ -48,8 +54,20 @@ export const StylePresetSchema = z.object({
   }).strict(),
   /** 作者硬约束：随「交叙述者人文化」与划词人文化注入，逐项优先于手法说明；不进合成指南。 */
   customConstraints: z.array(z.string().trim().min(1).max(200)).max(30).default([]),
+  consolidatedRules: z.array(z.object({
+    id: z.string().trim().min(1).max(120), category: z.string().trim().max(120).optional(), rule: text,
+    doExample: text.optional(), dontExample: text.optional(), sourceIds: z.array(z.string().trim().min(1).max(120)).max(30),
+  }).strict()).max(12).optional(),
+  registerGuardrail: z.object({
+    enabled: z.boolean().optional(),
+    allowedAsciiAcronyms: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+    extraForbiddenTerms: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+  }).strict().optional(),
   fingerprint: StyleFingerprintSchema.nullable(),
 }).strict().superRefine((preset, ctx) => {
+  if (preset.sources.filter((source) => source.role === "primary_voice").length > 1) {
+    ctx.addIssue({ code: "custom", path: ["sources"], message: "主文风来源最多只能设 1 个，其余来源请设为局部语域插件 register_overlay" });
+  }
   const ids = new Set<string>();
   preset.sources.forEach((source, index) => {
     if (ids.has(source.id)) ctx.addIssue({ code: "custom", path: ["sources", index, "id"], message: "来源包 ID 不能重复" });
@@ -79,7 +97,21 @@ export function createStylePreset(fingerprint: StyleFingerprint | null = null): 
 
 /** 合成指南里来源技法每类最多几条、来源技法一节最多多少字。作者手写的通用写法与本书写法不受限。 */
 export const STYLE_GUIDE_MAX_RULES_PER_CATEGORY = 6;
-export const STYLE_GUIDE_SOURCE_RULES_CHAR_CAP = 2_400;
+export const STYLE_GUIDE_SOURCE_RULES_CHAR_CAP = 1_000;
+
+/** 显式主来源优先；旧存档缺 role 时只有首来源承担全局声音。 */
+export function primaryStyleSourceId(preset: StylePreset): string | undefined {
+  const explicit = preset.sources.find((source) => source.role === "primary_voice");
+  if (explicit) return explicit.id;
+  const first = preset.sources[0];
+  return first && first.role === undefined ? first.id : undefined;
+}
+
+export function isStyleSourceActive(preset: StylePreset, sourceId: string, activeOverlayIds?: ReadonlySet<string>): boolean {
+  const source = preset.sources.find((item) => item.id === sourceId);
+  return sourceId === primaryStyleSourceId(preset)
+    || (source?.role === "register_overlay" && activeOverlayIds?.has(sourceId) === true);
+}
 /** 两条来源技法的字符二元组 Dice 相似度达到这个值即视为近似重复，只留先出现（置信度更高）的一条。 */
 export const STYLE_GUIDE_NEAR_DUPLICATE_SIMILARITY = 0.8;
 
@@ -121,7 +153,7 @@ export interface ComposedSourceRule {
  * 未进指南的规则仍完整保存在预设里，只是不注入写作提示。
  */
 export function selectGuideSourceRules(preset: StylePreset): { readonly rules: readonly ComposedSourceRule[]; readonly omitted: number } {
-  const candidates = preset.sources.flatMap((source, sourceIndex) => source.rules
+  const candidates = preset.sources.filter((source) => source.id === primaryStyleSourceId(preset)).flatMap((source, sourceIndex) => source.rules
     .map((rule, ruleIndex) => ({ rule, source, order: sourceIndex * 1_000 + ruleIndex }))
     .filter(({ rule }) => rule.transfer === "transferable" && rule.status === "confirmed"))
     .sort((left, right) => (CONFIDENCE_RANK[left.rule.confidence ?? "high"] ?? 0) - (CONFIDENCE_RANK[right.rule.confidence ?? "high"] ?? 0)
@@ -164,18 +196,33 @@ export function selectGuideSourceRules(preset: StylePreset): { readonly rules: r
 }
 
 /** 统计数字留给写后对照，不当成机械句长配额；来源专属与未审阅规则绝不注入。 */
-export function composeStyleGuide(preset: StylePreset): string {
+export function composeStyleGuide(preset: StylePreset, options: { activeOverlayIds?: ReadonlySet<string>; maxChars?: number } = {}): string {
   const sections: string[] = [];
-  if (preset.generalRules.length) sections.push(`### 通用写法\n${preset.generalRules.map((rule) => `- ${rule}`).join("\n")}`);
-  const sourceRules = selectGuideSourceRules(preset).rules.map((rule) => `- ${rule.text}（来源：${rule.sourceTitles.join("、")}）`);
-  if (sourceRules.length) sections.push(`### 已采纳的来源技法\n${sourceRules.join("\n")}`);
+  const cap = Math.max(0, options.maxChars ?? (preset.consolidatedRules?.length ? 900 : 2_000));
+  const finish = () => {
+    if (!sections.length) return "";
+    return [`## ${preset.name}`, "仅学习表达方法；人物、世界与情节以本书已确认的经纬和当前作者要求为准，不迁移参考作品设定。", ...sections].join("\n\n").slice(0, cap);
+  };
+  const primaryId = primaryStyleSourceId(preset);
+  const consolidated = preset.consolidatedRules?.filter((rule) => rule.sourceIds.length === 0 || rule.sourceIds.includes(primaryId ?? ""));
+  if (consolidated?.length) {
+    sections.push(`### 执行铁律\n${consolidated.slice(0, 12).map((rule) => `- ${rule.rule.slice(0, 40)}${rule.doExample ? `；正：${rule.doExample.slice(0, 18)}` : ""}${rule.dontExample ? `；反：${rule.dontExample.slice(0, 18)}` : ""}`).join("\n")}`);
+  } else {
+    if (preset.generalRules.length) sections.push(`### 通用写法\n${preset.generalRules.map((rule) => `- ${rule}`).join("\n")}`);
+    const sourceRules = selectGuideSourceRules(preset).rules.map((rule) => `- ${rule.text}（来源：${rule.sourceTitles.join("、")}）`);
+    if (sourceRules.length) sections.push(`### 已采纳的来源技法\n${sourceRules.join("\n")}`);
+  }
+  for (const source of preset.sources) {
+    if (source.role !== "register_overlay" || !options.activeOverlayIds?.has(source.id)) continue;
+    const rules = source.rules.filter((rule) => rule.status === "confirmed" && rule.transfer === "transferable").slice(0, 3);
+    if (rules.length) sections.push(`【局部语域挂载：${source.title}】\n仅用于触发场景，不改变全章声音。\n${rules.map((rule) => `- ${rule.text.slice(0, 120)}`).join("\n")}`);
+  }
   const voice = preset.bookVoice;
   const bookRules = [
     voice.tone ? `基调：${voice.tone}` : "",
     voice.narrativeVoice ? `叙事声音：${voice.narrativeVoice}` : "",
-    ...voice.principles.map((rule) => `- ${rule}`),
+    ...(consolidated?.length ? [] : voice.principles.map((rule) => `- ${rule}`)),
   ].filter(Boolean);
   if (bookRules.length) sections.push(`### 本书写法\n${bookRules.join("\n")}`);
-  if (!sections.length) return "";
-  return [`## ${preset.name}`, "仅学习表达方法；人物、世界与情节以本书已确认的经纬和当前作者要求为准，不迁移参考作品设定。", ...sections].join("\n\n");
+  return finish();
 }

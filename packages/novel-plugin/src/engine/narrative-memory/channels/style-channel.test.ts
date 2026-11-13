@@ -124,10 +124,11 @@ describe("style channel", () => {
 
       const samples = result.cards.filter((item) => item.tags.includes("style-sample"));
       expect(samples.map((item) => item.id)).toEqual(["style:sample:src/fight", "style:sample:src/talk"]);
-      expect(samples[0]!.content).toBe("刀光一闪，他侧身让过，反手扣住对方手腕。");
+      expect(samples[0]!.content).toBe("【原文节奏与笔法锚点（仅学句式节奏，严禁照搬专名）】\n刀光一闪，他侧身让过，反手扣住对方手腕。");
       expect(samples[0]!.brief).toBe(samples[0]!.content);
       expect(samples[0]!.reason).toContain("作品专属");
-      expect(samples[0]!.priority).toBeLessThan(45);
+      expect(samples[0]!.priority).toBe(53);
+      expect(samples[0]!.priority).toBeGreaterThan(45);
       expect(samples.some((item) => item.content.includes("待审"))).toBe(false);
 
       const diagnostics = result.diagnostics?.styleSamples as Record<string, any>;
@@ -141,20 +142,38 @@ describe("style channel", () => {
       expect(diagnostics.voiceConstraintsProvided).toBe(false);
     });
 
-    it("先为指南占位，剩余预算放不下的范文裁掉并在告警里写明发生了什么与怎么做", async () => {
-      const guide = "文风克制。".repeat(30);
-      const result = await createStyleChannel().run({
+    it("预算反转铁律：先为范文预留保底预算且锚点优先级高于指南；极窄预算连单段锚点也放不下时明确告警", async () => {
+      const guide = "文风克制。".repeat(40);
+      // 指南约 200 tokens，通道预算 80：旧版指南占满后范文 0 段；新版范文优先拿到 80 预算保住锚点，且全局打包时锚点胜过指南。
+      const inverted = await createStyleChannel().run({
         bookId: "book-1",
         styleGuideText: guide,
         stylePreset: preset(),
         planText: "韩立与刺客交手",
-        budgetTokens: 50,
+        budgetTokens: 80,
       });
-      expect(result.cards.map((item) => item.id)).toEqual(["style:style-guide"]);
-      const diagnostics = result.diagnostics?.styleSamples as Record<string, any>;
+      const sampleCards = inverted.cards.filter((item) => item.tags.includes("style-sample"));
+      expect(sampleCards.length).toBeGreaterThanOrEqual(1);
+      const packed = packNarrativeContext(inverted.cards, {
+        maxTokens: sampleCards[0]!.estimatedTokens + 5,
+        channelBudgets: { style: sampleCards[0]!.estimatedTokens + 5 },
+      });
+      expect(packed.cards.map((item) => item.card.id)).toContain("style:sample:src/fight");
+      expect(packed.droppedCards.map((item) => item.id)).toContain("style:style-guide");
+
+      // 预算小到连 1 段范文都放不下时，记录 token-budget 裁剪与三段式说明。
+      const tiny = await createStyleChannel().run({
+        bookId: "book-1",
+        styleGuideText: guide,
+        stylePreset: preset(),
+        planText: "韩立与刺客交手",
+        budgetTokens: 5,
+      });
+      expect(tiny.cards.map((item) => item.id)).toEqual(["style:style-guide"]);
+      const diagnostics = tiny.diagnostics?.styleSamples as Record<string, any>;
       expect(diagnostics.trimmed.map((item: { kind: string }) => item.kind)).toEqual(["token-budget", "token-budget"]);
-      expect(result.warnings?.join(" ")).toContain("发生了什么");
-      expect(result.warnings?.join(" ")).toContain("建议怎么做");
+      expect(tiny.warnings?.join(" ")).toContain("发生了什么");
+      expect(tiny.warnings?.join(" ")).toContain("建议怎么做");
     });
 
     it("声线接缝只注入调用方给出的文本并计入预算占位", async () => {

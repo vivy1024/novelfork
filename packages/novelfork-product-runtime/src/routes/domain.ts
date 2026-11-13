@@ -28,6 +28,8 @@ import {
 	createWriteReadinessRouter,
 	createWritingLayersRouter,
 	createWritingModesRouter,
+	createStylePresetRouter,
+	createMechanismCardsRouter,
 	createStyleDistillationsRouter,
 	createWritingResourceRouter,
 	createWritingSkillsRouter,
@@ -345,6 +347,12 @@ novelDomainRoutes.route(
 // 质量趋势（章级 AI 味/漂移分/质量分时间序列）和写作模式（文风漂移检测基线）。
 novelDomainRoutes.route("", asRuntimeRouter(createQualityTrendRouter(productRouterContext)));
 novelDomainRoutes.route("", asRuntimeRouter(createWritingModesRouter(productRouterContext)));
+novelDomainRoutes.route("", asRuntimeRouter(createStylePresetRouter(productRouterContext, {
+	resolveBookRoot: resolveDomainBookRoot,
+})));
+novelDomainRoutes.route("", asRuntimeRouter(createMechanismCardsRouter(productRouterContext, {
+	resolveBookRoot: resolveDomainBookRoot,
+})));
 novelDomainRoutes.route("", asRuntimeRouter(createStyleDistillationsRouter(productRouterContext, {
 	resolveBookRoot: resolveDomainBookRoot,
 })));

@@ -15,7 +15,7 @@
 
 import type { SceneSpec } from "../../handlers/scene-spec-handler.js";
 import { estimateTokens } from "../jingwei/context/token-budget.js";
-import { STYLE_SCENE_TYPES, type StylePreset } from "../writing-layers/style-preset.js";
+import { isStyleSourceActive, primaryStyleSourceId, STYLE_SCENE_TYPES, type StylePreset } from "../writing-layers/style-preset.js";
 import type { NarrativeScene, SceneFunction } from "./scene-store.js";
 
 export type StyleSceneType = (typeof STYLE_SCENE_TYPES)[number];
@@ -192,6 +192,58 @@ export function resolveStyleSceneTypes(input: ResolveStyleSceneTypesInput): Reso
   };
 }
 
+export const STYLE_SAMPLE_ANCHOR_HEADER = "【原文节奏与笔法锚点（仅学句式节奏，严禁照搬专名）】";
+
+const OVERLAY_TAG_ALIASES: Readonly<Record<string, RegExp>> = {
+  ancient_scripture: /古籍|道藏|残卷|碑文|经文|文言|推演仙基|仙基推演|古卷|玉简|篆文/u,
+  secret_council: /高阶密谈|紫府密谈|大人物密谈|长老议事|密室定计|宗门议政/u,
+  ritual_decree: /祭文|法旨|敕令|道敕|盟誓|科仪/u,
+  court_memorial: /奏疏|朝议|圣旨|邸报|公文/u,
+};
+
+export interface ResolvedRegisterOverlays {
+  readonly activeIds: ReadonlySet<string>;
+  readonly matchedBySource: Readonly<Record<string, readonly string[]>>;
+}
+
+export function resolveActiveRegisterOverlays(
+  preset: StylePreset | null | undefined,
+  input: Pick<ResolveStyleSceneTypesInput, "chapterScenes" | "sceneSpec" | "planText">,
+): ResolvedRegisterOverlays {
+  if (!preset) return { activeIds: new Set(), matchedBySource: {} };
+  const scenes = (input.chapterScenes ?? []).filter((scene) => scene.status !== "rejected");
+  const corpus = [
+    ...scenes.map((scene) => [scene.title, scene.summary, scene.conflict, scene.mood, scene.outcome].join(" ")),
+    input.sceneSpec?.title ?? "",
+    ...(input.sceneSpec?.scenes ?? []).map((scene) => [scene.location, scene.conflict, scene.mood, scene.outcome].join(" ")),
+    ...(input.sceneSpec?.beatBudget ?? []).map((beat) => [beat.function ?? "", beat.summary].join(" ")),
+    ...(input.sceneSpec?.constraints ?? []),
+    input.planText ?? "",
+  ].join("\n");
+  if (!corpus.trim()) return { activeIds: new Set(), matchedBySource: {} };
+
+  const activeIds = new Set<string>();
+  const matchedBySource: Record<string, string[]> = {};
+  for (const source of preset.sources) {
+    if (source.role !== "register_overlay") continue;
+    const tags = source.triggerTags ?? [];
+    const hits: string[] = [];
+    for (const rawTag of tags) {
+      const tag = rawTag.trim();
+      if (!tag) continue;
+      const alias = OVERLAY_TAG_ALIASES[tag.toLowerCase()];
+      const aliasHit = alias ? corpus.match(alias)?.[0] : undefined;
+      if (aliasHit) hits.push(`${tag}(${aliasHit})`);
+      else if (corpus.toLowerCase().includes(tag.toLowerCase())) hits.push(tag);
+    }
+    if (hits.length > 0) {
+      activeIds.add(source.id);
+      matchedBySource[source.id] = hits;
+    }
+  }
+  return { activeIds, matchedBySource };
+}
+
 export type StyleSampleMatch = "scene-type" | "general" | "fallback";
 
 export interface StyleSampleCandidate {
@@ -254,14 +306,26 @@ export interface StyleSampleDiagnostics {
 export interface SelectStyleSamplesInput {
   readonly preset?: StylePreset | null;
   readonly sceneTypes: ResolvedStyleSceneTypes;
+  /** 本章已触发的局部语域插件 ID 集合；未激活的 register_overlay 范文物理隔离不参与候选。 */
+  readonly activeOverlayIds?: ReadonlySet<string>;
   /** 留给范文的 token；缺省表示不限（仍受段数上限约束）。 */
   readonly availableTokens?: number;
 }
 
-function collectCandidates(preset: StylePreset): { all: number; confirmed: Array<StyleSampleCandidate & { order: number }> } {
+function isSampleSourceEligible(preset: StylePreset, source: StylePreset["sources"][number], activeOverlayIds?: ReadonlySet<string>): boolean {
+  const hasExplicitRoles = preset.sources.some((item) => item.role !== undefined);
+  if (!hasExplicitRoles) return true;
+  return isStyleSourceActive(preset, source.id, activeOverlayIds);
+}
+
+function collectCandidates(
+  preset: StylePreset,
+  activeOverlayIds?: ReadonlySet<string>,
+): { all: number; confirmed: Array<StyleSampleCandidate & { order: number }> } {
   let all = 0;
   const confirmed: Array<StyleSampleCandidate & { order: number }> = [];
   preset.sources.forEach((source, sourceIndex) => {
+    if (!isSampleSourceEligible(preset, source, activeOverlayIds)) return;
     source.samples.forEach((sample, sampleIndex) => {
       all += 1;
       if (sample.status !== "confirmed") return;
@@ -306,7 +370,7 @@ function sampleReason(candidate: StyleSampleCandidate, match: StyleSampleMatch, 
 export function selectStyleSamples(input: SelectStyleSamplesInput): StyleSampleSelection {
   const sceneTypes = input.sceneTypes;
   const explanations: StyleExplanation[] = [];
-  const { all, confirmed } = input.preset ? collectCandidates(input.preset) : { all: 0, confirmed: [] };
+  const { all, confirmed } = input.preset ? collectCandidates(input.preset, input.activeOverlayIds) : { all: 0, confirmed: [] };
 
   const wanted = sceneTypes.types.filter((type) => type !== "general");
   const byType = new Map<StyleSceneType, Array<StyleSampleCandidate & { order: number }>>();
@@ -331,11 +395,40 @@ export function selectStyleSamples(input: SelectStyleSamplesInput): StyleSampleS
     .filter((candidate) => !used.has(candidate.key));
   const fillCount = Math.max(0, STYLE_SAMPLE_LIMITS.min - matched.length - general.length);
 
-  const ranked: Array<{ candidate: StyleSampleCandidate & { order: number }; match: StyleSampleMatch }> = [
+  const baseRanked: Array<{ candidate: StyleSampleCandidate & { order: number }; match: StyleSampleMatch }> = [
     ...matched.map((candidate) => ({ candidate, match: "scene-type" as const })),
     ...general.map((candidate) => ({ candidate, match: "general" as const })),
     ...others.slice(0, fillCount).map((candidate) => ({ candidate, match: "fallback" as const })),
   ];
+
+  // 若局部语域插件本章被激活，保底为其保留 1 段匹配的原文锚点排在前列，防止被主文风前 4 段挤出上限。
+  const overlayAnchorKeys = new Set<string>();
+  const overlayAnchors: Array<{ candidate: StyleSampleCandidate & { order: number }; match: StyleSampleMatch }> = [];
+  if (input.preset && input.activeOverlayIds && input.activeOverlayIds.size > 0) {
+    const primaryId = primaryStyleSourceId(input.preset);
+    for (const overlayId of input.activeOverlayIds) {
+      if (overlayId === primaryId) continue;
+      const fromRanked = baseRanked.find((entry) => entry.candidate.sourceId === overlayId);
+      if (fromRanked) {
+        overlayAnchorKeys.add(fromRanked.candidate.key);
+        overlayAnchors.push(fromRanked);
+        continue;
+      }
+      const fallbackOverlay = [...confirmed].sort(compareCandidates).find((item) => item.sourceId === overlayId);
+      if (fallbackOverlay) {
+        overlayAnchorKeys.add(fallbackOverlay.key);
+        overlayAnchors.push({ candidate: fallbackOverlay, match: "fallback" });
+      }
+    }
+  }
+  const primaryTop = baseRanked.find((entry) => !overlayAnchorKeys.has(entry.candidate.key));
+  const ranked = primaryTop && overlayAnchors.length > 0
+    ? [
+      primaryTop,
+      ...overlayAnchors,
+      ...baseRanked.filter((entry) => entry !== primaryTop && !overlayAnchorKeys.has(entry.candidate.key)),
+    ]
+    : [...overlayAnchors, ...baseRanked.filter((entry) => !overlayAnchorKeys.has(entry.candidate.key))];
 
   const selected: SelectedStyleSample[] = [];
   const trimmed: TrimmedStyleSample[] = [];

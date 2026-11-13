@@ -15,9 +15,9 @@ import { NOVEL_RUNTIME_TOOL_CATALOG } from "./handlers/tool-registry.js";
 import { NOVEL_RUNTIME_SYSTEM_PROMPT } from "./runtime-contribution.js";
 import { NOVEL_TOOL_SCHEMAS } from "./tool-schemas.js";
 
-/** 2026-11 精简后实测：系统提示 3204、工具说明合计 10483，各留 5% 余量。 */
+/** 2026-11 精简后实测：系统提示 3204、工具说明合计（新增 style.consolidate 与 mechanism.distill 两项聚合工具），各留 5% 余量。 */
 const MAX_SYSTEM_PROMPT_CHARS = 3364;
-const MAX_TOOL_DESCRIPTION_CHARS = 11007;
+const MAX_TOOL_DESCRIPTION_CHARS = 11350;
 const MAX_SINGLE_TOOL_DESCRIPTION_CHARS = 900;
 const MAX_WRITE_PREFLIGHT_DESCRIPTION_CHARS = 600;
 

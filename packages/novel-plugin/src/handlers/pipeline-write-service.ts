@@ -49,6 +49,10 @@ import { formatAuthorExplanation, isAuthorFacingDetail } from "./diagnostic-expl
 import { isBookJsonUnreadable } from "./book-config-readable.js";
 import { checkHighRiskPendingBeforeWrite } from "./high-risk-pending-gate.js";
 import { checkChapterHardLength, describeLengthGap } from "./chapter-length-check.js";
+import { runBookRegisterGuardrail, type RegisterGuardrailReport } from "../engine/compliance/register-guardrail.js";
+import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
+import { loadStylePreset } from "../engine/writing-layers/style-preset-store.js";
+import { loadMechanismCards } from "../engine/writing-layers/mechanism-cards.js";
 
 export interface PipelineCanvasArtifact {
   readonly id: string;
@@ -212,6 +216,7 @@ export interface PipelineWriteError {
     | "chapter-conflict"
     | "memory-budget-overflow"
     | "recall-required"
+    | "source-term-leak"
     | "book-locked";
   readonly error: string;
   readonly summary?: string;
@@ -1070,16 +1075,62 @@ async function executePipelineWriteUnlocked(
     // 不另开 Auditor/Reviser 模型。此前这里先跑一次参数完全相同的 preAudit 再跑一次，已合并为一次。
     // H2 需要本章相关的 canon/规则条目；取数失败只告警（H2 本身只出 soft 提醒，不拒存）。
     let canonEntries: AuditCanonEntry[] = [];
+    let registerGuardrail: Parameters<typeof handleChapterAuditV2>[0]["registerGuardrail"] | undefined;
+    let registerReport: RegisterGuardrailReport | undefined;
     try {
       const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const storage = getStorageDatabase();
       canonEntries = await loadChapterCanonEntries(
-        getStorageDatabase(),
+        storage,
         bookId,
         governedContent,
         sceneSpec.scenes.flatMap((scene) => scene.characters),
       );
+      const [loadedPreset, loadedMechanisms, allBookEntries] = await Promise.all([
+        loadStylePreset(bookDir).catch(() => null),
+        loadMechanismCards(bookDir).catch(() => ({ cards: [], revision: null })),
+        createStoryJingweiEntryRepository(storage).listByBook(bookId).catch(() => []),
+      ]);
+      registerGuardrail = {
+        stylePreset: loadedPreset?.preset ?? null,
+        mechanismCards: loadedMechanisms.cards,
+        confirmedEntries: allBookEntries,
+      };
+      registerReport = await runBookRegisterGuardrail({
+        bookRoot: bookDir,
+        bookId,
+        content: governedContent,
+        storage,
+      });
     } catch (err) {
       logger?.warn(`[pipeline.write] 本章 canon 条目读取失败，设定一致性检查（H2）本次未运行：${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!registerReport) {
+      registerReport = await runBookRegisterGuardrail({
+        bookRoot: bookDir,
+        bookId,
+        content: governedContent,
+        storage: null,
+      }).catch(() => undefined);
+    }
+    if (registerReport && registerReport.sourceTermHits.length > 0) {
+      const hitSummary = registerReport.sourceTermHits
+        .map((hit) => `「${hit.matched}」（来自《${hit.sourceTitle ?? "参考书"}》，第 ${hit.paragraphIndex} 段）`)
+        .join("、");
+      const explanation = registerReport.sourceTermHits
+        .map((hit) => [
+          `发生了什么：${hit.explanation.whatHappened}`,
+          `为什么要看：${hit.explanation.whyItMatters}`,
+          `建议怎么做：${hit.explanation.suggestedAction}`,
+        ].join("\n"))
+        .join("\n\n");
+      return {
+        ok: false,
+        code: "source-term-leak",
+        error: `第${chapterNumber}章检测到参考书原著专名泄漏：${hitSummary}；已拦截落盘，请全部改写为本书原创内生词后再提交。\n${explanation}`,
+        summary: `检测到参考书专名泄漏（${hitSummary}），未保存正式章节。`,
+        explanation,
+      };
     }
     const auditV2 = handleChapterAuditV2({
       bookId,
@@ -1088,6 +1139,7 @@ async function executePipelineWriteUnlocked(
       sceneSpec,
       wordTarget: book.chapterWordCount,
       canonEntries,
+      ...(registerGuardrail ? { registerGuardrail } : {}),
     });
     const auditResult: AuditResult = {
       passed: auditV2.passed,

@@ -1,13 +1,15 @@
 import type { SceneSpec } from "../../../handlers/scene-spec-handler.js";
 import { estimateTokens } from "../../jingwei/context/token-budget.js";
-import type { StylePreset } from "../../writing-layers/style-preset.js";
+import { composeStyleGuide, type StylePreset } from "../../writing-layers/style-preset.js";
 import type { NarrativeRetrievalChannel } from "../channels.js";
 import { styleTextToContextCard } from "../context-card.js";
 import type { NarrativeScene } from "../scene-store.js";
 import {
   formatStyleExplanation,
+  resolveActiveRegisterOverlays,
   resolveStyleSceneTypes,
   selectStyleSamples,
+  STYLE_SAMPLE_ANCHOR_HEADER,
   type SelectedStyleSample,
 } from "../style-samples.js";
 import type { NarrativeContextCard } from "../types.js";
@@ -59,28 +61,33 @@ function lowPriority(card: NarrativeContextCard): NarrativeContextCard {
   };
 }
 
+export const STYLE_SAMPLE_RESERVED_BUDGET_TOKENS = 900;
+
 /**
  * 范文整段注入或整段不注入：截断的范文会示范出残句。
  * 因此各档位内容都等于全文，预算打包器降档省不出 token，只会整张裁掉；
- * priority 比文风指南低、且按排名递减，全局超预算时排名靠后的先被裁。
+ * 预算反转铁律：priority 设为 54 - sample.rank（高于文风指南的 45），
+ * 全局打包超预算时优先保住 1~2 段真原文锚点。
  */
 function sampleCard(bookId: string, sample: SelectedStyleSample): NarrativeContextCard {
+  const anchoredText = `${STYLE_SAMPLE_ANCHOR_HEADER}\n${sample.text}`;
+  const estimatedTokens = Math.max(1, estimateTokens(`${sample.title}\n${anchoredText}`));
   const base = styleTextToContextCard({
     bookId,
     id: `sample:${sample.key}`,
     title: sample.title,
-    text: sample.text,
+    text: anchoredText,
     tags: ["style-sample", `scene-type:${sample.sceneType}`, `transfer:${sample.transfer}`],
     reason: sample.reason,
   });
   return {
     ...base,
-    normal: sample.text,
-    summary: sample.text,
-    brief: sample.text,
-    priority: 44 - sample.rank,
-    importance: Math.max(0, 50 - sample.rank),
-    estimatedTokens: sample.estimatedTokens,
+    normal: anchoredText,
+    summary: anchoredText,
+    brief: anchoredText,
+    priority: 54 - sample.rank,
+    importance: Math.max(0, 55 - sample.rank),
+    estimatedTokens,
   };
 }
 
@@ -90,7 +97,15 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
     run(input) {
       const cards: NarrativeContextCard[] = [];
       const warnings: string[] = [];
-      const styleGuide = nonEmpty(input.styleGuideText);
+      const overlays = resolveActiveRegisterOverlays(input.stylePreset, {
+        chapterScenes: input.chapterScenes,
+        sceneSpec: input.sceneSpec,
+        planText: input.planText,
+      });
+      const derivedGuide = input.stylePreset && overlays.activeIds.size > 0
+        ? composeStyleGuide(input.stylePreset, { activeOverlayIds: overlays.activeIds })
+        : undefined;
+      const styleGuide = nonEmpty(derivedGuide) ?? nonEmpty(input.styleGuideText);
       if (styleGuide) {
         cards.push(lowPriority(styleTextToContextCard({
           bookId: input.bookId,
@@ -140,17 +155,29 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
         }));
       }
 
-      // 预算次序：指南、声线、合规全文先占位；本书设计可降档，只按最简档占位；余下给范文。
-      const reservedTokens = cards.reduce((sum, card) => sum + card.estimatedTokens, 0)
+      // 预算反转铁律：先为范文预留保底预算（约 800~1000 tokens，保底 2~3 段连续原文锚点），
+      // 废除“指南先占满、剩下才给范文”的倒挂逻辑。
+      const fixedTokens = cards.reduce((sum, card) => sum + card.estimatedTokens, 0)
         + (bookDesignCard ? Math.max(1, estimateTokens(bookDesignCard.brief)) : 0);
-      const availableTokens = input.budgetTokens === undefined ? undefined : Math.max(0, input.budgetTokens - reservedTokens);
+      const availableTokens = input.budgetTokens === undefined
+        ? undefined
+        : Math.max(
+          Math.min(input.budgetTokens, STYLE_SAMPLE_RESERVED_BUDGET_TOKENS),
+          input.budgetTokens - fixedTokens,
+        );
       const sceneTypes = resolveStyleSceneTypes({
         chapterNumber: input.chapterNumber,
         chapterScenes: input.chapterScenes,
         sceneSpec: input.sceneSpec,
         planText: input.planText,
       });
-      const selection = selectStyleSamples({ preset: input.stylePreset, sceneTypes, availableTokens });
+      const selection = selectStyleSamples({
+        preset: input.stylePreset,
+        sceneTypes,
+        activeOverlayIds: overlays.activeIds,
+        availableTokens,
+      });
+      const reservedTokens = selection.diagnostics.budget.usedTokens;
       // 非范文卡片（文风指南/角色声线/合规/本书设计）的注入清单：记 id 与体量，
       // 查询侧与 droppedCardIds 对照即可知道这张卡是否在全局打包时被裁。
       const fixedCards = [...cards, ...(bookDesignCard ? [bookDesignCard] : [])]
@@ -162,10 +189,13 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
       const diagnostics = {
         styleSamples: {
           ...selection.diagnostics,
+          activeOverlayIds: [...overlays.activeIds],
+          overlayMatches: overlays.matchedBySource,
           budget: {
             ...selection.diagnostics.budget,
             channelBudgetTokens: input.budgetTokens ?? null,
             reservedTokens,
+            fixedTokens,
           },
           voiceConstraintsProvided: Boolean(voice),
           explanations: selection.explanations,

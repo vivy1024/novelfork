@@ -148,6 +148,8 @@ type CustomReadyRuntimeToolName =
   | "style.distill_start"
   | "style.distill_status"
   | "style.distill_adopt"
+  | "style.consolidate"
+  | "mechanism.distill"
   | "outline.volume"
   | "arc.character"
   | "publish.check"

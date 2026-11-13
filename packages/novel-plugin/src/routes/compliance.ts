@@ -2,12 +2,14 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Hono } from "hono";
+import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import {
   checkFormat,
   checkPublishReadiness,
   assessBookAiTaste,
   generateAiDisclosure,
   loadDictionary,
+  runBookRegisterGuardrail,
   scanBook,
   type ChapterAiTasteInput,
   type FormatChapterInput,
@@ -229,7 +231,44 @@ export function createComplianceRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     const book = await ctx.state.loadBookConfig(bookId) as unknown as Record<string, unknown>;
     const chapters = await loadChapters(ctx, bookId, body);
-    return c.json({ result: checkFormat(toFormatChapters(chapters), buildBookFormatConfig(book, body), platform) });
+    const bookRoot = ctx.state.bookDir(bookId);
+    let storage: ReturnType<typeof getStorageDatabase> | null = null;
+    try { storage = getStorageDatabase(); } catch { storage = null; }
+    const registerChecks = await Promise.all(chapters.map(async (chapter) => ({
+      chapterNumber: chapter.chapterNumber,
+      ...(await runBookRegisterGuardrail({ bookRoot, bookId, content: chapter.content, storage })),
+    })));
+    return c.json({
+      result: checkFormat(toFormatChapters(chapters), buildBookFormatConfig(book, body), platform),
+      registerGuardrail: {
+        passed: registerChecks.every((item) => item.passed),
+        chapters: registerChecks.filter((item) => item.violations.length > 0),
+      },
+    });
+  });
+
+  app.post("/api/books/:bookId/compliance/register-check", async (c) => {
+    const body = await readJsonBody(c);
+    const bookId = c.req.param("bookId");
+    await ctx.state.loadBookConfig(bookId).catch(() => undefined);
+    const bookRoot = ctx.state.bookDir(bookId);
+    let storage: ReturnType<typeof getStorageDatabase> | null = null;
+    try { storage = getStorageDatabase(); } catch { storage = null; }
+    if (typeof body.content === "string") {
+      const report = await runBookRegisterGuardrail({ bookRoot, bookId, content: body.content, storage });
+      return c.json({ ok: true, report });
+    }
+    const chapters = await loadChapters(ctx, bookId, body);
+    const results = await Promise.all(chapters.map(async (chapter) => ({
+      chapterNumber: chapter.chapterNumber,
+      title: chapter.title,
+      ...(await runBookRegisterGuardrail({ bookRoot, bookId, content: chapter.content, storage })),
+    })));
+    return c.json({
+      ok: true,
+      passed: results.every((item) => item.passed),
+      chapters: results,
+    });
   });
 
   app.post("/api/books/:bookId/compliance/publish-readiness", async (c) => {
@@ -239,6 +278,13 @@ export function createComplianceRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     const book = await ctx.state.loadBookConfig(bookId) as unknown as Record<string, unknown>;
     const chapters = await loadChapters(ctx, bookId, body);
+    const bookRoot = ctx.state.bookDir(bookId);
+    let storage: ReturnType<typeof getStorageDatabase> | null = null;
+    try { storage = getStorageDatabase(); } catch { storage = null; }
+    const registerChecks = await Promise.all(chapters.map(async (chapter) => ({
+      chapterNumber: chapter.chapterNumber,
+      ...(await runBookRegisterGuardrail({ bookRoot, bookId, content: chapter.content, storage })),
+    })));
     const report = checkPublishReadiness(bookId, platform, toPublishChapters(chapters), buildBookFormatConfig(book, body));
     return c.json({
       report: {
@@ -246,6 +292,10 @@ export function createComplianceRouter(ctx: RouterContext): Hono {
         continuity: report.continuity ?? {
           status: "unknown",
           reason: "连续性指标尚未接入发布检查数据源。",
+        },
+        registerGuardrail: {
+          passed: registerChecks.every((item) => item.passed),
+          chapters: registerChecks.filter((item) => item.violations.length > 0),
         },
       },
     });

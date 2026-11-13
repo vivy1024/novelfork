@@ -21,6 +21,10 @@ import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositorie
 import { createStoryJingweiSectionRepository } from "../engine/jingwei/repositories/section-repo.js";
 import { detectIntraChapterDupParagraphs } from "../engine/agents/post-write-validator.js";
 import { detectPressureLedgerIssues, type PressureLedgerItem } from "../engine/agents/pressure-ledger-gate.js";
+import {
+  checkRegisterGuardrail,
+  type CheckRegisterGuardrailInput,
+} from "../engine/compliance/register-guardrail.js";
 
 export interface AuditV2Input {
   readonly bookId: string;
@@ -47,6 +51,7 @@ export interface AuditV2Input {
   readonly povCharacter?: string;
   readonly wordTarget?: number;
   readonly checks?: readonly string[];
+  readonly registerGuardrail?: Omit<CheckRegisterGuardrailInput, "content">;
 }
 
 export interface AuditV2Violation {
@@ -256,10 +261,29 @@ export function handleChapterAuditV2(input: AuditV2Input): AuditV2Result {
   const enabledChecks = checks && checks.length > 0 ? new Set(checks) : null;
   const runCanon = !enabledChecks || enabledChecks.has("canon") || enabledChecks.has("continuity");
   const runPov = !enabledChecks || enabledChecks.has("pov") || enabledChecks.has("continuity");
+  const runRegister = !enabledChecks || enabledChecks.has("register") || enabledChecks.has("ai_taste") || enabledChecks.has("continuity");
 
   const ledgerEnabled = !enabledChecks || enabledChecks.has("ledger") || enabledChecks.has("continuity");
   const ledgerViolations = ledgerEnabled
     ? checkSoftConstraints(content, input).filter((v) => v.ruleId === "S7")
+    : [];
+
+  const registerViolations: AuditV2Violation[] = runRegister
+    ? checkRegisterGuardrail({
+      content,
+      ...(input.registerGuardrail ?? {}),
+      confirmedEntries: input.registerGuardrail?.confirmedEntries ?? canonEntries?.map((e) => ({
+        title: e.title,
+        contentMd: e.contentMd,
+        status: "confirmed",
+      })),
+    }).violations.map((v) => ({
+      ruleId: v.kind === "forbidden_source_term" ? "H8" : v.kind === "latex_formula" ? "H9" : "S9",
+      severity: v.severity,
+      location: `第${v.paragraphIndex}段${v.sourceTitle ? `（来源：${v.sourceTitle}）` : ""}`,
+      description: v.explanation.whatHappened,
+      suggestion: v.explanation.suggestedAction,
+    }))
     : [];
 
   // H2 一律 soft（见 checkCanonViolations 的误报说明），放进 softViolations。
@@ -268,9 +292,13 @@ export function handleChapterAuditV2(input: AuditV2Input): AuditV2Result {
     ...canonViolations.filter((v) => v.severity === "hard"),
     ...(runPov ? checkPovViolations(content, sceneSpec, povCharacter) : []),
     ...ledgerViolations.filter((v) => v.severity === "hard"),
+    ...registerViolations.filter((v) => v.severity === "hard"),
   ];
 
-  const softViolations = [...canonViolations.filter((v) => v.severity === "soft"), ...checkSoftConstraints(content, input).filter((v) => {
+  const softViolations = [
+    ...canonViolations.filter((v) => v.severity === "soft"),
+    ...registerViolations.filter((v) => v.severity === "soft"),
+    ...checkSoftConstraints(content, input).filter((v) => {
     if (v.ruleId === "S7") return ledgerEnabled && v.severity === "soft";
     if (!enabledChecks) return true;
     if (v.ruleId === "S1") return enabledChecks.has("rhythm") || enabledChecks.has("continuity");

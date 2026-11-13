@@ -519,12 +519,23 @@ export async function adoptRecommendedStyleDistillation(input: {
   if (recommended.length === 0) {
     throw new StyleDistillationError("这次蒸馏没有可一键采纳的条目（可迁移且证据逐字吻合的规则）；请逐条审阅后采纳。", "STYLE_DISTILLATION_INVALID_INPUT");
   }
+  const representatives = [...job.samples].sort((a, b) => Number(b.transfer === "transferable") - Number(a.transfer === "transferable"));
+  const sceneTypes = new Set<string>();
+  const picked = representatives.filter((sample) => {
+    if (sceneTypes.has(sample.sceneType)) return false;
+    sceneTypes.add(sample.sceneType);
+    return true;
+  }).slice(0, 6);
+  for (const sample of representatives) {
+    if (picked.length >= 6) break;
+    if (!picked.some((item) => item.id === sample.id)) picked.push(sample);
+  }
   const result = await adoptStyleDistillation({
     bookRoot: input.bookRoot,
     jobId: input.jobId,
     // 预设单来源最多 100 条规则：先保留作者之前确认的，再按顺序补推荐条目。
     ruleIds: [...new Set([...(job.adoption?.ruleIds ?? []), ...recommended])].slice(0, 100),
-    sampleIds: job.adoption?.sampleIds ?? [],
+    sampleIds: [...new Set([...(job.adoption?.sampleIds ?? []), ...picked.map((sample) => sample.id)])],
     expectedRevision: input.expectedRevision,
   });
   return { ...result, recommendedRuleIds: recommended };
@@ -535,6 +546,9 @@ export interface AdoptStyleDistillationInput {
   readonly jobId: string;
   readonly ruleIds: readonly string[];
   readonly sampleIds: readonly string[];
+  readonly role?: "primary_voice" | "register_overlay";
+  readonly triggerTags?: readonly string[];
+  readonly forbiddenSourceTerms?: readonly string[];
   /** 读取预设时的版本；本书还没有预设时为 null。 */
   readonly expectedRevision: string | null;
 }
@@ -576,9 +590,20 @@ export async function adoptStyleDistillation(input: AdoptStyleDistillationInput)
     if (input.expectedRevision !== current.revision) {
       throw new StylePresetError("本书文风预设已被更新；请重新读取当前版本后再采纳。", "STYLE_PRESET_CONFLICT");
     }
+    const existing = current.preset ?? createStylePreset();
+    const prior = existing.sources.find((item) => item.id === job.sourceId);
+    const snapshot = await loadStyleDistillationSourceSnapshot(input.bookRoot, job).catch(() => [] as DistillableChapter[]);
+    const detectedTerms = snapshot.length > 0 ? collectSourceTerms(snapshot).terms.map((item) => item.term) : [];
+    const forbiddenSourceTerms = [...new Set([...(input.forbiddenSourceTerms ?? prior?.forbiddenSourceTerms ?? []), ...detectedTerms])]
+      .map((item) => item.trim()).filter(Boolean).slice(0, 200);
+    const triggerTags = [...new Set(input.triggerTags ?? prior?.triggerTags ?? [])].map((item) => item.trim()).filter(Boolean).slice(0, 50);
+    const role = input.role ?? prior?.role ?? (existing.sources.some((item) => item.id !== job.sourceId) ? "register_overlay" : undefined);
     const source = {
       id: job.sourceId,
       title: job.sourceName,
+      ...(role ? { role } : {}),
+      ...(triggerTags.length > 0 ? { triggerTags } : {}),
+      ...(forbiddenSourceTerms.length > 0 ? { forbiddenSourceTerms } : {}),
       rules: job.rules
         .filter((rule) => ruleIds.includes(rule.id))
         .map((rule) => ({
@@ -594,10 +619,14 @@ export async function adoptStyleDistillation(input: AdoptStyleDistillationInput)
         .filter((sample) => sampleIds.includes(sample.id))
         .map((sample) => ({ ...sample, status: "confirmed" as const })),
     } satisfies StylePreset["sources"][number];
-    const existing = current.preset ?? createStylePreset();
+    const restSources = existing.sources
+      .filter((item) => item.id !== source.id)
+      .map((item, idx) => role === "primary_voice" && (item.role === "primary_voice" || (item.role === undefined && idx === 0))
+        ? { ...item, role: "register_overlay" as const }
+        : item);
     const preset = await saveStylePreset(input.bookRoot, {
       ...existing,
-      sources: [...existing.sources.filter((item) => item.id !== source.id), source],
+      sources: role === "primary_voice" ? [source, ...restSources] : [...restSources, source],
       // 多来源采纳：按来源字数加权合并统计指纹，而不是让最后一次采纳覆盖前面的来源。
       fingerprint: mergeDistilledFingerprint({
         existing: existing.fingerprint,

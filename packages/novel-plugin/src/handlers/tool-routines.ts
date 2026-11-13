@@ -104,6 +104,8 @@ const NOVEL_TOOL_ROUTINE_SPECS: Readonly<Record<string, NovelToolRoutineSpec>> =
   "style.distill_start": ["style", "文风蒸馏", "Style distill", "从参考文本分批抽取待审文风条目", "Extract reviewable style rules from reference text", A],
   "style.distill_status": ["style", "文风蒸馏结果", "Style status", "读取文风蒸馏任务的进度与条目", "Read a style distillation job and its rules", A],
   "style.distill_adopt": ["style", "采纳文风", "Adopt style", "把作者点名确认的文风条目写进本书预设", "Adopt author-confirmed style rules into the book", A],
+  "style.consolidate": ["style", "文风规则瘦身", "Consolidate style", "将多批文风规则聚类为高密度铁律或置顶写入负反馈硬约束", "Consolidate style rules or prepend a runtime negative override", A],
+  "mechanism.distill": ["import", "中观机制拆解", "Mechanism cards", "从参考作品拆解可迁移剧情机制卡供大纲和细纲规划参考", "Distill transferable plot mechanism cards for outline and scene planning", A],
   "skills.recommend": ["style", "技能推荐", "Skill recommendation", "建书引导时按本书答案推荐写作技能", "Recommend writing skills during book setup", A],
   "skills.check_compliance": ["style", "技能合规检查", "Skill compliance", "按已启用技能的规则检查章节违规", "Check a chapter against enabled skill rules", A],
   "skills.import_legacy": ["style", "导入旧版技能", "Import legacy skills", "把旧版预设迁移为写作技能（一次性维护）", "Migrate legacy presets into writing skills (one-off)", M],

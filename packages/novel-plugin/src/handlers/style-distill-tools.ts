@@ -293,11 +293,17 @@ async function adopt(
   const expected = typeof input.expectedVersion === "string" && input.expectedVersion.trim()
     ? input.expectedVersion.trim()
     : null;
+  const role = input.role === "primary_voice" || input.role === "register_overlay" ? input.role : undefined;
+  const triggerTags = Array.isArray(input.triggerTags) ? stringList(input.triggerTags) : undefined;
+  const forbiddenSourceTerms = Array.isArray(input.forbiddenSourceTerms) ? stringList(input.forbiddenSourceTerms) : undefined;
   const result = await adoptStyleDistillation({
     bookRoot: binding.root,
     jobId: job.jobId,
     ruleIds,
     sampleIds,
+    ...(role ? { role } : {}),
+    ...(triggerTags ? { triggerTags } : {}),
+    ...(forbiddenSourceTerms ? { forbiddenSourceTerms } : {}),
     expectedRevision: expected,
   });
   return ok(

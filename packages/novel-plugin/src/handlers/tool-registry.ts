@@ -62,6 +62,8 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "style.distill_start",
   "style.distill_status",
   "style.distill_adopt",
+  "style.consolidate",
+  "mechanism.distill",
   "outline.volume",
   "arc.character",
   "publish.check",
@@ -394,6 +396,27 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
     description: "将作者明确点名的规则与范文采纳进本书文风预设（可迁移项进指南，作品专属项仅存证据）。须传 expectedVersion，预设已被改过时返回 409 冲突而不覆盖。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["style.distill_adopt"]),
     risk: "confirmed-write", renderer: "generic", enabledForModes: WRITE_SESSION_PERMISSION_MODES, scope: "novel",
+  }),
+  sessionTool({
+    name: "style.consolidate",
+    description: "文风规则瘦身与实时负反馈热修正：action=consolidate 把零散规则归约为不超过 12 条正反例执行铁律；action=negative_override 把作者对当前文字的口头纠偏置顶写入本书硬约束。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["style.consolidate"]),
+    risk: "confirmed-write", renderer: "generic", enabledForModes: WRITE_SESSION_PERMISSION_MODES, scope: "novel",
+  }),
+  sessionTool({
+    name: "mechanism.distill",
+    description: "中观拆书机制卡管理（extract | list | update | delete | recall）：剥离参考书专名，提炼可迁移爽点与冲突兑现机制并建立专名黑名单；仅供大纲与细纲构思参考，绝不混入正文文风通道。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["mechanism.distill"]),
+    risk: "confirmed-write",
+    resolveRisk: (input) => {
+      const action = normalizedAction(input);
+      if (action === "list" || action === "recall") return "read";
+      if (action === "extract") return "draft-write";
+      return "confirmed-write";
+    },
+    renderer: "generic",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
   }),
   sessionTool({
     name: "outline.volume",

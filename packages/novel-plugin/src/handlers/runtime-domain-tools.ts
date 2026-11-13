@@ -40,6 +40,7 @@ import { getActiveWorkflowRunForNarrator } from "../engine/workflows/run-store.j
 import { executeStyleDistillationTool } from "./style-distill-tools.js";
 import { BookTextFileError, readBookTextFile } from "../engine/writing-layers/source-file-index.js";
 import { MAX_MANUSCRIPT_CHAPTERS } from "../engine/manuscript-import/manuscript-import.js";
+import { executeMechanismDistillTool, executeStyleConsolidateTool } from "./mechanism-distill-tools.js";
 import { executeCharacterVoiceTool } from "./character-voice-tools.js";
 import { proposeSelectionCandidate } from "./selection-candidate-tools.js";
 import { handleStorylinePropose } from "./storyline-tools.js";
@@ -227,6 +228,30 @@ async function chapterAudit(
     // book.json 缺失/损坏不阻断审计，交回默认值
   }
   const effectiveWordTarget = typeof input.wordTarget === "number" ? input.wordTarget : bookWordTarget;
+  let registerGuardrail: Parameters<typeof handleChapterAuditV2>[0]["registerGuardrail"] | undefined;
+  try {
+    const [{ loadStylePreset }, { loadMechanismCards }] = await Promise.all([
+      import("../engine/writing-layers/style-preset-store.js"),
+      import("../engine/writing-layers/mechanism-cards.js"),
+    ]);
+    let storageEntries: Awaited<ReturnType<ReturnType<typeof createStoryJingweiEntryRepository>["listByBook"]>> = [];
+    try {
+      storageEntries = await createStoryJingweiEntryRepository(getStorageDatabase()).listByBook(binding.bookId);
+    } catch {
+      storageEntries = [];
+    }
+    const [loadedPreset, loadedMechanisms] = await Promise.all([
+      loadStylePreset(binding.root).catch(() => null),
+      loadMechanismCards(binding.root).catch(() => ({ cards: [], revision: null })),
+    ]);
+    registerGuardrail = {
+      stylePreset: loadedPreset?.preset ?? null,
+      mechanismCards: loadedMechanisms.cards,
+      confirmedEntries: storageEntries,
+    };
+  } catch {
+    registerGuardrail = undefined;
+  }
   const audit = handleChapterAuditV2({
     bookId: binding.bookId,
     chapterNumber,
@@ -236,6 +261,7 @@ async function chapterAudit(
     ...(typeof input.povCharacter === "string" ? { povCharacter: input.povCharacter } : {}),
     ...(typeof effectiveWordTarget === "number" ? { wordTarget: effectiveWordTarget } : {}),
     ...(Array.isArray(input.checks) ? { checks: stringArray(input.checks) } : {}),
+    ...(registerGuardrail ? { registerGuardrail } : {}),
   });
   const softViolations = [...audit.softViolations];
   let structureScores: unknown = [];
@@ -1234,6 +1260,12 @@ export async function executeRuntimeDomainTool(
     case "style_distill_adopt":
     case "style.distill_adopt":
       return executeStyleDistillationTool(toolName, input, binding, context);
+    case "style_consolidate":
+    case "style.consolidate":
+      return executeStyleConsolidateTool(input, binding, context);
+    case "mechanism_distill":
+    case "mechanism.distill":
+      return executeMechanismDistillTool(input, binding, context);
     case "outline_volume":
     case "outline.volume":
       return outlineVolume(input, binding, context);

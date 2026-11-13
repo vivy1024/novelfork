@@ -42,16 +42,22 @@ describe("M2 合成指南有上限", () => {
     return { text, evidence: "原文", transfer: "transferable" as const, status: "confirmed" as const, category: category as "voice", ...(confidence ? { confidence } : {}) };
   }
 
-  it("近似重复的规则合并成一条并列出全部来源", () => {
+  it("主文风来源内的近似重复规则合并，未设 role 的第 2 个来源默认不混入全局指南（避免双源语域互殴）", () => {
     const preset = createStylePreset();
     preset.sources = [
-      { id: "s1", title: "甲", samples: [], rules: [rule("对白只写一两句，随即转入动作描写", "dialogue")] },
-      { id: "s2", title: "乙", samples: [], rules: [rule("对白只写一两句，随即转入动作描写。", "dialogue"), rule("转场不写过渡段", "scene")] },
+      { id: "s1", title: "甲", samples: [], rules: [
+        rule("对白只写一两句，随即转入动作描写", "dialogue"),
+        rule("对白只写一两句，随即转入动作描写。", "dialogue"),
+      ] },
+      { id: "s2", title: "乙", role: "register_overlay", triggerTags: ["古籍"], samples: [], rules: [rule("转场改用半文言古语", "scene")] },
     ];
     const guide = composeStyleGuide(preset);
-    expect(guide).toContain("对白只写一两句，随即转入动作描写（来源：甲、乙）");
+    expect(guide).toContain("对白只写一两句，随即转入动作描写（来源：甲）");
     expect(guide.match(/对白只写一两句/gu)).toHaveLength(1);
-    expect(guide).toContain("转场不写过渡段（来源：乙）");
+    expect(guide).not.toContain("转场改用半文言古语");
+    const activated = composeStyleGuide(preset, { activeOverlayIds: new Set(["s2"]) });
+    expect(activated).toContain("【局部语域挂载：乙】");
+    expect(activated).toContain("转场改用半文言古语");
   });
 
   it("每类限条数且高置信优先；总字数有上限，各类别轮流取", () => {

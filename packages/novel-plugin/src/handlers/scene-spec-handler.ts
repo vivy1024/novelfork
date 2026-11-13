@@ -12,6 +12,10 @@ import {
   toSceneSpecConstraintLines,
   type WritingSkillConstraintDigest,
 } from "../engine/writing-skills/compliance.js";
+import {
+  recallMechanismCardsForPlanning,
+  type PlanningMechanismReference,
+} from "../engine/writing-layers/mechanism-cards.js";
 import { parseSceneGaps, type SceneGap } from "./scene-gaps.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -89,6 +93,10 @@ export interface SceneSpecSuccess {
      * 已并入 sceneSpec.constraints，这里另给结构化版本便于渲染与下游复用。
      */
     writingSkillConstraints?: WritingSkillConstraintDigest;
+    /**
+     * 规划期中观可迁移机制卡辅助参考（仅出现在 scene.spec 返回体供蓝图打磨，绝不进入正文写前 style 通道）。
+     */
+    planningMechanisms?: readonly PlanningMechanismReference[];
   };
 }
 
@@ -392,15 +400,28 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     : namedEntities.length > 0
       ? ` 点名实体 ${namedEntities.join("、")} 已记录，召回超上限时仍保留。`
       : "";
+  let planningMechanisms: PlanningMechanismReference[] = [];
+  if (input.bookRoot?.trim()) {
+    const planningQuery = [
+      resolvedDirectives,
+      sceneSpec.title,
+      ...sceneSpec.scenes.flatMap((scene) => [scene.location, scene.conflict, scene.outcome]),
+    ].filter(Boolean).join(" ");
+    planningMechanisms = await recallMechanismCardsForPlanning(input.bookRoot, planningQuery, 4).catch(() => []);
+  }
+  const mechanismNote = planningMechanisms.length > 0
+    ? ` 已附上 ${planningMechanisms.length} 张可迁移机制卡供细纲推演参考。`
+    : "";
   return {
     ok: true,
-    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${skillNote}${expansionNote}`,
+    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${skillNote}${expansionNote}${mechanismNote}`,
     data: {
       sceneSpec,
       beatBudget: budget,
       namedEntities,
       ...(entityExpansion ? { entityExpansion } : {}),
       ...(writingSkillConstraints.items.length > 0 ? { writingSkillConstraints } : {}),
+      ...(planningMechanisms.length > 0 ? { planningMechanisms } : {}),
     },
   };
 }

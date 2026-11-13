@@ -14,6 +14,7 @@ import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settin
 import { readBookSettlementFreshness } from "../engine/narrative-memory/settlement-freshness.js";
 import type { NarrativeContextPackage } from "../engine/narrative-memory/types.js";
 import { loadSceneVoiceConstraints } from "../engine/writing-layers/character-voice-context.js";
+import { composeCustomConstraintsSection } from "../engine/writing-layers/style-preset-custom-constraints.js";
 import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
 import type { SceneSpec } from "./scene-spec-handler.js";
 
@@ -69,6 +70,8 @@ export async function buildWriteChapterRecall(input: WriteChapterRecallInput): P
   if (sceneVoices && sceneVoices.corruptedIds.length > 0) {
     logger?.warn(`${prefix} 角色声线数据损坏，未注入：${sceneVoices.corruptedIds.join(", ")}。请在角色卡的「声线」区块重新确认。`);
   }
+  const hardConstraints = composeCustomConstraintsSection(writingLayers?.stylePreset?.customConstraints);
+  const customConstraintsText = hardConstraints.length > 0 ? hardConstraints.join("\n") : "";
   return buildNarrativeContext({
     storage,
     bookId,
@@ -89,6 +92,7 @@ export async function buildWriteChapterRecall(input: WriteChapterRecallInput): P
         return embeddingConfig ? { semanticProvider: createSiliconFlowEmbeddingProvider(embeddingConfig) } : {};
       })()
       : {}),
+    ...(customConstraintsText ? { bookRulesText: customConstraintsText } : {}),
     ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
     ...(writingLayers?.stylePreset ? { stylePreset: writingLayers.stylePreset } : {}),
     ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),

@@ -20,6 +20,10 @@ import {
 } from "./endgame-reserve.js";
 import { DEFAULT_VOLUME_DIRECTORY, volumeDirectoryName } from "../engine/writing-resource/chapter-layout.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
+import {
+  recallMechanismCardsForPlanning,
+  type PlanningMechanismReference,
+} from "../engine/writing-layers/mechanism-cards.js";
 
 export type VolumeStatus = "planned" | "active" | "done";
 export type MainlineBeatStatus = "planned" | "active" | "done";
@@ -94,6 +98,8 @@ export interface OutlineVolumeResult {
   readonly error?: string;
   /** 透支两问的结果；get/set 都会给，便于写卷纲时立刻看到风险。 */
   readonly overdraft?: OverdraftReport;
+  /** 规划期中观机制卡参考（仅供卷纲规划构思，不进正文 style 通道）。 */
+  readonly planningMechanisms?: readonly PlanningMechanismReference[];
 }
 
 const VOLUME_JSON = "volume_outline.json";
@@ -571,6 +577,8 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
     const targetChapters = positiveInt(input.targetChapters, await readTargetChapters(bookRoot));
     const volumeCount = positiveInt(input.volumeCount, 3);
     let suggestion = buildRuleVolumeSuggestion({ targetChapters, volumeCount, latestChapter });
+    const queryText = existing?.volumes.map((v) => `${v.title} ${v.goal}`).join(" ") ?? "";
+    const planningMechanisms = await recallMechanismCardsForPlanning(bookRoot, queryText, 4).catch(() => []);
 
     if (input.generateText) {
       try {
@@ -588,6 +596,9 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
                 `期望卷数：${volumeCount}`,
                 latestChapter ? `已写到第 ${latestChapter} 章` : "尚无正文",
                 existing ? `已有卷纲：${JSON.stringify(existing.volumes)}` : "无既有卷纲",
+                ...(planningMechanisms.length > 0
+                  ? [`可迁移中观机制参考（仅借冲突/兑现骨架，禁止照搬外书设定）：${JSON.stringify(planningMechanisms.map((m) => ({ name: m.name, triggerAndPayoff: m.triggerAndPayoff })))}`]
+                  : []),
                 `规则草案（可修正）：${JSON.stringify(suggestion)}`,
               ].join("\n"),
             },
@@ -609,6 +620,7 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
       outline: existing,
       currentVolume: existing ? pickCurrentVolume(existing.volumes, latestChapter) : null,
       suggestion,
+      ...(planningMechanisms.length > 0 ? { planningMechanisms } : {}),
       writtenFiles: [],
       summary: `已生成 ${suggestion.length} 卷草案（未落盘）；确认后用 action=set 提交 volumes。`,
     };
