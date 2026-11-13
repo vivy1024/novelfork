@@ -39,6 +39,7 @@ const job = {
 
 function seedPreviewRequest(request: ReturnType<typeof vi.fn>, result = job) {
   request.mockImplementation(async (path: string) => {
+    if (path.endsWith("/files")) return { files: [] };
     if (path.endsWith("/preview")) return preview;
     if (path.endsWith("/jobs")) return result;
     throw new Error(`unexpected request: ${path}`);
@@ -61,11 +62,15 @@ async function openReview(request: ReturnType<typeof vi.fn>) {
 }
 
 describe("StyleDistillationWorkspace", () => {
-  it("空输入阻止预览请求并解释缺少的字段", () => {
-    const request = vi.fn<StyleDistillationFetchJson>();
+  it("空输入阻止预览请求并解释缺少的字段（/files 404 时平滑隐藏下拉回退手贴模式）", () => {
+    const request = vi.fn<StyleDistillationFetchJson>(async (path: string) => {
+      if (path.endsWith("/files")) throw Object.assign(new Error("not found"), { status: 404 });
+      throw new Error(`unexpected request: ${path}`);
+    });
     render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    expect(screen.queryByTestId("distill-file-index-picker")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "预览处理范围" }));
-    expect(request).not.toHaveBeenCalled();
+    expect(request.mock.calls.filter(([path]) => String(path).includes("/preview"))).toHaveLength(0);
     expect(screen.getByRole("alert").textContent).toContain("来源名称");
   });
 
@@ -80,7 +85,8 @@ describe("StyleDistillationWorkspace", () => {
     expect(screen.getByText("2,400 字")).toBeTruthy();
     expect(screen.getByText("第三章 雨夜")).toBeTruthy();
     expect(screen.getByText("第 4 章只有片段正文。")).toBeTruthy();
-    expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toEqual({
+    const previewCall = request.mock.calls.find(([path]) => String(path).endsWith("/preview"));
+    expect(JSON.parse(String(previewCall?.[1]?.body))).toEqual({
       sourceName: "参考作品 A",
       text: "第三章 雨夜。她停在门前。",
       splitPattern: "^第(\\d+)章",
@@ -459,5 +465,244 @@ describe("StyleDistillationWorkspace", () => {
     expect(screen.getByDisplayValue("参考作品 A")).toBeTruthy();
     expect(screen.getByDisplayValue("^第(\\d+)章")).toBeTruthy();
     expect(screen.getByDisplayValue("第三章 雨夜。她停在门前。")).toBeTruthy();
+  });
+
+  it("本地大文件机械索引：扫描大文件、特征筛选、一键勾选推荐代表章提交蒸馏，并自动预选 300~500 字代表性锚点", async () => {
+    const longAnchorText = "“这笔仙贷年化三成六，还要拿筑基丹做抵押？”他把玉简往案上一扣，指节敲着上面密密麻麻的违约细则，连眼皮都没抬，“贵宗算盘珠子都崩我脸上了。”对面执事笑眯眯地把茶盏推过去，茶汤纹丝不动：“不借也行，明日外门大比，你拿肉掌去接王师兄的飞剑？”室内一时只剩算盘轻响，窗外冷雨顺着檐角砸在青石板上。".repeat(2);
+    const indexPayload = {
+      sourceName: "没钱修什么仙",
+      filePath: "refs/没钱11.6.txt",
+      encoding: "gb18030",
+      byteLength: 5_242_880,
+      totalChars: 1_820_000,
+      chapterCount: 610,
+      recommendedChapters: {
+        chapterNumbers: [1, 12],
+        rationale: {
+          "1": "开篇穷困算账与冷幽默立人设",
+          "12": "仙贷合同漏洞与高密度互损对白",
+        },
+      },
+      chapters: [
+        {
+          number: 1,
+          title: "第一章 穷鬼的账本",
+          charCount: 3200,
+          dialogueRatio: 0.42,
+          dominantFeatures: ["bill_inventory", "dialogue_banter"],
+        },
+        {
+          number: 8,
+          title: "第八章 外门日常",
+          charCount: 2900,
+          dialogueRatio: 0.18,
+          dominantFeatures: ["narrative"],
+        },
+        {
+          number: 12,
+          title: "第十二章 灵石贷契约",
+          charCount: 3600,
+          dialogueRatio: 0.65,
+          dominantFeatures: ["institution_rule", "dialogue_banter"],
+        },
+      ],
+    };
+
+    const fileDistillJob = {
+      id: "job-file-1",
+      status: "completed",
+      expectedRevision: "rev-file-1",
+      result: {
+        sourceName: "没钱修什么仙",
+        rules: [
+          {
+            id: "r-bill",
+            category: "dialogue",
+            text: "借贷与交易冲突直接报出精确利息与违约代价，用账目制造压迫感",
+            evidence: "这笔仙贷年化三成六",
+            transfer: "transferable",
+            status: "needs-review",
+            confidence: "high",
+          },
+        ],
+        samples: [
+          {
+            id: "anchor-300",
+            sceneType: "dialogue",
+            text: longAnchorText,
+            evidence: "第十二章对白锚点",
+            transfer: "transferable",
+            status: "needs-review",
+          },
+        ],
+        fingerprint: { avgSentenceLength: 16.4, dialogueRatio: 0.54 },
+      },
+    };
+
+    const request = vi.fn<StyleDistillationFetchJson>(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/style-distillations/files")) {
+        return { files: [{ path: "refs/没钱11.6.txt", sizeBytes: 5_242_880 }] };
+      }
+      if (path.endsWith("/style-distillations/index") && init?.method === "POST") {
+        return indexPayload;
+      }
+      if (path.endsWith("/style-distillations") && init?.method === "POST") {
+        return fileDistillJob;
+      }
+      if (path.endsWith("/compare")) return { sources: [] };
+      throw new Error(`unexpected request: ${path}`);
+    });
+
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+
+    // 自动切换至本地大文件采样模式并填入去后缀书名
+    await screen.findByTestId("distill-file-index-picker");
+    expect((screen.getByLabelText("来源名称") as HTMLInputElement).value).toBe("没钱11.6");
+
+    // 生成机械索引
+    fireEvent.click(screen.getByRole("button", { name: "生成章节机械索引（0 Token）" }));
+    await screen.findByText("第一章 穷鬼的账本");
+    expect(screen.getByText("610 章")).toBeTruthy();
+    expect(screen.getByText("1,820,000 字")).toBeTruthy();
+    expect(screen.getByText("gb18030")).toBeTruthy();
+
+    // 特征筛选：点选「制度合同」只剩第 12 章，再切回「全部」
+    fireEvent.click(screen.getByRole("button", { name: /制度合同/ }));
+    expect(screen.queryByText("第一章 穷鬼的账本")).toBeNull();
+    expect(screen.getByText("第十二章 灵石贷契约")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^全部/ }));
+
+    // 一键勾选推荐代表章并启动蒸馏
+    fireEvent.click(screen.getByRole("button", { name: /一键勾选推荐代表章/ }));
+    expect(screen.getByText("已选 2 章")).toBeTruthy();
+    expect(screen.getByText("送入约 6,800 字")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "抽文风 DNA" }));
+    await screen.findByText("审阅来源：没钱修什么仙");
+
+    const startCall = request.mock.calls.find(([path, init]) => path.endsWith("/style-distillations") && init?.method === "POST");
+    expect(JSON.parse(String(startCall?.[1]?.body))).toEqual({
+      sourceName: "没钱11.6",
+      filePath: "refs/没钱11.6.txt",
+      chapterList: [1, 12],
+    });
+
+    // 验证 300~500 字代表性可迁移原文锚点已被默认自动预选为已确认
+    expect(screen.getByText(/已默认预选 1 段代表性可迁移原文锚点/)).toBeTruthy();
+    expect(screen.getByText("已确认：0 条规则，1 条范文")).toBeTruthy();
+  });
+
+  it("采纳时支持选定 primary_voice 或 register_overlay 并携带触发场景词与原著禁抄词", async () => {
+    const request = vi.fn<StyleDistillationFetchJson>(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/files")) return { files: [] };
+      if (path.endsWith("/preview")) return preview;
+      if (path.endsWith("/jobs") && init?.method === "POST") return job;
+      if (path.endsWith("/compare")) return { sources: [] };
+      if (path.endsWith("/adopt")) return { revision: "rev-overlay-1" };
+      throw new Error(`unexpected request: ${path}`);
+    });
+
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    await openReview(request);
+
+    // 选为局部语域插件但未填触发词时阻止提交并说明
+    fireEvent.click(screen.getByLabelText("设为局部语域插件（仅在指定场景触发，不与主文风打架）"));
+    fireEvent.click(screen.getByRole("button", { name: "采纳到本书文风预设" }));
+    expect(screen.getByRole("alert").textContent).toContain("至少填写 1 个触发场景词");
+
+    // 点选快捷场景词并补充触发词与原著禁抄词
+    fireEvent.click(screen.getByRole("button", { name: "+ 道藏古籍" }));
+    fireEvent.change(screen.getByLabelText("触发场景词"), { target: { value: "道藏古籍，仙基推演" } });
+    fireEvent.change(screen.getByLabelText("原著专名防抄袭黑名单"), { target: { value: "太上道祖，玉京山" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "确认：让动作承载情绪" }));
+    fireEvent.click(screen.getByRole("button", { name: "采纳到本书文风预设" }));
+
+    await screen.findByText(/已挂载为局部语域插件：道藏古籍、仙基推演/);
+    const adoptCall = request.mock.calls.find(([path]) => path.endsWith("/adopt"));
+    expect(JSON.parse(String(adoptCall?.[1]?.body))).toEqual({
+      expectedRevision: "revision-1",
+      confirmedRuleIds: ["rule-transfer", "rule-source"],
+      confirmedSampleIds: ["sample-1"],
+      role: "register_overlay",
+      triggerTags: ["道藏古籍", "仙基推演"],
+      forbiddenSourceTerms: ["太上道祖", "玉京山"],
+    });
+  });
+
+  it("可迁移机制卡库：从本地大文件选章抽取机制卡、按标签筛选、展开替换槽位并一键确认入库", async () => {
+    const cardsFixture = [
+      {
+        id: "mc-1",
+        name: "高利贷合同反套利闭环",
+        sourceTitle: "没钱修什么仙",
+        sourceChapterRange: "第 12–16 章",
+        readerDesire: "看底层主角在严苛盘剥规则内部合法反杀既得利益者",
+        emotionChain: "窒息算账 → 发现免责条款盲区 → 反向做局兑现暴利",
+        triggerAndPayoff: "强权方逼签苛刻契约 → 主角利用违约赔偿优先级反锁抵押品 → 当众合法清算",
+        abstractSlots: [
+          { slot: "[债权方]", roleDescription: "掌握垄断资源的机构或高阶执事" },
+          { slot: "[规则盲区]", roleDescription: "契约条文中对极端履约时限的单向免责定义" },
+        ],
+        forbiddenSourceTerms: ["嵩阳仙贷", "张羽"],
+        tags: ["制度博弈", "算账反杀"],
+        status: "needs-review",
+      },
+    ];
+
+    const request = vi.fn<StyleDistillationFetchJson>(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/style-distillations/files")) {
+        return { files: [{ path: "refs/没钱11.6.txt", sizeBytes: 2_048_000 }] };
+      }
+      if (path.endsWith("/style-distillations/index")) {
+        return {
+          sourceName: "没钱修什么仙",
+          filePath: "refs/没钱11.6.txt",
+          encoding: "utf-8",
+          byteLength: 2_048_000,
+          totalChars: 680_000,
+          chapterCount: 200,
+          recommendedChapters: { chapterNumbers: [12, 13], rationale: {} },
+          chapters: [
+            { number: 12, title: "第十二章 仙贷", charCount: 3100, dialogueRatio: 0.5, dominantFeatures: ["institution_rule"] },
+            { number: 13, title: "第十三章 清算", charCount: 3300, dialogueRatio: 0.48, dominantFeatures: ["bill_inventory"] },
+          ],
+        };
+      }
+      if (path.endsWith("/mechanism-cards/extract") && init?.method === "POST") {
+        return { cards: cardsFixture };
+      }
+      if (path.endsWith("/mechanism-cards") && (!init?.method || init.method === "GET")) {
+        return { cards: cardsFixture };
+      }
+      if (path.endsWith("/mechanism-cards/mc-1") && init?.method === "PATCH") {
+        return { card: { ...cardsFixture[0]!, status: "confirmed" } };
+      }
+      throw new Error(`unexpected request: ${path}`);
+    });
+
+    render(<StyleDistillationWorkspace bookId="book-1" fetchJson={request} />);
+    await screen.findByTestId("distill-file-index-picker");
+
+    fireEvent.click(screen.getByRole("button", { name: "生成章节机械索引（0 Token）" }));
+    await screen.findByText("第十二章 仙贷");
+    fireEvent.click(screen.getByRole("button", { name: /一键勾选推荐代表章/ }));
+    fireEvent.click(screen.getByRole("button", { name: "抽剧情机制卡" }));
+
+    // 自动切换至模块 ③ 可迁移机制卡库并展示卡片结构
+    await screen.findByText("高利贷合同反套利闭环");
+    expect(screen.getAllByText(/仅在排卷纲与细纲时/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/窒息算账 → 发现免责条款盲区/)).toBeTruthy();
+
+    // 展开底部折叠查看抽象替换槽位与禁抄原著专名
+    fireEvent.click(screen.getByRole("button", { name: /抽象替换槽位（2）与禁抄原著专名（2）/ }));
+    expect(screen.getByText("[债权方]")).toBeTruthy();
+    expect(screen.getByText("嵩阳仙贷")).toBeTruthy();
+
+    // 一键确认入库
+    fireEvent.click(screen.getByRole("button", { name: "确认入库：高利贷合同反套利闭环" }));
+    await screen.findByText("已确认入库");
+    const patchCall = request.mock.calls.find(([path, init]) => path.endsWith("/mechanism-cards/mc-1") && init?.method === "PATCH");
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({ status: "confirmed" });
   });
 });

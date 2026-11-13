@@ -294,4 +294,118 @@ describe("本书文风预设编辑", () => {
     expect(screen.getAllByTestId("custom-constraint-item")).toHaveLength(30);
     expect(screen.getByText(/载入的硬约束超出上限/)).toBeTruthy();
   });
+
+  it("工作台双轨架构：展示唯一主文风与局部语域插件，编辑触发词优先 PATCH 并在 404 时回退 PUT 保存", async () => {
+    request.mockReset();
+    const dualPreset = {
+      ...fixture(),
+      sources: [
+        {
+          ...fixture().sources[0]!,
+          id: "src-main",
+          title: "没钱修什么仙",
+          role: "primary_voice" as const,
+          forbiddenSourceTerms: ["张羽"],
+        },
+        {
+          ...fixture().sources[0]!,
+          id: "src-overlay",
+          title: "太上章",
+          role: "register_overlay" as const,
+          triggerTags: ["道藏古籍"],
+          forbiddenSourceTerms: ["太上道祖"],
+        },
+      ],
+    };
+    request.mockImplementation(async (path, init) => {
+      if (!init?.method || init.method === "GET") {
+        return response(dualPreset as unknown as StylePreset, "r1");
+      }
+      if (init.method === "PATCH" && String(path).endsWith("/style-preset/sources/src-overlay")) {
+        const body = JSON.parse(String(init.body)) as { triggerTags?: string[] };
+        const updated = {
+          ...dualPreset,
+          sources: dualPreset.sources.map((s) => (s.id === "src-overlay" ? { ...s, ...body } : s)),
+        };
+        return response(updated as unknown as StylePreset, "r2");
+      }
+      throw new ApiRequestError("not found", { status: 404 });
+    });
+
+    render(<StylePresetEditor bookId="book-a" variant="workspace" />);
+    const primaryCard = await screen.findByTestId("primary-voice-card");
+    const overlayCard = screen.getByTestId("register-overlays-card");
+    expect(primaryCard.textContent).toContain("没钱修什么仙");
+    expect(overlayCard.textContent).toContain("太上章");
+    expect(overlayCard.textContent).toContain("道藏古籍");
+
+    const tagInput = screen.getByLabelText("为「太上章」新增触发词");
+    fireEvent.change(tagInput, { target: { value: "仙基推演" } });
+    fireEvent.keyDown(tagInput, { key: "Enter" });
+
+    await screen.findByText("来源角色与语域护栏已更新。");
+    const patchCall = request.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(patchCall?.[0]).toBe("/api/books/book-a/style-preset/sources/src-overlay");
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+      role: "register_overlay",
+      triggerTags: ["道藏古籍", "仙基推演"],
+      forbiddenSourceTerms: ["太上道祖"],
+    });
+  });
+
+  it("一键聚类瘦身与 L5 负反馈热修正：支持服务端直通接口及 404 回退保存", async () => {
+    request.mockReset();
+    const basePreset = { ...fixture(), customConstraints: ["既有约束"] };
+    const consolidatedPreset = {
+      ...basePreset,
+      consolidatedRules: [
+        {
+          id: "cr-1",
+          category: "dialogue",
+          rule: "人物互损对白用短促反问接账本数字，不写总结性心理描写",
+          doExample: "“三百灵石？你怎么不去抢？”他把欠条拍在桌上。",
+          dontExample: "他心中感到十分愤怒，觉得对方要价太高了。",
+          sourceIds: ["source-1"],
+        },
+      ],
+    };
+
+    request.mockImplementation(async (path, init) => {
+      if (!init?.method || init.method === "GET") {
+        return response(basePreset as unknown as StylePreset, "r1");
+      }
+      if (init.method === "POST" && String(path).endsWith("/style-preset/consolidate")) {
+        return response(consolidatedPreset as unknown as StylePreset, "r2");
+      }
+      if (init.method === "POST" && String(path).includes("/negative-override")) {
+        throw new ApiRequestError("not found", { status: 404 });
+      }
+      if (init.method === "PUT" && String(path).endsWith("/style/preset")) {
+        return response(JSON.parse(String(init.body)).preset as StylePreset, "r3");
+      }
+      throw new Error(`unexpected request: ${path}`);
+    });
+
+    render(<StylePresetEditor bookId="book-a" variant="workspace" />);
+    await screen.findByTestId("negative-override-bar");
+
+    // 1. 一键聚类瘦身展示 DO / DON'T 对照卡
+    fireEvent.click(screen.getByRole("button", { name: "一键聚类瘦身" }));
+    const ruleCard = await screen.findByTestId("consolidated-rule-card");
+    expect(ruleCard.textContent).toContain("人物互损对白用短促反问接账本数字");
+    expect(ruleCard.textContent).toContain("正例示范（DO）");
+    expect(ruleCard.textContent).toContain("反例警示（DON'T）");
+
+    // 2. L5 负反馈热修正在 404 时自动置顶进 customConstraints 并通过 PUT 保存
+    const negInput = screen.getByLabelText("负反馈热修正");
+    fireEvent.change(negInput, { target: { value: "别出现英文缩写 SQUID/PLL" } });
+    fireEvent.keyDown(negInput, { key: "Enter" });
+
+    await screen.findByText(/负反馈铁律已置顶写入硬约束并保存生效/);
+    const putBody = savedBody();
+    expect((putBody.preset as unknown as { customConstraints: string[] }).customConstraints).toEqual([
+      "别出现英文缩写 SQUID/PLL",
+      "既有约束",
+    ]);
+  });
 });

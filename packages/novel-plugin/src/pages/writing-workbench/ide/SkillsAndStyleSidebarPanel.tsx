@@ -289,21 +289,21 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
           <button
             type="button"
             onClick={() => setActiveTab("skills")}
-            className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors ${
               activeTab === "skills" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Feather className="size-3" strokeWidth={1.65} />
+            <Feather className="size-3 shrink-0" strokeWidth={1.65} />
             写作技能
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("style")}
-            className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-xs font-medium transition-colors ${
               activeTab === "style" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Palette className="size-3" />
+            <Palette className="size-3 shrink-0" />
             文风
           </button>
         </div>
