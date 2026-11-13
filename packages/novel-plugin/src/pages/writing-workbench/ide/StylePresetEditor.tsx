@@ -46,7 +46,7 @@ export interface ConsolidatedStyleRule {
   readonly rule: string;
   readonly doExample?: string;
   readonly dontExample?: string;
-  readonly sourceIds: readonly string[];
+  readonly sourceIds: string[];
 }
 
 export interface RegisterGuardrailConfig {
@@ -56,7 +56,7 @@ export interface RegisterGuardrailConfig {
 }
 
 /** 服务端启用硬约束与 v2 扩展字段后的预设类型（全部可选、向下兼容 v1）。 */
-export type StylePresetWithCustomConstraints = Omit<StylePreset, "sources"> & {
+export type StylePresetWithCustomConstraints = Omit<StylePreset, "sources" | "customConstraints" | "consolidatedRules" | "registerGuardrail"> & {
   sources: ExtendedStyleSource[];
   customConstraints?: unknown;
   consolidatedRules?: ConsolidatedStyleRule[];
