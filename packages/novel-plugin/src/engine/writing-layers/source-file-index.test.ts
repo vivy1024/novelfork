@@ -89,7 +89,7 @@ describe("source-file-index 安全沙箱与编码读取", () => {
     await writeFile(join(root, "ignore.json"), "{}", "utf8");
 
     const listed = await listWorkspaceReferenceFiles(root);
-    expect(listed.map((item) => item.filePath)).toEqual(["refs/设定B.md", "参考A.txt"]);
+    expect(listed.map((item) => item.filePath)).toEqual(["参考A.txt", "refs/设定B.md"]);
   });
 
   it("自动识别 UTF-8 BOM 与 GB18030/GBK 并统一换行为 LF", async () => {
