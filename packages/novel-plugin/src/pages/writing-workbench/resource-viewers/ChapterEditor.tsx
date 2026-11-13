@@ -9,7 +9,7 @@ import {
   resolveLengthCountingMode,
   type LengthLanguage,
 } from "@vivy1024/novelfork-core/utils/length-metrics";
-import { Loader2 } from "lucide-react";
+import { Loader2, Star } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { SearchExtension, scrollToCurrentMatch } from "../ide/SearchExtension";
 import { ENTITY_MENTION_REFRESH, EntityMentionExtension, type MentionEntity } from "../ide/EntityMentionExtension";
@@ -459,6 +459,15 @@ function cleanWhitespace(str: string): string {
   return (str || "").replace(/\r\n/g, "\n").trim();
 }
 
+export function normalizePaperText(text: string): string {
+  return text.replace(/^[\t \u3000]+/gm, "").replace(/\.{3,}|…+/g, "……").replace(/--+|—+/g, "——").replace(/"([^"\n]+)"/g, "“$1”").replace(/'([^'\n]+)'/g, "‘$1’").replace(/\n[\t \u3000]*\n(?:[\t \u3000]*\n)+/g, "\n\n");
+}
+function paperStorageGet(key: string, fallback: number): number {
+  try { const value = localStorage.getItem(key); const number = value === null ? fallback : Number(value); return Number.isFinite(number) && number >= 0 ? number : fallback; } catch { return fallback; }
+}
+function paperStorageSet(key: string, value: number) { try { localStorage.setItem(key, String(value)); } catch { /* 浏览器禁止持久化时仍可写作。 */ } }
+export function localWritingDate(date = new Date()): string { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
+
 function countWords(text: string, language: LengthLanguage): number {
   return countChapterLength(text, resolveLengthCountingMode(language));
 }
@@ -476,6 +485,8 @@ interface ChapterEditorProps {
   ariaLabel?: string;
   /** Minimap 功能开关（默认开启） */
   showMinimap?: boolean;
+  /** 报告等复用编辑器的文档不显示码字工具。 */
+  showPaperBar?: boolean;
   /** 书籍 ID，用于选中浮出工具栏调用本地规则与叙述者。 */
   bookId?: string;
   /** 当前章号，写进交给叙述者的选段指令。 */
@@ -505,6 +516,7 @@ export function ChapterEditor({
   placeholder,
   ariaLabel = "章节正文",
   showMinimap = true,
+  showPaperBar = true,
   bookId,
   chapterNumber,
   onSendToNarrator,
@@ -516,6 +528,18 @@ export function ChapterEditor({
   onOpenEntity,
 }: ChapterEditorProps) {
   const [wordCount, setWordCount] = useState(0);
+  const [paperLines, setPaperLines] = useState(() => paperStorageGet("novelfork:paper-lines", 0) === 1);
+  const [reading, setReading] = useState(false);
+  const [liveText, setLiveText] = useState(content);
+  const [writingDay, setWritingDay] = useState(localWritingDate);
+  const goalKey = `novelfork:writing-goal:${bookId ?? "local"}`;
+  const [dailyGoal, setDailyGoal] = useState(() => paperStorageGet(goalKey, 8000));
+  const [todayWritten, setTodayWritten] = useState(() => paperStorageGet(`novelfork:writing-count:${bookId ?? "local"}:${localWritingDate()}`, 0));
+  const bookIdRef = useRef(bookId); bookIdRef.current = bookId;
+  const previousLength = useRef(countWords(content, language));
+  useEffect(() => { setDailyGoal(paperStorageGet(goalKey, 8000)); }, [goalKey]);
+  useEffect(() => { setTodayWritten(paperStorageGet(`novelfork:writing-count:${bookId ?? "local"}:${writingDay}`, 0)); }, [bookId, writingDay]);
+  useEffect(() => { const timer = window.setInterval(() => setWritingDay(localWritingDate()), 30_000); return () => window.clearInterval(timer); }, []);
   const [searchMode, setSearchMode] = useState<"search" | "replace" | null>(null);
   const isExternalUpdate = useRef(false);
   const languageRef = useRef(language);
@@ -550,20 +574,25 @@ export function ChapterEditor({
       }),
     ],
     content: content || "",
-    editable: !readonly,
+    editable: !readonly && !reading,
     editorProps: {
       attributes: {
         "aria-label": ariaLabel,
       },
     },
-    onUpdate: ({ editor: ed }) => {
+    onUpdate: ({ editor: ed, transaction }) => {
       if (isExternalUpdate.current) return;
 
       // Update word count and surface content changes immediately so the
       // containing canvas can mark the resource dirty without waiting for an
       // autosave debounce.
       const markdown = ed.storage.markdown.getMarkdown() as string;
-      setWordCount(countWords(markdown, languageRef.current));
+      const length = countWords(markdown, languageRef.current);
+      setWordCount(length); setLiveText(ed.getText());
+      const day = localWritingDate();
+      const key = `novelfork:writing-count:${bookIdRef.current ?? "local"}:${day}`;
+      const total = paperStorageGet(key, 0) + (transaction.getMeta("paper-format") ? 0 : Math.max(0, length - previousLength.current));
+      paperStorageSet(key, total); setTodayWritten(total); setWritingDay(day); previousLength.current = length;
       onContentChange?.(markdown);
     },
   });
@@ -579,9 +608,9 @@ export function ChapterEditor({
   useEffect(() => {
     if (editor) {
       // 切换编辑权限不是正文输入，不能触发 onUpdate 把 Markdown 规范化结果自动写回。
-      editor.setEditable(!readonly, false);
+      editor.setEditable(!readonly && !reading, false);
     }
-  }, [editor, readonly]);
+  }, [editor, readonly, reading]);
 
   // Sync external content changes
   useEffect(() => {
@@ -596,6 +625,7 @@ export function ChapterEditor({
       editor.commands.setContent(content || "");
       isExternalUpdate.current = false;
       setWordCount(countWords(content, language));
+      previousLength.current = countWords(content, language); setLiveText(editor.getText());
     }
   }, [editor, content, language]);
 
@@ -603,6 +633,7 @@ export function ChapterEditor({
   useEffect(() => {
     if (editor) {
       setWordCount(countWords(content, language));
+      previousLength.current = countWords(content, language); setLiveText(editor.getText());
     }
   }, [editor, content, language]);
 
@@ -651,10 +682,52 @@ export function ChapterEditor({
 
   if (!editor) return null;
 
+  const formatChapter = () => {
+    // 单个 transaction，保留段落、节点与 mark，Ctrl+Z 一步撤销。
+    const changes: { from: number; to: number; text: string }[] = [];
+    let previousBlank = false;
+    editor.state.doc.descendants((node, pos, parent, index) => {
+      if (node.type.name === "paragraph" && node.content.size === 0) {
+        if (previousBlank) changes.push({ from: pos, to: pos + node.nodeSize, text: "" });
+        previousBlank = true; return false;
+      }
+      if (node.isTextblock) previousBlank = false;
+      if (!node.isText || parent?.type.name === "codeBlock") return;
+      let next = normalizePaperText(node.text ?? "");
+      if (index !== 0) next = (node.text ?? "").replace(/\.{3,}|…+/g, "……").replace(/--+|—+/g, "——").replace(/"([^"\n]+)"/g, "“$1”");
+      if (next !== node.text) changes.push({ from: pos, to: pos + node.nodeSize, text: next });
+    });
+    const tr = editor.state.tr.setMeta("paper-format", true);
+    for (const change of changes.sort((a, b) => b.from - a.from)) {
+      if (change.text) tr.insertText(change.text, change.from, change.to); else tr.delete(change.from, change.to);
+    }
+    if (tr.docChanged) editor.view.dispatch(tr);
+  };
+  const mentioned = (mentionEntities ?? []).filter((entity) => [entity.name, ...(entity.aliases ?? [])].some((name) => name.length >= 2 && liveText.includes(name)));
+  const locateMention = (entity: MentionEntity) => {
+    let found = false;
+    editor.state.doc.descendants((node, pos) => {
+      if (found || !node.isTextblock) return false;
+      const hits = [entity.name, ...(entity.aliases ?? [])].map((name) => ({ name, index: node.textContent.indexOf(name) })).filter((hit) => hit.name.length >= 2 && hit.index >= 0).sort((a, b) => a.index - b.index);
+      const hit = hits[0]; if (hit) { found = true; editor.chain().focus().setTextSelection({ from: pos + 1 + hit.index, to: pos + 1 + hit.index + hit.name.length }).scrollIntoView().run(); }
+      return false;
+    });
+    onOpenEntity?.(entity.name);
+  };
   return (
-    <div className="chapter-editor relative flex flex-col h-full min-h-0" onKeyDown={handleKeyDown}>
+    <div className="chapter-editor relative flex flex-col h-full min-h-0" data-paper-lines={paperLines && showPaperBar ? "true" : "false"} data-reading={reading} onKeyDown={handleKeyDown}>
+      <style>{`.chapter-editor[data-paper-lines="true"] .chapter-editor-wrapper { background-color: var(--nf-paper, var(--background)); background-image: none; }
+.chapter-editor[data-paper-lines="true"] .tiptap p { text-indent: 2em; line-height: 2rem; margin-block: 0; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(2rem - 1px), color-mix(in srgb, var(--border) 45%, transparent) calc(2rem - 1px), color-mix(in srgb, var(--border) 45%, transparent) 2rem); }
+.chapter-editor[data-reading="true"] .tiptap { caret-color: transparent; }`}</style>
+      {showPaperBar && <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-3 py-1.5 text-xs text-muted-foreground" role="toolbar" aria-label="码字工具条">
+        <BubbleButton disabled={readonly || reading} onClick={formatChapter}>一键排版</BubbleButton>
+        <BubbleButton disabled={readonly || reading} onClick={() => editor.chain().focus().setHorizontalRule().run()}>插入分隔线</BubbleButton>
+        <BubbleButton onClick={() => setSearchMode("replace")}>查找替换</BubbleButton>
+        <button type="button" aria-pressed={paperLines} className="rounded px-2 py-1 hover:bg-muted aria-pressed:bg-primary/10 aria-pressed:text-primary" onClick={() => { setPaperLines(!paperLines); paperStorageSet("novelfork:paper-lines", paperLines ? 0 : 1); }}>稿纸横线</button>
+        <button type="button" aria-pressed={reading} className="ml-auto rounded px-2 py-1 hover:bg-muted aria-pressed:text-primary" onClick={() => setReading(!reading)}>{reading ? "返回码字" : "阅读本章"}</button>
+      </div>}
       {/* AI BubbleMenu — 选中文本后出现 */}
-      {!readonly && bookId && editor && (
+      {!readonly && !reading && bookId && editor && (
         <AIBubbleMenu
           editor={editor}
           bookId={bookId}
@@ -691,10 +764,16 @@ export function ChapterEditor({
         <SearchBar editor={editor} mode={searchMode} onClose={handleCloseSearch} />
       )}
 
-      {/* Footer: word count */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border text-2xs text-muted-foreground">
-        <span>{wordCount} {language === "en" ? "words" : "字"}</span>
-      </div>
+      {showPaperBar && <footer className="shrink-0 border-t border-border text-2xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-3 px-4 py-2">
+          <span>{wordCount} {language === "en" ? "words" : "字"}</span><span aria-hidden="true">·</span>
+          <label className="flex items-center gap-1">今日目标 <input aria-label="今日目标字数" type="number" min={1} max={1000000} className="w-16 rounded border border-transparent bg-transparent px-1 text-foreground hover:border-border focus:border-primary focus:outline-none" value={dailyGoal} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value > 0 && value <= 1000000) { setDailyGoal(value); paperStorageSet(goalKey, value); } }} /></label>
+          <span>已码 {todayWritten}</span>{todayWritten >= dailyGoal ? <span className="text-primary">今日已达标</span> : <span>还剩 {dailyGoal - todayWritten}</span>}
+        </div>
+        <div className="flex items-center gap-2 overflow-x-auto border-t border-border/50 px-4 py-1.5" aria-label="本章提及">
+          <span className="shrink-0">本章提及</span>{mentioned.length ? mentioned.map((entity) => <button type="button" key={entity.name} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5 text-primary hover:bg-primary/10" onClick={() => locateMention(entity)}><Star className="size-2.5" strokeWidth={1.65} />{entity.entityType === "location" ? "地点" : entity.entityType === "faction" ? "势力" : "角色"} · {entity.name}</button>) : <span className="text-muted-foreground">暂无已登记的提及</span>}
+        </div>
+      </footer>}
     </div>
   );
 }

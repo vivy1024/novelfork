@@ -31,6 +31,7 @@ import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
 import { SkillsAndStyleSidebarPanel } from "./SkillsAndStyleSidebarPanel";
 import { StyleDistillationWorkspace, type StyleDistillationFetchJson } from "./StyleDistillationWorkspace";
 import { StyleVaultPanel } from "./StyleVaultPanel";
+import { DissectLibraryPanel } from "../DissectLibraryPanel";
 import { CharactersAndLoreSidebarPanel, type EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
 import { storylineTabForCategory, type SidebarFocusRequest, type StorylineSubTab } from "./sidebar-tabs-model";
@@ -394,6 +395,11 @@ export function IdeWorkbench({
   }, []);
   // 写作视图「一键修」跳设置时要落到具体分区（如 Writing Skills），不是只打开长表单。
   const [settingsSection, setSettingsSection] = useState<BookSettingsSection | undefined>(undefined);
+  const [dissectOpen, setDissectOpen] = useState(false);
+  const dissectOpenRef = useRef(dissectOpen); dissectOpenRef.current = dissectOpen;
+  const [dissectSidebarHost, setDissectSidebarHost] = useState<HTMLDivElement | null>(null);
+  const dissectDirtyRef = useRef<string | null>(null);
+  const handleDissectDirty = useCallback((title: string | null) => { dissectDirtyRef.current = title; }, []);
   const [splitNodeId, updateSplitNodeId] = useState<string | null>(null);
   const splitDraftRef = useRef({ dirty: false, title: "分屏正文" });
   const [entityDetailEntity, setEntityDetailEntity] = useState<string | null>(null);
@@ -433,7 +439,7 @@ export function IdeWorkbench({
   ideTabsRef.current = ideTabs;
 
   const guardLeave = useWorkbenchLeaveGuard(JSON.stringify([bookId, activeView]), confirmDialog);
-  const dirtyTabTitles = useCallback(() => ideTabsRef.current.tabs.filter(tab => tab.dirty).map(tab => tab.title), []);
+  const dirtyTabTitles = useCallback(() => [...ideTabsRef.current.tabs.filter(tab => tab.dirty).map(tab => tab.title), ...(dissectDirtyRef.current ? [dissectDirtyRef.current] : [])], []);
   useLayoutEffect(() => {
     if (!onBeforeLeaveChange) return;
     let registered = true;
@@ -452,7 +458,7 @@ export function IdeWorkbench({
     };
   }, [dirtyTabTitles, guardLeave, onBeforeLeaveChange]);
   const showPanel = useCallback((view: SidebarView) => {
-    void guardLeave(view === activeViewRef.current ? [] : dirtyTabTitles(), () => revealPanel(view));
+    void guardLeave(view === activeViewRef.current && !dissectOpenRef.current ? [] : dirtyTabTitles(), () => { setDissectOpen(false); revealPanel(view); });
   }, [dirtyTabTitles, guardLeave, revealPanel]);
   const setShowSettings = useCallback((value: boolean | ((current: boolean) => boolean)) => {
     const next = typeof value === "function" ? value(showSettings) : value;
@@ -1105,7 +1111,7 @@ export function IdeWorkbench({
   // ActivityBar click: VS Code 行为 — 同一个图标折叠，不同图标切换
   // ActivityBar click: 命令式切换面板
   const handleViewClick = useCallback((view: SidebarView) => {
-    if (activeView === view && sidebarVisible) {
+    if (activeView === view && sidebarVisible && !dissectOpenRef.current) {
       setSidebarVisible(false);
       return;
     }
@@ -1729,10 +1735,13 @@ export function IdeWorkbench({
               key={v.id}
               icon={v.icon}
               label={v.label}
-              active={activeView === v.id && sidebarVisible && !showSettings}
+              active={activeView === v.id && !dissectOpen && sidebarVisible && !showSettings}
               onClick={() => { setShowSettings(false); handleViewClick(v.id); }}
             />
           ))}
+          <ActivityBarItem icon={BookMarked} label="拆书库" active={dissectOpen && !showSettings} onClick={() => {
+            void guardLeave(dirtyTabTitles(), () => { setShowSettings(false); setDissectOpen(true); setSidebarVisible(true); });
+          }} />
         </div>
         <div className="flex flex-col items-center gap-0.5 pb-2">
           <ActivityBarItem
@@ -1768,7 +1777,7 @@ export function IdeWorkbench({
           <Allotment.Pane minSize={150} preferredSize={260} visible={!overlayPanes && sidebarVisible}>
             <div className="flex h-full flex-col border-r border-border bg-card">
               {/* Sidebar 标题：只给未接 SidebarPageHead 的面板兜底（资源、搜索）；接了页头的面板自带标题，不再叠加。 */}
-              {!SIDEBAR_VIEWS.find(v => v.id === activeView)?.hasPageHead && (
+              {!dissectOpen && !SIDEBAR_VIEWS.find(v => v.id === activeView)?.hasPageHead && (
                 <div className="flex h-[35px] shrink-0 items-center border-b border-border px-2" data-testid="sidebar-view-title">
                   <span className="text-2xs font-semibold text-foreground uppercase tracking-wide pl-3">
                       {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源"}
@@ -1776,7 +1785,8 @@ export function IdeWorkbench({
                 </div>
               )}
               {/* PanelManager 宿主:面板容器由 JS 创建,React 通过 portal 往里渲染 */}
-              <div ref={overlayPanes ? undefined : hostRef} className="flex-1 relative" />
+              <div ref={setDissectSidebarHost} className="min-h-0 flex-1" style={{ display: dissectOpen && !overlayPanes ? undefined : "none" }} />
+              <div ref={overlayPanes ? undefined : hostRef} className="flex-1 relative" style={{ display: dissectOpen ? "none" : undefined }} />
               {/* Portal 渲染各面板内容到 PanelManager 创建的 DOM 容器 */}
               {panelsReady && getContainer("write") && createPortal(
                 <WriteViewPanel
@@ -1887,7 +1897,7 @@ export function IdeWorkbench({
               {/* 主编辑区 */}
               <Allotment.Pane minSize={200}>
                 <div className="flex h-full flex-col overflow-hidden">
-                  {!showSettings && (
+                  {!showSettings && !dissectOpen && (
                     <EditorTabs
                       tabs={ideTabs.tabs}
                       activeTabId={ideTabs.activeTabId}
@@ -1904,7 +1914,7 @@ export function IdeWorkbench({
                       onSplitRight={(tabId) => setSplitNodeId(tabId)}
                     />
                   )}
-                  <EditorBreadcrumbs bookTitle={bookRoot?.title} node={activeNode} view={activeView} showSettings={showSettings} onNavigate={handleBreadcrumbNavigate} canNavigate={canNavigateBreadcrumb} />
+                  {dissectOpen && !showSettings ? <div className="border-b border-border px-3 py-1 text-2xs text-muted-foreground">{bookRoot?.title} › 拆书库</div> : <EditorBreadcrumbs bookTitle={bookRoot?.title} node={activeNode} view={activeView} showSettings={showSettings} onNavigate={handleBreadcrumbNavigate} canNavigate={canNavigateBreadcrumb} />}
                   <div className="flex-1 min-h-0">
                   <EditorErrorBoundary>
                     {showSettings && bookId ? (
@@ -1920,6 +1930,8 @@ export function IdeWorkbench({
                           {...(onOpenWorkflows ? { onOpenWorkflows } : {})}
                         />
                       </div>
+                    ) : dissectOpen && bookId ? (
+                      <DissectLibraryPanel key={bookId} bookId={bookId} sidebarHost={overlayPanes ? null : dissectSidebarHost} fetchJson={styleDistillationFetch} onSendToNarrator={onSendToNarrator} onDirtyChange={handleDissectDirty} />
                     ) : activeView === "skills-style" && bookId ? (
                       <div className="h-full space-y-5 overflow-y-auto p-5">
                         <StyleDistillationWorkspace

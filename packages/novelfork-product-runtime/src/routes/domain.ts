@@ -21,6 +21,7 @@ import {
 	createNarrativeLineRouter,
 	createNarrativeMemoryRouter,
 	createManuscriptImportRouter,
+	createDissectLibraryRouter,
 	createChapterTimelineRouter,
 	createPendingReviewRouter,
 	createOverviewRouter,
@@ -213,6 +214,10 @@ novelDomainRoutes.route(
 		}),
 	),
 );
+novelDomainRoutes.route("", asRuntimeRouter(createDissectLibraryRouter({
+	resolveBookRoot: resolveDomainBookRoot,
+	resolveTextGeneration: resolveProductTextGeneration,
+})));
 // 全书走势章节时间线（只读）：每章一行，含摘要/事件计数/出场人物与结算新鲜度。
 novelDomainRoutes.route(
 	"",

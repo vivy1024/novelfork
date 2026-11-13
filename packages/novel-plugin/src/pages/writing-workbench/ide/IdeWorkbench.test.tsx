@@ -325,7 +325,7 @@ describe("IdeWorkbench 宿主打开请求", () => {
     const workbench = await screen.findByTestId("ide-workbench");
     const rail = workbench.querySelector("[data-nf-surface='rail']") as HTMLElement;
     const labels = [...rail.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"));
-    expect(labels).toEqual(["写作", "资源", "搜索", "作品基础", "故事推进", "技能文风", "专注", "AI 对话", "写作设置"]);
+    expect(labels).toEqual(["写作", "资源", "搜索", "作品基础", "故事推进", "技能文风", "拆书库", "专注", "AI 对话", "写作设置"]);
     expect(screen.queryByRole("button", { name: "资源管理器" })).toBeNull();
     expect(screen.queryByRole("button", { name: "分析工具" })).toBeNull();
     // 初始就在「资源」视图
