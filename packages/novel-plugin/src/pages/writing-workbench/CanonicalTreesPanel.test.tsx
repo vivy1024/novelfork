@@ -115,38 +115,25 @@ describe("CanonicalTreesPanel 四张正图", () => {
     expect(screen.queryByLabelText("搜索正图")).toBeNull();
   });
 
-  it("章节图按卷纲分叉，占位章不假装已写", async () => {
+  it("已移除无用的「章节」页签，发展历程使用 ChronicleEditorialTimeline 书卷编年史而非思维导图树", async () => {
     render(<CanonicalTreesPanel bookId="book-1" />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
-    fireEvent.click(screen.getByTestId("canonical-tree-tab-chapters"));
-    expect(screen.getByText("西京篇")).toBeTruthy();
-    expect(screen.getByTestId("tidy-tree-row-chapter:1")).toBeTruthy();
-    expect(screen.getByTestId("tidy-tree-row-chapter:2")).toBeTruthy();
-  });
+    expect(screen.queryByTestId("canonical-tree-tab-chapters")).toBeNull();
+    expect(screen.getByTestId("canonical-tree-tab-chronicle").textContent).toBe("发展历程");
 
-  it("发展历程按章挂事件", async () => {
-    render(<CanonicalTreesPanel bookId="book-1" />);
-    await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
-    fireEvent.click(screen.getByTestId("canonical-tree-tab-timeline"));
-    expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("timeline");
-    expect(screen.getByTestId("tidy-tree-row-chapter:1")).toBeTruthy();
-    expect(screen.getByTestId("tidy-tree-row-event:e1")).toBeTruthy();
-  });
-
-  it("章节脉络分表世界和里世界两枝", async () => {
-    render(<CanonicalTreesPanel bookId="book-1" />);
-    await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
     fireEvent.click(screen.getByTestId("canonical-tree-tab-chronicle"));
-    expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("chronicle");
-    expect(screen.getByTestId("tidy-tree-row-chronicle:surface")).toBeTruthy();
-    expect(screen.getByTestId("tidy-tree-row-chronicle:inner")).toBeTruthy();
+    expect(screen.getByTestId("chronicle-editorial-timeline")).toBeTruthy();
+    expect(screen.queryByTestId("tidy-tree-canvas")).toBeNull();
+    expect(screen.getByTestId("chronicle-chapter-1").textContent).toContain("第 1 章");
+    expect(screen.getByTestId("chronicle-event-e1").textContent).toContain("接手 异常");
   });
 
-  it("独立入口可关掉切换条", async () => {
+  it("独立入口（initialKind=timeline 或 chronicle）关闭切换条并直接渲染编年史时间线", async () => {
     render(<CanonicalTreesPanel bookId="book-1" initialKind="timeline" showSwitcher={false} />);
     await waitFor(() => expect(screen.getByTestId("canonical-trees-panel")).toBeTruthy());
     expect(screen.queryByTestId("canonical-tree-tab-worldview")).toBeNull();
-    expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("timeline");
+    expect(screen.getByTestId("chronicle-editorial-timeline")).toBeTruthy();
+    expect(screen.queryByTestId("tidy-tree-canvas")).toBeNull();
   });
 
   it("总图挂世界观与章节两棵浅层，不再挂共现关系树", async () => {
@@ -206,8 +193,8 @@ describe("CanonicalTreesPanel 四张正图", () => {
     await waitFor(() => expect(screen.getByTestId("canonical-trees-degraded")).toBeTruthy());
   });
 
-  it("有叙事结构快照时，世界观、发展历程、章节脉络照样有数据；章节树用作者起的章名", async () => {
-    // 回归：此前快照路径只把卷传给建树，这三棵树永远是空的，章节树每章都是「尚无摘要」。
+  it("有叙事结构快照时，世界观与发展历程照样有数据，且编年史用作者起的章名", async () => {
+    // 回归：此前快照路径只把卷传给建树，世界观与发展历程拿不到条目和事件。
     fetchJson.mockImplementation(async (url: string) => {
       if (url.endsWith("/narrative-structure")) {
         return {
@@ -224,7 +211,7 @@ describe("CanonicalTreesPanel 四张正图", () => {
         };
       }
       if (url.includes("narrative-memory/graph")) {
-        return { facts: [], events: [{ id: "e1", chapterNumber: 1, subject: "薛行之", predicate: "接手", object: "异常", eventType: "character_state_changed" }] };
+        return { facts: [], events: [{ id: "e1", chapterNumber: 2, subject: "薛行之", predicate: "接手", object: "异常", eventType: "character_state_changed" }] };
       }
       return { entries };
     });
@@ -233,15 +220,10 @@ describe("CanonicalTreesPanel 四张正图", () => {
     expect(screen.getByTestId("tidy-tree-canvas").getAttribute("data-kind")).toBe("worldview");
     expect(screen.queryByText(/经纬里还没有条目/)).toBeNull();
 
-    fireEvent.click(screen.getByTestId("canonical-tree-tab-chapters"));
-    expect(screen.getByText("第 2 章 追查")).toBeTruthy();
-    expect(screen.getByTestId("tidy-tree-row-chapter:3")).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId("canonical-tree-tab-timeline"));
-    expect(screen.getByTestId("tidy-tree-row-event:e1")).toBeTruthy();
-
     fireEvent.click(screen.getByTestId("canonical-tree-tab-chronicle"));
-    expect(screen.getByTestId("tidy-tree-row-chronicle:surface")).toBeTruthy();
+    expect(screen.getByTestId("chronicle-editorial-timeline")).toBeTruthy();
+    expect(screen.getByTestId("chronicle-chapter-2").textContent).toContain("追查");
+    expect(screen.getByTestId("chronicle-event-e1").textContent).toContain("接手 异常");
   });
 
   it("kinds 属性支持按镜头精确筛选展示的子树集合", async () => {

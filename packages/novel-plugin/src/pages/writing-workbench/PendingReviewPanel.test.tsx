@@ -1,7 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PendingReviewPanel, type PendingReviewSummary } from "./PendingReviewPanel";
+import { PendingReviewPanel, PENDING_REVIEW_CATEGORIES, type PendingReviewSummary } from "./PendingReviewPanel";
+
+it("人物草稿与声线共用人物分类，不混进设定与冲突", () => {
+  expect(PENDING_REVIEW_CATEGORIES.find((category) => category.id === "voice")?.kinds).toContain("character");
+  expect(PENDING_REVIEW_CATEGORIES.find((category) => category.id === "lore-conflict")?.kinds).not.toContain("character");
+});
 
 afterEach(() => cleanup());
 
@@ -215,5 +220,45 @@ describe("待确认聚合面板", () => {
     render(<PendingReviewPanel bookId="book-1" fetchSummary={async () => data} />);
     await screen.findByText("文风预设损坏，已跳过文风规则与改稿统计。");
     expect(screen.getByText("待确认 1 项")).toBeTruthy();
+  });
+
+  it("支持顶部分类胶囊筛选、关键词搜索、按类别/按章节切换及抽屉一键折叠展开", async () => {
+    render(<PendingReviewPanel bookId="book-1" fetchSummary={async () => fullSummary()} onOpenEvents={vi.fn()} onOpenJingweiEntry={vi.fn()} />);
+    await screen.findByText("待确认 6 项");
+
+    // 顶部分类胶囊计数清晰
+    expect(screen.getByTestId("pending-category-all").textContent).toContain("6");
+    expect(screen.getByTestId("pending-category-facts-relations").textContent).toContain("2");
+    expect(screen.getByTestId("pending-category-voice").textContent).toContain("1");
+    expect(screen.getByTestId("pending-category-hooks-storyline").textContent).toContain("1");
+    expect(screen.getByTestId("pending-category-style-revision").textContent).toContain("2");
+
+    // 切到「章后事实与关系」只看事实和事件
+    fireEvent.click(screen.getByTestId("pending-category-facts-relations"));
+    expect(screen.getByText("事实：陆沉 · 学会 · 御剑")).toBeTruthy();
+    expect(screen.getByText("关系草案：陆沉 · 信任 · 苏晚晴")).toBeTruthy();
+    expect(screen.queryByText("短句收在动作前")).toBeNull();
+    // 语义按钮文案清晰：「核对事实」
+    expect(screen.getAllByText("核对事实")).toHaveLength(2);
+
+    // 切回全部 + 搜索关键词过滤
+    fireEvent.click(screen.getByTestId("pending-category-all"));
+    fireEvent.change(screen.getByLabelText("搜索待确认项"), { target: { value: "苏晚晴" } });
+    expect(screen.getByText("关系草案：陆沉 · 信任 · 苏晚晴")).toBeTruthy();
+    expect(screen.queryByText("断剑来历")).toBeNull();
+
+    // 清空搜索 + 切换到「按章节分组」
+    fireEvent.click(screen.getByLabelText("清空待确认搜索"));
+    fireEvent.click(screen.getByRole("button", { name: "按章节分组" }));
+    const ch3Toggle = screen.getByTestId("pending-section-toggle-chapter:3");
+    expect(ch3Toggle.textContent).toContain("第 3 章");
+    expect(screen.getByTestId("pending-section-toggle-chapter:12").textContent).toContain("第 12 章");
+
+    // 一键折叠第 3 章抽屉
+    fireEvent.click(ch3Toggle);
+    expect(ch3Toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("断剑来历")).toBeNull();
+    fireEvent.click(ch3Toggle);
+    expect(screen.getByText("断剑来历")).toBeTruthy();
   });
 });

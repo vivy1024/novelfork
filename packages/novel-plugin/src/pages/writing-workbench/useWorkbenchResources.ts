@@ -113,22 +113,29 @@ export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
 
 export type ToolPanelId = "quality" | "arcs" | "compliance" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension";
 
+/**
+ * 分析工具的语义图标名（界面规范只用单色细线 lucide 图标、不用 emoji 或统一小扳手）。
+ * 资源树节点只带可序列化的名字，名字到 lucide 组件的映射在 WorkbenchResourceTree。
+ */
+export type ToolIconName =
+  | "waypoints"
+  | "activity"
+  | "sliders-horizontal"
+  | "file-check-2"
+  | "stethoscope"
+  | "layers"
+  | "history";
+
 export interface ToolNodeDef {
   id: string;
   title: string;
   toolPanel: ToolPanelId;
+  icon: ToolIconName;
 }
-
-/**
- * 分析工具分组的图标名（界面规范只用 lucide 图标、不用 emoji）。
- * 资源树节点只带可序列化的名字，名字到 lucide 组件的映射在 WorkbenchResourceTree。
- */
-export type ToolGroupIcon = "target" | "scan-search" | "shield-check" | "settings";
 
 interface ToolGroupDef {
   id: string;
   title: string;
-  icon: ToolGroupIcon;
   tools: ToolNodeDef[];
 }
 
@@ -136,36 +143,32 @@ const TOOL_GROUPS: ToolGroupDef[] = [
   {
     id: "tool-group:pre-writing",
     title: "写前筹备",
-    icon: "target",
     tools: [
-      { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
-      { id: "tool:tension", title: "张力曲线", toolPanel: "tension" },
+      { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs", icon: "waypoints" },
+      { id: "tool:tension", title: "张力曲线", toolPanel: "tension", icon: "activity" },
     ],
   },
   {
     id: "tool-group:in-writing",
     title: "写中质检",
-    icon: "scan-search",
     tools: [
-      { id: "tool:quality", title: "质量中心", toolPanel: "quality" },
+      { id: "tool:quality", title: "质量中心", toolPanel: "quality", icon: "sliders-horizontal" },
     ],
   },
   {
     id: "tool-group:pre-publish",
     title: "发布前风控",
-    icon: "shield-check",
     tools: [
-      { id: "tool:compliance", title: "投稿风险自检", toolPanel: "compliance" },
-      { id: "tool:governance", title: "全书体检", toolPanel: "governance" },
+      { id: "tool:compliance", title: "投稿风险自检", toolPanel: "compliance", icon: "file-check-2" },
+      { id: "tool:governance", title: "全书体检", toolPanel: "governance", icon: "stethoscope" },
     ],
   },
   {
     id: "tool-group:runtime",
     title: "运行与协同",
-    icon: "settings",
     tools: [
-      { id: "tool:runtime", title: "故事状态总览", toolPanel: "runtime" },
-      { id: "tool:collaboration-version", title: "协作与版本", toolPanel: "collaboration-version" },
+      { id: "tool:runtime", title: "故事状态总览", toolPanel: "runtime", icon: "layers" },
+      { id: "tool:collaboration-version", title: "协作与版本", toolPanel: "collaboration-version", icon: "history" },
     ],
   },
 ];
@@ -179,13 +182,12 @@ export function createToolSectionNodes(): WorkbenchResourceNode {
     id: group.id,
     kind: "tool-group" as WorkbenchResourceKind,
     title: group.title,
-    metadata: { icon: group.icon },
     capabilities: groupCaps,
     children: group.tools.map((def) => ({
       id: def.id,
       kind: "tool" as WorkbenchResourceKind,
       title: def.title,
-      metadata: { toolPanel: def.toolPanel },
+      metadata: { toolPanel: def.toolPanel, icon: def.icon },
       capabilities: toolCaps,
     })),
   }));

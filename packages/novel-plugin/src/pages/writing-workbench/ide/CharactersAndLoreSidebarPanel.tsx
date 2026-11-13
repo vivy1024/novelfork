@@ -126,6 +126,7 @@ export function CharactersAndLoreSidebarPanel({
 }: CharactersAndLoreSidebarPanelProps) {
   const [activeTab, setActiveTab] = useState<MainTab>("characters");
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryFilter>("all");
+  const [onlyNeedsReview, setOnlyNeedsReview] = useState(false);
   const [castSortDirection, setCastSortDirection] = useState<"desc" | "asc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
   const [showImport, setShowImport] = useState(false);
@@ -275,13 +276,22 @@ export function CharactersAndLoreSidebarPanel({
     return titleMatch || contentMatch || summaryMatch;
   }, [searchQuery]);
 
-  // 搜索 + 设定分类过滤
+  const needsReviewCountInCurrentSource = useMemo(() => {
+    const source = activeTab === "characters" || activeTab === "cast"
+      ? charactersList
+      : worldList.filter((entry) => settingsCategory === "all" || entryCategory(entry) === settingsCategory);
+    return source.filter((entry) => entry.metadata?.status === "needs-review").length;
+  }, [activeTab, charactersList, worldList, settingsCategory]);
+
+  // 搜索 + 设定分类过滤 + 待确认筛选
   const filteredList = useMemo(() => {
     const source = activeTab === "characters" || activeTab === "cast"
       ? charactersList
       : worldList.filter((entry) => settingsCategory === "all" || entryCategory(entry) === settingsCategory);
-    return source.filter(matchesSearch);
-  }, [activeTab, charactersList, worldList, settingsCategory, matchesSearch]);
+    return source
+      .filter((entry) => (!onlyNeedsReview ? true : entry.metadata?.status === "needs-review"))
+      .filter(matchesSearch);
+  }, [activeTab, charactersList, worldList, settingsCategory, onlyNeedsReview, matchesSearch]);
 
   // 人物表：每个角色一行，数据与卡面同源（章后事实 + 实体索引），按最近出场排序。
   const castRows = useMemo(() => {
@@ -493,10 +503,10 @@ export function CharactersAndLoreSidebarPanel({
         />
       )}
 
-      {/* 搜索框 */}
+      {/* 搜索框 + 待确认条目快捷筛选 */}
       {activeTab !== "draft" && (
-      <div className="shrink-0 p-2 border-b border-border/60">
-        <div className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2 h-7">
+      <div className="shrink-0 p-2 border-b border-border/60 flex items-center gap-1.5">
+        <div className="flex flex-1 min-w-0 items-center gap-1.5 rounded-md border border-input bg-background px-2 h-7">
           <Search className="size-3 text-muted-foreground shrink-0" />
           <input
             type="text"
@@ -512,6 +522,21 @@ export function CharactersAndLoreSidebarPanel({
             </button>
           )}
         </div>
+        {(needsReviewCountInCurrentSource > 0 || onlyNeedsReview) && (
+          <button
+            type="button"
+            aria-pressed={onlyNeedsReview}
+            data-testid="lore-filter-needs-review"
+            onClick={() => setOnlyNeedsReview((v) => !v)}
+            className={`h-7 shrink-0 rounded-md border px-2 text-2xs transition-colors ${
+              onlyNeedsReview
+                ? "border-primary/40 bg-primary/10 font-medium text-primary"
+                : "border-border/70 bg-background text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            待确认 {needsReviewCountInCurrentSource}
+          </button>
+        )}
       </div>
       )}
 

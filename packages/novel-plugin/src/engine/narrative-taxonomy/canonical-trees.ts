@@ -964,9 +964,7 @@ export const CANONICAL_TREE_VIEWS: readonly {
 }[] = [
   { id: "worldview", label: "世界观", description: "按叙事分类看设定层级" },
   { id: "relations", label: "人物关系", description: "焦点人物 1–2 跳关系网：按实体 ID 连边，可看截至第 N 章" },
-  { id: "chapters", label: "章节", description: "卷纲到章的分叉骨架" },
-  { id: "causal", label: "因果树", description: "按剧情线看场景与因果推进" },
-  { id: "timeline", label: "发展历程", description: "按章看已经发生的事" },
-  { id: "chronicle", label: "章节脉络", description: "表世界摘要与里世界角色变化" },
+  { id: "causal", label: "因果脉络", description: "按剧情线看场景与因果推进" },
+  { id: "chronicle", label: "发展历程", description: "按章编年查看关键剧情、人物变迁与伏笔脉络" },
   { id: "overview", label: "总图", description: "结构树的浅层总览" },
 ] as const;

@@ -1,7 +1,7 @@
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { X, FileText, FileEdit, FileCheck2, Scroll, File as FileIcon, Wrench, Pin, MoreHorizontal, Brain, GitFork } from "lucide-react";
+import { X, FileText, Scroll, File as FileIcon, Pin, MoreHorizontal, Brain, GitFork, Waypoints, Activity, SlidersHorizontal, FileCheck2, Stethoscope, Layers, History, Compass } from "lucide-react";
 import { useEffect, useRef, type RefObject } from "react";
 import {
   ContextMenu,
@@ -46,15 +46,26 @@ interface EditorTabsProps {
   actionsSlotRef?: RefObject<HTMLDivElement | null>;
 }
 
-function tabIcon(kind: TabKind, view?: TabView) {
+function toolTabIcon(nodeId: string) {
+  if (nodeId === "tool:arcs") return Waypoints;
+  if (nodeId === "tool:tension") return Activity;
+  if (nodeId === "tool:quality") return SlidersHorizontal;
+  if (nodeId === "tool:compliance") return FileCheck2;
+  if (nodeId === "tool:governance") return Stethoscope;
+  if (nodeId === "tool:runtime") return Layers;
+  if (nodeId === "tool:collaboration-version") return History;
+  return Compass;
+}
+
+function tabIcon(kind: TabKind, nodeId = "") {
   // 叙事记忆条目现在归属经纬工作区，用 memory 图标区分于手写设定
   if (kind === "memory-entry") return { Icon: Brain, color: toneIconClass(RESOURCE_TYPE_TONE.memory) };
   switch (kind) {
-    case "chapter": return { Icon: FileText, color: "text-info" };
+    case "chapter": return { Icon: FileText, color: "text-muted-foreground" };
     case "jingwei-entry": return { Icon: Scroll, color: toneIconClass(RESOURCE_TYPE_TONE.jingweiEntryTab) };
-    case "file": return { Icon: FileIcon, color: "text-info" };
-    case "story-map": return { Icon: GitFork, color: "text-success" };
-    case "tool": return { Icon: Wrench, color: "text-muted-foreground" };
+    case "file": return { Icon: FileIcon, color: "text-muted-foreground" };
+    case "story-map": return { Icon: GitFork, color: "text-muted-foreground" };
+    case "tool": return { Icon: toolTabIcon(nodeId), color: "text-muted-foreground" };
     default: return { Icon: FileIcon, color: "text-muted-foreground" };
   }
 }
@@ -204,7 +215,7 @@ function SortableTab({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id });
   const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 10 : undefined };
-  const { Icon, color } = tabIcon(tab.kind, tab.view);
+  const { Icon, color } = tabIcon(tab.kind, tab.nodeId);
 
   return (
     <ContextMenu>
@@ -222,7 +233,7 @@ function SortableTab({
           onClick={() => onActivate(tab.id)}
         >
           {isActive && <span className={`absolute inset-x-0 top-0 h-[2px] ${tab.dirty ? "bg-warning" : "bg-primary"}`} />}
-          {tab.pinned ? <Pin className="size-3 text-primary" /> : <Icon className={`size-3.5 shrink-0 ${color}`} />}
+          {tab.pinned ? <Pin className="size-3 text-primary" strokeWidth={1.6} /> : <Icon className={`size-3.5 shrink-0 ${color}`} strokeWidth={1.6} />}
           <span className="truncate max-w-[120px]">{tab.title}</span>
           <span role="button" tabIndex={-1} className="relative flex size-5 items-center justify-center rounded hover:bg-muted cursor-pointer" onClick={(e) => { e.stopPropagation(); if (!tab.pinned) onClose(tab.id); }}>
             {tab.dirty ? <><span className="text-warning text-xs group-hover:hidden">●</span><X className="size-3 hidden group-hover:block" /></> : <X className={`size-3 transition-opacity ${tab.pinned ? "opacity-30" : "opacity-0 group-hover:opacity-100"}`} />}

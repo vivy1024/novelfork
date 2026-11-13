@@ -27,8 +27,8 @@ export interface ShellSidebarProps {
   readonly onCloseMobile?: () => void;
 }
 
-function railIcon(Icon: LucideIcon, active: boolean) {
-  return <Icon aria-hidden="true" className="size-5" strokeWidth={active ? 2.1 : 1.7} />;
+function railIcon(Icon: LucideIcon, _active: boolean) {
+  return <Icon aria-hidden="true" className="size-5" strokeWidth={1.65} />;
 }
 
 /**

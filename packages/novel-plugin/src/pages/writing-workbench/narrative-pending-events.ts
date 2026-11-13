@@ -13,6 +13,7 @@
 export interface PendingEvent {
   id?: string;
   eventType?: string;
+  category?: string;
   /** = event.subject，后端已做别名映射 */
   entity?: string;
   subject?: string;

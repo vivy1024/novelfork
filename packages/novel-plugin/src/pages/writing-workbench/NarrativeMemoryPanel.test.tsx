@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NarrativeMemoryPanel, NarrativeMemoryPanelShell } from "./NarrativeMemoryPanel";
+import { NarrativeMemoryPanel, NarrativeMemoryPanelShell, classifyPendingEventSemantic } from "./NarrativeMemoryPanel";
+
+it("将真实结算事件 world_fact_introduced 归入世界设定而非关键事件", () => {
+  expect(classifyPendingEventSemantic({ eventType: "world_fact_introduced", category: "event" })).toBe("world_fact");
+});
 
 // 本包没开 vitest globals，RTL 的自动 cleanup 不会注册；不清理会让多次 render
 // 的 DOM 累积，按 role 定位时命中上一个用例留下的节点。
@@ -817,5 +821,53 @@ describe("NarrativeMemoryPanel（容器）generation 竞态", () => {
       expect(screen.queryByText("韩立 抵达 药园")).toBeNull();
     });
     expect(screen.getByText("1 条")).toBeTruthy();
+  });
+
+  it("待确认队列支持按语义类别胶囊、来源章节下拉/分组与高风险筛选", () => {
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[
+          { id: "ev-1", eventType: "character_state_changed", entity: "薛行之", subject: "薛行之", predicate: "境界", object: "筑基初期", chapterNumber: 2, risk: "low", confidence: 0.7 },
+          { id: "ev-2", eventType: "relationship_changed", entity: "薛行之", subject: "薛行之", predicate: "怀疑", object: "方工", chapterNumber: 3, risk: "high", confidence: 0.55 },
+          { id: "ev-3", eventType: "hook_planted", entity: "古铜镜", subject: "古铜镜", predicate: "埋设", object: "背面暗纹", chapterNumber: 3, risk: "medium", confidence: 0.8 },
+          { id: "ev-4", eventType: "timeline_advanced", entity: "景佑三年", subject: "故事时间", predicate: "推进至", object: "秋分", chapterNumber: 5, risk: "low", confidence: 0.85 },
+        ]}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    const pendingSection = screen.getByTestId("narrative-memory-pending");
+    // 语义分类胶囊计数准确
+    expect(within(pendingSection).getByTestId("memory-pending-cat-all").textContent).toContain("4");
+    expect(within(pendingSection).getByTestId("memory-pending-cat-character_state").textContent).toContain("1");
+    expect(within(pendingSection).getByTestId("memory-pending-cat-relationship").textContent).toContain("1");
+    expect(within(pendingSection).getByTestId("memory-pending-cat-hook").textContent).toContain("1");
+    expect(within(pendingSection).getByTestId("memory-pending-cat-timeline").textContent).toContain("1");
+
+    // 按语义类别筛选「伏笔线索」
+    fireEvent.click(within(pendingSection).getByTestId("memory-pending-cat-hook"));
+    expect(within(pendingSection).getByText(/古铜镜 · 埋设 · 背面暗纹/)).toBeTruthy();
+    expect(within(pendingSection).queryByText(/薛行之 · 怀疑 · 方工/)).toBeNull();
+
+    // 切回全部，开启高风险优先筛选
+    fireEvent.click(within(pendingSection).getByTestId("memory-pending-cat-all"));
+    fireEvent.click(within(pendingSection).getByTestId("memory-pending-risk-high"));
+    expect(within(pendingSection).getByText(/薛行之 · 怀疑 · 方工/)).toBeTruthy();
+    expect(within(pendingSection).queryByText(/古铜镜 · 埋设 · 背面暗纹/)).toBeNull();
+
+    // 重置风险，按来源章节下拉筛选第 5 章
+    fireEvent.click(within(pendingSection).getByTestId("memory-pending-risk-all"));
+    fireEvent.change(within(pendingSection).getByTestId("memory-pending-chapter-select"), { target: { value: "5" } });
+    expect(within(pendingSection).getByText(/故事时间 · 推进至 · 秋分/)).toBeTruthy();
+    expect(within(pendingSection).queryByText(/筑基初期/)).toBeNull();
+
+    // 切回全部章节，开启「按章分组」
+    fireEvent.change(within(pendingSection).getByTestId("memory-pending-chapter-select"), { target: { value: "all" } });
+    fireEvent.click(within(pendingSection).getByTestId("memory-pending-group-by-chapter"));
+    expect(within(pendingSection).getByTestId("memory-pending-chapter-groups")).toBeTruthy();
   });
 });

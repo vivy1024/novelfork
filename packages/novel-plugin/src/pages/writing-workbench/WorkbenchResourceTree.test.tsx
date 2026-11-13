@@ -52,25 +52,33 @@ describe("WorkbenchResourceTree", () => {
     expect(container.querySelector(".lucide-file")).toBeTruthy();
   });
 
-  it("toolbar=false 用于固定清单：不显示搜索/排序，节点保持传入顺序，分组显示 lucide 图标", () => {
-    const groupCaps = { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
-    const toolCaps = { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
+  it("toolbar=false 用于固定清单：不显示搜索/排序，分组不画多余花哨图标，各分析工具使用专属单色细线图标（不用小扳手 Wrench）", () => {
+    const groupCaps = { open: false, readonly: true, unsupported: false, edit: false, apply: false, delete: false };
+    const toolCaps = { open: true, readonly: true, unsupported: false, edit: false, apply: false, delete: false };
     const tools: readonly WorkbenchResourceNode[] = [
-      { id: "tool-group:runtime", kind: "tool-group", title: "运行与协同", metadata: { icon: "settings" }, capabilities: groupCaps,
-        children: [{ id: "tool:runtime", kind: "tool", title: "底层状态总览", capabilities: toolCaps }] },
-      { id: "tool-group:pre-writing", kind: "tool-group", title: "写前筹备", metadata: { icon: "target" }, capabilities: groupCaps,
-        children: [{ id: "tool:arcs", kind: "tool", title: "角色弧线", capabilities: toolCaps }] },
+      { id: "tool-group:runtime", kind: "tool-group", title: "运行与协同", capabilities: groupCaps,
+        children: [{ id: "tool:runtime", kind: "tool", title: "故事状态总览", metadata: { toolPanel: "runtime", icon: "layers" }, capabilities: toolCaps }] },
+      { id: "tool-group:pre-writing", kind: "tool-group", title: "写前筹备", capabilities: groupCaps,
+        children: [{ id: "tool:arcs", kind: "tool", title: "角色弧线", metadata: { toolPanel: "arcs", icon: "waypoints" }, capabilities: toolCaps }] },
     ];
     const onOpen = vi.fn();
-    const { container } = render(<WorkbenchResourceTree nodes={tools} onOpen={onOpen} toolbar={false} ariaLabel="分析工具" />);
+    const { container } = render(<WorkbenchResourceTree nodes={tools} selectedNodeId="tool:arcs" onOpen={onOpen} toolbar={false} ariaLabel="分析工具" />);
 
     const tree = screen.getByRole("navigation", { name: "分析工具" });
     expect(screen.queryByLabelText("搜索文件树")).toBeNull();
     expect(screen.queryByLabelText("文件树排序")).toBeNull();
     // 按名称排序会把「写前筹备」排到「运行与协同」前面；固定清单保持传入顺序
     expect(tree.textContent!.indexOf("运行与协同")).toBeLessThan(tree.textContent!.indexOf("写前筹备"));
-    expect(container.querySelector("[data-icon='settings']")).not.toBeNull();
-    expect(container.querySelector("[data-icon='target']")).not.toBeNull();
+    // 废除一排小扳手和分组花哨图标
+    expect(container.querySelector(".lucide-wrench")).toBeNull();
+    expect(container.querySelector(".lucide-target")).toBeNull();
+    // 具体工具使用各自语义图标，常态中性色、选中态主色
+    const runtimeIcon = container.querySelector("[data-tool-icon='layers']");
+    const arcsIcon = container.querySelector("[data-tool-icon='waypoints']");
+    expect(runtimeIcon).not.toBeNull();
+    expect(runtimeIcon?.getAttribute("class")).toContain("text-muted-foreground");
+    expect(arcsIcon).not.toBeNull();
+    expect(arcsIcon?.getAttribute("class")).toContain("text-primary");
 
     fireEvent.click(screen.getByRole("button", { name: /角色弧线/ }));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "tool:arcs" }));

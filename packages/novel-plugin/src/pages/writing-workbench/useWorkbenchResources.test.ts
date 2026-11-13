@@ -85,27 +85,28 @@ describe("buildWorkbenchResourceTree", () => {
     expect(flat.get("tool:workflow")).toBeUndefined();
     expect(flat.get("tool-group:workflow")).toBeUndefined();
 
-    // 确认按时机划分的各工具节点存在
-    expect(flat.get("tool:arcs")).toMatchObject({ title: "角色弧线", metadata: { toolPanel: "arcs" } });
-    expect(flat.get("tool:tension")).toMatchObject({ title: "张力曲线", metadata: { toolPanel: "tension" } });
-    expect(flat.get("tool:quality")).toMatchObject({ title: "质量中心", metadata: { toolPanel: "quality" } });
-    expect(flat.get("tool:compliance")).toMatchObject({ title: "投稿风险自检", metadata: { toolPanel: "compliance" } });
-    expect(flat.get("tool:governance")).toMatchObject({ title: "全书体检", metadata: { toolPanel: "governance" } });
+    // 确认按时机划分的各工具节点存在，且各有专属语义图标与干净人话名称
+    expect(flat.get("tool:arcs")).toMatchObject({ title: "角色弧线", metadata: { toolPanel: "arcs", icon: "waypoints" } });
+    expect(flat.get("tool:tension")).toMatchObject({ title: "张力曲线", metadata: { toolPanel: "tension", icon: "activity" } });
+    expect(flat.get("tool:quality")).toMatchObject({ title: "质量中心", metadata: { toolPanel: "quality", icon: "sliders-horizontal" } });
+    expect(flat.get("tool:compliance")).toMatchObject({ title: "投稿风险自检", metadata: { toolPanel: "compliance", icon: "file-check-2" } });
+    expect(flat.get("tool:governance")).toMatchObject({ title: "全书体检", metadata: { toolPanel: "governance", icon: "stethoscope" } });
+    expect(flat.get("tool:runtime")).toMatchObject({ title: "故事状态总览", metadata: { toolPanel: "runtime", icon: "layers" } });
     expect(flat.get("tool:collaboration-version")).toMatchObject({
       title: "协作与版本",
-      metadata: { toolPanel: "collaboration-version" },
+      metadata: { toolPanel: "collaboration-version", icon: "history" },
       capabilities: expect.objectContaining({ open: true, readonly: true }),
     });
   });
 
-  it("分析工具分组按写作时机排序，标题只用文字，图标用 lucide 名（不用 emoji）", () => {
+  it("分析工具分组按写作时机排序，分组只用干净标题文字（不带多余图标或 emoji）", () => {
     const section = createToolSectionNodes();
     expect(section.title).toBe("分析工具");
     expect(section.children?.map((group) => [group.id, group.title, group.metadata?.icon])).toEqual([
-      ["tool-group:pre-writing", "写前筹备", "target"],
-      ["tool-group:in-writing", "写中质检", "scan-search"],
-      ["tool-group:pre-publish", "发布前风控", "shield-check"],
-      ["tool-group:runtime", "运行与协同", "settings"],
+      ["tool-group:pre-writing", "写前筹备", undefined],
+      ["tool-group:in-writing", "写中质检", undefined],
+      ["tool-group:pre-publish", "发布前风控", undefined],
+      ["tool-group:runtime", "运行与协同", undefined],
     ]);
     const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
     for (const node of flattenWorkbenchResourceTree([section]).values()) {

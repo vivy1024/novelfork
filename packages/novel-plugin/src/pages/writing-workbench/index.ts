@@ -19,6 +19,7 @@ export * from "./CoreShiftPanel";
 export * from "./CreativeCompassPanel";
 export * from "./StoryTreeView";
 export * from "./CanonicalTreesPanel";
+export * from "./ChronicleEditorialTimeline";
 export * from "./PendingReviewPanel";
 export * from "./TidyTreeCanvas";
 export * from "./TensionCurveStrip";

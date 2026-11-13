@@ -26,11 +26,12 @@ import {
   type CooccurrenceEdgeInput,
   type TimelineEventInput,
   type VolumeTreeInput,
+  type WrittenChapterInput,
 } from "../../engine/narrative-taxonomy/canonical-trees";
-import { buildCarrierTree } from "../../engine/narrative-taxonomy/scene-trees";
 import type { TreeEntryInput } from "../../engine/narrative-taxonomy/story-tree";
 import type { NarrativeStructurePayload } from "../../engine/narrative-taxonomy/narrative-structure";
 import { CausalCanvas } from "./causal-canvas/CausalCanvas";
+import { ChronicleEditorialTimeline } from "./ChronicleEditorialTimeline";
 import { RelationNetworkPanel } from "./relation-network/RelationNetworkPanel";
 import { TidyTreeCanvas } from "./TidyTreeCanvas";
 
@@ -80,6 +81,9 @@ type LoadState =
       status: "ready";
       trees: CanonicalTrees;
       degraded: boolean;
+      entries: readonly TreeEntryInput[];
+      events: readonly TimelineEventInput[];
+      writtenChapters: readonly WrittenChapterInput[];
       /** 叙事结构快照：因果树页签用它画因果画布（剧情线 × 场景是图，不是树）。 */
       structure?: NarrativeStructurePayload;
     };
@@ -234,7 +238,9 @@ export function CanonicalTreesPanel({
   }, [kinds]);
 
   const defaultKind = useMemo(() => {
-    if (initialKind && availableViews.some((v) => v.id === initialKind)) return initialKind;
+    const normalizedInitial = initialKind === "timeline" || initialKind === "chapters" ? "chronicle" : initialKind;
+    if (normalizedInitial && availableViews.some((v) => v.id === normalizedInitial)) return normalizedInitial;
+    if (initialKind === "timeline" && availableViews.some((v) => v.id === "timeline")) return "timeline";
     return availableViews[0]?.id ?? "worldview";
   }, [initialKind, availableViews]);
 
@@ -255,6 +261,9 @@ export function CanonicalTreesPanel({
         status: "ready",
         trees: buildCanonicalTrees({}),
         degraded: false,
+        entries: [],
+        events: [],
+        writtenChapters: [],
       });
       return;
     }
@@ -297,12 +306,15 @@ export function CanonicalTreesPanel({
             mainlineBeats: (v.mainlineBeats ?? []).map((title, index) => ({ id: String(index), title })),
           }))
         : readVolumes(memory.entries);
+      const writtenChapters: WrittenChapterInput[] = struct
+        ? struct.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title }))
+        : [];
       const trees = buildCanonicalTrees({
         entries: memory.entries,
         cooccurrence: memory.cooccurrence,
         events: memory.events,
         volumes,
-        ...(struct ? { writtenChapters: struct.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })) } : {}),
+        ...(writtenChapters.length > 0 ? { writtenChapters } : {}),
       });
 
       if (!struct) {
@@ -314,35 +326,21 @@ export function CanonicalTreesPanel({
             causal: { ...trees.causal, emptyReason: "叙事结构快照没读到，因果画布暂时画不出来；点刷新重试。" },
           },
           degraded: memory.graphFailed,
+          entries: memory.entries,
+          events: memory.events,
+          writtenChapters: [],
         });
         return;
       }
 
-      // buildCanonicalTrees 的「章节」树只到卷 → 章；有场景时换成 buildCarrierTree（卷 → 章 → 场景），
-      // 同一套 CanonicalForest 结构，可直接顶替。没有场景时保持原树，避免老书凭空多出一层空节点。
-      const scenes = struct.scenes.map((s) => ({
-        id: s.id,
-        chapterNumber: s.chapterNumber,
-        ordinal: s.ordinal,
-        title: s.title,
-        summary: s.summary,
-        function: s.function,
-        status: s.status,
-      }));
       setState({
         status: "ready",
-        trees: scenes.length > 0
-          ? {
-              ...trees,
-              chapters: buildCarrierTree({
-                volumes,
-                chapters: struct.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })),
-                scenes,
-              }),
-            }
-          : trees,
+        trees,
         // 有快照时经纬条目读不到也不挡结构：世界观、章摘要、事件缺失，按降级提示。
         degraded: memory.graphFailed || Boolean(memory.entriesError),
+        entries: memory.entries,
+        events: memory.events,
+        writtenChapters,
         structure: struct,
       });
     })();
@@ -416,23 +414,27 @@ export function CanonicalTreesPanel({
 
   if (!forest && !networkView) return null;
 
+  const editorialTimelineView = kind === "chronicle" || kind === "timeline";
   const causalStructure = kind === "causal" && state.status === "ready" && state.structure ? state.structure : null;
-  // 因果画布与人物关系网都不是树：不显示「N 项」与节点搜索。
-  const treeView = !causalStructure && !networkView;
-  const emptyPrompt = treeView && forest?.emptyReason
-    ? `正图「${forest.root.label}」还是空的。${forest.emptyReason}请基于已有正文补齐对应经纬条目，并保持 needs-review 待我确认。`
+  // 发展历程（书卷编年史）、因果画布与人物关系网都不是 tidy-tree：不显示「N 项」与右上角树节点搜索框。
+  const treeView = !causalStructure && !networkView && !editorialTimelineView;
+  const activeForestForEmpty = editorialTimelineView && state.status === "ready"
+    ? state.trees.timeline
+    : forest;
+  const emptyPrompt = (treeView || editorialTimelineView) && activeForestForEmpty?.emptyReason
+    ? `正图「${editorialTimelineView ? "发展历程" : activeForestForEmpty.root.label}」还是空的。${activeForestForEmpty.emptyReason}请基于已有正文补齐对应经纬条目，并保持 needs-review 待我确认。`
     : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5" data-testid="canonical-trees-panel">
       {state.status === "ready" && state.degraded && !networkView ? (
         <p className="rounded-md border border-warning/40 bg-warning/[0.06] px-2 py-1 text-xs text-warning" data-testid="canonical-trees-degraded">
-          部分数据没读到（动态记忆或条目）：发展历程、章节脉络可能缺事件，章节树可能缺摘要；结构部分照常可用。
+          部分数据没读到（动态记忆或条目）：发展历程、章节脉络可能缺事件；结构部分照常可用。
         </p>
       ) : null}
 
       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-        <FolderTree className="size-3.5 text-primary" />
+        <FolderTree className="size-3.5 text-primary" strokeWidth={1.65} />
         <span className="text-xs font-semibold">{showSwitcher && availableViews.length > 1 ? "正图" : (availableViews.find((view) => view.id === kind)?.label ?? "正图")}</span>
         {showSwitcher && availableViews.length > 1 ? (
         <nav className="flex items-center gap-0.5 rounded-md bg-muted/60 p-0.5" role="tablist" aria-label="正图切换">
@@ -463,7 +465,7 @@ export function CanonicalTreesPanel({
         </nav>
         ) : null}
         {treeView && forest ? <span className="text-2xs text-muted-foreground">{forest.root.count} 项</span> : null}
-        {networkView ? null : (
+        {networkView || editorialTimelineView ? null : (
         <div className="ml-auto flex items-center gap-1">
           <div className="relative">
             <Search className="pointer-events-none absolute left-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
@@ -496,6 +498,15 @@ export function CanonicalTreesPanel({
           {...(onOpenEntity ? { onOpenEntity } : {})}
           {...(onOpenChapter ? { onOpenChapter } : {})}
         />
+      ) : editorialTimelineView && state.status === "ready" ? (
+        <ChronicleEditorialTimeline
+          events={state.events}
+          entries={state.entries}
+          writtenChapters={state.writtenChapters}
+          {...(onOpenChapter ? { onOpenChapter } : {})}
+          {...(onOpenEntry ? { onOpenEntry } : {})}
+          className="min-h-0 flex-1"
+        />
       ) : causalStructure ? (
         <CausalCanvas
           bookId={bookId}
@@ -525,9 +536,9 @@ export function CanonicalTreesPanel({
       </div>
       ) : null}
 
-      {emptyPrompt && onSendToNarrator && forest ? (
+      {emptyPrompt && onSendToNarrator && activeForestForEmpty ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-2 py-1.5">
-          <span className="text-2xs text-muted-foreground">{forest.emptyReason}</span>
+          <span className="text-2xs text-muted-foreground">{activeForestForEmpty.emptyReason}</span>
           <Button
             size="xs"
             variant="ghost"

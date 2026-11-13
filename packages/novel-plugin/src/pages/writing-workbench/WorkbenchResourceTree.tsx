@@ -2,8 +2,30 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, File, FileText, BookOpen, Scroll, Globe, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Wrench, GitFork, Target, ScanSearch, ShieldCheck, Settings2, type LucideIcon } from "lucide-react";
-import type { ToolGroupIcon, WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
+import {
+  ChevronRight,
+  ChevronDown,
+  File,
+  FileText,
+  BookOpen,
+  Scroll,
+  Globe,
+  Layers,
+  BookMarked,
+  Route,
+  FolderOpen,
+  Plus,
+  GitFork,
+  Waypoints,
+  Activity,
+  SlidersHorizontal,
+  FileCheck2,
+  Stethoscope,
+  History,
+  Compass,
+  type LucideIcon,
+} from "lucide-react";
+import type { ToolIconName, ToolPanelId, WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
 import { JingweiEmptyState } from "./JingweiEmptyState";
 import { getResourceContextMenuItems } from "./ide/context-menu-registry";
 import { RESOURCE_TYPE_TONE, toneIconClass } from "./category-tones";
@@ -33,42 +55,68 @@ export interface WorkbenchResourceTreeProps {
   ariaLabel?: string;
 }
 
-/** 分析工具分组图标：节点只带名字（见 ToolGroupIcon），这里映射到 lucide 组件。 */
-const TOOL_GROUP_ICONS: Record<ToolGroupIcon, LucideIcon> = {
-  target: Target,
-  "scan-search": ScanSearch,
-  "shield-check": ShieldCheck,
-  settings: Settings2,
+/** 分析工具专属语义图标：单色细线，常态中性色，悬停深色，选中态主题主色。 */
+const TOOL_ICONS_BY_NAME: Record<ToolIconName, LucideIcon> = {
+  waypoints: Waypoints,
+  activity: Activity,
+  "sliders-horizontal": SlidersHorizontal,
+  "file-check-2": FileCheck2,
+  stethoscope: Stethoscope,
+  layers: Layers,
+  history: History,
 };
 
-function toolGroupIcon(node: WorkbenchResourceNode): LucideIcon | null {
-  const name = node.metadata?.icon;
-  return typeof name === "string" && Object.prototype.hasOwnProperty.call(TOOL_GROUP_ICONS, name)
-    ? TOOL_GROUP_ICONS[name as ToolGroupIcon]
-    : null;
+const TOOL_ICONS_BY_PANEL: Partial<Record<ToolPanelId, LucideIcon>> = {
+  arcs: Waypoints,
+  tension: Activity,
+  quality: SlidersHorizontal,
+  compliance: FileCheck2,
+  governance: Stethoscope,
+  runtime: Layers,
+  "collaboration-version": History,
+};
+
+function resolveToolIcon(node: WorkbenchResourceNode): LucideIcon {
+  const iconName = node.metadata?.icon;
+  if (typeof iconName === "string" && Object.prototype.hasOwnProperty.call(TOOL_ICONS_BY_NAME, iconName)) {
+    return TOOL_ICONS_BY_NAME[iconName as ToolIconName];
+  }
+  const panel = node.metadata?.toolPanel;
+  if (typeof panel === "string" && Object.prototype.hasOwnProperty.call(TOOL_ICONS_BY_PANEL, panel)) {
+    return TOOL_ICONS_BY_PANEL[panel as ToolPanelId]!;
+  }
+  if (node.id === "tool:arcs") return Waypoints;
+  if (node.id === "tool:tension") return Activity;
+  if (node.id === "tool:quality") return SlidersHorizontal;
+  if (node.id === "tool:compliance") return FileCheck2;
+  if (node.id === "tool:governance") return Stethoscope;
+  if (node.id === "tool:runtime") return Layers;
+  if (node.id === "tool:collaboration-version") return History;
+  return Compass;
 }
 
-function NodeIcon({ node }: { node: WorkbenchResourceNode }) {
+function NodeIcon({ node, isSelected = false }: { node: WorkbenchResourceNode; isSelected?: boolean }) {
   const kind: WorkbenchResourceKind = node.kind;
-  if (kind === "tool-group") {
-    const GroupIcon = toolGroupIcon(node);
-    if (GroupIcon) return <GroupIcon className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.tool)}`} data-icon={String(node.metadata?.icon)} />;
+  // 分组节点（写前筹备 / 写中质检 / 发布前风控 / 运行与协同）不画多余的彩色图标，保持章节小标题式的干净层级感。
+  if (kind === "tool-group") return null;
+  if (kind === "tool") {
+    const ToolIcon = resolveToolIcon(node);
+    const toneClass = isSelected ? "text-primary" : "text-muted-foreground group-hover/node:text-foreground";
+    return <ToolIcon className={`size-4 shrink-0 transition-colors ${toneClass}`} strokeWidth={1.6} data-tool-icon={String(node.metadata?.icon ?? node.metadata?.toolPanel ?? node.id)} />;
   }
   switch (kind) {
-    case "book": return <BookOpen className="size-4 text-primary" />;
-    case "group": return <FolderOpen className="size-4 text-muted-foreground" />;
-    case "chapter": return <FileText className="size-4 text-info" />;
-    case "jingwei": return <Scroll className="size-4 text-warning" />;
-    case "story": return <Globe className="size-4 text-success" />;
-    case "jingwei-section": case "jingwei-entry": return <BookMarked className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.jingwei)}`} />;
-    case "narrative-line": return <Route className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.narrativeLine)}`} />;
-    case "story-map": return <GitFork className="size-4 text-success" />;
-    case "tool": return <Wrench className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.tool)}`} />;
-    case "tool-group": return <FolderOpen className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.tool)}`} />;
+    case "book": return <BookOpen className="size-4 text-primary" strokeWidth={1.65} />;
+    case "group": return <FolderOpen className="size-4 text-muted-foreground" strokeWidth={1.65} />;
+    case "chapter": return <FileText className="size-4 text-muted-foreground group-hover/node:text-foreground" strokeWidth={1.6} />;
+    case "jingwei": return <Scroll className="size-4 text-muted-foreground" strokeWidth={1.6} />;
+    case "story": return <Globe className="size-4 text-muted-foreground" strokeWidth={1.6} />;
+    case "jingwei-section": case "jingwei-entry": return <BookMarked className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.jingwei)}`} strokeWidth={1.6} />;
+    case "narrative-line": return <Route className={`size-4 ${toneIconClass(RESOURCE_TYPE_TONE.narrativeLine)}`} strokeWidth={1.6} />;
+    case "story-map": return <GitFork className="size-4 text-muted-foreground" strokeWidth={1.6} />;
     case "file": return node.metadata?.isDirectory === true
-      ? <FolderOpen className="size-4 text-muted-foreground" />
-      : <File className="size-4 text-muted-foreground" />;
-    default: return <File className="size-4 text-muted-foreground" />;
+      ? <FolderOpen className="size-4 text-muted-foreground" strokeWidth={1.6} />
+      : <File className="size-4 text-muted-foreground" strokeWidth={1.6} />;
+    default: return <File className="size-4 text-muted-foreground" strokeWidth={1.6} />;
   }
 }
 
@@ -375,11 +423,17 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
       />
     ) : null;
 
+    const isToolGroup = node.kind === "tool-group";
+
     return (
-      <div>
+      <div className={isToolGroup ? "mt-2 first:mt-0.5" : undefined}>
         <div
           ref={itemRef as RefObject<HTMLDivElement>}
-          className={`group/section flex items-center gap-1.5 rounded-md px-2 py-1 cursor-pointer hover:bg-muted ${dropActive ? "bg-primary/10 ring-1 ring-primary/40" : ""} ${isCut ? "opacity-50" : ""}`}
+          className={`group/section flex items-center gap-1.5 rounded-md cursor-pointer transition-colors ${
+            isToolGroup
+              ? "px-2 py-1 hover:bg-muted/50"
+              : "px-2 py-1 hover:bg-muted"
+          } ${dropActive ? "bg-primary/10 ring-1 ring-primary/40" : ""} ${isCut ? "opacity-50" : ""}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           draggable={isDraggableNode(node)}
           onDragStart={handleDragStart}
@@ -391,12 +445,21 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
           onContextMenu={handleContext}
         >
           {hasChildren ? (
-            <button type="button" aria-label={`${effectiveExpanded ? "收起" : "展开"}${node.title}`} aria-expanded={effectiveExpanded} onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} className="shrink-0 text-muted-foreground">
-              {effectiveExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+            <button type="button" aria-label={`${effectiveExpanded ? "收起" : "展开"}${node.title}`} aria-expanded={effectiveExpanded} onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} className="shrink-0 text-muted-foreground/75 group-hover/section:text-foreground transition-colors">
+              {effectiveExpanded ? <ChevronDown className="size-3" strokeWidth={1.6} /> : <ChevronRight className="size-3" strokeWidth={1.6} />}
             </button>
-          ) : <span className="w-3.5 shrink-0" />}
+          ) : <span className="w-3 shrink-0" />}
           <NodeIcon node={node} />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground" title={node.title}>{node.title}</span>
+          <span
+            className={
+              isToolGroup
+                ? "min-w-0 flex-1 truncate text-2xs font-medium tracking-wider text-muted-foreground/85 group-hover/section:text-foreground transition-colors"
+                : "min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground"
+            }
+            title={node.title}
+          >
+            {node.title}
+          </span>
           {canCreate && (
             <button type="button" title={`新建${node.title}条目`}
               className="ml-auto shrink-0 rounded p-0.5 text-muted-foreground opacity-0 group-hover/section:opacity-100 hover:bg-primary/10 hover:text-primary transition-all"
@@ -423,14 +486,15 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
   }
 
   // Openable nodes — 纯 onClick,无 Radix 包裹
+  const isToolNode = node.kind === "tool";
   return (
     <div className="group/node">
       <Button type="button" variant="ghost" size="sm"
         ref={itemRef as RefObject<HTMLButtonElement>}
         aria-current={isSelected ? "true" : undefined}
         aria-selected={isSelected ? "true" : undefined}
-        className={`w-full justify-start gap-1.5 rounded-md font-normal ${isSelected ? "bg-primary/10 text-primary hover:bg-primary/15" : ""} ${dropActive ? "bg-primary/10 ring-1 ring-primary/40" : ""} ${isCut ? "opacity-50" : ""}`}
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        className={`w-full justify-start gap-2 rounded-md font-normal ${isToolNode ? "h-7 py-1" : ""} ${isSelected ? "bg-primary/[0.08] text-primary font-medium hover:bg-primary/[0.12]" : "text-foreground/90 hover:bg-muted/60 hover:text-foreground"} ${dropActive ? "bg-primary/10 ring-1 ring-primary/40" : ""} ${isCut ? "opacity-50" : ""}`}
+        style={{ paddingLeft: `${isToolNode ? Math.max(20, depth * 12 + 10) : depth * 16 + 8}px` }}
         draggable={isDraggableNode(node)}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
@@ -442,11 +506,11 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
       >
         {hasChildren ? (
           <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} className="shrink-0 text-muted-foreground">
-            {effectiveExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+            {effectiveExpanded ? <ChevronDown className="size-3.5" strokeWidth={1.6} /> : <ChevronRight className="size-3.5" strokeWidth={1.6} />}
           </button>
-        ) : <span className="w-3.5 shrink-0" />}
-        <NodeIcon node={node} />
-        <span className="min-w-0 flex-1 truncate text-left text-sm" title={node.title}>{node.title}</span>
+        ) : isToolNode ? null : <span className="w-3.5 shrink-0" />}
+        <NodeIcon node={node} isSelected={isSelected} />
+        <span className={`min-w-0 flex-1 truncate text-left ${isToolNode ? "text-xs" : "text-sm"}`} title={node.title}>{node.title}</span>
         <CapabilityBadges node={node} />
       </Button>
       {expanded && hasChildren && (

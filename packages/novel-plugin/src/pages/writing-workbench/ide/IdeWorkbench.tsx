@@ -10,8 +10,8 @@ import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import {
   FolderTree, Settings, X,
-  Clock, PlusCircle, Search, Sparkles, Feather, Lightbulb, ChevronRight, ChevronDown, MessageSquare, PenLine,
-  BookOpen, Route, LayoutDashboard, TriangleAlert, Maximize2, Minimize2,
+  Clock, PlusCircle, Search, Feather, Lightbulb, ChevronRight, ChevronDown, MessageSquare, PenLine,
+  BookOpen, BookMarked, Route, TriangleAlert, Maximize2, Minimize2,
   type LucideIcon,
 } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
@@ -2043,7 +2043,7 @@ export function IdeWorkbench({
                 {chatSlot ?? (
                   <div className="flex h-full flex-col items-center justify-center p-6 gap-4">
                     <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                      <Sparkles className="size-5 text-primary" />
+                      <Feather className="size-5 text-primary" strokeWidth={1.65} />
                     </div>
                     <ChatEmptyTip />
                     {onCreateSession && (
@@ -2104,7 +2104,7 @@ export function IdeWorkbench({
               {chatSlot ?? (
                 <div className="flex h-full flex-col items-center justify-center p-6 gap-4">
                   <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                    <Sparkles className="size-5 text-primary" />
+                    <Feather className="size-5 text-primary" strokeWidth={1.65} />
                   </div>
                   <ChatEmptyTip />
                   {onCreateSession && (
@@ -2168,7 +2168,7 @@ function ActivityBarItem({ icon: Icon, label, active, onClick }: {
       }`}
     >
       {active && <span className="absolute left-0 top-2 bottom-2 w-[2px] rounded-r bg-primary" />}
-      <Icon className="size-5" strokeWidth={active ? 2.1 : 1.7} />
+      <Icon className="size-5" strokeWidth={1.65} />
       <span className={`whitespace-nowrap text-2xs leading-none ${active ? "font-semibold" : "font-medium"}`}>{label}</span>
     </button>
   );
@@ -2188,16 +2188,22 @@ export function ResourcesSidebarPanel({ overviewActive, onShowOverview, files, t
 }) {
   return (
     <div className="flex flex-col pb-2" data-testid="resources-sidebar">
-      <div className="px-2 py-1.5">
+      <div className="px-2 py-1">
         <button
           type="button"
           onClick={onShowOverview}
           aria-current={overviewActive ? "page" : undefined}
-          className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
-            overviewActive ? "bg-primary/10 font-medium text-primary" : "text-foreground hover:bg-muted"
+          className={`group/overview relative flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition-colors ${
+            overviewActive
+              ? "bg-muted/70 font-medium text-primary"
+              : "text-foreground/90 hover:bg-muted/60 hover:text-foreground"
           }`}
         >
-          <LayoutDashboard className="size-4 shrink-0" strokeWidth={1.8} />
+          {overviewActive && <span aria-hidden="true" className="absolute bottom-1.5 left-0.5 top-1.5 w-[2px] rounded-full bg-primary" />}
+          <BookMarked
+            className={`size-4 shrink-0 transition-colors ${overviewActive ? "text-primary" : "text-muted-foreground group-hover/overview:text-foreground"}`}
+            strokeWidth={1.6}
+          />
           <span className="truncate">作品总览</span>
         </button>
       </div>
@@ -2218,13 +2224,13 @@ function ResourcesSection({ title, children }: { title: string; children: ReactN
         aria-expanded={open}
         aria-controls={contentId}
         onClick={() => setOpen((value) => !value)}
-        className="flex h-7 w-full items-center gap-1 px-2 text-xs font-semibold tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+        className="flex h-7 w-full items-center gap-1.5 px-2 text-xs font-medium tracking-wide text-muted-foreground transition-colors hover:text-foreground"
       >
-        <Chevron className="size-3.5 shrink-0" />
+        <Chevron className="size-3.5 shrink-0" strokeWidth={1.6} />
         <span>{title}</span>
       </button>
       {/* 收起只隐藏不卸载：保留树里的展开状态与搜索词。 */}
-      <div id={contentId} hidden={!open} className="pb-1">{children}</div>
+      <div id={contentId} hidden={!open} className="pb-1.5">{children}</div>
     </section>
   );
 }

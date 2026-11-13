@@ -197,6 +197,62 @@ const PENDING_CONFIDENCE_FILTERS: readonly { value: PendingConfidenceFilter; lab
   { value: "high", label: "高置信 ≥0.75" },
 ] as const;
 
+/** 待确认队列语义类别筛选胶囊（按 category 或 eventType 归类并显示计数）。 */
+export type PendingSemanticCategory =
+  | "all"
+  | "character_state"
+  | "relationship"
+  | "hook"
+  | "key_event"
+  | "world_fact"
+  | "timeline";
+
+export const PENDING_SEMANTIC_CATEGORIES: readonly { value: PendingSemanticCategory; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "character_state", label: "人物状态" },
+  { value: "relationship", label: "关系变化" },
+  { value: "hook", label: "伏笔线索" },
+  { value: "key_event", label: "关键事件" },
+  { value: "world_fact", label: "世界设定" },
+  { value: "timeline", label: "时间锚" },
+] as const;
+
+/** 待确认队列风险等级筛选（支持高风险冲突优先看）。 */
+export type PendingRiskFilter = "all" | "high" | "medium" | "low";
+
+const PENDING_RISK_FILTERS: readonly { value: PendingRiskFilter; label: string }[] = [
+  { value: "all", label: "全部风险" },
+  { value: "high", label: "高风险优先" },
+  { value: "medium", label: "中风险" },
+  { value: "low", label: "低风险" },
+] as const;
+
+export function classifyPendingEventSemantic(event: PendingEvent): Exclude<PendingSemanticCategory, "all"> {
+  const rawCategory = (event.category ?? "").trim().toLowerCase();
+  const rawType = (event.eventType ?? "").trim().toLowerCase();
+  if (rawCategory === "character_state" || rawCategory === "location" || rawType === "character_state_changed" || rawType === "location_changed") {
+    return "character_state";
+  }
+  if (rawCategory === "relationship" || rawCategory === "relationships" || rawType === "relationship_changed") {
+    return "relationship";
+  }
+  if (rawCategory === "hook" || rawCategory === "foreshadowing" || rawType.startsWith("hook_")) {
+    return "hook";
+  }
+  if (rawCategory === "world_fact" || rawCategory === "world-model" || rawCategory === "rules" || (rawType === "world_fact_changed" || rawType === "world_fact_introduced")) {
+    return "world_fact";
+  }
+  if (rawCategory === "timeline" || rawType === "timeline_advanced" || rawType === "time_anchor") {
+    return "timeline";
+  }
+  return "key_event";
+}
+
+export function pendingEventSemanticLabel(event: PendingEvent): string {
+  const bucket = classifyPendingEventSemantic(event);
+  return PENDING_SEMANTIC_CATEGORIES.find((item) => item.value === bucket)?.label ?? "关键事件";
+}
+
 /** 真分页页大小：结算历史 / 审批台账 / 搜索各自独立 offset，追加式加载。 */
 const HISTORY_PAGE_SIZE = 50;
 const APPROVALS_PAGE_SIZE = 50;
@@ -223,6 +279,7 @@ const EVENT_CATEGORY_BY_TYPE: Record<string, string> = {
   timeline_advanced: "timeline",
   location_changed: "location",
   world_fact_changed: "world_fact",
+  world_fact_introduced: "world_fact",
   conflict_changed: "conflict",
 };
 
@@ -802,8 +859,14 @@ function PendingEventCard({
     );
   }
 
+  const semanticLabel = pendingEventSemanticLabel(event);
+  const displayHeadline = [event.subject ?? event.entity, event.predicate, event.object]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" · ") || event.eventType || "待确认记忆";
+
   return (
-    <div className="rounded border border-border/60 p-2 space-y-1">
+    <div className="rounded-md border border-border/70 bg-card/80 p-2.5 space-y-1.5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-1.5">
           {selectable && event.id && (
@@ -815,21 +878,29 @@ function PendingEventCard({
               className="mt-0.5 size-3.5 shrink-0 accent-primary"
             />
           )}
-          <span className="min-w-0 truncate font-medium">{event.eventType ?? "event"}</span>
+          <div className="min-w-0 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="secondary" className="h-4 px-1.5 text-2xs font-normal">{semanticLabel}</Badge>
+              <span className="min-w-0 truncate font-medium text-foreground">{displayHeadline}</span>
+            </div>
+            {event.eventType && displayHeadline !== event.eventType ? (
+              <span className="sr-only">{event.eventType}</span>
+            ) : null}
+          </div>
         </div>
-        <span className={`shrink-0 text-2xs ${event.risk === "high" ? "text-warning" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
+        <span className={`shrink-0 rounded px-1.5 py-0.5 text-2xs ${event.risk === "high" ? "bg-warning/15 font-medium text-warning" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
-        <span>{event.entity ?? "未命名实体"} · 置信度 {event.confidence ?? "—"}</span>
+        <span>{event.entity ?? event.subject ?? "未命名实体"} · 置信度 {event.confidence ?? "—"}</span>
         <OpenSourceChapterButton chapterNumber={event.chapterNumber} onOpenChapter={onOpenChapter} />
         {!event.chapterNumber ? <span>第 — 章</span> : null}
       </div>
       {event.predicate || event.object ? (
-        <div className="text-2xs">
+        <div className="text-xs text-foreground/90">
           {event.predicate ? `${event.predicate} ` : ""}{event.object ?? ""}
         </div>
       ) : null}
-      {event.evidence ? <div className="text-2xs text-muted-foreground">{event.evidence}</div> : null}
+      {event.evidence ? <div className="rounded bg-muted/40 px-2 py-1 text-2xs text-muted-foreground">{event.evidence}</div> : null}
       {event.id ? (
         <div className="flex justify-end gap-1.5 pt-1">
           <button
@@ -1408,7 +1479,12 @@ export function NarrativeMemoryPanelShell({
   const [queryInput, setQueryInput] = useState(searchQuery);
   const [pendingOpen, setPendingOpen] = useState(false);
 
-  // 待确认队列批量操作状态：置信度筛选 + 多选。
+  // 待确认队列多维筛选状态：语义类别 + 来源章节 + 风险等级 + 置信度 + 按章分组开关 + 多选。
+  const [semanticFilter, setSemanticFilter] = useState<PendingSemanticCategory>("all");
+  const [chapterFilter, setChapterFilter] = useState<number | "all">("all");
+  const [riskFilter, setRiskFilter] = useState<PendingRiskFilter>("all");
+  const [groupByChapter, setGroupByChapter] = useState(false);
+  const [collapsedPendingChapters, setCollapsedPendingChapters] = useState<Set<string>>(() => new Set());
   const [confidenceFilter, setConfidenceFilter] = useState<PendingConfidenceFilter>("all");
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<"approve" | "delete" | "restore" | null>(null);
@@ -1425,25 +1501,94 @@ export function NarrativeMemoryPanelShell({
   const hookFacts = useMemo(() => stateFacts.filter((fact) => entryCategory(fact) === "hook"), [stateFacts]);
   const hookHistory = useMemo(() => historyEvents.filter((entry) => entryCategory(entry) === "hook"), [historyEvents]);
 
-  // 待确认队列：置信度筛选 + 低置信靠前排序。无 confidence 的事件只在「全部」里出现。
+  // 语义类别计数（基于全量 events，让作者一眼看清每类有几条未确认）
+  const semanticCategoryCounts = useMemo(() => {
+    const counts = new Map<PendingSemanticCategory, number>();
+    counts.set("all", events.length);
+    for (const cat of PENDING_SEMANTIC_CATEGORIES) {
+      if (cat.value !== "all") counts.set(cat.value, 0);
+    }
+    for (const event of events) {
+      const bucket = classifyPendingEventSemantic(event);
+      counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+    }
+    return counts;
+  }, [events]);
+
+  // 可选来源章节列表（升序 + 每章计数）
+  const pendingChapterOptions = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const event of events) {
+      if (typeof event.chapterNumber === "number" && Number.isFinite(event.chapterNumber) && event.chapterNumber > 0) {
+        counts.set(event.chapterNumber, (counts.get(event.chapterNumber) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([chapter, count]) => ({ chapter, count }));
+  }, [events]);
+
+  const hasActivePendingFilter =
+    semanticFilter !== "all" || chapterFilter !== "all" || riskFilter !== "all" || confidenceFilter !== "all";
+
+  // 待确认队列：语义类别 + 来源章节 + 风险等级 + 置信度筛选；高风险靠前、同风险按低置信靠前排序。
   const selectableEvents = useMemo(() => {
-    const byConfidence = (a: PendingEvent, b: PendingEvent) => {
+    const riskRank = (risk?: string): number => {
+      if (risk === "high") return 0;
+      if (risk === "medium") return 1;
+      if (risk === "low") return 2;
+      return 3;
+    };
+    const byPriority = (a: PendingEvent, b: PendingEvent) => {
+      const rDiff = riskRank(a.risk) - riskRank(b.risk);
+      if (rDiff !== 0) return rDiff;
       if (a.confidence === undefined && b.confidence === undefined) return 0;
       if (a.confidence === undefined) return 1;
       if (b.confidence === undefined) return -1;
       return a.confidence - b.confidence;
     };
-    if (confidenceFilter === "all") return [...events].sort(byConfidence);
-    const predicate: Record<Exclude<PendingConfidenceFilter, "all">, (event: PendingEvent) => boolean> = {
+    const confidencePredicate: Record<Exclude<PendingConfidenceFilter, "all">, (event: PendingEvent) => boolean> = {
       low: (event) => event.confidence !== undefined && event.confidence < 0.6,
       medium: (event) => event.confidence !== undefined && event.confidence >= 0.6 && event.confidence < 0.75,
       high: (event) => event.confidence !== undefined && event.confidence >= 0.75,
     };
-    return events.filter(predicate[confidenceFilter]).sort(byConfidence);
-  }, [events, confidenceFilter]);
+    return events
+      .filter((event) => (semanticFilter === "all" ? true : classifyPendingEventSemantic(event) === semanticFilter))
+      .filter((event) => (chapterFilter === "all" ? true : event.chapterNumber === chapterFilter))
+      .filter((event) => (riskFilter === "all" ? true : event.risk === riskFilter))
+      .filter((event) => (confidenceFilter === "all" ? true : confidencePredicate[confidenceFilter](event)))
+      .sort(byPriority);
+  }, [events, semanticFilter, chapterFilter, riskFilter, confidenceFilter]);
+
   const selectableIds = useMemo(() => new Set(selectableEvents.map((event) => event.id).filter((id): id is string => Boolean(id))), [selectableEvents]);
   const allSelected = selectableIds.size > 0 && [...selectableIds].every((id) => selectedEventIds.has(id));
-  const pendingToShow = pendingOpen ? selectableEvents : (confidenceFilter === "all" && highRiskEvents.length > 0 ? highRiskEvents : selectableEvents.slice(0, 3));
+  const pendingToShow = pendingOpen || hasActivePendingFilter || groupByChapter
+    ? selectableEvents
+    : (highRiskEvents.length > 0 ? highRiskEvents : selectableEvents.slice(0, 5));
+
+  const pendingChapterBuckets = useMemo(() => {
+    if (!groupByChapter) return [];
+    const buckets = new Map<string, { id: string; label: string; chapter?: number; items: PendingEvent[] }>();
+    const orderedKeys: string[] = [];
+    const sorted = [...pendingToShow].sort((a, b) => (a.chapterNumber ?? 999999) - (b.chapterNumber ?? 999999));
+    for (const event of sorted) {
+      const ch = typeof event.chapterNumber === "number" && event.chapterNumber > 0 ? event.chapterNumber : undefined;
+      const key = ch ? `ch:${ch}` : "ch:unknown";
+      if (!buckets.has(key)) {
+        buckets.set(key, { id: key, label: ch ? `第 ${ch} 章` : "未标章号", ...(ch ? { chapter: ch } : {}), items: [] });
+        orderedKeys.push(key);
+      }
+      buckets.get(key)!.items.push(event);
+    }
+    return orderedKeys.map((key) => buckets.get(key)!);
+  }, [groupByChapter, pendingToShow]);
+
+  const togglePendingChapterCollapse = useCallback((bucketId: string) => {
+    setCollapsedPendingChapters((prev) => {
+      const next = new Set(prev);
+      if (next.has(bucketId)) next.delete(bucketId);
+      else next.add(bucketId);
+      return next;
+    });
+  }, []);
 
   const toggleSelect = useCallback((event: PendingEvent) => {
     if (!event.id) return;
@@ -1644,19 +1789,125 @@ export function NarrativeMemoryPanelShell({
             ))}
           </section>
 
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-pending">
+          <section className="rounded-lg border border-border bg-card p-3 space-y-2.5" data-testid="narrative-memory-pending">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-semibold text-muted-foreground">
+              <h3 className="text-xs font-semibold text-foreground">
                 待确认 ({events.length})
-                {highRiskEvents.length > 0 ? ` · 高风险 ${highRiskEvents.length}` : ""}
+                {highRiskEvents.length > 0 ? <span className="ml-1.5 font-medium text-warning">· 高风险 {highRiskEvents.length}</span> : ""}
               </h3>
-              {events.length > 3 && (
-                <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setPendingOpen((value) => !value)}>
-                  {pendingOpen ? "收起" : "展开全部"}
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {hasActivePendingFilter && (
+                  <button
+                    type="button"
+                    className="text-2xs text-primary hover:underline"
+                    onClick={() => {
+                      setSemanticFilter("all");
+                      setChapterFilter("all");
+                      setRiskFilter("all");
+                      setConfidenceFilter("all");
+                    }}
+                  >
+                    重置筛选
+                  </button>
+                )}
+                {events.length > 5 && !hasActivePendingFilter && !groupByChapter && (
+                  <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setPendingOpen((value) => !value)}>
+                    {pendingOpen ? "收起" : "展开全部"}
+                  </button>
+                )}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">章后默认自动结算，这里只剩没把握的变化，不处理也不影响写作。</p>
+            <p className="text-xs text-muted-foreground">章后默认自动结算，这里只剩没把握的变化，可按类别、章节与风险分级批阅。</p>
+
+            {/* 语义类别筛选胶囊（带每类计数） */}
+            <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="待确认语义类别筛选">
+              {PENDING_SEMANTIC_CATEGORIES.map((cat) => {
+                const count = semanticCategoryCounts.get(cat.value) ?? 0;
+                const active = semanticFilter === cat.value;
+                const dimmed = cat.value !== "all" && count === 0;
+                return (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    data-testid={`memory-pending-cat-${cat.value}`}
+                    onClick={() => setSemanticFilter(cat.value)}
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-2xs transition-colors ${
+                      active
+                        ? "bg-primary font-medium text-primary-foreground"
+                        : dimmed
+                          ? "bg-transparent text-muted-foreground/45 hover:text-muted-foreground"
+                          : "border border-border/60 bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    <span className="tabular-nums opacity-85">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 来源章节筛选下拉 + 按章分组 + 风险等级筛选胶囊 */}
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-2">
+              <div className="flex items-center gap-1" aria-label="待确认风险等级筛选">
+                {PENDING_RISK_FILTERS.map((rf) => {
+                  const active = riskFilter === rf.value;
+                  return (
+                    <button
+                      key={rf.value}
+                      type="button"
+                      aria-pressed={active}
+                      data-testid={`memory-pending-risk-${rf.value}`}
+                      onClick={() => setRiskFilter(rf.value)}
+                      className={`rounded-md px-2 py-0.5 text-2xs transition-colors ${
+                        active
+                          ? rf.value === "high"
+                            ? "bg-warning/20 font-medium text-warning ring-1 ring-warning/40"
+                            : "bg-secondary font-medium text-foreground"
+                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      }`}
+                    >
+                      {rf.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                <select
+                  aria-label="按来源章节筛选待确认"
+                  data-testid="memory-pending-chapter-select"
+                  value={chapterFilter === "all" ? "all" : String(chapterFilter)}
+                  onChange={(e) => {
+                    const val = e.currentTarget.value;
+                    setChapterFilter(val === "all" ? "all" : Number(val));
+                  }}
+                  className="h-6 rounded-md border border-border/80 bg-background px-1.5 text-2xs text-foreground outline-none"
+                >
+                  <option value="all">全部章节</option>
+                  {pendingChapterOptions.map((opt) => (
+                    <option key={opt.chapter} value={opt.chapter}>
+                      第 {opt.chapter} 章（{opt.count}）
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  aria-pressed={groupByChapter}
+                  data-testid="memory-pending-group-by-chapter"
+                  onClick={() => setGroupByChapter((v) => !v)}
+                  className={`h-6 rounded-md border px-2 text-2xs transition-colors ${
+                    groupByChapter
+                      ? "border-primary/40 bg-primary/10 font-medium text-primary"
+                      : "border-border/70 bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  按章分组
+                </button>
+              </div>
+            </div>
 
             {/* 置信度筛选 + 全选：批量处理低置信抽取时先筛再选。 */}
             <div className="flex flex-wrap items-center gap-1" aria-label="待确认置信度筛选">
@@ -1666,7 +1917,7 @@ export function NarrativeMemoryPanelShell({
                   type="button"
                   aria-pressed={confidenceFilter === filter.value}
                   onClick={() => setConfidenceFilter(filter.value)}
-                  className={`rounded-full px-2 py-0.5 text-xs transition-colors ${
+                  className={`rounded-full px-2 py-0.5 text-2xs transition-colors ${
                     confidenceFilter === filter.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -1762,7 +2013,48 @@ export function NarrativeMemoryPanelShell({
             {events.length === 0 ? (
               <p className="text-xs text-muted-foreground">没有待确认事件。</p>
             ) : pendingToShow.length === 0 ? (
-              <p className="text-xs text-muted-foreground">当前置信度筛选下没有待确认事件。</p>
+              <p className="text-xs text-muted-foreground">
+                {confidenceFilter !== "all" ? "当前置信度筛选下没有待确认事件。" : "当前筛选条件下没有待确认事件。"}
+              </p>
+            ) : groupByChapter ? (
+              <div className="space-y-2" data-testid="memory-pending-chapter-groups">
+                {pendingChapterBuckets.map((bucket) => {
+                  const collapsed = collapsedPendingChapters.has(bucket.id);
+                  return (
+                    <div key={bucket.id} className="rounded-md border border-border/60 bg-background/50">
+                      <button
+                        type="button"
+                        aria-expanded={!collapsed}
+                        onClick={() => togglePendingChapterCollapse(bucket.id)}
+                        className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs font-medium hover:bg-muted/40"
+                      >
+                        <span className="flex items-center gap-1">
+                          {collapsed ? <ChevronRight className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
+                          <span>{bucket.label}</span>
+                        </span>
+                        <Badge variant="outline" className="h-4 px-1.5 text-2xs tabular-nums">{bucket.items.length}</Badge>
+                      </button>
+                      {!collapsed && (
+                        <div className="space-y-1.5 border-t border-border/40 p-2">
+                          {bucket.items.map((event, index) => (
+                            <PendingEventCard
+                              key={event.id ?? index}
+                              event={event}
+                              loading={actionLoadingId === event.id}
+                              selectable
+                              selected={Boolean(event.id && selectedEventIds.has(event.id))}
+                              onToggleSelect={toggleSelect}
+                              onApprove={onApprove}
+                              onReject={onReject}
+                              onOpenChapter={onOpenChapter}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             ) : pendingToShow.map((event, index) => (
               <PendingEventCard
                 key={event.id ?? index}
@@ -1776,7 +2068,7 @@ export function NarrativeMemoryPanelShell({
                 onOpenChapter={onOpenChapter}
               />
             ))}
-            {!pendingOpen && confidenceFilter === "all" && otherPending.length > 0 && highRiskEvents.length > 0 && (
+            {!pendingOpen && !hasActivePendingFilter && !groupByChapter && otherPending.length > 0 && highRiskEvents.length > 0 && (
               <p className="text-xs text-muted-foreground">另有 {otherPending.length} 条非高风险待确认，已折叠。</p>
             )}
           </section>

@@ -118,11 +118,13 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     expect(normalizeStoryProgressionView("workflow")).toBe("next");
   });
 
-  it("推进页的正图只含结构类的树，世界观与关系树不在这里", async () => {
+  it("推进页的正图已彻底移除无用的「章节」竖棍，只保留发展历程与因果脉络", async () => {
     render(<StoryProgressionCanvas bookId="book-1" initialView="tree" />);
-    await waitFor(() => expect(screen.getByTestId("mock-story-tree")).toBeTruthy());
-    const kinds = screen.getByTestId("mock-story-tree").getAttribute("data-kinds") ?? "";
-    expect(kinds.split(",")).toEqual(["chapters", "causal", "chronicle", "timeline"]);
+    await waitFor(() => expect(screen.getByTestId("mock-chronicle")).toBeTruthy());
+    const kinds = screen.getByTestId("mock-chronicle").getAttribute("data-kinds") ?? "";
+    expect(kinds.split(",")).toEqual(["chronicle", "causal"]);
+    expect(kinds).not.toContain("chapters");
+    expect(screen.getByTestId("mock-chronicle").getAttribute("data-kind")).toBe("chronicle");
   });
 
   it("故事树里打开条目转成实体详情回调", async () => {
@@ -176,16 +178,20 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     });
   });
 
-  it("旧 initialView 别名正确映射到故事树的对应子树", async () => {
+  it("旧 initialView 别名正确映射到故事树的对应子树（chapters/outline 均落到 chronicle 发展历程，不再跳章节树）", async () => {
     const { rerender } = render(<StoryProgressionCanvas bookId="book-1" initialView="map" />);
     await waitFor(() => expect(screen.getByTestId("mock-network")).toBeTruthy());
     expect(screen.getByTestId("mock-network").getAttribute("data-kind")).toBe("causal");
 
     rerender(<StoryProgressionCanvas bookId="book-1" initialView="evolution" />);
-    await waitFor(() => expect(screen.getByTestId("mock-timeline")).toBeTruthy());
-    expect(screen.getByTestId("mock-timeline").getAttribute("data-kind")).toBe("timeline");
+    await waitFor(() => expect(screen.getByTestId("mock-chronicle")).toBeTruthy());
+    expect(screen.getByTestId("mock-chronicle").getAttribute("data-kind")).toBe("chronicle");
 
     rerender(<StoryProgressionCanvas bookId="book-1" initialView="chronicle" />);
+    await waitFor(() => expect(screen.getByTestId("mock-chronicle")).toBeTruthy());
+    expect(screen.getByTestId("mock-chronicle").getAttribute("data-kind")).toBe("chronicle");
+
+    rerender(<StoryProgressionCanvas bookId="book-1" initialView="outline" />);
     await waitFor(() => expect(screen.getByTestId("mock-chronicle")).toBeTruthy());
     expect(screen.getByTestId("mock-chronicle").getAttribute("data-kind")).toBe("chronicle");
   });

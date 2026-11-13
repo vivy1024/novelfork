@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Sparkles,
+  Feather,
   Palette,
   Wand2,
   RefreshCw,
@@ -280,7 +280,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs">
       {/* 页头模具（设计板 sd-head）：给叙述者配技能、把这本书的文风基准定下来 */}
       <SidebarPageHead
-        icon={Sparkles}
+        icon={Feather}
         title="技能文风"
         purpose="选叙述者要用的技能，定本书文风基准"
       />
@@ -293,7 +293,7 @@ function BookSkillsAndStyleSidebarPanel({ bookId, activeTab, setActiveTab, onOpe
               activeTab === "skills" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Sparkles className="size-3" />
+            <Feather className="size-3" strokeWidth={1.65} />
             写作技能
           </button>
           <button
