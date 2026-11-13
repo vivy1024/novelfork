@@ -5,8 +5,8 @@ import type { Context, Hono, MiddlewareHandler } from "hono";
  *
  * 只作用于产品路径（见 PRODUCT_PATH_PREFIXES），Runtime 自己的大体积路由（上传等）不受影响。
  * - 默认 2 MiB：书籍、章节、配置等接口只收小结构 JSON。
- * - 长文本入口 8 MiB：文风蒸馏（最多 100 万字，UTF-8 下约 3 MB，外加 JSON 包装）、
- *   经纬批量导入、写作技能导入、作品文本导入、旧稿导入（原文上限 7 MiB，见 novel-plugin MAX_MANUSCRIPT_BYTES）。
+ * - 长文本入口 64 MiB：文风蒸馏（最多 300 万字）、经纬批量导入、写作技能导入、
+ *   作品文本导入、旧稿导入（原文上限 60 MiB，见 novel-plugin MAX_MANUSCRIPT_BYTES）。
  * - 档案导入 256 MiB：与 novel-plugin routes/book-archive.ts 自身的 256 MB 校验一致，不再豁免。
  *
  * 有 Content-Length 时按声明长度直接判定；没有（分块上传）时先在上限内把请求体读完，
@@ -17,7 +17,7 @@ import type { Context, Hono, MiddlewareHandler } from "hono";
 const MiB = 1024 * 1024;
 
 export const PRODUCT_BODY_LIMIT_BYTES = 2 * MiB;
-export const LONG_TEXT_BODY_LIMIT_BYTES = 8 * MiB;
+export const LONG_TEXT_BODY_LIMIT_BYTES = 64 * MiB;
 /** 与 novel-plugin 的 MAX_BOOK_ARCHIVE_UPLOAD_BYTES 相同（测试核对两者一致）。 */
 export const ARCHIVE_IMPORT_BODY_LIMIT_BYTES = 256 * MiB;
 
@@ -43,9 +43,10 @@ export const PRODUCT_PATH_PREFIXES = [
 	"/api/style",
 ] as const;
 
-/** 放宽到 8 MiB 的长文本入口。 */
+/** 放宽到 64 MiB 的长文本入口。 */
 const LONG_TEXT_PATHS: readonly RegExp[] = [
 	/^\/api\/books\/[^/]+\/style\/distillations(?:\/|$)/u,
+	/^\/api\/books\/[^/]+\/style-distillations(?:\/|$)/u,
 	/^\/api\/books\/[^/]+\/style\/distill$/u,
 	/^\/api\/books\/[^/]+\/jingwei\/import$/u,
 	// 旧稿导入（T4.2）：只有建任务这一次上传原文（multipart），其余步骤都是小 JSON。

@@ -1,14 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   dialogueBaselineText,
+  excerptFor,
   makeInitialStyleDistillationJob,
+  MAX_STYLE_DISTILLATION_CHAPTERS,
   MAX_STYLE_DISTILLATION_CHARS,
   normalizeStyleDistillationSource,
+  resolveStyleDistillationInput,
   STYLE_BASELINE_LOW_DIALOGUE_RATIO,
+  sampleRegisterTag,
   sampleSceneType,
   StyleDistillationError,
 } from "./style-distillation.js";
+
+const tempDirs: string[] = [];
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
 describe("范文场景分类", () => {
   it("序言议论段里零星称引、冒号不判为对话", () => {
@@ -64,11 +75,13 @@ describe("确定性基线的对话比例文案", () => {
   });
 });
 
-describe("文风蒸馏来源正文的长度上限（T-07）", () => {
-  it("超过 200 万字的正文报「参考正文过长」，不再误报成章节分割规则无效", () => {
+describe("文风蒸馏来源正文的长度上限（T-07）与靶向抽样", () => {
+  it("超过 300 万字且未抽样的正文报「参考正文过长」，不再误报成章节分割规则无效", () => {
+    expect(MAX_STYLE_DISTILLATION_CHAPTERS).toBe(600);
+    expect(MAX_STYLE_DISTILLATION_CHARS).toBe(3_000_000);
     const error = capture(() => normalizeStyleDistillationSource({
       sourceName: "超长参考",
-      text: `第一章 起\n${"字".repeat(2_000_001)}`,
+      text: `第一章 起\n${"字".repeat(MAX_STYLE_DISTILLATION_CHARS + 1)}`,
     }));
     expect(error).toBeInstanceOf(StyleDistillationError);
     expect((error as StyleDistillationError).code).toBe("STYLE_DISTILLATION_TOO_LARGE");
@@ -93,5 +106,61 @@ describe("文风蒸馏来源正文的长度上限（T-07）", () => {
     const error = capture(() => normalizeStyleDistillationSource({ sourceName: "参考", text, splitPattern: "^(a|aa)+$" }));
     expect((error as StyleDistillationError).code).toBe("STYLE_DISTILLATION_INVALID_INPUT");
     expect((error as Error).message).toContain("章节分割规则无效");
+  });
+
+  it("resolveStyleDistillationInput 支持超过 600 章的本地大文件按 chapterList 跳章抽样并严格保留原章号", async () => {
+    await mkdir("D:/DESKTOP/novelfork/tmp", { recursive: true });
+    const root = await mkdtemp("D:/DESKTOP/novelfork/tmp/nf-distill-file-");
+    tempDirs.push(root);
+    const lines: string[] = [];
+    for (let i = 1; i <= 700; i += 1) {
+      lines.push(`第${i}章 原书章名${i}\n这是第${i}章的正文，风吹过石阶，灯火摇晃。`);
+    }
+    await writeFile(join(root, "参考大书.txt"), lines.join("\n\n"), "utf8");
+
+    const resolved = await resolveStyleDistillationInput(root, {
+      sourceName: "",
+      filePath: "参考大书.txt",
+      chapterList: [1, 2, 3, 24, 88, 278, 650],
+    });
+    expect(resolved.sourceName).toBe("参考大书");
+    const normalized = normalizeStyleDistillationSource(resolved);
+    expect(normalized.chapters.map((c) => c.number)).toEqual([1, 2, 3, 24, 88, 278, 650]);
+    expect(normalized.chapterRange).toEqual({ from: 1, to: 650 });
+  });
+
+  it("excerptFor 挑最具特征密度的 300~500 字自然段窗口，mapSamples 区分干净可迁移段与含高频专名段", () => {
+    const ch = {
+      number: 24,
+      title: "算账",
+      content: [
+        "第24章 算账",
+        "短碎句。",
+        "清晨的街道空空荡荡，路边还没有几个人走动，只有远处传来几声零星的脚步，一切都显得平平无奇。",
+        `本月工时折算下来一共 360 枚灵石，扣除筑基贷款利息 85 枚灵石、洞府物业成本 30 枚灵石与丹药损耗 45 枚灵石，账面余额只剩 200 枚灵石。${"他捏着玉简反复核算每一笔收益与欠款，连半块灵石的折旧都不肯漏算。".repeat(9)}`,
+      ].join("\n"),
+    };
+    const picked = excerptFor(ch);
+    expect(picked.length).toBeGreaterThanOrEqual(300);
+    expect(picked.length).toBeLessThanOrEqual(550);
+    expect(picked).toContain("贷款利息");
+    expect(picked).not.toContain("短碎句");
+    expect(sampleRegisterTag(picked)).toBe("bill_inventory");
+
+    // 构造多章：第 1~3 章反复出现专名「张羽」「昆墟宗」，第 4 章为完全不含专名的纯技法动作段
+    const { job } = makeInitialStyleDistillationJob("book-1", "job-sample-transfer-1", {
+      sourceName: "专名测试",
+      chapters: [
+        { number: 1, content: `${"张羽走进昆墟宗大殿，张羽看着昆墟宗的贷款合同条款，心中冷笑。".repeat(16)}` },
+        { number: 2, content: `${"张羽离开昆墟宗药房，张羽盘算着昆墟宗的学分考核与违约利息。".repeat(16)}` },
+        { number: 3, content: `${"张羽站在昆墟宗演武场，张羽催动灵力迎战昆墟宗的对手。".repeat(16)}` },
+        { number: 4, content: `${"雨水顺着铁檐砸在青石板上，刀锋出鞘时带起一线寒光，脚步在泥水里猛地一错，反手格开迎面劈来的重击，呼吸压得极低。".repeat(7)}` },
+      ],
+    });
+    const cleanSample = job.samples.find((s) => s.id.startsWith("sample-4-"));
+    const namedSample = job.samples.find((s) => s.id.startsWith("sample-1-"));
+    expect(cleanSample?.transfer).toBe("transferable");
+    expect(namedSample?.transfer).toBe("source-only");
+    expect(namedSample?.evidence).toContain("仅学节奏笔法，禁抄专名");
   });
 });

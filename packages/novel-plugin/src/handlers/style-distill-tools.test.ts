@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -98,5 +98,50 @@ describe("叙述者文风蒸馏工具", () => {
     const foreign = await executeStyleDistillationTool("style.distill_status", { jobId }, { bookId: "book-2", root }, context());
     expect(foreign).toMatchObject({ ok: false, error: "STYLE_DISTILLATION_NOT_FOUND" });
     expect(await executeStyleDistillationTool("style.distill_delete", {}, binding, context())).toMatchObject({ ok: false, error: "unknown-style-distill-tool" });
+  });
+
+  it("style.distill_index 列出书根参考文件并做分页机械索引，联动 filePath + chapterList 靶向蒸馏保留原章号", async () => {
+    const { root, binding } = await setup();
+    const text = Array.from({ length: 130 }, (_, idx) => (
+      `第${idx + 1}章 章题${idx + 1}\n${idx + 1 === 24
+        ? "本月工时折算 300 枚灵石，贷款利息 50 灵石，余额与成本算账分明。".repeat(20)
+        : "她停在门前，听见雨声。灯影在墙上晃了一下，她没有回头。".repeat(12)}`
+    )).join("\n\n");
+    await writeFile(join(root, "参考大书.txt"), text, "utf8");
+
+    const fileList = await executeStyleDistillationTool("style.distill_index", { listFilesOnly: true }, binding, context());
+    expect(fileList).toMatchObject({ ok: true, data: { files: [expect.objectContaining({ filePath: "参考大书.txt" })] } });
+
+    const indexed = await executeStyleDistillationTool("style.distill_index", { filePath: "参考大书.txt" }, binding, context());
+    expect(indexed.ok).toBe(true);
+    const indexData = indexed.data as {
+      chapterCount: number;
+      chapters: { number: number }[];
+      pagination: { offset: number; limit: number; hasMore: boolean };
+      recommendedChapters: { chapterNumbers: number[] };
+    };
+    expect(indexData.chapterCount).toBe(130);
+    expect(indexData.chapters).toHaveLength(100);
+    expect(indexData.pagination).toEqual({ offset: 0, limit: 100, totalChapters: 130, hasMore: true });
+    expect(indexData.recommendedChapters.chapterNumbers).toContain(24);
+
+    const page2 = await executeStyleDistillationTool("style.distill_index", { filePath: "参考大书.txt", offset: 100, limit: 50 }, binding, context());
+    expect((page2.data as { chapters: { number: number }[] }).chapters.map((c) => c.number)[0]).toBe(101);
+
+    const preview = await executeStyleDistillationTool(
+      "style.distill_preview",
+      { filePath: "参考大书.txt", chapterList: [1, 2, 24, 128] },
+      binding,
+      context(),
+    );
+    expect(preview).toMatchObject({ ok: true, data: { chapterCount: 4, chapterRange: { from: 1, to: 128 } } });
+
+    const started = await executeStyleDistillationTool(
+      "style.distill_start",
+      { filePath: "参考大书.txt", chapterList: [1, 24, 128] },
+      binding,
+      context(model),
+    );
+    expect(started).toMatchObject({ ok: true, data: { job: { status: "ready", chapterRange: { from: 1, to: 128 }, chapterCount: 3 } } });
   });
 });

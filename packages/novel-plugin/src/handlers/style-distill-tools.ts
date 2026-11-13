@@ -1,7 +1,15 @@
+import { basename } from "node:path";
 import type { RuntimeToolResult, ToolExecutionContext } from "@vivy1024/novelfork-core/plugins";
+import {
+  BookTextFileError,
+  buildMechanicalBookIndex,
+  listWorkspaceReferenceFiles,
+  readBookTextFile,
+} from "../engine/writing-layers/source-file-index.js";
 import {
   makePreviewSource,
   normalizeStyleDistillationSource,
+  resolveStyleDistillationInput,
   StyleDistillationError,
   STYLE_RULE_CATEGORY_LABELS,
   type StyleDistillationJob,
@@ -20,6 +28,7 @@ import { loadStylePreset, StylePresetError } from "../engine/writing-layers/styl
 import type { TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 
 export const STYLE_DISTILL_TOOL_NAMES = [
+  "style.distill_index",
   "style.distill_preview",
   "style.distill_start",
   "style.distill_status",
@@ -48,11 +57,18 @@ function sourceInput(input: Readonly<Record<string, unknown>>): StyleDistillatio
       return typeof value.number === "number" && typeof value.content === "string";
     })
     : undefined;
+  const chapterList = Array.isArray(input.chapterList)
+    ? input.chapterList.filter((item): item is number => typeof item === "number")
+    : undefined;
   return {
     sourceName: typeof input.sourceName === "string" ? input.sourceName : "",
+    ...(typeof input.filePath === "string" ? { filePath: input.filePath } : {}),
     ...(typeof input.text === "string" ? { text: input.text } : {}),
     ...(chapters ? { chapters } : {}),
     ...(typeof input.splitPattern === "string" ? { splitPattern: input.splitPattern } : {}),
+    ...(chapterList ? { chapterList } : {}),
+    ...(typeof input.fromChapter === "number" ? { fromChapter: input.fromChapter } : {}),
+    ...(typeof input.toChapter === "number" ? { toChapter: input.toChapter } : {}),
   };
 }
 
@@ -87,7 +103,9 @@ function modelView(job: StyleDistillationJob, revision: string | null) {
       samples: job.samples.map((sample) => ({
         id: sample.id,
         sceneType: sample.sceneType,
+        ...(sample.registerTag ? { registerTag: sample.registerTag } : {}),
         text: sample.text,
+        evidence: sample.evidence,
         transfer: sample.transfer === "transferable" ? "可迁移" : "作品专属",
       })),
     },
@@ -115,6 +133,15 @@ function modelUnavailable(): Explanation {
 }
 
 function toolError(error: unknown): RuntimeToolResult | null {
+  if (error instanceof BookTextFileError) {
+    return fail(error.code, error.message, {
+      explanation: {
+        what: error.message,
+        why: "参考文件只允许读取本书目录内不超过 60 MB 的普通文本文件，禁止跨目录或读取内部数据。",
+        next: "可先调用 style.distill_index（listFilesOnly=true）查看本书目录下可用的参考文件。",
+      },
+    });
+  }
   if (error instanceof StyleDistillationError) {
     return fail(error.code, error.message, {
       explanation: {
@@ -138,6 +165,70 @@ function toolError(error: unknown): RuntimeToolResult | null {
   return null;
 }
 
+async function distillIndex(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+): Promise<RuntimeToolResult> {
+  const rawPath = typeof input.filePath === "string" ? input.filePath.trim() : "";
+  const rawText = typeof input.text === "string" ? input.text : "";
+  if (input.listFilesOnly === true || (!rawPath && !rawText.trim())) {
+    const listed = await listWorkspaceReferenceFiles(binding.root);
+    const files = listed.map((file) => ({
+      ...file,
+      path: file.filePath,
+      sizeBytes: file.byteLength,
+      updatedAt: file.modifiedAt,
+    }));
+    return ok(`本书目录下共有 ${files.length} 个可用参考文件。`, { files });
+  }
+
+  let text = rawText;
+  let encoding: "utf-8" | "gb18030" = "utf-8";
+  let byteLength = Buffer.byteLength(rawText, "utf8");
+  if (rawPath && !rawText) {
+    const file = await readBookTextFile(binding.root, rawPath);
+    text = file.text;
+    encoding = file.encoding;
+    byteLength = file.byteLength;
+  }
+  const fallbackName = rawPath ? basename(rawPath).replace(/\.(?:txt|md)$/iu, "").trim() || rawPath : "参考文本";
+  const sourceName = (typeof input.sourceName === "string" && input.sourceName.trim()) || fallbackName;
+  const splitPattern = typeof input.splitPattern === "string" && input.splitPattern.trim() ? input.splitPattern.trim() : undefined;
+  let index;
+  try {
+    index = buildMechanicalBookIndex({ sourceName, text, ...(splitPattern ? { splitPattern } : {}) });
+  } catch (error) {
+    return fail("STYLE_DISTILLATION_INVALID_INPUT", error instanceof Error ? error.message : String(error));
+  }
+  const offset = typeof input.offset === "number" && Number.isFinite(input.offset) ? Math.max(0, Math.trunc(input.offset)) : 0;
+  const limit = typeof input.limit === "number" && Number.isFinite(input.limit) ? Math.min(200, Math.max(1, Math.trunc(input.limit))) : 100;
+  const pageChapters = index.chapters.slice(offset, offset + limit);
+  const recommendedSet = new Set(index.recommendedChapters.chapterNumbers);
+  const recommendedChapterDetails = index.chapters.filter((chapter) => recommendedSet.has(chapter.number));
+  return ok(
+    `已建立「${sourceName}」机械索引：共 ${index.chapterCount} 章、${index.totalCharCount} 字（${encoding}），推荐抽样 ${index.recommendedChapters.chapterNumbers.length} 章。可直接将 recommendedChapters.chapterNumbers 作为 chapterList 传给 style.distill_preview 或 style.distill_start。`,
+    {
+      sourceName,
+      ...(rawPath ? { filePath: rawPath } : {}),
+      encoding,
+      byteLength,
+      chapterCount: index.chapterCount,
+      totalChars: index.totalCharCount,
+      totalCharCount: index.totalCharCount,
+      topChapters: index.topChapters,
+      recommendedChapters: index.recommendedChapters,
+      recommendedChapterDetails,
+      pagination: {
+        offset,
+        limit,
+        totalChapters: index.chapterCount,
+        hasMore: offset + limit < index.chapterCount,
+      },
+      chapters: pageChapters,
+    },
+  );
+}
+
 async function start(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
@@ -150,7 +241,7 @@ async function start(
     : await createStyleDistillationJob({
       bookRoot: binding.root,
       bookId: binding.bookId,
-      source: sourceInput(input),
+      source: await resolveStyleDistillationInput(binding.root, sourceInput(input)),
       modelAvailable: Boolean(generateText),
     });
   if (job.bookId !== binding.bookId) return fail("STYLE_DISTILLATION_NOT_FOUND", "该蒸馏任务不属于当前书籍。");
@@ -230,8 +321,11 @@ export async function executeStyleDistillationTool(
 ): Promise<RuntimeToolResult> {
   const name = toolName.replace(/^style_distill_/u, "style.distill_");
   try {
+    if (name === "style.distill_index") {
+      return await distillIndex(input, binding);
+    }
     if (name === "style.distill_preview") {
-      const sourceIn = sourceInput(input);
+      const sourceIn = await resolveStyleDistillationInput(binding.root, sourceInput(input));
       const source = makePreviewSource(sourceIn);
       // 与网页预览同一份估算：开跑前告诉作者要调多少次模型、最多输出多少。
       const estimate = estimateStyleDistillationRun(normalizeStyleDistillationSource(sourceIn).chapters);

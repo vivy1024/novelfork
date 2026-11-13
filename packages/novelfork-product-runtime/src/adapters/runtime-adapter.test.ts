@@ -52,6 +52,7 @@ const CANONICAL_READY_TOOL_NAMES = [
   "rewrite.apply",
   "pipeline.import_chapters",
   "book.dissect",
+  "style.distill_index",
   "style.distill_preview",
   "style.distill_start",
   "style.distill_status",

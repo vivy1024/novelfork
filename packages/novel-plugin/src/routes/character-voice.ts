@@ -62,7 +62,7 @@ export interface CharacterVoiceWarning {
   readonly explanation: DiagnosticExplanation;
 }
 
-const MAX_SCAN_CHAPTERS = 30;
+export const MAX_SCAN_CHAPTERS = 500;
 const MAX_REQUEST_SAMPLES = 80;
 
 class VoiceRouteError extends Error {

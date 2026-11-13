@@ -24,12 +24,11 @@ import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 export const MANUSCRIPT_IMPORT_SCHEMA_VERSION = 1 as const;
 export const MANUSCRIPT_IMPORT_RELATIVE_DIR = join("story", "import");
 /**
- * 原始字节总上限。上传走产品路由的 8 MiB 长文本请求体上限（product-runtime body-limit.ts），
- * 这里留 1 MiB 给 multipart 包装；GBK 约 2 字节一字、UTF-8 约 3 字节一字，足够两三百万字以内的旧稿。
+ * 原始字节总上限（60 MiB），兼容百万字以上的 UTF-8 / GB18030 大部头网文 TXT。
  */
-export const MAX_MANUSCRIPT_BYTES = 7 * 1024 * 1024;
-export const MAX_MANUSCRIPT_FILES = 2_000;
-export const MAX_MANUSCRIPT_CHAPTERS = 2_000;
+export const MAX_MANUSCRIPT_BYTES = 60 * 1024 * 1024;
+export const MAX_MANUSCRIPT_FILES = 6_000;
+export const MAX_MANUSCRIPT_CHAPTERS = 6_000;
 const MAX_TITLE_LENGTH = 120;
 const PREVIEW_SNIPPET = 60;
 

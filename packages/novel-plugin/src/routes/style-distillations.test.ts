@@ -158,7 +158,7 @@ describe("文风自动蒸馏路由", () => {
     const { router } = await setup();
     const tooLarge = await router.request("/api/books/book-a/style/distillations/preview", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sourceName: "大文本", chapters: Array.from({ length: 201 }, (_, i) => ({ number: i + 1, content: "正文" })) }),
+      body: JSON.stringify({ sourceName: "大文本", chapters: Array.from({ length: 601 }, (_, i) => ({ number: i + 1, content: "正文" })) }),
     });
     expect(tooLarge.status).toBe(400);
     const expired = await router.request("/api/books/book-a/style/distillations/jobs", {
@@ -263,5 +263,48 @@ describe("文风自动蒸馏路由", () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  it("支持 GET .../files、POST .../index 以及 filePath + chapterList 靶向抽样预览与建任务", async () => {
+    const { router, bookRoot } = await setup();
+    const content = Array.from({ length: 40 }, (_, i) => (
+      `第${i + 1}章 标题${i + 1}\n${i + 1 === 18
+        ? "剑光轰破阵法，他催动真元闪避偷袭，格挡神通。".repeat(20)
+        : "山风吹过石阶，灯火在雾里微微摇晃。".repeat(15)}`
+    )).join("\n\n");
+    await writeFile(join(bookRoot, "本地参考.txt"), content, "utf8");
+
+    const filesRes = await router.request("/api/books/book-a/style-distillations/files");
+    expect(filesRes.status).toBe(200);
+    const filesBody = await filesRes.json() as { files: Array<{ path: string; filePath: string; sizeBytes: number }> };
+    expect(filesBody.files).toEqual([expect.objectContaining({ path: "本地参考.txt", filePath: "本地参考.txt" })]);
+
+    const idxRes = await router.request("/api/books/book-a/style-distillations/index", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filePath: "本地参考.txt" }),
+    });
+    expect(idxRes.status).toBe(200);
+    const idxBody = await idxRes.json() as { chapterCount: number; recommendedChapters: { chapterNumbers: number[] } };
+    expect(idxBody.chapterCount).toBe(40);
+    expect(idxBody.recommendedChapters.chapterNumbers).toContain(18);
+
+    const prevRes = await router.request("/api/books/book-a/style/distillations/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filePath: "本地参考.txt", chapterList: [1, 18, 39] }),
+    });
+    expect(prevRes.status).toBe(200);
+    const prevBody = await prevRes.json() as { previewId: string; chapters: Array<{ chapterNumber: number }> };
+    expect(prevBody.chapters.map((c) => c.chapterNumber)).toEqual([1, 18, 39]);
+
+    const jobRes = await router.request("/api/books/book-a/style/distillations/jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filePath: "本地参考.txt", chapterList: [1, 18, 39] }),
+    });
+    expect(jobRes.status).toBe(201);
+    const jobBody = await jobRes.json() as { job: { chapterCount: number; chapterRange: { from: number; to: number } } };
+    expect(jobBody.job).toMatchObject({ chapterCount: 3, chapterRange: { from: 1, to: 39 } });
   });
 });

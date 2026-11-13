@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import {
   splitChapters,
@@ -38,6 +38,8 @@ import { executeWorkflowRunTool } from "./workflow-run-tools.js";
 import { getApprovedProse, getApprovedSceneSpec } from "../engine/workflows/run-service.js";
 import { getActiveWorkflowRunForNarrator } from "../engine/workflows/run-store.js";
 import { executeStyleDistillationTool } from "./style-distill-tools.js";
+import { BookTextFileError, readBookTextFile } from "../engine/writing-layers/source-file-index.js";
+import { MAX_MANUSCRIPT_CHAPTERS } from "../engine/manuscript-import/manuscript-import.js";
 import { executeCharacterVoiceTool } from "./character-voice-tools.js";
 import { proposeSelectionCandidate } from "./selection-candidate-tools.js";
 import { handleStorylinePropose } from "./storyline-tools.js";
@@ -475,10 +477,34 @@ async function importChapters(
   binding: TrustedRuntimeBookBinding,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
-  const content = typeof input.content === "string" ? input.content : "";
-  const sourceName = typeof input.sourceName === "string" ? input.sourceName : "导入文本";
-  // 默认 500 章防误贴整本；允许的调用方可显式提高到 2000（如整书旧稿导入）。单次 dissect 上限另算。
-  const maxChapters = Math.min(optionalPositiveInteger(input.maxChapters) ?? 500, 2000);
+  const rawFilePath = typeof input.filePath === "string" ? input.filePath.trim() : "";
+  const rawContent = typeof input.content === "string" ? input.content : "";
+  if (rawFilePath && rawContent) {
+    return fail("ambiguous-import-source", "请只提供 content 或 filePath 其中一种导入来源。");
+  }
+  let content = rawContent;
+  if (rawFilePath && !rawContent) {
+    try {
+      const read = await readBookTextFile(binding.root, rawFilePath);
+      content = read.text;
+    } catch (error) {
+      if (error instanceof BookTextFileError) {
+        return fail(
+          error.code === "BOOK_FILE_TOO_LARGE" ? "import-text-too-large" : "invalid-import-file",
+          error.message,
+        );
+      }
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return fail("import-file-not-found", "找不到指定的本地导入文件，请确认文件在本书目录内。");
+      }
+      throw error;
+    }
+  }
+  const sourceName = typeof input.sourceName === "string" && input.sourceName.trim()
+    ? input.sourceName.trim()
+    : rawFilePath ? basename(rawFilePath) : "导入文本";
+  // 默认 500 章防误贴整本；允许的调用方可显式提高到 MAX_MANUSCRIPT_CHAPTERS（6000 章）。单次 dissect 上限另算。
+  const maxChapters = Math.min(optionalPositiveInteger(input.maxChapters) ?? 500, MAX_MANUSCRIPT_CHAPTERS);
   if (content.length < 1000) return fail("text-too-short", "导入文本至少需要 1000 字。");
   if (content.length > MAX_SPLIT_TEXT_LENGTH) {
     return fail("import-text-too-large", `导入文本超过 ${MAX_SPLIT_TEXT_LENGTH} 字上限，请分批导入。`);
@@ -1197,6 +1223,8 @@ export async function executeRuntimeDomainTool(
     case "book_dissect":
     case "book.dissect":
       return bookDissect(input, binding, context);
+    case "style_distill_index":
+    case "style.distill_index":
     case "style_distill_preview":
     case "style.distill_preview":
     case "style_distill_start":

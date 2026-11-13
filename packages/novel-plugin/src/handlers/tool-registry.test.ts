@@ -307,7 +307,7 @@ describe("小说工具套路（一个工具一个）", () => {
     // 常驻又白占每轮工具表，所以交给 ToolSearch 按需装载。
     const auto = [
       "publish.check", "character.voice.draft", "jingwei.audit", "memory.list", "memory.export", "memory.stats",
-      "style.distill_preview", "style.distill_start", "style.distill_status", "style.distill_adopt",
+      "style.distill_index", "style.distill_preview", "style.distill_start", "style.distill_status", "style.distill_adopt",
       "skills.recommend", "skills.check_compliance", "pipeline.import_chapters", "book.dissect",
       "market.scan", "market.query", "market.ranks", "market.sample_public_chapters", "workflow.edit_recipe",
     ];

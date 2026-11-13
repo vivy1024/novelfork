@@ -316,4 +316,30 @@ describe("pipeline.import_chapters 读旧索引的兼容回退也经路径守卫
     expect(await readFile(join(testDir, "chapters", backup!), "utf8")).toBe(original);
     expect(entries).not.toContain("index.json");
   });
+
+  it("支持从书根安全读取 filePath（含 GB18030）直接导入章节，并拦截目录越界", async () => {
+    // 构造一段超过 1000 字的 GBK 编码章节：「第一章 破阵\r\n」 + 重复「灵石贷款利息算账。剑光真元破阵。」
+    const headerGbk = Buffer.from([0xb5, 0xda, 0xd2, 0xbb, 0xd5, 0xc2, 0x20, 0xcb, 0xe3, 0xd5, 0xcb, 0x0d, 0x0a]);
+    const unitGbk = Buffer.from([0xc1, 0xe9, 0xca, 0xaf, 0xb4, 0xfb, 0xbf, 0xee, 0xc0, 0xfb, 0xcf, 0xa2, 0xa1, 0xa3]);
+    const gbkBody = Buffer.concat([headerGbk, ...Array.from({ length: 160 }, () => unitGbk)]);
+    await writeFile(join(testDir, "旧书gbk.txt"), gbkBody);
+
+    const escape = await executeRuntimeDomainTool(
+      "pipeline.import_chapters",
+      { filePath: "../outside.txt", autoSettle: false, extractBrief: false } as never,
+      binding,
+      {} as never,
+    );
+    expect(escape).toMatchObject({ ok: false, error: "invalid-import-file" });
+
+    const imported = await executeRuntimeDomainTool(
+      "pipeline.import_chapters",
+      { filePath: "旧书gbk.txt", autoSettle: false, extractBrief: false } as never,
+      binding,
+      {} as never,
+    );
+    expect(imported).toMatchObject({ ok: true, data: { importedChapters: 1 } });
+    const written = await readFile(join(testDir, "chapters", "卷01", "0001_算账.md"), "utf8");
+    expect(written).toContain("灵石贷款利息");
+  });
 });

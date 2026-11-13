@@ -93,11 +93,12 @@ describe("product body limit policy (T-11)", () => {
 		}
 	});
 
-	test("raises long-text entries to 8 MiB", () => {
-		expect(LONG_TEXT_BODY_LIMIT_BYTES).toBe(8 * MiB);
+	test("raises long-text entries to 64 MiB", () => {
+		expect(LONG_TEXT_BODY_LIMIT_BYTES).toBe(64 * MiB);
 		for (const path of [
 			"/api/books/b1/style/distillations/preview",
 			"/api/books/b1/style/distillations/jobs",
+			"/api/books/b1/style-distillations/index",
 			"/api/books/b1/style/distill",
 			"/api/books/b1/jingwei/import",
 			"/api/writing-skills/import",
@@ -105,11 +106,11 @@ describe("product body limit policy (T-11)", () => {
 		]) {
 			expect(resolveProductBodyLimit(path)).toBe(LONG_TEXT_BODY_LIMIT_BYTES);
 		}
-		// 文风蒸馏最多 100 万字：UTF-8 下中文每字 3 字节，加上 JSON 包装仍在 8 MiB 之内。
+		// 文风蒸馏最多 300 万字：UTF-8 下中文每字 3 字节，加上 JSON 包装仍在 64 MiB 之内。
 		expect(LONG_TEXT_BODY_LIMIT_BYTES).toBeGreaterThan(MAX_STYLE_DISTILLATION_CHARS * 3 + 64 * 1024);
 	});
 
-	test("旧稿导入只有建任务的上传放宽到 8 MiB，且放得下原文上限加 multipart 包装", () => {
+	test("旧稿导入只有建任务的上传放宽到 64 MiB，且放得下原文上限加 multipart 包装", () => {
 		expect(resolveProductBodyLimit("/api/books/b1/manuscript-import/jobs")).toBe(LONG_TEXT_BODY_LIMIT_BYTES);
 		expect(resolveProductBodyLimit("/api/books/b1/manuscript-import/jobs/job-1/confirm")).toBe(PRODUCT_BODY_LIMIT_BYTES);
 		expect(LONG_TEXT_BODY_LIMIT_BYTES).toBeGreaterThanOrEqual(MAX_MANUSCRIPT_BYTES + 1024 * 1024);

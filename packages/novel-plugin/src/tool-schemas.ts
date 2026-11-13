@@ -16,6 +16,14 @@ function stringSchema(description: string): Record<string, unknown> {
   return { type: "string", description };
 }
 
+function relativeBookFileSchema(description: string): Record<string, unknown> {
+  return {
+    type: "string",
+    pattern: "^(?![/\\\\])(?![A-Za-z]:)(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)).+$",
+    description,
+  };
+}
+
 function enumSchema(values: readonly string[], description: string): Record<string, unknown> {
   return { type: "string", enum: values, description };
 }
@@ -355,15 +363,16 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      content: stringSchema("要导入的 .txt/.md 文本内容；不得传服务器文件路径。"),
+      content: stringSchema("要导入的 .txt/.md 文本内容；与 filePath 二选一。"),
+      filePath: relativeBookFileSchema("书根内的相对文件路径（支持 UTF-8/GB18030 本地大文件，与 content 二选一；禁止越界或绝对路径）。"),
       sourceName: stringSchema("导入来源名称（可选）。"),
       splitPattern: stringSchema("章节标题正则（可选）。留空自动识别「第X章」「Chapter X」等。只支持简单规则：逐行匹配不超过 200 字的标题行；分组后只能接 ?，不支持反向引用和环视；* + {n,} 最多 4 个，长度不超过 128；建议以 ^ 开头，例如 ^第(\\d+)章\\s*(.*)$ 或 ^【\\d+】(.*)。"),
-      maxChapters: numberSchema("最大导入章数（可选，默认 500）。"),
+      maxChapters: numberSchema("最大导入章数（可选，默认 500，最高 6000）。"),
       autoSettle: booleanSchema("导入后是否自动 memory.settle_range（默认 true）。"),
       extractBrief: booleanSchema("导入后是否抽取角色/地点/钩子/焦点草案（默认 true）。"),
       applyDissectDraft: booleanSchema("是否把抽取草案写入 story 草稿文件（默认 false；true 时写 pending_hooks/focus/dissect_draft）。"),
     },
-    required: ["bookId", "content"],
+    required: ["bookId"],
     additionalProperties: false,
   },
   "outline.volume": {
@@ -470,24 +479,46 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
+  "style.distill_index": {
+    type: "object",
+    properties: {
+      filePath: relativeBookFileSchema("书根内的参考文件相对路径（可选；不传或 listFilesOnly=true 时返回书根可用文件列表）。"),
+      sourceName: stringSchema("可选参考来源名称。"),
+      text: stringSchema("可选直接传入的参考正文（与 filePath 二选一）。"),
+      splitPattern: stringSchema("可选章节标题正则；规则限制同 pipeline.import_chapters 的 splitPattern。"),
+      listFilesOnly: booleanSchema("为 true 时只列出书根下可做参考的 .txt/.md 文件。"),
+      offset: numberSchema("章节概览分页起始下标（默认 0）。"),
+      limit: numberSchema("章节概览每页章数（默认 100，最高 200）。"),
+    },
+    required: [],
+    additionalProperties: false,
+  },
   "style.distill_preview": {
     type: "object",
     properties: {
-      sourceName: stringSchema("参考来源名称。"),
-      text: stringSchema("待分析的参考正文；与 chapters 二选一。"),
-      chapters: arraySchema("已切分的章节数组；与 text 二选一。"),
+      sourceName: stringSchema("参考来源名称（传 filePath 时可省略）。"),
+      filePath: relativeBookFileSchema("书根内的参考文件相对路径；与 text/chapters 三选一，自动识别 UTF-8/GB18030。"),
+      text: stringSchema("待分析的参考正文；与 filePath/chapters 三选一。"),
+      chapters: arraySchema("已切分的章节数组；与 filePath/text 三选一。"),
       splitPattern: stringSchema("可选章节标题正则；规则限制同 pipeline.import_chapters 的 splitPattern。"),
+      chapterList: arraySchema("可选抽样章号列表（如 [1,2,3,24,88,278]，保留原书章号）。", { type: "number" }),
+      fromChapter: numberSchema("可选起始章号（1 起）。"),
+      toChapter: numberSchema("可选结束章号。"),
     },
-    required: ["sourceName"],
+    required: [],
     additionalProperties: false,
   },
   "style.distill_start": {
     type: "object",
     properties: {
-      sourceName: stringSchema("新建任务时必填：参考来源名称。"),
-      text: stringSchema("新建任务时的参考正文；与 chapters 二选一。"),
-      chapters: arraySchema("新建任务时已切分的章节数组；与 text 二选一。"),
+      sourceName: stringSchema("新建任务时的参考来源名称（传 filePath 时可省略）。"),
+      filePath: relativeBookFileSchema("新建任务时的书根内参考文件相对路径；与 text/chapters 三选一。"),
+      text: stringSchema("新建任务时的参考正文；与 filePath/chapters 三选一。"),
+      chapters: arraySchema("新建任务时已切分的章节数组；与 filePath/text 三选一。"),
       splitPattern: stringSchema("可选章节标题正则；规则限制同 pipeline.import_chapters 的 splitPattern。"),
+      chapterList: arraySchema("可选抽样章号列表（如 [1,2,3,24,88,278]，保留原书章号）。", { type: "number" }),
+      fromChapter: numberSchema("可选起始章号（1 起）。"),
+      toChapter: numberSchema("可选结束章号。"),
       jobId: stringSchema("继续已有任务时传入；此时不要再传来源正文。"),
       maxBatches: numberSchema("本次最多处理几批模型批次（1–10，缺省 3）；剩余批次可再次调用继续。"),
       retryFailed: booleanSchema("继续已有任务时，是否把失败批次重新排队（默认 false）。"),
@@ -528,7 +559,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       characterName: stringSchema("角色名或别名（精确匹配）；与 entryId 二选一，重名时须改用 entryId。"),
       expectedVersion: numberSchema("character.voice.read 返回的 expectedVersion，原样传回；角色卡已被改过时返回冲突（409）。"),
       dialogueSamples: arraySchema("可选：该角色本人的对白原句，每项一句；只放能确定是这个角色说的话。", { type: "string" }),
-      scanChapters: numberSchema("可选：扫描最近几章正文抽取该角色对白（0–30，缺省 10，0 表示不扫描）。"),
+      scanChapters: numberSchema("可选：扫描最近几章正文抽取该角色对白（0–500，缺省 10，0 表示不扫描）。"),
       useModel: booleanSchema("可选：是否用当前会话模型增补（缺省：会话有模型时增补）。模型字段必须带能在材料里找到的原文依据，否则丢弃。"),
     },
     required: ["expectedVersion"],

@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 
-import { splitChapters, type SplitChapter } from "@vivy1024/novelfork-core";
+import { MAX_SPLIT_TEXT_LENGTH, splitChapters, type SplitChapter } from "@vivy1024/novelfork-core";
 import { distillStyleProfile, type DistilledStyleProfile } from "../tools/import/style-distiller.js";
 import type { DissectKnowledgePack, DissectSourceChapter } from "../../handlers/dissect-knowledge.js";
 import { writeFileAtomic } from "../writing-resource/atomic-write.js";
@@ -11,12 +11,23 @@ import { findDialogueRanges } from "../compliance/dialogue-spans.js";
 import {
   extractKnowledgePack,
 } from "../../handlers/dissect-knowledge.js";
+import { BookTextFileError, mechanicalTextFeatures, readBookTextFile } from "./source-file-index.js";
+import { collectSourceTerms, findSourceTerms } from "./style-distillation-terms.js";
 
 export const STYLE_DISTILLATION_SCHEMA_VERSION = 1 as const;
 export const STYLE_DISTILLATIONS_RELATIVE_DIR = join("story", "style-distillations");
-export const MAX_STYLE_DISTILLATION_CHAPTERS = 200;
-export const MAX_STYLE_DISTILLATION_CHARS = 1_000_000;
+export const MAX_STYLE_DISTILLATION_CHAPTERS = 600;
+export const MAX_STYLE_DISTILLATION_CHARS = 3_000_000;
 export const MAX_STYLE_DISTILLATION_RULES = 200;
+export const STYLE_SAMPLE_REGISTER_TAGS = [
+  "dialogue_banter",
+  "institution_exploitation",
+  "bill_inventory",
+  "combat_counter",
+  "ancient_scripture",
+  "general",
+] as const;
+export type StyleSampleRegisterTag = (typeof STYLE_SAMPLE_REGISTER_TAGS)[number];
 /** 单章进入模型批次的上限字数，与覆盖统计的 analyzedCharCount 口径一致。 */
 export const STYLE_DISTILLATION_CHAPTER_CHAR_LIMIT = 12_000;
 /** 每批送给模型的正文预算与章数上限。 */
@@ -90,6 +101,7 @@ export const StyleDistillationSourceSchema = z.object({
   samples: z.array(z.object({
     id: z.string().trim().min(1).max(120),
     sceneType: z.enum(["dialogue", "action", "description", "interiority", "transition", "general"]),
+    registerTag: z.enum(STYLE_SAMPLE_REGISTER_TAGS).optional(),
     text: z.string().trim().min(1).max(1_200),
     evidence: sourceText,
     transfer: z.enum(["transferable", "source-only"]),
@@ -187,9 +199,13 @@ export interface DistillableChapter {
 
 export interface StyleDistillationSourceInput {
   readonly sourceName: string;
+  readonly filePath?: string;
   readonly text?: string;
   readonly chapters?: readonly { readonly number: number; readonly title?: string; readonly content: string }[];
   readonly splitPattern?: string;
+  readonly chapterList?: readonly number[];
+  readonly fromChapter?: number;
+  readonly toChapter?: number;
 }
 
 export class StyleDistillationError extends Error {
@@ -225,21 +241,79 @@ function trimSourceName(sourceName: string): string {
   return value;
 }
 
+function parseChapterFilter(input: StyleDistillationSourceInput): {
+  readonly hasFilter: boolean;
+  readonly keep: (chapterNumber: number) => boolean;
+} {
+  const { chapterList, fromChapter, toChapter } = input;
+  const hasList = chapterList !== undefined;
+  const hasFrom = fromChapter !== undefined;
+  const hasTo = toChapter !== undefined;
+  if (!hasList && !hasFrom && !hasTo) {
+    return { hasFilter: false, keep: () => true };
+  }
+  let allowed: Set<number> | null = null;
+  if (hasList) {
+    if (!Array.isArray(chapterList) || chapterList.length === 0
+      || chapterList.some((n) => !Number.isSafeInteger(n) || n <= 0)) {
+      throw new StyleDistillationError("chapterList 必须是非空的正整数章号数组。", "STYLE_DISTILLATION_INVALID_INPUT");
+    }
+    allowed = new Set(chapterList);
+  }
+  if (hasFrom && (!Number.isSafeInteger(fromChapter) || fromChapter! <= 0)) {
+    throw new StyleDistillationError("fromChapter 必须是正整数。", "STYLE_DISTILLATION_INVALID_INPUT");
+  }
+  if (hasTo && (!Number.isSafeInteger(toChapter) || toChapter! <= 0)) {
+    throw new StyleDistillationError("toChapter 必须是正整数。", "STYLE_DISTILLATION_INVALID_INPUT");
+  }
+  if (hasFrom && hasTo && toChapter! < fromChapter!) {
+    throw new StyleDistillationError("toChapter 不能小于 fromChapter。", "STYLE_DISTILLATION_INVALID_INPUT");
+  }
+  return {
+    hasFilter: true,
+    keep: (chapterNumber) => (allowed ? allowed.has(chapterNumber) : true)
+      && (!hasFrom || chapterNumber >= fromChapter!)
+      && (!hasTo || chapterNumber <= toChapter!),
+  };
+}
+
+function applyChapterFilter(chapters: readonly DistillableChapter[], filter: ReturnType<typeof parseChapterFilter>): DistillableChapter[] {
+  if (!filter.hasFilter) return [...chapters];
+  const matched = chapters.filter((chapter) => filter.keep(chapter.number));
+  if (matched.length === 0) {
+    throw new StyleDistillationError(
+      `指定的章节范围未匹配到任何章节（来源共 ${chapters.length} 章）。`,
+      "STYLE_DISTILLATION_NO_CHAPTERS",
+    );
+  }
+  return matched;
+}
+
 function normalizeChapters(input: StyleDistillationSourceInput): DistillableChapter[] {
   const hasText = typeof input.text === "string";
   const hasChapters = Array.isArray(input.chapters);
   if (hasText === hasChapters) {
-    throw new StyleDistillationError("必须且只能提供 text 或 chapters 其中一种来源正文。", "STYLE_DISTILLATION_INVALID_INPUT");
+    if (typeof input.filePath === "string" && input.filePath.trim() && !hasChapters) {
+      throw new StyleDistillationError("读取本地参考文件请先调用 resolveStyleDistillationInput。", "STYLE_DISTILLATION_INVALID_INPUT");
+    }
+    throw new StyleDistillationError("必须且只能提供 filePath、text 或 chapters 其中一种来源正文。", "STYLE_DISTILLATION_INVALID_INPUT");
   }
+  const filter = parseChapterFilter(input);
 
   if (hasText) {
     const text = input.text!.trim();
     if (!text) throw new StyleDistillationError("参考正文不能为空。", "STYLE_DISTILLATION_INVALID_INPUT");
-    // 先按蒸馏自己的口径判总长度（T-07）：超长正文交给切章会被切章器的 200 万上限拦下，
-    // 再被下面的 catch 包装成「章节分割规则无效」，让作者去改一条本来没问题的规则。
-    if (text.length > MAX_STYLE_DISTILLATION_CHARS) {
+    // 未传章节抽样时，先按蒸馏自己的字数上限拦截（T-07），避免超长正文被切章报错包装成「分割规则无效」；
+    // 传了抽样范围时，允许先切分最高 3000 万字的大文件，抽样后再按进入任务的章节数与字数校验。
+    if (!filter.hasFilter && text.length > MAX_STYLE_DISTILLATION_CHARS) {
       throw new StyleDistillationError(
-        `参考正文最多支持 ${MAX_STYLE_DISTILLATION_CHARS} 字，当前为 ${text.length} 字。请截取要学习的部分章节后再预览。`,
+        `参考正文最多支持 ${MAX_STYLE_DISTILLATION_CHARS} 字，当前为 ${text.length} 字。请用 style.distill_index 获取推荐章并通过 chapterList 或 fromChapter/toChapter 抽样。`,
+        "STYLE_DISTILLATION_TOO_LARGE",
+      );
+    }
+    if (text.length > MAX_SPLIT_TEXT_LENGTH) {
+      throw new StyleDistillationError(
+        `参考文件最多支持 ${MAX_SPLIT_TEXT_LENGTH} 字，当前为 ${text.length} 字。请按卷拆分后再试。`,
         "STYLE_DISTILLATION_TOO_LARGE",
       );
     }
@@ -255,11 +329,12 @@ function normalizeChapters(input: StyleDistillationSourceInput): DistillableChap
     if (split.length === 0) {
       throw new StyleDistillationError("未能识别出章节，请检查正文标题或 splitPattern。", "STYLE_DISTILLATION_NO_CHAPTERS");
     }
-    return split.map((chapter, index) => ({
+    const all = split.map((chapter, index) => ({
       number: index + 1,
       title: chapter.title || `第${index + 1}章`,
       content: chapter.content,
     }));
+    return applyChapterFilter(all, filter);
   }
 
   const chapters = input.chapters!;
@@ -267,7 +342,7 @@ function normalizeChapters(input: StyleDistillationSourceInput): DistillableChap
     throw new StyleDistillationError("chapters 不能为空。", "STYLE_DISTILLATION_NO_CHAPTERS");
   }
   const seen = new Set<number>();
-  return [...chapters]
+  const normalized = [...chapters]
     .map((chapter) => {
       if (!Number.isSafeInteger(chapter.number) || chapter.number <= 0 || seen.has(chapter.number)) {
         throw new StyleDistillationError("chapters.number 必须是唯一的正整数。", "STYLE_DISTILLATION_INVALID_INPUT");
@@ -283,6 +358,46 @@ function normalizeChapters(input: StyleDistillationSourceInput): DistillableChap
       };
     })
     .sort((left, right) => left.number - right.number);
+  return applyChapterFilter(normalized, filter);
+}
+
+/**
+ * 解析本地文件与跳章抽样输入：若传了 filePath 且未传 text，自动从书根安全读取并识别 UTF-8/GB18030，
+ * 先切全书再按 chapterList / fromChapter / toChapter 过滤，严格保留原书章号 chapter.number。
+ */
+export async function resolveStyleDistillationInput(
+  bookRoot: string,
+  input: StyleDistillationSourceInput,
+): Promise<StyleDistillationSourceInput> {
+  const rawPath = typeof input.filePath === "string" ? input.filePath.trim() : "";
+  if (rawPath && typeof input.text !== "string") {
+    if (Array.isArray(input.chapters)) {
+      throw new StyleDistillationError("不能同时提供 filePath 与 chapters。", "STYLE_DISTILLATION_INVALID_INPUT");
+    }
+    let file: Awaited<ReturnType<typeof readBookTextFile>>;
+    try {
+      file = await readBookTextFile(bookRoot, rawPath);
+    } catch (error) {
+      if (error instanceof BookTextFileError) {
+        throw new StyleDistillationError(
+          error.message,
+          error.code === "BOOK_FILE_TOO_LARGE" ? "STYLE_DISTILLATION_TOO_LARGE" : "STYLE_DISTILLATION_INVALID_INPUT",
+        );
+      }
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new StyleDistillationError("找不到指定的参考文件，请确认文件位于本书目录下。", "STYLE_DISTILLATION_NOT_FOUND");
+      }
+      throw error;
+    }
+    const fallbackName = basename(rawPath).replace(/\.(?:txt|md)$/iu, "").trim() || rawPath;
+    const sourceName = input.sourceName.trim() || fallbackName;
+    const chapters = normalizeChapters({ ...input, sourceName, text: file.text, filePath: undefined });
+    return { sourceName, chapters };
+  }
+  return {
+    sourceName: input.sourceName,
+    chapters: normalizeChapters(input),
+  };
 }
 
 export function normalizeStyleDistillationSource(input: StyleDistillationSourceInput): {
@@ -332,28 +447,74 @@ export function normalizeStyleDistillationSource(input: StyleDistillationSourceI
 }
 
 const CHAPTER_HEADING = /^(?:第[\d零〇一二三四五六七八九十百千两]+[章节回卷集]|chapter\s*\d+)/iu;
+const SAMPLE_MIN_PARAGRAPH_CHARS = 20;
+const SAMPLE_TARGET_MIN_CHARS = 300;
+const SAMPLE_TARGET_MAX_CHARS = 500;
+const SAMPLE_HARD_CAP_CHARS = 550;
+const SAMPLE_MAX_COUNT = 20;
+
+function trimAtSentenceEnd(passage: string): string {
+  if (passage.length <= SAMPLE_HARD_CAP_CHARS) return passage;
+  const cut = passage.slice(0, SAMPLE_HARD_CAP_CHARS);
+  const lastEnd = Math.max(
+    cut.lastIndexOf("。"),
+    cut.lastIndexOf("！"),
+    cut.lastIndexOf("？"),
+    cut.lastIndexOf("”"),
+    cut.lastIndexOf("」"),
+    cut.lastIndexOf("』"),
+    cut.lastIndexOf("；"),
+  );
+  return (lastEnd > 120 ? cut.slice(0, lastEnd + 1) : cut).trim();
+}
+
+function scoreExcerptWindow(passage: string, startIndex: number): number {
+  const features = mechanicalTextFeatures(passage);
+  const featureSum = features.featureScores.bill + features.featureScores.combat
+    + features.featureScores.ancient + features.featureScores.banter
+    + (features.dominantFeatures.includes("institution_rule") ? 4 : 0);
+  const sceneBonus = sampleSceneType(passage) !== "general" ? 2 : 0;
+  const lengthBonus = passage.length >= SAMPLE_TARGET_MIN_CHARS && passage.length <= SAMPLE_TARGET_MAX_CHARS
+    ? 5
+    : passage.length >= SAMPLE_TARGET_MIN_CHARS ? 3 : passage.length / 100;
+  // 轻微偏向非首段，避开常见的章节过渡套话；首段本身特征更强时仍可胜出。
+  return featureSum + sceneBonus + lengthBonus + (startIndex > 0 ? 0.4 : 0);
+}
 
 /**
- * 范文要能示范写法：取章内第一段起的连续整段，凑够约 200 字即止、不超过 600 字；
- * 跳过章节标题行，超长时在句末截断，不留半句。
+ * 范文摘录：跳过纯章名与少于 20 字的碎句，从章内挑最具特征密度/代表性的连续自然段窗口；
+ * 凑够 300 字即止（目标 300–500 字），硬上限 550 字句末截断，不傻取开头第一段。
  */
-function excerptFor(chapter: DistillableChapter): string {
-  const paragraphs = chapter.content
+export function excerptFor(chapter: DistillableChapter): string {
+  const rawParagraphs = chapter.content
     .split(/\r?\n/u)
     .map((item) => item.trim())
-    .filter((item) => item.length > 0 && !CHAPTER_HEADING.test(item));
-  const picked: string[] = [];
-  let length = 0;
-  for (const paragraph of paragraphs) {
-    picked.push(paragraph);
-    length += paragraph.length;
-    if (length >= 200) break;
+    .filter((item) => item.length > 0 && !(CHAPTER_HEADING.test(item) && item.length <= 60));
+  const substantial = rawParagraphs.filter((item) => item.length >= SAMPLE_MIN_PARAGRAPH_CHARS);
+  const paragraphs = substantial.length > 0 ? substantial : rawParagraphs;
+  if (paragraphs.length === 0) return trimAtSentenceEnd(chapter.content.trim());
+
+  const stride = paragraphs.length > 40 ? Math.max(1, Math.floor(paragraphs.length / 30)) : 1;
+  let best = "";
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (let start = 0; start < paragraphs.length; start += stride) {
+    const picked: string[] = [];
+    let length = 0;
+    for (let cursor = start; cursor < paragraphs.length; cursor += 1) {
+      const para = paragraphs[cursor]!;
+      picked.push(para);
+      length += para.length;
+      if (length >= SAMPLE_TARGET_MIN_CHARS) break;
+    }
+    const candidate = trimAtSentenceEnd(picked.join("\n"));
+    if (!candidate) continue;
+    const score = scoreExcerptWindow(candidate, start);
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
   }
-  const passage = picked.length > 0 ? picked.join("\n") : chapter.content.trim();
-  if (passage.length <= 600) return passage;
-  const cut = passage.slice(0, 600);
-  const lastEnd = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"), cut.lastIndexOf("”"));
-  return (lastEnd > 120 ? cut.slice(0, lastEnd + 1) : cut).trim();
+  return best || trimAtSentenceEnd(paragraphs.join("\n"));
 }
 
 /**
@@ -452,21 +613,75 @@ function mapRules(pack: DissectKnowledgePack, fingerprint: DistilledStyleProfile
   return rules.slice(0, 50);
 }
 
+/** 局部语域标签：区分熟人互损、制度剥削、算账流水、生克斗法、古籍道藏等细分写法。 */
+export function sampleRegisterTag(text: string): StyleSampleRegisterTag {
+  const { dominantFeatures, featureScores } = mechanicalTextFeatures(text);
+  const candidates: Array<{ tag: StyleSampleRegisterTag; score: number }> = [];
+  if (dominantFeatures.includes("dialogue_banter")) candidates.push({ tag: "dialogue_banter", score: featureScores.banter + 2 });
+  if (dominantFeatures.includes("institution_rule")) candidates.push({ tag: "institution_exploitation", score: 6 });
+  if (dominantFeatures.includes("bill_inventory")) candidates.push({ tag: "bill_inventory", score: featureScores.bill });
+  if (dominantFeatures.includes("combat_counter")) candidates.push({ tag: "combat_counter", score: featureScores.combat });
+  if (dominantFeatures.includes("ancient_scripture")) candidates.push({ tag: "ancient_scripture", score: featureScores.ancient });
+  candidates.sort((left, right) => right.score - left.score);
+  return candidates[0]?.tag ?? "general";
+}
+
 function mapSamples(chapters: readonly DistillableChapter[]): StyleDistillationSample[] {
-  return chapters
-    .filter((chapter) => chapter.content.length > 0)
-    .slice(0, 12)
-    .map((chapter, index) => {
+  const nonEmpty = chapters.filter((chapter) => chapter.content.trim().length > 0);
+  if (nonEmpty.length === 0) return [];
+  const termIndex = collectSourceTerms(nonEmpty);
+  const pool = nonEmpty.length <= 60
+    ? nonEmpty
+    : Array.from({ length: 60 }, (_, idx) => nonEmpty[Math.min(nonEmpty.length - 1, Math.floor((idx * nonEmpty.length) / 60))]!)
+      .filter((chapter, idx, arr) => idx === 0 || chapter.number !== arr[idx - 1]!.number);
+
+  const candidates = pool
+    .map((chapter) => {
       const text = excerptFor(chapter).slice(0, 1_200);
-      return {
-        id: `sample-${chapter.number}-${index + 1}`,
-        sceneType: sampleSceneType(text),
-        text,
-        evidence: `第${chapter.number}章原文摘录（${text.length} 字）`,
-        transfer: "source-only",
-        status: "needs-review",
-      };
-    });
+      if (!text) return null;
+      const sceneType = sampleSceneType(text);
+      const registerTag = sampleRegisterTag(text);
+      const hits = findSourceTerms(text, termIndex);
+      const transfer: StyleDistillationSample["transfer"] = hits.length === 0 ? "transferable" : "source-only";
+      const evidence = hits.length === 0
+        ? `第${chapter.number}章原文摘录（${text.length} 字）`
+        : `第${chapter.number}章原文摘录（${text.length} 字；仅学节奏笔法，禁抄专名：${hits.slice(0, 3).map((item) => item.term).join("、")}）`;
+      return { chapter, text, sceneType, registerTag, transfer, evidence };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  // 按场景类型轮流抽取，最多 20 段，确保不同场景与语域都有代表段落。
+  const buckets = new Map<string, typeof candidates>();
+  for (const item of candidates) {
+    const key = `${item.sceneType}:${item.registerTag}`;
+    const list = buckets.get(key) ?? [];
+    list.push(item);
+    buckets.set(key, list);
+  }
+  const queues = [...buckets.values()];
+  const picked: typeof candidates = [];
+  let progressed = true;
+  while (picked.length < SAMPLE_MAX_COUNT && progressed) {
+    progressed = false;
+    for (const queue of queues) {
+      if (picked.length >= SAMPLE_MAX_COUNT) break;
+      const next = queue.shift();
+      if (!next) continue;
+      progressed = true;
+      picked.push(next);
+    }
+  }
+  picked.sort((left, right) => left.chapter.number - right.chapter.number);
+
+  return picked.map((item, index) => ({
+    id: `sample-${item.chapter.number}-${index + 1}`,
+    sceneType: item.sceneType,
+    registerTag: item.registerTag,
+    text: item.text,
+    evidence: item.evidence,
+    transfer: item.transfer,
+    status: "needs-review",
+  }));
 }
 
 export interface BuildStyleDistillationInput {
@@ -490,7 +705,7 @@ export function buildStyleDistillationPackage(input: BuildStyleDistillationInput
     input.modelAvailable
       ? "已先生成确定性规则基线；模型按章节批次抽取声音、语言、节奏、对话、场景写法与一致性规则，进度见批次状态。"
       : "当前入口没有可用模型：已生成确定性规则基线，模型批次保持待处理。可在叙述者对话中调用 style.distill_start 并传入 jobId 继续。",
-    "人物、世界和剧情事实不会写入可迁移规则；样本默认 source-only，需作者逐项复核。",
+    "人物、世界和剧情事实不会写入可迁移规则；不含来源高频专名的干净样本标为 transferable，含专名的标为 source-only（仅学节奏笔法，禁抄专名），均需作者复核。",
     knowledge.styleHints.customVocabulary.length > 0
       ? "已忽略来源专名和题材词汇，避免把来源绑定内容带入本书文风。"
       : "",

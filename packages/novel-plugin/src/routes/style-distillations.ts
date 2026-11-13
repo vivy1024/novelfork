@@ -1,8 +1,16 @@
+import { basename } from "node:path";
 import { Hono, type Context } from "hono";
 import type { RuntimeTextGenerator } from "@vivy1024/novelfork-core/plugins";
 import {
+  BookTextFileError,
+  buildMechanicalBookIndex,
+  listWorkspaceReferenceFiles,
+  readBookTextFile,
+} from "../engine/writing-layers/source-file-index.js";
+import {
   makePreviewSource,
   normalizeStyleDistillationSource,
+  resolveStyleDistillationInput,
   listStyleDistillationJobs,
   StyleDistillationError,
   type StyleDistillationJob,
@@ -55,11 +63,18 @@ function asInput(body: Record<string, unknown>): StyleDistillationSourceInput {
       return typeof value.number === "number" && typeof value.content === "string";
     }).map((item) => ({ number: item.number, title: item.title, content: item.content }))
     : undefined;
+  const chapterList = Array.isArray(body.chapterList)
+    ? body.chapterList.filter((item): item is number => typeof item === "number")
+    : undefined;
   return {
     sourceName: typeof body.sourceName === "string" ? body.sourceName : "",
+    ...(typeof body.filePath === "string" ? { filePath: body.filePath } : {}),
     ...(typeof body.text === "string" ? { text: body.text } : {}),
     ...(chapters ? { chapters } : {}),
     ...(typeof body.splitPattern === "string" ? { splitPattern: body.splitPattern } : {}),
+    ...(chapterList ? { chapterList } : {}),
+    ...(typeof body.fromChapter === "number" ? { fromChapter: body.fromChapter } : {}),
+    ...(typeof body.toChapter === "number" ? { toChapter: body.toChapter } : {}),
   };
 }
 
@@ -78,6 +93,14 @@ function distillationNext(code: StyleDistillationError["code"]): string {
 }
 
 function errorResponse(c: Context, error: unknown) {
+  if (error instanceof BookTextFileError) {
+    const status = error.code === "BOOK_FILE_TOO_LARGE" ? 413 : 400;
+    return c.json({ error: error.message, code: error.code, explanation: {
+      what: error.message,
+      why: "文风参考文件只允许读取本书目录内不超过 60 MB 的普通文本文件。",
+      next: "请选择本书目录下的 .txt 或 .md 参考文件后重试。",
+    } }, status);
+  }
   if (error instanceof StyleDistillationError) {
     return c.json({ error: error.message, code: error.code, explanation: {
       what: error.message,
@@ -259,21 +282,99 @@ export function createStyleDistillationsRouter(
     await next();
   });
 
-  app.post("/api/books/:bookId/style/distillations/preview", async (c) => {
+  const handleListFiles = async (c: Context) => {
+    try {
+      const bookRoot = resolveBookRoot(c.req.param("bookId"));
+      const listed = await listWorkspaceReferenceFiles(bookRoot);
+      return c.json({
+        files: listed.map((file) => ({
+          ...file,
+          path: file.filePath,
+          sizeBytes: file.byteLength,
+          updatedAt: file.modifiedAt,
+        })),
+      });
+    } catch (error) {
+      return errorResponse(c, error);
+    }
+  };
+  app.get("/api/books/:bookId/style-distillations/files", handleListFiles);
+  app.get("/api/books/:bookId/style/distillations/files", handleListFiles);
+
+  const handleBuildIndex = async (c: Context) => {
+    try {
+      const bookRoot = resolveBookRoot(c.req.param("bookId"));
+      const body = bodyRecord(await c.req.json().catch(() => null));
+      if (!body) return c.json({ error: "请求体必须是对象。", code: "STYLE_DISTILLATION_INVALID_INPUT" }, 400);
+      const rawPath = typeof body.filePath === "string" ? body.filePath.trim() : "";
+      const rawText = typeof body.text === "string" ? body.text : "";
+      if (!rawPath && !rawText.trim()) {
+        throw new StyleDistillationError("请提供 filePath 或 text 建立机械索引。", "STYLE_DISTILLATION_INVALID_INPUT");
+      }
+      let text = rawText;
+      let encoding: "utf-8" | "gb18030" = "utf-8";
+      let byteLength = Buffer.byteLength(rawText, "utf8");
+      if (rawPath && !rawText) {
+        try {
+          const read = await readBookTextFile(bookRoot, rawPath);
+          text = read.text;
+          encoding = read.encoding;
+          byteLength = read.byteLength;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            throw new StyleDistillationError("找不到指定的参考文件，请确认文件位于本书目录下。", "STYLE_DISTILLATION_NOT_FOUND");
+          }
+          throw error;
+        }
+      }
+      const fallbackName = rawPath ? basename(rawPath).replace(/\.(?:txt|md)$/iu, "").trim() || rawPath : "参考文本";
+      const sourceName = (typeof body.sourceName === "string" && body.sourceName.trim()) || fallbackName;
+      const splitPattern = typeof body.splitPattern === "string" && body.splitPattern.trim() ? body.splitPattern.trim() : undefined;
+      let index;
+      try {
+        index = buildMechanicalBookIndex({ sourceName, text, ...(splitPattern ? { splitPattern } : {}) });
+      } catch (error) {
+        throw new StyleDistillationError(
+          `章节分割规则无效：${error instanceof Error ? error.message : String(error)}`,
+          "STYLE_DISTILLATION_INVALID_INPUT",
+        );
+      }
+      return c.json({
+        sourceName,
+        filePath: rawPath,
+        encoding,
+        byteLength,
+        totalChars: index.totalCharCount,
+        totalCharCount: index.totalCharCount,
+        chapterCount: index.chapterCount,
+        topChapters: index.topChapters,
+        recommendedChapters: index.recommendedChapters,
+        chapters: index.chapters,
+      });
+    } catch (error) {
+      return errorResponse(c, error);
+    }
+  };
+  app.post("/api/books/:bookId/style-distillations/index", handleBuildIndex);
+  app.post("/api/books/:bookId/style/distillations/index", handleBuildIndex);
+
+  const handlePreview = async (c: Context) => {
     try {
       cleanupPreviews();
       const bookId = c.req.param("bookId");
       const body = bodyRecord(await c.req.json().catch(() => null));
       if (!body) return c.json({ error: "请求体必须是对象。", code: "STYLE_DISTILLATION_INVALID_INPUT" }, 400);
-      const input = asInput(body);
-      const preview = makePreviewSource(input);
       const bookRoot = resolveBookRoot(bookId);
+      const input = await resolveStyleDistillationInput(bookRoot, asInput(body));
+      const preview = makePreviewSource(input);
       previews.set(preview.sourceId, { bookId, bookRoot, input, preview, expiresAt: Date.now() + PREVIEW_TTL_MS });
       return c.json(previewResponse(preview, input));
     } catch (error) {
       return errorResponse(c, error);
     }
-  });
+  };
+  app.post("/api/books/:bookId/style/distillations/preview", handlePreview);
+  app.post("/api/books/:bookId/style-distillations/preview", handlePreview);
 
   app.get("/api/books/:bookId/style/distillations/jobs", async (c) => {
     try {
@@ -316,7 +417,7 @@ export function createStyleDistillationsRouter(
     }
   });
 
-  app.post("/api/books/:bookId/style/distillations/jobs", async (c) => {
+  const handleCreateJob = async (c: Context) => {
     try {
       cleanupPreviews();
       const bookId = c.req.param("bookId");
@@ -324,11 +425,11 @@ export function createStyleDistillationsRouter(
       if (!body) return c.json({ error: "请求体必须是对象。", code: "STYLE_DISTILLATION_INVALID_INPUT" }, 400);
       const previewId = typeof body.previewId === "string" ? body.previewId : "";
       const cached = previews.get(previewId);
-      const input = cached?.bookId === bookId ? cached.input : asInput(body);
-      if (!cached && !body.text && !body.chapters) {
+      if (!cached && !body.text && !body.chapters && !body.filePath) {
         throw new StyleDistillationError("预览已过期，请重新预览参考文本。", "STYLE_DISTILLATION_NOT_FOUND");
       }
       const bookRoot = resolveBookRoot(bookId);
+      const input = cached?.bookId === bookId ? cached.input : await resolveStyleDistillationInput(bookRoot, asInput(body));
       const { generateText, unavailable, actorId } = await resolveGenerator(c);
       const created = await createStyleDistillationJob({
         bookRoot, bookId, source: input, modelAvailable: Boolean(generateText), ...(actorId ? { initiatorId: actorId } : {}),
@@ -340,7 +441,10 @@ export function createStyleDistillationsRouter(
     } catch (error) {
       return errorResponse(c, error);
     }
-  });
+  };
+  app.post("/api/books/:bookId/style/distillations/jobs", handleCreateJob);
+  app.post("/api/books/:bookId/style-distillations", handleCreateJob);
+  app.post("/api/books/:bookId/style-distillations/jobs", handleCreateJob);
 
   app.get("/api/books/:bookId/style/distillations/jobs/:jobId", async (c) => {
     try {

@@ -99,6 +99,7 @@ const NOVEL_TOOL_ROUTINE_SPECS: Readonly<Record<string, NovelToolRoutineSpec>> =
   "memory.delete": ["memory", "删记忆条目", "Delete memory", "删除单条记忆事实或事件（会删除数据）", "Delete one memory fact or event (deletes data)", M],
   "memory.bulk_approve": ["memory", "批量批准事件", "Bulk approve", "一次批准多条待确认事件（会改数据）", "Approve many pending events at once (modifies data)", M],
   "memory.bulk_delete": ["memory", "批量删记忆", "Bulk delete", "按筛选条件批量删除记忆（会删除数据）", "Bulk delete filtered memory (deletes data)", M],
+  "style.distill_index": ["style", "参考书机械索引", "Style source index", "列出书根参考文件或扫描大文件切章与推荐抽样章", "List reference files or mechanically index chapters for sampling", A],
   "style.distill_preview": ["style", "文风蒸馏预览", "Style preview", "作者要学一段文风时先预览切章范围", "Preview the range before distilling a style", A],
   "style.distill_start": ["style", "文风蒸馏", "Style distill", "从参考文本分批抽取待审文风条目", "Extract reviewable style rules from reference text", A],
   "style.distill_status": ["style", "文风蒸馏结果", "Style status", "读取文风蒸馏任务的进度与条目", "Read a style distillation job and its rules", A],

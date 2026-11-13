@@ -6,7 +6,7 @@ export interface SplitChapter {
 /** 用户可提供的分章正则长度上限（字符数）。 */
 const MAX_SPLIT_PATTERN_LENGTH = 128;
 /** 单次切分的正文长度上限（字符数），防止超大导入占满内存。导入入口需引用同一常量。 */
-export const MAX_SPLIT_TEXT_LENGTH = 2_000_000;
+export const MAX_SPLIT_TEXT_LENGTH = 30_000_000;
 /** 用户规则只对不超过这个长度的行尝试匹配：章节标题不会更长，更长的行直接视为不匹配。 */
 const MAX_SPLIT_LINE_LENGTH = 200;
 /** 无界量词（* + {n,}）个数上限。 */
@@ -488,14 +488,16 @@ function now(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
-/** 逐行调用；累计耗时超过时限即抛错。 */
+/** 逐行调用；用户自定义规则逐行检查，默认线性规则每 256 行抽检一次以降低百万字切章的时钟开销。 */
 function createDeadline(userPattern: string | undefined): (processedLines: number) => void {
   const startedAt = now();
+  const limitMs = userPattern === undefined ? SPLIT_TIME_LIMIT_MS * 2 : SPLIT_TIME_LIMIT_MS;
   return (processedLines) => {
-    if (now() - startedAt <= SPLIT_TIME_LIMIT_MS) return;
+    if (userPattern === undefined && (processedLines & 255) !== 0) return;
+    if (now() - startedAt <= limitMs) return;
     throw new Error(userPattern === undefined
-      ? `分章执行超时：逐行识别章节标题超过 ${SPLIT_TIME_LIMIT_MS}ms（已处理 ${processedLines} 行），正文可能过大或格式异常，请分批导入。`
-      : `分章规则执行超时，请简化规则或不填写（逐行匹配 ${processedLines} 行已超过 ${SPLIT_TIME_LIMIT_MS}ms）。`);
+      ? `分章执行超时：逐行识别章节标题超过 ${limitMs}ms（已处理 ${processedLines} 行），正文可能过大或格式异常，请分批导入。`
+      : `分章规则执行超时，请简化规则或不填写（逐行匹配 ${processedLines} 行已超过 ${limitMs}ms）。`);
   };
 }
 

@@ -536,8 +536,8 @@ describe("novel Runtime contribution", () => {
     const importProperties = importSchema.properties as Record<string, unknown>;
 
     expect(importProperties.content).toBeDefined();
-    expect(importProperties.filePath).toBeUndefined();
-    expect(importSchema.required).toEqual(["content"]);
+    expect(importProperties.filePath).toBeDefined();
+    expect(importSchema.required).toEqual([]);
     for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write"]) {
       expect(definitions.get(name)?.risk).toBe("confirmed-write");
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitChapters, splitChaptersWithVolumes } from "../utils/chapter-splitter.js";
+import { MAX_SPLIT_TEXT_LENGTH, splitChapters, splitChaptersWithVolumes } from "../utils/chapter-splitter.js";
 
 describe("splitChapters", () => {
   it("splits classical Chinese chapter headings with 第X回 by default", () => {
@@ -208,8 +208,13 @@ describe("T-07 分章正则 ReDoS 与导入上限", () => {
     expect(() => splitChapters("第一章 x\n正文。", longPattern)).toThrow(/splitPattern/);
   });
 
-  it("rejects an oversized chapter body before splitting", () => {
-    const hugeBody = "字".repeat(5_000_000);
+  it("supports multi-million-char novels up to 30M chars and rejects beyond MAX_SPLIT_TEXT_LENGTH", () => {
+    expect(MAX_SPLIT_TEXT_LENGTH).toBe(30_000_000);
+    const fiveMillion = `第一章 起\n${"山风吹过长街。".repeat(400_000)}\n第二章 承\n${"雨夜灯火微明。".repeat(400_000)}`;
+    expect(fiveMillion.length).toBeGreaterThan(5_000_000);
+    expect(splitChapters(fiveMillion)).toHaveLength(2);
+
+    const hugeBody = "字".repeat(MAX_SPLIT_TEXT_LENGTH);
     expect(() => splitChapters(`第一章 x\n${hugeBody}`)).toThrow(/正文/);
   });
 });

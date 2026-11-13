@@ -9,10 +9,11 @@ export interface ParsedChapter {
 
 export interface ParseResult {
   chapters: ParsedChapter[];
+  warnings?: string[];
 }
 
 /** 最大章节数截断阈值 */
-const MAX_CHAPTERS = 100;
+export const MAX_CHAPTERS = 5_000;
 
 /**
  * 按空行分章解析纯文本。
@@ -43,9 +44,12 @@ export function parseTxt(text: string): ParseResult {
     chapters.push({ title, content });
   }
 
-  // 大文件截断
+  // 大文件截断：明确带出告警，不静默丢弃后续章节
   if (chapters.length > MAX_CHAPTERS) {
-    return { chapters: chapters.slice(0, MAX_CHAPTERS) };
+    return {
+      chapters: chapters.slice(0, MAX_CHAPTERS),
+      warnings: [`识别到 ${chapters.length} 章，已按单次上限截取前 ${MAX_CHAPTERS} 章，请分批导入剩余章节。`],
+    };
   }
 
   return { chapters };

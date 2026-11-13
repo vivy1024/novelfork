@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AppError } from "@vivy1024/narrafork-runtime-bridge";
 import { novelForkProductIntegration } from "../index";
-import { ARCHIVE_IMPORT_BODY_LIMIT_BYTES, ARCHIVE_IMPORT_PATH } from "./body-limit";
+import { ARCHIVE_IMPORT_BODY_LIMIT_BYTES, ARCHIVE_IMPORT_PATH, LONG_TEXT_BODY_LIMIT_BYTES } from "./body-limit";
 
 /**
  * 请求体上限的挂载测试（T-11）：直接调用 index.ts 导出的 mountAuthenticatedGuards，
@@ -112,8 +112,13 @@ describe("product body limit, as mounted by index.ts (T-11)", () => {
 		expect(distill.status).not.toBe(413);
 	});
 
-	test("still caps the long-text entries at 8 MiB", async () => {
-		await expectExplained413(await buildMountedApp().request(sized("/api/works/import", 9 * MiB)));
+	test("still caps the long-text entries at 64 MiB", async () => {
+		const declared = new Request("http://localhost/api/works/import", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "Content-Length": String(LONG_TEXT_BODY_LIMIT_BYTES + 1) },
+			body: "x",
+		});
+		await expectExplained413(await buildMountedApp().request(declared));
 	});
 
 	test("limits chunked uploads without Content-Length the same way", async () => {
