@@ -74,4 +74,23 @@ describe("chapter-audit-v2 S6 章内重复段落", () => {
 
     expect(result.softViolations.some((v) => v.ruleId === "S6")).toBe(false);
   });
+
+  it("S10 能捕获正文中的写作工程穿帮词（如上一章、伏笔）并附带原句摘录供编辑器定位", () => {
+    const content = [
+      "# 第八章 暗潮",
+      "",
+      "接上一章结尾，沈追推门走进值房，案头那枚玉佩正是此前埋下的伏笔。",
+    ].join("\n");
+
+    const result = handleChapterAuditV2({
+      bookId: "test-book",
+      chapterNumber: 8,
+      content,
+    });
+
+    const metaHits = result.softViolations.filter((v) => v.ruleId === "S10");
+    expect(metaHits.length).toBeGreaterThanOrEqual(2);
+    expect(metaHits.some((v) => v.description.includes("上一章") && v.description.includes("「"))).toBe(true);
+    expect(metaHits.some((v) => v.description.includes("伏笔"))).toBe(true);
+  });
 });

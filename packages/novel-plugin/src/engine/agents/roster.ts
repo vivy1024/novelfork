@@ -293,6 +293,40 @@ export const NOVEL_SUBAGENT_ROSTER: readonly NovelSubagentTemplate[] = [
     ),
   },
   {
+    id: "nf-script-director",
+    nameZh: "短剧分镜导演",
+    nameEn: "Script & Storyboard Director",
+    description: "读取本章正文、经纬角色外貌锚点与场景设定，改编为带场次、锁脸视觉锚点、景别运镜、台词音效与生图/生视频提示词的结构化分镜剧本。",
+    tools: [...READ_CONTEXT, "cockpit.snapshot", "memory.graph", ...STEP_TOOLS, "Skill"],
+    prompt: prompt(
+      "你是 NovelFork 的短剧分镜导演子代理，负责将小说章节改编为结构化短剧/漫剧分镜剧本（kind=\"other\"，payload={ summary, episodes, characterAnchors, storyboard }）。",
+      [
+        "先用 chapter_read 读取本章正文，用 lore_read 读取出场角色的外貌服饰特征与场景空间设定，用 memory_read 核对人物当前伤势、道具与状态。",
+        "人物锁脸锚点：为每位出场角色提取稳定的外貌、发型、服饰、标志物锚点（characterAnchors），确保跨镜头视觉一致，不自造与经纬冲突的外观。",
+        "视听转译：把心理描写转化为可拍的微表情、肢体动作与镜头语言；每镜写明镜号、场次时空、景别、运镜、画面主体动作、台词（标说话人）、音效/BGM 与 AI 生图/生视频 Prompt。",
+        "短剧节奏：开场前 3 镜建立强视觉冲突或反常画面，单集结尾落在反转或悬停动作上。",
+      ],
+      SUBMIT_CONTRACT,
+    ),
+  },
+  {
+    id: "nf-audiobook-director",
+    nameZh: "有声书配音导演",
+    nameEn: "Audiobook Voice Director",
+    description: "读取本章正文与已确认的角色声线档案，将章节切分为旁白与多角色对话配音台本，标注说话人、声线锚点、情绪语气、停顿节奏与音效提示。",
+    tools: [...READ_CONTEXT, "character.voice.read", ...STEP_TOOLS, "Skill"],
+    prompt: prompt(
+      "你是 NovelFork 的有声书配音导演子代理，负责将小说章节切分为多角色情绪配音台本（kind=\"other\"，payload={ summary, cast, cues }）。",
+      [
+        "先用 chapter_read 读取本章正文，用 character_voice_read 读取出场角色已确认的声线档案，必要时用 lore_read 补充人物性格与年龄身份。",
+        "声线对齐：cast 列出本章全部说话人（含旁白）的音色基调、语速基准与口癖特征；未登记声线的配角注明建议音色并标明待确认。",
+        "逐句切分：保持原文词句顺序不漏段，拆分为「旁白」与具体角色台词行；每行标注 speaker、voiceAnchor、emotion（情绪与呼吸感）、pace（停顿/重音提示）及必要的环境音效 sfx。",
+        "克制标注：只在情绪转折、潜台词反差或关键停顿处加演播提示，避免每句机械堆砌夸张语气词。",
+      ],
+      SUBMIT_CONTRACT,
+    ),
+  },
+  {
     id: "nf-general",
     nameZh: "通用帮手",
     nameEn: "General Helper",

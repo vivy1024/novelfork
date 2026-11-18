@@ -9,13 +9,25 @@ import { WorkflowRecipeEditor } from "./WorkflowRecipeEditor";
 
 type FetchCall = { url: string; method: string; body: any };
 
+const CATALOG_URLS = ["/subagents", "/api/custom-subagents", "/api/providers/models", "/api/writing-skills", "/runtime/skills"];
+
+function isCatalogGet(call: FetchCall): boolean {
+  return call.method === "GET" && CATALOG_URLS.some((suffix) => call.url.endsWith(suffix));
+}
+
 function mockFetch(respond: (call: FetchCall) => { status?: number; body: unknown }) {
   const calls: FetchCall[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
     const call = { url: String(input), method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : undefined };
-    if (!call.url.endsWith("/subagents")) calls.push(call);
-    const { status = 200, body } = respond(call);
-    return { ok: status < 400, status, json: async () => body };
+    const isBgCatalog = isCatalogGet(call);
+    if (!isBgCatalog) calls.push(call);
+    try {
+      const { status = 200, body } = respond(call);
+      return { ok: status < 400, status, json: async () => body };
+    } catch (err) {
+      if (isBgCatalog) return { ok: false, status: 404, json: async () => null };
+      throw err;
+    }
   }));
   return calls;
 }
@@ -165,5 +177,105 @@ describe("工作流方案编辑器", () => {
     fireEvent.change(modelInput, { target: { value: "4sapi-2:glm-5.3" } });
     fireEvent.blur(modelInput);
     expect(modelInput.value).toBe("4sapi-2:glm-5.3");
+  });
+
+  it("动态接入 Runtime 模型、全局子代理、Skills 与权威写入工具目录，支持并行子代理与提示词预设", async () => {
+    const calls = mockFetch((call) => {
+      if (call.url.endsWith("/api/books/book-1/subagents")) {
+        return { body: { custom: [{ id: "paced-critic", nameZh: "节奏把关" }] } };
+      }
+      if (call.url.endsWith("/api/custom-subagents")) {
+        return { body: [{ name: "global-polisher", description: "全局精修师" }] };
+      }
+      if (call.url.endsWith("/api/providers/models")) {
+        return {
+          body: {
+            models: [
+              { providerId: "4sapi-2", providerName: "4SAPI", modelId: "deepseek-v4.1-flash", modelName: "DeepSeek V4.1", enabled: true },
+              { providerId: "disabled-p", modelId: "old-model", enabled: false },
+            ],
+          },
+        };
+      }
+      if (call.url.endsWith("/api/writing-skills")) {
+        return {
+          body: {
+            skills: [
+              { id: "nf-golden-opening", slug: "nf-golden-opening", name: "黄金三章", description: "开篇前三章留存策略", kind: "opening" },
+              { id: "nf-de-ai-rewrite", slug: "nf-de-ai-rewrite", name: "去AI味重写", description: "四维病灶拆洗", kind: "revision" },
+            ],
+          },
+        };
+      }
+      if (call.url.endsWith("/runtime/skills")) {
+        return {
+          body: {
+            skills: [
+              { name: "黄金三章", description: "重复项应按 name 去重" },
+              { name: "本书专属设定表", description: "Runtime 项目技能", kind: "project" },
+            ],
+          },
+        };
+      }
+      return { body: { ok: true, recipe: { ...call.body?.recipe, revision: 3 }, issues: [] } };
+    });
+
+    const { props } = renderEditor(savedDraft);
+    fireEvent.click(screen.getByRole("button", { name: "工序" }));
+
+    // 1. 叙述者本人执行模式下也能直选 Runtime 模型覆盖（过滤掉 enabled=false）
+    const modelQuickSelect = (await screen.findByLabelText("从 Runtime 模型快选")) as HTMLSelectElement;
+    await waitFor(() => expect(Array.from(modelQuickSelect.options).some((o) => o.value === "4sapi-2:deepseek-v4.1-flash")).toBe(true));
+    expect(Array.from(modelQuickSelect.options).some((o) => o.value.includes("old-model"))).toBe(false);
+    fireEvent.change(modelQuickSelect, { target: { value: "4sapi-2:deepseek-v4.1-flash" } });
+    expect((screen.getByLabelText("指定模型覆盖") as HTMLInputElement).value).toBe("4sapi-2:deepseek-v4.1-flash");
+
+    // 2. 切换到委派子代理：同时展示内置、本书定制与 Runtime 全局子代理，并配置并行子代理
+    fireEvent.change(screen.getByLabelText("由谁执行"), { target: { value: "subagent" } });
+    const agentSelect = (await screen.findByLabelText("子代理")) as HTMLSelectElement;
+    const optionTexts = Array.from(agentSelect.options).map((o) => `${o.value}:${o.textContent}`);
+    expect(optionTexts.some((t) => t.includes("nf-script-director:") && t.includes("内置"))).toBe(true);
+    expect(optionTexts.some((t) => t.includes("paced-critic:") && t.includes("本书定制"))).toBe(true);
+    expect(optionTexts.some((t) => t.includes("global-polisher:") && t.includes("Runtime全局"))).toBe(true);
+    fireEvent.change(agentSelect, { target: { value: "global-polisher" } });
+
+    fireEvent.click(screen.getByLabelText("添加并行子代理"));
+    const parallelName = screen.getByLabelText("第 1 个并行子代理名称") as HTMLInputElement;
+    fireEvent.change(parallelName, { target: { value: "action-choreographer" } });
+    fireEvent.blur(parallelName);
+
+    // 3. 权威写入工具胶囊点选与输入框双向同步
+    const pipelineChip = screen.getByRole("button", { name: /写章落盘 · pipeline\.write/ });
+    fireEvent.click(pipelineChip);
+    expect((screen.getByLabelText("可用的写入工具") as HTMLInputElement).value).toContain("pipeline.write");
+
+    // 4. Skills 搜索点选（精确使用 skill.name 而非 slug）与 Badge 移除
+    const skillSearch = await screen.findByLabelText("搜索可用技能");
+    fireEvent.change(skillSearch, { target: { value: "黄金" } });
+    fireEvent.click(screen.getByRole("button", { name: /黄金三章/ }));
+    expect((screen.getByLabelText("技能") as HTMLInputElement).value).toBe("黄金三章");
+    fireEvent.change(skillSearch, { target: { value: "本书专属" } });
+    fireEvent.click(screen.getByRole("button", { name: /本书专属设定表/ }));
+    expect((screen.getByLabelText("技能") as HTMLInputElement).value).toBe("黄金三章，本书专属设定表");
+    fireEvent.click(screen.getByLabelText("移除技能 黄金三章"));
+    expect((screen.getByLabelText("技能") as HTMLInputElement).value).toBe("本书专属设定表");
+
+    // 5. 一键套用工序提示词预设模板
+    const presetSelect = screen.getByLabelText("套用提示词预设") as HTMLSelectElement;
+    fireEvent.change(presetSelect, { target: { value: "tomato-golden-opening-blueprint" } });
+    expect((screen.getByLabelText("附加要求") as HTMLTextAreaElement).value).toContain("前 300 字");
+
+    // 6. 保存验证完整结构入库
+    fireEvent.click(screen.getByRole("button", { name: /保存草稿/ }));
+    await waitFor(() => expect(props.onSaved).toHaveBeenCalled());
+    const savedStep = calls[0]!.body.recipe.nodes.find((n: { id: string }) => n.id === "step-1");
+    expect(savedStep).toMatchObject({
+      executionMode: "subagent",
+      agentId: "global-polisher",
+      modelOverride: "4sapi-2:deepseek-v4.1-flash",
+      tools: ["pipeline.write"],
+      skills: ["本书专属设定表"],
+      parallelSubagents: [{ name: "action-choreographer" }],
+    });
   });
 });

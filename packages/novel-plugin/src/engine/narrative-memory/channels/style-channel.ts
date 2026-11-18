@@ -36,6 +36,8 @@ export interface StyleChannelInput {
   readonly planText?: string;
   /** 文风通道的 token 预算；缺省不限（仍受 4 段上限约束）。 */
   readonly budgetTokens?: number;
+  /** 作者显式点选优先注入的范文 ID 列表（兼容 `sourceId:sampleId` 或 `sampleId`）。 */
+  readonly pinnedSampleIds?: readonly string[];
   /**
    * 角色声线约束的接缝：由调用方传入已成文的约束文本，本通道只负责注入与计入预算，
    * 不做任何声线推断。
@@ -175,6 +177,7 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
         preset: input.stylePreset,
         sceneTypes,
         activeOverlayIds: overlays.activeIds,
+        ...(input.pinnedSampleIds?.length ? { pinnedSampleIds: input.pinnedSampleIds } : {}),
         availableTokens,
       });
       const reservedTokens = selection.diagnostics.budget.usedTokens;

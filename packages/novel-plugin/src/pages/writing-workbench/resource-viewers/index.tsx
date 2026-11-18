@@ -49,8 +49,8 @@ export interface ResourceViewerRenderOptions {
   onDismissSelectionCandidate?: () => void;
   /** 书房纯净外观：章节正文省去外层工程路径头，并透传伴随画板切换器。 */
   studioCleanChrome?: boolean;
-  companionMode?: "outline" | "context" | "closed";
-  onCompanionModeChange?: (mode: "outline" | "context" | "closed") => void;
+  companionMode?: "outline" | "memory" | "quality" | "context" | "closed";
+  onCompanionModeChange?: (mode: "outline" | "memory" | "quality" | "context" | "closed") => void;
 }
 
 export interface ResourceViewerDefinition {
@@ -908,6 +908,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate, studioCleanChrome, companionMode, onCompanionModeChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string; mentionEntities?: readonly MentionEntity[]; onOpenEntity?: (name: string) => void; selectionCandidate?: SelectionCandidate | null; onDismissSelectionCandidate?: () => void; studioCleanChrome?: boolean; companionMode?: "outline" | "context" | "closed"; onCompanionModeChange?: (mode: "outline" | "context" | "closed") => void }) {
+export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate, studioCleanChrome, companionMode, onCompanionModeChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string; mentionEntities?: readonly MentionEntity[]; onOpenEntity?: (name: string) => void; selectionCandidate?: SelectionCandidate | null; onDismissSelectionCandidate?: () => void; studioCleanChrome?: boolean; companionMode?: "outline" | "memory" | "quality" | "context" | "closed"; onCompanionModeChange?: (mode: "outline" | "memory" | "quality" | "context" | "closed") => void }) {
   return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate, studioCleanChrome, companionMode, onCompanionModeChange })}</>;
 }

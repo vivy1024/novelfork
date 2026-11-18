@@ -43,18 +43,31 @@ function isImageFile(name: string): boolean {
   return IMAGE_EXT.has(extensionOf(name));
 }
 
-/** chapters/ 下的 Markdown 保留真实文件名，但交给章节专用编辑器打开。 */
-function isChapterFile(path: string): boolean {
-  return /^chapters\/.+\.md$/iu.test(path);
-}
-
 /** 从章节文件名恢复章节号，供章节读取、保存和发布检查共用。 */
 function chapterNumberFromFilePath(path: string): number | undefined {
   const fileName = path.split("/").pop() ?? "";
-  const match = /^(\d+)(?:_|\.md$)/iu.exec(fileName);
+  const match = /^(\d+)(?:_|-|\.md$)/iu.exec(fileName);
   if (!match) return undefined;
   const chapterNumber = Number(match[1]);
   return Number.isSafeInteger(chapterNumber) && chapterNumber > 0 ? chapterNumber : undefined;
+}
+
+/** chapters/ 下只有带正整数章号的 Markdown 才算正文章节；作者说清单/章节说等附注走普通 file 节点，不混入正文计数与审稿红标。 */
+function isChapterFile(path: string): boolean {
+  return /^chapters\/.+\.md$/iu.test(path) && chapterNumberFromFilePath(path) !== undefined;
+}
+
+/** 识别附注 / 作者说 / 章节说目录或文件，供左栏独立分栏筛选展示。 */
+function isAuthorNoteFilePath(path: string): boolean {
+  const normalized = path.replaceAll("\\", "/").toLowerCase();
+  if (!/\.(?:md|txt|markdown)$/iu.test(normalized)) return false;
+  if (isChapterFile(normalized)) return false;
+  return (
+    normalized.startsWith("chapters/")
+    || normalized.startsWith("notes/")
+    || normalized.startsWith("author_notes/")
+    || /(?:作者说|章节说|本章说|附注|备忘|彩蛋|note)/u.test(normalized)
+  );
 }
 
 export function mapBookFileEntryToNode(entry: TreeEntry, bookId: string): WorkbenchResourceNode {
@@ -95,13 +108,22 @@ export function mapBookFileEntryToNode(entry: TreeEntry, bookId: string): Workbe
   }
 
   // 普通文件:可打开可编辑,但不触发章节专属功能
+  const isAuthorNote = isAuthorNoteFilePath(entry.path);
   return {
     id: `file:${entry.path}`,
     kind: "file" as WorkbenchResourceKind,
     title: entry.name,
     path: entry.path,
     capabilities: { open: openable, readonly: image, unsupported: !openable, edit: openable && !image, delete: true, apply: false },
-    metadata: { filePath: entry.path, bookId, isFile: true, isImage: image, extension: extensionOf(entry.name), size: entry.size },
+    metadata: {
+      filePath: entry.path,
+      bookId,
+      isFile: true,
+      isImage: image,
+      ...(isAuthorNote ? { isAuthorNote: true } : {}),
+      extension: extensionOf(entry.name),
+      size: entry.size,
+    },
   };
 }
 

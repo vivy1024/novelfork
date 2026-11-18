@@ -107,7 +107,10 @@ const bookRebindWorkspaceSchema = z
 
 const workspaceResourceSaveSchema = z.object({ content: z.string().max(2_000_000) }).strict();
 const workspaceChapterCreateSchema = z
-	.object({ title: z.string().trim().min(1).max(200).optional() })
+	.object({
+		title: z.string().trim().min(1).max(200).optional(),
+		chapterNumber: z.number().int().min(1).max(100_000).optional(),
+	})
 	.strict();
 // mode：create 用于文件树新建与复制粘贴，目标已存在时拒绝；缺省为 overwrite（编辑器保存）。
 const workspaceFileWriteSchema = z

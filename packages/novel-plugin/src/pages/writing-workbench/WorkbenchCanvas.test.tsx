@@ -595,4 +595,32 @@ describe("WorkbenchCanvas", () => {
     rerender(<WorkbenchCanvas {...props} onSendToNarrator={vi.fn()} />);
     await waitFor(() => expect(settlementProbe.props.at(-1)?.onAskResettle).toBeTypeOf("function"));
   });
+
+  it("码字工具条支持零 Token 词频与穿帮词透镜，点击胶囊可打开替换定位", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })));
+    const richProse = [
+      "延续上一章的余波，沈追深吸一口气，目光投向青铜大殿。",
+      "他再次深吸一口气，目光掠过石阶，心中暗道这一处伏笔果然凶险。",
+      "殿外寒风呼啸，沈追深吸一口气，收回目光。",
+    ].join("\n\n");
+
+    render(
+      <WorkbenchCanvas
+        node={node({ metadata: { isChapter: true, chapterNumber: 4 }, content: richProse })}
+        bookId="book-lens"
+        onSave={vi.fn()}
+      />,
+    );
+
+    const lensBtn = await screen.findByTestId("chapter-prose-lens-btn");
+    expect(lensBtn.textContent).toContain("词频透镜");
+    expect(lensBtn.textContent).toContain("穿帮");
+
+    fireEvent.click(lensBtn);
+    const bar = await screen.findByTestId("chapter-prose-lens-bar");
+    expect(bar.textContent).toContain("上一章");
+    expect(bar.textContent).toContain("伏笔");
+    expect(bar.textContent).toContain("深吸一口气");
+    expect(bar.textContent).toContain("目光");
+  });
 });

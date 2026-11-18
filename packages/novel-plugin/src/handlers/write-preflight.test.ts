@@ -692,4 +692,81 @@ describe("write.preflight 带出本章规划留白（T2.6）", () => {
     });
     expect(full.recall).toBeDefined();
   });
+
+  it("write-readiness 路由与 includeRecallPreview：透传 pinnedSampleIds 并返回只读 recallSummary，不写会话召回记录", async () => {
+    const { createWriteReadinessRouter } = await import("../routes/write-readiness.js");
+    const { createStylePreset } = await import("../engine/writing-layers/style-preset.js");
+    const { saveStylePreset } = await import("../engine/writing-layers/style-preset-store.js");
+
+    const bookRoot = join(tmpdir(), `novelfork-preflight-preview-${crypto.randomUUID()}`);
+    tempDirs.push(bookRoot);
+    await mkdir(join(bookRoot, "story"), { recursive: true });
+    await writeFile(
+      join(bookRoot, "book.json"),
+      JSON.stringify({ id: "book-1", title: "测试书", chapterWordCount: 3000 }),
+      "utf8",
+    );
+
+    const preset = createStylePreset();
+    preset.sources = [
+      {
+        id: "src-main",
+        title: "主文风包",
+        role: "primary_voice",
+        rules: [],
+        samples: [
+          {
+            id: "smp-general",
+            sceneType: "general",
+            text: "这是一段通用节奏范文。",
+            evidence: "ch1",
+            transfer: "transferable",
+            status: "confirmed",
+          },
+          {
+            id: "smp-pinned-action",
+            sceneType: "action",
+            text: "刀光一闪，雨水在伞骨上炸开细碎白雾。",
+            evidence: "ch2",
+            transfer: "transferable",
+            status: "confirmed",
+          },
+        ],
+      },
+    ];
+    await saveStylePreset(bookRoot, preset, null);
+
+    const router = createWriteReadinessRouter({ resolveBookRoot: () => bookRoot });
+    const res = await router.request("/api/books/book-1/write/preflight", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapterNumber: 1,
+        userDirectives: "主角在镇口客栈静坐饮茶等待线人",
+        pinnedSampleIds: ["src-main:smp-pinned-action"],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      recall?: unknown;
+      recallSummary?: {
+        estimatedTokens: number;
+        maxTokens: number;
+        samples: Array<{ key: string; match: string }>;
+        channels: Array<{ channel: string }>;
+      };
+    };
+    expect(body.ok).toBe(true);
+    // 只读预览不生成正式写前召回凭证，但返回完整的 recallSummary
+    expect(body.recall).toBeUndefined();
+    expect(body.recallSummary).toBeDefined();
+    expect(body.recallSummary!.estimatedTokens).toBeGreaterThan(0);
+    expect(body.recallSummary!.samples[0]).toEqual(
+      expect.objectContaining({
+        key: "src-main/smp-pinned-action",
+        match: "pinned",
+      }),
+    );
+  });
 });

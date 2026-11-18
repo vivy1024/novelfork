@@ -205,6 +205,39 @@ describe("工作流页：子代理一览", () => {
     fireEvent.click(screen.getByTestId("save-custom-subagent"));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/subagents"))).toBe(true));
   });
+
+  it("子代理工坊支持从 Runtime 模型列表快选，并可将 NarraFork 全局自定义子代理一键克隆到本书", async () => {
+    const calls = mockFetch({
+      "/workflow-recipes": () => ({ recipes: [...builtin] }),
+      "GET /workflow-default": () => ({ storedRecipeId: null, recipeId: null, recipeName: null }),
+      "GET /api/providers/models": () => ([
+        { providerId: "xcpcai", providerName: "XCPCAI", modelId: "gpt-6-astra", modelName: "GPT-6 Astra", enabled: true },
+      ]),
+      "GET /api/custom-subagents": () => ([
+        { name: "storyboard-pro", description: "全局分镜大师", prompt: "按电影分镜拆解", model: "xcpcai:gpt-6-astra" },
+      ]),
+      "GET /subagents": () => ({ custom: [] }),
+      "POST /subagents": (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        return { ok: true, subagent: { id: "cloned-1", ...body } };
+      },
+    });
+    render(<WorkflowsPage books={books} selectedBookId="book-1" onSelectBook={vi.fn()} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "子代理" }));
+    fireEvent.click(screen.getByRole("tab", { name: "子代理" }));
+
+    const globalSection = await screen.findByTestId("runtime-global-subagent-list");
+    expect(globalSection.textContent).toContain("storyboard-pro");
+    fireEvent.click(screen.getByTestId("clone-global-subagent-storyboard-pro"));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/books/book-1/subagents") && (c.body as { nameZh?: string })?.nameZh === "storyboard-pro")).toBe(true),
+    );
+
+    fireEvent.click(screen.getByTestId("create-custom-subagent"));
+    const modelSelect = (await screen.findByLabelText("选择定制子代理模型")) as HTMLSelectElement;
+    fireEvent.change(modelSelect, { target: { value: "xcpcai:gpt-6-astra" } });
+    expect((screen.getByLabelText("定制子代理模型") as HTMLInputElement).value).toBe("xcpcai:gpt-6-astra");
+  });
 });
 
 // ─── 运行面板 ────────────────────────────────────────────────────────────────

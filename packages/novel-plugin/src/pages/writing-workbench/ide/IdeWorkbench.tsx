@@ -32,7 +32,10 @@ import { SkillsAndStyleSidebarPanel } from "./SkillsAndStyleSidebarPanel";
 import { StyleDistillationWorkspace, type StyleDistillationFetchJson } from "./StyleDistillationWorkspace";
 import { StyleVaultPanel } from "./StyleVaultPanel";
 import { DissectLibraryPanel } from "../DissectLibraryPanel";
-import { ChapterDirectorySidebar } from "../ChapterDirectorySidebar";
+import { ChapterDirectorySidebar, type PlannedOutlineChapterItem, type VolumeGroupMeta } from "../ChapterDirectorySidebar";
+import { ChapterPrepWorkspace, type PrepTargetChapter } from "../ChapterPrepWorkspace";
+import { QualityDashboardWorkspace, type QualityDashboardTabId } from "../QualityDashboardWorkspace";
+import { useNarrativeStructure } from "../useNarrativeStructure";
 import { BookWorkflowStudio } from "../BookWorkflowStudio";
 import { CharactersAndLoreSidebarPanel, type EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
@@ -264,6 +267,24 @@ export function loadedFileKey(bookId: string | undefined, nodeId: string): strin
   return `${bookId ?? "global"}:${nodeId}`;
 }
 
+/** 从文件树采集 chapters/ 下的附注/作者说/章节说文件（已与正文章号章节隔离）。 */
+function collectChapterNoteNodes(
+  nodes: readonly WorkbenchResourceNode[],
+  withinChapters = false,
+): WorkbenchResourceNode[] {
+  const result: WorkbenchResourceNode[] = [];
+  for (const node of nodes) {
+    const path = filePathOf(node);
+    const inChapters = withinChapters || path === "chapters" || path.startsWith("chapters/");
+    if (inChapters && node.kind === "file" && !node.metadata?.isDirectory) {
+      result.push(node);
+    }
+    if (node.children) {
+      result.push(...collectChapterNoteNodes(node.children, inChapters));
+    }
+  }
+  return result;
+}
 /** 只从文件树裁剪 chapters/，不读取正文，也不带入其它目录。 */
 function collectChapterTreeNodes(
   nodes: readonly WorkbenchResourceNode[],
@@ -375,7 +396,12 @@ export function IdeWorkbench({
 }: IdeWorkbenchProps) {
   const { styleTheme, setStyleTheme } = useStyleTheme();
   const [creatingChapter, setCreatingChapter] = useState(false);
+  const [creatingNote, setCreatingNote] = useState(false);
   const [dissectSubMode, setDissectSubMode] = useState<"dissect" | "style">("dissect");
+  // 写正文分区中间全宽三态：写正文（和纸信纸） / AI 写章筹备台 / 质检与分析大盘
+  const [writeCenterMode, setWriteCenterMode] = useState<"draft" | "prep" | "quality">("draft");
+  const [prepTargetChapter, setPrepTargetChapter] = useState<PrepTargetChapter | null>(null);
+  const [qualityDashboardTab, setQualityDashboardTab] = useState<QualityDashboardTabId>("quality");
   // --- Layout state ---
   const resolveLayoutMode = useCallback(
     (width: number): IdeLayoutMode => {
@@ -670,6 +696,7 @@ export function IdeWorkbench({
   const fileTree = useBookFileTree(bookId, Boolean(bookId));
   const refreshFileTree = fileTree.refresh;
   const resourceFileNodes = fileTree.nodes;
+  const { state: narrativeStructureState, reload: reloadNarrativeStructure } = useNarrativeStructure(bookId);
   const [chapterAuditSummary, setChapterAuditSummary] = useState<Record<number, ChapterAuditBadgeInfo>>({});
 
   const loadChapterAuditSummary = useCallback(async () => {
@@ -709,6 +736,7 @@ export function IdeWorkbench({
   useWritingProgressRefresh(bookId, () => {
     void loadLoreSections();
     refreshFileTree();
+    reloadNarrativeStructure();
     void loadChapterAuditSummary();
   });
 
@@ -1839,11 +1867,11 @@ export function IdeWorkbench({
   // 作品总览（新书时是书房起笔案头或建书十一问）：「资源」视图没有激活标签时显示。
   const effectiveStudioZone: StudioWorkbenchZone = activeZone ?? "write";
 
-  const handleQuickCreateChapter = useCallback(async () => {
+  const handleQuickCreateChapter = useCallback(async (overrideNumber?: number, overrideTitle?: string) => {
     if (!bookId || creatingChapter) return;
     setCreatingChapter(true);
     try {
-      const nextNum = (() => {
+      const nextNum = overrideNumber && overrideNumber > 0 ? overrideNumber : (() => {
         let maxNum = 0;
         const walk = (items: readonly WorkbenchResourceNode[]) => {
           for (const item of items) {
@@ -1858,12 +1886,12 @@ export function IdeWorkbench({
         walk(fileTree.nodes);
         return maxNum + 1;
       })();
-      const defaultTitle = nextNum === 1 ? "起笔开篇" : "新章节";
+      const defaultTitle = overrideTitle?.trim() || (nextNum === 1 ? "起笔开篇" : "新章节");
       const createUrl = `/api/books/${encodeURIComponent(bookId)}/chapters`;
       const createInit: RequestInit = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: defaultTitle }),
+        body: JSON.stringify({ title: defaultTitle, ...(overrideNumber ? { chapterNumber: overrideNumber } : {}) }),
       };
       const payload = (runtimeFetch
         ? await runtimeFetch(createUrl, createInit)
@@ -1871,6 +1899,7 @@ export function IdeWorkbench({
         chapter?: {
           id: string;
           title?: string;
+          content?: string;
           path?: string;
           chapterNumber?: number;
           metadata?: { chapterNumber?: number };
@@ -1878,6 +1907,7 @@ export function IdeWorkbench({
       };
       const created = payload.chapter;
       refreshFileTree();
+      reloadNarrativeStructure();
       onResourceCreated?.();
       dispatchWritingProgress({ reason: "chapter-create", bookId });
       if (created?.id) {
@@ -1893,7 +1923,7 @@ export function IdeWorkbench({
           id: normalizedId,
           kind: "chapter",
           title: `第${chapterNum}章 ${cleanTitle}`,
-          content: "",
+          content: typeof created.content === "string" ? created.content : "",
           ...(created.path ? { path: created.path } : {}),
           metadata: {
             bookId,
@@ -1912,6 +1942,7 @@ export function IdeWorkbench({
           },
         };
         setLoadedFiles((prev) => new Map(prev).set(loadedFileKey(bookId, normalizedId), nextNode));
+        setWriteCenterMode("draft");
         onZoneChange?.("write");
         showPanel("resources");
         handleOpen(nextNode);
@@ -1922,7 +1953,71 @@ export function IdeWorkbench({
     } finally {
       setCreatingChapter(false);
     }
-  }, [bookId, creatingChapter, nodes, fileTree.nodes, runtimeFetch, refreshFileTree, onResourceCreated, onZoneChange, showPanel, handleOpen]);
+  }, [bookId, creatingChapter, nodes, fileTree.nodes, runtimeFetch, refreshFileTree, reloadNarrativeStructure, onResourceCreated, onZoneChange, showPanel, handleOpen]);
+
+  const handleQuickCreateNote = useCallback(async () => {
+    if (!bookId || creatingNote) return;
+    const rawName = await promptDialog({
+      title: "新建附注 / 作者说 / 章节说",
+      placeholder: "例如：第012章_章节说 或 上架感言",
+      defaultValue: "作者说_备忘",
+      confirmLabel: "创建附注",
+    });
+    if (!rawName?.trim()) return;
+    const baseName = rawName.trim().replace(/\.md$/iu, "");
+    const safeName = `${baseName.replace(/[/\\:*?"<>|]+/g, "_")}.md`;
+    const filePath = `chapters/${safeName}`;
+    setCreatingNote(true);
+    try {
+      const writeUrl = `/api/books/${encodeURIComponent(bookId)}/files`;
+      const writeInit: RequestInit = {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: filePath,
+          content: `# ${baseName}\n\n`,
+          mode: "create",
+        }),
+      };
+      if (runtimeFetch) {
+        await runtimeFetch(writeUrl, writeInit);
+      } else {
+        await ensureOk(await fetch(writeUrl, writeInit), "创建附注失败");
+      }
+      refreshFileTree();
+      const noteNode: WorkbenchResourceNode = {
+        id: `file:${filePath}`,
+        kind: "file",
+        title: safeName,
+        path: filePath,
+        content: `# ${baseName}\n\n`,
+        metadata: {
+          bookId,
+          isFile: true,
+          isChapterNote: true,
+          filePath,
+        },
+        capabilities: {
+          open: true,
+          readonly: false,
+          unsupported: false,
+          edit: true,
+          delete: true,
+          apply: false,
+        },
+      };
+      setLoadedFiles((prev) => new Map(prev).set(loadedFileKey(bookId, noteNode.id), noteNode));
+      setWriteCenterMode("draft");
+      onZoneChange?.("write");
+      showPanel("resources");
+      handleOpen(noteNode);
+      toast("已新建附注文档（不计入正文章数）", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "创建附注失败", "error");
+    } finally {
+      setCreatingNote(false);
+    }
+  }, [bookId, creatingNote, promptDialog, runtimeFetch, refreshFileTree, onZoneChange, showPanel, handleOpen]);
 
   // 书房单栏模式：将外层 ShellSidebar 的 6 大创作分区映射到内部侧栏与主工作区
   const appliedZoneKeyRef = useRef<string | null>(null);
@@ -1979,9 +2074,92 @@ export function IdeWorkbench({
   }, [studioUnifiedSidebar, effectiveStudioZone, dissectSubMode, bookId, loreTreesNode, onOpen, revealPanel]);
 
   const pureChapterNodes = useMemo(() => {
+    const fromFileTree = collectChapterTreeNodes(fileTree.nodes);
     const fromWorkspace = collectChapterTreeNodes(nodes);
-    return fromWorkspace.length > 0 ? fromWorkspace : chapterTreeNodes;
-  }, [nodes, chapterTreeNodes]);
+    return fromFileTree.length > 0 ? fromFileTree : fromWorkspace;
+  }, [nodes, fileTree.nodes]);
+
+  const chapterNoteNodes = useMemo(
+    () => collectChapterNoteNodes(fileTree.nodes),
+    [fileTree.nodes],
+  );
+
+  // 由全书叙事结构 + 经纬大纲条目聚合卷分组、真实字数与大纲待写章
+  const { volumeGroups, plannedOutlineChapters, chapterWordCounts } = useMemo(() => {
+    const counts: Record<number, number> = {};
+    const vols: VolumeGroupMeta[] = [];
+    const plannedMap = new Map<number, PlannedOutlineChapterItem>();
+
+    if (narrativeStructureState.status === "ready") {
+      const data = narrativeStructureState.data;
+      for (const ch of data.chapters ?? []) {
+        if (typeof ch.number === "number" && typeof ch.wordCount === "number") {
+          counts[ch.number] = ch.wordCount;
+        }
+      }
+      for (const v of data.volumes ?? []) {
+        vols.push({
+          id: v.id,
+          title: v.title,
+          from: v.chapterRange.from,
+          to: v.chapterRange.to,
+          goal: v.goal,
+        });
+      }
+      // 从已挂载的场景反推大纲已规划的章号与摘要
+      const scenesByChapter = new Map<number, string[]>();
+      for (const sc of data.scenes ?? []) {
+        if (typeof sc.chapterNumber === "number" && sc.chapterNumber > 0) {
+          const list = scenesByChapter.get(sc.chapterNumber) ?? [];
+          list.push(sc.summary ? `${sc.title}：${sc.summary}` : sc.title);
+          scenesByChapter.set(sc.chapterNumber, list);
+        }
+      }
+      for (const [chNum, lines] of scenesByChapter.entries()) {
+        plannedMap.set(chNum, {
+          chapterNumber: chNum,
+          title: `大纲规划第${chNum}章`,
+          summary: lines.join("；"),
+        });
+      }
+    }
+
+    // 同时读取经纬「大纲」条目中的章纲节点，补充章节标题与细纲
+    const visitOutline = (items: readonly WorkbenchResourceNode[]) => {
+      for (const item of items) {
+        if (item.kind === "jingwei-entry") {
+          const fields = item.metadata?.fields as Record<string, unknown> | undefined;
+          const targetNumRaw = fields?.targetChapterNumber ?? fields?.chapterNumber ?? item.metadata?.chapterNumber;
+          const titleNumMatch = item.title.match(/第\s*(\d{1,6})\s*章/u);
+          const chNum = typeof targetNumRaw === "number" && Number.isInteger(targetNumRaw) && targetNumRaw > 0
+            ? targetNumRaw
+            : titleNumMatch
+              ? Number(titleNumMatch[1])
+              : null;
+          if (chNum !== null) {
+            const cleanTitle = item.title.replace(/^第\s*\d+\s*章\s*[:：\s-]*/u, "").trim() || item.title;
+            const summary = typeof item.content === "string" && item.content.trim()
+              ? item.content.trim().slice(0, 180)
+              : plannedMap.get(chNum)?.summary;
+            plannedMap.set(chNum, {
+              chapterNumber: chNum,
+              title: cleanTitle,
+              ...(summary ? { summary } : {}),
+              sourceNode: item,
+            });
+          }
+        }
+        if (item.children) visitOutline(item.children);
+      }
+    };
+    visitOutline(outlineTreeNodes);
+
+    return {
+      volumeGroups: vols,
+      plannedOutlineChapters: [...plannedMap.values()].sort((a, b) => a.chapterNumber - b.chapterNumber),
+      chapterWordCounts: counts,
+    };
+  }, [narrativeStructureState, outlineTreeNodes]);
 
   const studioHideInnerSidebar =
     studioUnifiedSidebar && (effectiveStudioZone === "workflow" || effectiveStudioZone === "settings");
@@ -2003,9 +2181,18 @@ export function IdeWorkbench({
       toolbarSlotRef={toolbarSlotRef}
       onJumpToChapter={handleJumpToChapter}
       onOpenWriteView={() => {
-        if (studioUnifiedSidebar) onZoneChange?.("write");
-        else keybindingActions.switchView("write");
+        if (studioUnifiedSidebar) {
+          setWriteCenterMode("prep");
+          onZoneChange?.("write");
+        } else {
+          keybindingActions.switchView("write");
+        }
       }}
+      onOpenQualityDashboard={studioUnifiedSidebar ? () => {
+        setQualityDashboardTab("quality");
+        setWriteCenterMode("quality");
+        onZoneChange?.("write");
+      } : undefined}
       onOpenStyleVault={(ch) => {
         if (studioUnifiedSidebar) {
           setStyleVaultFocusChapter(ch);
@@ -2057,6 +2244,38 @@ export function IdeWorkbench({
             <span className="rounded bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary">
               {STUDIO_ZONE_TITLES[effectiveStudioZone]}
             </span>
+            {effectiveStudioZone === "write" ? (
+              <div
+                className="ml-1 inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-2xs"
+                role="tablist"
+                aria-label="写正文中心工作台模式"
+                data-testid="write-zone-mode-switcher"
+              >
+                {(
+                  [
+                    { id: "draft", label: "写正文" },
+                    { id: "prep", label: "AI 写章筹备" },
+                    { id: "quality", label: "质检与分析大盘" },
+                  ] as const
+                ).map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={writeCenterMode === mode.id}
+                    data-testid={`write-mode-tab-${mode.id}`}
+                    onClick={() => setWriteCenterMode(mode.id)}
+                    className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                      writeCenterMode === mode.id
+                        ? "bg-card text-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             {effectiveStudioZone === "dissect" ? (
               <div
                 className="ml-1 inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-2xs"
@@ -2271,46 +2490,43 @@ export function IdeWorkbench({
                   <ChapterDirectorySidebar
                     bookId={bookId}
                     chapterNodes={pureChapterNodes}
-                    selectedNodeId={activeNode?.id ?? null}
+                    noteNodes={chapterNoteNodes}
+                    volumes={volumeGroups}
+                    plannedChapters={plannedOutlineChapters}
+                    chapterWordCounts={chapterWordCounts}
+                    selectedNodeId={writeCenterMode === "draft" ? (activeNode?.id ?? null) : null}
+                    activePrepChapterNumber={writeCenterMode === "prep" ? (prepTargetChapter?.chapterNumber ?? null) : null}
                     chapterWordTarget={bookChapterWordTarget}
                     chapterAuditSummary={chapterAuditSummary}
                     creatingChapter={creatingChapter}
-                    onOpenChapter={handleOpen}
+                    creatingNote={creatingNote}
+                    onOpenChapter={(chapterNode) => {
+                      setWriteCenterMode("draft");
+                      handleOpen(chapterNode);
+                    }}
+                    onOpenNote={(noteNode) => {
+                      setWriteCenterMode("draft");
+                      handleOpen(noteNode);
+                    }}
+                    onOpenPlannedChapter={(item) => {
+                      setPrepTargetChapter({
+                        chapterNumber: item.chapterNumber,
+                        title: item.title,
+                        ...(item.summary ? { summary: item.summary } : {}),
+                      });
+                      setWriteCenterMode("prep");
+                    }}
                     {...(bookId ? { onCreateChapter: () => void handleQuickCreateChapter() } : {})}
-                    writePrepSlot={
-                      <WriteViewPanel
-                        bookId={bookId}
-                        callTool={writeViewCallTool}
-                        onSwitchView={(view) => keybindingActions.switchView(view)}
-                        onOpenSettings={handleOpenSettingsSection}
-                        onOpenLorePanel={handleOpenLorePanel}
-                        onSendToNarrator={onSendToNarrator}
-                        onRunWrite={handleRunWrite}
-                        chapterWordTarget={bookChapterWordTarget}
-                        onJumpToChapter={handleJumpToChapter}
-                        visible={!showSettings}
-                        hasChapters={bookHasChapters}
-                        onOpenNewBookGuide={handleShowBookOverview}
-                        {...(bookId ? { onOpenWorkflow: () => onZoneChange?.("workflow") } : {})}
-                        {...(bookId ? { onOpenStoryCanvas: () => onZoneChange?.("outline") } : {})}
-                      />
-                    }
-                    analysisToolsSlot={
-                      <WorkbenchResourceTree
-                        nodes={toolNodes}
-                        selectedNodeId={activeNode?.id ?? null}
-                        onOpen={handleOpen}
-                        onAction={handleResourceAction}
-                        toolbar={false}
-                        ariaLabel="分析工具"
-                      />
-                    }
+                    {...(bookId ? { onCreateNote: () => void handleQuickCreateNote() } : {})}
                     rawFilesSlot={
                       resourceFileNodes.length > 0 ? (
                         <WorkbenchResourceTree
                           nodes={resourceFileNodes}
                           selectedNodeId={activeNode?.id ?? null}
-                          onOpen={handleOpen}
+                          onOpen={(n) => {
+                            if (effectiveStudioZone === "write") setWriteCenterMode("draft");
+                            handleOpen(n);
+                          }}
                           onAction={handleResourceAction}
                           cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []}
                           chapterAuditSummary={chapterAuditSummary}
@@ -2409,7 +2625,7 @@ export function IdeWorkbench({
               {/* 主编辑区 */}
               <Allotment.Pane minSize={200}>
                 <div className="flex h-full flex-col overflow-hidden">
-                  {!showSettings && !dissectOpen && !(studioUnifiedSidebar && effectiveStudioZone === "workflow") && (
+                  {!showSettings && !dissectOpen && !(studioUnifiedSidebar && effectiveStudioZone === "workflow") && !(studioUnifiedSidebar && effectiveStudioZone === "write" && writeCenterMode !== "draft") && (
                     <EditorTabs
                       tabs={ideTabs.tabs}
                       activeTabId={ideTabs.activeTabId}
@@ -2463,6 +2679,40 @@ export function IdeWorkbench({
                       </div>
                     ) : dissectOpen && bookId ? (
                       <DissectLibraryPanel key={bookId} bookId={bookId} sidebarHost={overlayPanes ? null : dissectSidebarHost} fetchJson={styleDistillationFetch} onSendToNarrator={onSendToNarrator} onDirtyChange={handleDissectDirty} />
+                    ) : studioUnifiedSidebar && effectiveStudioZone === "write" && writeCenterMode === "prep" && bookId ? (
+                      <ChapterPrepWorkspace
+                        bookId={bookId}
+                        callTool={writeViewCallTool}
+                        targetChapter={prepTargetChapter}
+                        chapterWordTarget={bookChapterWordTarget}
+                        {...(activeSessionId ? { narratorId: activeSessionId } : {})}
+                        onSendToNarrator={onSendToNarrator}
+                        onCreateAndOpenChapter={(chNum, chTitle) => void handleQuickCreateChapter(chNum, chTitle)}
+                        onJumpToChapter={(ch) => {
+                          setWriteCenterMode("draft");
+                          handleJumpToChapter(ch);
+                        }}
+                        onOpenWorkflow={() => onZoneChange?.("workflow")}
+                        onOpenOutlineZone={() => onZoneChange?.("outline")}
+                        onOpenSettingsZone={() => {
+                          setSettingsSection("writing-skills");
+                          onZoneChange?.("settings");
+                        }}
+                        onOpenLoreZone={() => onZoneChange?.("lore")}
+                        onOpenDissectZone={() => onZoneChange?.("dissect")}
+                      />
+                    ) : studioUnifiedSidebar && effectiveStudioZone === "write" && writeCenterMode === "quality" && bookId ? (
+                      <QualityDashboardWorkspace
+                        bookId={bookId}
+                        initialTab={qualityDashboardTab}
+                        repositoryPath={repositoryPath}
+                        currentChapter={typeof activeNode?.metadata?.chapterNumber === "number" ? activeNode.metadata.chapterNumber : undefined}
+                        onJumpToChapter={(ch) => {
+                          setWriteCenterMode("draft");
+                          handleJumpToChapter(ch);
+                        }}
+                        onOpenJingweiEntry={handleOpenJingweiEntry}
+                      />
                     ) : activeView === "skills-style" && bookId ? (
                       <div className="h-full space-y-5 overflow-y-auto p-5">
                         <StyleDistillationWorkspace
@@ -2492,8 +2742,24 @@ export function IdeWorkbench({
                               isActive={tabId === ideTabs.activeTabId}
                               onJumpToChapter={handleJumpToChapter}
                               onOpenWriteView={() => {
-                                if (studioUnifiedSidebar) onZoneChange?.("write");
-                                else keybindingActions.switchView("write");
+                                if (studioUnifiedSidebar) {
+                                  setWriteCenterMode("prep");
+                                  onZoneChange?.("write");
+                                } else {
+                                  keybindingActions.switchView("write");
+                                }
+                              }}
+                              onOpenQualityDashboard={studioUnifiedSidebar ? () => {
+                                setQualityDashboardTab("quality");
+                                setWriteCenterMode("quality");
+                                onZoneChange?.("write");
+                              } : undefined}
+                              onOpenWorkflowStudio={() => {
+                                if (studioUnifiedSidebar) {
+                                  onZoneChange?.("workflow");
+                                } else if (workflowNode) {
+                                  handleOpen(workflowNode);
+                                }
                               }}
                               onOpenStyleVault={(ch) => {
                                 if (studioUnifiedSidebar) {

@@ -22,6 +22,9 @@ export function createWriteReadinessRouter(options: CreateWriteReadinessRouterOp
   app.post("/api/books/:bookId/write/preflight", async (c) => {
     const bookId = c.req.param("bookId");
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const pinnedSampleIds = Array.isArray(body.pinnedSampleIds)
+      ? body.pinnedSampleIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : undefined;
     try {
       const result = await handleWritePreflight({
         bookId,
@@ -29,6 +32,8 @@ export function createWriteReadinessRouter(options: CreateWriteReadinessRouterOp
         chapterNumber: typeof body.chapterNumber === "number" ? body.chapterNumber : undefined,
         userDirectives: typeof body.userDirectives === "string" ? body.userDirectives : undefined,
         acceptFocusDefault: body.acceptFocusDefault === true,
+        ...(pinnedSampleIds && pinnedSampleIds.length > 0 ? { pinnedSampleIds } : {}),
+        includeRecallPreview: body.includeRecallPreview !== false,
       });
       return c.json(result);
     } catch (error) {

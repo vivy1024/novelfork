@@ -237,5 +237,17 @@ describe("CanonicalTreesPanel 四张正图", () => {
     expect(screen.queryByTestId("canonical-tree-tab-causal")).toBeNull();
     expect(screen.queryByTestId("canonical-tree-tab-timeline")).toBeNull();
     expect(screen.queryByTestId("canonical-tree-tab-overview")).toBeNull();
+    expect(screen.getByText("设定图谱")).toBeTruthy();
+
+    // 右侧检查器默认选中根节点，显示中文「总览」徽标与下属子项清单，不裸露英文 root 或「这个节点没有正文内容。」
+    const inspector = screen.getByTestId("canonical-tree-inspector");
+    expect(inspector.textContent).toContain("总览");
+    expect(inspector.textContent).not.toContain("root");
+    expect(inspector.textContent).not.toContain("这个节点没有正文内容");
+    expect(inspector.textContent).toContain("下属内容");
+
+    // 一键展开全部条目
+    fireEvent.click(screen.getByTestId("canonical-tree-toggle-all"));
+    expect(await screen.findByTestId("tidy-tree-row-entry:c1")).toBeTruthy();
   });
 });

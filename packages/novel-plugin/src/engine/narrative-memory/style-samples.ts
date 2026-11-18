@@ -244,7 +244,7 @@ export function resolveActiveRegisterOverlays(
   return { activeIds, matchedBySource };
 }
 
-export type StyleSampleMatch = "scene-type" | "general" | "fallback";
+export type StyleSampleMatch = "pinned" | "scene-type" | "general" | "fallback";
 
 export interface StyleSampleCandidate {
   /** `<来源包 ID>/<范文 ID>`，全书唯一。 */
@@ -308,6 +308,8 @@ export interface SelectStyleSamplesInput {
   readonly sceneTypes: ResolvedStyleSceneTypes;
   /** 本章已触发的局部语域插件 ID 集合；未激活的 register_overlay 范文物理隔离不参与候选。 */
   readonly activeOverlayIds?: ReadonlySet<string>;
+  /** 作者显式点选优先注入的范文 ID 列表（兼容 `sourceId:sampleId`、`sourceId/sampleId` 或 `sampleId`）。 */
+  readonly pinnedSampleIds?: readonly string[];
   /** 留给范文的 token；缺省表示不限（仍受段数上限约束）。 */
   readonly availableTokens?: number;
 }
@@ -321,15 +323,20 @@ function isSampleSourceEligible(preset: StylePreset, source: StylePreset["source
 function collectCandidates(
   preset: StylePreset,
   activeOverlayIds?: ReadonlySet<string>,
-): { all: number; confirmed: Array<StyleSampleCandidate & { order: number }> } {
+  pinnedSampleIds?: readonly string[],
+): {
+  all: number;
+  confirmed: Array<StyleSampleCandidate & { order: number }>;
+  pinned: Array<StyleSampleCandidate & { order: number }>;
+} {
   let all = 0;
   const confirmed: Array<StyleSampleCandidate & { order: number }> = [];
+  const allIndexed: Array<StyleSampleCandidate & { order: number }> = [];
+
   preset.sources.forEach((source, sourceIndex) => {
-    if (!isSampleSourceEligible(preset, source, activeOverlayIds)) return;
+    const eligibleSource = isSampleSourceEligible(preset, source, activeOverlayIds);
     source.samples.forEach((sample, sampleIndex) => {
-      all += 1;
-      if (sample.status !== "confirmed") return;
-      confirmed.push({
+      const item: StyleSampleCandidate & { order: number } = {
         key: `${source.id}/${sample.id}`,
         sourceId: source.id,
         sourceTitle: source.title,
@@ -339,10 +346,31 @@ function collectCandidates(
         text: sample.text,
         // 来源包次序优先，同包内按范文次序；乘数足够大，保证不交叉。
         order: sourceIndex * 1_000 + sampleIndex,
-      });
+      };
+      allIndexed.push(item);
+      if (!eligibleSource) return;
+      all += 1;
+      if (sample.status !== "confirmed") return;
+      confirmed.push(item);
     });
   });
-  return { all, confirmed };
+
+  const pinned: Array<StyleSampleCandidate & { order: number }> = [];
+  const seenPinned = new Set<string>();
+  for (const rawId of pinnedSampleIds ?? []) {
+    const token = String(rawId).trim();
+    if (!token) continue;
+    const normalizedKey = token.replace(":", "/");
+    const hit = allIndexed.find(
+      (c) => c.key === normalizedKey || `${c.sourceId}:${c.sampleId}` === token || c.sampleId === token,
+    );
+    if (hit && !seenPinned.has(hit.key)) {
+      seenPinned.add(hit.key);
+      pinned.push(hit);
+    }
+  }
+
+  return { all, confirmed, pinned };
 }
 
 function compareCandidates(a: StyleSampleCandidate & { order: number }, b: StyleSampleCandidate & { order: number }): number {
@@ -355,11 +383,13 @@ function sampleTitle(candidate: StyleSampleCandidate): string {
 }
 
 function sampleReason(candidate: StyleSampleCandidate, match: StyleSampleMatch, sceneTypes: ResolvedStyleSceneTypes): string {
-  const why = match === "scene-type"
-    ? `本章需要${STYLE_SCENE_TYPE_LABELS[candidate.sceneType]}场景的写法示范`
-    : match === "general"
-      ? sceneTypes.types.length > 0 ? "本章场景类型没有对应范文，改用通用范文" : "未判出本章场景类型，改用通用范文"
-      : "场景匹配与通用范文不足两段，按预设次序补位";
+  const why = match === "pinned"
+    ? `作者在筹备台显式点选置顶注入（${STYLE_SCENE_TYPE_LABELS[candidate.sceneType]}）`
+    : match === "scene-type"
+      ? `本章需要${STYLE_SCENE_TYPE_LABELS[candidate.sceneType]}场景的写法示范`
+      : match === "general"
+        ? sceneTypes.types.length > 0 ? "本章场景类型没有对应范文，改用通用范文" : "未判出本章场景类型，改用通用范文"
+        : "场景匹配与通用范文不足两段，按预设次序补位";
   const origin = candidate.transfer === "source-only"
     ? `来源：${candidate.sourceTitle}（作品专属范文，只学写法，不得迁移其中人物、地名与设定）`
     : `来源：${candidate.sourceTitle}（可迁移）`;
@@ -370,11 +400,14 @@ function sampleReason(candidate: StyleSampleCandidate, match: StyleSampleMatch, 
 export function selectStyleSamples(input: SelectStyleSamplesInput): StyleSampleSelection {
   const sceneTypes = input.sceneTypes;
   const explanations: StyleExplanation[] = [];
-  const { all, confirmed } = input.preset ? collectCandidates(input.preset, input.activeOverlayIds) : { all: 0, confirmed: [] };
+  const { all, confirmed, pinned } = input.preset
+    ? collectCandidates(input.preset, input.activeOverlayIds, input.pinnedSampleIds)
+    : { all: 0, confirmed: [], pinned: [] };
 
+  const pinnedKeys = new Set(pinned.map((item) => item.key));
   const wanted = sceneTypes.types.filter((type) => type !== "general");
   const byType = new Map<StyleSceneType, Array<StyleSampleCandidate & { order: number }>>();
-  for (const candidate of [...confirmed].sort(compareCandidates)) {
+  for (const candidate of [...confirmed].filter((c) => !pinnedKeys.has(c.key)).sort(compareCandidates)) {
     byType.set(candidate.sceneType, [...(byType.get(candidate.sceneType) ?? []), candidate]);
   }
 
@@ -388,12 +421,12 @@ export function selectStyleSamples(input: SelectStyleSamplesInput): StyleSampleS
     }
   }
   const general = byType.get("general") ?? [];
-  const used = new Set([...matched, ...general].map((candidate) => candidate.key));
+  const used = new Set([...pinned, ...matched, ...general].map((candidate) => candidate.key));
   const others = STYLE_SCENE_TYPES
     .filter((type) => type !== "general" && !wanted.includes(type))
     .flatMap((type) => byType.get(type) ?? [])
     .filter((candidate) => !used.has(candidate.key));
-  const fillCount = Math.max(0, STYLE_SAMPLE_LIMITS.min - matched.length - general.length);
+  const fillCount = Math.max(0, STYLE_SAMPLE_LIMITS.min - pinned.length - matched.length - general.length);
 
   const baseRanked: Array<{ candidate: StyleSampleCandidate & { order: number }; match: StyleSampleMatch }> = [
     ...matched.map((candidate) => ({ candidate, match: "scene-type" as const })),
@@ -408,13 +441,14 @@ export function selectStyleSamples(input: SelectStyleSamplesInput): StyleSampleS
     const primaryId = primaryStyleSourceId(input.preset);
     for (const overlayId of input.activeOverlayIds) {
       if (overlayId === primaryId) continue;
+      if (pinned.some((item) => item.sourceId === overlayId)) continue;
       const fromRanked = baseRanked.find((entry) => entry.candidate.sourceId === overlayId);
       if (fromRanked) {
         overlayAnchorKeys.add(fromRanked.candidate.key);
         overlayAnchors.push(fromRanked);
         continue;
       }
-      const fallbackOverlay = [...confirmed].sort(compareCandidates).find((item) => item.sourceId === overlayId);
+      const fallbackOverlay = [...confirmed].filter((c) => !pinnedKeys.has(c.key)).sort(compareCandidates).find((item) => item.sourceId === overlayId);
       if (fallbackOverlay) {
         overlayAnchorKeys.add(fallbackOverlay.key);
         overlayAnchors.push({ candidate: fallbackOverlay, match: "fallback" });
@@ -422,13 +456,18 @@ export function selectStyleSamples(input: SelectStyleSamplesInput): StyleSampleS
     }
   }
   const primaryTop = baseRanked.find((entry) => !overlayAnchorKeys.has(entry.candidate.key));
-  const ranked = primaryTop && overlayAnchors.length > 0
+  const autoRanked = primaryTop && overlayAnchors.length > 0
     ? [
       primaryTop,
       ...overlayAnchors,
       ...baseRanked.filter((entry) => entry !== primaryTop && !overlayAnchorKeys.has(entry.candidate.key)),
     ]
     : [...overlayAnchors, ...baseRanked.filter((entry) => !overlayAnchorKeys.has(entry.candidate.key))];
+
+  const ranked: Array<{ candidate: StyleSampleCandidate & { order: number }; match: StyleSampleMatch }> = [
+    ...pinned.map((candidate) => ({ candidate, match: "pinned" as const })),
+    ...autoRanked,
+  ];
 
   const selected: SelectedStyleSample[] = [];
   const trimmed: TrimmedStyleSample[] = [];

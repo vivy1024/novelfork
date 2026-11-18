@@ -36,6 +36,7 @@ describe("useBookFileTree", () => {
         { name: "notes.txt", path: "story/notes.txt", type: "file" },
         { name: "map.png", path: "story/map.png", type: "file" },
         { name: "0001_开端.md", path: "chapters/0001_开端.md", type: "file" },
+        { name: "作者说清单.md", path: "chapters/作者说清单.md", type: "file" },
       ],
     }, "book-1");
 
@@ -43,11 +44,17 @@ describe("useBookFileTree", () => {
     const textFile = root.children?.[1];
     const imageFile = root.children?.[2];
     const chapter = root.children?.[3];
+    const authorNote = root.children?.[4];
 
     expect(chapter?.kind).toBe("chapter");
     expect(chapter?.metadata?.isChapter).toBe(true);
     expect(chapter?.metadata?.isFile).toBe(true);
     expect(chapter?.metadata?.chapterNumber).toBe(1);
+
+    expect(authorNote?.kind).toBe("file");
+    expect(authorNote?.metadata?.isChapter).toBeUndefined();
+    expect(authorNote?.metadata?.isAuthorNote).toBe(true);
+    expect(authorNote?.capabilities.edit).toBe(true);
 
     expect(storyFile?.kind).toBe("file");
     expect(storyFile?.metadata?.isChapter).toBeUndefined();

@@ -25,6 +25,7 @@ import {
   checkRegisterGuardrail,
   type CheckRegisterGuardrailInput,
 } from "../engine/compliance/register-guardrail.js";
+import { scanMetaLeaks } from "../engine/compliance/prose-lenses.js";
 
 export interface AuditV2Input {
   readonly bookId: string;
@@ -262,6 +263,17 @@ export function handleChapterAuditV2(input: AuditV2Input): AuditV2Result {
   const runCanon = !enabledChecks || enabledChecks.has("canon") || enabledChecks.has("continuity");
   const runPov = !enabledChecks || enabledChecks.has("pov") || enabledChecks.has("continuity");
   const runRegister = !enabledChecks || enabledChecks.has("register") || enabledChecks.has("ai_taste") || enabledChecks.has("continuity");
+  const runMetaLeak = !enabledChecks || enabledChecks.has("meta_leak") || enabledChecks.has("ai_taste") || enabledChecks.has("continuity");
+
+  const metaLeakViolations: AuditV2Violation[] = runMetaLeak
+    ? scanMetaLeaks(content).map((hit) => ({
+      ruleId: "S10",
+      severity: "soft" as const,
+      location: `第${hit.paragraphIndex}段`,
+      description: hit.explanation.whatHappened,
+      suggestion: hit.explanation.suggestedAction,
+    }))
+    : [];
 
   const ledgerEnabled = !enabledChecks || enabledChecks.has("ledger") || enabledChecks.has("continuity");
   const ledgerViolations = ledgerEnabled
@@ -298,6 +310,7 @@ export function handleChapterAuditV2(input: AuditV2Input): AuditV2Result {
   const softViolations = [
     ...canonViolations.filter((v) => v.severity === "soft"),
     ...registerViolations.filter((v) => v.severity === "soft"),
+    ...metaLeakViolations,
     ...checkSoftConstraints(content, input).filter((v) => {
     if (v.ruleId === "S7") return ledgerEnabled && v.severity === "soft";
     if (!enabledChecks) return true;

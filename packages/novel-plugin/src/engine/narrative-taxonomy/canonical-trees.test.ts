@@ -68,6 +68,19 @@ describe("buildWorldviewTree 世界观", () => {
     expect(characters.children[0]!.label).toBe("薛行之");
     expect(characters.children[0]!.degree).toBeGreaterThan(0);
   });
+
+  it("仅单一维度有条目时自动消除『世界观 → 故事』单传空壳层级", () => {
+    const storyOnly = [
+      entry("c1", "characters", "顾长生"),
+      entry("l1", "locations", "青云山"),
+      entry("p1", "power-system", "九转金丹"),
+    ];
+    const forest = buildWorldviewTree({ entries: storyOnly });
+    const ids = forest.root.children.map((node) => node.id);
+    expect(ids).not.toContain("dimension:story");
+    expect(ids).toContain("feature:agent");
+    expect(ids).toContain("feature:setting");
+  });
 });
 
 describe("buildChapterForkTree 章节分叉", () => {

@@ -677,12 +677,14 @@ function tokenizeQuery(input: string | readonly string[]): string[] {
 
 /**
  * 仅在规划环节（`scene.spec` 蓝图辅助参考、`outline.volume` 卷纲建议）召回匹配的已确认且无专名残留的机制卡。
+ * 若作者通过 `pinnedIds` 显式点名了机制卡 ID，则忽略 `status` 与关键词未命中限制，优先置顶返回（仍过滤带原著专名残留风险卡并遵守上限）。
  * 绝不返回 `sourceTitle` 原文段落，也绝不进入 `write.preflight` 的正文 `style` 通道。
  */
 export async function recallMechanismCardsForPlanning(
   bookRoot: string,
   queryTextOrTags: string | readonly string[],
   maxCards = 4,
+  pinnedIds?: readonly string[],
 ): Promise<PlanningMechanismReference[]> {
   if (!bookRoot?.trim()) return [];
   const limit = Math.max(0, Math.min(8, Math.trunc(maxCards)));
@@ -693,43 +695,60 @@ export async function recallMechanismCardsForPlanning(
   } catch {
     return [];
   }
+
+  const normalizedPinnedIds = Array.isArray(pinnedIds)
+    ? [...new Set(pinnedIds.map((id) => String(id).trim()).filter(Boolean))]
+    : [];
+  const pinnedSet = new Set(normalizedPinnedIds);
+
+  const pinnedCards: MechanismCard[] = [];
+  for (const pid of normalizedPinnedIds) {
+    const found = loaded.cards.find((card) => card.id === pid && !card.needsTermSanitization);
+    if (found) pinnedCards.push(found);
+  }
+
+  const remainingSlots = Math.max(0, limit - pinnedCards.length);
   const eligible = loaded.cards.filter((card) =>
-    card.status === "confirmed" && !card.needsTermSanitization);
-  if (eligible.length === 0) return [];
+    !pinnedSet.has(card.id) && card.status === "confirmed" && !card.needsTermSanitization);
 
-  const queryTokens = tokenizeQuery(queryTextOrTags);
-  const rawQuery = (typeof queryTextOrTags === "string" ? queryTextOrTags : queryTextOrTags.join(" ")).trim().toLowerCase();
+  let keywordCards: MechanismCard[] = [];
+  if (remainingSlots > 0 && eligible.length > 0) {
+    const queryTokens = tokenizeQuery(queryTextOrTags);
+    const rawQuery = (typeof queryTextOrTags === "string" ? queryTextOrTags : queryTextOrTags.join(" ")).trim().toLowerCase();
 
-  const scored = eligible.map((card, index) => {
-    let score = card.validationStatus === "cross_book" ? 2 : 0;
-    const searchable = [card.name, card.readerDesire, card.triggerAndPayoff, ...card.tags].join(" ").toLowerCase();
-    for (const tag of card.tags) {
-      const lowerTag = tag.toLowerCase();
-      if (rawQuery && rawQuery.includes(lowerTag)) score += 6;
-      if (queryTokens.some((tok) => tok.includes(lowerTag) || lowerTag.includes(tok))) score += 4;
-    }
-    for (const tok of queryTokens) {
-      if (searchable.includes(tok)) score += 2;
-    }
-    return { card, score, index };
-  });
+    const scored = eligible.map((card, index) => {
+      let score = card.validationStatus === "cross_book" ? 2 : 0;
+      const searchable = [card.name, card.readerDesire, card.triggerAndPayoff, ...card.tags].join(" ").toLowerCase();
+      for (const tag of card.tags) {
+        const lowerTag = tag.toLowerCase();
+        if (rawQuery && rawQuery.includes(lowerTag)) score += 6;
+        if (queryTokens.some((tok) => tok.includes(lowerTag) || lowerTag.includes(tok))) score += 4;
+      }
+      for (const tok of queryTokens) {
+        if (searchable.includes(tok)) score += 2;
+      }
+      return { card, score, index };
+    });
 
-  const matched = queryTokens.length > 0
-    ? scored.filter((item) => item.score > (item.card.validationStatus === "cross_book" ? 2 : 0))
-    : scored;
-  const pool = matched.length > 0 ? matched : scored;
+    const matched = queryTokens.length > 0
+      ? scored.filter((item) => item.score > (item.card.validationStatus === "cross_book" ? 2 : 0))
+      : scored;
+    const pool = matched.length > 0 ? matched : scored;
 
-  return pool
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .slice(0, limit)
-    .map(({ card }) => ({
-      id: card.id,
-      name: card.name,
-      readerDesire: card.readerDesire,
-      emotionChain: card.emotionChain,
-      triggerAndPayoff: card.triggerAndPayoff,
-      abstractSlots: card.abstractSlots,
-      tags: card.tags,
-      validationStatus: card.validationStatus,
-    }));
+    keywordCards = pool
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .slice(0, remainingSlots)
+      .map(({ card }) => card);
+  }
+
+  return [...pinnedCards.slice(0, limit), ...keywordCards].map((card) => ({
+    id: card.id,
+    name: card.name,
+    readerDesire: card.readerDesire,
+    emotionChain: card.emotionChain,
+    triggerAndPayoff: card.triggerAndPayoff,
+    abstractSlots: card.abstractSlots,
+    tags: card.tags,
+    validationStatus: card.validationStatus,
+  }));
 }

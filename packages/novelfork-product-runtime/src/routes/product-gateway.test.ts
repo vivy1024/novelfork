@@ -488,6 +488,30 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		expect(invalid.status).toBe(400);
 		const outsiderResponse = await productApp(outsider).request(`/api/books/${bookId}/chapters/reconcile`, { method: "POST" });
 		expect(outsiderResponse.status).toBeGreaterThanOrEqual(403);
+
+		// 回归：筹备台「直接铺开信纸手写」携带指定 chapterNumber 时正常落盘，且同章号重复点击返回已有正文不覆盖
+		const explicitCreated = await app.request(`/api/books/${bookId}/chapters`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ title: "指定章号手写", chapterNumber: 9 }),
+		});
+		expect(explicitCreated.status).toBe(201);
+		const explicitBody = await explicitCreated.json() as { chapter: { id: string; content: string; metadata?: { chapterNumber?: number } } };
+		expect(explicitBody.chapter.id).toBe("chapter:9");
+
+		await app.request(`/api/books/${bookId}/chapters/9`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ content: "# 指定章号手写\n\n手写第一段不可丢失" }),
+		});
+		const duplicateOpen = await app.request(`/api/books/${bookId}/chapters`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ title: "新名字不应覆盖", chapterNumber: 9 }),
+		});
+		expect(duplicateOpen.status).toBe(201);
+		const duplicateBody = await duplicateOpen.json() as { chapter: { content: string } };
+		expect(duplicateBody.chapter.content).toContain("手写第一段不可丢失");
 	});
 
 	test("rebinds an existing book to a marked external workspace", async () => {

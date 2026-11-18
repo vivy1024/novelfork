@@ -30,6 +30,15 @@ import {
 } from "./workflow-canvas-model";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowInspector, type SubagentOption } from "./WorkflowInspector";
+import {
+  AUTHORITATIVE_WRITABLE_NOVEL_TOOLS,
+  fetchJsonSafe,
+  mergeRuntimeSkillsResponses,
+  parseRuntimeGlobalSubagentsResponse,
+  parseRuntimeModelsResponse,
+  type RuntimeModelOption,
+  type RuntimeSkillOption,
+} from "./runtime-workflow-catalog";
 
 interface Explanation {
   readonly what: string;
@@ -78,6 +87,8 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [customSubagents, setCustomSubagents] = useState<readonly SubagentOption[]>([]);
+  const [runtimeModels, setRuntimeModels] = useState<readonly RuntimeModelOption[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<readonly RuntimeSkillOption[]>([]);
   // 自动排版、加节点后让画布重新适配视口。
   const [fitViewKey, setFitViewKey] = useState(0);
   const dirtyRef = useRef(dirty);
@@ -85,17 +96,42 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(`${apiBase}/subagents`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: { custom?: readonly { id?: unknown; nameZh?: unknown }[] } | null) => {
-        if (cancelled || !Array.isArray(body?.custom)) return;
-        setCustomSubagents(
-          body.custom
-            .filter((item): item is { id: string; nameZh: string } => typeof item?.id === "string" && typeof item?.nameZh === "string")
-            .map((item) => ({ id: item.id, nameZh: item.nameZh, isCustom: true })),
-        );
-      })
-      .catch(() => { /* 无自定义子代理或离线时仍保留内置列表 */ });
+    void Promise.all([
+      fetchJsonSafe(`${apiBase}/subagents`),
+      fetchJsonSafe("/api/custom-subagents"),
+      fetchJsonSafe("/api/providers/models"),
+      fetchJsonSafe("/api/writing-skills"),
+      fetchJsonSafe(`${apiBase}/runtime/skills`),
+    ]).then(([bookSubagentsBody, globalSubagentsBody, modelsBody, writingSkillsBody, runtimeSkillsBody]) => {
+      if (cancelled) return;
+
+      const bookCustomRaw =
+        typeof bookSubagentsBody === "object" && bookSubagentsBody !== null && Array.isArray((bookSubagentsBody as { custom?: unknown }).custom)
+          ? ((bookSubagentsBody as { custom: readonly { id?: unknown; nameZh?: unknown; description?: unknown }[] }).custom)
+          : [];
+      const bookCustomOptions: SubagentOption[] = bookCustomRaw
+        .filter((item): item is { id: string; nameZh: string; description?: unknown } =>
+          typeof item?.id === "string" && typeof item?.nameZh === "string",
+        )
+        .map((item) => ({
+          id: item.id,
+          nameZh: item.nameZh,
+          ...(typeof item.description === "string" ? { description: item.description } : {}),
+          isCustom: true,
+          source: "book-custom" as const,
+        }));
+
+      const globalOptions: SubagentOption[] = parseRuntimeGlobalSubagentsResponse(globalSubagentsBody).map((item) => ({
+        id: item.name,
+        nameZh: item.name,
+        ...(item.description ? { description: item.description } : {}),
+        source: "runtime-global" as const,
+      }));
+
+      setCustomSubagents([...bookCustomOptions, ...globalOptions]);
+      setRuntimeModels(parseRuntimeModelsResponse(modelsBody));
+      setAvailableSkills(mergeRuntimeSkillsResponses(runtimeSkillsBody, writingSkillsBody));
+    });
     return () => { cancelled = true; };
   }, [apiBase]);
 
@@ -395,6 +431,9 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
             onOps={applyOps}
             onSelect={setSelection}
             customSubagents={customSubagents}
+            runtimeModels={runtimeModels}
+            availableSkills={availableSkills}
+            writableTools={AUTHORITATIVE_WRITABLE_NOVEL_TOOLS}
           />
         </aside>
       </div>

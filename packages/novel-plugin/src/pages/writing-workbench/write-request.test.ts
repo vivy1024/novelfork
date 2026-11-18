@@ -77,4 +77,23 @@ describe("buildWriteRequestMessage", () => {
     expect(message).toContain("（已确认采用当前焦点的默认目标）");
     expect(message).toContain(JSON.stringify(BEATS, null, 2));
   });
+
+  it("附带 pinnedMechanismIds / pinnedSampleIds / infoAnchors 时生成结构化直通指令并要求高密度施工字段", () => {
+    const message = buildWriteRequestMessage({
+      mode: "chapter",
+      chapterNumber: 8,
+      directive: "林舟当堂核账反杀刘管事",
+      acceptFocusDefault: false,
+      pinnedMechanismIds: ["mech-01", "mech-02"],
+      pinnedSampleIds: ["src-a:smp-1"],
+      infoAnchors: ["灵田折旧率 12%", "朱砂暗记"],
+    });
+
+    expect(message).toContain("write_preflight");
+    expect(message).toContain(`\`pinnedSampleIds\`：["src-a:smp-1"]`);
+    expect(message).toContain(`\`pinnedMechanismIds\`：["mech-01","mech-02"]`);
+    expect(message).toContain(`\`infoAnchors\`：["灵田折旧率 12%","朱砂暗记"]`);
+    expect(message).toContain("microBeats");
+    expect(message).toContain("infoPayloads");
+  });
 });

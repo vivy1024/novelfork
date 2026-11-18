@@ -282,12 +282,20 @@ export function buildWorldviewTree(input: BuildStoryTreeInput): CanonicalForest 
     };
   }
   const converted = canonicalFromStoryNode(tree.root);
+  // 若全书设定都落在唯一一个顶层维度下（如仅「故事」维度有条目），折叠掉这层单传空壳，
+  // 避免画出「世界观 · 49 → 故事 · 49 → 人物/设定」的无意义双根串联；多维度共存时保留维度层。
+  const topChildren =
+    converted.children.length === 1 && converted.children[0]!.children.length > 0
+      ? converted.children[0]!.children
+      : converted.children;
   return {
     kind: "worldview",
     root: {
       ...converted,
       id: "worldview",
       label: "世界观",
+      subtitle: `共 ${tree.totalEntries} 条经纬设定`,
+      children: topChildren,
     },
     truncated: tree.root.children.some((dimension) =>
       dimension.children.some((feature) =>

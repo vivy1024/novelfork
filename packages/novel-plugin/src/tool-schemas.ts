@@ -103,11 +103,24 @@ const foreshadowFieldProperties = {
 
 const sceneSpecSchema = {
   type: "object",
-  description: "由 scene.spec 生成的结构化写作蓝图。",
+  description: "由 scene.spec 生成的结构化写作蓝图（高密度施工控制卡）。",
   properties: {
     chapter: numberSchema("目标章节号。"),
     title: stringSchema("章节标题。"),
     wordTarget: numberSchema("目标字数。"),
+    engineRole: enumSchema(
+      ["payoff", "buildup", "upgrade", "pivot"],
+      "本章爽感引擎角色（可选）：payoff 显性兑现 | buildup 隐性蓄力 | upgrade 引擎升级 | pivot 转向。",
+    ),
+    contractCheck: {
+      type: "object",
+      description: "因果权与结算权归属自检（可选）：确保主角掌局与收获不被配角或巧合夺走。",
+      properties: {
+        agencyOwner: stringSchema("本章推动核心破局的主导者（可选）。"),
+        payoffOwner: stringSchema("本章关键收益/爽感结算的归属者（可选）。"),
+      },
+      additionalProperties: false,
+    },
     beatBudget: arraySchema("情节点字数预算：密点展开、疏点带过，总和需覆盖整章。", {
       type: "object",
       properties: {
@@ -129,6 +142,18 @@ const sceneSpecSchema = {
         outcome: stringSchema("场景结果。"),
         hooks_used: arraySchema("回收的伏笔。", { type: "string" }),
         hooks_planted: arraySchema("新增的伏笔。", { type: "string" }),
+        microBeats: arraySchema("场内因果小节拍（可选，如 A 导致 B 导致 C，防注水）。", { type: "string" }),
+        infoPayloads: arraySchema("本场必须交付的具体信息增量/物证/账目/规则细节（可选）。", { type: "string" }),
+        reactionPairs: arraySchema("关键动作与在场配角差异化反应对（可选，防主角独角戏）。", {
+          type: "object",
+          properties: {
+            action: stringSchema("关键动作或信息抛出。"),
+            reactions: stringSchema("在场不同立场角色的差异化即时反应。"),
+          },
+          required: ["action", "reactions"],
+          additionalProperties: false,
+        }),
+        forbid: arraySchema("本场禁区谓词（可选，严禁提前泄露的底牌或禁止角色失真行为）。", { type: "string" }),
         gaps: arraySchema("规划留白（可选）：为关键场景标 1–2 处动机/细节/节奏的真实答案；写作时注入，避免模型把关键点写成标准解答。", {
           type: "object",
           properties: {
@@ -170,6 +195,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       acceptFocusDefault: booleanSchema("仅有 focus 默认目标时是否接受继续（默认 false，会 needsUserConfirm）。"),
       acknowledgedSkills: acknowledgedSkillsSchema,
       sceneSpec: { ...sceneSpecSchema, description: "可选：已有 scene.spec 蓝图时传入，写前召回按蓝图的角色/地点/伏笔取前情（与 pipeline.write 同口径）；不传则按本章指示召回。" },
+      pinnedSampleIds: arraySchema("可选：作者显式点选优先注入的文风范文 ID 列表（支持 sourceId:sampleId 或 sampleId）。", { type: "string" }),
     },
     required: ["bookId"],
     additionalProperties: false,
@@ -769,6 +795,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
           additionalProperties: false,
         },
       ),
+      namedEntities: arraySchema("本章点名重点实体列表（可选；召回超上限时优先保留）。", { type: "string" }),
+      pinnedMechanismIds: arraySchema("作者显式勾选的机制卡 ID 列表（可选；规划期优先置顶返回）。", { type: "string" }),
+      infoAnchors: arraySchema("作者指定的信息增量锚点（可选；自动并入蓝图硬约束防注水）。", { type: "string" }),
     },
     required: ["bookId", "chapterNumber", "userDirectives"],
     additionalProperties: false,

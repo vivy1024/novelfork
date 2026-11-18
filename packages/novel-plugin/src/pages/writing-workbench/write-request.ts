@@ -20,6 +20,17 @@ export interface WriteRequestPayload {
    * （scene.spec 的入参注释写明：给了就不让模型另拟一套）。
    */
   readonly beatBudget?: readonly BeatBudgetItem[];
+  /** 作者显式点选的机制卡 ID 列表（直通 scene.spec 的 pinnedMechanismIds）。 */
+  readonly pinnedMechanismIds?: readonly string[];
+  /** 作者显式点选的文风范文 ID 列表（直通 write.preflight 的 pinnedSampleIds）。 */
+  readonly pinnedSampleIds?: readonly string[];
+  /** 作者指定的信息增量锚点（直通 scene.spec 的 infoAnchors）。 */
+  readonly infoAnchors?: readonly string[];
+}
+
+function normalizeStringList(values: readonly string[] | undefined): string[] {
+  if (!values || values.length === 0) return [];
+  return [...new Set(values.map((item) => item.trim()).filter(Boolean))];
 }
 
 /** 作者已编辑节拍时追加的指令段；为空则完全不改变原有消息。 */
@@ -34,12 +45,47 @@ function beatBudgetLines(beats: readonly BeatBudgetItem[] | undefined): string[]
   ];
 }
 
+/** 作者在筹备台点选机制卡 / 范文 / 信息锚点时的结构化直通参数段；均为空时不输出任何额外行。 */
+function structuredPrepLines(payload: WriteRequestPayload): string[] {
+  const pinnedMechanismIds = normalizeStringList(payload.pinnedMechanismIds);
+  const pinnedSampleIds = normalizeStringList(payload.pinnedSampleIds);
+  const infoAnchors = normalizeStringList(payload.infoAnchors);
+  if (pinnedMechanismIds.length === 0 && pinnedSampleIds.length === 0 && infoAnchors.length === 0) {
+    return [];
+  }
+
+  const lines: string[] = [
+    "",
+    "【筹备台结构化直通参数（调用工具时请原样传入，并按高密度施工控制卡产出 microBeats + infoPayloads + reactionPairs）】",
+  ];
+  if (pinnedSampleIds.length > 0) {
+    lines.push(
+      `- 调用 ${toWireToolName("write.preflight")} 时原样传入 \`pinnedSampleIds\`：${JSON.stringify(pinnedSampleIds)}`,
+    );
+  }
+  if (pinnedMechanismIds.length > 0) {
+    lines.push(
+      `- 调用 ${toWireToolName("scene.spec")} 时原样传入 \`pinnedMechanismIds\`：${JSON.stringify(pinnedMechanismIds)}`,
+    );
+  }
+  if (infoAnchors.length > 0) {
+    lines.push(
+      `- 调用 ${toWireToolName("scene.spec")} 时原样传入 \`infoAnchors\`：${JSON.stringify(infoAnchors)}`,
+    );
+  }
+  lines.push(
+    `- 提交 ${toWireToolName("scene.spec")} 的每个场景请包含 \`microBeats\`（因果小节拍）与 \`infoPayloads\`（具体信息增量/物证/规则细节），杜绝空洞大词与环境描写注水。`,
+  );
+  return lines;
+}
+
 /** 生成发给叙述者的消息文本。 */
 export function buildWriteRequestMessage(payload: WriteRequestPayload): string {
   const chapter = payload.chapterNumber > 0 ? `第 ${payload.chapterNumber} 章` : "下一章";
   const directive = payload.directive.trim();
   const accept = payload.acceptFocusDefault ? "（已确认采用当前焦点的默认目标）" : "";
   const beats = beatBudgetLines(payload.beatBudget);
+  const prep = structuredPrepLines(payload);
 
   if (payload.mode === "blueprint") {
     return [
@@ -47,6 +93,7 @@ export function buildWriteRequestMessage(payload: WriteRequestPayload): string {
       `本章目标：${directive}${accept}`,
       `流程：${toWireToolName("write.preflight")} 通过后调用 ${toWireToolName("scene.spec")}；蓝图给我确认后再写正文。`,
       ...beats,
+      ...prep,
     ].join("\n");
   }
 
@@ -55,5 +102,6 @@ export function buildWriteRequestMessage(payload: WriteRequestPayload): string {
     `本章目标：${directive}${accept}`,
     `流程：${toWireToolName("write.preflight")} → ${toWireToolName("scene.spec")} → ${toWireToolName("pipeline.write")}。preflight 不通过就停下告诉我缺什么，不要先写。`,
     ...beats,
+    ...prep,
   ].join("\n");
 }

@@ -99,7 +99,8 @@ function executionLine(
     );
   }
   if (step.executorKind === "domain-tool") return "执行方式：只调用本工序列出的工具完成，不要自行发挥。";
-  return `执行方式：由你本人完成${step.agentId ? `（建议角色：${step.agentId}）` : ""}。`;
+  const narratorModel = recipeStep?.modelOverride ? `（指定模型：${recipeStep.modelOverride}）` : "";
+  return `执行方式：由你本人完成${step.agentId ? `（建议角色：${step.agentId}）` : ""}${narratorModel}。`;
 }
 
 /** 一道进行中工序的完整说明。 */

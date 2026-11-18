@@ -111,6 +111,11 @@ function nodeAction(node: CanonicalTreeNode, props: TidyTreeCanvasProps): void {
   }
   if ((node.kind === "chapter" || node.kind === "event") && node.chapterNumber && props.onOpenChapter) {
     props.onOpenChapter(node.chapterNumber);
+    return;
+  }
+  // 分类/特征/维度等目录节点：点击标题主体也直接展开（若已展开则只定位查看右侧子项，折叠仍点左侧箭头）
+  if (node.children.length > 0 && node.kind !== "root" && !props.expanded.has(node.id)) {
+    props.onToggle(node.id);
   }
 }
 

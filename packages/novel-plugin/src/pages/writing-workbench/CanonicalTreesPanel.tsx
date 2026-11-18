@@ -188,32 +188,131 @@ function matchingIds(node: CanonicalTreeNode, query: string): Set<string> {
   return result;
 }
 
-function NodeInspector({ node }: { node: CanonicalTreeNode | null }) {
+const NODE_KIND_LABELS: Record<CanonicalTreeNode["kind"], string> = {
+  root: "总览",
+  group: "分组",
+  dimension: "维度",
+  feature: "门类",
+  category: "设定分类",
+  entry: "设定条目",
+  entity: "角色实体",
+  character: "角色",
+  volume: "分卷",
+  chapter: "章节",
+  beat: "节拍",
+  event: "事件",
+  storyline: "剧情线",
+  scene: "场景",
+};
+
+const NODE_STATUS_LABELS: Record<string, string> = {
+  confirmed: "已确认",
+  "needs-review": "待确认",
+  draft: "草稿",
+  active: "进行中",
+  done: "已完成",
+  planted: "已埋设",
+  resolved: "已回收",
+  high: "高风险",
+};
+
+function collectExpandableNodeIds(node: CanonicalTreeNode, into: Set<string> = new Set()): Set<string> {
+  if (node.children.length > 0) {
+    into.add(node.id);
+    for (const child of node.children) collectExpandableNodeIds(child, into);
+  }
+  return into;
+}
+
+function NodeInspector({
+  node,
+  onSelectChild,
+  onOpenEntry,
+}: {
+  node: CanonicalTreeNode | null;
+  onSelectChild?: (child: CanonicalTreeNode) => void;
+  onOpenEntry?: (entryId: string, label: string) => void;
+}) {
   if (!node) {
     return (
       <p className="p-3 text-xs text-muted-foreground" data-testid="canonical-tree-inspector-empty">
-        点树上任一节点查看详情。
+        点树上任一节点查看详情或分类目录。
       </p>
     );
   }
+  const kindLabel = NODE_KIND_LABELS[node.kind] ?? node.kind;
+  const statusLabel = node.status ? (NODE_STATUS_LABELS[node.status] ?? node.status) : null;
+
   return (
-    <div className="space-y-2 p-3" data-testid="canonical-tree-inspector">
+    <div className="space-y-2.5 p-3" data-testid="canonical-tree-inspector">
       <div>
-        <p className="text-xs font-semibold">{node.label}</p>
-        {node.subtitle ? <p className="mt-0.5 text-xs text-muted-foreground">{node.subtitle}</p> : null}
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs font-semibold text-foreground">{node.label}</p>
+          {node.entryId && onOpenEntry ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="h-6 shrink-0 px-2 text-2xs"
+              onClick={() => onOpenEntry(node.entryId!, node.label)}
+            >
+              打开设定卡
+            </Button>
+          ) : null}
+        </div>
+        {node.subtitle ? <p className="mt-0.5 text-2xs text-muted-foreground">{node.subtitle}</p> : null}
       </div>
       <div className="flex flex-wrap gap-1">
-        <Badge variant="outline" className="h-4 px-1 text-2xs">{node.kind}</Badge>
-        {node.count > 0 ? <Badge variant="outline" className="h-4 px-1 text-2xs">{node.count}</Badge> : null}
-        {node.status ? <Badge variant="secondary" className="h-4 px-1 text-2xs">{node.status}</Badge> : null}
-        {node.degree ? <Badge variant="outline" className="h-4 px-1 text-2xs">{node.degree} 共现</Badge> : null}
+        <Badge variant="outline" className="h-4 px-1.5 text-2xs">{kindLabel}</Badge>
+        {node.count > 0 && node.kind !== "entry" ? (
+          <Badge variant="outline" className="h-4 px-1.5 text-2xs">{node.count} 项</Badge>
+        ) : null}
+        {statusLabel ? <Badge variant="secondary" className="h-4 px-1.5 text-2xs">{statusLabel}</Badge> : null}
+        {node.degree ? <Badge variant="outline" className="h-4 px-1.5 text-2xs">{node.degree} 共现</Badge> : null}
       </div>
       {node.detail ? (
-        <p className="max-h-52 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+        <p className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded bg-muted/35 p-2 text-xs leading-relaxed text-foreground">
           {node.detail}
         </p>
+      ) : node.children.length > 0 ? (
+        <div className="space-y-1.5">
+          <p className="text-2xs font-medium text-muted-foreground">
+            下属内容（{node.children.length} 项，点击可直达）：
+          </p>
+          <ul className="max-h-72 space-y-1 overflow-y-auto pr-0.5">
+            {node.children.map((child) => (
+              <li key={child.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (child.entryId && onOpenEntry) {
+                      onOpenEntry(child.entryId, child.label);
+                    } else {
+                      onSelectChild?.(child);
+                    }
+                  }}
+                  className="flex w-full items-center justify-between gap-2 rounded border border-border/70 bg-background/70 px-2 py-1.5 text-left text-xs transition-colors hover:border-primary/40 hover:bg-muted/60"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-foreground">{child.label}</div>
+                    {child.subtitle || child.detail ? (
+                      <div className="truncate text-2xs text-muted-foreground">
+                        {child.subtitle ?? child.detail}
+                      </div>
+                    ) : null}
+                  </div>
+                  {child.kind !== "entry" && child.count > 0 ? (
+                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+                      {child.count}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : (
-        <p className="text-xs text-muted-foreground">这个节点没有正文内容。</p>
+        <p className="text-xs text-muted-foreground">该条目暂无详细描述，可打开设定卡补充内容。</p>
       )}
     </div>
   );
@@ -369,9 +468,56 @@ export function CanonicalTreesPanel({
   }, [expanded, matched]);
 
   const selected = useMemo(() => {
-    if (!forest || !selectedId) return null;
-    return indexCanonicalTree(forest.root).get(selectedId) ?? null;
+    if (!forest) return null;
+    if (!selectedId) return forest.root;
+    return indexCanonicalTree(forest.root).get(selectedId) ?? forest.root;
   }, [forest, selectedId]);
+
+  const allExpandableIds = useMemo(
+    () => (forest ? collectExpandableNodeIds(forest.root) : new Set<string>()),
+    [forest],
+  );
+  const allExpanded = useMemo(() => {
+    if (allExpandableIds.size === 0) return false;
+    for (const id of allExpandableIds) {
+      if (!effectiveExpanded.has(id)) return false;
+    }
+    return true;
+  }, [allExpandableIds, effectiveExpanded]);
+
+  const toggleExpandAll = useCallback(() => {
+    if (!forest) return;
+    setExpandedByKind((current) => ({
+      ...current,
+      [kind]: allExpanded ? collectDefaultExpanded(forest.root) : collectExpandableNodeIds(forest.root),
+    }));
+  }, [allExpanded, forest, kind]);
+
+  const focusAndExpandNode = useCallback(
+    (target: CanonicalTreeNode) => {
+      if (!forest) return;
+      setSelectedId(target.id);
+      setExpandedByKind((current) => {
+        const baseline = current[kind] ?? collectDefaultExpanded(forest.root);
+        const next = new Set(baseline);
+        // 把从根到 target 的祖先链及 target 自身全部展开
+        const walk = (cursor: CanonicalTreeNode, chain: readonly string[]): boolean => {
+          if (cursor.id === target.id) {
+            for (const ancestorId of chain) next.add(ancestorId);
+            if (cursor.children.length > 0) next.add(cursor.id);
+            return true;
+          }
+          for (const child of cursor.children) {
+            if (walk(child, [...chain, cursor.id])) return true;
+          }
+          return false;
+        };
+        walk(forest.root, []);
+        return { ...current, [kind]: next };
+      });
+    },
+    [forest, kind],
+  );
 
   const toggle = useCallback((id: string) => {
     setExpandedByKind((current) => {
@@ -435,7 +581,13 @@ export function CanonicalTreesPanel({
 
       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
         <FolderTree className="size-3.5 text-primary" strokeWidth={1.65} />
-        <span className="text-xs font-semibold">{showSwitcher && availableViews.length > 1 ? "正图" : (availableViews.find((view) => view.id === kind)?.label ?? "正图")}</span>
+        <span className="text-xs font-semibold">
+          {showSwitcher && availableViews.length > 1
+            ? kinds?.length === 2 && kinds.includes("worldview") && kinds.includes("relations")
+              ? "设定图谱"
+              : "正图"
+            : (availableViews.find((view) => view.id === kind)?.label ?? "正图")}
+        </span>
         {showSwitcher && availableViews.length > 1 ? (
         <nav className="flex items-center gap-0.5 rounded-md bg-muted/60 p-0.5" role="tablist" aria-label="正图切换">
           {availableViews.map((view) => {
@@ -465,6 +617,18 @@ export function CanonicalTreesPanel({
         </nav>
         ) : null}
         {treeView && forest ? <span className="text-2xs text-muted-foreground">{forest.root.count} 项</span> : null}
+        {treeView && forest && forest.root.children.length > 0 ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            className="h-6 px-2 text-2xs"
+            data-testid="canonical-tree-toggle-all"
+            onClick={toggleExpandAll}
+          >
+            {allExpanded ? "收起分类" : "展开全部条目"}
+          </Button>
+        ) : null}
         {networkView || editorialTimelineView ? null : (
         <div className="ml-auto flex items-center gap-1">
           <div className="relative">
@@ -530,8 +694,12 @@ export function CanonicalTreesPanel({
             {...(onOpenChapter ? { onOpenChapter } : {})}
           />
         </div>
-        <div className="w-64 shrink-0 overflow-y-auto rounded-md border">
-          <NodeInspector node={selected} />
+        <div className="w-64 shrink-0 overflow-y-auto rounded-md border bg-card/50">
+          <NodeInspector
+            node={selected}
+            onSelectChild={focusAndExpandNode}
+            {...(onOpenEntry ? { onOpenEntry } : {})}
+          />
         </div>
       </div>
       ) : null}

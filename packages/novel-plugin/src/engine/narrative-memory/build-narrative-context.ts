@@ -62,6 +62,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   styleGuideText?: string;
   /** 本书文风预设；文风通道据此按本章场景类型检索已确认范文。 */
   stylePreset?: StylePreset | null;
+  /** 作者显式点选优先注入的范文 ID 列表（兼容 `sourceId:sampleId` 或 `sampleId`）。 */
+  pinnedSampleIds?: readonly string[];
   /**
    * 角色声线约束（接缝）：调用方传入已成文的约束文本，由文风通道注入并计入预算。
    * 声线如何推断不归这里管。
@@ -74,6 +76,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   bookDesignText?: string;
   channelTimeoutMs?: number;
   retrievalLogId?: string;
+  /** 只读预览模式：为 true 时不写 narrative_retrieval_log，也不推动休眠伏笔轮转。 */
+  persistRetrievalLog?: boolean;
   budgetPolicy?: NarrativeBudgetPolicy;
   semanticProvider?: NarrativeEmbeddingProvider;
   semanticConfig?: Partial<SemanticChannelConfig>;
@@ -401,6 +405,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         complianceRules: input.complianceRules,
         bookDesignText: input.bookDesignText,
         stylePreset: input.stylePreset,
+        ...(input.pinnedSampleIds?.length ? { pinnedSampleIds: input.pinnedSampleIds } : {}),
         chapterNumber: currentChapter,
         chapterScenes: chapterScenes.scenes,
         sceneSpec,
@@ -552,21 +557,24 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   });
 
   // 休眠伏笔提醒轮转：写章召回里真正装进包的提醒卡，记下「第 N 章提醒过」，下一章起轮到别的伏笔。
-  // 只记写章（write_chapter），诊断 / 审计 / 改稿的召回不推动轮转；轮转只看本章之前的记录，同章重跑结果不变。
-  if (parsed.purpose === "write_chapter" && currentChapter !== undefined) {
+  // 只记写章（write_chapter），诊断 / 审计 / 改稿 / 只读预览的召回不推动轮转；轮转只看本章之前的记录，同章重跑结果不变。
+  const shouldPersist = input.persistRetrievalLog !== false;
+  if (shouldPersist && parsed.purpose === "write_chapter" && currentChapter !== undefined) {
     const remindedIds = budget.cards
       .filter((item) => item.card.channel === "hooks" && item.card.tags.includes(DORMANT_HOOK_TAG))
       .map((item) => item.card.sourceId);
     if (remindedIds.length > 0) recordHookReminders(input.storage, parsed.bookId, currentChapter, remindedIds);
   }
 
-  persistNarrativeRetrievalLog(input.storage, {
-    id: input.retrievalLogId ?? `narrative-retrieval:${parsed.bookId}:${crypto.randomUUID()}`,
-    bookId: parsed.bookId,
-    chapterNumber: currentChapter,
-    purpose: parsed.purpose,
-    diagnostics,
-  });
+  if (shouldPersist) {
+    persistNarrativeRetrievalLog(input.storage, {
+      id: input.retrievalLogId ?? `narrative-retrieval:${parsed.bookId}:${crypto.randomUUID()}`,
+      bookId: parsed.bookId,
+      chapterNumber: currentChapter,
+      purpose: parsed.purpose,
+      diagnostics,
+    });
+  }
 
   return NarrativeContextPackageSchema.parse({
     bookId: parsed.bookId,

@@ -26,7 +26,10 @@ import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 
 import { JingweiEntryEditor, type JingweiEntrySavePayload } from "./JingweiEntryEditor";
 import { ChapterContextRail } from "./ChapterContextRail";
+import { ChapterMemoryDiffBoard } from "./ChapterMemoryDiffBoard";
 import { ChapterOutlineBoard } from "./ChapterOutlineBoard";
+import { ChapterQualityRail } from "./ChapterQualityRail";
+import { InlineWorkflowRunBar } from "./InlineWorkflowRunBar";
 import {
   CHAPTER_CONTEXT_RAIL_DEFAULT_WIDTH,
   CHAPTER_CONTEXT_RAIL_MAX_WIDTH,
@@ -344,13 +347,19 @@ export interface WorkbenchCanvasProps {
   onDismissSelectionCandidate?: () => void;
   /** 点作者改动占比徽标时跳到「技能文风 › 文风金库」并展开该章。 */
   onOpenStyleVault?: (chapterNumber: number) => void;
+  /** 从本章质检伴随板打开全书质检与分析大盘。 */
+  onOpenQualityDashboard?: () => void;
+  /** 从内嵌工作流进度条跳转到完整工作流画布。 */
+  onOpenWorkflowStudio?: () => void;
   /** 书房纯净外观：省去重复顶底栏，将伴随栏控制融入单层码字条，新书起笔案头不再全屏霸屏十问。 */
   studioCleanChrome?: boolean;
   /** 新书 0 章时在起笔案头一键新建第 1 章并铺开稿纸。 */
   onCreateFirstChapter?: () => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, onOpenStyleVault, studioCleanChrome = false, onCreateFirstChapter }: WorkbenchCanvasProps) {
+export type CompanionRailTab = "outline" | "memory" | "quality" | "context";
+
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, onOpenStyleVault, onOpenQualityDashboard, onOpenWorkflowStudio, studioCleanChrome = false, onCreateFirstChapter }: WorkbenchCanvasProps) {
   const { resourceKey, content, dirty, saving, saveError, setContent, save: handleSave, setSaveError } = useResourceAutosave(node, bookId, onSave);
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -365,14 +374,16 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   // 量到编辑区宽度后再按「稿面放不放得下」决定默认开合，作者一旦动过就以作者为准。
   const storedRail = useMemo(() => (bookId ? loadChapterContextRailState(bookId) : null), [bookId]);
   const [contextRailOpen, setContextRailOpenState] = useState(storedRail?.open ?? true);
-  const [contextRailTab, setContextRailTab] = useState<"outline" | "context">(() => {
+  const [contextRailTab, setContextRailTab] = useState<CompanionRailTab>(() => {
     try {
-      return localStorage.getItem("novelfork:chapter-companion-tab") === "context" ? "context" : "outline";
+      const saved = localStorage.getItem("novelfork:chapter-companion-tab");
+      if (saved === "context" || saved === "memory" || saved === "quality" || saved === "outline") return saved;
+      return "outline";
     } catch {
       return "outline";
     }
   });
-  const switchContextRailTab = useCallback((tab: "outline" | "context") => {
+  const switchContextRailTab = useCallback((tab: CompanionRailTab) => {
     setContextRailTab(tab);
     try { localStorage.setItem("novelfork:chapter-companion-tab", tab); } catch { /* ignore */ }
   }, []);
@@ -600,7 +611,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   // 设定图谱 — 作品基础的中央视图，只放回答「设定是什么」的两张图：世界观树、人物关系网。
   if (node.metadata?.isLoreTrees && bookId) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden" data-testid="lore-trees-view">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden p-3" data-testid="lore-trees-view">
         <Suspense fallback={<ToolPanelLoading />}>
           <CanonicalTreesPanel
             bookId={bookId}
@@ -823,6 +834,15 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
           revision={typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : typeof node.metadata?.version === "number" ? node.metadata.version : undefined}
         />
       )}
+      {bookId && isChapterWorkflowNode(node) ? (
+        <InlineWorkflowRunBar
+          bookId={bookId}
+          chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
+          {...(narratorId ? { narratorId } : {})}
+          {...(onSendToNarrator ? { onSendToNarrator } : {})}
+          {...(onOpenWorkflowStudio ? { onOpenFullWorkflowStudio: onOpenWorkflowStudio } : {})}
+        />
+      ) : null}
 
       {/* Editor + 本章上下文侧栏 */}
       <div ref={containerRef} className={`flex-1 min-h-0 ${showContextRail ? "flex overflow-hidden" : "overflow-y-auto"}`}>
@@ -936,38 +956,34 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
               />
               <div className="flex min-w-0 flex-1 flex-col bg-card">
                 <div
-                  className="flex shrink-0 items-center gap-1 border-b border-border bg-muted/20 px-2 py-1"
+                  className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-muted/20 px-2 py-1"
                   role="tablist"
                   aria-label="伴随画板切换"
                 >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={contextRailTab === "outline"}
-                    data-testid="companion-tab-outline"
-                    onClick={() => switchContextRailTab("outline")}
-                    className={`rounded px-2 py-0.5 text-2xs transition-colors ${
-                      contextRailTab === "outline"
-                        ? "bg-background font-medium text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    大纲板
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={contextRailTab === "context"}
-                    data-testid="companion-tab-context"
-                    onClick={() => switchContextRailTab("context")}
-                    className={`rounded px-2 py-0.5 text-2xs transition-colors ${
-                      contextRailTab === "context"
-                        ? "bg-background font-medium text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    资料栏
-                  </button>
+                  {(
+                    [
+                      { id: "outline", label: "大纲经纬" },
+                      { id: "memory", label: "记忆改动" },
+                      { id: "quality", label: "本章质检" },
+                      { id: "context", label: "资料栏" },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={contextRailTab === tab.id}
+                      data-testid={`companion-tab-${tab.id}`}
+                      onClick={() => switchContextRailTab(tab.id)}
+                      className={`rounded px-1.5 py-0.5 text-2xs transition-colors ${
+                        contextRailTab === tab.id
+                          ? "bg-background font-medium text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
                   {contextRailTab === "outline" ? (
@@ -984,6 +1000,26 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
                           (preferredView ?? "overview") as Parameters<typeof createStoryProgressionNode>[1],
                         ));
                       } : undefined}
+                      className="h-full w-full border-0"
+                    />
+                  ) : contextRailTab === "memory" ? (
+                    <ChapterMemoryDiffBoard
+                      bookId={bookId!}
+                      chapterNumber={contextChapterNumber}
+                      content={content}
+                      dirty={dirty}
+                      onOpenJingweiEntry={onOpenJingweiEntry}
+                      onOpenStyleVault={onOpenStyleVault}
+                      onSendToNarrator={onSendToNarrator}
+                      className="h-full w-full border-0"
+                    />
+                  ) : contextRailTab === "quality" ? (
+                    <ChapterQualityRail
+                      bookId={bookId!}
+                      chapterNumber={contextChapterNumber}
+                      content={content}
+                      onSendToNarrator={onSendToNarrator}
+                      onOpenQualityDashboard={onOpenQualityDashboard}
                       className="h-full w-full border-0"
                     />
                   ) : (

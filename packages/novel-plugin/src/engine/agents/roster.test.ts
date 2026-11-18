@@ -16,9 +16,10 @@ import {
 const WIRE_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
 describe("内置子代理名册", () => {
-  it("13 个模板齐全（写、改、审、读者、市场、文风、大纲、通用），id 带产品命名空间且不重复", () => {
+  it("15 个模板齐全（写、改、审、读者、市场、文风、大纲、短剧分镜、有声配音、通用），id 带产品命名空间且不重复", () => {
     expect(NOVEL_SUBAGENT_ROSTER.map((t) => t.id).sort()).toEqual([
       "nf-assistant",
+      "nf-audiobook-director",
       "nf-continuity-auditor",
       "nf-deai-auditor",
       "nf-general",
@@ -28,6 +29,7 @@ describe("内置子代理名册", () => {
       "nf-reader-critic",
       "nf-reviser",
       "nf-scene-architect",
+      "nf-script-director",
       "nf-settler",
       "nf-style-keeper",
       "nf-writer",
@@ -77,11 +79,12 @@ describe("内置子代理名册", () => {
     }
   });
 
-  it("写手 / 返修 / 审校 / 镜头设计能提交；结算核对与资料助手不能提交", () => {
+  it("写手 / 返修 / 审校 / 镜头设计 / 改编导演能提交；结算核对与资料助手不能提交", () => {
     const canSubmit = (id: string) => NOVEL_SUBAGENT_ROSTER.find((t) => t.id === id)!.tools.includes("workflow.submit_step_output");
     for (const id of [
       "nf-scene-architect", "nf-writer", "nf-reviser", "nf-continuity-auditor", "nf-pacing-auditor", "nf-deai-auditor",
-      "nf-reader-critic", "nf-style-keeper", "nf-market-analyst", "nf-outline-planner", "nf-general",
+      "nf-reader-critic", "nf-style-keeper", "nf-market-analyst", "nf-outline-planner",
+      "nf-script-director", "nf-audiobook-director", "nf-general",
     ]) {
       expect(canSubmit(id), id).toBe(true);
     }
@@ -89,13 +92,15 @@ describe("内置子代理名册", () => {
     expect(canSubmit("nf-assistant")).toBe(false);
   });
 
-  it("新模板按职责最小授权：读者 / 文风 / 大纲只读加提交，市场带榜单工具，没有删除与批量维护", () => {
+  it("新模板按职责最小授权：读者 / 文风 / 大纲 / 短剧 / 有声只读加提交，市场带榜单工具，没有删除与批量维护", () => {
     const tools = (id: string) => NOVEL_SUBAGENT_ROSTER.find((t) => t.id === id)!.tools;
     expect(tools("nf-market-analyst")).toEqual(expect.arrayContaining(["market.ranks", "market.query"]));
     expect(tools("nf-market-analyst")).not.toContain("market.scan");
     expect(tools("nf-style-keeper")).toContain("character.voice.read");
+    expect(tools("nf-audiobook-director")).toContain("character.voice.read");
+    expect(tools("nf-script-director")).toEqual(expect.arrayContaining(["chapter.read", "lore.read", "memory.read"]));
     expect(tools("nf-outline-planner")).not.toContain("outline.volume");
-    for (const id of ["nf-reader-critic", "nf-style-keeper", "nf-outline-planner", "nf-market-analyst"]) {
+    for (const id of ["nf-reader-critic", "nf-style-keeper", "nf-outline-planner", "nf-market-analyst", "nf-script-director", "nf-audiobook-director"]) {
       for (const tool of tools(id)) expect(GENERAL_PROPOSAL_TOOLS, `${id} → ${tool}`).not.toContain(tool);
     }
     const general = tools("nf-general");

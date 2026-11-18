@@ -19,10 +19,15 @@ import {
 } from "./run-service";
 import { getActiveWorkflowRunForNarrator, type WorkflowRunRecord } from "./run-store";
 import {
+  AUDIOBOOK_SCRIPT_ADAPT_RECIPE,
+  DAILY_SERIAL_PACK_RECIPE,
+  DRAMA_STORYBOARD_ADAPT_RECIPE,
+  GOLDEN_OPENING_LAUNCH_RECIPE,
   NOVEL_BUILTIN_WORKFLOWS,
   OUTLINE_FORECAST_RECIPE,
   REFINE_CHAPTER_RECIPE,
 } from "./novel-workflows";
+import { getStepPromptPresetsForKind, STEP_PROMPT_PRESETS } from "./step-prompt-presets";
 import {
   buildStepTemplates,
   createRunState,
@@ -54,7 +59,14 @@ function run(recipe: typeof REFINE_CHAPTER_RECIPE) {
 }
 
 describe("新内置方案的结构", () => {
-  it.each([REFINE_CHAPTER_RECIPE, OUTLINE_FORECAST_RECIPE])("$id 已发布、结构合法、登记在内置方案里", (recipe) => {
+  it.each([
+    REFINE_CHAPTER_RECIPE,
+    OUTLINE_FORECAST_RECIPE,
+    GOLDEN_OPENING_LAUNCH_RECIPE,
+    DAILY_SERIAL_PACK_RECIPE,
+    DRAMA_STORYBOARD_ADAPT_RECIPE,
+    AUDIOBOOK_SCRIPT_ADAPT_RECIPE,
+  ])("$id 已发布、结构合法、登记在内置方案里", (recipe) => {
     expect(recipe.status).toBe("published");
     expect(checkWorkflowGraph(recipe)).toEqual([]);
     expect(NOVEL_BUILTIN_WORKFLOWS).toContain(recipe);
@@ -235,5 +247,73 @@ describe("新方案的服务端运行", () => {
     const settleBrief = buildWorkflowRunBrief(current)!;
     expect(settleBrief).toContain("chapter_write");
     expect(settleBrief).toContain("approvedProse");
+  });
+});
+
+describe("星月级全链路新增方案与提示词预设库", () => {
+  it("黄金开书流：市场扫榜可跳过，首卷 10 章推演经确认后进入卷纲落盘", () => {
+    const r = run(GOLDEN_OPENING_LAUNCH_RECIPE);
+    r.apply({ type: "submit", stepId: "step-context" });
+    r.apply({ type: "block", stepId: "step-market", explanation: failNote });
+    expect(r.status("step-market")).toBe("skipped");
+    expect(r.status("step-outline")).toBe("running");
+    r.apply({ type: "submit", stepId: "step-outline" });
+    expect(r.status("step-outline")).toBe("awaiting_approval");
+    r.apply({ type: "approve", stepId: "step-outline" });
+    expect(r.status("step-apply")).toBe("running");
+  });
+
+  it("日更稳健连载流：蓝图 → 起草放行 → 三路并行审校汇合 → 返修（可打回起草）→ 落盘结算不可跳过", () => {
+    const r = run(DAILY_SERIAL_PACK_RECIPE);
+    r.apply({ type: "submit", stepId: "step-context" });
+    r.apply({ type: "submit", stepId: "step-blueprint" });
+    r.apply({ type: "submit", stepId: "step-draft" });
+    expect(r.status("step-draft")).toBe("awaiting_approval");
+    r.apply({ type: "approve", stepId: "step-draft" });
+    expect(["step-continuity", "step-pacing", "step-deai"].map(r.status)).toEqual(["running", "running", "running"]);
+    r.apply({ type: "submit", stepId: "step-continuity", audit: { passed: false, note: failNote } });
+    r.apply({ type: "submit", stepId: "step-pacing", audit: { passed: true, note: failNote } });
+    expect(r.status("step-revise")).toBe("pending");
+    r.apply({ type: "submit", stepId: "step-deai", audit: { passed: false, note: failNote } });
+    expect(r.status("step-revise")).toBe("running");
+    r.apply({ type: "submit", stepId: "step-revise" });
+    expect(r.status("step-revise")).toBe("awaiting_approval");
+    r.apply({ type: "reject", stepId: "step-revise", note: failNote });
+    expect(r.status("step-draft")).toBe("running");
+  });
+
+  it("短剧分镜流与多角色有声书流：导演提交后经审校/作者确认归档为版本结果", () => {
+    expect(DRAMA_STORYBOARD_ADAPT_RECIPE.resultStrategy).toBe("version-result");
+    const drama = run(DRAMA_STORYBOARD_ADAPT_RECIPE);
+    drama.apply({ type: "submit", stepId: "step-context" });
+    drama.apply({ type: "submit", stepId: "step-storyboard" });
+    drama.apply({ type: "submit", stepId: "step-visual-audit", audit: { passed: false, note: failNote } });
+    // 审校不通过自动打回分镜导演重改
+    expect(drama.status("step-storyboard")).toBe("running");
+    drama.apply({ type: "submit", stepId: "step-storyboard" });
+    drama.apply({ type: "submit", stepId: "step-visual-audit", audit: { passed: true, note: failNote } });
+    expect(drama.status("step-visual-audit")).toBe("awaiting_approval");
+    drama.apply({ type: "approve", stepId: "step-visual-audit" });
+    expect(drama.status("step-archive")).toBe("running");
+
+    expect(AUDIOBOOK_SCRIPT_ADAPT_RECIPE.resultStrategy).toBe("version-result");
+    const audio = run(AUDIOBOOK_SCRIPT_ADAPT_RECIPE);
+    audio.apply({ type: "submit", stepId: "step-context" });
+    audio.apply({ type: "submit", stepId: "step-voice-script" });
+    expect(audio.status("step-voice-script")).toBe("awaiting_approval");
+    audio.apply({ type: "approve", stepId: "step-voice-script" });
+    expect(audio.status("step-archive")).toBe("running");
+  });
+
+  it("工序提示词预设库至少提供 12 条高质量模板，并按工序类别优先推荐", () => {
+    expect(STEP_PROMPT_PRESETS.length).toBeGreaterThanOrEqual(12);
+    for (const preset of STEP_PROMPT_PRESETS) {
+      expect(preset.id.trim()).not.toBe("");
+      expect(preset.label.trim()).not.toBe("");
+      expect(preset.prompt.trim().length).toBeGreaterThan(20);
+    }
+    const planPresets = getStepPromptPresetsForKind("guided-plan");
+    expect(planPresets.recommended.length).toBeGreaterThan(0);
+    expect(planPresets.recommended.length + planPresets.others.length).toBe(STEP_PROMPT_PRESETS.length);
   });
 });

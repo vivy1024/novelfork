@@ -2767,22 +2767,33 @@ export class NovelForkProductBookService {
 
 	async createWorkspaceChapter(
 		bookId: string,
-		input: { title?: string },
+		input: { title?: string; chapterNumber?: number },
 		actor: ProductActor,
 	): Promise<{ resource: ProductWorkspaceResource }> {
 		const { root, config, operation } = await this.getReadyBookRoot(bookId, actor);
 		const requestedTitle = typeof input.title === "string" ? input.title.trim() : "";
 		if (requestedTitle.length > 200)
 			throw new ValidationError("chapter title must be at most 200 characters");
+		const requestedNumber =
+			typeof input.chapterNumber === "number" && Number.isSafeInteger(input.chapterNumber) && input.chapterNumber >= 1
+				? input.chapterNumber
+				: undefined;
 		const service = createDomainWritingResourceService(bookId, root, bookCountingMode(config));
-		const resource = await this.withChapterIndexLock(operation.bookId, async () => {
+		const { resource, reused } = await this.withChapterIndexLock(operation.bookId, async () => {
 			const chapters = await service.list(bookId, { type: "chapter" });
+			if (requestedNumber !== undefined) {
+				const existing = chapters.find((chapter) => chapter.chapterNumber === requestedNumber);
+				if (existing) {
+					// 指定章号已有手稿时直接返回现有章节，绝不覆盖已有正文
+					return { resource: existing, reused: true };
+				}
+			}
 			const chapterNumber =
-				chapters.reduce((max, chapter) => Math.max(max, chapter.chapterNumber ?? 0), 0) + 1;
+				requestedNumber ?? (chapters.reduce((max, chapter) => Math.max(max, chapter.chapterNumber ?? 0), 0) + 1);
 			const isEnglish = config.language === "en";
 			const title =
 				requestedTitle || (isEnglish ? `Chapter ${chapterNumber}` : `第 ${chapterNumber} 章`);
-			return service.create(bookId, {
+			const created = await service.create(bookId, {
 				type: "chapter",
 				status: "accepted",
 				title,
@@ -2791,9 +2802,12 @@ export class NovelForkProductBookService {
 				source: "runtime:workspace",
 				metadata: {},
 			});
+			return { resource: created, reused: false };
 		});
-		await updateBookTimestamp(root);
-		this.invalidateWorkspaceFileTree(operation.bookId);
+		if (!reused) {
+			await updateBookTimestamp(root);
+			this.invalidateWorkspaceFileTree(operation.bookId);
+		}
 		return { resource: toWorkspaceWritingResource(resource) };
 	}
 

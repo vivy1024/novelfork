@@ -13,6 +13,8 @@ import { createSiliconFlowEmbeddingProvider } from "../engine/narrative-memory/e
 import { loadEmbeddingConfig } from "../engine/narrative-memory/embedding-settings.js";
 import { readBookSettlementFreshness } from "../engine/narrative-memory/settlement-freshness.js";
 import type { NarrativeContextPackage } from "../engine/narrative-memory/types.js";
+import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
+import { normalizeCategory } from "../engine/jingwei/unified-categories.js";
 import { loadSceneVoiceConstraints } from "../engine/writing-layers/character-voice-context.js";
 import { composeCustomConstraintsSection } from "../engine/writing-layers/style-preset-custom-constraints.js";
 import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
@@ -33,6 +35,10 @@ export interface WriteChapterRecallInput {
   readonly previousChapterTail?: string;
   /** 调用方已读过的配置；不传则现读。 */
   readonly memoryConfig?: NarrativeMemoryConfig | null;
+  /** 作者显式点选优先注入的范文 ID 列表（兼容 `sourceId:sampleId` 或 `sampleId`）。 */
+  readonly pinnedSampleIds?: readonly string[];
+  /** 只读预览模式：为 false 时不落盘 narrative_retrieval_log 与伏笔提醒轮转。 */
+  readonly persistRetrievalLog?: boolean;
   readonly logger?: Logger;
   readonly logPrefix?: string;
 }
@@ -59,8 +65,23 @@ export async function buildWriteChapterRecall(input: WriteChapterRecallInput): P
   const staleSettlementChapters = await readBookSettlementFreshness(storage, bookId, bookRoot)
     .then((freshness) => freshness.staleChapters)
     .catch(() => [] as readonly number[]);
-  // 角色声线：只注入本章出场角色、作者已确认的字段；读取失败不阻断写作。
-  const characterNames = sceneSpec ? sceneSpec.scenes.flatMap((scene) => scene.characters) : [];
+  // 角色声线：只注入本章出场角色、作者已确认的字段；无 sceneSpec 时从本章指示文本匹配经纬角色名/别名，读取失败不阻断写作。
+  let characterNames = sceneSpec ? sceneSpec.scenes.flatMap((scene) => scene.characters) : [];
+  if (characterNames.length === 0 && input.sceneText?.trim()) {
+    try {
+      const hintText = input.sceneText.trim();
+      const entries = await createStoryJingweiEntryRepository(storage).listByBook(bookId);
+      const matched: string[] = [];
+      for (const entry of entries) {
+        if (normalizeCategory(entry.category).category !== "characters") continue;
+        const labels = [entry.title, ...(entry.aliases ?? [])].map((s) => (s ?? "").trim()).filter((s) => s.length >= 2);
+        if (labels.some((label) => hintText.includes(label))) matched.push(entry.title);
+      }
+      characterNames = matched;
+    } catch {
+      characterNames = [];
+    }
+  }
   const sceneVoices = characterNames.length > 0
     ? await loadSceneVoiceConstraints({ storage, bookId, characterNames }).catch((err: unknown) => {
       logger?.warn(`${prefix} 角色声线读取失败，本章不注入声线：${err instanceof Error ? err.message : String(err)}`);
@@ -95,6 +116,8 @@ export async function buildWriteChapterRecall(input: WriteChapterRecallInput): P
     ...(customConstraintsText ? { bookRulesText: customConstraintsText } : {}),
     ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
     ...(writingLayers?.stylePreset ? { stylePreset: writingLayers.stylePreset } : {}),
+    ...(input.pinnedSampleIds?.length ? { pinnedSampleIds: input.pinnedSampleIds } : {}),
+    ...(input.persistRetrievalLog !== undefined ? { persistRetrievalLog: input.persistRetrievalLog } : {}),
     ...(sceneVoices?.text ? { voiceConstraints: sceneVoices.text } : {}),
     // 结构化声线摘要随文本一起下传：只进检索诊断日志，回答「这章注入了谁的哪些声线字段」。
     ...(sceneVoices?.profiles.length ? { voiceProfiles: sceneVoices.profiles } : {}),

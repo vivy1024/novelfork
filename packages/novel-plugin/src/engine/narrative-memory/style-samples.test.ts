@@ -165,4 +165,26 @@ describe("selectStyleSamples", () => {
     expect(none.selected).toEqual([]);
     expect(none.explanations[0]?.whatHappened).toContain("尚未确认");
   });
+
+  it("pinnedSampleIds 支持 sourceId:sampleId 与 sampleId 两种格式并排在最高优先级，仍受 token 预算保护", () => {
+    const sceneTypes = resolveStyleSceneTypes({ planText: "两人对峙商议" });
+    const pinnedResult = selectStyleSamples({
+      preset,
+      sceneTypes,
+      pinnedSampleIds: ["b:b-description", "a-action"],
+    });
+    expect(pinnedResult.selected.slice(0, 2).map((item) => item.key)).toEqual(["b/b-description", "a/a-action"]);
+    expect(pinnedResult.selected.slice(0, 2).map((item) => item.match)).toEqual(["pinned", "pinned"]);
+    expect(pinnedResult.selected[0]?.reason).toContain("筹备台显式点选置顶");
+
+    const oneToken = pinnedResult.selected[0]!.estimatedTokens;
+    const budgetCapped = selectStyleSamples({
+      preset,
+      sceneTypes,
+      pinnedSampleIds: ["b:b-description", "a-action"],
+      availableTokens: oneToken,
+    });
+    expect(budgetCapped.selected.map((item) => item.key)).toEqual(["b/b-description"]);
+    expect(budgetCapped.trimmed.some((item) => item.key === "a/a-action" && item.kind === "token-budget")).toBe(true);
+  });
 });

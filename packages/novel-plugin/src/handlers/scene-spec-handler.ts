@@ -22,6 +22,18 @@ import { parseSceneGaps, type SceneGap } from "./scene-gaps.js";
 
 export type { SceneGap, SceneGapKind } from "./scene-gaps.js";
 
+export interface SceneReactionPair {
+  action: string;
+  reactions: string;
+}
+
+export type SceneSpecEngineRole = "payoff" | "buildup" | "upgrade" | "pivot";
+
+export interface SceneSpecContractCheck {
+  agencyOwner?: string;
+  payoffOwner?: string;
+}
+
 export interface SceneSpecScene {
   characters: string[];
   location: string;
@@ -30,6 +42,14 @@ export interface SceneSpecScene {
   outcome: string;
   hooks_used: string[];
   hooks_planted: string[];
+  /** 场内逻辑因果小节拍（A 导致 B 导致 C，防注水）。 */
+  microBeats?: string[];
+  /** 本场必须向读者交付的具体信息增量 / 物证 / 账目 / 规则细节。 */
+  infoPayloads?: string[];
+  /** 关键动作与在场配角差异化反应对（防主角独角戏）。 */
+  reactionPairs?: SceneReactionPair[];
+  /** 本场禁区谓词（严禁提前泄露的底牌、禁止角色失真行为）。 */
+  forbid?: string[];
   /** 规划留白；可省略。 */
   gaps?: SceneGap[];
 }
@@ -38,6 +58,10 @@ export interface SceneSpec {
   chapter: number;
   title: string;
   wordTarget: number;
+  /** 本章对核心爽感引擎的贡献角色。 */
+  engineRole?: SceneSpecEngineRole;
+  /** 主角因果权与结算权归属自检。 */
+  contractCheck?: SceneSpecContractCheck;
   /**
    * 情节点字数预算。让章内节奏可核对：密点展开、疏点带过，
    * 总和落在 [wordTarget, wordTarget×1.1]。为空时退化为只有总字数约束。
@@ -70,6 +94,10 @@ export interface SceneSpecInput {
   sceneSpec?: unknown;
   /** 点名实体：write profile / facts 一跳扩展时超过 6/8/3 上限仍保留。 */
   namedEntities?: string[];
+  /** 作者显式勾选的机制卡 ID 列表（优先置顶召回）。 */
+  pinnedMechanismIds?: string[];
+  /** 作者指定的信息增量锚点（自动并入蓝图 constraints）。 */
+  infoAnchors?: string[];
 }
 
 export interface SceneSpecSuccess {
@@ -108,6 +136,41 @@ export interface SceneSpecFailure {
 
 export type SceneSpecResult = SceneSpecSuccess | SceneSpecFailure;
 
+const VALID_ENGINE_ROLES = new Set<SceneSpecEngineRole>(["payoff", "buildup", "upgrade", "pivot"]);
+
+function parseOptionalStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseReactionPairs(value: unknown): SceneReactionPair[] {
+  if (!Array.isArray(value)) return [];
+  const out: SceneReactionPair[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const rec = item as Record<string, unknown>;
+    const action = typeof rec.action === "string" ? rec.action.trim() : "";
+    const reactions = typeof rec.reactions === "string" ? rec.reactions.trim() : "";
+    if (action && reactions) out.push({ action, reactions });
+  }
+  return out;
+}
+
+function parseContractCheck(value: unknown): SceneSpecContractCheck | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const rec = value as Record<string, unknown>;
+  const agencyOwner = typeof rec.agencyOwner === "string" ? rec.agencyOwner.trim() : "";
+  const payoffOwner = typeof rec.payoffOwner === "string" ? rec.payoffOwner.trim() : "";
+  if (!agencyOwner && !payoffOwner) return undefined;
+  return {
+    ...(agencyOwner ? { agencyOwner } : {}),
+    ...(payoffOwner ? { payoffOwner } : {}),
+  };
+}
+
 function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: number): SceneSpec | null {
   try {
     // 提取 JSON（可能被 markdown code block 包裹）
@@ -119,13 +182,23 @@ function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: n
     if (!parsed.scenes || !Array.isArray(parsed.scenes) || parsed.scenes.length === 0) return null;
 
     const beatBudget = parseBeatBudget(parsed.beatBudget);
+    const engineRole = typeof parsed.engineRole === "string" && VALID_ENGINE_ROLES.has(parsed.engineRole as SceneSpecEngineRole)
+      ? (parsed.engineRole as SceneSpecEngineRole)
+      : undefined;
+    const contractCheck = parseContractCheck(parsed.contractCheck);
     return {
       chapter: parsed.chapter ?? chapterNumber,
       title: parsed.title ?? `第${chapterNumber}章`,
       wordTarget: parsed.wordTarget ?? wordTarget,
+      ...(engineRole ? { engineRole } : {}),
+      ...(contractCheck ? { contractCheck } : {}),
       ...(beatBudget.length > 0 ? { beatBudget } : {}),
       scenes: parsed.scenes.map((s: any) => {
         const gaps = parseSceneGaps(s.gaps);
+        const microBeats = parseOptionalStringList(s.microBeats);
+        const infoPayloads = parseOptionalStringList(s.infoPayloads);
+        const reactionPairs = parseReactionPairs(s.reactionPairs);
+        const forbid = parseOptionalStringList(s.forbid);
         return {
           characters: Array.isArray(s.characters) ? s.characters : ["主角"],
           location: s.location ?? "待定",
@@ -134,6 +207,10 @@ function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: n
           outcome: s.outcome ?? "待定",
           hooks_used: Array.isArray(s.hooks_used) ? s.hooks_used : [],
           hooks_planted: Array.isArray(s.hooks_planted) ? s.hooks_planted : [],
+          ...(microBeats.length > 0 ? { microBeats } : {}),
+          ...(infoPayloads.length > 0 ? { infoPayloads } : {}),
+          ...(reactionPairs.length > 0 ? { reactionPairs } : {}),
+          ...(forbid.length > 0 ? { forbid } : {}),
           ...(gaps.length > 0 ? { gaps } : {}),
         };
       }),
@@ -363,6 +440,28 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     ];
   }
 
+  const infoAnchors = parseOptionalStringList(input.infoAnchors);
+  if (infoAnchors.length > 0) {
+    const existing = new Set(sceneSpec.constraints);
+    const anchorLines = infoAnchors.map((item) => `【作者指定信息增量锚点】${item}`);
+    sceneSpec.constraints = [
+      ...sceneSpec.constraints,
+      ...anchorLines.filter((line) => !existing.has(line)),
+    ];
+  }
+
+  // 场景级 forbid 禁区谓词同步收口进 constraints，保证 pipeline 写前与硬约束通道一眼可见
+  const sceneForbidLines = sceneSpec.scenes.flatMap((scene, index) =>
+    (scene.forbid ?? []).map((rule) => `【场景${index + 1}禁区】${rule}`),
+  );
+  if (sceneForbidLines.length > 0) {
+    const existing = new Set(sceneSpec.constraints);
+    sceneSpec.constraints = [
+      ...sceneSpec.constraints,
+      ...sceneForbidLines.filter((line) => !existing.has(line)),
+    ];
+  }
+
   const source = "Runtime Agent 显式提交";
   // 调用方显式给的预算优先于 LLM 自拟，避免作者定好的节奏被覆盖。
   const explicitBudget = parseBeatBudget(input.beatBudget);
@@ -378,6 +477,19 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   const gateNote = blockers.length > 0
     ? " 预算判为不合规，pipeline.write 会以 beat-budget-invalid 拒绝执行，请先重排预算再写章。"
     : "";
+
+  const hasBeatBudget = (sceneSpec.beatBudget?.length ?? 0) > 0;
+  const hasHighDensityFields = sceneSpec.scenes.some(
+    (scene) => (scene.microBeats?.length ?? 0) > 0 || (scene.infoPayloads?.length ?? 0) > 0,
+  );
+  const densityNote = !hasBeatBudget && !hasHighDensityFields
+    ? " 密度提示：当前蓝图未拆 beatBudget 且场景缺少 microBeats / infoPayloads（因果小节拍与具体信息增量），建议补充以防正文靠环境描写注水。"
+    : "";
+
+  const anchorNote = infoAnchors.length > 0
+    ? ` 已并入 ${infoAnchors.length} 条作者指定信息增量锚点。`
+    : "";
+
   const skillNote = writingSkillConstraints.items.length > 0
     ? ` 已并入 ${writingSkillConstraints.items.length} 条 Writing Skills 可机器校验约束（其中 ${writingSkillConstraints.blockingCount} 条硬性，保存前会逐条校验）。`
     : "";
@@ -400,6 +512,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     : namedEntities.length > 0
       ? ` 点名实体 ${namedEntities.join("、")} 已记录，召回超上限时仍保留。`
       : "";
+  const pinnedMechanismIds = parseOptionalStringList(input.pinnedMechanismIds);
   let planningMechanisms: PlanningMechanismReference[] = [];
   if (input.bookRoot?.trim()) {
     const planningQuery = [
@@ -407,14 +520,19 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
       sceneSpec.title,
       ...sceneSpec.scenes.flatMap((scene) => [scene.location, scene.conflict, scene.outcome]),
     ].filter(Boolean).join(" ");
-    planningMechanisms = await recallMechanismCardsForPlanning(input.bookRoot, planningQuery, 4).catch(() => []);
+    planningMechanisms = await recallMechanismCardsForPlanning(
+      input.bookRoot,
+      planningQuery,
+      4,
+      pinnedMechanismIds,
+    ).catch(() => []);
   }
   const mechanismNote = planningMechanisms.length > 0
-    ? ` 已附上 ${planningMechanisms.length} 张可迁移机制卡供细纲推演参考。`
+    ? ` 已附上 ${planningMechanisms.length} 张可迁移机制卡供细纲推演参考${pinnedMechanismIds.length > 0 ? "（含作者点选置顶）" : ""}。`
     : "";
   return {
     ok: true,
-    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${skillNote}${expansionNote}${mechanismNote}`,
+    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${densityNote}${anchorNote}${skillNote}${expansionNote}${mechanismNote}`,
     data: {
       sceneSpec,
       beatBudget: budget,

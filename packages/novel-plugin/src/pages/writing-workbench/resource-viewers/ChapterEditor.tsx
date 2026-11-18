@@ -2,14 +2,14 @@ import { useEditor, EditorContent, BubbleMenu } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Editor } from "@tiptap/react";
 import {
   countChapterLength,
   resolveLengthCountingMode,
   type LengthLanguage,
 } from "@vivy1024/novelfork-core/utils/length-metrics";
-import { Loader2, Smartphone, Star, Sparkles } from "lucide-react";
+import { Loader2, ScanSearch, Smartphone, Star, Sparkles } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { SearchExtension, scrollToCurrentMatch } from "../ide/SearchExtension";
 import { ENTITY_MENTION_REFRESH, EntityMentionExtension, type MentionEntity } from "../ide/EntityMentionExtension";
@@ -31,6 +31,7 @@ import { EditorMinimap } from "./EditorMinimap";
 import { composeCustomConstraintsSection } from "../../../engine/writing-layers/style-preset-custom-constraints";
 import { fetchCustomConstraints } from "../style-custom-constraints";
 import { toWireToolName } from "../../../engine/workflows/run-brief";
+import { analyzeWordFrequency, scanMetaLeaks } from "../../../engine/compliance/prose-lenses";
 
 // ---------------------------------------------------------------------------
 // BubbleMenu AI actions
@@ -547,9 +548,9 @@ interface ChapterEditorProps {
   mentionEntities?: readonly MentionEntity[];
   /** Ctrl / ⌘ + 点击实体提及时打开资料卡。 */
   onOpenEntity?: (name: string) => void;
-  /** 正文右侧伴随栏状态（大纲板 | 资料栏 | 关），传入时在码字工具条右侧渲染切换器（v6 对齐）。 */
-  companionMode?: "outline" | "context" | "closed";
-  onCompanionModeChange?: (mode: "outline" | "context" | "closed") => void;
+  /** 正文右侧伴随栏状态（大纲经纬 | 记忆改动 | 本章质检 | 资料栏 | 关），传入时在码字工具条右侧渲染切换器。 */
+  companionMode?: "outline" | "memory" | "quality" | "context" | "closed";
+  onCompanionModeChange?: (mode: "outline" | "memory" | "quality" | "context" | "closed") => void;
 }
 
 export function ChapterEditor({
@@ -592,10 +593,34 @@ export function ChapterEditor({
   const languageRef = useRef(language);
   languageRef.current = language;
 
-  // 零 Token 本地规则清理条
+  // 零 Token 本地规则清理条与词频/穿帮词透镜抽屉
   const [cleaning, setCleaning] = useState(false);
   const [cleanResult, setCleanResult] = useState<ZeroTokenCleanResult | null>(null);
   const [cleanNotice, setCleanNotice] = useState<string | null>(null);
+  const [lensOpen, setLensOpen] = useState(false);
+
+  const metaLeakHits = useMemo(() => (showPaperBar ? scanMetaLeaks(liveText || content) : []), [showPaperBar, liveText, content]);
+  const wordFreqItems = useMemo(
+    () => (showPaperBar && lensOpen ? analyzeWordFrequency(liveText || content, { minCount: 3, limit: 12 }) : []),
+    [showPaperBar, lensOpen, liveText, content],
+  );
+  const groupedMetaLeaks = useMemo(() => {
+    const map = new Map<string, { term: string; count: number; quote: string; suggestion: string }>();
+    for (const hit of metaLeakHits) {
+      const existing = map.get(hit.term);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(hit.term, {
+          term: hit.term,
+          count: 1,
+          quote: hit.quote,
+          suggestion: hit.explanation.suggestedAction,
+        });
+      }
+    }
+    return [...map.values()];
+  }, [metaLeakHits]);
 
   // 本章审稿意见：拉取后在正文用波浪线标注，点击出现原地 PopConfirm 建议卡
   const [auditIssues, setAuditIssues] = useState<readonly AuditIssueLite[]>([]);
@@ -899,6 +924,22 @@ export function ChapterEditor({
           {cleaning ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3 text-primary" strokeWidth={1.65} />}
           <span>零 Token 清理</span>
         </button>
+        <button
+          type="button"
+          aria-pressed={lensOpen}
+          data-testid="chapter-prose-lens-btn"
+          className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted aria-pressed:bg-primary/12 aria-pressed:font-semibold aria-pressed:text-primary"
+          onClick={() => setLensOpen((prev) => !prev)}
+          title="零 Token 扫描本章高频重复词、疲劳动作套话与写作工程穿帮词"
+        >
+          <ScanSearch className="size-3" strokeWidth={1.65} />
+          <span>词频透镜</span>
+          {groupedMetaLeaks.length > 0 ? (
+            <span className="rounded-full bg-destructive/15 px-1.5 py-0 text-2xs font-semibold text-destructive">
+              穿帮 {metaLeakHits.length}
+            </span>
+          ) : null}
+        </button>
         {auditIssues.length > 0 ? (
           <span className="rounded-full bg-destructive/12 px-2 py-0.5 text-2xs font-medium text-destructive" title="点击正文中波浪线即可打开原地修改建议">
             审稿 {auditIssues.length} 处
@@ -946,7 +987,9 @@ export function ChapterEditor({
             <div className="inline-flex items-center rounded border border-border/80 bg-background/70 p-0.5" role="group" aria-label="伴随画板模式">
               {(
                 [
-                  { id: "outline", label: "大纲板" },
+                  { id: "outline", label: "大纲经纬" },
+                  { id: "memory", label: "记忆改动" },
+                  { id: "quality", label: "本章质检" },
                   { id: "context", label: "资料栏" },
                   { id: "closed", label: "关" },
                 ] as const
@@ -1008,6 +1051,81 @@ export function ChapterEditor({
         <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1 text-2xs text-muted-foreground">
           <span>{cleanNotice}</span>
           <button type="button" className="hover:text-foreground" onClick={() => setCleanNotice(null)}>关闭</button>
+        </div>
+      ) : null}
+      {showPaperBar && lensOpen ? (
+        <div
+          className="space-y-1.5 border-b border-border bg-card/75 px-3 py-2 text-2xs"
+          data-testid="chapter-prose-lens-bar"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-foreground">
+              零 Token 词频与穿帮透镜（点击胶囊可在正文中高亮定位并打开替换栏）
+            </span>
+            <button
+              type="button"
+              className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              onClick={() => setLensOpen(false)}
+            >
+              收起
+            </button>
+          </div>
+          {groupedMetaLeaks.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-medium text-destructive">工程穿帮词告警：</span>
+              {groupedMetaLeaks.map((item) => (
+                <button
+                  key={`leak-${item.term}`}
+                  type="button"
+                  title={item.suggestion}
+                  onClick={() => {
+                    setSearchMode("replace");
+                    editor.chain().setSearchQuery(item.term).run();
+                    const container = editor.view.dom.closest(".chapter-editor");
+                    if (container) {
+                      requestAnimationFrame(() => scrollToCurrentMatch(editor, container as HTMLElement));
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-medium text-destructive hover:bg-destructive/15"
+                >
+                  <span>{item.term}</span>
+                  <span>×{item.count}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-muted-foreground">未发现写作工程元信息穿帮词。</div>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-medium text-muted-foreground">本章高频词 Top 12：</span>
+            {wordFreqItems.length > 0 ? (
+              wordFreqItems.map((item) => (
+                <button
+                  key={`freq-${item.term}`}
+                  type="button"
+                  title={item.category === "fatigue" ? `网文高频疲劳套话 · 示例：${item.sampleQuote}` : `本章高频实词 · 示例：${item.sampleQuote}`}
+                  onClick={() => {
+                    setSearchMode("replace");
+                    editor.chain().setSearchQuery(item.term).run();
+                    const container = editor.view.dom.closest(".chapter-editor");
+                    if (container) {
+                      requestAnimationFrame(() => scrollToCurrentMatch(editor, container as HTMLElement));
+                    }
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 transition-colors ${
+                    item.category === "fatigue"
+                      ? "border-warning/45 bg-warning/10 font-medium text-warning hover:bg-warning/15"
+                      : "border-border bg-background/80 text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <span>{item.term}</span>
+                  <span className="text-muted-foreground">×{item.count}</span>
+                </button>
+              ))
+            ) : (
+              <span className="text-muted-foreground">暂无出现 ≥3 次的重复疲劳词或实词。</span>
+            )}
+          </div>
         </div>
       ) : null}
       {/* AI BubbleMenu — 选中文本后出现 */}

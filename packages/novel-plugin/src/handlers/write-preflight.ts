@@ -118,6 +118,53 @@ export interface WritePreflightInput {
   readonly buildRecall?: boolean;
   /** 已有蓝图时按蓝图召回（与 pipeline.write 同口径）；没有时按 resolvedDirective 召回。 */
   readonly sceneSpec?: SceneSpec;
+  /** 作者在筹备台显式点选优先注入的范文 ID 列表（支持 `sourceId:sampleId` 或 `sampleId`）。 */
+  readonly pinnedSampleIds?: readonly string[];
+  /**
+   * 筹备台只读注入透视预览开关：为 true 时装配只读 `recallSummary`（不写检索日志、不记召回凭证、不覆盖写前保留件），
+   * 让作者在起草本章前看清 Token 分布、角色声线、范文、伏笔与裁剪警告。
+   */
+  readonly includeRecallPreview?: boolean;
+}
+
+export interface WritePreflightRecallChannelSummary {
+  readonly channel: string;
+  readonly status: string;
+  readonly cardCount: number;
+  readonly estimatedTokens: number;
+  readonly injectedTokens: number;
+}
+
+export interface WritePreflightRecallSummary {
+  readonly estimatedTokens: number;
+  readonly maxTokens: number;
+  readonly basis: "sceneSpec" | "directive";
+  readonly channels: readonly WritePreflightRecallChannelSummary[];
+  readonly activeSkills: ReadonlyArray<{
+    readonly slug: string;
+    readonly name: string;
+    readonly loadedInSession: boolean;
+  }>;
+  readonly voices: ReadonlyArray<{
+    readonly name: string;
+    readonly confirmedFields: readonly string[];
+  }>;
+  readonly samples: ReadonlyArray<{
+    readonly key: string;
+    readonly sourceTitle: string;
+    readonly sceneType: string;
+    readonly match: string;
+    readonly estimatedTokens: number;
+    readonly droppedInPacking: boolean;
+  }>;
+  readonly hooks: ReadonlyArray<{
+    readonly id: string;
+    readonly title: string;
+    readonly chapter?: number;
+  }>;
+  readonly droppedCardIds: readonly string[];
+  readonly degradedCount: number;
+  readonly trimWarnings: readonly string[];
 }
 
 /** write.preflight 的写前召回包：Agent 生成正文时直接使用 text。 */
@@ -205,6 +252,8 @@ export interface WritePreflightResult {
   > | null;
   /** buildRecall=true 且预检通过时的写前召回包。 */
   readonly recall?: WritePreflightRecall;
+  /** 写前召回通道分布与实体透视摘要（buildRecall=true 或 includeRecallPreview=true 时返回）。 */
+  readonly recallSummary?: WritePreflightRecallSummary;
   /** 本章场景上已存的规划留白（蓝图带来或作者手编，T2.6）；没有时省略。 */
   readonly sceneGaps?: readonly ChapterSceneGaps[];
   /** 本章到期伏笔：预定回收区间覆盖 / 临近本章且未回收的经纬伏笔；没有时省略。召回文本里另有同名一段。 */
@@ -491,6 +540,99 @@ function loadChapterSceneGaps(
  * 超出保护预算 → memory-budget-overflow blocker（生成前拦下，不白写一章）；
  * 召回本身失败 → recall-failed blocker（拿不到召回包就不记召回记录，不能放 Agent 盲写）。
  */
+function summarizeRecallPackage(input: {
+  readonly pack: NarrativeContextPackage;
+  readonly totalTokens: number;
+  readonly maxTokens: number;
+  readonly basis: "sceneSpec" | "directive";
+  readonly activeWritingSkillList: readonly ParsedWritingSkill[];
+  readonly loadedSkills: readonly RuntimeLoadedSkill[];
+}): WritePreflightRecallSummary {
+  const { pack, totalTokens, maxTokens, basis, activeWritingSkillList, loadedSkills } = input;
+  const loadedSlugSet = new Set(loadedSkills.map((s) => s.name));
+  const droppedSet = new Set(pack.diagnostics.droppedCardIds);
+  const channels: WritePreflightRecallChannelSummary[] = pack.diagnostics.channelStats.map((stat) => ({
+    channel: stat.channel,
+    status: stat.status,
+    cardCount: stat.returnedCount,
+    estimatedTokens: stat.estimatedTokens,
+    injectedTokens: pack.diagnostics.injectedTokensByChannel[stat.channel] ?? 0,
+  }));
+
+  const styleStat = pack.diagnostics.channelStats.find((s) => s.channel === "style");
+  const styleMeta = (styleStat?.metadata ?? {}) as Record<string, unknown>;
+  const voicesMeta = (styleMeta.voices ?? {}) as { characters?: Array<{ name?: string; confirmedFields?: string[] }> };
+  const voices = Array.isArray(voicesMeta.characters)
+    ? voicesMeta.characters
+        .filter((v): v is { name: string; confirmedFields?: string[] } => typeof v?.name === "string" && v.name.length > 0)
+        .map((v) => ({
+          name: v.name,
+          confirmedFields: Array.isArray(v.confirmedFields) ? v.confirmedFields.filter((f): f is string => typeof f === "string") : [],
+        }))
+    : [];
+
+  const samplesMeta = (styleMeta.styleSamples ?? {}) as {
+    selected?: Array<{
+      key?: string;
+      sourceTitle?: string;
+      sceneType?: string;
+      match?: string;
+      estimatedTokens?: number;
+    }>;
+    trimmed?: Array<{ key?: string; reason?: string }>;
+  };
+  const samples = Array.isArray(samplesMeta.selected)
+    ? samplesMeta.selected
+        .filter((s): s is NonNullable<typeof s> & { key: string } => typeof s?.key === "string" && s.key.length > 0)
+        .map((s) => ({
+          key: s.key,
+          sourceTitle: typeof s.sourceTitle === "string" ? s.sourceTitle : "",
+          sceneType: typeof s.sceneType === "string" ? s.sceneType : "general",
+          match: typeof s.match === "string" ? s.match : "scene-type",
+          estimatedTokens: typeof s.estimatedTokens === "number" ? s.estimatedTokens : 0,
+          droppedInPacking: droppedSet.has(`sample:${s.key}`),
+        }))
+    : [];
+
+  const hooks = pack.cards
+    .filter((card) => card.channel === "hooks")
+    .slice(0, 10)
+    .map((card) => ({
+      id: card.id,
+      title: card.title,
+      ...(typeof card.validFromChapter === "number" ? { chapter: card.validFromChapter } : {}),
+    }));
+
+  const sampleTrimNotes = Array.isArray(samplesMeta.trimmed)
+    ? samplesMeta.trimmed
+        .filter((t) => typeof t?.reason === "string" && t.reason.length > 0)
+        .map((t) => `${t.key ?? "范文"}：${t.reason}`)
+    : [];
+  const reasonNotes = (pack.diagnostics.trimReasons ?? [])
+    .filter((r) => r.kind === "token-budget" || r.kind === "degraded" || r.kind === "count-cap")
+    .slice(0, 8)
+    .map((r) => `${r.id}：${r.reason}`);
+  const trimWarnings = [...new Set([...sampleTrimNotes, ...reasonNotes])];
+
+  return {
+    estimatedTokens: totalTokens,
+    maxTokens,
+    basis,
+    channels,
+    activeSkills: activeWritingSkillList.map((skill) => ({
+      slug: skill.slug,
+      name: skill.name,
+      loadedInSession: loadedSlugSet.has(skill.slug) || loadedSlugSet.has(skill.name),
+    })),
+    voices,
+    samples,
+    hooks,
+    droppedCardIds: [...pack.diagnostics.droppedCardIds],
+    degradedCount: pack.diagnostics.degradedCards.length,
+    trimWarnings,
+  };
+}
+
 async function buildPreflightRecall(input: {
   readonly storage: StorageDatabase;
   readonly bookId: string;
@@ -499,11 +641,17 @@ async function buildPreflightRecall(input: {
   readonly chapterNumber: number;
   readonly sceneSpec?: SceneSpec;
   readonly directive: string;
+  readonly pinnedSampleIds?: readonly string[];
+  readonly activeWritingSkillList: readonly ParsedWritingSkill[];
+  readonly loadedSkills: readonly RuntimeLoadedSkill[];
   /** 本章已存留白渲染出的文字；随召回包一起给到写正文的 Agent。 */
   readonly gapsText?: string;
   /** 「本章到期伏笔」段；放在召回文本最前，计入预算与指纹。 */
   readonly dueText?: string;
-}): Promise<{ readonly recall: WritePreflightRecall } | { readonly blocker: WritePreflightBlocker }> {
+}): Promise<
+  | { readonly recall: WritePreflightRecall; readonly summary: WritePreflightRecallSummary }
+  | { readonly blocker: WritePreflightBlocker }
+> {
   const bookRoot = input.bookRoot?.trim();
   if (!bookRoot) {
     return {
@@ -524,6 +672,7 @@ async function buildPreflightRecall(input: {
       bookRoot,
       chapterNumber: input.chapterNumber,
       ...(input.sceneSpec ? { sceneSpec: input.sceneSpec } : {}),
+      ...(input.pinnedSampleIds?.length ? { pinnedSampleIds: input.pinnedSampleIds } : {}),
       sceneText: input.directive,
       memoryConfig,
       logPrefix: "[write.preflight]",
@@ -581,6 +730,7 @@ async function buildPreflightRecall(input: {
   } catch (error) {
     warnings.push(`写作注入保留件写盘失败（${error instanceof Error ? error.message : String(error)}）；召回正常，但会话压缩后需重新召回原文。`);
   }
+  const basis = input.sceneSpec ? "sceneSpec" : "directive";
   return {
     recall: {
       text: renderRecallText(pack, gapsText, dueText),
@@ -588,10 +738,62 @@ async function buildPreflightRecall(input: {
       fingerprint,
       estimatedTokens: totalTokens,
       maxTokens,
-      basis: input.sceneSpec ? "sceneSpec" : "directive",
+      basis,
       warnings,
     },
+    summary: summarizeRecallPackage({
+      pack,
+      totalTokens,
+      maxTokens,
+      basis,
+      activeWritingSkillList: input.activeWritingSkillList,
+      loadedSkills: input.loadedSkills,
+    }),
   };
+}
+
+async function buildReadOnlyRecallPreview(input: {
+  readonly storage: StorageDatabase;
+  readonly bookId: string;
+  readonly bookRoot?: string;
+  readonly chapterNumber: number;
+  readonly sceneSpec?: SceneSpec;
+  readonly directive: string;
+  readonly pinnedSampleIds?: readonly string[];
+  readonly activeWritingSkillList: readonly ParsedWritingSkill[];
+  readonly loadedSkills: readonly RuntimeLoadedSkill[];
+  readonly gapsText?: string;
+  readonly dueText?: string;
+}): Promise<WritePreflightRecallSummary | undefined> {
+  const bookRoot = input.bookRoot?.trim();
+  if (!bookRoot) return undefined;
+  try {
+    const memoryConfig = await loadNarrativeMemoryConfig(input.bookId, bookRoot).catch(() => null);
+    const maxTokens = memoryConfig?.retrieval.maxTokens ?? DEFAULT_WRITE_RECALL_MAX_TOKENS;
+    const pack = await buildWriteChapterRecall({
+      storage: input.storage,
+      bookId: input.bookId,
+      bookRoot,
+      chapterNumber: input.chapterNumber,
+      ...(input.sceneSpec ? { sceneSpec: input.sceneSpec } : {}),
+      ...(input.pinnedSampleIds?.length ? { pinnedSampleIds: input.pinnedSampleIds } : {}),
+      sceneText: input.directive,
+      memoryConfig,
+      persistRetrievalLog: false,
+      logPrefix: "[write.preflight.preview]",
+    });
+    const extraTokens = estimateTokens(input.gapsText ?? "") + estimateTokens(input.dueText ?? "");
+    return summarizeRecallPackage({
+      pack,
+      totalTokens: pack.diagnostics.totalEstimatedTokens + extraTokens,
+      maxTokens,
+      basis: input.sceneSpec ? "sceneSpec" : "directive",
+      activeWritingSkillList: input.activeWritingSkillList,
+      loadedSkills: input.loadedSkills,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -1020,6 +1222,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
 
   // 写前召回：只在其余硬门都通过时装配（被拦下的章不记召回记录），超预算就在生成前拦下。
   let recall: WritePreflightRecall | undefined;
+  let recallSummary: WritePreflightRecallSummary | undefined;
   const loadedGaps = loadChapterSceneGaps(storage, bookId, chapterNumber);
   const sceneGaps = loadedGaps.scenes;
   if (loadedGaps.warning) pushWarning(warnings, warningItems, "other", loadedGaps.warning);
@@ -1033,6 +1236,8 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       `本章到期伏笔 ${dueForeshadows.length} 条：${dueForeshadows.map((hook) => `「${hook.title}」`).join("、")}，本章安排回收或明确推进。`,
     );
   }
+  const gapsText = renderChapterSceneGaps(chapterNumber, sceneGaps);
+  const dueText = renderDueForeshadowSection(dueForeshadows);
   if (input.buildRecall && blockers.length === 0 && resolvedDirective) {
     const built = await buildPreflightRecall({
       storage,
@@ -1042,16 +1247,38 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       chapterNumber,
       sceneSpec: input.sceneSpec,
       directive: resolvedDirective,
-      gapsText: renderChapterSceneGaps(chapterNumber, sceneGaps),
-      dueText: renderDueForeshadowSection(dueForeshadows),
+      pinnedSampleIds: input.pinnedSampleIds,
+      activeWritingSkillList,
+      loadedSkills: input.loadedSkills ?? [],
+      gapsText,
+      dueText,
     });
-    if ("blocker" in built) blockers.push(built.blocker);
-    else recall = built.recall;
+    if ("blocker" in built) {
+      blockers.push(built.blocker);
+    } else {
+      recall = built.recall;
+      recallSummary = built.summary;
+    }
+  } else if (input.includeRecallPreview && input.bookRoot?.trim()) {
+    recallSummary = await buildReadOnlyRecallPreview({
+      storage,
+      bookId,
+      bookRoot: input.bookRoot,
+      chapterNumber,
+      sceneSpec: input.sceneSpec,
+      directive: resolvedDirective ?? userDirective,
+      pinnedSampleIds: input.pinnedSampleIds,
+      activeWritingSkillList,
+      loadedSkills: input.loadedSkills ?? [],
+      gapsText,
+      dueText,
+    });
   }
 
   return {
     ok: blockers.length === 0 && Boolean(resolvedDirective),
     ...(recall ? { recall } : {}),
+    ...(recallSummary ? { recallSummary } : {}),
     ...(sceneGaps.length > 0 ? { sceneGaps } : {}),
     ...(dueForeshadows.length > 0 ? { dueForeshadows } : {}),
     bookId,
