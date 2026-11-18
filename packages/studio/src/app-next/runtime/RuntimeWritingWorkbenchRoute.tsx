@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { IdeWorkbench, parseStorylineViewArtifact, type WorkbenchFocusRequest, type WorkbenchOpenRequest } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
+import {
+  IdeWorkbench,
+  parseStorylineViewArtifact,
+  type StudioWorkbenchZone,
+  type WorkbenchFocusRequest,
+  type WorkbenchOpenRequest,
+} from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
 import type {
   SelectionCandidate,
   WorkbenchCanvasContext,
@@ -22,11 +28,13 @@ import { useWorkbenchNavigationGuard } from "./use-workbench-navigation-guard";
 
 export interface RuntimeWritingWorkbenchRouteProps {
   readonly bookId: string;
+  readonly activeZone?: StudioWorkbenchZone;
+  readonly onZoneChange?: (zone: StudioWorkbenchZone) => void;
   readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void;
   readonly onNavigateToConversation: (narratorId: string) => void;
   readonly onChanged?: () => void | Promise<void>;
   readonly client?: RuntimeProductClient;
-  /** 本书设置里跳到「套路 › 工作流」。 */
+  /** 本书设置里跳到「工作流画布」。 */
   readonly onOpenWorkflows?: () => void;
 }
 
@@ -58,6 +66,7 @@ function toNode(bookId: string, resource: RuntimeWorkspaceResource, title?: stri
       bookId,
       ...(resource.path ? { filePath: resource.path, isFile: true } : {}),
       ...(isChapter ? { isChapter: true } : {}),
+      ...(typeof resource.content === "string" ? { detailSource: "detail" } : {}),
       ...(unsupportedReason ? { unsupportedReason } : {}),
       ...(resource.metadata ?? {}),
     },
@@ -255,6 +264,8 @@ export function findWritableChapterByPath(nodes: readonly WorkbenchResourceNode[
  */
 export function RuntimeWritingWorkbenchRoute({
   bookId,
+  activeZone,
+  onZoneChange,
   onCanvasContextChange,
   onNavigateToConversation,
   onChanged,
@@ -447,6 +458,12 @@ export function RuntimeWritingWorkbenchRoute({
     setSelectedNode(node);
     setOpenRequest((previous) => ({ bookId: bookAtStart, node, seq: (previous?.seq ?? 0) + 1 }));
     if (candidate) setSelectionCandidate(candidate);
+    const locateQuote = typeof artifact.locateQuote === "string" ? artifact.locateQuote.trim() : "";
+    if (locateQuote) {
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("novelfork:locate-in-editor", { detail: { quote: locateQuote } }));
+      }, 120);
+    }
   }, [reload]);
 
   useEffect(() => {
@@ -581,6 +598,9 @@ export function RuntimeWritingWorkbenchRoute({
       {!loading && !error ? (
         <IdeWorkbench
           bookId={bookId}
+          studioUnifiedSidebar
+          {...(activeZone ? { activeZone } : {})}
+          {...(onZoneChange ? { onZoneChange } : {})}
           nodes={nodes}
           selectedNode={selectedNode}
           openRequest={openRequest}
@@ -594,6 +614,7 @@ export function RuntimeWritingWorkbenchRoute({
           onBeforeLeaveChange={registerBeforeLeave}
           runtimeProductMode
           runtimeFetch={handleRuntimeFetch}
+          onResourceCreated={() => void reload({ silent: true })}
           {...(onOpenWorkflows ? { onOpenWorkflows } : {})}
           {...(runtimeProjectId
             ? { bookSettingsSlot: <RuntimeProjectSettingsMount projectId={runtimeProjectId} /> }

@@ -13,7 +13,7 @@ function mockFetch(respond: (call: FetchCall) => { status?: number; body: unknow
   const calls: FetchCall[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
     const call = { url: String(input), method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : undefined };
-    calls.push(call);
+    if (!call.url.endsWith("/subagents")) calls.push(call);
     const { status = 200, body } = respond(call);
     return { ok: status < 400, status, json: async () => body };
   }));
@@ -145,5 +145,25 @@ describe("工作流方案编辑器", () => {
   it("叙述者起草的草稿标明来源", () => {
     renderEditor({ ...savedDraft, createdBy: "narrator" });
     expect(screen.getByText("叙述者起草")).toBeTruthy();
+  });
+
+  it("委派子代理工序支持下拉直选内置与本书定制子代理，并可填模型覆盖", async () => {
+    mockFetch((call) => {
+      if (call.url.endsWith("/subagents")) {
+        return { body: { custom: [{ id: "paced-critic", nameZh: "节奏把关（定制）" }] } };
+      }
+      return { body: { ok: true } };
+    });
+    renderEditor(savedDraft);
+    fireEvent.click(screen.getByRole("button", { name: "工序" }));
+    fireEvent.change(screen.getByLabelText("由谁执行"), { target: { value: "subagent" } });
+    const select = (await screen.findByLabelText("子代理")) as HTMLSelectElement;
+    await waitFor(() => expect(Array.from(select.options).some((o) => o.value === "paced-critic")).toBe(true));
+    fireEvent.change(select, { target: { value: "paced-critic" } });
+    expect(select.value).toBe("paced-critic");
+    const modelInput = screen.getByLabelText("指定模型覆盖") as HTMLInputElement;
+    fireEvent.change(modelInput, { target: { value: "4sapi-2:glm-5.3" } });
+    fireEvent.blur(modelInput);
+    expect(modelInput.value).toBe("4sapi-2:glm-5.3");
   });
 });

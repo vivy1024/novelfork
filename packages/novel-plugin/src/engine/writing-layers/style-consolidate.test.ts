@@ -274,6 +274,41 @@ describe("改造目标 2 & 4：主副分层、语域路由、预算反转、一�
     expect(guide).toContain("### 执行铁律");
     expect(guide.length).toBeLessThanOrEqual(900);
     expect(guide).not.toContain("注意长短句结合");
+    expect(guide).not.toContain("空泛套话与抽象形容词堆砌");
+
+    // 验证统计描述不占名额、后半段规则能入选、且 guideText 与正反例自动脱敏原著角色名并不被半截劈断
+    const presetWithNames = createStylePreset();
+    presetWithNames.sources = [{
+      id: "mq",
+      title: "没钱修什么仙",
+      role: "primary_voice",
+      forbiddenSourceTerms: ["张羽", "白真真", "赵天行"],
+      rules: [
+        { text: "整体表达基调参考：对话推进为主。", evidence: "基调", transfer: "transferable", status: "confirmed", category: "voice" },
+        { text: "句长以约 30.6 字为参照，保留长短变化。", evidence: "指纹", transfer: "transferable", status: "confirmed", category: "rhythm" },
+        { text: "对话约占文本 46%，用对白推进信息或冲突。", evidence: "指纹", transfer: "transferable", status: "confirmed", category: "dialogue" },
+        ...Array.from({ length: 16 }, (_, idx) => ({
+          text: idx === 15
+            ? "人物讲出残酷要求或利益交换时，语气保持日常事务般的温和与理所当然，不做惊悚渲染。"
+            : `第${idx + 1}条具体技法：先让角色表明体面立场，紧接着用账单动作揭穿真实算计（变体${idx}）。`,
+          evidence: "张羽：“算了吧，我这人不八卦。”白真真翻了个白眼看向赵天行。",
+          transfer: "transferable" as const,
+          status: "confirmed" as const,
+          category: "dialogue" as const,
+        })),
+      ],
+      samples: [],
+    }];
+    const detClean = await consolidateStylePresetRules({ preset: presetWithNames, maxRules: 10 });
+    expect(detClean.consolidatedRules.some((r) => r.rule.includes("30.6"))).toBe(false);
+    expect(detClean.consolidatedRules.some((r) => r.rule.includes("日常事务般的温和"))).toBe(true);
+    expect(detClean.consolidatedRules.every((r) => r.dontExample !== "空泛套话与抽象形容词堆砌")).toBe(true);
+    presetWithNames.consolidatedRules = detClean.consolidatedRules;
+    const safeGuide = composeStyleGuide(presetWithNames);
+    expect(safeGuide).not.toContain("张羽");
+    expect(safeGuide).not.toContain("白真真");
+    expect(safeGuide).not.toContain("赵天行");
+    expect(safeGuide).toContain("日常事务般的温和与理所当然");
 
     // 有模型结构化归约路径
     const mockLlm: RuntimeTextGenerator = vi.fn(async () => ({

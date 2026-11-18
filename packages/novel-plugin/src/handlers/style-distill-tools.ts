@@ -331,11 +331,46 @@ export async function executeStyleDistillationTool(
       return await distillIndex(input, binding);
     }
     if (name === "style.distill_preview") {
-      const sourceIn = await resolveStyleDistillationInput(binding.root, sourceInput(input));
+      const rawIn = sourceInput(input);
+      let effectiveInput = rawIn;
+      let autoSampledNote = "";
+      const hasRangeFilter = (Array.isArray(rawIn.chapterList) && rawIn.chapterList.length > 0)
+        || rawIn.fromChapter !== undefined
+        || rawIn.toChapter !== undefined;
+      // 针对大文件或超长文本未传 chapterList 的预览请求：自动走机械索引挑推荐代表章预览，避免千万字大文件全量重算或直接报错阻断
+      if (!hasRangeFilter && (rawIn.filePath?.trim() || (rawIn.text && rawIn.text.length > 300_000))) {
+        const rawText = rawIn.text ?? (await readBookTextFile(binding.root, rawIn.filePath!.trim())).text;
+        if (rawText.length > 300_000) {
+          const fallbackName = rawIn.filePath
+            ? basename(rawIn.filePath.trim()).replace(/\.(?:txt|md)$/iu, "").trim() || rawIn.filePath.trim()
+            : "参考文本";
+          const sourceName = rawIn.sourceName.trim() || fallbackName;
+          const index = buildMechanicalBookIndex({
+            sourceName,
+            text: rawText,
+            ...(rawIn.splitPattern?.trim() ? { splitPattern: rawIn.splitPattern.trim() } : {}),
+          });
+          if (index.chapterCount > 30) {
+            const autoList = index.recommendedChapters.chapterNumbers;
+            effectiveInput = { ...rawIn, sourceName, text: rawText, filePath: undefined, chapterList: autoList };
+            autoSampledNote = `（原书共 ${index.chapterCount} 章/${index.totalCharCount} 字，未指定 chapterList，已自动按机械索引推荐的 ${autoList.length} 章高能代表章预览）`;
+          } else {
+            effectiveInput = { ...rawIn, sourceName, text: rawText, filePath: undefined };
+          }
+        }
+      }
+      const sourceIn = await resolveStyleDistillationInput(binding.root, effectiveInput);
       const source = makePreviewSource(sourceIn);
       // 与网页预览同一份估算：开跑前告诉作者要调多少次模型、最多输出多少。
-      const estimate = estimateStyleDistillationRun(normalizeStyleDistillationSource(sourceIn).chapters);
-      return ok(`已预览参考文本范围；尚未写入本书文风。${estimate.summary}`, { ...source, estimate });
+      const estimate = estimateStyleDistillationRun(sourceIn.chapters ?? normalizeStyleDistillationSource(sourceIn).chapters);
+      return ok(
+        `已预览参考文本范围${autoSampledNote}；尚未写入本书文风。${estimate.summary}`,
+        {
+          ...source,
+          ...(autoSampledNote && effectiveInput.chapterList ? { autoSampledChapterList: effectiveInput.chapterList } : {}),
+          estimate,
+        },
+      );
     }
     if (name === "style.distill_start") return await start(input, binding, context);
     if (name === "style.distill_status") {

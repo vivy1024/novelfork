@@ -5,12 +5,50 @@ import { z } from "zod";
 import { splitChapters } from "@vivy1024/novelfork-core";
 import type { RuntimeTextGenerator } from "@vivy1024/novelfork-core/plugins";
 
-import { decodeManuscriptBytes } from "../manuscript-import/manuscript-import.js";
 import { writeFileAtomic } from "../writing-resource/atomic-write.js";
+import { BookTextFileError, readBookTextFile } from "./source-file-index.js";
 import { collectSourceTerms } from "./style-distillation-terms.js";
 
 export const MECHANISM_CARDS_RELATIVE_PATH = join("story", "mechanism_cards.json");
 export const MAX_MECHANISM_CARDS = 200;
+export const MECHANISM_EXTRACT_SOFT_MAX_CHAPTERS = 8;
+export const MECHANISM_EXTRACT_SOFT_MAX_CHARS = 25_000;
+
+/**
+ * 仙侠 / 玄幻 / 网文通用境界与修行公共术语白名单：
+ * 属于体裁基础设施词汇而非单书独有专名，入库前从 `forbiddenSourceTerms` 剔除，防止合规与大纲检查误杀正常修行描写。
+ * 作者在 `extraForbiddenTerms` 中显式点名的词汇不受此白名单剔除。
+ */
+export const PUBLIC_GENRE_TERM_ALLOWLIST: ReadonlySet<string> = new Set([
+  "胎息", "引气", "练气", "炼气", "筑基", "开光", "融合", "心动", "金丹", "结丹", "假丹",
+  "紫府", "元婴", "化神", "炼虚", "合体", "合道", "大乘", "渡劫", "飞升", "真仙", "金仙",
+  "天仙", "玄仙", "太乙", "大罗", "圣人", "道祖", "仙基", "道基", "灵根", "天灵根", "杂灵根",
+  "灵气", "灵机", "灵力", "真元", "法力", "真气", "煞气", "浊气", "清气", "罡气", "剑气", "剑意",
+  "神识", "神念", "元神", "神魂", "阴神", "阳神", "识海", "气海", "丹田", "经脉", "窍穴", "灵台",
+  "道心", "心魔", "天劫", "雷劫", "果位", "神通", "法术", "道法", "功法", "心法", "遁光", "飞剑",
+  "法器", "灵器", "法宝", "灵宝", "通天灵宝", "储物袋", "纳戒", "玉简", "阵盘", "阵法", "禁制",
+  "符箓", "灵符", "丹药", "灵丹", "灵石", "下品灵石", "中品灵石", "上品灵石", "极品灵石",
+  "灵脉", "洞府", "秘境", "灵田", "灵药", "灵草", "妖兽", "灵兽", "妖丹", "内丹", "修士", "修仙者",
+  "炼气士", "散修", "真传", "内门", "外门", "杂役", "掌门", "宗主", "长老", "老祖", "师尊", "师兄",
+  "师姐", "师弟", "师妹", "道友", "前辈", "仙子", "真人", "真君", "道君", "仙人", "凡人", "世家",
+  "仙族", "宗门", "魔道", "正道", "旁门", "左道", "夺舍", "闭关", "突破", "寿元", "因果", "气运",
+]);
+
+export function filterForbiddenSourceTerms(
+  terms: readonly string[],
+  explicitExtras?: ReadonlySet<string>,
+): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of terms) {
+    const term = raw.trim();
+    if (term.length < 2 || seen.has(term)) continue;
+    if (!explicitExtras?.has(term) && PUBLIC_GENRE_TERM_ALLOWLIST.has(term)) continue;
+    seen.add(term);
+    result.push(term);
+  }
+  return result.slice(0, 200);
+}
 
 const shortText = z.string().trim().min(1).max(400);
 const longText = z.string().trim().min(1).max(2_000);
@@ -238,6 +276,7 @@ export interface ExtractMechanismCardsInput {
   readonly filePath?: string;
   readonly text?: string;
   readonly chapterRange?: { readonly from?: number; readonly to?: number };
+  readonly chapterList?: readonly number[];
   readonly extraForbiddenTerms?: readonly string[];
   readonly generateText?: RuntimeTextGenerator;
 }
@@ -261,15 +300,34 @@ async function resolveMechanismSourceChapters(input: ExtractMechanismCardsInput)
   readonly sourceTitle: string;
   readonly chapters: readonly SlicedChapter[];
   readonly sourceChapterRange: string;
+  readonly warnings: readonly string[];
 }> {
   let rawText = input.text?.trim() ?? "";
   let inferredTitle = input.sourceTitle?.trim() ?? "";
+  const warnings: string[] = [];
 
   if (!rawText && input.filePath?.trim()) {
-    const bytes = await readFile(input.filePath.trim());
-    rawText = decodeManuscriptBytes(Uint8Array.from(bytes)).text.trim();
+    const requestedPath = input.filePath.trim();
+    try {
+      const file = await readBookTextFile(input.bookRoot, requestedPath);
+      rawText = file.text.trim();
+    } catch (error) {
+      if (error instanceof BookTextFileError) {
+        throw new MechanismCardError(
+          error.message,
+          "MECHANISM_CARD_INVALID_INPUT",
+        );
+      }
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new MechanismCardError(
+          `找不到参考文件「${requestedPath}」，请确认文件位于本书目录下（可传相对本书目录的路径，如 没钱11.6.txt）。`,
+          "MECHANISM_CARD_NOT_FOUND",
+        );
+      }
+      throw error;
+    }
     if (!inferredTitle) {
-      inferredTitle = basename(input.filePath.trim()).replace(/\.[^.]+$/u, "") || "参考书";
+      inferredTitle = basename(requestedPath).replace(/\.[^.]+$/u, "") || "参考书";
     }
   }
   if (!rawText) {
@@ -285,18 +343,59 @@ async function resolveMechanismSourceChapters(input: ExtractMechanismCardsInput)
     }))
     : [{ number: 1, title: "第1章", content: rawText }];
 
-  const from = input.chapterRange?.from ?? allChapters[0]!.number;
-  const to = input.chapterRange?.to ?? allChapters.at(-1)!.number;
-  const selected = allChapters.filter((ch) => ch.number >= from && ch.number <= to);
-  if (selected.length === 0) {
-    throw new MechanismCardError(`指定章节范围 ${from}-${to} 内没有切出有效章节。`, "MECHANISM_CARD_INVALID_INPUT");
+  const validChapterNumbers = Array.isArray(input.chapterList)
+    ? [...new Set(input.chapterList.filter((n) => Number.isSafeInteger(n) && n > 0))].sort((a, b) => a - b)
+    : [];
+
+  let matched: SlicedChapter[];
+  if (validChapterNumbers.length > 0) {
+    const wanted = new Set(validChapterNumbers);
+    matched = allChapters.filter((ch) => wanted.has(ch.number));
+    if (matched.length === 0) {
+      throw new MechanismCardError(
+        `指定 chapterList（${validChapterNumbers.slice(0, 6).join(",")}）内没有匹配到有效章节。`,
+        "MECHANISM_CARD_INVALID_INPUT",
+      );
+    }
+  } else {
+    const from = input.chapterRange?.from ?? allChapters[0]!.number;
+    const to = input.chapterRange?.to ?? (
+      input.chapterRange?.from !== undefined
+        ? allChapters.at(-1)!.number
+        : Math.min(allChapters.at(-1)!.number, allChapters[0]!.number + MECHANISM_EXTRACT_SOFT_MAX_CHAPTERS - 1)
+    );
+    matched = allChapters.filter((ch) => ch.number >= from && ch.number <= to);
+    if (matched.length === 0) {
+      throw new MechanismCardError(`指定章节范围 ${from}-${to} 内没有切出有效章节。`, "MECHANISM_CARD_INVALID_INPUT");
+    }
   }
+
+  // 单次抽取软上限：避免一次喂入 15+ 章 / 5~6 万字导致 LLM 推理耗时超 100 秒
+  const selected: SlicedChapter[] = [];
+  let accChars = 0;
+  for (const ch of matched) {
+    if (selected.length >= MECHANISM_EXTRACT_SOFT_MAX_CHAPTERS) break;
+    if (selected.length > 0 && accChars + ch.content.length > MECHANISM_EXTRACT_SOFT_MAX_CHARS) break;
+    selected.push(ch);
+    accChars += Math.min(ch.content.length, 4_000);
+  }
+  if (selected.length < matched.length) {
+    const nextChapter = matched[selected.length]?.number;
+    warnings.push(
+      `单次机制抽取已按上限收敛为前 ${selected.length} 章（第 ${selected[0]!.number}–${selected.at(-1)!.number} 章，控制单次推理时延）；剩余章节可从第 ${nextChapter} 章起分批继续抽取。`,
+    );
+  }
+
   const actualFrom = selected[0]!.number;
   const actualTo = selected.at(-1)!.number;
+  const sourceChapterRange = validChapterNumbers.length > 0 && selected.length > 1 && actualTo - actualFrom + 1 !== selected.length
+    ? `第${selected.map((c) => c.number).join("/")}章`
+    : actualFrom === actualTo ? `第${actualFrom}章` : `第${actualFrom}-${actualTo}章`;
   return {
     sourceTitle,
     chapters: selected,
-    sourceChapterRange: actualFrom === actualTo ? `第${actualFrom}章` : `第${actualFrom}-${actualTo}章`,
+    sourceChapterRange,
+    warnings,
   };
 }
 
@@ -419,16 +518,19 @@ export async function extractAndSaveMechanismCards(
   input: ExtractMechanismCardsInput,
 ): Promise<ExtractMechanismCardsResult> {
   const resolved = await resolveMechanismSourceChapters(input);
+  const explicitSet = new Set(
+    (input.extraForbiddenTerms ?? []).map((t) => t.trim()).filter((t) => t.length >= 2),
+  );
   const detectedTerms = collectSourceTerms(resolved.chapters).terms.map((t) => t.term);
-  const baseForbiddenTerms = [...new Set([
-    ...(input.extraForbiddenTerms ?? []).map((t) => t.trim()).filter(Boolean),
-    ...detectedTerms,
-  ])].slice(0, 200);
+  const baseForbiddenTerms = filterForbiddenSourceTerms(
+    [...explicitSet, ...detectedTerms],
+    explicitSet,
+  );
 
   const corpusExcerpt = resolved.chapters
-    .map((ch) => `### 第${ch.number}章 ${ch.title}\n${ch.content.slice(0, 4_000)}`)
+    .map((ch) => `### 第${ch.number}章 ${ch.title}\n${ch.content.slice(0, 3_500)}`)
     .join("\n\n")
-    .slice(0, 16_000);
+    .slice(0, 14_000);
 
   let rawCards: MechanismCard[] | null = null;
   let usedModel = false;
@@ -441,8 +543,8 @@ export async function extractAndSaveMechanismCards(
             role: "system",
             content: [
               "你是网文中观剧情与设定机制拆解器（EM/CBA 机制卡提取）。",
-              "任务：从参考章节中剥离具体人名、地名、门派、专有器物名，提炼出跨题材可迁移的「爽点与冲突运转机制卡」。",
-              "硬性禁令：name、readerDesire、emotionChain、triggerAndPayoff、abstractSlots 内严禁残留原著专有名词！原著专名一律塞进 forbiddenSourceTerms。",
+              "任务：从参考章节中剥离具体人名、地名、门派、专有器物名，提炼出跨题材可迁移的「爽点与冲突运转机制卡」（2~5 张精炼卡即可）。",
+              "硬性禁令：name、readerDesire、emotionChain、triggerAndPayoff、abstractSlots 内严禁残留原著专有名词！原著独有专名（角色名、门派、地名、独有外挂名）塞进 forbiddenSourceTerms；但不要把「练气、筑基、紫府、金丹、胎息、仙基、灵石、功法」等公共体裁通用词放进 forbiddenSourceTerms。",
               `已知高频原著专名（严禁出现在正文，必须列入 forbiddenSourceTerms）：${baseForbiddenTerms.slice(0, 40).join("、") || "由你从文中识别"}`,
               "只输出 JSON：{\"cards\":[{\"name\":\"...\",\"readerDesire\":\"...\",\"emotionChain\":\"缺口 -> 延迟/加码 -> 释放兑现\",\"triggerAndPayoff\":\"困境触发 -> 规则机制利用 -> 兑现闭环\",\"abstractSlots\":[{\"slot\":\"...\",\"roleDescription\":\"...\"}],\"forbiddenSourceTerms\":[\"...\"],\"tags\":[\"...\"]}]}。",
             ].join("\n"),
@@ -453,7 +555,7 @@ export async function extractAndSaveMechanismCards(
           },
         ],
         temperature: 0.2,
-        maxTokens: 2_400,
+        maxTokens: 2_000,
       });
       const parsed = LlmMechanismResponseSchema.safeParse(parseJsonObject(response.text));
       if (parsed.success) {
@@ -467,7 +569,10 @@ export async function extractAndSaveMechanismCards(
           emotionChain: card.emotionChain,
           triggerAndPayoff: card.triggerAndPayoff,
           abstractSlots: card.abstractSlots,
-          forbiddenSourceTerms: [...new Set([...baseForbiddenTerms, ...(card.forbiddenSourceTerms ?? [])])].slice(0, 200),
+          forbiddenSourceTerms: filterForbiddenSourceTerms(
+            [...baseForbiddenTerms, ...(card.forbiddenSourceTerms ?? [])],
+            explicitSet,
+          ),
           tags: card.tags ?? [],
           status: "needs-review" as const,
           validationStatus: "single_book" as const,
@@ -495,7 +600,7 @@ export async function extractAndSaveMechanismCards(
     return {
       extracted: auditedExtracted,
       allCards: saved.cards,
-      warnings: merged.warnings,
+      warnings: [...resolved.warnings, ...merged.warnings],
       revision: saved.revision,
       sourceChapterRange: resolved.sourceChapterRange,
       usedModel,

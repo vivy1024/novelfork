@@ -23,13 +23,25 @@ describe("tool-results registry", () => {
     expect(resolveToolResultRendererKey({ toolName: "pipeline.import_chapters", result: { renderer: "pipeline.import_chapters" } })).toBe("generic");
   });
 
-  it("unknown fallback 保留 raw data", () => {
+  it("unknown fallback 保留 raw data，且支持解包 _truncated 长载荷为友好中文摘要卡", () => {
     const raw = { ok: true, nested: { value: "保留原始载荷" } };
     render(<GenericToolResultRenderer toolName="unknown.tool" result={raw} />);
 
     expect(screen.getByTestId("tool-result-generic")).toBeTruthy();
     expect(screen.getByText("unknown.tool")).toBeTruthy();
     expect(screen.getByText(/"value": "保留原始载荷"/)).toBeTruthy();
+
+    cleanup();
+    const truncated = {
+      _truncated: true,
+      preview: '{"ok":true,"summary":"已置顶写入运行时负反馈铁律：【负反馈铁律】严禁使用过多英语缩写',
+      fullLength: 9788,
+      renderer: "generic",
+    };
+    render(<GenericToolResultRenderer toolName="style_consolidate" result={truncated} />);
+    expect(screen.getByText("文风铁律提纯与负反馈")).toBeTruthy();
+    expect(screen.getAllByText(/已置顶写入运行时负反馈铁律/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/长载荷 9.8 KB/)).toBeTruthy();
   });
 
   it("renderToolResult 为 unknown renderer 使用 generic fallback", () => {

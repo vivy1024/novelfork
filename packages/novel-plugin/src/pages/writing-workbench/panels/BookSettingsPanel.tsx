@@ -136,20 +136,39 @@ function useDebounce<T extends (...args: never[]) => unknown>(fn: T, delay: numb
 }
 
 export function BookSettingsPanel({ bookId, onBack, initialSection, projectSettingsSlot, onOpenCompass, onOpenBookRules, onOpenWorkflows }: BookSettingsPanelProps) {
-  // 本书默认工作流：只读摘要，设置处在「套路 › 工作流」（book.json 的 defaultWorkflowRecipeId）。
-  const [defaultWorkflow, setDefaultWorkflow] = useState<{ name: string | null; notice: string | null } | null>(null);
+  // 本书默认工作流：读取当前默认与本书方案列表，直接在这里切换并保存（book.json 的 defaultWorkflowRecipeId）。
+  const [defaultWorkflow, setDefaultWorkflow] = useState<{
+    recipeId: string | null;
+    name: string | null;
+    notice: string | null;
+  } | null>(null);
+  const [workflowRecipes, setWorkflowRecipes] = useState<Array<{ id: string; name: string; status: string }>>([]);
+  const [savingDefaultWorkflow, setSavingDefaultWorkflow] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setDefaultWorkflow(null);
-    fetchJson<{ recipeId?: string | null; recipeName?: string | null; notice?: { what?: string } }>(`/api/books/${encodeURIComponent(bookId)}/workflow-default`)
-      .then((data) => {
-        if (cancelled || !data) return;
+    setWorkflowRecipes([]);
+    Promise.all([
+      fetchJson<{ recipeId?: string | null; recipeName?: string | null; notice?: { what?: string } }>(`/api/books/${encodeURIComponent(bookId)}/workflow-default`),
+      fetchJson<{ recipes?: Array<{ id?: unknown; name?: unknown; status?: unknown }> }>(`/api/books/${encodeURIComponent(bookId)}/workflow-recipes`).catch(() => ({ recipes: [] })),
+    ])
+      .then(([data, recipeList]) => {
+        if (cancelled) return;
         setDefaultWorkflow({
-          name: data.recipeId && typeof data.recipeName === "string" ? data.recipeName : null,
-          notice: typeof data.notice?.what === "string" ? data.notice.what : null,
+          recipeId: typeof data?.recipeId === "string" && data.recipeId ? data.recipeId : null,
+          name: data?.recipeId && typeof data.recipeName === "string" ? data.recipeName : null,
+          notice: typeof data?.notice?.what === "string" ? data.notice.what : null,
         });
+        const items = Array.isArray(recipeList?.recipes)
+          ? recipeList.recipes.flatMap((r) =>
+              r && typeof r.id === "string" && typeof r.name === "string" && r.status === "published"
+                ? [{ id: r.id, name: r.name, status: "published" }]
+                : [],
+            )
+          : [];
+        setWorkflowRecipes(items);
       })
-      .catch(() => { if (!cancelled) setDefaultWorkflow({ name: null, notice: null }); });
+      .catch(() => { if (!cancelled) setDefaultWorkflow({ recipeId: null, name: null, notice: null }); });
     return () => { cancelled = true; };
   }, [bookId]);
   const [config, setConfig] = useState<BookConfig | null>(null);
@@ -272,6 +291,33 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
     void debouncedSave({ [key]: value });
   }, [debouncedSave]);
 
+  const handleDefaultWorkflowChange = useCallback(async (nextRecipeId: string) => {
+    const recipeId = nextRecipeId === "__none__" ? null : nextRecipeId;
+    setSavingDefaultWorkflow(true);
+    setSaveStatus({ state: "saving" });
+    try {
+      const saved = await fetchJson<{ recipeId?: string | null; recipeName?: string | null; notice?: { what?: string } }>(
+        `/api/books/${encodeURIComponent(bookId)}/workflow-default`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recipeId }),
+        },
+      );
+      setDefaultWorkflow({
+        recipeId: typeof saved?.recipeId === "string" && saved.recipeId ? saved.recipeId : null,
+        name: saved?.recipeId && typeof saved.recipeName === "string" ? saved.recipeName : null,
+        notice: typeof saved?.notice?.what === "string" ? saved.notice.what : null,
+      });
+      setSaveStatus({ state: "saved" });
+      setTimeout(() => setSaveStatus({ state: "idle" }), 1500);
+    } catch (cause) {
+      setSaveStatus({ state: "error", message: cause instanceof Error ? cause.message : "默认工作流保存失败" });
+    } finally {
+      setSavingDefaultWorkflow(false);
+    }
+  }, [bookId]);
+
   // 只提交真正改过的字段，并带上读取时的 revision；服务端发现别处改过就拒绝，不覆盖。
   const flushLayers = useCallback(async () => {
     const fields = [...dirtyLayerFieldsRef.current];
@@ -366,16 +412,35 @@ export function BookSettingsPanel({ bookId, onBack, initialSection, projectSetti
             <label className="block space-y-1 text-xs text-muted-foreground">角色弧线追踪<Select value={config.arcTrackingMode} onValueChange={(value) => updateConfig("arcTrackingMode", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ARC_TRACKING_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></label>
             <label className="block space-y-1 text-xs text-muted-foreground">敏感词（每行一个）<Textarea value={config.customSensitiveWords} onChange={(event) => updateConfig("customSensitiveWords", event.target.value)} className="min-h-20" /></label>
             <ForeshadowThresholdField key={bookId} initial={foreshadowThresholdsRaw} onSave={saveForeshadowThresholds} />
-            <div className="space-y-1 text-xs text-muted-foreground" data-testid="book-settings-default-workflow">
-              <div>默认工作流</div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-foreground">{defaultWorkflow?.name ?? "未设置（写章时自己选）"}</span>
+            <div className="space-y-1.5 text-xs text-muted-foreground" data-testid="book-settings-default-workflow">
+              <div className="flex items-center justify-between gap-2">
+                <span>默认工作流</span>
                 {onOpenWorkflows ? (
-                  <Button type="button" variant="outline" size="xs" onClick={onOpenWorkflows}>去「套路 › 工作流」修改</Button>
-                ) : (
-                  <span>在「套路 › 工作流」里修改</span>
-                )}
+                  <Button type="button" variant="outline" size="xs" onClick={onOpenWorkflows}>编辑/管理工作流</Button>
+                ) : null}
               </div>
+              {workflowRecipes.length > 0 ? (
+                <Select
+                  value={defaultWorkflow?.recipeId ?? "__none__"}
+                  disabled={savingDefaultWorkflow}
+                  onValueChange={(value) => void handleDefaultWorkflowChange(value)}
+                >
+                  <SelectTrigger aria-label="默认工作流" className="w-full">
+                    <SelectValue placeholder="未设置（写章时自己选）" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">未设置（写章时自己选）</SelectItem>
+                    {workflowRecipes.map((recipe) => (
+                      <SelectItem key={recipe.id} value={recipe.id}>{recipe.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-foreground">{defaultWorkflow?.name ?? "未设置（写章时自己选）"}</span>
+                  {!onOpenWorkflows ? <span>在「套路 › 工作流」里修改</span> : null}
+                </div>
+              )}
               {defaultWorkflow?.notice ? <div className="text-warning">{defaultWorkflow.notice}</div> : null}
             </div>
           </div>}

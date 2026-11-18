@@ -273,8 +273,31 @@ export function CharactersAndLoreSidebarPanel({
     const titleMatch = item.title.toLowerCase().includes(q);
     const contentMatch = (item.content ?? "").toLowerCase().includes(q);
     const summaryMatch = String(item.metadata?.summary ?? "").toLowerCase().includes(q);
-    return titleMatch || contentMatch || summaryMatch;
+    const aliasMatch = nodeAliases(item).some((alias) => alias.toLowerCase().includes(q));
+    return titleMatch || contentMatch || summaryMatch || aliasMatch;
   }, [searchQuery]);
+
+  // 别名共用反查：同一条别名/简称若挂在多个人物或设定上，自动标出共用条目，帮作者避免称呼碰撞。
+  const sharedAliasGroups = useMemo(() => {
+    const bucket = new Map<string, { alias: string; nodes: WorkbenchResourceNode[] }>();
+    for (const entry of [...charactersList, ...worldList]) {
+      const seenForEntry = new Set<string>();
+      for (const raw of [entry.title, ...nodeAliases(entry)]) {
+        const cleaned = raw.trim();
+        if (!cleaned) continue;
+        const key = cleaned.toLowerCase();
+        if (seenForEntry.has(key)) continue;
+        seenForEntry.add(key);
+        const existing = bucket.get(key);
+        if (existing) {
+          existing.nodes.push(entry);
+        } else {
+          bucket.set(key, { alias: cleaned, nodes: [entry] });
+        }
+      }
+    }
+    return [...bucket.values()].filter((group) => group.nodes.length > 1);
+  }, [charactersList, worldList]);
 
   const needsReviewCountInCurrentSource = useMemo(() => {
     const source = activeTab === "characters" || activeTab === "cast"
@@ -505,14 +528,15 @@ export function CharactersAndLoreSidebarPanel({
 
       {/* 搜索框 + 待确认条目快捷筛选 */}
       {activeTab !== "draft" && (
-      <div className="shrink-0 p-2 border-b border-border/60 flex items-center gap-1.5">
+      <div className="shrink-0 p-2 border-b border-border/60 flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
         <div className="flex flex-1 min-w-0 items-center gap-1.5 rounded-md border border-input bg-background px-2 h-7">
           <Search className="size-3 text-muted-foreground shrink-0" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={isCharacterTab ? "搜索角色名、性格、口癖…" : "搜索设定、门派、体系…"}
+            placeholder={isCharacterTab ? "搜索角色名、别名、性格…" : "搜索设定、别名、门派…"}
             aria-label={isCharacterTab ? "搜索角色" : "搜索设定条目"}
             className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/60"
           />
@@ -537,6 +561,33 @@ export function CharactersAndLoreSidebarPanel({
             待确认 {needsReviewCountInCurrentSource}
           </button>
         )}
+      </div>
+      {sharedAliasGroups.length > 0 && (
+        <div
+          className="rounded-md border border-warning/40 bg-warning/5 px-2 py-1 text-2xs"
+          data-testid="lore-shared-aliases"
+        >
+          <div className="flex items-center justify-between gap-1 text-warning font-medium">
+            <span>发现 {sharedAliasGroups.length} 个共用名/别名</span>
+            <span className="text-muted-foreground font-normal">点别名可反查</span>
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {sharedAliasGroups.map((group) => (
+              <button
+                key={group.alias}
+                type="button"
+                onClick={() => setSearchQuery(group.alias)}
+                className="inline-flex items-center gap-1 rounded border border-warning/40 bg-background px-1.5 py-0.5 text-2xs text-foreground hover:border-primary"
+                title={`共用条目：${group.nodes.map((n) => n.title).join("、")}`}
+                data-testid={`shared-alias-${group.alias}`}
+              >
+                <span>{group.alias}</span>
+                <span className="text-muted-foreground">({group.nodes.length})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       </div>
       )}
 

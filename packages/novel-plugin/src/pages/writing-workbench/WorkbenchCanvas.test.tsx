@@ -65,9 +65,12 @@ vi.mock("./ChapterSettlementBanner", () => ({
   },
 }));
 
-// 上下文导轨走 react-query（需要 QueryClientProvider），本文件的用例不覆盖它。
+// 上下文导轨与伴随大纲板分别覆盖在各自测试文件里，本文件的用例不依赖真实网络。
 vi.mock("./ChapterContextRail", () => ({
-  ChapterContextRail: () => null,
+  ChapterContextRail: () => <div data-testid="mock-context-rail">资料栏</div>,
+}));
+vi.mock("./ChapterOutlineBoard", () => ({
+  ChapterOutlineBoard: () => <div data-testid="mock-outline-board">大纲板</div>,
 }));
 
 import { WorkbenchCanvas } from "./WorkbenchCanvas";
@@ -139,6 +142,15 @@ describe("WorkbenchCanvas 本章上下文栏", () => {
     fireEvent.keyDown(handle, { key: "ArrowRight" });
     fireEvent.keyDown(handle, { key: "ArrowRight" });
     expect(rail.style.width).toBe("264px");
+  });
+
+  it("伴随画板支持在大纲板与资料栏之间切换并记住偏好", async () => {
+    render(<WorkbenchCanvas node={chapterNode()} bookId="book-rail" onSave={vi.fn()} />);
+    await screen.findByTestId("chapter-context-rail-pane");
+    expect(screen.getByTestId("mock-outline-board")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("companion-tab-context"));
+    expect(screen.getByTestId("mock-context-rail")).toBeTruthy();
+    expect(localStorage.getItem("novelfork:chapter-companion-tab")).toBe("context");
   });
 });
 

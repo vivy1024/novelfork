@@ -195,18 +195,71 @@ export function selectGuideSourceRules(preset: StylePreset): { readonly rules: r
   return { rules: picked, omitted: merged.length - picked.length };
 }
 
+function clauseTrim(text: string, maxChars: number): string {
+  const clean = text.trim().replace(/\s+/gu, " ");
+  if (clean.length <= maxChars) return clean;
+  const slice = clean.slice(0, maxChars);
+  const lastBreak = Math.max(
+    slice.lastIndexOf("。"),
+    slice.lastIndexOf("；"),
+    slice.lastIndexOf("，"),
+    slice.lastIndexOf("”"),
+    slice.lastIndexOf("」"),
+  );
+  return (lastBreak >= Math.floor(maxChars * 0.55) ? slice.slice(0, lastBreak + 1) : slice).replace(/[，；、]+$/u, "");
+}
+
+function scrubGuideNames(text: string, forbiddenTerms: readonly string[]): string {
+  let out = text;
+  const sorted = [...new Set(forbiddenTerms.map((t) => t.trim()).filter((t) => t.length >= 2))]
+    .sort((a, b) => b.length - a.length);
+  for (const term of sorted) {
+    out = out.replaceAll(`${term}：`, "某人：");
+    out = out.replaceAll(`${term}:`, "某人：");
+    out = out.replaceAll(term, "某甲");
+  }
+  out = out.replace(
+    /(^|[；;，,\s])(?!(?:母亲|父亲|众人|老者|少年|少女|管事|掌柜|某人|某甲|正|反))([\p{Script=Han}]{2,3})(?=：[“「])/gu,
+    "$1某人",
+  );
+  return out;
+}
+
 /** 统计数字留给写后对照，不当成机械句长配额；来源专属与未审阅规则绝不注入。 */
 export function composeStyleGuide(preset: StylePreset, options: { activeOverlayIds?: ReadonlySet<string>; maxChars?: number } = {}): string {
   const sections: string[] = [];
   const cap = Math.max(0, options.maxChars ?? (preset.consolidatedRules?.length ? 900 : 2_000));
+  const allForbiddenTerms = [
+    ...preset.sources.flatMap((s) => s.forbiddenSourceTerms ?? []),
+    ...(preset.registerGuardrail?.extraForbiddenTerms ?? []),
+  ];
   const finish = () => {
     if (!sections.length) return "";
-    return [`## ${preset.name}`, "仅学习表达方法；人物、世界与情节以本书已确认的经纬和当前作者要求为准，不迁移参考作品设定。", ...sections].join("\n\n").slice(0, cap);
+    const joined = [`## ${preset.name}`, "仅学习表达方法；人物、世界与情节以本书已确认的经纬和当前作者要求为准，不迁移参考作品设定。", ...sections].join("\n\n");
+    if (joined.length <= cap) return joined;
+    // 按整行收敛，绝不把一条铁律从句子半截劈断
+    const lines = joined.split("\n");
+    const kept: string[] = [];
+    let len = 0;
+    for (const line of lines) {
+      const nextLen = len + (kept.length > 0 ? 1 : 0) + line.length;
+      if (nextLen > cap && kept.length > 2) break;
+      kept.push(line.slice(0, cap));
+      len = nextLen;
+    }
+    return kept.join("\n").slice(0, cap);
   };
   const primaryId = primaryStyleSourceId(preset);
   const consolidated = preset.consolidatedRules?.filter((rule) => rule.sourceIds.length === 0 || rule.sourceIds.includes(primaryId ?? ""));
   if (consolidated?.length) {
-    sections.push(`### 执行铁律\n${consolidated.slice(0, 12).map((rule) => `- ${rule.rule.slice(0, 40)}${rule.doExample ? `；正：${rule.doExample.slice(0, 18)}` : ""}${rule.dontExample ? `；反：${rule.dontExample.slice(0, 18)}` : ""}`).join("\n")}`);
+    const ruleLines = consolidated.slice(0, 12).map((item) => {
+      const ruleBody = clauseTrim(scrubGuideNames(item.rule, allForbiddenTerms), 68);
+      const dontPart = item.dontExample && item.dontExample !== "空泛套话与抽象形容词堆砌"
+        ? `（忌：${clauseTrim(scrubGuideNames(item.dontExample, allForbiddenTerms), 28)}）`
+        : "";
+      return `- ${ruleBody}${dontPart}`;
+    });
+    sections.push(`### 执行铁律\n${ruleLines.join("\n")}`);
   } else {
     if (preset.generalRules.length) sections.push(`### 通用写法\n${preset.generalRules.map((rule) => `- ${rule}`).join("\n")}`);
     const sourceRules = selectGuideSourceRules(preset).rules.map((rule) => `- ${rule.text}（来源：${rule.sourceTitles.join("、")}）`);

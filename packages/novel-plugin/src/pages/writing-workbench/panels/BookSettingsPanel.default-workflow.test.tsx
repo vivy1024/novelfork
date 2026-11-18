@@ -13,9 +13,23 @@ vi.mock("./NarrativeMemorySettingsPanel", () => ({
 
 import { BookSettingsPanel } from "./BookSettingsPanel";
 
-function mockBook(defaultWorkflow: unknown) {
-  fetchJson.mockReset().mockImplementation(async (url: string) => {
-    if (url.endsWith("/workflow-default")) return defaultWorkflow;
+function mockBook(defaultWorkflow: unknown, recipes: unknown[] = []) {
+  fetchJson.mockReset().mockImplementation(async (url: string, init?: RequestInit) => {
+    if (url.endsWith("/workflow-default")) {
+      if (init?.method === "PUT") {
+        const body = JSON.parse(String(init.body ?? "{}")) as { recipeId?: string | null };
+        const matched = recipes.find((item) => (item as { id?: string }).id === body.recipeId) as
+          | { id: string; name: string }
+          | undefined;
+        return {
+          recipeId: body.recipeId ?? null,
+          recipeName: matched?.name ?? null,
+          storedRecipeId: body.recipeId ?? null,
+        };
+      }
+      return defaultWorkflow;
+    }
+    if (url.endsWith("/workflow-recipes")) return { recipes };
     if (url.includes("/writing-layers")) return {};
     return { book: { title: "测试书", genre: "玄幻", platform: "other", language: "zh", targetChapters: 100, chapterWordCount: 2000 } };
   });
@@ -24,13 +38,35 @@ function mockBook(defaultWorkflow: unknown) {
 afterEach(() => cleanup());
 
 describe("本书设置：默认工作流", () => {
-  it("显示当前默认，按钮跳到「套路 › 工作流」", async () => {
-    mockBook({ recipeId: "zhihu-short-story", recipeName: "知乎短篇流", storedRecipeId: "zhihu-short-story" });
+  it("显示当前默认并支持就地切换保存，也可跳到「套路 › 工作流」", async () => {
+    mockBook(
+      { recipeId: "zhihu-short-story", recipeName: "知乎短篇流", storedRecipeId: "zhihu-short-story" },
+      [
+        { id: "zhihu-short-story", name: "知乎短篇流", status: "published" },
+        { id: "qidian-fast", name: "起点快节奏", status: "published" },
+        { id: "draft-flow", name: "草稿流程", status: "draft" },
+      ],
+    );
     const onOpenWorkflows = vi.fn();
     render(<BookSettingsPanel bookId="book-1" onBack={vi.fn()} onOpenWorkflows={onOpenWorkflows} />);
     const box = await screen.findByTestId("book-settings-default-workflow");
     await waitFor(() => expect(box.textContent).toContain("知乎短篇流"));
-    fireEvent.click(screen.getByRole("button", { name: "去「套路 › 工作流」修改" }));
+
+    fireEvent.click(screen.getByRole("combobox", { name: "默认工作流" }));
+    fireEvent.click(await screen.findByRole("option", { name: "起点快节奏" }));
+
+    await waitFor(() => {
+      expect(fetchJson).toHaveBeenCalledWith(
+        "/api/books/book-1/workflow-default",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ recipeId: "qidian-fast" }),
+        }),
+      );
+    });
+    expect(screen.queryByRole("option", { name: "草稿流程" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑/管理工作流" }));
     expect(onOpenWorkflows).toHaveBeenCalledTimes(1);
     expect(fetchJson).toHaveBeenCalledWith("/api/books/book-1/workflow-default");
   });

@@ -85,6 +85,13 @@ interface CandidateView {
   readonly committedRef?: string;
 }
 
+interface RunEventView {
+  readonly seq: number;
+  readonly at: number;
+  readonly type: string;
+  readonly payload: Readonly<Record<string, unknown>>;
+}
+
 interface RunDetailView {
   readonly run: RunSummaryView & { readonly steps: readonly RunStepView[] };
   /** 本次运行所用方案的快照结构，画布据此叠加状态。 */
@@ -95,6 +102,31 @@ interface RunDetailView {
   };
   readonly brief: string | null;
   readonly candidates: readonly CandidateView[];
+  readonly events?: readonly RunEventView[];
+}
+
+const EVENT_TYPE_LABEL: Record<string, string> = {
+  run_started: "启动运行",
+  step_started: "开始工序",
+  step_submitted: "提交产物",
+  step_approved: "批准放行",
+  step_rejected: "打回重做",
+  step_failed: "工序受阻",
+  step_retried: "重试工序",
+  step_skipped: "跳过工序",
+  run_completed: "运行完成",
+  run_cancelled: "运行取消",
+};
+
+function formatRunEventSummary(event: RunEventView): string {
+  const label = EVENT_TYPE_LABEL[event.type] ?? event.type;
+  const stepId = typeof event.payload.stepId === "string" ? event.payload.stepId : undefined;
+  const reason = typeof event.payload.note === "string"
+    ? event.payload.note
+    : typeof event.payload.reason === "string"
+      ? event.payload.reason
+      : undefined;
+  return [label, stepId ? `(${stepId})` : "", reason ? `— ${reason}` : ""].filter(Boolean).join(" ");
 }
 
 const POLL_INTERVAL_MS = 2500;
@@ -741,6 +773,24 @@ export function WorkflowTimelinePanel({
             <div className="overflow-hidden rounded-lg border" data-testid="workflow-run-graph">
               <WorkflowCanvas recipe={runGraph} issues={[]} editable={false} runSteps={runSteps} className="h-[520px] w-full" />
             </div>
+          ) : null}
+
+          {detail.events && detail.events.length > 0 ? (
+            <details className="rounded-lg border border-border/70 bg-muted/20 p-2.5 text-xs" open data-testid="workflow-run-events">
+              <summary className="cursor-pointer select-none font-medium text-foreground">
+                实时执行日志（{detail.events.length} 条）
+              </summary>
+              <ol className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1 font-mono text-2xs text-muted-foreground">
+                {[...detail.events].reverse().slice(0, 20).map((evt) => (
+                  <li key={evt.seq} className="flex items-start gap-2">
+                    <span className="shrink-0 tabular-nums opacity-70">
+                      {new Date(evt.at).toLocaleTimeString("zh-CN", { hour12: false })}
+                    </span>
+                    <span className="min-w-0 flex-1 text-foreground">{formatRunEventSummary(evt)}</span>
+                  </li>
+                ))}
+              </ol>
+            </details>
           ) : null}
 
           {detail.run.status === "running" && runningSteps.length > 0 ? (

@@ -14,8 +14,13 @@ import {
 export interface RuntimeShellBookItem {
   readonly id: string;
   readonly title: string;
-  /** Runtime project bound to this book; the workbench embeds Runtime's project settings with it. */
+  /** Runtime project bound to this book; the workbench embeds Runtime's own project settings with it. */
   readonly runtimeProjectId?: string | null;
+  readonly manuscriptImportJobId?: string;
+  readonly platform?: string;
+  readonly chapterWordCount?: number;
+  readonly language?: "zh" | "en";
+  readonly updatedAt?: string;
 }
 
 /** A Runtime narrator represented in the ShellSessionItem shape. */
@@ -100,6 +105,10 @@ export function mapRuntimeBootstrapToShellData(
       // 每个 book 字面量比较都要跟着改。
       ...(book.runtimeProjectId ? { runtimeProjectId: book.runtimeProjectId } : {}),
       ...(book.manuscriptImportJobId ? { manuscriptImportJobId: book.manuscriptImportJobId } : {}),
+      ...(book.platform ? { platform: book.platform } : {}),
+      ...(book.chapterWordCount ? { chapterWordCount: book.chapterWordCount } : {}),
+      ...(book.language ? { language: book.language } : {}),
+      ...(book.updatedAt ? { updatedAt: book.updatedAt } : {}),
     }));
   const bookNames = new Map(books.map((book) => [book.id, book.title]));
 

@@ -125,6 +125,8 @@ export interface CausalEdgeData {
   readonly color: string;
   readonly label?: string;
   readonly dimmed: boolean;
+  /** 聚焦该剧情线或关联场景时点亮粒子流光。 */
+  readonly emphasized?: boolean;
 }
 
 export type CausalCanvasEdge = Edge<CausalEdgeData>;
@@ -182,17 +184,27 @@ export function toCausalFlow(graph: CausalGraph, layout: CausalLayout, options: 
     },
   }));
 
-  const edges: CausalCanvasEdge[] = graph.lineLinks.map((link) => ({
-    id: link.id,
-    source: link.source,
-    target: link.target,
-    type: "line",
-    selectable: false,
-    focusable: false,
-    data: { color: laneColor(graph, link.storylineId), dimmed: Boolean(options.focusLaneId) && link.storylineId !== options.focusLaneId },
-  }));
+  const selectedSceneId = options.selectedSceneId ?? null;
+  const edges: CausalCanvasEdge[] = graph.lineLinks.map((link) => {
+    const touchesSelectedScene = Boolean(selectedSceneId && (link.source === selectedSceneId || link.target === selectedSceneId));
+    const isFocusedLane = Boolean(options.focusLaneId) && link.storylineId === options.focusLaneId;
+    const dimmed = (Boolean(options.focusLaneId) && !isFocusedLane)
+      || (Boolean(selectedSceneId) && !touchesSelectedScene);
+    const emphasized = isFocusedLane || touchesSelectedScene;
+    return {
+      id: link.id,
+      source: link.source,
+      target: link.target,
+      type: "line",
+      selectable: false,
+      focusable: false,
+      data: { color: laneColor(graph, link.storylineId), dimmed, emphasized },
+    };
+  });
   if (options.showHooks) {
     for (const link of graph.hookLinks) {
+      const touchesSelectedScene = Boolean(selectedSceneId && (link.source === selectedSceneId || link.target === selectedSceneId));
+      const dimmed = Boolean(options.focusLaneId) || (Boolean(selectedSceneId) && !touchesSelectedScene);
       edges.push({
         id: link.id,
         source: link.source,
@@ -200,7 +212,7 @@ export function toCausalFlow(graph: CausalGraph, layout: CausalLayout, options: 
         type: "hook",
         selectable: false,
         focusable: false,
-        data: { color: HOOK_COLOR, label: link.label, dimmed: Boolean(options.focusLaneId) },
+        data: { color: HOOK_COLOR, label: link.label, dimmed, emphasized: touchesSelectedScene || (!options.focusLaneId && !selectedSceneId) },
       });
     }
   }

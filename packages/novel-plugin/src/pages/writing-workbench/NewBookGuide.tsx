@@ -2,8 +2,8 @@ import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Shuffle, PenLine, ChevronRight, ChevronLeft, Check } from "lucide-react";
-import { postApi } from "@/hooks/use-api";
+import { Sparkles, Shuffle, PenLine, ChevronRight, ChevronLeft, Check, TrendingUp } from "lucide-react";
+import { fetchJson, postApi } from "@/hooks/use-api";
 import { getGenreComplexity, type GenreComplexity } from "../../engine/jingwei/genre-templates";
 
 // ---------------------------------------------------------------------------
@@ -155,6 +155,37 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
   // 提交成功后先停在摘要屏：让作者当场看见系统按他的回答挑了哪些技能、为什么挑，
   // 而不是事后自己去设置页翻 372 个技能。
   const [outcome, setOutcome] = useState<GuidedSetupOutcome | null>(null);
+  const [marketSnapLoading, setMarketSnapLoading] = useState(false);
+  const [marketSnapHint, setMarketSnapHint] = useState<{
+    readonly categories: readonly string[];
+    readonly totalBooks: number;
+    readonly error?: string;
+  } | null>(null);
+
+  const handleLoadMarketRef = async () => {
+    if (marketSnapLoading) return;
+    setMarketSnapLoading(true);
+    try {
+      const platformAnswer = answers.platform?.value ?? "";
+      const platform = platformAnswer.includes("番茄") ? "fanqie" : "qidian";
+      const data = await fetchJson<{
+        analysis?: { summary?: { total_books?: number; top_categories?: string[] } };
+      }>(`/api/market/snapshots?platform=${platform}&analyze=true`);
+      const summary = data?.analysis?.summary;
+      setMarketSnapHint({
+        categories: Array.isArray(summary?.top_categories) ? summary.top_categories.slice(0, 6) : [],
+        totalBooks: typeof summary?.total_books === "number" ? summary.total_books : 0,
+      });
+    } catch (err) {
+      setMarketSnapHint({
+        categories: [],
+        totalBooks: 0,
+        error: err instanceof Error ? err.message : "读取榜单快照失败",
+      });
+    } finally {
+      setMarketSnapLoading(false);
+    }
+  };
 
   // 根据题材复杂度动态过滤问题
   const complexity = getGenreComplexity(selectedGenre);
@@ -319,7 +350,53 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
 
         {/* 问题 */}
         <div className="space-y-4">
-          <p className="text-sm font-medium">{question.prompt}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">{question.prompt}</p>
+            {(question.id === "genre" || question.id === "platform") && (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                onClick={() => void handleLoadMarketRef()}
+                disabled={marketSnapLoading}
+                data-testid="new-book-guide-market-scan"
+              >
+                <TrendingUp className="size-3 mr-1" />
+                {marketSnapLoading ? "读取中…" : "扫榜参考"}
+              </Button>
+            )}
+          </div>
+
+          {marketSnapHint && (question.id === "genre" || question.id === "platform") && (
+            <div className="rounded-lg border border-border/70 bg-muted/30 p-2.5 text-xs space-y-1.5" data-testid="new-book-guide-market-hint">
+              {marketSnapHint.error ? (
+                <p className="text-destructive">{marketSnapHint.error}</p>
+              ) : marketSnapHint.categories.length > 0 ? (
+                <>
+                  <p className="text-muted-foreground">
+                    已参考最新榜单（{marketSnapHint.totalBooks} 本在榜样本），点击热门题材可直接填入：
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {marketSnapHint.categories.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          setAnswers((prev) => ({ ...prev, genre: { mode: "custom", value: cat } }));
+                          setSelectedGenre(cat);
+                        }}
+                        className="rounded border border-primary/40 bg-background px-2 py-0.5 text-2xs text-primary hover:bg-primary/10"
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-muted-foreground">暂无最新榜单快照；可在左侧「市场扫榜」抓取一次后再对照选材。</p>
+              )}
+            </div>
+          )}
 
           {/* 预设选项 */}
           {question.presets && (

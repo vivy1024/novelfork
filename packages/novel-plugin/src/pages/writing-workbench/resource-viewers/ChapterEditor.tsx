@@ -9,13 +9,25 @@ import {
   resolveLengthCountingMode,
   type LengthLanguage,
 } from "@vivy1024/novelfork-core/utils/length-metrics";
-import { Loader2, Star } from "lucide-react";
+import { Loader2, Smartphone, Star, Sparkles } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { SearchExtension, scrollToCurrentMatch } from "../ide/SearchExtension";
 import { ENTITY_MENTION_REFRESH, EntityMentionExtension, type MentionEntity } from "../ide/EntityMentionExtension";
+import {
+  AUDIT_ISSUE_REFRESH,
+  AuditIssueExtension,
+  matchAuditIssuesInDoc,
+  type EditorAuditHighlight,
+} from "../ide/AuditIssueExtension";
+import {
+  buildAuditFixProposalMessage,
+  isAutoFixableIssue,
+  locateAuditIssueQuote,
+  LOCATE_IN_EDITOR_EVENT,
+  type AuditIssueLite,
+} from "../audit-issue-actions";
 import { SearchBar } from "../ide/SearchBar";
 import { EditorMinimap } from "./EditorMinimap";
-import { LOCATE_IN_EDITOR_EVENT } from "../audit-issue-actions";
 import { composeCustomConstraintsSection } from "../../../engine/writing-layers/style-preset-custom-constraints";
 import { fetchCustomConstraints } from "../style-custom-constraints";
 import { toWireToolName } from "../../../engine/workflows/run-brief";
@@ -462,6 +474,34 @@ function cleanWhitespace(str: string): string {
 export function normalizePaperText(text: string): string {
   return text.replace(/^[\t \u3000]+/gm, "").replace(/\.{3,}|…+/g, "……").replace(/--+|—+/g, "——").replace(/"([^"\n]+)"/g, "“$1”").replace(/'([^'\n]+)'/g, "‘$1’").replace(/\n[\t \u3000]*\n(?:[\t \u3000]*\n)+/g, "\n\n");
 }
+export type PaperMode = "none" | "lines" | "grid";
+
+export function loadPaperMode(): PaperMode {
+  try {
+    const mode = localStorage.getItem("novelfork:paper-mode");
+    if (mode === "none" || mode === "lines" || mode === "grid") return mode;
+    const legacy = localStorage.getItem("novelfork:paper-lines");
+    if (legacy === "0") return "none";
+    if (legacy === "1") return "lines";
+    return "lines";
+  } catch {
+    return "lines";
+  }
+}
+
+export function savePaperMode(mode: PaperMode): void {
+  try {
+    localStorage.setItem("novelfork:paper-mode", mode);
+    localStorage.setItem("novelfork:paper-lines", mode === "none" ? "0" : "1");
+  } catch { /* ignore */ }
+}
+
+export interface ZeroTokenCleanResult {
+  readonly text: string;
+  readonly editCount: number;
+  readonly manualFlags: readonly DeslopManualFlag[];
+}
+
 function paperStorageGet(key: string, fallback: number): number {
   try { const value = localStorage.getItem(key); const number = value === null ? fallback : Number(value); return Number.isFinite(number) && number >= 0 ? number : fallback; } catch { return fallback; }
 }
@@ -507,6 +547,9 @@ interface ChapterEditorProps {
   mentionEntities?: readonly MentionEntity[];
   /** Ctrl / ⌘ + 点击实体提及时打开资料卡。 */
   onOpenEntity?: (name: string) => void;
+  /** 正文右侧伴随栏状态（大纲板 | 资料栏 | 关），传入时在码字工具条右侧渲染切换器（v6 对齐）。 */
+  companionMode?: "outline" | "context" | "closed";
+  onCompanionModeChange?: (mode: "outline" | "context" | "closed") => void;
 }
 
 export function ChapterEditor({
@@ -526,9 +569,13 @@ export function ChapterEditor({
   styleProfileSummary,
   mentionEntities,
   onOpenEntity,
+  companionMode,
+  onCompanionModeChange,
 }: ChapterEditorProps) {
   const [wordCount, setWordCount] = useState(0);
-  const [paperLines, setPaperLines] = useState(() => paperStorageGet("novelfork:paper-lines", 0) === 1);
+  const [paperMode, setPaperMode] = useState<PaperMode>(loadPaperMode);
+  const paperLines = paperMode !== "none";
+  const [mobileWidth, setMobileWidth] = useState(() => paperStorageGet("novelfork:mobile-width", 0) === 1);
   const [reading, setReading] = useState(false);
   const [liveText, setLiveText] = useState(content);
   const [writingDay, setWritingDay] = useState(localWritingDate);
@@ -544,6 +591,49 @@ export function ChapterEditor({
   const isExternalUpdate = useRef(false);
   const languageRef = useRef(language);
   languageRef.current = language;
+
+  // 零 Token 本地规则清理条
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanResult, setCleanResult] = useState<ZeroTokenCleanResult | null>(null);
+  const [cleanNotice, setCleanNotice] = useState<string | null>(null);
+
+  // 本章审稿意见：拉取后在正文用波浪线标注，点击出现原地 PopConfirm 建议卡
+  const [auditIssues, setAuditIssues] = useState<readonly AuditIssueLite[]>([]);
+  const [dismissedAuditKeys, setDismissedAuditKeys] = useState<Set<string>>(() => new Set());
+  const [activeAuditPopup, setActiveAuditPopup] = useState<{
+    highlight: EditorAuditHighlight;
+    top: number;
+    left: number;
+  } | null>(null);
+  const [auditPopupStatus, setAuditPopupStatus] = useState<string | null>(null);
+  const auditIssuesRef = useRef<readonly AuditIssueLite[]>(auditIssues);
+  auditIssuesRef.current = auditIssues;
+  const dismissedAuditKeysRef = useRef<Set<string>>(dismissedAuditKeys);
+  dismissedAuditKeysRef.current = dismissedAuditKeys;
+  const containerBoxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setActiveAuditPopup(null);
+    setAuditPopupStatus(null);
+    setDismissedAuditKeys(new Set());
+    setCleanResult(null);
+    setCleanNotice(null);
+    if (!bookId || !chapterNumber || !showPaperBar) {
+      setAuditIssues([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchJson<{ issues?: readonly AuditIssueLite[] }>(
+      `/api/books/${encodeURIComponent(bookId)}/narrative-memory/audit-issues?chapter=${chapterNumber}`,
+    )
+      .then((payload) => {
+        if (!cancelled) setAuditIssues(Array.isArray(payload?.issues) ? payload.issues : []);
+      })
+      .catch(() => {
+        if (!cancelled) setAuditIssues([]);
+      });
+    return () => { cancelled = true; };
+  }, [bookId, chapterNumber, showPaperBar]);
 
   // 实体提及：扩展只读 ref，名单或回调变化不需要重建编辑器
   const mentionEntitiesRef = useRef<readonly MentionEntity[]>(mentionEntities ?? []);
@@ -572,6 +662,17 @@ export function ChapterEditor({
         getEntities: () => mentionEntitiesRef.current,
         onOpen: (name) => onOpenEntityRef.current?.(name),
       }),
+      AuditIssueExtension.configure({
+        getIssues: () => auditIssuesRef.current,
+        getDismissedKeys: () => dismissedAuditKeysRef.current,
+        onSelectIssue: (highlight, rect) => {
+          const box = containerBoxRef.current?.getBoundingClientRect();
+          const top = box ? Math.max(44, rect.bottom - box.top + 6) : 56;
+          const left = box ? Math.max(12, Math.min(rect.left - box.left, Math.max(12, box.width - 340))) : 16;
+          setAuditPopupStatus(null);
+          setActiveAuditPopup({ highlight, top, left });
+        },
+      }),
     ],
     content: content || "",
     editable: !readonly && !reading,
@@ -597,12 +698,17 @@ export function ChapterEditor({
     },
   });
 
-  // 名单变化时重算提及高亮
+  // 名单或审稿意见变化时重算高亮
   const mentionSignature = (mentionEntities ?? []).map((entity) => `${entity.name}:${(entity.aliases ?? []).join("/")}`).join("|");
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     editor.view.dispatch(editor.state.tr.setMeta(ENTITY_MENTION_REFRESH, true));
   }, [editor, mentionSignature]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.view.dispatch(editor.state.tr.setMeta(AUDIT_ISSUE_REFRESH, true));
+  }, [editor, auditIssues, dismissedAuditKeys]);
 
   // Sync editable state
   useEffect(() => {
@@ -703,6 +809,52 @@ export function ChapterEditor({
     }
     if (tr.docChanged) editor.view.dispatch(tr);
   };
+  const runZeroTokenClean = async () => {
+    if (!editor || cleaning || readonly || reading) return;
+    const rawMarkdown = editor.storage.markdown.getMarkdown() as string;
+    if (!rawMarkdown.trim()) {
+      setCleanNotice("正文为空，无需清理。");
+      return;
+    }
+    setCleaning(true);
+    setCleanNotice(null);
+    try {
+      const result = await callDeslop(rawMarkdown);
+      const cleaned = typeof result?.text === "string" ? result.text : rawMarkdown;
+      const editCount = Array.isArray(result?.edits) ? result.edits.length : 0;
+      const manualFlags = Array.isArray(result?.manualFlags) ? result.manualFlags : [];
+      if (cleaned === rawMarkdown && manualFlags.length === 0) {
+        setCleanResult(null);
+        setCleanNotice("未发现规则层 AI 味或冗余痕迹（0 Token）。");
+      } else {
+        setCleanResult({ text: cleaned, editCount, manualFlags });
+      }
+    } catch (error) {
+      setCleanNotice(error instanceof Error ? error.message : "规则清理调用失败。");
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+  const applyZeroTokenClean = () => {
+    if (!editor || !cleanResult) return;
+    isExternalUpdate.current = true;
+    editor.commands.setContent(cleanResult.text);
+    isExternalUpdate.current = false;
+    onContentChange?.(cleanResult.text);
+    setCleanNotice(`已按零 Token 规则替换 ${cleanResult.editCount} 处（可 Ctrl+Z 撤销）。`);
+    setCleanResult(null);
+  };
+
+  const dismissAuditHighlight = (key: string) => {
+    setDismissedAuditKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    setActiveAuditPopup(null);
+  };
+
   const mentioned = (mentionEntities ?? []).filter((entity) => [entity.name, ...(entity.aliases ?? [])].some((name) => name.length >= 2 && liveText.includes(name)));
   const locateMention = (entity: MentionEntity) => {
     let found = false;
@@ -715,17 +867,149 @@ export function ChapterEditor({
     onOpenEntity?.(entity.name);
   };
   return (
-    <div className="chapter-editor relative flex flex-col h-full min-h-0" data-paper-lines={paperLines && showPaperBar ? "true" : "false"} data-reading={reading} onKeyDown={handleKeyDown}>
-      <style>{`.chapter-editor[data-paper-lines="true"] .chapter-editor-wrapper { background-color: var(--nf-paper, var(--background)); background-image: none; }
-.chapter-editor[data-paper-lines="true"] .tiptap p { text-indent: 2em; line-height: 2rem; margin-block: 0; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(2rem - 1px), color-mix(in srgb, var(--border) 45%, transparent) calc(2rem - 1px), color-mix(in srgb, var(--border) 45%, transparent) 2rem); }
+    <div
+      ref={containerBoxRef}
+      className="chapter-editor relative flex flex-col h-full min-h-0"
+      data-paper-lines={paperLines && showPaperBar ? "true" : "false"}
+      data-paper-mode={showPaperBar ? paperMode : "none"}
+      data-mobile-width={mobileWidth && showPaperBar ? "true" : "false"}
+      data-reading={reading}
+      onKeyDown={handleKeyDown}
+    >
+      <style>{`.chapter-editor .chapter-editor-wrapper { background-color: var(--background); padding: 14px 16px 28px; }
+.chapter-editor .chapter-editor__content { max-width: 680px; margin: 0 auto; min-height: calc(100% - 8px); border-radius: var(--radius-md, 8px); border: 1px solid color-mix(in srgb, var(--border) 82%, transparent); background-color: var(--nf-paper, var(--card)); box-shadow: var(--shadow-sm); padding: 20px 28px 40px; transition: max-width 0.18s ease, background-color 0.25s ease; }
+.chapter-editor .chapter-editor__content .tiptap { outline: none; min-height: 460px; font-family: var(--font-prose, serif); font-size: var(--prose-size, 16px); line-height: 2rem; }
+.chapter-editor .chapter-editor__content .tiptap p { text-indent: 2em; line-height: 2rem; margin-block: 0; }
+.chapter-editor[data-paper-mode="lines"] .chapter-editor__content .tiptap { background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(2rem - 1px), var(--nf-grid, color-mix(in srgb, var(--border) 60%, transparent)) calc(2rem - 1px), var(--nf-grid, color-mix(in srgb, var(--border) 60%, transparent)) 2rem); background-size: 100% 2rem; }
+.chapter-editor[data-paper-mode="grid"] .chapter-editor__content .tiptap { background-image: linear-gradient(to right, color-mix(in srgb, var(--nf-grid, var(--border)) 72%, transparent) 1px, transparent 1px), repeating-linear-gradient(to bottom, transparent 0, transparent calc(2rem - 1px), var(--nf-grid, color-mix(in srgb, var(--border) 65%, transparent)) calc(2rem - 1px), var(--nf-grid, color-mix(in srgb, var(--border) 65%, transparent)) 2rem); background-size: 1.5rem 2rem, 100% 2rem; }
+.chapter-editor[data-mobile-width="true"] .chapter-editor__content { max-width: 380px; padding-inline: 16px; border-radius: 14px; border-color: var(--primary); }
 .chapter-editor[data-reading="true"] .tiptap { caret-color: transparent; }`}</style>
-      {showPaperBar && <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-3 py-1.5 text-xs text-muted-foreground" role="toolbar" aria-label="码字工具条">
+      {showPaperBar && <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card/85 px-3 py-1.5 text-xs text-muted-foreground" role="toolbar" aria-label="码字工具条">
         <BubbleButton disabled={readonly || reading} onClick={formatChapter}>一键排版</BubbleButton>
         <BubbleButton disabled={readonly || reading} onClick={() => editor.chain().focus().setHorizontalRule().run()}>插入分隔线</BubbleButton>
         <BubbleButton onClick={() => setSearchMode("replace")}>查找替换</BubbleButton>
-        <button type="button" aria-pressed={paperLines} className="rounded px-2 py-1 hover:bg-muted aria-pressed:bg-primary/10 aria-pressed:text-primary" onClick={() => { setPaperLines(!paperLines); paperStorageSet("novelfork:paper-lines", paperLines ? 0 : 1); }}>稿纸横线</button>
-        <button type="button" aria-pressed={reading} className="ml-auto rounded px-2 py-1 hover:bg-muted aria-pressed:text-primary" onClick={() => setReading(!reading)}>{reading ? "返回码字" : "阅读本章"}</button>
+        <button
+          type="button"
+          disabled={readonly || reading || cleaning}
+          data-testid="zero-token-clean-btn"
+          className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted disabled:opacity-50"
+          onClick={() => void runZeroTokenClean()}
+          title="用本地确定性规则去除常见 AI 腔与空洞连接词（0 LLM Token）"
+        >
+          {cleaning ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3 text-primary" strokeWidth={1.65} />}
+          <span>零 Token 清理</span>
+        </button>
+        {auditIssues.length > 0 ? (
+          <span className="rounded-full bg-destructive/12 px-2 py-0.5 text-2xs font-medium text-destructive" title="点击正文中波浪线即可打开原地修改建议">
+            审稿 {auditIssues.length} 处
+          </span>
+        ) : null}
+
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <div className="inline-flex items-center rounded border border-border/80 bg-background/70 p-0.5" role="group" aria-label="稿纸模式">
+            {(
+              [
+                { id: "none", label: "无稿纸" },
+                { id: "lines", label: "横格" },
+                { id: "grid", label: "方格" },
+              ] as const
+            ).map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                aria-pressed={paperMode === mode.id}
+                className="rounded px-1.5 py-0.5 text-2xs transition-colors hover:bg-muted aria-pressed:bg-primary/12 aria-pressed:font-semibold aria-pressed:text-primary"
+                onClick={() => {
+                  setPaperMode(mode.id);
+                  savePaperMode(mode.id);
+                }}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            aria-pressed={mobileWidth}
+            className="inline-flex items-center gap-1 rounded border border-border/70 bg-background/60 px-2 py-0.5 text-2xs hover:bg-muted aria-pressed:border-primary/40 aria-pressed:bg-primary/10 aria-pressed:font-semibold aria-pressed:text-primary"
+            onClick={() => {
+              const next = !mobileWidth;
+              setMobileWidth(next);
+              paperStorageSet("novelfork:mobile-width", next ? 1 : 0);
+            }}
+            title="模拟手机阅读宽度（380px），核查网文分段密度"
+          >
+            <Smartphone className="size-3" strokeWidth={1.65} />
+            <span>手机宽</span>
+          </button>
+          {companionMode && onCompanionModeChange ? (
+            <div className="inline-flex items-center rounded border border-border/80 bg-background/70 p-0.5" role="group" aria-label="伴随画板模式">
+              {(
+                [
+                  { id: "outline", label: "大纲板" },
+                  { id: "context", label: "资料栏" },
+                  { id: "closed", label: "关" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  aria-pressed={companionMode === tab.id}
+                  onClick={() => onCompanionModeChange(tab.id)}
+                  className="rounded px-1.5 py-0.5 text-2xs transition-colors hover:bg-muted aria-pressed:bg-primary/12 aria-pressed:font-semibold aria-pressed:text-primary"
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <button type="button" aria-pressed={reading} className="rounded px-2 py-0.5 text-2xs hover:bg-muted aria-pressed:font-semibold aria-pressed:text-primary" onClick={() => setReading(!reading)}>{reading ? "返回码字" : "阅读本章"}</button>
+        </div>
       </div>}
+      {showPaperBar && cleanResult ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card/70 px-3 py-1.5 text-xs" data-testid="zero-token-clean-bar">
+          <div className="min-w-0 flex-1">
+            <span className="font-medium text-foreground">零 Token 清理预览</span>
+            <span className="ml-2 text-muted-foreground">
+              可规则替换 {cleanResult.editCount} 处
+              {cleanResult.manualFlags.length > 0 ? ` · 另有 ${cleanResult.manualFlags.length} 处需语义判断` : ""}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {cleanResult.editCount > 0 ? (
+              <button type="button" className="rounded bg-primary px-2 py-0.5 text-primary-foreground hover:bg-primary/90" onClick={applyZeroTokenClean}>
+                应用 {cleanResult.editCount} 处清理
+              </button>
+            ) : null}
+            {cleanResult.manualFlags.length > 0 && onSendToNarrator && chapterNumber ? (
+              <button
+                type="button"
+                className="rounded border border-border px-2 py-0.5 hover:bg-muted"
+                onClick={() => {
+                  const summary = cleanResult.manualFlags
+                    .slice(0, 6)
+                    .map((flag, i) => `${i + 1}. 「${flag.excerpt}」— ${flag.reason}（${flag.instruction}）`)
+                    .join("\n");
+                  void Promise.resolve(onSendToNarrator(`请针对第 ${chapterNumber} 章以下需语义润色的片段做局部去 AI 味改写，保留情节原意：\n${summary}`));
+                  setCleanResult(null);
+                  setCleanNotice("已将需语义判断的片段交给叙述者处理。");
+                }}
+              >
+                送叙述者处理语义项
+              </button>
+            ) : null}
+            <button type="button" className="rounded px-2 py-0.5 text-muted-foreground hover:bg-muted" onClick={() => setCleanResult(null)}>
+              收起
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {showPaperBar && cleanNotice ? (
+        <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1 text-2xs text-muted-foreground">
+          <span>{cleanNotice}</span>
+          <button type="button" className="hover:text-foreground" onClick={() => setCleanNotice(null)}>关闭</button>
+        </div>
+      ) : null}
       {/* AI BubbleMenu — 选中文本后出现 */}
       {!readonly && !reading && bookId && editor && (
         <AIBubbleMenu
@@ -748,7 +1032,25 @@ export function ChapterEditor({
       ) : null}
 
       {/* Editor content with minimap */}
-      <div className="flex-1 flex min-h-0">
+      <div
+        className="flex-1 flex min-h-0"
+        onClick={(event) => {
+          const target = event.target instanceof HTMLElement
+            ? event.target.closest<HTMLElement>(".nf-audit-underline")
+            : null;
+          const key = target?.dataset.auditKey;
+          if (!target || !key || !editor) return;
+          const match = matchAuditIssuesInDoc(editor.state.doc, auditIssuesRef.current)
+            .find((item) => item.key === key);
+          if (!match) return;
+          const rect = target.getBoundingClientRect();
+          const box = containerBoxRef.current?.getBoundingClientRect();
+          const top = box ? Math.max(44, rect.bottom - box.top + 6) : 56;
+          const left = box ? Math.max(12, Math.min(rect.left - box.left, Math.max(12, box.width - 340))) : 16;
+          setAuditPopupStatus(null);
+          setActiveAuditPopup({ highlight: match, top, left });
+        }}
+      >
         <div ref={editorRef} className="chapter-editor-wrapper flex-1 min-h-0 overflow-y-auto">
           <EditorContent editor={editor} className="chapter-editor__content" />
         </div>
@@ -763,6 +1065,88 @@ export function ChapterEditor({
       {searchMode && (
         <SearchBar editor={editor} mode={searchMode} onClose={handleCloseSearch} />
       )}
+
+      {/* 原地 PopConfirm 审稿建议气泡：点击正文波浪线时在旁边弹出，不切走焦点 */}
+      {activeAuditPopup ? (
+        <div
+          role="dialog"
+          aria-label="审稿建议气泡"
+          data-testid="audit-issue-popconfirm"
+          className="absolute z-40 w-80 rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-lg"
+          style={{ top: `${activeAuditPopup.top}px`, left: `${activeAuditPopup.left}px` }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="rounded bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning">
+                {activeAuditPopup.highlight.issue.category ?? "审稿意见"}
+              </span>
+              <span className="text-2xs text-muted-foreground">
+                {activeAuditPopup.highlight.severity}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="text-2xs text-muted-foreground hover:text-foreground"
+              onClick={() => setActiveAuditPopup(null)}
+            >
+              关闭
+            </button>
+          </div>
+          <p className="mt-1.5 leading-5 text-foreground">{activeAuditPopup.highlight.issue.description}</p>
+          <p className="mt-1 truncate rounded bg-muted/60 px-2 py-1 text-2xs text-muted-foreground">
+            定位片段：{activeAuditPopup.highlight.quote}
+          </p>
+          {auditPopupStatus ? <p className="mt-1 text-2xs text-primary">{auditPopupStatus}</p> : null}
+          <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+            <button
+              type="button"
+              className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted"
+              onClick={() => dismissAuditHighlight(activeAuditPopup.highlight.key)}
+            >
+              忽略此条
+            </button>
+            <button
+              type="button"
+              className="rounded border border-border px-2 py-1 text-2xs hover:bg-muted"
+              onClick={() => {
+                editor
+                  .chain()
+                  .focus()
+                  .setTextSelection({
+                    from: activeAuditPopup.highlight.from,
+                    to: activeAuditPopup.highlight.to,
+                  })
+                  .scrollIntoView()
+                  .run();
+                setActiveAuditPopup(null);
+              }}
+            >
+              选中原文
+            </button>
+            {onSendToNarrator && chapterNumber ? (
+              <button
+                type="button"
+                disabled={!isAutoFixableIssue(
+                  activeAuditPopup.highlight.issue,
+                  locateAuditIssueQuote(editor.getText(), activeAuditPopup.highlight.issue),
+                )}
+                className="rounded bg-primary px-2 py-1 text-2xs text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                onClick={() => {
+                  const message = buildAuditFixProposalMessage({
+                    chapterNumber,
+                    issue: activeAuditPopup.highlight.issue,
+                    quote: activeAuditPopup.highlight.quote,
+                  });
+                  void Promise.resolve(onSendToNarrator(message));
+                  setAuditPopupStatus("已发送给叙述者生成局部修订候选。");
+                }}
+              >
+                送叙述者原地修
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {showPaperBar && <footer className="shrink-0 border-t border-border text-2xs text-muted-foreground">
         <div className="flex flex-wrap items-center gap-3 px-4 py-2">

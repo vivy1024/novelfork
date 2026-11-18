@@ -150,4 +150,26 @@ describe("BookManagementPage Runtime maintenance actions", () => {
     await waitFor(() => expect(onDeleteBook).toHaveBeenCalledWith("book-1"));
     expect(await screen.findByText(/作品 长夜 已删除.*你自己文件夹里的文件保留不动/)).not.toBeNull();
   });
+
+  it("provides cover and per-book settings shortcut on shelf cards", () => {
+    const onNavigateToBook = vi.fn();
+    render(
+      <BookManagementPage
+        books={[{ id: "book-1", title: "长夜", platform: "qidian", chapterWordCount: 3000 }]}
+        loading={false}
+        error={null}
+        onNavigateToBook={onNavigateToBook}
+        onCreateBook={vi.fn()}
+        onClaimLegacyBook={vi.fn()}
+        onRepairBook={vi.fn()}
+        onRebindBookWorkspace={vi.fn()}
+        onDeleteBook={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("book-cover")).toBeTruthy();
+    expect(screen.getByText(/起点 · 每章 3000 字/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "本书设置" }));
+    expect(onNavigateToBook).toHaveBeenCalledWith("book-1", "settings");
+  });
 });

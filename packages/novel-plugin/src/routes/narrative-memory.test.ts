@@ -85,6 +85,31 @@ describe("narrative memory observability router", () => {
       expect(await response.json()).toMatchObject({ ok: true, chapterNumber: 3, exists: false, issues: [], stale: false });
       const invalid = await app.request("http://localhost/api/books/book-1/narrative-memory/audit-issues?chapter=0");
       expect(invalid.status).toBe(400);
+
+      storage.sqlite.prepare(
+        "INSERT INTO book (id, name, jingwei_mode, current_chapter, created_at, updated_at) VALUES (?, ?, 'static', 0, ?, ?)",
+      ).run("book-1", "测试书", Date.now(), Date.now());
+      storage.sqlite.prepare(`
+        INSERT INTO chapter_audit_log (book_id, chapter_number, audited_at, continuity_issue_count, stale, issues_json, content_fingerprint)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "book-1",
+        3,
+        "2026-06-22T01:00:00.000Z",
+        2,
+        0,
+        JSON.stringify([
+          { issueId: "a1", category: "continuity", severity: "critical", description: "时间线矛盾" },
+          { issueId: "a2", category: "style", severity: "warning", description: "重复词较多" },
+        ]),
+        "fp-3",
+      );
+      const summaryResponse = await app.request("http://localhost/api/books/book-1/narrative-memory/audit-issues/summary");
+      expect(summaryResponse.status).toBe(200);
+      expect(await summaryResponse.json()).toEqual({
+        ok: true,
+        chapters: [{ chapterNumber: 3, issueCount: 2, criticalCount: 1, stale: false }],
+      });
     } finally {
       storage.close();
     }

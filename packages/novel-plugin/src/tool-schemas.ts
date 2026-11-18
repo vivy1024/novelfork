@@ -561,9 +561,10 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       action: enumSchema(["extract", "list", "update", "delete", "recall"], "操作：extract（从文本或文件提炼机制卡）| list | update | delete | recall（规划期按标签/意图检索机制卡）。"),
       sourceTitle: stringSchema("extract 时的参考书名。"),
-      filePath: stringSchema("extract 时的本地文本文件路径（支持 UTF-8 / GB18030）。"),
+      filePath: stringSchema("extract 时的本书目录参考文件路径（支持相对本书目录路径如 没钱11.6.txt，支持 UTF-8 / GB18030）。"),
       text: stringSchema("extract 时直接传入的参考文本。"),
       chapterRange: chapterRangeSchema,
+      chapterList: arraySchema("extract 时按指定章号列表抽样（推荐每次不超过 8 章）。", { type: "number" }),
       extraForbiddenTerms: arraySchema("extract 时额外指定的原著禁用专名。", { type: "string" }),
       cardId: stringSchema("update / delete 时的机制卡 ID。"),
       name: stringSchema("update 时的机制名称。"),

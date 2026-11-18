@@ -9,12 +9,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const postCalls: Array<{ path: string; body: unknown }> = [];
 let postResult: unknown = {};
+let fetchResult: unknown = {};
 
 vi.mock("@/hooks/use-api", () => ({
   postApi: (path: string, body: unknown) => {
     postCalls.push({ path, body });
     return Promise.resolve(postResult);
   },
+  fetchJson: () => Promise.resolve(fetchResult),
 }));
 
 beforeEach(async () => {
@@ -80,5 +82,24 @@ describe("NewBookGuide 完成后的推荐摘要", () => {
     for (const field of ["genre", "premise", "protagonist", "goldenFinger", "tone", "platform", "chapterWordCount", "aiTasteLevel"]) {
       expect(Object.keys(answers)).toContain(field);
     }
+  });
+
+  it("支持在题材页拉取最新扫榜热门题材并一键填入", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { NewBookGuide } = await import("./NewBookGuide");
+    fetchResult = {
+      analysis: {
+        summary: {
+          total_books: 36,
+          top_categories: ["诡秘悬疑", "都市脑洞"],
+        },
+      },
+    };
+    render(<NewBookGuide bookId="book-4" bookTitle="测试扫榜" onComplete={() => {}} />);
+    fireEvent.click(screen.getByTestId("new-book-guide-market-scan"));
+    const hint = await waitFor(() => screen.getByTestId("new-book-guide-market-hint"));
+    expect(hint.textContent).toContain("36 本在榜样本");
+    fireEvent.click(screen.getByRole("button", { name: "诡秘悬疑" }));
+    expect((screen.getByPlaceholderText(/输入你想写的类型/) as HTMLInputElement).value).toBe("诡秘悬疑");
   });
 });

@@ -83,6 +83,7 @@ export * from "./workflows/workflow-graph.js";
 export * from "./workflows/workflow-team.js";
 export * from "./workflows/book-default-workflow.js";
 export * from "./agents/roster.js";
+export * from "./agents/custom-subagents.js";
 
 // Inline writing modes
 export {

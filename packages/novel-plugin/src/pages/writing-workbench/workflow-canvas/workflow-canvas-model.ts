@@ -67,8 +67,10 @@ export interface WorkflowCanvasEdgeData {
   [key: string]: unknown;
   readonly edge: WorkflowGraphEdge;
   readonly issues: readonly WorkflowGraphIssue[];
-  /** 运行叠加：这条线已被走过 / 因分支未选中而作废。 */
-  readonly runState?: "taken" | "dead";
+  /** 运行叠加：active = 下游工序正在运行或待确认，taken = 已被走过，dead = 因分支未选中而作废。 */
+  readonly runState?: "active" | "taken" | "dead";
+  /** 当前是否有选中的关联节点（聚光灯联动高亮）。 */
+  readonly spotlight?: "focus" | "dim";
 }
 
 export type WorkflowCanvasEdge = Edge<WorkflowCanvasEdgeData>;
@@ -116,7 +118,7 @@ export function toCanvasNodes(
   }));
 }
 
-function edgeRunState(edge: WorkflowGraphEdge, runSteps: readonly CanvasRunStep[] | undefined): "taken" | "dead" | undefined {
+function edgeRunState(edge: WorkflowGraphEdge, runSteps: readonly CanvasRunStep[] | undefined): "active" | "taken" | "dead" | undefined {
   if (!runSteps || edge.kind !== "next") return undefined;
   const target = runSteps.find((step) => step.stepId === edge.target);
   if (target?.status === "bypassed") return "dead";
@@ -125,6 +127,7 @@ function edgeRunState(edge: WorkflowGraphEdge, runSteps: readonly CanvasRunStep[
   if (!sourceSettled) return undefined;
   // 分支工序只有选中的那条（或默认线）算走过。
   if (edge.outcome !== undefined && source?.outcome !== undefined && edge.outcome !== source.outcome) return "dead";
+  if (target?.status === "running" || target?.status === "awaiting_approval") return "active";
   return "taken";
 }
 
@@ -134,10 +137,17 @@ export function toCanvasEdges(
   options: { readonly runSteps?: readonly CanvasRunStep[]; readonly selectedId?: string | null; readonly editable: boolean },
 ): WorkflowCanvasEdge[] {
   const typeOf = new Map(recipe.nodes.map((node) => [node.id, node.type]));
+  const hasSelectedNode = Boolean(options.selectedId && typeOf.has(options.selectedId));
   return recipe.edges.map((edge) => {
     const runState = edgeRunState(edge, options.runSteps);
     // 打回线只画在「工序 → 工序」之间；指向别的节点属于结构问题，退回普通入口照样画出来。
     const isReject = edge.kind === "reject";
+    const touchesSelected = hasSelectedNode && (edge.source === options.selectedId || edge.target === options.selectedId);
+    const spotlight: "focus" | "dim" | undefined = options.selectedId === edge.id || touchesSelected
+      ? "focus"
+      : hasSelectedNode
+        ? "dim"
+        : undefined;
     return {
       id: edge.id,
       source: edge.source,
@@ -151,6 +161,7 @@ export function toCanvasEdges(
         edge,
         issues: issues.filter((issue) => issue.edgeId === edge.id),
         ...(runState ? { runState } : {}),
+        ...(spotlight ? { spotlight } : {}),
       },
     };
   });

@@ -115,17 +115,11 @@ export function AgentShell({
   banner,
   children,
 }: AgentShellProps) {
-  const [collapsed, setCollapsed] = useState(() => route.kind === "book");
+  // 书房单栏架构（v6）：整个应用只保留这唯一一个左侧书房导航栏（内层 IDE ActivityBar 已拆除），
+  // 因此进入书籍工作台时保持展开，不再缩成双排窄图标条；作者需要扩宽视野时可随时手动折叠或开启专注模式。
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
-  const previousRouteKindRef = useRef(route.kind);
-
-  useEffect(() => {
-    const previous = previousRouteKindRef.current;
-    previousRouteKindRef.current = route.kind;
-    if (route.kind === "book" && previous !== "book") setCollapsed(true);
-    if (route.kind !== "book" && previous === "book") setCollapsed(false);
-  }, [route.kind]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;

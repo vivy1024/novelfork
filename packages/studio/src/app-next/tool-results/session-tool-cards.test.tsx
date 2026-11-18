@@ -115,14 +115,17 @@ describe("scene.spec 写作蓝图卡", () => {
 });
 
 describe("chapter.audit 审计卡", () => {
-  it("按硬/软约束分组展示，用后端 description/suggestion", () => {
+  it("按硬/软约束分组展示，用后端 description/suggestion，支持跳转正文原地修", () => {
+    const onOpenArtifact = vi.fn();
     render(<>{renderToolResult({
       toolName: "chapter.audit",
+      onOpenArtifact,
       result: {
         renderer: "chapter.audit",
         data: {
           ok: true,
           passed: false,
+          chapterNumber: 8,
           wordCount: 2800,
           hardViolations: [
             { ruleId: "H7", severity: "hard", location: "他心想她不知道", description: "叙述者透露了非 POV 角色的内心想法", suggestion: "只从当前 POV 角色视角描写。" },
@@ -139,6 +142,12 @@ describe("chapter.audit 审计卡", () => {
     expect(screen.getByText("硬约束违反 1")).toBeTruthy();
     expect(screen.getByText("叙述者透露了非 POV 角色的内心想法")).toBeTruthy();
     expect(screen.getByText("章节字数 2800 低于目标 3000 的 80%。")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("audit-card-jump-fix"));
+    expect(onOpenArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "chapter",
+      id: "chapter:8",
+      locateQuote: "他心想她不知道",
+    }));
   });
 });
 

@@ -224,6 +224,44 @@ describe("改造目标 3：中观可迁移机制卡（抽取、专名残留守�
     }, binding, toolCtx);
     expect(ext.ok).toBe(true);
 
+    // 验证相对 bookRoot 的 filePath（如 "玄鉴11.6.txt"）能正确解析，且模型塞入的「胎息/练气/筑基/紫府/仙基」通用词被白名单剔除，单次超 8 章自动按软上限收敛
+    const sixteenChapters = Array.from(
+      { length: 16 },
+      (_, idx) => `第${idx + 1}章 修行纪事\n李通崖在青池宗运转胎息与练气法门，冲击筑基与紫府仙基。`,
+    ).join("\n\n");
+    await writeFile(join(bookRoot, "玄鉴11.6.txt"), sixteenChapters, "utf8");
+    const relExt = await executeMechanismDistillTool({
+      action: "extract",
+      sourceTitle: "玄鉴仙族",
+      filePath: "玄鉴11.6.txt",
+      chapterRange: { from: 1, to: 15 },
+    }, binding, {
+      ...toolCtx,
+      generateText: async () => ({
+        text: JSON.stringify({
+          cards: [{
+            name: "家族世代薪火传承破局",
+            readerDesire: "看弱小家族在残酷博弈中靠前赴后继托举后辈晋升",
+            emotionChain: "困局锁死 -> 先辈铺路 -> 破境反哺",
+            triggerAndPayoff: "强敌压境 -> 梳理传承底蕴 -> 逆势立足",
+            abstractSlots: [{ slot: "传承信物", roleDescription: "承载历代积累的核心器物" }],
+            forbiddenSourceTerms: ["李通崖", "青池宗", "胎息", "练气", "筑基", "紫府", "仙基"],
+            tags: ["家族传承"],
+          }],
+        }),
+      }),
+    });
+    expect(relExt.ok).toBe(true);
+    const relData = relExt.data as { extracted: Array<{ forbiddenSourceTerms: string[] }>; sourceChapterRange: string; warnings: string[] };
+    expect(relData.sourceChapterRange).toBe("第1-8章");
+    expect(relData.warnings.join(" ")).toContain("收敛为前 8 章");
+    expect(relData.extracted[0]!.forbiddenSourceTerms).toEqual(expect.arrayContaining(["李通崖", "青池宗"]));
+    expect(relData.extracted[0]!.forbiddenSourceTerms).not.toContain("胎息");
+    expect(relData.extracted[0]!.forbiddenSourceTerms).not.toContain("练气");
+    expect(relData.extracted[0]!.forbiddenSourceTerms).not.toContain("筑基");
+    expect(relData.extracted[0]!.forbiddenSourceTerms).not.toContain("紫府");
+    expect(relData.extracted[0]!.forbiddenSourceTerms).not.toContain("仙基");
+
     const listed = await executeMechanismDistillTool({ action: "list" }, binding, toolCtx);
     expect(listed.ok).toBe(true);
     const cards = (listed.data as { cards: Array<{ id: string }> }).cards;

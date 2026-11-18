@@ -283,6 +283,14 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
             <Info className="size-3" />
             说明 / 新建剧情线
           </button>
+          <button
+            type="button"
+            title="平滑适配查看全书剧情线"
+            onClick={() => void instance?.fitView({ padding: FIT_PADDING, duration: 420 })}
+            className="rounded border px-1.5 py-0.5 hover:bg-muted"
+          >
+            全书适配
+          </button>
           <button type="button" title="重读场景图" onClick={() => void refresh()} className="rounded border p-1 hover:bg-muted">
             <RefreshCw className="size-3" />
           </button>
@@ -294,7 +302,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
             <button type="button" onClick={() => setError(null)} aria-label="关闭"><X className="size-3" /></button>
           </div>
         ) : null}
-        <div ref={paneRef} className="relative min-h-0 flex-1 overflow-hidden rounded-md border">
+        <div ref={paneRef} className="nf-canvas-animated relative min-h-0 flex-1 overflow-hidden rounded-md border">
           <ReactFlow<CausalCanvasNode, CausalCanvasEdge>
             nodes={nodes}
             edges={flow.edges}
@@ -303,6 +311,13 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
             defaultEdgeOptions={{ markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 } }}
             onNodesChange={onNodesChange}
             onNodeClick={(_, node) => setSelection(node.type === "scene" ? { kind: "scene", id: node.id } : null)}
+            onNodeDoubleClick={(_, node) => {
+              if (node.type !== "scene" || !instance) return;
+              void instance.setCenter(node.position.x + 88, node.position.y + 42, {
+                zoom: Math.max(0.85, Math.min(1.2, instance.getZoom())),
+                duration: 380,
+              });
+            }}
             onPaneClick={() => setSelection(null)}
             onNodeDrag={(_, node) => {
               if (node.type === "scene") setDropLaneId(laneAtY(graph, node.position.y).id);
@@ -349,7 +364,7 @@ export function CausalCanvas({ bookId, structure, query, onOpenChapter, classNam
       </div>
 
       {selection || panelOpen ? (
-      <aside className="relative w-64 shrink-0 space-y-3 overflow-y-auto rounded-md border p-2.5 text-xs" data-testid="causal-inspector">
+      <aside className="nf-inspector-slide-in relative w-64 shrink-0 space-y-3 overflow-y-auto rounded-md border p-2.5 text-xs" data-testid="causal-inspector">
         <button
           type="button"
           aria-label="收起面板"

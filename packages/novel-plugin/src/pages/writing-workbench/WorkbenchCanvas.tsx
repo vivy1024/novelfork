@@ -26,6 +26,7 @@ import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 
 import { JingweiEntryEditor, type JingweiEntrySavePayload } from "./JingweiEntryEditor";
 import { ChapterContextRail } from "./ChapterContextRail";
+import { ChapterOutlineBoard } from "./ChapterOutlineBoard";
 import {
   CHAPTER_CONTEXT_RAIL_DEFAULT_WIDTH,
   CHAPTER_CONTEXT_RAIL_MAX_WIDTH,
@@ -343,9 +344,13 @@ export interface WorkbenchCanvasProps {
   onDismissSelectionCandidate?: () => void;
   /** 点作者改动占比徽标时跳到「技能文风 › 文风金库」并展开该章。 */
   onOpenStyleVault?: (chapterNumber: number) => void;
+  /** 书房纯净外观：省去重复顶底栏，将伴随栏控制融入单层码字条，新书起笔案头不再全屏霸屏十问。 */
+  studioCleanChrome?: boolean;
+  /** 新书 0 章时在起笔案头一键新建第 1 章并铺开稿纸。 */
+  onCreateFirstChapter?: () => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, onOpenStyleVault }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, onOpenStyleVault, studioCleanChrome = false, onCreateFirstChapter }: WorkbenchCanvasProps) {
   const { resourceKey, content, dirty, saving, saveError, setContent, save: handleSave, setSaveError } = useResourceAutosave(node, bookId, onSave);
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -360,7 +365,20 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   // 量到编辑区宽度后再按「稿面放不放得下」决定默认开合，作者一旦动过就以作者为准。
   const storedRail = useMemo(() => (bookId ? loadChapterContextRailState(bookId) : null), [bookId]);
   const [contextRailOpen, setContextRailOpenState] = useState(storedRail?.open ?? true);
-  const [contextRailWidth, setContextRailWidth] = useState(storedRail?.width ?? CHAPTER_CONTEXT_RAIL_DEFAULT_WIDTH);
+  const [contextRailTab, setContextRailTab] = useState<"outline" | "context">(() => {
+    try {
+      return localStorage.getItem("novelfork:chapter-companion-tab") === "context" ? "context" : "outline";
+    } catch {
+      return "outline";
+    }
+  });
+  const switchContextRailTab = useCallback((tab: "outline" | "context") => {
+    setContextRailTab(tab);
+    try { localStorage.setItem("novelfork:chapter-companion-tab", tab); } catch { /* ignore */ }
+  }, []);
+  const [contextRailWidth, setContextRailWidth] = useState(
+    storedRail?.width ?? (studioCleanChrome ? 215 : CHAPTER_CONTEXT_RAIL_DEFAULT_WIDTH),
+  );
   const railTouchedRef = useRef(storedRail !== null);
   const persistRail = useCallback((open: boolean, width: number) => {
     railTouchedRef.current = true;
@@ -520,11 +538,26 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   useLayoutEffect(() => {
     if (!railEligible || railTouchedRef.current) return;
     const width = containerRef.current?.getBoundingClientRect().width ?? 0;
-    if (!defaultChapterContextRailOpen(width)) setContextRailOpenState(false);
-  }, [railEligible]);
+    const shouldOpen = studioCleanChrome
+      ? width <= 0 || width >= 460
+      : defaultChapterContextRailOpen(width);
+    if (!shouldOpen) setContextRailOpenState(false);
+  }, [railEligible, studioCleanChrome]);
   if (!node) {
     if (bookId) {
-      return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} currentChapter={resolveCurrentChapter(nodes)} onGuideComplete={onGuideComplete} onJumpToChapter={onJumpToChapter} />;
+      return (
+        <DefaultCockpitViewWithGuide
+          bookId={bookId}
+          bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId}
+          nodes={nodes}
+          currentChapter={resolveCurrentChapter(nodes)}
+          onGuideComplete={onGuideComplete}
+          onJumpToChapter={onJumpToChapter}
+          studioCleanChrome={studioCleanChrome}
+          onCreateFirstChapter={onCreateFirstChapter}
+          onSendToNarrator={onSendToNarrator}
+        />
+      );
     }
     return (
       // 空态模板（设计板 emptybox）：还没有 X。做 Y 即可 Z。
@@ -740,8 +773,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         </div>
       )}
 
-      {/* Chapter actions bar */}
-      {node.metadata?.isChapter === true && chapterActions && (
+      {/* Chapter actions bar（书房纯净模式下不再叠压重复顶栏） */}
+      {!studioCleanChrome && node.metadata?.isChapter === true && chapterActions && (
         <div className="shrink-0 border-b border-border px-4 py-2">
           <ChapterActionsBar
             resourceId={String(node.metadata?.resourceId ?? node.id.replace("chapter:", ""))}
@@ -854,6 +887,16 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             <ResourceViewer key={resourceKey} node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} styleProfileSummary={styleProfileSummary} mentionEntities={mentionEntities} onOpenEntity={onOpenEntityDetail} onContentChange={setContent}
               selectionCandidate={typeof node.metadata?.chapterNumber === "number" && selectionCandidate?.chapterNumber === node.metadata.chapterNumber ? selectionCandidate : null}
               onDismissSelectionCandidate={onDismissSelectionCandidate}
+              studioCleanChrome={studioCleanChrome}
+              companionMode={showContextRail ? (contextRailOpen ? contextRailTab : "closed") : undefined}
+              onCompanionModeChange={showContextRail ? (nextMode) => {
+                if (nextMode === "closed") {
+                  setContextRailOpen(false);
+                } else {
+                  setContextRailOpen(true);
+                  switchContextRailTab(nextMode);
+                }
+              } : undefined}
               onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
               const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
               try {
@@ -891,12 +934,68 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
                 onKeyDown={handleRailKeyDown}
                 className="absolute inset-y-0 left-0 z-10 w-1.5 -translate-x-1/2 cursor-col-resize touch-none hover:bg-primary/30 focus-visible:bg-primary/40 focus-visible:outline-none"
               />
-              <ChapterContextRail
-                bookId={bookId!}
-                chapterNumber={contextChapterNumber}
-                onOpenJingweiEntry={onOpenJingweiEntry}
-                className="w-full border-0"
-              />
+              <div className="flex min-w-0 flex-1 flex-col bg-card">
+                <div
+                  className="flex shrink-0 items-center gap-1 border-b border-border bg-muted/20 px-2 py-1"
+                  role="tablist"
+                  aria-label="伴随画板切换"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={contextRailTab === "outline"}
+                    data-testid="companion-tab-outline"
+                    onClick={() => switchContextRailTab("outline")}
+                    className={`rounded px-2 py-0.5 text-2xs transition-colors ${
+                      contextRailTab === "outline"
+                        ? "bg-background font-medium text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    大纲板
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={contextRailTab === "context"}
+                    data-testid="companion-tab-context"
+                    onClick={() => switchContextRailTab("context")}
+                    className={`rounded px-2 py-0.5 text-2xs transition-colors ${
+                      contextRailTab === "context"
+                        ? "bg-background font-medium text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    资料栏
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  {contextRailTab === "outline" ? (
+                    <ChapterOutlineBoard
+                      bookId={bookId!}
+                      chapterNumber={contextChapterNumber}
+                      sceneSpec={sceneSpec}
+                      onOpenBlueprint={() => setSceneSpecOpen(true)}
+                      onJumpToChapter={onJumpToChapter}
+                      onSendToNarrator={onSendToNarrator}
+                      onOpenStoryCanvas={onOpenResourceNode ? (preferredView) => {
+                        onOpenResourceNode(createStoryProgressionNode(
+                          bookId!,
+                          (preferredView ?? "overview") as Parameters<typeof createStoryProgressionNode>[1],
+                        ));
+                      } : undefined}
+                      className="h-full w-full border-0"
+                    />
+                  ) : (
+                    <ChapterContextRail
+                      bookId={bookId!}
+                      chapterNumber={contextChapterNumber}
+                      onOpenJingweiEntry={onOpenJingweiEntry}
+                      className="h-full w-full border-0"
+                    />
+                  )}
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setContextRailOpen(false)}
@@ -969,8 +1068,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         </Suspense>
       )}
 
-      {/* 章节体检工具栏（仅正式章节显示） */}
-      {isChapterWorkflowNode(node) && bookId && (
+      {/* 章节体检工具栏（书房纯净模式已整合至单层码字工具条与左下折叠抽屉，不再叠压底栏） */}
+      {!studioCleanChrome && isChapterWorkflowNode(node) && bookId && (
         <ChapterToolbar
           bookId={bookId}
           chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
@@ -985,23 +1084,112 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
 }
 
 // ---------------------------------------------------------------------------
-// DefaultCockpitViewWithGuide — 新书显示引导，已完成引导显示 Cockpit
+// DefaultCockpitViewWithGuide — 新书显示引导或书房起笔案头，已完成引导显示 Cockpit
 // ---------------------------------------------------------------------------
 
-function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, currentChapter, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; currentChapter?: number; onGuideComplete?: (outcome?: GuidedSetupOutcome) => void; onJumpToChapter?: (chapterNumber: number) => void }) {
+function DefaultCockpitViewWithGuide({
+  bookId,
+  bookTitle,
+  nodes,
+  currentChapter,
+  onGuideComplete,
+  onJumpToChapter,
+  studioCleanChrome = false,
+  onCreateFirstChapter,
+  onSendToNarrator,
+}: {
+  bookId: string;
+  bookTitle: string;
+  nodes?: readonly WorkbenchResourceNode[];
+  currentChapter?: number;
+  onGuideComplete?: (outcome?: GuidedSetupOutcome) => void;
+  onJumpToChapter?: (chapterNumber: number) => void;
+  studioCleanChrome?: boolean;
+  onCreateFirstChapter?: () => void;
+  onSendToNarrator?: (message: string) => Promise<void> | void;
+}) {
   // 判据与写作侧栏的起书引导卡共用（new-book-guide-state），两处不会各说各话。
   const hasChapters = containsChapterNode(nodes);
   const guideCompleted = useNewBookGuideCompleted(bookId) || hasChapters;
+  const [expandGuide, setExpandGuide] = useState(false);
 
   const handleGuideComplete = useCallback((outcome?: GuidedSetupOutcome) => {
     markNewBookGuideCompleted(bookId);
+    setExpandGuide(false);
     // outcome 带着 Skills 推荐与题材簇，供上层交给叙述者做建书收尾编排。
     onGuideComplete?.(outcome);
   }, [bookId, onGuideComplete]);
 
-  return guideCompleted
-    ? <DefaultCockpitView bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} />
-    : <NewBookGuide bookId={bookId} bookTitle={bookTitle} onComplete={handleGuideComplete} />;
+  if (guideCompleted) {
+    return <DefaultCockpitView bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} />;
+  }
+
+  if (!studioCleanChrome) {
+    return <NewBookGuide bookId={bookId} bookTitle={bookTitle} onComplete={handleGuideComplete} />;
+  }
+
+  return (
+    <div className="h-full overflow-y-auto bg-background p-6" data-testid="studio-newbook-desk">
+      <div className="mx-auto max-w-[680px] space-y-5">
+        {/* 和纸信纸起笔案头卡：不再用 10 问霸屏挡死书房 */}
+        <div
+          className="rounded-lg border border-border bg-[var(--nf-paper,var(--card))] p-6 shadow-xs"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(to bottom, transparent 0, transparent 31px, var(--nf-grid, rgba(46,107,80,0.12)) 31px, var(--nf-grid, rgba(46,107,80,0.12)) 32px)",
+          }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Badge variant="outline" className="bg-card/80 text-primary border-primary/30">
+              书房起笔案头
+            </Badge>
+            <span className="text-2xs text-muted-foreground">可直接铺纸开写，也可先定题材与大纲</span>
+          </div>
+          <h2 className="nf-display mt-3 text-xl font-bold text-foreground">《{bookTitle}》已备好笔墨</h2>
+          <p className="mt-1.5 text-xs leading-6 text-muted-foreground">
+            左侧已为你就绪纯正文章节目录与本书 6 大创作分区，右侧是专属叙述者助手。选择最顺手的方式起笔：
+          </p>
+
+          <div className="mt-5 flex flex-wrap items-center gap-2.5">
+            {onCreateFirstChapter ? (
+              <Button type="button" size="sm" onClick={onCreateFirstChapter} data-testid="desk-create-first-chapter">
+                铺开稿纸 · 新建第 1 章
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setExpandGuide((v) => !v)}
+              data-testid="desk-toggle-guide"
+            >
+              {expandGuide ? "收起创作十问向导" : "填写创作十问 & 扫榜选材（可选）"}
+            </Button>
+            {onSendToNarrator ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  void onSendToNarrator(
+                    `我刚创建新书《${bookTitle}》，请先结合本书设定帮我推演黄金三章开篇冲突、核心卖点与第 1 章镜头蓝图。`,
+                  );
+                }}
+              >
+                让右侧叙述者构思黄金三章
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {expandGuide ? (
+          <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
+            <NewBookGuide bookId={bookId} bookTitle={bookTitle} onComplete={handleGuideComplete} />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,13 @@ import {
   type WorkflowStepNode,
 } from "../../../engine/workflows/workflow-graph.js";
 import { parseList, STEP_KIND_LABEL, STEP_KINDS, updateEdgeOps, type CanvasSelection } from "./workflow-canvas-model";
+import { NOVEL_SUBAGENT_ROSTER } from "../../../engine/agents/roster.js";
+
+export interface SubagentOption {
+  readonly id: string;
+  readonly nameZh: string;
+  readonly isCustom?: boolean;
+}
 
 export interface WorkflowInspectorProps {
   readonly recipe: WorkflowGraphRecipe;
@@ -23,6 +30,7 @@ export interface WorkflowInspectorProps {
   readonly editable: boolean;
   readonly onOps: (ops: WorkflowGraphOp[]) => void;
   readonly onSelect: (selection: CanvasSelection) => void;
+  readonly customSubagents?: readonly SubagentOption[];
 }
 
 const fieldClass = "w-full rounded border bg-background px-2 py-1 text-xs outline-none focus:border-primary disabled:opacity-60";
@@ -121,12 +129,27 @@ const RESULT_STRATEGY_LABEL = {
   "direct-write": "直接写入",
 } as const;
 
-function StepFields({ step, editable, onOps }: { step: WorkflowStepNode; editable: boolean; onOps: (ops: WorkflowGraphOp[]) => void }) {
+function StepFields({
+  step,
+  editable,
+  onOps,
+  customSubagents = [],
+}: {
+  step: WorkflowStepNode;
+  editable: boolean;
+  onOps: (ops: WorkflowGraphOp[]) => void;
+  customSubagents?: readonly SubagentOption[];
+}) {
   const update = (patch: Record<string, unknown>) => onOps([{ op: "update_node", id: step.id, patch }]);
   const listPatch = (key: "tools" | "skills" | "outcomes", text: string) => {
     const items = parseList(text);
     update({ [key]: items.length > 0 ? items : null });
   };
+  const subagentOptions: SubagentOption[] = [
+    ...NOVEL_SUBAGENT_ROSTER.map((item) => ({ id: item.id, nameZh: item.nameZh })),
+    ...customSubagents.map((item) => ({ id: item.id, nameZh: `${item.nameZh}（定制）`, isCustom: true })),
+  ];
+  const currentAgentKnown = !step.agentId || subagentOptions.some((opt) => opt.id === step.agentId);
   return (
     <>
       <label className={labelClass}>
@@ -168,10 +191,38 @@ function StepFields({ step, editable, onOps }: { step: WorkflowStepNode; editabl
         </select>
       </label>
       {step.executionMode === "subagent" ? (
-        <label className={labelClass}>
-          子代理
-          <CommitInput ariaLabel="子代理" value={step.agentId ?? ""} disabled={!editable} placeholder="子代理名称" onCommit={(text) => update({ agentId: text.trim() || null })} />
-        </label>
+        <>
+          <label className={labelClass}>
+            子代理
+            <select
+              aria-label="子代理"
+              value={step.agentId ?? ""}
+              disabled={!editable}
+              onChange={(event) => update({ agentId: event.target.value.trim() || null })}
+              className={fieldClass}
+            >
+              <option value="">自动匹配（按工序类型）</option>
+              {subagentOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.nameZh}
+                </option>
+              ))}
+              {!currentAgentKnown && step.agentId ? (
+                <option value={step.agentId}>{step.agentId}（自定义标识）</option>
+              ) : null}
+            </select>
+          </label>
+          <label className={labelClass}>
+            指定模型覆盖（可选）
+            <CommitInput
+              ariaLabel="指定模型覆盖"
+              value={step.modelOverride ?? ""}
+              disabled={!editable}
+              placeholder="例如：4sapi-2:deepseek-v4.1-flash"
+              onCommit={(text) => update({ modelOverride: text.trim() || null })}
+            />
+          </label>
+        </>
       ) : null}
       <label className={labelClass}>
         按结果分支（逗号分隔；留空表示不分支）
@@ -207,7 +258,7 @@ function StepFields({ step, editable, onOps }: { step: WorkflowStepNode; editabl
   );
 }
 
-export function WorkflowInspector({ recipe, issues, selection, editable, onOps, onSelect }: WorkflowInspectorProps) {
+export function WorkflowInspector({ recipe, issues, selection, editable, onOps, onSelect, customSubagents }: WorkflowInspectorProps) {
   const node = selection?.kind === "node" ? recipe.nodes.find((candidate) => candidate.id === selection.id) : undefined;
   const edge = selection?.kind === "edge" ? recipe.edges.find((candidate) => candidate.id === selection.id) : undefined;
   const labelOf = (id: string) => recipe.nodes.find((candidate) => candidate.id === id)?.label ?? id;
@@ -237,7 +288,7 @@ export function WorkflowInspector({ recipe, issues, selection, editable, onOps, 
           名称
           <CommitInput ariaLabel="节点名称" value={node.label} disabled={!editable} onCommit={(text) => onOps([{ op: "update_node", id: node.id, patch: { label: text } }])} />
         </label>
-        {node.type === "step" ? <StepFields step={node} editable={editable} onOps={onOps} /> : null}
+        {node.type === "step" ? <StepFields step={node} editable={editable} onOps={onOps} customSubagents={customSubagents} /> : null}
         {node.type === "join" ? <p className="text-xs text-muted-foreground">汇合节点等所有入线都走完（或因分支未选中而作废）后才继续。</p> : null}
         {node.type === "step" && requiresAuthorDecision(node) ? (
           <p className="text-xs text-muted-foreground">从卡片右侧的橙色连接点拖一条线到上游工序，作者打回时就回到那里重做；不连则打回本工序重做。</p>

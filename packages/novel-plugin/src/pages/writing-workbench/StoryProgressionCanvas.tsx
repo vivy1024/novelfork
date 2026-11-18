@@ -25,6 +25,9 @@ const NextChapterPanel = lazy(() =>
 const CanonicalTreesPanel = lazy(() =>
   import("./CanonicalTreesPanel").then((m) => ({ default: m.CanonicalTreesPanel })),
 );
+const OutlineOverviewPanel = lazy(() =>
+  import("./OutlineOverviewPanel").then((m) => ({ default: m.OutlineOverviewPanel })),
+);
 
 // ─── 视图定义 ─────────────────────────────────────────────────────────────
 
@@ -44,7 +47,7 @@ const CanonicalTreesPanel = lazy(() =>
  * 原「发展历程」三层（事件流/关系演化/矛盾冲突）已从推进页移除：
  * 它们是叙事记忆的浏览视图，归 NarrativeMemoryPanel，不回答「下一章写什么」。
  */
-export type StoryProgressionView = "next" | "board" | "tree";
+export type StoryProgressionView = "next" | "board" | "overview" | "tree";
 
 type CanonicalTreeKind = import("../../engine/narrative-taxonomy/canonical-trees").CanonicalTreeKind;
 
@@ -58,6 +61,7 @@ export interface StoryProgressionViewDef {
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
   { id: "next", label: "下一章", description: "全书走势 + 一屏回答「下一章写什么」：焦点 + 建议 + 伏笔账本", icon: Swords },
   { id: "board", label: "推进", description: "章 × 剧情线网格，含下一章该写什么", icon: LayoutGrid },
+  { id: "overview", label: "大纲总览", description: "分卷大纲进度点亮总览，直达章节与下一章", icon: ScrollText },
   { id: "tree", label: "故事树", description: "发展历程 / 因果树（世界观与人物关系在「作品基础」）", icon: FolderTree },
 ] as const;
 
@@ -81,7 +85,7 @@ export const LEGACY_VIEW_TARGETS: Record<string, { view: StoryProgressionView; t
 };
 
 export function isStoryProgressionView(value: unknown): value is StoryProgressionView {
-  return value === "next" || value === "tree" || value === "board";
+  return value === "next" || value === "tree" || value === "board" || value === "overview";
 }
 
 /** 兼容旧的 initialView 取值；非法或缺省进「下一章」整合页。 */
@@ -239,6 +243,20 @@ export function StoryProgressionCanvas({
                 {...(onSendToNarrator ? { onSendToNarrator } : {})}
                 onOpenBoardProgress={() => setView("board")}
                 onOpenCausalTree={() => { setTreeKindOverride("causal"); setView("tree"); }}
+              />
+            </Suspense>
+          </div>
+        ) : view === "overview" ? (
+          <div className="h-full min-h-0 overflow-y-auto" data-testid="story-progression-overview">
+            <Suspense fallback={fallback("正在加载大纲总览…")}>
+              <OutlineOverviewPanel
+                bookId={bookId}
+                {...(currentChapter !== undefined ? { currentChapter } : {})}
+                {...(onOpenChapter ? { onOpenChapter } : {})}
+                {...(onOpenWriteView ? { onOpenWriteView } : {})}
+                onOpenBoardProgress={() => setView("board")}
+                onOpenNextChapter={() => setView("next")}
+                {...(onSendToNarrator ? { onSendToNarrator } : {})}
               />
             </Suspense>
           </div>

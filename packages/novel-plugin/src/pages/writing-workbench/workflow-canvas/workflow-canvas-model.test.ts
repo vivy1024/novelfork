@@ -80,9 +80,20 @@ describe("工作流画布模型", () => {
     expect(toCanvasEdges(recipe, [], { editable: true }).find((edge) => edge.id === "e-bad")).toMatchObject({ targetHandle: "in" });
   });
 
-  it("运行叠加：走过的线标为已走，未选中的分支线与通往未走到工序的线标为作废", () => {
+  it("运行叠加：走过的线标为已走，正在运行的下游线标为活跃粒子流，未选中的分支线与通往未走到工序的线标为作废", () => {
     const recipe = branchingRecipe();
     const edges = toCanvasEdges(recipe, [], {
+      editable: false,
+      runSteps: [
+        { stepId: "draft", status: "done", attempt: 1 },
+        { stepId: "audit", status: "running", attempt: 1 },
+        { stepId: "fix", status: "bypassed", attempt: 0 },
+      ],
+    });
+    const toAudit = edges.find((edge) => edge.source === "draft" && edge.target === "audit")!;
+    expect(toAudit.data!.runState).toBe("active");
+
+    const settledEdges = toCanvasEdges(recipe, [], {
       editable: false,
       runSteps: [
         { stepId: "draft", status: "done", attempt: 1 },
@@ -90,7 +101,7 @@ describe("工作流画布模型", () => {
         { stepId: "fix", status: "bypassed", attempt: 0 },
       ],
     });
-    const state = (id: string) => edges.find((edge) => edge.id === id)!.data!.runState;
+    const state = (id: string) => settledEdges.find((edge) => edge.id === id)!.data!.runState;
     expect(state("e-pass")).toBe("taken");
     expect(state("e-fail")).toBe("dead");
     expect(state("e-reject")).toBeUndefined();

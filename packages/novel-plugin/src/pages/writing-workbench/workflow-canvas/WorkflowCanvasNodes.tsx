@@ -60,8 +60,8 @@ function RunStatusIcon({ status }: { status: CanvasRunStatus }) {
 }
 
 const RUN_BORDER: Partial<Record<CanvasRunStatus, string>> = {
-  running: "border-primary ring-2 ring-primary/30",
-  awaiting_approval: "border-warning ring-2 ring-warning/40",
+  running: "border-primary/80 nf-node-border-beam",
+  awaiting_approval: "border-warning nf-node-awaiting-aura",
   failed: "border-destructive ring-2 ring-destructive/30",
   done: "border-success/70",
 };
@@ -70,10 +70,10 @@ function frameClass(props: NodeProps<WorkflowCanvasNode>): string {
   const { issues, run } = props.data;
   if (run && RUN_BORDER[run.status]) return RUN_BORDER[run.status]!;
   if (issues.length > 0) return "border-destructive/70";
-  return props.selected ? "border-primary" : "border-border";
+  return props.selected ? "border-primary ring-2 ring-primary/20" : "border-border";
 }
 
-const handleClass = "!size-2.5 !border-2 !border-background !bg-muted-foreground";
+const handleClass = "!size-2.5 !border-2 !border-background !bg-muted-foreground nf-magnetic-handle";
 
 function IssueMark({ count }: { count: number }) {
   if (count === 0) return null;
@@ -88,7 +88,7 @@ function IssueMark({ count }: { count: number }) {
 function StartNodeView(props: NodeProps<WorkflowCanvasNode>) {
   return (
     <div
-      className={`flex w-28 items-center justify-center gap-1.5 rounded-full border-2 bg-success/10 px-3 py-2 text-xs font-medium text-success shadow-sm ${frameClass(props)}`}
+      className={`nf-canvas-node-card flex w-28 items-center justify-center gap-1.5 rounded-full border-2 bg-success/10 px-3 py-2 text-xs font-medium text-success shadow-sm ${frameClass(props)}`}
       data-testid={`workflow-node-${props.id}`}
     >
       <Play className="size-3.5 shrink-0 fill-current" />
@@ -102,7 +102,7 @@ function StartNodeView(props: NodeProps<WorkflowCanvasNode>) {
 function EndNodeView(props: NodeProps<WorkflowCanvasNode>) {
   return (
     <div
-      className={`flex w-28 items-center justify-center gap-1.5 rounded-full border-2 bg-muted px-3 py-2 text-xs font-medium shadow-sm ${frameClass(props)}`}
+      className={`nf-canvas-node-card flex w-28 items-center justify-center gap-1.5 rounded-full border-2 bg-muted px-3 py-2 text-xs font-medium shadow-sm ${frameClass(props)}`}
       data-testid={`workflow-node-${props.id}`}
     >
       <Handle id={HANDLE_IN} type="target" position={Position.Top} className={handleClass} />
@@ -116,7 +116,7 @@ function EndNodeView(props: NodeProps<WorkflowCanvasNode>) {
 function JoinNodeView(props: NodeProps<WorkflowCanvasNode>) {
   return (
     <div
-      className={`flex w-28 items-center justify-center gap-1.5 rounded-lg border-2 border-dashed bg-card px-3 py-1.5 text-xs shadow-sm ${frameClass(props)}`}
+      className={`nf-canvas-node-card flex w-28 items-center justify-center gap-1.5 rounded-lg border-2 border-dashed bg-card px-3 py-1.5 text-xs shadow-sm ${frameClass(props)}`}
       data-testid={`workflow-node-${props.id}`}
       title="汇合：所有入线都走完（或作废）后才继续"
     >
@@ -136,7 +136,7 @@ function StepNodeView(props: NodeProps<WorkflowCanvasNode>) {
   const dimmed = !node.enabled || run?.status === "bypassed" || run?.status === "skipped";
   return (
     <div
-      className={`w-52 rounded-lg border-2 bg-card text-xs shadow-sm ${frameClass(props)} ${dimmed ? "opacity-55" : ""}`}
+      className={`nf-canvas-node-card w-52 rounded-lg border-2 bg-card text-xs shadow-sm ${frameClass(props)} ${dimmed ? "opacity-55" : ""}`}
       data-testid={`workflow-node-${props.id}`}
     >
       <Handle id={HANDLE_IN} type="target" position={Position.Top} className={handleClass} />
@@ -196,34 +196,84 @@ function WorkflowEdgeView(props: EdgeProps<WorkflowCanvasEdge>) {
   const isReject = edge?.kind === "reject";
   const [path, labelX, labelY] = isReject
     ? getBezierPath({ ...props, curvature: 0.8 })
-    : getSmoothStepPath({ ...props, borderRadius: 10 });
+    : getSmoothStepPath({ ...props, borderRadius: 12 });
   const hasIssue = (props.data?.issues.length ?? 0) > 0;
   const runState = props.data?.runState;
+  const spotlight = props.data?.spotlight;
+  const isFocus = props.selected || spotlight === "focus" || runState === "active";
+  const isDim = !hasIssue && runState !== "active" && (runState === "dead" || spotlight === "dim");
+
   const stroke = hasIssue
     ? "var(--destructive)"
     : isReject
       ? "var(--warning)"
-      : runState === "taken"
-        ? "var(--success)"
-        : "var(--muted-foreground)";
+      : runState === "active"
+        ? "var(--primary)"
+        : runState === "taken"
+          ? "var(--success)"
+          : isFocus
+            ? "var(--primary)"
+            : "var(--muted-foreground)";
+
+  const showParticles = !isDim && !hasIssue && (runState === "active" || runState === "taken" || isFocus);
+  const particleDur = runState === "active" ? "1.35s" : "2.4s";
   const label = isReject ? "打回" : edge?.outcome;
+
   return (
     <>
+      {isFocus && !isDim ? (
+        <path
+          d={path}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={6}
+          strokeOpacity={0.14}
+          className="nf-edge-glow-track"
+        />
+      ) : null}
       <BaseEdge
         id={props.id}
         path={path}
         markerEnd={props.markerEnd}
+        className={
+          isDim
+            ? undefined
+            : isReject && isFocus
+              ? "nf-edge-flow-reject"
+              : runState === "active"
+                ? "nf-edge-flow-forward"
+                : undefined
+        }
         style={{
           stroke,
-          strokeWidth: props.selected ? 2.5 : 1.5,
-          strokeDasharray: isReject ? "6 4" : undefined,
-          opacity: runState === "dead" ? 0.3 : 1,
+          strokeWidth: isFocus ? 2.4 : 1.6,
+          strokeDasharray: isReject && !isFocus ? "6 4" : undefined,
+          opacity: runState === "dead" ? 0.24 : isDim ? 0.32 : 0.92,
+          transition: "opacity 220ms ease, stroke-width 200ms ease, stroke 200ms ease",
         }}
       />
+      {showParticles ? (
+        <g className="nf-svg-motion-particle pointer-events-none">
+          <circle r={runState === "active" ? 3.6 : 2.8} fill={stroke} opacity={0.95}>
+            <animateMotion dur={particleDur} repeatCount="indefinite" path={path} />
+          </circle>
+          {(runState === "active" || props.selected) ? (
+            <circle r={2.2} fill={stroke} opacity={0.55}>
+              <animateMotion dur={particleDur} begin="0.42s" repeatCount="indefinite" path={path} />
+            </circle>
+          ) : null}
+        </g>
+      ) : null}
       {label ? (
         <EdgeLabelRenderer>
           <div
-            className={`nodrag nopan pointer-events-auto absolute rounded border px-1.5 py-0.5 text-2xs ${isReject ? "border-warning/70 bg-warning/10 text-warning" : "bg-card text-foreground"}`}
+            className={`nodrag nopan pointer-events-auto absolute rounded border px-1.5 py-0.5 text-2xs shadow-2xs transition-opacity ${
+              isReject
+                ? "border-warning/70 bg-warning/10 text-warning"
+                : isFocus
+                  ? "border-primary/50 bg-card text-foreground"
+                  : "bg-card text-foreground"
+            } ${isDim ? "opacity-40" : ""}`}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
             {label}

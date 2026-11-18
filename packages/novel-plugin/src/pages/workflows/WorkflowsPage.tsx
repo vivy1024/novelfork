@@ -73,7 +73,7 @@ export function WorkflowsPage({ books, selectedBookId, onSelectBook, initialTab 
           {bookId ? <WorkflowRunsPanel key={bookId} apiBase={bookApiBase(bookId)} /> : <NoBook />}
         </TabsContent>
         <TabsContent value="subagents">
-          <WorkflowSubagentRoster />
+          <WorkflowSubagentRoster {...(bookId ? { bookId } : {})} />
         </TabsContent>
       </Tabs>
     </div>

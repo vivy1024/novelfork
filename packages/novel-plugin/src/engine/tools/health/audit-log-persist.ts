@@ -164,3 +164,51 @@ export function readLatestAuditIssues(
   }
   return { issues, stale: Boolean(row.stale), auditedAt: row.audited_at, contentFingerprint: row.content_fingerprint };
 }
+
+export interface ChapterAuditIssueSummary {
+  readonly chapterNumber: number;
+  readonly issueCount: number;
+  readonly criticalCount: number;
+  readonly stale: boolean;
+}
+
+/** 汇总全书各章最新一次审计的问题数与严重级别，供资源管理器标注红标/筛选。 */
+export function listLatestAuditIssueSummaries(
+  storage: StorageDatabase,
+  bookId: string,
+): ChapterAuditIssueSummary[] {
+  const rows = storage.sqlite.prepare<{
+    chapter_number: number;
+    issues_json: string | null;
+    continuity_issue_count: number;
+    stale: number;
+  }>(`
+    SELECT c.chapter_number, c.issues_json, c.continuity_issue_count, c.stale
+    FROM chapter_audit_log c
+    INNER JOIN (
+      SELECT chapter_number, MAX(id) AS max_id
+      FROM chapter_audit_log
+      WHERE book_id = ?
+      GROUP BY chapter_number
+    ) latest ON latest.max_id = c.id
+    WHERE c.book_id = ?
+    ORDER BY c.chapter_number ASC
+  `).all(bookId, bookId);
+
+  return rows.map((row) => {
+    let issues: StoredAuditIssue[] = [];
+    try {
+      issues = row.issues_json ? (JSON.parse(row.issues_json) as StoredAuditIssue[]) : [];
+    } catch {
+      issues = [];
+    }
+    const issueCount = issues.length > 0 ? issues.length : Number(row.continuity_issue_count ?? 0);
+    const criticalCount = issues.filter((issue) => (issue.severity ?? "").toLowerCase() === "critical").length;
+    return {
+      chapterNumber: row.chapter_number,
+      issueCount,
+      criticalCount,
+      stale: Boolean(row.stale),
+    };
+  });
+}

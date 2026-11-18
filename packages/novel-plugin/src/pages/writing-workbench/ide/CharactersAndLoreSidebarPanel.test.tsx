@@ -529,4 +529,25 @@ describe("CharactersAndLoreSidebarPanel 新建与导入的失败提示", () => {
     const success = await screen.findByTestId("lore-import-result-success");
     expect(success.className).toContain("text-success");
   });
+
+  it("支持按别名搜索，并在多个条目共用同名或别名时提示反查", () => {
+    renderPanel(
+      [
+        characterNode("韩立", ["韩老魔", "厉飞雨"]),
+        characterNode("厉飞雨", ["厉师兄"]),
+      ],
+      [],
+    );
+
+    const banner = screen.getByTestId("lore-shared-aliases");
+    expect(banner.textContent).toContain("发现 1 个共用名/别名");
+    expect(screen.getByTestId("shared-alias-厉飞雨").textContent).toContain("厉飞雨(2)");
+
+    fireEvent.click(screen.getByTestId("shared-alias-厉飞雨"));
+    expect((screen.getByLabelText("搜索角色") as HTMLInputElement).value).toBe("厉飞雨");
+    expect(screen.getAllByTestId("lore-card")).toHaveLength(2);
+
+    fireEvent.change(screen.getByLabelText("搜索角色"), { target: { value: "韩老魔" } });
+    expect(screen.getAllByTestId("lore-card").map((el) => el.textContent)).toEqual([expect.stringContaining("韩立")]);
+  });
 });

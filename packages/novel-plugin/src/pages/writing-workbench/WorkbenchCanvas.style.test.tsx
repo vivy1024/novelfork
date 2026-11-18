@@ -7,6 +7,7 @@ vi.mock("./resource-viewers", () => ({
   ResourceViewer: ({ styleProfileSummary }: { styleProfileSummary?: string }) => <output aria-label="划词文风">{styleProfileSummary ?? "无指南"}</output>,
 }));
 vi.mock("./ChapterContextRail", () => ({ ChapterContextRail: () => null }));
+vi.mock("./ChapterOutlineBoard", () => ({ ChapterOutlineBoard: () => null }));
 
 const chapter: WorkbenchResourceNode = { id: "chapter:1", kind: "chapter", title: "第一章", content: "正文",
   metadata: { isChapter: true, chapterNumber: 1 },

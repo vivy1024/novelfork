@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Settings } from "lucide-react";
 import {
   Component,
   lazy,
@@ -336,14 +336,23 @@ function HomeRouteLive({
           <h2 id="home-bookshelf-title" className="nf-display text-xl">书架</h2>
           <ul className="flex flex-wrap gap-3">
             {books.map((book) => (
-              <li key={book.id}>
+              <li key={book.id} className="group relative">
                 <button
                   type="button"
-                  className="group flex w-28 flex-col items-center gap-2 rounded-md p-2 text-center transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex w-28 flex-col items-center gap-2 rounded-md p-2 text-center transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => onNavigate({ kind: "book", bookId: book.id })}
                 >
                   <BookCover title={book.title} className="transition-transform group-hover:-translate-y-0.5" />
                   <span className="line-clamp-2 text-xs text-foreground">{book.title}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`设置 ${book.title}`}
+                  title="本书设置"
+                  className="absolute right-1 top-1 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-background hover:text-primary group-hover:opacity-100 focus-visible:opacity-100"
+                  onClick={() => onNavigate({ kind: "book", bookId: book.id, panel: "settings" })}
+                >
+                  <Settings className="size-3.5" aria-hidden="true" />
                 </button>
               </li>
             ))}
@@ -525,13 +534,21 @@ function RouteMountPoint({
           <Suspense fallback={<LazyFallback />}>
             <RuntimeWritingWorkbenchRouteLazy
               bookId={route.bookId}
+              activeZone={route.panel === "settings" ? "settings" : route.zone ?? "write"}
+              onZoneChange={(zone) => {
+                onNavigate({
+                  kind: "book",
+                  bookId: route.bookId,
+                  ...(zone === "write" ? {} : { zone }),
+                });
+              }}
               onCanvasContextChange={onCanvasContextChange}
               onNavigateToConversation={onNavigateToConversation}
               onChanged={reloadRuntimeShell}
               client={runtimeClient}
               onOpenWorkflows={() => {
                 onSelectBook(route.bookId);
-                onNavigate({ kind: "routines", panel: "workflows" });
+                onNavigate({ kind: "book", bookId: route.bookId, zone: "workflow" });
               }}
             />
           </Suspense>
@@ -545,8 +562,8 @@ function RouteMountPoint({
               books={books}
               loading={loading}
               error={error}
-              onNavigateToBook={(bookId) =>
-                onNavigate({ kind: "book", bookId })
+              onNavigateToBook={(bookId, panel) =>
+                onNavigate({ kind: "book", bookId, ...(panel ? { panel } : {}) })
               }
               onCreateBook={async (input) => {
                 if (!input) { onNavigate({ kind: "home" }); return; }

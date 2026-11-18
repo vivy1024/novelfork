@@ -2,11 +2,26 @@ import { isRuntimePageSection, type RuntimePageSection } from "../runtime/runtim
 
 export const STUDIO_NEXT_BASE_PATH = "/next";
 
+export const BOOK_WORKBENCH_ZONES = [
+  "write",
+  "outline",
+  "workflow",
+  "lore",
+  "dissect",
+  "settings",
+] as const;
+
+export type BookWorkbenchZone = (typeof BOOK_WORKBENCH_ZONES)[number];
+
+export function isBookWorkbenchZone(value: string | null | undefined): value is BookWorkbenchZone {
+  return value != null && (BOOK_WORKBENCH_ZONES as readonly string[]).includes(value);
+}
+
 export type ShellRoute =
   | { readonly kind: "home" }
   | { readonly kind: "narrator"; readonly sessionId: string }
   | { readonly kind: "books" }
-  | { readonly kind: "book"; readonly bookId: string }
+  | { readonly kind: "book"; readonly bookId: string; readonly panel?: "settings"; readonly zone?: BookWorkbenchZone }
   | { readonly kind: "sessions"; readonly create?: boolean }
   | RuntimePageRoute
   | RoutinesPanelRoute
@@ -86,6 +101,10 @@ export interface ShellBookItem {
   readonly runtimeProjectId?: string | null;
   /** 旧稿导入尚未「完成导入」时的任务 ID。 */
   readonly manuscriptImportJobId?: string;
+  readonly platform?: string;
+  readonly chapterWordCount?: number;
+  readonly language?: "zh" | "en";
+  readonly updatedAt?: string;
 }
 
 export interface ShellSessionItem {
@@ -184,7 +203,19 @@ export function parseShellRoute(href = globalThis.location?.pathname ?? STUDIO_N
   }
   if (section === "narrators" && id) return { kind: "narrator", sessionId: decodeSegment(id) };
   if (section === "books" && !id) return { kind: "books" };
-  if (section === "books" && id) return { kind: "book", bookId: decodeSegment(id) };
+  if (section === "books" && id) {
+    const queryIndex = href.indexOf("?");
+    const search = queryIndex >= 0 ? href.slice(queryIndex).split("#", 1)[0] : "";
+    const params = search ? new URLSearchParams(search) : null;
+    const panelParam = params?.get("panel") ?? null;
+    const zoneParam = params?.get("zone") ?? null;
+    return {
+      kind: "book",
+      bookId: decodeSegment(id),
+      ...(panelParam === "settings" ? { panel: "settings" as const } : {}),
+      ...(isBookWorkbenchZone(zoneParam) && zoneParam !== "write" ? { zone: zoneParam } : {}),
+    };
+  }
   if (section === "sessions") return { kind: "sessions", ...(id === "new" ? { create: true } : {}) };
   if (section === "market") return { kind: "market" };
   return { kind: "home" };
@@ -196,8 +227,18 @@ export function toShellPath(route: ShellRoute): string {
       return `${STUDIO_NEXT_BASE_PATH}/narrators/${encodeSegment(route.sessionId)}`;
     case "books":
       return `${STUDIO_NEXT_BASE_PATH}/books`;
-    case "book":
-      return `${STUDIO_NEXT_BASE_PATH}/books/${encodeSegment(route.bookId)}`;
+    case "book": {
+      const base = `${STUDIO_NEXT_BASE_PATH}/books/${encodeSegment(route.bookId)}`;
+      if (route.panel === "settings" || route.zone === "settings") {
+        return route.panel === "settings" && !route.zone
+          ? `${base}?panel=settings`
+          : `${base}?zone=settings`;
+      }
+      if (route.zone && route.zone !== "write") {
+        return `${base}?zone=${encodeSegment(route.zone)}`;
+      }
+      return base;
+    }
     case "sessions":
       return route.create ? `${STUDIO_NEXT_BASE_PATH}/sessions/new` : `${STUDIO_NEXT_BASE_PATH}/sessions`;
     case "routines":

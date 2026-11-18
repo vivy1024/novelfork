@@ -291,6 +291,19 @@ h3 { font-size: 1.25rem; }
   text-underline-offset: 0.25em;
 }
 
+/* 正文审稿意见波浪下划线：轻提醒不打断阅读，点击出现原地 PopConfirm 建议卡 */
+.chapter-editor__content .tiptap .nf-audit-underline {
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: color-mix(in oklch, var(--warning) 80%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.24em;
+}
+.chapter-editor__content .tiptap .nf-audit-underline[data-audit-severity="critical"] {
+  text-decoration-color: color-mix(in oklch, var(--destructive) 85%, transparent);
+}
+
 /* 稿面里的章节标题用主题的标题字体（全局 h1–h3 是界面字体） */
 .chapter-editor__content .tiptap h1,
 .chapter-editor__content .tiptap h2,

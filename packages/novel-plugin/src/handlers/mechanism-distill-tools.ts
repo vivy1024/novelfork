@@ -69,12 +69,16 @@ export async function executeMechanismDistillTool(
         return ok(`已读取 ${loaded.cards.length} 张机制卡。`, loaded);
       }
       case "extract": {
+        const chapterList = Array.isArray(input.chapterList)
+          ? input.chapterList.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0).map((n) => Math.trunc(n))
+          : undefined;
         const result = await extractAndSaveMechanismCards({
           bookRoot: binding.root,
           ...(typeof input.sourceTitle === "string" ? { sourceTitle: input.sourceTitle } : {}),
           ...(typeof input.filePath === "string" ? { filePath: input.filePath } : {}),
           ...(typeof input.text === "string" ? { text: input.text } : {}),
           ...(parseChapterRange(input.chapterRange) ? { chapterRange: parseChapterRange(input.chapterRange) } : {}),
+          ...(chapterList && chapterList.length > 0 ? { chapterList } : {}),
           ...(stringArray(input.extraForbiddenTerms) ? { extraForbiddenTerms: stringArray(input.extraForbiddenTerms) } : {}),
           ...(context.generateText ? { generateText: context.generateText } : {}),
         });

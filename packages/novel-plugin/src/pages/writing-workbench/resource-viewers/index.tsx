@@ -47,6 +47,10 @@ export interface ResourceViewerRenderOptions {
   /** 叙述者结果卡送回的待审阅选区候选；作者在编辑器里决定应用或放弃。 */
   selectionCandidate?: SelectionCandidate | null;
   onDismissSelectionCandidate?: () => void;
+  /** 书房纯净外观：章节正文省去外层工程路径头，并透传伴随画板切换器。 */
+  studioCleanChrome?: boolean;
+  companionMode?: "outline" | "context" | "closed";
+  onCompanionModeChange?: (mode: "outline" | "context" | "closed") => void;
 }
 
 export interface ResourceViewerDefinition {
@@ -100,24 +104,34 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
 function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
 
+  const editorElement = (
+    <ChapterEditor
+      content={node.content ?? ""}
+      readonly={readonly}
+      onContentChange={options.onContentChange}
+      placeholder={`在此编辑${editableLabels[node.kind] ?? "内容"}…`}
+      ariaLabel={editableLabels[node.kind] ?? "资源正文"}
+      bookId={options.bookId}
+      chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
+      onSendToNarrator={options.onSendToNarrator}
+      language={options.language}
+      styleProfileSummary={options.styleProfileSummary}
+      mentionEntities={options.mentionEntities}
+      onOpenEntity={options.onOpenEntity}
+      selectionCandidate={options.selectionCandidate}
+      onDismissSelectionCandidate={options.onDismissSelectionCandidate}
+      companionMode={options.companionMode}
+      onCompanionModeChange={options.onCompanionModeChange}
+    />
+  );
+
+  if (options.studioCleanChrome) {
+    return <section className="flex h-full min-h-0 flex-col" data-resource-kind={node.kind}>{editorElement}</section>;
+  }
+
   return (
     <ViewerShell node={node} label={resourceViewerRegistry[node.kind as ResourceViewerKind]?.label ?? "资源"}>
-      <ChapterEditor
-        content={node.content ?? ""}
-        readonly={readonly}
-        onContentChange={options.onContentChange}
-        placeholder={`在此编辑${editableLabels[node.kind] ?? "内容"}…`}
-        ariaLabel={editableLabels[node.kind] ?? "资源正文"}
-        bookId={options.bookId}
-        chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
-        onSendToNarrator={options.onSendToNarrator}
-        language={options.language}
-        styleProfileSummary={options.styleProfileSummary}
-        mentionEntities={options.mentionEntities}
-        onOpenEntity={options.onOpenEntity}
-        selectionCandidate={options.selectionCandidate}
-        onDismissSelectionCandidate={options.onDismissSelectionCandidate}
-      />
+      {editorElement}
     </ViewerShell>
   );
 }
@@ -894,6 +908,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string; mentionEntities?: readonly MentionEntity[]; onOpenEntity?: (name: string) => void; selectionCandidate?: SelectionCandidate | null; onDismissSelectionCandidate?: () => void }) {
-  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate })}</>;
+export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate, studioCleanChrome, companionMode, onCompanionModeChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string; mentionEntities?: readonly MentionEntity[]; onOpenEntity?: (name: string) => void; selectionCandidate?: SelectionCandidate | null; onDismissSelectionCandidate?: () => void; studioCleanChrome?: boolean; companionMode?: "outline" | "context" | "closed"; onCompanionModeChange?: (mode: "outline" | "context" | "closed") => void }) {
+  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate, studioCleanChrome, companionMode, onCompanionModeChange })}</>;
 }

@@ -43,3 +43,178 @@
 
   --xy-attribution-background-color: color-mix(in srgb, var(--card) 50%, transparent);
 }
+
+/* ── 无限画布高级动效系统（遵循 DESIGN.md 主题令牌，严禁写死色值，遵守 reduced-motion） ── */
+
+@property --nf-beam-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes nf-border-beam-spin {
+  to {
+    --nf-beam-angle: 360deg;
+  }
+}
+
+@keyframes nf-aura-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent),
+      0 6px 20px -6px color-mix(in srgb, var(--primary) 32%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent),
+      0 10px 28px -4px color-mix(in srgb, var(--primary) 48%, transparent);
+  }
+}
+
+@keyframes nf-warning-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 20%, transparent);
+  }
+}
+
+@keyframes nf-edge-dash-flow {
+  from {
+    stroke-dashoffset: 28;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes nf-edge-dash-reverse {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 28;
+  }
+}
+
+/* 节点物理微浮起与弹性过渡（非拖拽态启用坐标弹簧归位，拖拽中立即跟随手势零延迟） */
+.nf-canvas-animated .react-flow__node:not(.dragging) {
+  transition:
+    transform 340ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease;
+}
+
+.nf-canvas-node-card {
+  position: relative;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease,
+    opacity 200ms ease;
+}
+
+.nf-canvas-node-card:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 8px 22px -8px color-mix(in srgb, var(--foreground) 18%, transparent);
+}
+
+.react-flow__node.dragging .nf-canvas-node-card {
+  transform: scale(1.025);
+  box-shadow: 0 14px 30px -10px color-mix(in srgb, var(--foreground) 26%, transparent);
+}
+
+/* Magic UI 风格 Conic-Gradient 旋转流光边框（用于正在执行的工序节点与聚焦节点） */
+.nf-node-border-beam {
+  animation: nf-aura-breathe 2.6s ease-in-out infinite;
+}
+
+.nf-node-border-beam::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--nf-beam-angle),
+    transparent 0%,
+    transparent 62%,
+    color-mix(in srgb, var(--primary) 35%, transparent) 78%,
+    var(--primary) 94%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(var(--card) 0 0) content-box, linear-gradient(var(--card) 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(var(--card) 0 0) content-box, linear-gradient(var(--card) 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: nf-border-beam-spin 2.8s linear infinite;
+}
+
+.nf-node-awaiting-aura {
+  animation: nf-warning-pulse 2.2s ease-in-out infinite;
+}
+
+/* 磁性连接锚点微动效 */
+.nf-magnetic-handle {
+  transition:
+    transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.nf-canvas-node-card:hover .nf-magnetic-handle {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+/* 连线能量虚线流与发光底轨 */
+.nf-edge-flow-forward {
+  stroke-dasharray: 7 7;
+  animation: nf-edge-dash-flow 1.1s linear infinite;
+}
+
+.nf-edge-flow-reject {
+  stroke-dasharray: 6 5;
+  animation: nf-edge-dash-reverse 1.3s linear infinite;
+}
+
+.nf-edge-glow-track {
+  pointer-events: none;
+  transition: opacity 220ms ease, stroke-width 220ms ease;
+}
+
+.nf-inspector-slide-in {
+  animation: nf-inspector-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes nf-inspector-enter {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nf-canvas-animated .react-flow__node:not(.dragging),
+  .nf-canvas-node-card,
+  .nf-magnetic-handle {
+    transition: none !important;
+  }
+  .nf-node-border-beam,
+  .nf-node-border-beam::after,
+  .nf-node-awaiting-aura,
+  .nf-edge-flow-forward,
+  .nf-edge-flow-reject,
+  .nf-inspector-slide-in {
+    animation: none !important;
+  }
+  .nf-svg-motion-particle {
+    display: none;
+  }
+}
+

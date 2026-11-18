@@ -170,21 +170,43 @@ export function buildMechanicalBookIndex(input: { sourceName?: string; text: str
     if (number < 1 || number > chapters.length) return;
     rationale[number] = rationale[number] ? `${rationale[number]}；${why}` : why;
   };
-  for (let number = 1; number <= Math.min(3, chapters.length); number += 1) add(number, "黄金开局");
+  // 排除抽奖公示、请假条、完本感言等极短非正文单章（字数分母极小会虚高千字特征密度）：
+  // 门槛取 min(1000, 全书均章字数的 40%)；若全书都是微短篇则回退为全体非空章。
+  const avgChapterChars = chapters.reduce((sum, c) => sum + c.charCount, 0) / Math.max(1, chapters.length);
+  const minSubstantialChars = Math.min(1_000, Math.max(200, Math.floor(avgChapterChars * 0.4)));
+  const substantial = chapters.filter((c) => c.charCount >= minSubstantialChars);
+  const candidatePool = substantial.length > 0 ? substantial : chapters.filter((c) => c.charCount > 0);
+  const candidateNumbers = new Set(candidatePool.map((c) => c.number));
+  const nearestSubstantial = (targetNumber: number): number => {
+    if (candidateNumbers.has(targetNumber) || candidatePool.length === 0) return targetNumber;
+    let best = candidatePool[0]!.number;
+    let bestDist = Math.abs(best - targetNumber);
+    for (const c of candidatePool) {
+      const dist = Math.abs(c.number - targetNumber);
+      if (dist < bestDist) {
+        best = c.number;
+        bestDist = dist;
+      }
+    }
+    return best;
+  };
+
+  for (const ch of candidatePool.slice(0, 3)) add(ch.number, "黄金开局");
   const topChapters = Object.fromEntries((["bill", "combat", "ancient", "banter"] as const).map((key) => {
-    const ranked = [...chapters].sort((a, b) => b.featureScores[key] - a.featureScores[key] || a.number - b.number).filter((c) => c.featureScores[key] > 0).slice(0, 5);
+    const ranked = [...candidatePool].sort((a, b) => b.featureScores[key] - a.featureScores[key] || a.number - b.number).filter((c) => c.featureScores[key] > 0).slice(0, 5);
     for (const chapter of ranked.slice(0, 2)) add(chapter.number, `${key} 特征峰值`);
     return [key, ranked.map((chapter) => ({ number: chapter.number, title: chapter.title, score: chapter.featureScores[key] }))];
   })) as Record<"bill" | "combat" | "ancient" | "banter", { number: number; title: string; score: number }[]>;
-  const institutionCandidates = chapters.filter((c) => c.dominantFeatures.includes("institution_rule"));
+  const institutionCandidates = candidatePool.filter((c) => c.dominantFeatures.includes("institution_rule"));
   const institution = institutionCandidates
     .sort((a, b) => Number(b.dominantFeatures[0] === "institution_rule") - Number(a.dominantFeatures[0] === "institution_rule")
       || b.charCount - a.charCount || a.number - b.number)[0];
   if (institution) add(institution.number, "制度规矩代表");
-  for (const ratio of [0.2, 0.4, 0.6, 0.8, 1]) add(Math.max(1, Math.round(chapters.length * ratio)), "中后段跨度代表");
-  // 峰值重合时用均匀分位补足 15 章；短书返回全书。
-  for (let index = 0; Object.keys(rationale).length < Math.min(15, chapters.length) && index < 30; index += 1) {
-    add(Math.max(1, Math.round(1 + (chapters.length - 1) * index / 29)), "全书均匀补样");
+  for (const ratio of [0.2, 0.4, 0.6, 0.8, 1]) add(nearestSubstantial(Math.max(1, Math.round(chapters.length * ratio))), "中后段跨度代表");
+  // 峰值重合时用均匀分位补足 15 章；短书返回全部有效正文单章。
+  const targetSampleCount = Math.min(15, candidatePool.length || chapters.length);
+  for (let index = 0; Object.keys(rationale).length < targetSampleCount && index < 30; index += 1) {
+    add(nearestSubstantial(Math.max(1, Math.round(1 + (chapters.length - 1) * index / 29))), "全书均匀补样");
   }
   return {
     sourceName: input.sourceName ?? "参考文本", chapterCount: chapters.length,

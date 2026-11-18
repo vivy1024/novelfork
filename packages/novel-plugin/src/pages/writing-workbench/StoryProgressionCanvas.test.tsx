@@ -108,9 +108,9 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     expect(screen.getByTestId("mock-progress-board").getAttribute("data-chapter")).toBe("29");
   });
 
-  it("画布只剩下一章 / 推进 / 故事树；「执行」已迁到写作视图，旧取值落到「下一章」不白屏", async () => {
+  it("画布提供下一章 / 推进 / 大纲总览 / 故事树；「执行」已迁到写作视图，旧取值落到「下一章」不白屏", async () => {
     render(<StoryProgressionCanvas bookId="book-1" currentChapter={12} initialView="workflow" />);
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["下一章", "推进", "故事树"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["下一章", "推进", "大纲总览", "故事树"]);
     expect(screen.queryByRole("tab", { name: /执行/ })).toBeNull();
     // 旧的 workflow 取值（历史节点 / 外部传参）落到「下一章」，画布照常有内容
     await waitFor(() => expect(screen.getByTestId("mock-next-chapter")).toBeTruthy());

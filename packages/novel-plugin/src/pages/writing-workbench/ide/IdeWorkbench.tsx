@@ -15,7 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
-import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
+import { WorkbenchResourceTree, type ChapterAuditBadgeInfo } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 import { createLoreTreesNode, createMemoryCenterNode, createStoryProgressionNode, createToolSectionNodes, createWorkflowNode } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
@@ -32,6 +32,8 @@ import { SkillsAndStyleSidebarPanel } from "./SkillsAndStyleSidebarPanel";
 import { StyleDistillationWorkspace, type StyleDistillationFetchJson } from "./StyleDistillationWorkspace";
 import { StyleVaultPanel } from "./StyleVaultPanel";
 import { DissectLibraryPanel } from "../DissectLibraryPanel";
+import { ChapterDirectorySidebar } from "../ChapterDirectorySidebar";
+import { BookWorkflowStudio } from "../BookWorkflowStudio";
 import { CharactersAndLoreSidebarPanel, type EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
 import { storylineTabForCategory, type SidebarFocusRequest, type StorylineSubTab } from "./sidebar-tabs-model";
@@ -56,6 +58,8 @@ import { clearEditorState } from "./editor-state-cache";
 import { useWorkbenchDialogs } from "./use-workbench-dialogs";
 import { useWorkbenchLeaveGuard } from "../use-workbench-leave-guard";
 import { toast } from "@/components/ui/toast";
+import { useStyleTheme } from "@/hooks/use-style-theme";
+import { STYLE_THEMES } from "@/styles/style-themes";
 import {
   defaultIdePaneVisibility,
   IDE_CHAT_PANE_MIN_WIDTH,
@@ -160,6 +164,16 @@ function copyDestinationFor(sourcePath: string, targetDir: string): string {
 // ── Types ──────────────────────────────────────────────
 
 export type SidebarView = ViewId;
+export type StudioWorkbenchZone = "write" | "outline" | "workflow" | "lore" | "dissect" | "settings";
+
+const STUDIO_ZONE_TITLES: Readonly<Record<StudioWorkbenchZone, string>> = {
+  write: "写正文 & 伴随大纲",
+  outline: "大纲总览 & 故事推进",
+  workflow: "工作流无限画布 & 日志",
+  lore: "作品基础（设定/知识卡）",
+  dissect: "拆书库 & 双轨文风",
+  settings: "本书独立写作设置",
+};
 
 export interface WorkbenchOpenRequest {
   readonly bookId: string;
@@ -220,6 +234,12 @@ export interface IdeWorkbenchProps {
   /** 叙述者结果卡送回的选区改写候选；经 Canvas 传给候选章打开的编辑器。 */
   selectionCandidate?: SelectionCandidate | null;
   onDismissSelectionCandidate?: () => void;
+  /** v6 书房单栏模式：拆除内层 64px ActivityBar，与外层唯一书房侧栏的 6 大创作分区直接联动。 */
+  studioUnifiedSidebar?: boolean;
+  activeZone?: StudioWorkbenchZone;
+  onZoneChange?: (zone: StudioWorkbenchZone) => void;
+  /** 新建章节等资源落盘后通知上层静默重载工作区。 */
+  onResourceCreated?: () => void;
 }
 
 // ── ViewContainer 定义（VS Code 风格：每个 Sidebar 视图的元数据） ──
@@ -348,11 +368,28 @@ export function IdeWorkbench({
   runtimeFetch,
   selectionCandidate,
   onDismissSelectionCandidate,
+  studioUnifiedSidebar = false,
+  activeZone,
+  onZoneChange,
+  onResourceCreated,
 }: IdeWorkbenchProps) {
+  const { styleTheme, setStyleTheme } = useStyleTheme();
+  const [creatingChapter, setCreatingChapter] = useState(false);
+  const [dissectSubMode, setDissectSubMode] = useState<"dissect" | "style">("dissect");
   // --- Layout state ---
-  const [layoutMode, setLayoutMode] = useState<IdeLayoutMode>(() => initialIdeLayoutMode());
-  const [sidebarVisible, setSidebarVisible] = useState(() => defaultIdePaneVisibility(initialIdeLayoutMode()).sidebar);
-  const [chatVisible, setChatVisible] = useState(() => defaultIdePaneVisibility(initialIdeLayoutMode()).chat);
+  const resolveLayoutMode = useCallback(
+    (width: number): IdeLayoutMode => {
+      if (studioUnifiedSidebar && Number.isFinite(width) && width >= 1000) return "comfortable";
+      return ideLayoutModeFromWidth(width);
+    },
+    [studioUnifiedSidebar],
+  );
+  const initialMode = studioUnifiedSidebar
+    ? (typeof window === "undefined" || window.innerWidth >= 1220 ? "comfortable" : initialIdeLayoutMode(window.innerWidth, 212))
+    : initialIdeLayoutMode();
+  const [layoutMode, setLayoutMode] = useState<IdeLayoutMode>(initialMode);
+  const [sidebarVisible, setSidebarVisible] = useState(() => defaultIdePaneVisibility(initialMode).sidebar);
+  const [chatVisible, setChatVisible] = useState(() => defaultIdePaneVisibility(initialMode).chat);
   const sidebarVisibleRef = useRef(sidebarVisible);
   sidebarVisibleRef.current = sidebarVisible;
   const chatVisibleRef = useRef(chatVisible);
@@ -376,7 +413,7 @@ export function IdeWorkbench({
     const host = layoutHostRef.current;
     if (!host) return;
     const applyWidth = (width: number) => {
-      const nextMode = ideLayoutModeFromWidth(width);
+      const nextMode = resolveLayoutMode(width);
       if (nextMode === layoutModeRef.current) return;
       layoutModeRef.current = nextMode;
       setLayoutMode(nextMode);
@@ -392,7 +429,7 @@ export function IdeWorkbench({
     });
     observer.observe(host);
     return () => observer.disconnect();
-  }, []);
+  }, [resolveLayoutMode]);
   // 写作视图「一键修」跳设置时要落到具体分区（如 Writing Skills），不是只打开长表单。
   const [settingsSection, setSettingsSection] = useState<BookSettingsSection | undefined>(undefined);
   const [dissectOpen, setDissectOpen] = useState(false);
@@ -633,10 +670,46 @@ export function IdeWorkbench({
   const fileTree = useBookFileTree(bookId, Boolean(bookId));
   const refreshFileTree = fileTree.refresh;
   const resourceFileNodes = fileTree.nodes;
+  const [chapterAuditSummary, setChapterAuditSummary] = useState<Record<number, ChapterAuditBadgeInfo>>({});
+
+  const loadChapterAuditSummary = useCallback(async () => {
+    if (!bookId) {
+      setChapterAuditSummary({});
+      return;
+    }
+    try {
+      const fetcher = runtimeFetch ?? (async (input: string) => {
+        const res = await fetch(input);
+        if (!res.ok) return {};
+        return res.json();
+      });
+      const payload = await fetcher(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/audit-issues/summary`) as {
+        chapters?: Array<{ chapterNumber?: unknown; issueCount?: unknown; criticalCount?: unknown; stale?: unknown }>;
+      } | null;
+      const next: Record<number, ChapterAuditBadgeInfo> = {};
+      for (const item of payload?.chapters ?? []) {
+        if (typeof item.chapterNumber === "number" && Number.isInteger(item.chapterNumber) && item.chapterNumber > 0) {
+          next[item.chapterNumber] = {
+            issueCount: typeof item.issueCount === "number" ? item.issueCount : 0,
+            criticalCount: typeof item.criticalCount === "number" ? item.criticalCount : 0,
+            stale: item.stale === true,
+          };
+        }
+      }
+      setChapterAuditSummary(next);
+    } catch {
+      // 审计摘要失败不阻塞资源树展示
+    }
+  }, [bookId, runtimeFetch]);
+
+  useEffect(() => {
+    void loadChapterAuditSummary();
+  }, [loadChapterAuditSummary]);
 
   useWritingProgressRefresh(bookId, () => {
     void loadLoreSections();
     refreshFileTree();
+    void loadChapterAuditSummary();
   });
 
   // 有正文章节 → 自动跳过建书引导
@@ -807,20 +880,27 @@ export function IdeWorkbench({
     const generation = fileReadGenerationRef.current;
     const controller = new AbortController();
     fileReadControllersRef.current.add(controller);
-    fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`请求失败：${response.status}`);
-        return response.json() as Promise<{ content?: string }>;
-      })
+    const readUrl = `/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`;
+    const readPromise = runtimeFetch
+      ? (runtimeFetch(readUrl, { signal: controller.signal }) as Promise<{ content?: string }>)
+      : fetch(readUrl, { signal: controller.signal }).then(async (response) => {
+          if (!response.ok) throw new Error(`请求失败：${response.status}`);
+          return response.json() as Promise<{ content?: string }>;
+        });
+    readPromise
       .then((data) => {
         if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
-        const loaded: WorkbenchResourceNode = { ...node, content: data.content ?? "" };
+        const loaded: WorkbenchResourceNode = {
+          ...node,
+          content: data?.content ?? "",
+          metadata: { ...(node.metadata ?? {}), detailSource: "detail" },
+        };
         setLoadedFiles(prev => new Map(prev).set(cacheKey, loaded));
       })
       .catch(() => { /* ignore aborted/stale reads */ })
       .finally(() => fileReadControllersRef.current.delete(controller));
     return () => controller.abort();
-  }, [activeNode, bookId, loadedFiles]);
+  }, [activeNode, bookId, loadedFiles, runtimeFetch]);
 
   // 所有关闭入口共用确认；只关闭发起时的目标，不把等待弹窗期间新开的标签算进去。
   const handleCloseTabs = useCallback((tabIds: readonly string[]) => {
@@ -853,7 +933,25 @@ export function IdeWorkbench({
     ideTabsRef.current.tabs.filter(tab => !tab.dirty && !tab.pinned).map(tab => tab.id),
   ), [handleCloseTabs]);
 
-  const handleOpen = useCallback((node: WorkbenchResourceNode) => {
+  const handleOpen = useCallback((rawNode: WorkbenchResourceNode) => {
+    // 若点开的是 file:chapters/... 镜像节点，而 resourceMap 里已有同章节号的正式 chapter:N 节点，
+    // 统一归一到正式 chapter:N，避免同一章开出两个标签页。
+    const node = (() => {
+      if (rawNode.kind === "chapter" && rawNode.id.startsWith("file:")) {
+        const chNum = typeof rawNode.metadata?.chapterNumber === "number"
+          ? rawNode.metadata.chapterNumber
+          : (() => {
+              const p = String(rawNode.metadata?.filePath ?? rawNode.path ?? "");
+              const m = p.match(/(?:^|[\\/])(\d{1,6})[_-]/);
+              return m ? Number(m[1]) : undefined;
+            })();
+        if (typeof chNum === "number" && chNum > 0) {
+          const canonical = resourceMap.get(`chapter:${chNum}`);
+          if (canonical) return canonical;
+        }
+      }
+      return rawNode;
+    })();
     // 核心不变量：Tab 按 toTabView(node) 归属到对应工作区，而 EditorTabs/主区只渲染
     // 当前 ActivityBar 视图的 tab。因此打开后必须把侧栏切到 tab 归属的工作区，
     // 否则跨视图点击（写作页/搜索/故事推进里点角色卡、章节、伏笔等）tab 隐身，
@@ -880,20 +978,27 @@ export function IdeWorkbench({
       const generation = fileReadGenerationRef.current;
       const controller = new AbortController();
       fileReadControllersRef.current.add(controller);
-      void fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`, { signal: controller.signal })
-        .then(async (response) => {
-          if (!response.ok) throw new Error(`请求失败：${response.status}`);
-          return response.json() as Promise<{ content?: string }>;
-        })
+      const readUrl = `/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`;
+      const readPromise = runtimeFetch
+        ? (runtimeFetch(readUrl, { signal: controller.signal }) as Promise<{ content?: string }>)
+        : fetch(readUrl, { signal: controller.signal }).then(async (response) => {
+            if (!response.ok) throw new Error(`请求失败：${response.status}`);
+            return response.json() as Promise<{ content?: string }>;
+          });
+      void readPromise
         .then((data) => {
           if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
-          let content = data.content ?? "";
+          let content = data?.content ?? "";
           // 性能保护:超过 500KB 的文件截断显示,避免 TipTap 卡死
           const MAX_CHARS = 500_000;
           if (content.length > MAX_CHARS) {
             content = content.slice(0, MAX_CHARS) + `\n\n---\n注意：文件过大（${(content.length / 1000).toFixed(0)}K 字符），仅显示前 ${MAX_CHARS / 1000}K。请使用外部编辑器打开完整文件。`;
           }
-          const loaded: WorkbenchResourceNode = { ...node, content };
+          const loaded: WorkbenchResourceNode = {
+            ...node,
+            content,
+            metadata: { ...(node.metadata ?? {}), detailSource: "detail" },
+          };
           const cacheKey = loadedFileKey(bookId, node.id);
           setLoadedFiles(prev => new Map(prev).set(cacheKey, loaded));
           // 章节是全书主对象：从哪个工作区点开，tab 就落在哪个工作区，
@@ -925,7 +1030,7 @@ export function IdeWorkbench({
     // 章节同上：留在点开它的工作区（资源树里的章节点开时当前视图本就是资源，行为不变）。
     if (node.capabilities.open) revealTab(toTabKind(node), node.kind === "chapter" ? activeViewRef.current : toTabView(node));
     onOpen(node);
-  }, [onOpen, bookId, showPanel]);
+  }, [onOpen, bookId, showPanel, resourceMap, runtimeFetch]);
 
   // 不看 selectedNode：它在后台刷新、保存后都会换成新对象，据它重开会把侧栏拽回资源所在视图。
   const handledOpenRequestRef = useRef<number | null>(null);
@@ -1006,19 +1111,29 @@ export function IdeWorkbench({
     }
   }, [nodes, fileTree.nodes, handleOpen]);
 
-  // --- URL 参数驱动面板（?panel=foreshadowing 等） ---
-  const urlPanelConsumedRef = useRef(false);
+  // --- URL 参数驱动面板（?panel=foreshadowing 或 ?panel=settings） ---
+  const urlPanelConsumedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!bookId || urlPanelConsumedRef.current) return;
+    if (!bookId) return;
     let panelId: string | null = null;
     try {
       panelId = new URLSearchParams(window.location.search).get("panel");
     } catch { /* non-URL env */ }
-    if (!panelId) return;
-    urlPanelConsumedRef.current = true;
-    const nodeId = `tool:${panelId}`;
-    const toolNode = resourceMap.get(nodeId);
-    if (toolNode) {
+    if (!panelId) {
+      urlPanelConsumedRef.current = null;
+      return;
+    }
+    const requestKey = `${bookId}:${panelId}`;
+    if (urlPanelConsumedRef.current === requestKey) return;
+    if (panelId === "settings") {
+      urlPanelConsumedRef.current = requestKey;
+      setSettingsSection(undefined);
+      updateShowSettings(true);
+    } else {
+      const nodeId = `tool:${panelId}`;
+      const toolNode = resourceMap.get(nodeId);
+      if (!toolNode) return;
+      urlPanelConsumedRef.current = requestKey;
       handleOpen(toolNode);
     }
     // Clean up the URL parameter without triggering a page reload
@@ -1600,21 +1715,47 @@ export function IdeWorkbench({
           await fetch(`/api/books/${encodeURIComponent(bookId)}/chapters`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: targetTitle,
-              content: node.content ? `# ${targetTitle}\n\n${node.content}` : `# ${targetTitle}\n\n`,
-            }),
+            body: JSON.stringify({ title: targetTitle }),
           }),
           "创建手稿章节失败",
         );
-        const chapterData = await createRes.json() as { chapter?: { id: string; chapterNumber?: number; title?: string } };
+        const chapterData = await createRes.json() as {
+          chapter?: {
+            id: string;
+            chapterNumber?: number;
+            title?: string;
+            path?: string;
+            metadata?: { chapterNumber?: number };
+          };
+        };
+        const createdChapter = chapterData.chapter;
+        const parsedNumber =
+          typeof createdChapter?.chapterNumber === "number"
+            ? createdChapter.chapterNumber
+            : typeof createdChapter?.metadata?.chapterNumber === "number"
+              ? createdChapter.metadata.chapterNumber
+              : (() => {
+                  const m = String(createdChapter?.id ?? "").match(/^chapter:(\d+)$/);
+                  return m ? Number(m[1]) : undefined;
+                })();
+        if (node.content && typeof parsedNumber === "number" && parsedNumber > 0) {
+          await ensureOk(
+            await fetch(`/api/books/${encodeURIComponent(bookId)}/chapters/${parsedNumber}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: `# ${targetTitle}\n\n${node.content}` }),
+            }),
+            "写入提拔章节内容失败",
+          );
+        }
         toast("已提拔为手稿章节", "success");
         refreshFileTree();
+        onResourceCreated?.();
 
         // T3 身份链回写：把新章号写进大纲条目 fields.targetChapterNumber，
         // 大纲与章节从此可互相推导（drafted 徽标、防重复提拔）。失败不阻断已建章节。
         const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : undefined;
-        const promotedChapterNumber = chapterData.chapter?.chapterNumber;
+        const promotedChapterNumber = parsedNumber;
         if (entryId && typeof promotedChapterNumber === "number") {
           try {
             const encodedEntry = encodeURIComponent(entryId);
@@ -1645,13 +1786,22 @@ export function IdeWorkbench({
         }
 
         // 自动定位并切到写作视图
-        showPanel("write");
+        onZoneChange?.("write");
+        showPanel(studioUnifiedSidebar ? "resources" : "write");
         setSidebarVisible(true);
-        if (chapterData.chapter?.id) {
+        if (createdChapter?.id) {
+          const normalizedId = createdChapter.id.startsWith("chapter:") ? createdChapter.id : `chapter:${createdChapter.id}`;
           handleOpen({
-            id: `chapter:${chapterData.chapter.id}`,
+            id: normalizedId,
             kind: "chapter",
-            title: chapterData.chapter.title ?? targetTitle,
+            title: createdChapter.title ?? targetTitle,
+            ...(createdChapter.path ? { path: createdChapter.path } : {}),
+            metadata: {
+              bookId,
+              isChapter: true,
+              ...(typeof promotedChapterNumber === "number" ? { chapterNumber: promotedChapterNumber } : {}),
+              ...(createdChapter.path ? { filePath: createdChapter.path } : {}),
+            },
             capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
           });
         }
@@ -1663,7 +1813,7 @@ export function IdeWorkbench({
         });
       }
     }
-  }, [bookId, fileClipboard, refreshFileTree, setSplitNodeId, handleOpen, showPanel, confirmDialog, promptDialog, alertDialog]);
+  }, [bookId, fileClipboard, refreshFileTree, onResourceCreated, onZoneChange, studioUnifiedSidebar, setSplitNodeId, handleOpen, showPanel, confirmDialog, promptDialog, alertDialog]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1686,7 +1836,158 @@ export function IdeWorkbench({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeNode, handleResourceAction]);
 
-  // 作品总览（新书时是建书十一问）：「资源」视图没有激活标签时显示。
+  // 作品总览（新书时是书房起笔案头或建书十一问）：「资源」视图没有激活标签时显示。
+  const effectiveStudioZone: StudioWorkbenchZone = activeZone ?? "write";
+
+  const handleQuickCreateChapter = useCallback(async () => {
+    if (!bookId || creatingChapter) return;
+    setCreatingChapter(true);
+    try {
+      const nextNum = (() => {
+        let maxNum = 0;
+        const walk = (items: readonly WorkbenchResourceNode[]) => {
+          for (const item of items) {
+            if (item.kind === "chapter") {
+              const num = typeof item.metadata?.chapterNumber === "number" ? item.metadata.chapterNumber : 0;
+              if (num > maxNum) maxNum = num;
+            }
+            if (item.children) walk(item.children);
+          }
+        };
+        walk(nodes);
+        walk(fileTree.nodes);
+        return maxNum + 1;
+      })();
+      const defaultTitle = nextNum === 1 ? "起笔开篇" : "新章节";
+      const createUrl = `/api/books/${encodeURIComponent(bookId)}/chapters`;
+      const createInit: RequestInit = {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: defaultTitle }),
+      };
+      const payload = (runtimeFetch
+        ? await runtimeFetch(createUrl, createInit)
+        : await (await ensureOk(await fetch(createUrl, createInit), "新建章节失败")).json()) as {
+        chapter?: {
+          id: string;
+          title?: string;
+          path?: string;
+          chapterNumber?: number;
+          metadata?: { chapterNumber?: number };
+        };
+      };
+      const created = payload.chapter;
+      refreshFileTree();
+      onResourceCreated?.();
+      dispatchWritingProgress({ reason: "chapter-create", bookId });
+      if (created?.id) {
+        const normalizedId = created.id.startsWith("chapter:") ? created.id : `chapter:${created.id}`;
+        const chapterNum =
+          typeof created.chapterNumber === "number"
+            ? created.chapterNumber
+            : typeof created.metadata?.chapterNumber === "number"
+              ? created.metadata.chapterNumber
+              : nextNum;
+        const cleanTitle = (created.title ?? defaultTitle).replace(/^第\s*\d+\s*章\s*/u, "").trim() || defaultTitle;
+        const nextNode: WorkbenchResourceNode = {
+          id: normalizedId,
+          kind: "chapter",
+          title: `第${chapterNum}章 ${cleanTitle}`,
+          content: "",
+          ...(created.path ? { path: created.path } : {}),
+          metadata: {
+            bookId,
+            isChapter: true,
+            detailSource: "detail",
+            chapterNumber: chapterNum,
+            ...(created.path ? { filePath: created.path } : {}),
+          },
+          capabilities: {
+            open: true,
+            readonly: false,
+            unsupported: false,
+            edit: true,
+            delete: true,
+            apply: false,
+          },
+        };
+        setLoadedFiles((prev) => new Map(prev).set(loadedFileKey(bookId, normalizedId), nextNode));
+        onZoneChange?.("write");
+        showPanel("resources");
+        handleOpen(nextNode);
+      }
+      toast("已新建章节并铺开稿纸", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "新建章节失败", "error");
+    } finally {
+      setCreatingChapter(false);
+    }
+  }, [bookId, creatingChapter, nodes, fileTree.nodes, runtimeFetch, refreshFileTree, onResourceCreated, onZoneChange, showPanel, handleOpen]);
+
+  // 书房单栏模式：将外层 ShellSidebar 的 6 大创作分区映射到内部侧栏与主工作区
+  const appliedZoneKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!studioUnifiedSidebar) return;
+    const zoneKey = `${bookId ?? "global"}:${effectiveStudioZone}`;
+    if (appliedZoneKeyRef.current === zoneKey) return;
+    appliedZoneKeyRef.current = zoneKey;
+
+    if (effectiveStudioZone === "settings") {
+      setDissectOpen(false);
+      updateShowSettings(true);
+      return;
+    }
+    updateShowSettings(false);
+    if (effectiveStudioZone === "workflow") {
+      setDissectOpen(false);
+      return;
+    }
+    if (effectiveStudioZone === "dissect") {
+      if (dissectSubMode === "dissect") {
+        setDissectOpen(true);
+      } else {
+        setDissectOpen(false);
+        revealPanel("skills-style");
+      }
+      if (!idePanesUseOverlay(layoutModeRef.current)) setSidebarVisible(true);
+      return;
+    }
+    setDissectOpen(false);
+    if (effectiveStudioZone === "outline") {
+      revealPanel("storyline");
+      if (!idePanesUseOverlay(layoutModeRef.current)) setSidebarVisible(true);
+      if (bookId) {
+        const overviewNode = createStoryProgressionNode(bookId, "overview");
+        setLoadedFiles((previous) => new Map(previous).set(loadedFileKey(bookId, overviewNode.id), overviewNode));
+        ideTabsRef.current.openTab(overviewNode.id, overviewNode.title, toTabKind(overviewNode), "storyline");
+        onOpen(overviewNode);
+      }
+      return;
+    }
+    if (effectiveStudioZone === "lore") {
+      revealPanel("characters-lore");
+      if (!idePanesUseOverlay(layoutModeRef.current)) setSidebarVisible(true);
+      if (bookId && loreTreesNode && !ideTabsRef.current.tabs.some((t) => t.view === "characters-lore")) {
+        ideTabsRef.current.openTab(loreTreesNode.id, loreTreesNode.title, toTabKind(loreTreesNode), "characters-lore");
+        onOpen(loreTreesNode);
+      }
+      return;
+    }
+    // write 分区：使用 resources 承载章节标签，左二栏渲染纯正文章节目录 ChapterDirectorySidebar
+    revealPanel("resources");
+    if (!idePanesUseOverlay(layoutModeRef.current)) setSidebarVisible(true);
+  }, [studioUnifiedSidebar, effectiveStudioZone, dissectSubMode, bookId, loreTreesNode, onOpen, revealPanel]);
+
+  const pureChapterNodes = useMemo(() => {
+    const fromWorkspace = collectChapterTreeNodes(nodes);
+    return fromWorkspace.length > 0 ? fromWorkspace : chapterTreeNodes;
+  }, [nodes, chapterTreeNodes]);
+
+  const studioHideInnerSidebar =
+    studioUnifiedSidebar && (effectiveStudioZone === "workflow" || effectiveStudioZone === "settings");
+  const studioHideChatPane =
+    studioUnifiedSidebar && (effectiveStudioZone === "workflow" || effectiveStudioZone === "settings");
+
   const bookOverviewCanvas = (
     <WorkbenchCanvas
       node={null}
@@ -1701,8 +2002,21 @@ export function IdeWorkbench({
       jingweiActions={jingweiActions}
       toolbarSlotRef={toolbarSlotRef}
       onJumpToChapter={handleJumpToChapter}
-      onOpenWriteView={() => keybindingActions.switchView("write")}
-      onOpenStyleVault={handleOpenStyleVault}
+      onOpenWriteView={() => {
+        if (studioUnifiedSidebar) onZoneChange?.("write");
+        else keybindingActions.switchView("write");
+      }}
+      onOpenStyleVault={(ch) => {
+        if (studioUnifiedSidebar) {
+          setStyleVaultFocusChapter(ch);
+          setDissectSubMode("style");
+          setDissectOpen(false);
+          revealPanel("skills-style");
+          onZoneChange?.("dissect");
+        } else {
+          handleOpenStyleVault(ch);
+        }
+      }}
       onOpenJingweiEntry={handleOpenJingweiEntry}
       onOpenEntityDetail={handleOpenEntityFromGraph}
       onOpenEntityDrawer={handleOpenEntityDrawer}
@@ -1710,6 +2024,8 @@ export function IdeWorkbench({
       {...(activeSessionId ? { narratorId: activeSessionId } : {})}
       selectionCandidate={selectionCandidate}
       onDismissSelectionCandidate={onDismissSelectionCandidate}
+      studioCleanChrome={studioUnifiedSidebar}
+      {...(bookId ? { onCreateFirstChapter: () => void handleQuickCreateChapter() } : {})}
       onPromoteOutline={(outlineNode) => {
         void handleResourceAction({ type: "promote-outline", node: outlineNode });
       }}
@@ -1719,54 +2035,196 @@ export function IdeWorkbench({
   return (
     <>
       <div
-        className="flex h-full w-full bg-background"
+        className={`flex h-full w-full ${studioUnifiedSidebar ? "flex-col" : ""} bg-background`}
         style={{ minHeight: 0 }}
         data-testid="ide-workbench"
         data-layout-mode={layoutMode}
         data-pane-overlay={overlayPanes ? "true" : "false"}
         data-sidebar-visible={sidebarVisible ? "true" : "false"}
         data-chat-visible={chatVisible ? "true" : "false"}
+        data-studio-unified={studioUnifiedSidebar ? "true" : undefined}
+        data-studio-zone={studioUnifiedSidebar ? effectiveStudioZone : undefined}
       >
-      {/* ── ActivityBar：64px 宽，每项「图标＋文字」，不用悬停也能认出每个入口；左侧 2px 强调条标当前项 ── */}
-      <div className="flex h-full w-16 shrink-0 flex-col justify-between items-center border-r border-border bg-secondary" data-nf-surface="rail">
-        <div className="flex flex-col items-center gap-0.5 pt-2">
-          {SIDEBAR_VIEWS.map(v => (
+      {studioUnifiedSidebar ? (
+        <header
+          className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-card/85 px-3"
+          data-testid="studio-book-topbar"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="nf-display truncate text-sm font-bold text-foreground">
+              《{bookRoot?.title ?? "未命名作品"}》
+            </span>
+            <span className="rounded bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary">
+              {STUDIO_ZONE_TITLES[effectiveStudioZone]}
+            </span>
+            {effectiveStudioZone === "dissect" ? (
+              <div
+                className="ml-1 inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-2xs"
+                role="tablist"
+                aria-label="拆书与文风切换"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={dissectSubMode === "dissect"}
+                  onClick={() => {
+                    setDissectSubMode("dissect");
+                    setDissectOpen(true);
+                  }}
+                  className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                    dissectSubMode === "dissect" ? "bg-card text-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  拆书库
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={dissectSubMode === "style"}
+                  onClick={() => {
+                    setDissectSubMode("style");
+                    setDissectOpen(false);
+                    revealPanel("skills-style");
+                  }}
+                  className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                    dissectSubMode === "style" ? "bg-card text-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  双轨文风与金库
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            {/* 三套书房和纸主题一键切换（对齐 GenUI v6 顶栏） */}
+            <div
+              className="inline-flex items-center rounded-md border border-border bg-muted/45 p-0.5 text-2xs"
+              role="radiogroup"
+              aria-label="书房和纸主题"
+              data-testid="studio-style-theme-switcher"
+            >
+              {STYLE_THEMES.map((meta) => {
+                const active = styleTheme === meta.id;
+                return (
+                  <button
+                    key={meta.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    title={meta.description}
+                    onClick={() => setStyleTheme(meta.id)}
+                    className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                      active
+                        ? "bg-primary text-primary-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {meta.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPaletteMode("files");
+                setPaletteOpen(true);
+              }}
+              className="flex h-7 items-center gap-1 rounded-md border border-border/80 bg-background px-2 text-2xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              title="搜索文件与设定 (Ctrl+P)"
+              aria-label="全局搜索"
+            >
+              <Search className="size-3.5" />
+              <span className="hidden sm:inline">搜索</span>
+            </button>
+
+            {effectiveStudioZone !== "workflow" && effectiveStudioZone !== "settings" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleFocusMode}
+                  aria-pressed={focusMode.active}
+                  className={`flex h-7 items-center gap-1 rounded-md border px-2 text-2xs transition-colors ${
+                    focusMode.active
+                      ? "border-primary bg-primary/10 font-medium text-primary"
+                      : "border-border/80 bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  }`}
+                  title={focusMode.active ? "退出专注模式" : "进入专注模式"}
+                >
+                  {focusMode.active ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                  <span className="hidden sm:inline">{focusMode.active ? "退出专注" : "专注"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleChatToggle}
+                  aria-pressed={chatVisible}
+                  className={`flex h-7 items-center gap-1 rounded-md border px-2 text-2xs transition-colors ${
+                    chatVisible
+                      ? "border-primary/40 bg-primary/10 font-medium text-primary"
+                      : "border-border/80 bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  }`}
+                  title="展开或收起右侧叙述者对话"
+                >
+                  <MessageSquare className="size-3.5" />
+                  <span className="hidden sm:inline">叙述者</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onZoneChange?.("write")}
+                className="flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 text-2xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <PenLine className="size-3.5" />
+                <span>回码字台</span>
+              </button>
+            )}
+          </div>
+        </header>
+      ) : (
+        /* ── ActivityBar：非单栏模式下保留 64px 入口栏（兼容独立 IDE 单测） ── */
+        <div className="flex h-full w-16 shrink-0 flex-col justify-between items-center border-r border-border bg-secondary" data-nf-surface="rail">
+          <div className="flex flex-col items-center gap-0.5 pt-2">
+            {SIDEBAR_VIEWS.map(v => (
+              <ActivityBarItem
+                key={v.id}
+                icon={v.icon}
+                label={v.label}
+                active={activeView === v.id && !dissectOpen && sidebarVisible && !showSettings}
+                onClick={() => { setShowSettings(false); handleViewClick(v.id); }}
+              />
+            ))}
+            <ActivityBarItem icon={BookMarked} label="拆书库" active={dissectOpen && !showSettings} onClick={() => {
+              void guardLeave(dirtyTabTitles(), () => { setShowSettings(false); setDissectOpen(true); setSidebarVisible(true); });
+            }} />
+          </div>
+          <div className="flex flex-col items-center gap-0.5 pb-2">
             <ActivityBarItem
-              key={v.id}
-              icon={v.icon}
-              label={v.label}
-              active={activeView === v.id && !dissectOpen && sidebarVisible && !showSettings}
-              onClick={() => { setShowSettings(false); handleViewClick(v.id); }}
+              icon={focusMode.active ? Minimize2 : Maximize2}
+              label={focusMode.active ? "退出专注" : "专注"}
+              active={focusMode.active}
+              onClick={toggleFocusMode}
             />
-          ))}
-          <ActivityBarItem icon={BookMarked} label="拆书库" active={dissectOpen && !showSettings} onClick={() => {
-            void guardLeave(dirtyTabTitles(), () => { setShowSettings(false); setDissectOpen(true); setSidebarVisible(true); });
-          }} />
+            <ActivityBarItem
+              icon={MessageSquare}
+              label="AI 对话"
+              active={chatVisible && !showSettings}
+              onClick={handleChatToggle}
+            />
+            <ActivityBarItem
+              icon={Settings}
+              label="写作设置"
+              active={showSettings}
+              onClick={() => { setSettingsSection(undefined); setShowSettings(v => !v); }}
+            />
+          </div>
         </div>
-        <div className="flex flex-col items-center gap-0.5 pb-2">
-          <ActivityBarItem
-            icon={focusMode.active ? Minimize2 : Maximize2}
-            label={focusMode.active ? "退出专注" : "专注"}
-            active={focusMode.active}
-            onClick={toggleFocusMode}
-          />
-          <ActivityBarItem
-            icon={MessageSquare}
-            label="AI 对话"
-            active={chatVisible && !showSettings}
-            onClick={handleChatToggle}
-          />
-          <ActivityBarItem
-            icon={Settings}
-            label="写作设置"
-            active={showSettings}
-            onClick={() => { setSettingsSection(undefined); setShowSettings(v => !v); }}
-          />
-        </div>
-      </div>
+      )}
 
       {/* ── Main Area（Sidebar + Editor + Chat） ── */}
-      <div ref={layoutHostRef} className="relative flex-1" style={{ minWidth: 0, minHeight: 0, height: "100%" }}>
+      <div ref={layoutHostRef} className="relative flex-1 min-h-0" style={{ minWidth: 0, minHeight: 0, height: studioUnifiedSidebar ? undefined : "100%" }}>
         <Allotment
           key={`outer-layout:${layoutStorageId}`}
           proportionalLayout={false}
@@ -1774,10 +2232,10 @@ export function IdeWorkbench({
           onDragEnd={handleOuterLayoutDragEnd}
         >
           {/* Sidebar — 纯 DOM 面板管理,React 通过 portal 渲染内容 */}
-          <Allotment.Pane minSize={150} preferredSize={260} visible={!overlayPanes && sidebarVisible}>
+          <Allotment.Pane minSize={150} preferredSize={studioUnifiedSidebar ? 215 : 260} visible={!overlayPanes && sidebarVisible && !studioHideInnerSidebar}>
             <div className="flex h-full flex-col border-r border-border bg-card">
-              {/* Sidebar 标题：只给未接 SidebarPageHead 的面板兜底（资源、搜索）；接了页头的面板自带标题，不再叠加。 */}
-              {!dissectOpen && !SIDEBAR_VIEWS.find(v => v.id === activeView)?.hasPageHead && (
+              {/* Sidebar 标题：只给未接 SidebarPageHead 的面板兜底（资源、搜索）；书房单栏写正文使用 ChapterDirectorySidebar 自带页头。 */}
+              {!dissectOpen && !(studioUnifiedSidebar && effectiveStudioZone === "write") && !SIDEBAR_VIEWS.find(v => v.id === activeView)?.hasPageHead && (
                 <div className="flex h-[35px] shrink-0 items-center border-b border-border px-2" data-testid="sidebar-view-title">
                   <span className="text-2xs font-semibold text-foreground uppercase tracking-wide pl-3">
                       {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源"}
@@ -1807,21 +2265,75 @@ export function IdeWorkbench({
                 />,
                 getContainer("write")!
               )}
-              {/* 资源：作品总览入口 + 文件树 + 分析工具（原「资源管理器」「分析工具」两个入口合并） */}
+              {/* 资源：书房单栏「写正文」使用纯正文章节目录 ChapterDirectorySidebar；独立 IDE 模式仍保留 ResourcesSidebarPanel */}
               {panelsReady && getContainer("resources") && createPortal(
-                <ResourcesSidebarPanel
-                  overviewActive={activeView === "resources" && !ideTabs.activeTabId && !showSettings}
-                  onShowOverview={handleShowBookOverview}
-                  files={resourceFileNodes.length > 0
-                    // 排序偏好沿用原资源管理器的存储键，作者选过的排序不丢。
-                    ? <WorkbenchResourceTree nodes={resourceFileNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
-                    : fileTree.loading
-                      ? <div className="flex items-center justify-center px-4 py-6"><span role="status" aria-live="polite" className="text-xs text-muted-foreground">正在扫描文件…</span></div>
-                      : fileTree.error
-                        ? <div className="flex items-center justify-center px-4 py-6 text-center"><span role="alert" className="break-words text-xs text-destructive">{fileTree.error}</span></div>
-                        : <div className="flex items-center justify-center px-4 py-6"><span className="text-xs text-muted-foreground">暂无文件</span></div>}
-                  tools={<WorkbenchResourceTree nodes={toolNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} toolbar={false} ariaLabel="分析工具" />}
-                />,
+                studioUnifiedSidebar ? (
+                  <ChapterDirectorySidebar
+                    bookId={bookId}
+                    chapterNodes={pureChapterNodes}
+                    selectedNodeId={activeNode?.id ?? null}
+                    chapterWordTarget={bookChapterWordTarget}
+                    chapterAuditSummary={chapterAuditSummary}
+                    creatingChapter={creatingChapter}
+                    onOpenChapter={handleOpen}
+                    {...(bookId ? { onCreateChapter: () => void handleQuickCreateChapter() } : {})}
+                    writePrepSlot={
+                      <WriteViewPanel
+                        bookId={bookId}
+                        callTool={writeViewCallTool}
+                        onSwitchView={(view) => keybindingActions.switchView(view)}
+                        onOpenSettings={handleOpenSettingsSection}
+                        onOpenLorePanel={handleOpenLorePanel}
+                        onSendToNarrator={onSendToNarrator}
+                        onRunWrite={handleRunWrite}
+                        chapterWordTarget={bookChapterWordTarget}
+                        onJumpToChapter={handleJumpToChapter}
+                        visible={!showSettings}
+                        hasChapters={bookHasChapters}
+                        onOpenNewBookGuide={handleShowBookOverview}
+                        {...(bookId ? { onOpenWorkflow: () => onZoneChange?.("workflow") } : {})}
+                        {...(bookId ? { onOpenStoryCanvas: () => onZoneChange?.("outline") } : {})}
+                      />
+                    }
+                    analysisToolsSlot={
+                      <WorkbenchResourceTree
+                        nodes={toolNodes}
+                        selectedNodeId={activeNode?.id ?? null}
+                        onOpen={handleOpen}
+                        onAction={handleResourceAction}
+                        toolbar={false}
+                        ariaLabel="分析工具"
+                      />
+                    }
+                    rawFilesSlot={
+                      resourceFileNodes.length > 0 ? (
+                        <WorkbenchResourceTree
+                          nodes={resourceFileNodes}
+                          selectedNodeId={activeNode?.id ?? null}
+                          onOpen={handleOpen}
+                          onAction={handleResourceAction}
+                          cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []}
+                          chapterAuditSummary={chapterAuditSummary}
+                          sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`}
+                        />
+                      ) : null
+                    }
+                  />
+                ) : (
+                  <ResourcesSidebarPanel
+                    overviewActive={activeView === "resources" && !ideTabs.activeTabId && !showSettings}
+                    onShowOverview={handleShowBookOverview}
+                    files={resourceFileNodes.length > 0
+                      // 排序偏好沿用原资源管理器的存储键，作者选过的排序不丢。
+                      ? <WorkbenchResourceTree nodes={resourceFileNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} chapterAuditSummary={chapterAuditSummary} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
+                      : fileTree.loading
+                        ? <div className="flex items-center justify-center px-4 py-6"><span role="status" aria-live="polite" className="text-xs text-muted-foreground">正在扫描文件…</span></div>
+                        : fileTree.error
+                          ? <div className="flex items-center justify-center px-4 py-6 text-center"><span role="alert" className="break-words text-xs text-destructive">{fileTree.error}</span></div>
+                          : <div className="flex items-center justify-center px-4 py-6"><span className="text-xs text-muted-foreground">暂无文件</span></div>}
+                    tools={<WorkbenchResourceTree nodes={toolNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} toolbar={false} ariaLabel="分析工具" />}
+                  />
+                ),
                 getContainer("resources")!
               )}
               {/* 角色与设定：彻底统一经纬设定与角色当前时态 */}
@@ -1897,7 +2409,7 @@ export function IdeWorkbench({
               {/* 主编辑区 */}
               <Allotment.Pane minSize={200}>
                 <div className="flex h-full flex-col overflow-hidden">
-                  {!showSettings && !dissectOpen && (
+                  {!showSettings && !dissectOpen && !(studioUnifiedSidebar && effectiveStudioZone === "workflow") && (
                     <EditorTabs
                       tabs={ideTabs.tabs}
                       activeTabId={ideTabs.activeTabId}
@@ -1914,19 +2426,38 @@ export function IdeWorkbench({
                       onSplitRight={(tabId) => setSplitNodeId(tabId)}
                     />
                   )}
-                  {dissectOpen && !showSettings ? <div className="border-b border-border px-3 py-1 text-2xs text-muted-foreground">{bookRoot?.title} › 拆书库</div> : <EditorBreadcrumbs bookTitle={bookRoot?.title} node={activeNode} view={activeView} showSettings={showSettings} onNavigate={handleBreadcrumbNavigate} canNavigate={canNavigateBreadcrumb} />}
+                  {studioUnifiedSidebar ? null : dissectOpen && !showSettings ? <div className="border-b border-border px-3 py-1 text-2xs text-muted-foreground">{bookRoot?.title} › 拆书库</div> : <EditorBreadcrumbs bookTitle={bookRoot?.title} node={activeNode} view={activeView} showSettings={showSettings} onNavigate={handleBreadcrumbNavigate} canNavigate={canNavigateBreadcrumb} />}
                   <div className="flex-1 min-h-0">
                   <EditorErrorBoundary>
-                    {showSettings && bookId ? (
+                    {studioUnifiedSidebar && effectiveStudioZone === "workflow" && bookId ? (
+                      <BookWorkflowStudio
+                        bookId={bookId}
+                        bookTitle={bookRoot?.title}
+                        {...(activeSessionId ? { narratorId: activeSessionId } : {})}
+                        onSendToNarrator={onSendToNarrator}
+                      />
+                    ) : showSettings && bookId ? (
                       <div className="h-full overflow-y-auto">
                         <BookSettingsPanel
                           bookId={bookId}
-                          onBack={() => { setShowSettings(false); setSettingsSection(undefined); }}
+                          onBack={() => {
+                            setShowSettings(false);
+                            setSettingsSection(undefined);
+                            if (studioUnifiedSidebar) onZoneChange?.("write");
+                          }}
                           {...(settingsSection ? { initialSection: settingsSection } : {})}
                           {...(bookSettingsSlot ? { projectSettingsSlot: bookSettingsSlot } : {})}
                           // 当前聚焦 / 本书规则各只有一处能改：设置页只显示，按钮跳到唯一的编辑处。
-                          onOpenCompass={() => { setSettingsSection(undefined); keybindingActions.switchView("write"); }}
-                          onOpenBookRules={() => { setSettingsSection(undefined); handleOpenLorePanel("rules"); }}
+                          onOpenCompass={() => {
+                            setSettingsSection(undefined);
+                            if (studioUnifiedSidebar) onZoneChange?.("write");
+                            else keybindingActions.switchView("write");
+                          }}
+                          onOpenBookRules={() => {
+                            setSettingsSection(undefined);
+                            if (studioUnifiedSidebar) onZoneChange?.("lore");
+                            handleOpenLorePanel("rules");
+                          }}
                           {...(onOpenWorkflows ? { onOpenWorkflows } : {})}
                         />
                       </div>
@@ -1960,8 +2491,21 @@ export function IdeWorkbench({
                               toolbarSlotRef={toolbarSlotRef}
                               isActive={tabId === ideTabs.activeTabId}
                               onJumpToChapter={handleJumpToChapter}
-                              onOpenWriteView={() => keybindingActions.switchView("write")}
-      onOpenStyleVault={handleOpenStyleVault}
+                              onOpenWriteView={() => {
+                                if (studioUnifiedSidebar) onZoneChange?.("write");
+                                else keybindingActions.switchView("write");
+                              }}
+                              onOpenStyleVault={(ch) => {
+                                if (studioUnifiedSidebar) {
+                                  setStyleVaultFocusChapter(ch);
+                                  setDissectSubMode("style");
+                                  setDissectOpen(false);
+                                  revealPanel("skills-style");
+                                  onZoneChange?.("dissect");
+                                } else {
+                                  handleOpenStyleVault(ch);
+                                }
+                              }}
                               onOpenJingweiEntry={handleOpenJingweiEntry}
                               onOpenEntityDetail={handleOpenEntityFromGraph}
                               onOpenEntityDrawer={handleOpenEntityDrawer}
@@ -1970,6 +2514,8 @@ export function IdeWorkbench({
                               selectionCandidate={selectionCandidate}
                               onDismissSelectionCandidate={onDismissSelectionCandidate}
                               onOpenResourceNode={handleOpen}
+                              studioCleanChrome={studioUnifiedSidebar}
+                              {...(bookId ? { onCreateFirstChapter: () => void handleQuickCreateChapter() } : {})}
                               onPromoteOutline={(outlineNode) => {
                                 void handleResourceAction({ type: "promote-outline", node: outlineNode });
                               }}
@@ -2041,10 +2587,11 @@ export function IdeWorkbench({
             </Allotment>
           </Allotment.Pane>
 
-          {/* Chat Panel（右侧辅助栏，类似 VS Code AuxiliaryBar） */}
-          <Allotment.Pane minSize={IDE_CHAT_PANE_MIN_WIDTH} preferredSize={320} visible={!overlayPanes && chatVisible}>
-            <div className="flex h-full flex-col border-l border-border bg-card">
+          {/* Chat Panel（右侧辅助栏，书房工作流/设置全屏工作区自动让位） */}
+          <Allotment.Pane minSize={IDE_CHAT_PANE_MIN_WIDTH} preferredSize={310} visible={!overlayPanes && chatVisible && !studioHideChatPane}>
+            <div className="flex h-full flex-col border-l border-border bg-card" data-testid="ide-chat-pane">
               <ChatHeader
+                studioClean={studioUnifiedSidebar}
                 sessions={bookSessions}
                 activeSessionId={activeSessionId}
                 onSwitchSession={onSwitchSession}
@@ -2102,9 +2649,10 @@ export function IdeWorkbench({
             <div ref={hostRef} className="flex-1 relative min-h-0" />
           </div>
         ) : null}
-        {overlayPanes && chatVisible ? (
+        {overlayPanes && chatVisible && !studioHideChatPane ? (
           <div className="absolute inset-y-0 right-0 z-30 flex w-[min(22rem,calc(100%_-_3rem))] flex-col border-l border-border bg-card shadow-lg" data-testid="ide-chat-overlay">
             <ChatHeader
+              studioClean={studioUnifiedSidebar}
               sessions={bookSessions}
               activeSessionId={activeSessionId}
               onSwitchSession={onSwitchSession}
@@ -2250,6 +2798,7 @@ function ResourcesSection({ title, children }: { title: string; children: ReactN
 // ── ChatHeader ──────────────────────────────────────────
 
 function ChatHeader({
+  studioClean = false,
   sessions,
   activeSessionId,
   onSwitchSession,
@@ -2257,6 +2806,7 @@ function ChatHeader({
   onSwitchToAgent,
   onClose,
 }: {
+  studioClean?: boolean;
   sessions?: readonly { id: string; title: string; updatedAt?: string }[];
   activeSessionId?: string | null;
   onSwitchSession?: (id: string) => void;
@@ -2276,9 +2826,18 @@ function ChatHeader({
   }, [sessions, searchQuery]);
 
   return (
-    <div className="relative shrink-0">
-      <div className="flex h-9 items-center border-b border-border px-3">
-        <span className="flex-1 truncate text-sm text-muted-foreground">{activeTitle}</span>
+    <div className="relative shrink-0" data-testid="ide-chat-header">
+      <div className={`flex h-9 items-center border-b border-border px-3 ${studioClean ? "bg-secondary/50" : ""}`}>
+        {studioClean ? (
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="truncate text-xs font-bold text-foreground">叙述者对话</span>
+            <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
+              纯聊天 + 工具卡片
+            </span>
+          </div>
+        ) : (
+          <span className="flex-1 truncate text-sm text-muted-foreground">{activeTitle}</span>
+        )}
         <div className="flex items-center gap-1">
           <button type="button" title="会话历史" aria-label="会话历史" onClick={() => { setShowHistory(v => !v); setSearchQuery(""); }}
             className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">

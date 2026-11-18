@@ -368,7 +368,7 @@ function normalizeChapters(input: StyleDistillationSourceInput): DistillableChap
 export async function resolveStyleDistillationInput(
   bookRoot: string,
   input: StyleDistillationSourceInput,
-): Promise<StyleDistillationSourceInput> {
+): Promise<{ readonly sourceName: string; readonly chapters: readonly DistillableChapter[] }> {
   const rawPath = typeof input.filePath === "string" ? input.filePath.trim() : "";
   if (rawPath && typeof input.text !== "string") {
     if (Array.isArray(input.chapters)) {

@@ -8,9 +8,12 @@ import {
   FolderPen,
   Plus,
   RefreshCw,
+  Settings,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
+
+import { BookCover } from "@/components/BookCover";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +54,19 @@ import type {
   RuntimeRebindBookWorkspaceResult,
 } from "../runtime/product-contract";
 
-type ManagedBook = Pick<RuntimeBookSummary, "id" | "title" | "status" | "manuscriptImportJobId">;
+type ManagedBook = Pick<
+  RuntimeBookSummary,
+  "id" | "title" | "status" | "manuscriptImportJobId" | "chapterWordCount" | "language" | "updatedAt"
+> & {
+  readonly platform?: string;
+};
+
+const PLATFORM_LABELS: Readonly<Record<string, string>> = {
+  tomato: "番茄",
+  feilu: "飞卢",
+  qidian: "起点",
+  other: "通用",
+};
 
 /**
  * 书架上给作者看的状态：可写（ready）是常态，不挂徽标；建书流程中途的各阶段统一叫「准备中」，
@@ -75,7 +90,7 @@ export interface BookManagementPageProps {
   readonly books: readonly ManagedBook[];
   readonly loading: boolean;
   readonly error: string | null;
-  readonly onNavigateToBook: (bookId: string) => void;
+  readonly onNavigateToBook: (bookId: string, panel?: "settings") => void;
   readonly onCreateBook: (input?: WorkspaceCreateInput) => Promise<void> | void;
   readonly onClaimLegacyBook: (
     bookId: string,
@@ -345,20 +360,29 @@ export function BookManagementPage({
           {books.map((book) => (
             <Card key={book.id} className="transition-shadow hover:shadow-md">
               <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="truncate">{book.title}</CardTitle>
-                  {book.manuscriptImportJobId ? (
-                    <Badge variant="secondary">导入中</Badge>
-                  ) : (() => {
-                    const label = bookShelfStatusLabel(book.status);
-                    return label ? (
-                      <Badge variant="secondary" data-testid="book-shelf-status">{label}</Badge>
-                    ) : null;
-                  })()}
+                <div className="flex items-start gap-3">
+                  <BookCover title={book.title} size="md" className="w-12 shrink-0" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="truncate">{book.title}</CardTitle>
+                      {book.manuscriptImportJobId ? (
+                        <Badge variant="secondary">导入中</Badge>
+                      ) : (() => {
+                        const label = bookShelfStatusLabel(book.status);
+                        return label ? (
+                          <Badge variant="secondary" data-testid="book-shelf-status">{label}</Badge>
+                        ) : null;
+                      })()}
+                    </div>
+                    <CardDescription className="truncate text-xs">
+                      {[
+                        book.platform ? PLATFORM_LABELS[book.platform] ?? book.platform : null,
+                        book.chapterWordCount ? `每章 ${book.chapterWordCount} 字` : null,
+                        book.id,
+                      ].filter(Boolean).join(" · ")}
+                    </CardDescription>
+                  </div>
                 </div>
-                <CardDescription className="truncate">
-                  {book.id}
-                </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 {book.manuscriptImportJobId && manuscriptImportEnabled ? (
@@ -376,6 +400,13 @@ export function BookManagementPage({
                   onClick={() => onNavigateToBook(book.id)}
                 >
                   打开工作台
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => onNavigateToBook(book.id, "settings")}
+                >
+                  <Settings data-icon="inline-start" />
+                  本书设置
                 </Button>
                 <Button
                   variant="outline"

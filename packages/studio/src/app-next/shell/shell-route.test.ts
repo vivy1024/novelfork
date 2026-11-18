@@ -21,6 +21,13 @@ describe("Agent Shell route parsing", () => {
   it("normalizes slashes, query strings, hashes, and encoded ids", () => {
     expect(parseShellRoute("next/narrators/session%201/?tab=chat#top")).toEqual({ kind: "narrator", sessionId: "session 1" });
     expect(parseShellRoute("/next/books/book%2Fpart")).toEqual({ kind: "book", bookId: "book/part" });
+    expect(parseShellRoute("/next/books/book-1?panel=settings")).toEqual({ kind: "book", bookId: "book-1", panel: "settings" });
+    expect(toShellPath({ kind: "book", bookId: "book-1", panel: "settings" })).toBe("/next/books/book-1?panel=settings");
+    expect(parseShellRoute("/next/books/book-1?zone=workflow")).toEqual({ kind: "book", bookId: "book-1", zone: "workflow" });
+    expect(toShellPath({ kind: "book", bookId: "book-1", zone: "workflow" })).toBe("/next/books/book-1?zone=workflow");
+    expect(parseShellRoute("/next/books/book-1?zone=settings")).toEqual({ kind: "book", bookId: "book-1", zone: "settings" });
+    expect(toShellPath({ kind: "book", bookId: "book-1", zone: "settings" })).toBe("/next/books/book-1?zone=settings");
+    expect(toShellPath({ kind: "book", bookId: "book-1", zone: "write" })).toBe("/next/books/book-1");
   });
 
   it("嵌入的 Runtime 原页保留入口内的子路径与查询串，原样来回", () => {

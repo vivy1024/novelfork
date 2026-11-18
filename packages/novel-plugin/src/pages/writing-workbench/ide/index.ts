@@ -1,4 +1,10 @@
-export { IdeWorkbench, type IdeWorkbenchProps, type WorkbenchFocusRequest, type WorkbenchOpenRequest } from "./IdeWorkbench";
+export {
+  IdeWorkbench,
+  type IdeWorkbenchProps,
+  type StudioWorkbenchZone,
+  type WorkbenchFocusRequest,
+  type WorkbenchOpenRequest,
+} from "./IdeWorkbench";
 export {
   WORKBENCH_VIEW_ARTIFACT_KIND,
   parseStorylineViewArtifact,

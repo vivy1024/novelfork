@@ -29,7 +29,7 @@ import {
   type CanvasSelection,
 } from "./workflow-canvas-model";
 import { WorkflowCanvas } from "./WorkflowCanvas";
-import { WorkflowInspector } from "./WorkflowInspector";
+import { WorkflowInspector, type SubagentOption } from "./WorkflowInspector";
 
 interface Explanation {
   readonly what: string;
@@ -77,10 +77,27 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
   const [saveError, setSaveError] = useState<{ message: string; explanation?: Explanation; conflict: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [customSubagents, setCustomSubagents] = useState<readonly SubagentOption[]>([]);
   // 自动排版、加节点后让画布重新适配视口。
   const [fitViewKey, setFitViewKey] = useState(0);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`${apiBase}/subagents`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { custom?: readonly { id?: unknown; nameZh?: unknown }[] } | null) => {
+        if (cancelled || !Array.isArray(body?.custom)) return;
+        setCustomSubagents(
+          body.custom
+            .filter((item): item is { id: string; nameZh: string } => typeof item?.id === "string" && typeof item?.nameZh === "string")
+            .map((item) => ({ id: item.id, nameZh: item.nameZh, isCustom: true })),
+        );
+      })
+      .catch(() => { /* 无自定义子代理或离线时仍保留内置列表 */ });
+    return () => { cancelled = true; };
+  }, [apiBase]);
 
   // 服务端版本变了（保存成功、重新载入）且本地没有未保存的修改时，换成新版本。
   useEffect(() => {
@@ -370,7 +387,15 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
           />
         </div>
         <aside className="max-h-[600px] min-w-[260px] flex-[1_1_260px] overflow-y-auto rounded-lg border p-3">
-          <WorkflowInspector recipe={working} issues={issues} selection={selection} editable onOps={applyOps} onSelect={setSelection} />
+          <WorkflowInspector
+            recipe={working}
+            issues={issues}
+            selection={selection}
+            editable
+            onOps={applyOps}
+            onSelect={setSelection}
+            customSubagents={customSubagents}
+          />
         </aside>
       </div>
     </section>

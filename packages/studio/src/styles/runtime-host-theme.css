@@ -128,3 +128,16 @@
   --mantine-color-dark-8: color-mix(in oklch, var(--background) 80%, black);
   --mantine-color-dark-9: color-mix(in oklch, var(--background) 60%, black);
 }
+
+/*
+  ── 书房内嵌叙述者面板净化（对齐 GenUI v6 蓝图） ──
+  小说书房右侧叙述者面板（data-book-chat-host="true"）只向作者呈现纯净对话与工具调用卡片：
+  1. 隐藏程序员视角的 Git 分支状态条（[data-git-slot]）；
+  2. 隐藏内嵌 Runtime NarratorHeaderLayout 的重复会话标题栏（会话切换已统一收在外层「叙述者对话」书房栏）。
+*/
+[data-book-chat-host="true"] [data-git-slot],
+[data-book-chat-host="true"] .dv-groupview > .dv-tabs-and-actions-container,
+[data-book-chat-host="true"] .dv-tabs-and-actions-container.dv-single-tab {
+  display: none !important;
+}
+

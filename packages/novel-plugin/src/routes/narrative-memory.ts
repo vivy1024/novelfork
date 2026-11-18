@@ -24,7 +24,11 @@ import {
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
 import { readChapterSettlementRecord, chapterContentFingerprint } from "../engine/narrative-memory/settlement-idempotency.js";
 import { ensureNarrativeMemorySchema, readLatestSettlementArtifact } from "../engine/narrative-memory/storage.js";
-import { readLatestAuditIssues, markChapterAuditStale } from "../engine/tools/health/audit-log-persist.js";
+import {
+  listLatestAuditIssueSummaries,
+  markChapterAuditStale,
+  readLatestAuditIssues,
+} from "../engine/tools/health/audit-log-persist.js";
 import { backfillNarrativeEventEntityIds } from "../engine/narrative-memory/entity-id-backfill.js";
 import { readBookSettlementFreshness } from "../engine/narrative-memory/settlement-freshness.js";
 import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
@@ -390,6 +394,16 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       return c.json({ ok: true, chapterNumber: chapter, exists: true, ...payload });
     } catch (error) {
       return c.json({ error: "audit-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  app.get(`${base}/audit-issues/summary`, (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const chapters = listLatestAuditIssueSummaries(storage(), bookId);
+      return c.json({ ok: true, chapters });
+    } catch (error) {
+      return c.json({ error: "audit-summary-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 

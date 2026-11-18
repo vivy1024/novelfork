@@ -50,6 +50,11 @@ function renderPage(defaultRecipeId: string | null = null, recipes: unknown[] = 
       recipeId: defaultRecipeId,
       recipeName: defaultRecipeId ? builtin.find((r) => r.id === defaultRecipeId)?.name ?? null : null,
     }),
+    "GET /subagents": () => ({ custom: [] }),
+    "POST /subagents": (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      return { ok: true, subagent: { id: "writer-custom", nameZh: body.nameZh, description: body.description, tools: body.tools, prompt: "" } };
+    },
     "PUT /workflow-default": (_url, init) => {
       const id = JSON.parse(String(init?.body)).recipeId as string | null;
       return { storedRecipeId: id, recipeId: id, recipeName: builtin.find((r) => r.id === id)?.name ?? null };
@@ -186,6 +191,19 @@ describe("工作流页：子代理一览", () => {
     // 名册新增的帮手自动出现在一览里
     for (const name of ["读者视角", "市场视角", "文风把关", "大纲推演", "通用帮手"]) expect(roster.textContent).toContain(name);
     expect(roster.textContent).not.toContain("nf-");
+  });
+
+  it("支持从内置子代理复制新建定制子代理并保存", async () => {
+    const calls = renderPage();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "子代理" }));
+    fireEvent.click(screen.getByRole("tab", { name: "子代理" }));
+    const copyBtn = await screen.findByTestId("copy-subagent-nf-writer");
+    fireEvent.click(copyBtn);
+    const nameInput = screen.getByLabelText("定制子代理名称") as HTMLInputElement;
+    expect(nameInput.value).toContain("执笔");
+    fireEvent.change(nameInput, { target: { value: "爽点执笔（定制）" } });
+    fireEvent.click(screen.getByTestId("save-custom-subagent"));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/subagents"))).toBe(true));
   });
 });
 

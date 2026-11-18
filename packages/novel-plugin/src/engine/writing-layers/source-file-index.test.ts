@@ -152,6 +152,25 @@ describe("buildMechanicalBookIndex 零 Token 机械索引与全站上限", () =>
     expect([...new Set(rec)].sort((a, b) => a - b)).toEqual(rec);
   });
 
+  it("过滤 120 字抽奖结果/请假条等极短非正文单章，不让小分母虚高特征峰值混入推荐章", () => {
+    const chs: string[] = [];
+    for (let i = 1; i <= 20; i += 1) {
+      if (i === 8) {
+        // 仅 90 字的中奖公告，密集出现数字与灵石词
+        chs.push("第8章 抽奖结果公示\n恭喜书友中奖 100 枚灵石、50 块灵石、月票罚款报酬结算！");
+      } else if (i === 12) {
+        // 仅 80 字的请假条，密集出现制度词
+        chs.push("第12章 请假一天\n按照合同条款，今日考核请假，明日补更规矩不变。");
+      } else {
+        chs.push(`第${i}章 正常正文${i}\n${"山风吹过青石板，陈默核对着本月的 30 枚灵石收支账单与宗门考核条例。".repeat(40)}`);
+      }
+    }
+    const index = buildMechanicalBookIndex({ sourceName: "测试过滤短章", text: chs.join("\n\n") });
+    expect(index.recommendedChapters.chapterNumbers).not.toContain(8);
+    expect(index.recommendedChapters.chapterNumbers).not.toContain(12);
+    expect(index.topChapters.bill.map((c) => c.number)).not.toContain(8);
+  });
+
   it("全站解限常量核对：file-parser 5000 章、manuscript-import 60MB/6000 章、声线扫描 500 章", () => {
     expect(MAX_CHAPTERS).toBe(5_000);
     expect(MAX_MANUSCRIPT_BYTES).toBe(60 * 1024 * 1024);

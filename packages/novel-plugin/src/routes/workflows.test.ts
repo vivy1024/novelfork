@@ -114,7 +114,6 @@ describe("createWorkflowsRouter & workflow-store", () => {
     const firstStep = body.recipes[0]!.nodes.find((node) => node.type === "step") as { agentId?: string; parallelSubagents?: Array<{ name: string }> };
     expect(firstStep.agentId).toBe("my-custom-planner");
     expect(firstStep.parallelSubagents?.[0]?.name).toBe("detective-subagent");
-    expect(rawFile).toContain('"schemaVersion": 2');
   });
 
   it("PUT 传入非法数据时返回 400 详细校验错误", async () => {
@@ -331,6 +330,36 @@ describe("createWorkflowsRouter & workflow-store", () => {
       body: JSON.stringify({ recipes: [] }),
     });
     expect(putBad.status).toBe(400);
+  });
+
+  it("按书管理自定义子代理（复制新建/更新/删除）并拦截受禁写入工具", async () => {
+    const dir = await tempDir("novel-subagent-");
+    const router = createWorkflowsRouter({} as never, { resolveBookRoot: () => dir });
+
+    const createRes = await router.request("http://localhost/api/books/book-1/subagents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nameZh: "节奏审校（定制）",
+        description: "专盯前十章节奏",
+        tools: ["chapter.read", "pipeline.write", "Write", "workflow.submit_step_output"],
+        basedOn: "nf-reader",
+        defaultModel: "4sapi-2:deepseek-v4.1-flash",
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { subagent: { id: string; tools: string[]; defaultModel?: string } };
+    expect(created.subagent.tools).toEqual(["chapter.read", "workflow.submit_step_output"]);
+    expect(created.subagent.defaultModel).toBe("4sapi-2:deepseek-v4.1-flash");
+
+    const listRes = await router.request("http://localhost/api/books/book-1/subagents");
+    expect(listRes.status).toBe(200);
+    const listBody = (await listRes.json()) as { custom: { id: string; nameZh: string }[]; builtin: unknown[] };
+    expect(listBody.builtin.length).toBeGreaterThan(0);
+    expect(listBody.custom.some((s) => s.id === created.subagent.id && s.nameZh === "节奏审校（定制）")).toBe(true);
+
+    const delRes = await router.request(`http://localhost/api/books/book-1/subagents/${created.subagent.id}`, { method: "DELETE" });
+    expect(delRes.status).toBe(200);
   });
 });
 

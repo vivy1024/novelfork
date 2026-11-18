@@ -161,7 +161,7 @@ function TreeNodeView({ id, data, positionAbsoluteX, positionAbsoluteY }: NodePr
   const hasChildren = node.children.length > 0;
   return (
     <div
-      className={`relative flex items-center overflow-hidden rounded-md border bg-card shadow-sm ${selected ? "border-primary ring-1 ring-primary" : matched ? "border-warning/70 ring-1 ring-warning/60" : "border-border"}`}
+      className={`nf-canvas-node-card relative flex items-center overflow-hidden rounded-md border bg-card shadow-sm ${selected ? "border-primary ring-1 ring-primary nf-node-border-beam" : matched ? "border-warning/70 ring-1 ring-warning/60" : "border-border"}`}
       style={{ width: TIDY_NODE_WIDTH, height: TIDY_NODE_HEIGHT }}
       data-testid={`tidy-tree-row-${id}`}
       data-x={positionAbsoluteX.toFixed(1)}
@@ -221,7 +221,7 @@ function Toolbar({ hasOffsets, onResetLayout }: { hasOffsets: boolean; onResetLa
         <Button type="button" size="xs" variant="ghost" className="h-6 w-6 p-0" aria-label="放大" data-testid="tidy-tree-zoom-in" onClick={() => void zoomTo(Math.min(MAX_ZOOM, zoom * ZOOM_STEP))}>
           <Plus className="size-3" />
         </Button>
-        <Button type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-2xs" aria-label="适应视图" title="整棵树放进视口" data-testid="tidy-tree-reset" onClick={() => void fitView({ padding: 0.1, maxZoom: 1, duration: 200 })}>
+        <Button type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-2xs" aria-label="适应视图" title="整棵树放进视口" data-testid="tidy-tree-reset" onClick={() => void fitView({ padding: 0.1, maxZoom: 1, duration: 380 })}>
           <LocateFixed className="size-3" />
         </Button>
         {hasOffsets ? (
@@ -342,7 +342,7 @@ function TidyTreeFlow(props: TidyTreeCanvasProps) {
     <div
       ref={containerRef}
       // React Flow 的内容是绝对定位的，撑不开高度：画布必须自己填满父容器。
-      className={`relative h-full min-h-[16rem] w-full overflow-hidden ${className ?? ""}`}
+      className={`nf-canvas-animated relative h-full min-h-[16rem] w-full overflow-hidden ${className ?? ""}`}
       data-testid="tidy-tree-canvas"
       data-kind={forest.kind}
       aria-label={forest.root.label}

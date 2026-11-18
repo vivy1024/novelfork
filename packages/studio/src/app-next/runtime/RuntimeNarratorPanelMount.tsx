@@ -105,6 +105,7 @@ export function RuntimeNativeNarratorPanelMount({
 			className="h-full min-h-0 w-full overflow-hidden"
 			data-testid="native-runtime-narrator-panel"
 			data-narrator-id={narratorId}
+			data-book-chat-host={bookId ? "true" : undefined}
 		>
 			<Suspense
 				fallback={

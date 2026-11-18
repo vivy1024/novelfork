@@ -575,16 +575,16 @@ export function DistillFileIndexPicker({
           {/* 紧凑可勾选章节表 */}
           <CardContent className="space-y-3 pt-3">
             {filteredChapters.length > 0 ? (
-              <div className="max-h-80 overflow-y-auto rounded-lg border border-border/70">
-                <table className="w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10 border-b border-border bg-muted/90 backdrop-blur-xs">
+              <div className="max-h-80 overflow-x-auto overflow-y-auto rounded-lg border border-border/70 bg-card">
+                <table className="w-full min-w-[640px] border-collapse text-left text-xs">
+                  <thead className="sticky top-0 z-10 border-b border-border bg-muted">
                     <tr className="text-muted-foreground">
-                      <th scope="col" className="w-10 px-3 py-2 font-medium">选</th>
-                      <th scope="col" className="w-20 px-2 py-2 font-medium">章号</th>
-                      <th scope="col" className="px-2 py-2 font-medium">章节标题与采样依据</th>
-                      <th scope="col" className="w-24 px-2 py-2 text-right font-medium">字数</th>
-                      <th scope="col" className="w-32 px-3 py-2 font-medium">对白占比</th>
-                      <th scope="col" className="w-48 px-3 py-2 font-medium">主导特征</th>
+                      <th scope="col" className="w-10 whitespace-nowrap px-3 py-2 font-medium">选</th>
+                      <th scope="col" className="w-24 whitespace-nowrap px-2.5 py-2 font-medium">章号</th>
+                      <th scope="col" className="min-w-44 px-2.5 py-2 font-medium">章节标题与采样依据</th>
+                      <th scope="col" className="w-20 whitespace-nowrap px-2.5 py-2 text-right font-medium">字数</th>
+                      <th scope="col" className="w-32 whitespace-nowrap px-3 py-2 font-medium">对白占比</th>
+                      <th scope="col" className="w-44 whitespace-nowrap px-3 py-2 font-medium">主导特征</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
@@ -611,10 +611,10 @@ export function DistillFileIndexPicker({
                               className="size-3.5 cursor-pointer accent-primary"
                             />
                           </td>
-                          <td className="px-2 py-2 align-middle font-mono text-muted-foreground tabular-nums">
+                          <td className="whitespace-nowrap px-2.5 py-2 align-middle font-mono text-muted-foreground tabular-nums">
                             第 {chapter.number} 章
                           </td>
-                          <td className="px-2 py-2 align-middle">
+                          <td className="px-2.5 py-2 align-middle">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="font-medium text-foreground">{chapter.title}</span>
                               {isRec && (

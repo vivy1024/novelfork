@@ -25,7 +25,7 @@ const hiddenHandle = "!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent";
 function LaneView({ data }: NodeProps & { data: CausalLaneNodeData }) {
   return (
     <div
-      className={`h-full w-full border-y border-dashed ${data.striped ? "bg-muted/40" : "bg-transparent"} ${data.dropTarget ? "!bg-primary/10 outline outline-2 outline-primary/50" : ""}`}
+      className={`h-full w-full border-y border-dashed transition-colors duration-200 ${data.striped ? "bg-muted/40" : "bg-transparent"} ${data.dropTarget ? "!bg-primary/12 outline outline-2 outline-primary/60" : ""}`}
       style={{ borderColor: withAlpha(data.color, 20) }}
       data-testid={`causal-lane-${data.lane.id}`}
     />
@@ -39,7 +39,7 @@ function SceneView({ data, selected }: NodeProps & { data: CausalSceneNodeData }
   const pending = scene.status === "needs-review";
   return (
     <div
-      className={`flex flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm transition-opacity ${selected ? "ring-2 ring-primary" : ""} ${data.matched ? "ring-2 ring-warning" : ""} ${data.dimmed ? "opacity-30" : ""} ${pending ? "border-dashed" : ""}`}
+      className={`nf-canvas-node-card flex flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm ${selected ? "ring-2 ring-primary nf-node-border-beam" : ""} ${data.matched ? "ring-2 ring-warning nf-node-awaiting-aura" : ""} ${data.dimmed ? "opacity-25" : ""} ${pending ? "border-dashed" : ""}`}
       style={{ width: SCENE_WIDTH, height: SCENE_HEIGHT, borderLeft: `4px solid ${data.homeColor}` }}
       data-testid={`causal-scene-${scene.id}`}
       title={scene.summary || undefined}
@@ -79,34 +79,77 @@ export const causalNodeTypes = {
   scene: memo(SceneView),
 };
 
-/** 剧情线线路：实线，颜色随剧情线。 */
+/** 剧情线线路：实线，颜色随剧情线；聚焦某条剧情线或关联场景时叠加柔光底轨与原生 SVG 粒子流。 */
 function LineEdgeView(props: EdgeProps<CausalCanvasEdge>) {
   const [path] = getSmoothStepPath({ ...props, borderRadius: 12 });
+  const dimmed = props.data?.dimmed;
+  const emphasized = props.data?.emphasized && !dimmed;
+  const color = props.data?.color ?? "var(--primary)";
   return (
-    <BaseEdge
-      id={props.id}
-      path={path}
-      style={{ stroke: props.data?.color, strokeWidth: 2.5, opacity: props.data?.dimmed ? 0.12 : 0.85 }}
-    />
+    <>
+      {emphasized ? (
+        <path
+          d={path}
+          fill="none"
+          stroke={color}
+          strokeWidth={6}
+          strokeOpacity={0.16}
+          className="nf-edge-glow-track"
+        />
+      ) : null}
+      <BaseEdge
+        id={props.id}
+        path={path}
+        style={{
+          stroke: color,
+          strokeWidth: emphasized ? 3 : 2.2,
+          opacity: dimmed ? 0.12 : 0.88,
+          transition: "opacity 220ms ease, stroke-width 200ms ease",
+        }}
+      />
+      {emphasized ? (
+        <g className="nf-svg-motion-particle pointer-events-none">
+          <circle r={3.2} fill={color} opacity={0.95}>
+            <animateMotion dur="2.1s" repeatCount="indefinite" path={path} />
+          </circle>
+        </g>
+      ) : null}
+    </>
   );
 }
 
-/** 伏笔回收：虚线，从埋下的场景指向回收的场景，标签是伏笔名。 */
+/** 伏笔回收：贝塞尔虚线弧，从埋下的场景指向回收的场景，带悬念脉冲粒子流与标签。 */
 function HookEdgeView(props: EdgeProps<CausalCanvasEdge>) {
   const [path, labelX, labelY] = getBezierPath({ ...props, curvature: 0.35 });
   const dimmed = props.data?.dimmed;
+  const emphasized = props.data?.emphasized && !dimmed;
+  const color = props.data?.color ?? "var(--warning)";
   return (
     <>
       <BaseEdge
         id={props.id}
         path={path}
         markerEnd={props.markerEnd}
-        style={{ stroke: props.data?.color, strokeWidth: 1.5, strokeDasharray: "5 4", opacity: dimmed ? 0.15 : 0.9 }}
+        className={emphasized ? "nf-edge-flow-forward" : undefined}
+        style={{
+          stroke: color,
+          strokeWidth: emphasized ? 1.8 : 1.5,
+          strokeDasharray: emphasized ? undefined : "5 4",
+          opacity: dimmed ? 0.12 : 0.9,
+          transition: "opacity 220ms ease",
+        }}
       />
+      {emphasized ? (
+        <g className="nf-svg-motion-particle pointer-events-none">
+          <circle r={2.6} fill={color} opacity={0.9}>
+            <animateMotion dur="2.8s" repeatCount="indefinite" path={path} />
+          </circle>
+        </g>
+      ) : null}
       {props.data?.label && !dimmed ? (
         <EdgeLabelRenderer>
           <div
-            className="nodrag nopan pointer-events-none absolute rounded border border-warning/70 bg-warning/10 px-1 py-0.5 text-2xs text-warning"
+            className="nodrag nopan pointer-events-none absolute rounded border border-warning/70 bg-warning/10 px-1 py-0.5 text-2xs text-warning shadow-2xs transition-opacity"
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
             {props.data.label}

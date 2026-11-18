@@ -83,4 +83,32 @@ describe("WorkbenchResourceTree", () => {
     fireEvent.click(screen.getByRole("button", { name: /角色弧线/ }));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "tool:arcs" }));
   });
+
+  it("显示章节审稿红标并支持筛选只看有审稿问题的章节", () => {
+    const caps = { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false };
+    const treeNodes: readonly WorkbenchResourceNode[] = [
+      {
+        id: "dir:chapters",
+        kind: "group",
+        title: "chapters",
+        capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        children: [
+          { id: "ch:1", kind: "chapter", title: "第1章 开局", metadata: { chapterNumber: 1 }, capabilities: caps },
+          { id: "ch:2", kind: "chapter", title: "第2章 暗涌", metadata: { chapterNumber: 2 }, capabilities: caps },
+        ],
+      },
+    ];
+    render(
+      <WorkbenchResourceTree
+        nodes={treeNodes}
+        onOpen={vi.fn()}
+        chapterAuditSummary={{ 2: { issueCount: 3, criticalCount: 1, stale: false } }}
+      />,
+    );
+    expect(screen.getByTestId("chapter-audit-badge-2").textContent).toBe("3");
+    expect(screen.queryByTestId("chapter-audit-badge-1")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /只看有审稿问题/ }));
+    expect(screen.queryByText("第1章 开局")).toBeNull();
+    expect(screen.getByText("第2章 暗涌")).toBeTruthy();
+  });
 });

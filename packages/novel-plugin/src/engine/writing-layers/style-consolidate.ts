@@ -60,22 +60,100 @@ const CATEGORY_DEFAULT_CONTRASTS: Readonly<Record<string, { readonly doExample: 
   general: { doExample: "具体动作与结果直接落地", dontExample: "空泛套话与抽象形容词堆砌" },
 };
 
+const STATISTICAL_BASELINE_PATTERNS: readonly RegExp[] = [
+  /^整体表达基调参考：/u,
+  /^句长以约\s*\d+(?:\.\d+)?\s*字为参照/u,
+  /^对话约占文本\s*\d+%/u,
+  /^表达格式参考：/u,
+];
+
+function isStatisticalBaselineRule(text: string): boolean {
+  return STATISTICAL_BASELINE_PATTERNS.some((pattern) => pattern.test(text.trim()));
+}
+
+function stripForbiddenNames(text: string, forbiddenTerms: readonly string[]): string {
+  let out = text;
+  const sorted = [...new Set(forbiddenTerms.map((t) => t.trim()).filter((t) => t.length >= 2))]
+    .sort((a, b) => b.length - a.length);
+  for (const term of sorted) {
+    // 若后跟冒号或引号对白（如 张羽：“……”），替换为泛指「某甲」
+    out = out.replaceAll(`${term}：`, "某人：");
+    out = out.replaceAll(`${term}:`, "某人：");
+    out = out.replaceAll(term, "某甲");
+  }
+  // 顺带脱敏未列入黑名单但明显是「两三字人名+冒号+引号」的对白起手（排除「母亲/父亲/众人/老者/管事/少年」等泛称）
+  out = out.replace(
+    /(^|[；;，,\s])(?!(?:母亲|父亲|众人|老者|少年|少女|管事|掌柜|某人|某甲|正|反))([\p{Script=Han}]{2,3})(?=：[“「])/gu,
+    "$1某人",
+  );
+  return out;
+}
+
+function inferSpecificAntiExample(ruleText: string, category: string): string {
+  const t = ruleText.trim();
+  if (/温和|日常事务|不动声色|平淡|冷静|克制/u.test(t)) {
+    return "角色声嘶力竭咆哮或旁白大段渲染惊悚情绪";
+  }
+  if (/道德立场|义正词严|反差|打脸|言行不一|算计/u.test(t)) {
+    return "人物直接干瘪直给真实意图，缺乏表里反差铺垫";
+  }
+  if (/数字|账目|量化|灵石|收支|成本|利息/u.test(t)) {
+    return "只写“花费巨大、损失惨重”等模糊形容词而不报实数";
+  }
+  if (/动作|停顿|器物|手部|细节|触感/u.test(t)) {
+    return "脱离肢体与器物动作，直接旁白“他心里十分纠结愤怒”";
+  }
+  if (/短句|单句|断句|独立成段|节奏/u.test(t)) {
+    return "关键节点堆砌冗长欧化复合句与四字排比抒情";
+  }
+  if (/对白|对话|抢白|吐槽|潜台词/u.test(t)) {
+    return "角色轮流发表大段说明书式设定科普或书面语独白";
+  }
+  const defaults = CATEGORY_DEFAULT_CONTRASTS[category] ?? CATEGORY_DEFAULT_CONTRASTS.general!;
+  return defaults.dontExample;
+}
+
+function smartTrimAtClause(text: string, maxChars: number): string {
+  const clean = text.trim().replace(/\s+/gu, " ");
+  if (clean.length <= maxChars) return clean;
+  const slice = clean.slice(0, maxChars);
+  const lastBreak = Math.max(
+    slice.lastIndexOf("。"),
+    slice.lastIndexOf("；"),
+    slice.lastIndexOf("，"),
+    slice.lastIndexOf("”"),
+    slice.lastIndexOf("」"),
+  );
+  return (lastBreak >= Math.floor(maxChars * 0.55) ? slice.slice(0, lastBreak + 1) : slice).replace(/[，；、]+$/u, "");
+}
+
 function deriveExamples(input: {
   readonly category: string;
   readonly rule: string;
   readonly evidence?: string;
   readonly doExample?: string;
   readonly dontExample?: string;
+  readonly forbiddenTerms?: readonly string[];
 }): { readonly doExample: string; readonly dontExample: string } {
   const defaults = CATEGORY_DEFAULT_CONTRASTS[input.category] ?? CATEGORY_DEFAULT_CONTRASTS.general!;
-  const cleanEvidence = input.evidence
+  const forbidden = input.forbiddenTerms ?? [];
+  const rawEvidence = input.evidence
     ?.replace(/^第\d+章原文：「?/u, "")
+    .replace(/^拆书得到的.+?：/u, "")
+    .replace(/^统计指纹：.*$/u, "")
     .replace(/」$/u, "")
-    .trim()
-    .slice(0, 60);
-  const doExample = (input.doExample?.trim() || cleanEvidence || defaults.doExample).slice(0, 120);
-  const dontExample = (input.dontExample?.trim() || defaults.dontExample).slice(0, 120);
-  return { doExample, dontExample };
+    .trim();
+  const sanitizedEvidence = rawEvidence ? stripForbiddenNames(rawEvidence, forbidden) : "";
+  const rawDo = input.doExample?.trim()
+    ? stripForbiddenNames(input.doExample.trim(), forbidden)
+    : (sanitizedEvidence || defaults.doExample);
+  const rawDont = input.dontExample?.trim() && input.dontExample.trim() !== "空泛套话与抽象形容词堆砌"
+    ? stripForbiddenNames(input.dontExample.trim(), forbidden)
+    : inferSpecificAntiExample(input.rule, input.category);
+  return {
+    doExample: smartTrimAtClause(rawDo, 90),
+    dontExample: smartTrimAtClause(rawDont, 90),
+  };
 }
 
 interface RuleCluster {
@@ -106,6 +184,7 @@ export interface ConsolidateStylePresetResult {
 
 function deterministicConsolidate(preset: StylePreset, maxRules: number): {
   readonly clusters: RuleCluster[];
+  readonly allClusters: RuleCluster[];
   readonly inputRuleCount: number;
   readonly droppedPlatitudeCount: number;
 } {
@@ -144,13 +223,21 @@ function deterministicConsolidate(preset: StylePreset, maxRules: number): {
   }
 
   let droppedPlatitudeCount = 0;
-  const filtered = rawItems.filter((item) => {
+  const nonPlatitudes = rawItems.filter((item) => {
     if (isGenericStylePlatitude(item.text)) {
       droppedPlatitudeCount += 1;
       return false;
     }
     return true;
   });
+
+  // 剔除「句长以约 X 字为参照」「对话约占文本 X%」「整体表达基调参考」等机械统计描述（指纹已单存，不占宝贵的执行铁律名额）；
+  // 仅当全书没有任何具体技法规则时才回退保留统计描述。
+  const craftOnly = nonPlatitudes.filter((item) => !isStatisticalBaselineRule(item.text));
+  const filtered = craftOnly.length > 0 ? craftOnly : nonPlatitudes;
+  if (craftOnly.length > 0) {
+    droppedPlatitudeCount += nonPlatitudes.length - craftOnly.length;
+  }
 
   filtered.sort((a, b) => a.confidenceRank - b.confidenceRank);
 
@@ -171,7 +258,7 @@ function deterministicConsolidate(preset: StylePreset, maxRules: number): {
     }
     clusters.push({
       category: item.category,
-      rule: item.text.trim().slice(0, 120),
+      rule: smartTrimAtClause(item.text, 110),
       key,
       evidence: item.evidence,
       doExample: item.doExample,
@@ -181,12 +268,26 @@ function deterministicConsolidate(preset: StylePreset, maxRules: number): {
     });
   }
 
-  // 按类别轮流取，保证各维度覆盖且不超过 maxRules。
+  // 按类别轮流取，且每个类别内部按首中尾均匀跨度抽样，绝不只卡在原数组前 10 条丢掉后半部技法。
   const byCategory = new Map<string, RuleCluster[]>();
   for (const cat of STYLE_GUIDE_RULE_CATEGORIES) byCategory.set(cat, []);
   for (const cluster of clusters) {
     const cat = byCategory.has(cluster.category) ? cluster.category : "general";
     byCategory.get(cat)!.push(cluster);
+  }
+  for (const [cat, list] of byCategory) {
+    if (list.length <= 2) continue;
+    // 将同一类别的列表重排为首、中、尾交错顺序，保证前中后段批次提炼的技法都能入选
+    const spread: RuleCluster[] = [];
+    let left = 0;
+    let right = list.length - 1;
+    while (left <= right) {
+      spread.push(list[left]!);
+      if (left !== right) spread.push(list[right]!);
+      left += 1;
+      right -= 1;
+    }
+    byCategory.set(cat, spread);
   }
   const picked: RuleCluster[] = [];
   let progressed = true;
@@ -201,17 +302,24 @@ function deterministicConsolidate(preset: StylePreset, maxRules: number): {
     }
   }
 
-  return { clusters: picked, inputRuleCount: rawItems.length, droppedPlatitudeCount };
+  return {
+    clusters: picked,
+    allClusters: clusters,
+    inputRuleCount: rawItems.length,
+    droppedPlatitudeCount,
+  };
 }
 
+const LlmConsolidatedRuleItemSchema = z.object({
+  category: z.string().trim().min(1).max(80).optional(),
+  rule: z.string().trim().min(4).max(300),
+  doExample: z.string().trim().min(1).max(300).optional(),
+  dontExample: z.string().trim().min(1).max(300).optional(),
+  sourceIds: z.array(z.string().trim().min(1).max(120)).max(30).optional(),
+});
+
 const LlmConsolidatedSchema = z.object({
-  rules: z.array(z.object({
-    category: z.string().trim().min(1).max(60).optional(),
-    rule: z.string().trim().min(4).max(160),
-    doExample: z.string().trim().min(2).max(160),
-    dontExample: z.string().trim().min(2).max(160),
-    sourceIds: z.array(z.string().trim().min(1).max(120)).max(30).optional(),
-  })).min(1).max(MAX_CONSOLIDATED_STYLE_RULES),
+  rules: z.array(LlmConsolidatedRuleItemSchema).min(1).max(30),
 });
 
 function parseJsonObject(raw: string): unknown {
@@ -241,9 +349,14 @@ export async function consolidateStylePresetRules(
 
   const knownSourceIds = new Set(input.preset.sources.map((s) => s.id));
   const primaryId = primaryStyleSourceId(input.preset);
+  const allForbiddenTerms = [
+    ...input.preset.sources.flatMap((s) => s.forbiddenSourceTerms ?? []),
+    ...(input.preset.registerGuardrail?.extraForbiddenTerms ?? []),
+  ];
 
   if (input.generateText) {
     try {
+      const llmCandidates = det.allClusters.slice(0, 28);
       const response = await input.generateText({
         messages: [
           {
@@ -251,37 +364,46 @@ export async function consolidateStylePresetRules(
             content: [
               `你是网文文风提纯器。把输入的候选规则聚类归约为不超过 ${cap} 条高信息密度执行铁律。`,
               "硬性要求：",
-              "1. 剔除「注意长短句结合」「语言生动细腻」等正确废话；每条规则必须是可观察的句法/叙事动作。",
-              "2. 每条必须给出简短鲜明的 doExample（正例）与 dontExample（反例），不出现参考书专有名词。",
+              "1. 剔除「注意长短句结合」「语言生动细腻」及句长/对话比例等统计描述；每条规则必须是可观察的句法/叙事动作（≤55字，完整成句）。",
+              "2. 每条必须给出简短鲜明的 doExample（正例，≤35字）与针对该规则的 dontExample（反例，≤35字），严禁出现原著角色名、地名、门派等专有名词（一律改用“某人”“老者”等泛指）。",
               "3. 只输出合法 JSON：{\"rules\":[{\"category\":\"voice|language|rhythm|dialogue|scene|consistency|general\",\"rule\":\"...\",\"doExample\":\"...\",\"dontExample\":\"...\",\"sourceIds\":[\"...\"]}]}。",
             ].join("\n"),
           },
           {
             role: "user",
-            content: JSON.stringify(det.clusters.map((c) => ({
+            content: JSON.stringify(llmCandidates.map((c) => ({
               category: c.category,
               rule: c.rule,
-              evidence: c.evidence,
+              ...(c.evidence ? { evidence: stripForbiddenNames(c.evidence.slice(0, 80), allForbiddenTerms) } : {}),
               sourceIds: c.sourceIds,
             }))),
           },
         ],
         temperature: 0.2,
-        maxTokens: 1_800,
+        maxTokens: 2_600,
       });
-      const parsed = LlmConsolidatedSchema.safeParse(parseJsonObject(response.text));
+      const rawParsed = parseJsonObject(response.text);
+      const normalizedObj = Array.isArray(rawParsed) ? { rules: rawParsed } : rawParsed;
+      const parsed = LlmConsolidatedSchema.safeParse(normalizedObj);
       if (parsed.success) {
         const cleaned = parsed.data.rules
-          .filter((item) => !isGenericStylePlatitude(item.rule))
+          .filter((item) => !isGenericStylePlatitude(item.rule) && !isStatisticalBaselineRule(item.rule))
           .slice(0, cap)
           .map((item, idx): ConsolidatedStyleRule => {
             const validSources = (item.sourceIds ?? []).filter((id) => knownSourceIds.has(id));
+            const examples = deriveExamples({
+              category: item.category ?? "general",
+              rule: item.rule,
+              doExample: item.doExample,
+              dontExample: item.dontExample,
+              forbiddenTerms: allForbiddenTerms,
+            });
             return {
               id: `crule-${String(idx + 1).padStart(2, "0")}`,
               category: item.category ?? "general",
-              rule: item.rule.slice(0, 120),
-              doExample: item.doExample.slice(0, 120),
-              dontExample: item.dontExample.slice(0, 120),
+              rule: smartTrimAtClause(stripForbiddenNames(item.rule, allForbiddenTerms), 110),
+              doExample: examples.doExample,
+              dontExample: examples.dontExample,
               sourceIds: validSources.length > 0 ? validSources : (primaryId ? [primaryId] : []),
             };
           });
@@ -300,11 +422,11 @@ export async function consolidateStylePresetRules(
   }
 
   const consolidatedRules: ConsolidatedStyleRule[] = det.clusters.slice(0, cap).map((cluster, idx) => {
-    const examples = deriveExamples(cluster);
+    const examples = deriveExamples({ ...cluster, forbiddenTerms: allForbiddenTerms });
     return {
       id: `crule-${String(idx + 1).padStart(2, "0")}`,
       category: cluster.category,
-      rule: cluster.rule,
+      rule: smartTrimAtClause(stripForbiddenNames(cluster.rule, allForbiddenTerms), 110),
       doExample: examples.doExample,
       dontExample: examples.dontExample,
       sourceIds: cluster.sourceIds,

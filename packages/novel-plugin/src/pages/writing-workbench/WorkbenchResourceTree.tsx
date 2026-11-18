@@ -39,6 +39,12 @@ export interface ResourceTreeAction {
   name?: string;
 }
 
+export interface ChapterAuditBadgeInfo {
+  readonly issueCount: number;
+  readonly criticalCount: number;
+  readonly stale: boolean;
+}
+
 export interface WorkbenchResourceTreeProps {
   nodes: readonly WorkbenchResourceNode[];
   selectedNodeId?: string | null;
@@ -46,6 +52,8 @@ export interface WorkbenchResourceTreeProps {
   onAction?: (action: ResourceTreeAction) => void;
   cutNodeIds?: readonly string[];
   sortStorageKey?: string;
+  /** 按章号索引的审稿问题统计，在章节节点显示红标/提醒标并支持「只看有审稿问题」。 */
+  chapterAuditSummary?: Readonly<Record<number, ChapterAuditBadgeInfo>>;
   /**
    * 是否显示顶部「搜索 / 排序」。默认显示（文件树）；固定清单（如分析工具）传 false，
    * 此时不排序，节点保持传入顺序（分组按写作时机排好，按名称排会打乱）。
@@ -185,6 +193,20 @@ function filterNodesByQuery(nodes: readonly WorkbenchResourceNode[], query: stri
   return nodes.map(visit).filter(Boolean) as WorkbenchResourceNode[];
 }
 
+function filterNodesByAuditIssues(
+  nodes: readonly WorkbenchResourceNode[],
+  summary: Readonly<Record<number, ChapterAuditBadgeInfo>>,
+): WorkbenchResourceNode[] {
+  const visit = (node: WorkbenchResourceNode): WorkbenchResourceNode | null => {
+    const children = node.children?.map(visit).filter(Boolean) as WorkbenchResourceNode[] | undefined;
+    const chapterNum = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined;
+    const hasIssue = chapterNum !== undefined && (summary[chapterNum]?.issueCount ?? 0) > 0;
+    if (hasIssue || (children && children.length > 0)) return children ? { ...node, children } : node;
+    return null;
+  };
+  return nodes.map(visit).filter(Boolean) as WorkbenchResourceNode[];
+}
+
 function isDraggableNode(node: WorkbenchResourceNode): boolean {
   return node.metadata?.isRoot !== true && typeof node.metadata?.filePath === "string" && node.capabilities.delete === true;
 }
@@ -309,9 +331,10 @@ interface TreeNodeProps {
   cutNodeIds?: readonly string[];
   forceExpanded?: boolean;
   inlineEdit?: InlineEditState | null;
+  chapterAuditSummary?: Readonly<Record<number, ChapterAuditBadgeInfo>>;
 }
 
-function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction, draggedNode, onDragNode, cutNodeIds = [], forceExpanded = false, inlineEdit }: TreeNodeProps) {
+function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction, draggedNode, onDragNode, cutNodeIds = [], forceExpanded = false, inlineEdit, chapterAuditSummary }: TreeNodeProps) {
   const isFileDir = node.metadata?.isDirectory === true;
   const [expanded, setExpanded] = useState(!isFileDir);
   const effectiveExpanded = forceExpanded || expanded;
@@ -472,7 +495,7 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
           <div>
             {createInput}
             {node.children!.map((child) => (
-              <TreeNode key={child.id} node={child} depth={depth + 1} selectedNodeId={selectedNodeId} onOpen={onOpen} onContextMenu={onContextMenu} onAction={onAction} draggedNode={draggedNode} onDragNode={onDragNode} cutNodeIds={cutNodeIds} forceExpanded={forceExpanded} inlineEdit={inlineEdit} />
+              <TreeNode key={child.id} node={child} depth={depth + 1} selectedNodeId={selectedNodeId} onOpen={onOpen} onContextMenu={onContextMenu} onAction={onAction} draggedNode={draggedNode} onDragNode={onDragNode} cutNodeIds={cutNodeIds} forceExpanded={forceExpanded} inlineEdit={inlineEdit} chapterAuditSummary={chapterAuditSummary} />
             ))}
           </div>
         )}
@@ -487,6 +510,10 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
 
   // Openable nodes — 纯 onClick,无 Radix 包裹
   const isToolNode = node.kind === "tool";
+  const chapterNum = node.kind === "chapter" && typeof node.metadata?.chapterNumber === "number"
+    ? node.metadata.chapterNumber
+    : undefined;
+  const auditInfo = chapterNum !== undefined ? chapterAuditSummary?.[chapterNum] : undefined;
   return (
     <div className="group/node">
       <Button type="button" variant="ghost" size="sm"
@@ -511,31 +538,51 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
         ) : isToolNode ? null : <span className="w-3.5 shrink-0" />}
         <NodeIcon node={node} isSelected={isSelected} />
         <span className={`min-w-0 flex-1 truncate text-left ${isToolNode ? "text-xs" : "text-sm"}`} title={node.title}>{node.title}</span>
+        {auditInfo && auditInfo.issueCount > 0 ? (
+          <span
+            data-testid={`chapter-audit-badge-${chapterNum}`}
+            title={`审稿 ${auditInfo.issueCount} 处意见${auditInfo.stale ? "（正文已改）" : ""}`}
+            className={`ml-auto inline-flex shrink-0 items-center rounded-full px-1.5 py-0 text-2xs font-medium leading-4 ${
+              auditInfo.criticalCount > 0
+                ? "bg-destructive/15 text-destructive"
+                : "bg-warning/15 text-warning"
+            }`}
+          >
+            {auditInfo.issueCount}
+          </span>
+        ) : null}
         <CapabilityBadges node={node} />
       </Button>
       {expanded && hasChildren && (
         <div>{node.children!.map((child) => (
-          <TreeNode key={child.id} node={child} depth={depth + 1} selectedNodeId={selectedNodeId} onOpen={onOpen} onContextMenu={onContextMenu} onAction={onAction} draggedNode={draggedNode} onDragNode={onDragNode} cutNodeIds={cutNodeIds} forceExpanded={forceExpanded} inlineEdit={inlineEdit} />
+          <TreeNode key={child.id} node={child} depth={depth + 1} selectedNodeId={selectedNodeId} onOpen={onOpen} onContextMenu={onContextMenu} onAction={onAction} draggedNode={draggedNode} onDragNode={onDragNode} cutNodeIds={cutNodeIds} forceExpanded={forceExpanded} inlineEdit={inlineEdit} chapterAuditSummary={chapterAuditSummary} />
         ))}</div>
       )}
     </div>
   );
 }
 
-export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, onAction, cutNodeIds = [], sortStorageKey = "novelfork:resource-tree-sort", toolbar = true, ariaLabel = "写作资源树" }: WorkbenchResourceTreeProps) {
+export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, onAction, cutNodeIds = [], sortStorageKey = "novelfork:resource-tree-sort", chapterAuditSummary, toolbar = true, ariaLabel = "写作资源树" }: WorkbenchResourceTreeProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [onlyAuditIssues, setOnlyAuditIssues] = useState(false);
   const [sortMode, setSortMode] = useState<ResourceTreeSortMode>(() => {
     const saved = typeof globalThis.localStorage?.getItem === "function" ? globalThis.localStorage.getItem(sortStorageKey) : null;
     return saved === "type" || saved === "modified" ? saved : "name";
   });
   const [draggedNode, setDraggedNode] = useState<WorkbenchResourceNode | null>(null);
   const [inlineEdit, setInlineEdit] = useState<InlineEditState | null>(null);
-  const visibleNodes = useMemo(
-    () => (toolbar ? filterNodesByQuery(sortNodes(nodes, sortMode), searchQuery) : [...nodes]),
-    [nodes, searchQuery, sortMode, toolbar],
+  const auditIssueChapterCount = useMemo(
+    () => (chapterAuditSummary ? Object.values(chapterAuditSummary).filter((item) => item.issueCount > 0).length : 0),
+    [chapterAuditSummary],
   );
-  const forceExpanded = searchQuery.trim().length > 0;
+  const visibleNodes = useMemo(() => {
+    if (!toolbar) return [...nodes];
+    let list = sortNodes(nodes, sortMode);
+    if (onlyAuditIssues && chapterAuditSummary) list = filterNodesByAuditIssues(list, chapterAuditSummary);
+    return filterNodesByQuery(list, searchQuery);
+  }, [nodes, searchQuery, sortMode, toolbar, onlyAuditIssues, chapterAuditSummary]);
+  const forceExpanded = searchQuery.trim().length > 0 || onlyAuditIssues;
   useEffect(() => {
     const saved = typeof globalThis.localStorage?.getItem === "function" ? globalThis.localStorage.getItem(sortStorageKey) : null;
     setSortMode(saved === "type" || saved === "modified" ? saved : "name");
@@ -579,30 +626,47 @@ export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, on
 
   return (
     <nav aria-label={ariaLabel} className="space-y-1 relative">
-      {toolbar ? <div className="flex gap-1 px-2 pb-1">
-        <input
-          aria-label="搜索文件树"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.currentTarget.value)}
-          onKeyDown={(event) => { if (event.key === "Escape") setSearchQuery(""); }}
-          placeholder="搜索文件…"
-          className="h-7 min-w-0 flex-1 rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
-        />
-        <select
-          aria-label="文件树排序"
-          value={sortMode}
-          onChange={(event) => changeSortMode(event.currentTarget.value as ResourceTreeSortMode)}
-          className="h-7 rounded border border-border bg-background px-1 text-2xs text-foreground outline-none focus:border-primary"
-        >
-          <option value="name">名称</option>
-          <option value="type">类型</option>
-          <option value="modified">时间</option>
-        </select>
+      {toolbar ? <div className="space-y-1 px-2 pb-1">
+        <div className="flex gap-1">
+          <input
+            aria-label="搜索文件树"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.currentTarget.value)}
+            onKeyDown={(event) => { if (event.key === "Escape") setSearchQuery(""); }}
+            placeholder="搜索文件…"
+            className="h-7 min-w-0 flex-1 rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+          />
+          <select
+            aria-label="文件树排序"
+            value={sortMode}
+            onChange={(event) => changeSortMode(event.currentTarget.value as ResourceTreeSortMode)}
+            className="h-7 rounded border border-border bg-background px-1 text-2xs text-foreground outline-none focus:border-primary"
+          >
+            <option value="name">名称</option>
+            <option value="type">类型</option>
+            <option value="modified">时间</option>
+          </select>
+        </div>
+        {auditIssueChapterCount > 0 ? (
+          <button
+            type="button"
+            aria-pressed={onlyAuditIssues}
+            onClick={() => setOnlyAuditIssues((prev) => !prev)}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors ${
+              onlyAuditIssues
+                ? "border-destructive/40 bg-destructive/10 text-destructive font-medium"
+                : "border-border bg-background text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span>只看有审稿问题</span>
+            <span>({auditIssueChapterCount})</span>
+          </button>
+        ) : null}
       </div> : null}
       {visibleNodes.map((node) => (
-        <TreeNode key={node.id} node={node} depth={0} selectedNodeId={selectedNodeId} onOpen={onOpen} onContextMenu={onAction ? handleContextMenu : undefined} onAction={handleAction} draggedNode={draggedNode} onDragNode={setDraggedNode} cutNodeIds={cutNodeIds} forceExpanded={forceExpanded} inlineEdit={inlineEdit} />
+        <TreeNode key={node.id} node={node} depth={0} selectedNodeId={selectedNodeId} onOpen={onOpen} onContextMenu={onAction ? handleContextMenu : undefined} onAction={handleAction} draggedNode={draggedNode} onDragNode={setDraggedNode} cutNodeIds={cutNodeIds} forceExpanded={forceExpanded} inlineEdit={inlineEdit} chapterAuditSummary={chapterAuditSummary} />
       ))}
-      {visibleNodes.length === 0 && searchQuery.trim() ? <div className="px-3 py-4 text-center text-xs text-muted-foreground">无匹配文件</div> : null}
+      {visibleNodes.length === 0 && (searchQuery.trim() || onlyAuditIssues) ? <div className="px-3 py-4 text-center text-xs text-muted-foreground">无匹配文件</div> : null}
       {menu && onAction && <FloatingMenu state={menu} onAction={handleAction} onClose={() => setMenu(null)} />}
     </nav>
   );

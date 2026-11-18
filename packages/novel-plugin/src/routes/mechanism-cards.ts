@@ -86,12 +86,16 @@ export function createMechanismCardsRouter(
         ...(typeof body.chapterRange.to === "number" ? { to: Math.trunc(body.chapterRange.to) } : {}),
       }
       : undefined;
+    const chapterList = Array.isArray(body.chapterList)
+      ? body.chapterList.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0).map((n) => Math.trunc(n))
+      : undefined;
     const result = await extractAndSaveMechanismCards({
       bookRoot,
       ...(typeof body.sourceTitle === "string" ? { sourceTitle: body.sourceTitle } : {}),
       ...(typeof body.filePath === "string" ? { filePath: body.filePath } : {}),
       ...(typeof body.text === "string" ? { text: body.text } : {}),
       ...(range ? { chapterRange: range } : {}),
+      ...(chapterList && chapterList.length > 0 ? { chapterList } : {}),
       ...(stringList(body.extraForbiddenTerms) ? { extraForbiddenTerms: stringList(body.extraForbiddenTerms) } : {}),
       ...(generateText ? { generateText } : {}),
     });

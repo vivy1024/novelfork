@@ -2,12 +2,17 @@ import { Hono } from "hono";
 
 import {
   checkWorkflowGraph,
+  createCustomSubagent,
+  deleteCustomSubagent,
   deleteWorkflowRecipe,
+  NOVEL_SUBAGENT_ROSTER,
   readBookDefaultWorkflow,
+  readCustomSubagents,
   readWorkflowRecipes,
   setBookDefaultWorkflow,
   saveWorkflowRecipe,
   saveWorkflowRecipes,
+  updateCustomSubagent,
   WorkflowStoreError,
   type NovelWorkflowRecipe,
 } from "../engine/index.js";
@@ -187,6 +192,81 @@ export function createWorkflowsRouter(
       }
       const message = error instanceof Error ? error.message : String(error);
       return c.json({ error: message, code: "SAVE_WORKFLOW_DEFAULT_FAILED" }, 500);
+    }
+  });
+
+  // 按书自定义子代理工坊：读取内置+自定义列表、复制新建、更新与删除。
+  app.get("/api/books/:bookId/subagents", async (c) => {
+    try {
+      const bookId = sanitizeBookId(c.req.param("bookId"));
+      const custom = await readCustomSubagents(resolveBookRoot(bookId));
+      return c.json({ ok: true, bookId, builtin: NOVEL_SUBAGENT_ROSTER, custom });
+    } catch (error) {
+      if (error instanceof WorkflowStoreError) {
+        return c.json(storeErrorBody(error), error.status as 400 | 404 | 409 | 500);
+      }
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  app.post("/api/books/:bookId/subagents", async (c) => {
+    try {
+      const bookId = sanitizeBookId(c.req.param("bookId"));
+      const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+      const nameZh = typeof body?.nameZh === "string" ? body.nameZh : "";
+      if (!nameZh.trim()) return c.json({ error: "子代理名称不能为空" }, 400);
+      const subagent = await createCustomSubagent(resolveBookRoot(bookId), {
+        ...(typeof body?.id === "string" ? { id: body.id } : {}),
+        nameZh,
+        ...(typeof body?.description === "string" ? { description: body.description } : {}),
+        ...(Array.isArray(body?.tools) ? { tools: body.tools.filter((t): t is string => typeof t === "string") } : {}),
+        ...(typeof body?.prompt === "string" ? { prompt: body.prompt } : {}),
+        ...(typeof body?.defaultModel === "string" ? { defaultModel: body.defaultModel } : {}),
+        ...(typeof body?.basedOn === "string" ? { basedOn: body.basedOn } : {}),
+      });
+      return c.json({ ok: true, subagent }, 201);
+    } catch (error) {
+      if (error instanceof WorkflowStoreError) {
+        return c.json(storeErrorBody(error), error.status as 400 | 404 | 409 | 500);
+      }
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.put("/api/books/:bookId/subagents/:subagentId", async (c) => {
+    try {
+      const bookId = sanitizeBookId(c.req.param("bookId"));
+      const subagentId = c.req.param("subagentId");
+      const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!body) return c.json({ error: "Invalid JSON body" }, 400);
+      const updated = await updateCustomSubagent(resolveBookRoot(bookId), subagentId, {
+        ...(typeof body.nameZh === "string" ? { nameZh: body.nameZh } : {}),
+        ...(typeof body.description === "string" ? { description: body.description } : {}),
+        ...(Array.isArray(body.tools) ? { tools: body.tools.filter((t): t is string => typeof t === "string") } : {}),
+        ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
+        ...(typeof body.defaultModel === "string" ? { defaultModel: body.defaultModel } : {}),
+      });
+      if (!updated) return c.json({ error: "找不到该自定义子代理" }, 404);
+      return c.json({ ok: true, subagent: updated });
+    } catch (error) {
+      if (error instanceof WorkflowStoreError) {
+        return c.json(storeErrorBody(error), error.status as 400 | 404 | 409 | 500);
+      }
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.delete("/api/books/:bookId/subagents/:subagentId", async (c) => {
+    try {
+      const bookId = sanitizeBookId(c.req.param("bookId"));
+      const deleted = await deleteCustomSubagent(resolveBookRoot(bookId), c.req.param("subagentId"));
+      if (!deleted) return c.json({ error: "找不到该自定义子代理" }, 404);
+      return c.json({ ok: true });
+    } catch (error) {
+      if (error instanceof WorkflowStoreError) {
+        return c.json(storeErrorBody(error), error.status as 400 | 404 | 409 | 500);
+      }
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 
