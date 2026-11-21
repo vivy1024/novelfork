@@ -26,7 +26,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 const apiMock = vi.hoisted(() => ({
-  fetchJsonImpl: undefined as undefined | ((path: string) => Promise<unknown>),
+  fetchJsonImpl: undefined as undefined | ((path: string, init?: RequestInit) => Promise<unknown>),
 }));
 
 vi.mock("@/hooks/use-api", () => ({
@@ -41,9 +41,9 @@ vi.mock("@/hooks/use-api", () => ({
       this.status = options?.status;
     }
   },
-  fetchJson: (path: string) => {
+  fetchJson: (path: string, init?: RequestInit) => {
     if (!apiMock.fetchJsonImpl) return Promise.reject(new Error(`unexpected fetchJson: ${path}`));
-    return apiMock.fetchJsonImpl(path);
+    return apiMock.fetchJsonImpl(path, init);
   },
 }));
 
@@ -732,6 +732,262 @@ describe("NarrativeMemoryPanelShell", () => {
 
     // 平铺结构：空台账直接可见并给出解释文案。
     expect(screen.getByTestId("narrative-line-approvals").textContent).toContain("暂无叙事线修改记录");
+  });
+});
+
+describe("NarrativeMemoryPanelShell 作者自救入口", () => {
+  /**
+   * 手动新增事实：结算漏记时作者自己补一条。
+   * 走后端 /facts（manual 来源，享结算覆盖保护），提交成功后刷新面板。
+   */
+  it("新增事实表单提交后调用 POST /facts 并刷新", async () => {
+    const calls: Array<{ path: string; method?: string; body?: unknown }> = [];
+    apiMock.fetchJsonImpl = async (path, init) => {
+      calls.push({
+        path,
+        ...(init?.method ? { method: init.method } : {}),
+        ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}),
+      });
+      if (path.endsWith("/narrative-memory/facts") && init?.method === "POST") {
+        return { summary: "已新增叙事事实：韩立 / 境界 / 筑基初期" };
+      }
+      return {};
+    };
+    const onRefresh = vi.fn();
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[]}
+        currentChapter={7}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("memory-manual-fact-toggle"));
+    fireEvent.change(screen.getByLabelText("新事实主体"), { target: { value: "韩立" } });
+    fireEvent.change(screen.getByLabelText("新事实属性"), { target: { value: "境界" } });
+    fireEvent.change(screen.getByLabelText("新事实的值"), { target: { value: "筑基初期" } });
+    fireEvent.change(screen.getByLabelText("新事实类别"), { target: { value: "character_state" } });
+    fireEvent.click(screen.getByTestId("memory-manual-fact-submit"));
+
+    await screen.findByText("已新增叙事事实：韩立 / 境界 / 筑基初期");
+    const post = calls.find((call) => call.path.endsWith("/narrative-memory/facts") && call.method === "POST");
+    expect(post?.body).toMatchObject({
+      subject: "韩立",
+      predicate: "境界",
+      object: "筑基初期",
+      category: "character_state",
+      // 未填生效章时落到当前章，避免事实挂在不存在的章号上。
+      validFromChapter: 7,
+    });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  /** 补记事件：进入待确认队列，等作者裁决，不直接生效。 */
+  it("补记事件表单提交后调用 POST /events 并刷新", async () => {
+    const calls: Array<{ path: string; method?: string; body?: unknown }> = [];
+    apiMock.fetchJsonImpl = async (path, init) => {
+      calls.push({
+        path,
+        ...(init?.method ? { method: init.method } : {}),
+        ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}),
+      });
+      if (path.endsWith("/narrative-memory/events") && init?.method === "POST") {
+        return { summary: "已创建 1 条待确认事件。" };
+      }
+      return {};
+    };
+    const onRefresh = vi.fn();
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[]}
+        currentChapter={7}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("memory-manual-event-toggle"));
+    fireEvent.change(screen.getByLabelText("补记事件章号"), { target: { value: "9" } });
+    fireEvent.change(screen.getByLabelText("补记事件类型"), { target: { value: "hook_planted" } });
+    fireEvent.change(screen.getByLabelText("补记事件主体"), { target: { value: "韩立" } });
+    fireEvent.change(screen.getByLabelText("补记事件谓词"), { target: { value: "埋设" } });
+    fireEvent.change(screen.getByLabelText("补记事件客体"), { target: { value: "神秘石符" } });
+    fireEvent.change(screen.getByLabelText("补记事件正文依据"), { target: { value: "石符泛起微光。" } });
+    fireEvent.click(screen.getByTestId("memory-manual-event-submit"));
+
+    await screen.findByText("已创建 1 条待确认事件。");
+    const post = calls.find((call) => call.path.endsWith("/narrative-memory/events") && call.method === "POST");
+    expect(post?.body).toMatchObject({
+      chapterNumber: 9,
+      eventType: "hook_planted",
+      subject: "韩立",
+      predicate: "埋设",
+      object: "神秘石符",
+      evidenceText: "石符泛起微光。",
+    });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * 回收站：丢弃是软删除（保留 30 天），刷新页面后必须仍找得到。
+   * 这里覆盖「展开 → 列出 → 恢复单条」，走 narrative-pending-events 的既有通道。
+   */
+  it("回收站常驻入口能列出已丢弃事件并恢复", async () => {
+    const restoreBodies: unknown[] = [];
+    const fetchStub = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/narrative-memory/events/trash") && !init?.method) {
+        return {
+          ok: true,
+          json: async () => ({
+            events: [
+              { id: "t-1", entity: "韩立", predicate: "抵达", object: "药园", chapterNumber: 4, deletedAt: "2026-08-01T02:00:00.000Z", deletedReason: "工作台批量丢弃" },
+            ],
+          }),
+        } as unknown as Response;
+      }
+      if (url.endsWith("/narrative-memory/events/trash/restore")) {
+        if (typeof init?.body === "string") restoreBodies.push(JSON.parse(init.body));
+        return {
+          ok: true,
+          json: async () => ({ summary: "撤销丢弃：1 已恢复，0 跳过，0 不在回收站。", restored: ["t-1"], skipped: [], missing: [] }),
+        } as unknown as Response;
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    const onRefresh = vi.fn();
+    try {
+      render(
+        <NarrativeMemoryPanelShell
+          bookId="book-1"
+          diagnostics={null}
+          empty={false}
+          error={null}
+          events={[]}
+          onRefresh={onRefresh}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId("memory-pending-trash-toggle"));
+      const list = await screen.findByTestId("memory-pending-trash-list");
+      expect(await within(list).findByText(/韩立 · 抵达 · 药园/)).toBeTruthy();
+
+      fireEvent.click(within(list).getByRole("button", { name: /恢复$/ }));
+      await within(list).findByText("撤销丢弃：1 已恢复，0 跳过，0 不在回收站。");
+      expect(restoreBodies[0]).toEqual({ eventIds: ["t-1"] });
+      expect(onRefresh).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  /** 卷 / 阶段摘要：列出记录 + 新鲜度，支持逐条确认与一键回填。 */
+  it("卷摘要卡片能列出记录、确认摘要并回填", async () => {
+    const calls: string[] = [];
+    apiMock.fetchJsonImpl = async (path, init) => {
+      calls.push(`${init?.method ?? "GET"} ${path}`);
+      if (path.endsWith("/narrative-memory/arc-summaries") && !init?.method) {
+        return {
+          records: [
+            { id: "arc-1", kind: "volume", segmentId: "v1", segmentTitle: "第一卷 落霞", chapterFrom: 1, chapterTo: 12, status: "needs-review", fresh: true, content: { gist: "韩立离乡入宗门。" } },
+            { id: "arc-2", kind: "volume", segmentId: "v2", segmentTitle: "第二卷 内门", chapterFrom: 13, chapterTo: 30, status: "stale", fresh: false },
+          ],
+          summary: "已有 2 条卷摘要 / 全书梗概，其中待确认 1 条。",
+        };
+      }
+      if (path.includes("/arc-summaries/arc-1/confirm")) {
+        return { summary: "已确认「第一卷 落霞」的摘要。" };
+      }
+      if (path.endsWith("/arc-summaries/backfill")) {
+        return { summary: "已生成 1 条卷摘要 / 全书梗概，均为待确认。" };
+      }
+      return {};
+    };
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[]}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("memory-arc-summaries-toggle"));
+    await screen.findByText("第一卷 落霞");
+    expect(screen.getByText("韩立离乡入宗门。")).toBeTruthy();
+    // 过期的那条不能确认：按钮禁用并给出原因。
+    const staleConfirm = screen.getByTestId("memory-arc-summary-confirm-arc-2") as HTMLButtonElement;
+    expect(staleConfirm.disabled).toBe(true);
+    expect(screen.getAllByText("已过期").length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(screen.getByTestId("memory-arc-summary-confirm-arc-1"));
+    await screen.findByText("已确认「第一卷 落霞」的摘要。");
+    expect(calls.some((call) => call.includes("POST") && call.includes("/arc-summaries/arc-1/confirm"))).toBe(true);
+
+    fireEvent.click(screen.getByTestId("memory-arc-summaries-backfill"));
+    await screen.findByText("已生成 1 条卷摘要 / 全书梗概，均为待确认。");
+  });
+
+  /** 记忆诊断与修复工具箱：过期事实清单 + 5 类幂等修复动作。 */
+  it("诊断工具箱能列出过期事实并触发修复动作", async () => {
+    const calls: string[] = [];
+    apiMock.fetchJsonImpl = async (path, init) => {
+      calls.push(`${init?.method ?? "GET"} ${path}`);
+      if (path.includes("/narrative-memory/stale-facts")) {
+        return {
+          staleCount: 1,
+          thresholdChapters: 30,
+          items: [
+            {
+              id: "f-stale",
+              subject: "韩立",
+              predicate: "位置",
+              object: "黄枫谷",
+              staleness: { level: "stale", staleChapters: 34, label: "已 34 章未变动", explanation: { suggestedAction: "复查这条状态是否仍然成立。" } },
+            },
+          ],
+          summary: "发现 1 条动态状态已超过 30 章未变动，可能已过时，请复查。",
+        };
+      }
+      if (path.endsWith("/state-slots/recompute")) {
+        return { summary: "检查 3 条人物状态：无需整理。" };
+      }
+      return {};
+    };
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[]}
+        currentChapter={40}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("memory-maintenance-toggle"));
+    await screen.findByText("发现 1 条动态状态已超过 30 章未变动，可能已过时，请复查。");
+    expect(screen.getByTestId("memory-maintenance-stale-list").textContent).toContain("韩立 · 位置 · 黄枫谷");
+    expect(calls.some((call) => call.includes("stale-facts?currentChapter=40"))).toBe(true);
+
+    fireEvent.click(screen.getByTestId("memory-maintenance-state-slots"));
+    await screen.findByText("检查 3 条人物状态：无需整理。");
+    expect(calls.some((call) => call === "POST /api/books/book-1/narrative-memory/state-slots/recompute")).toBe(true);
+    // 六个修复动作都在，缺一个作者就会以为能力不存在。
+    for (const key of ["state-slots", "causal-links", "passages", "ledger", "entity-ids", "entity-embeddings"]) {
+      expect(screen.getByTestId(`memory-maintenance-${key}`)).toBeTruthy();
+    }
   });
 });
 

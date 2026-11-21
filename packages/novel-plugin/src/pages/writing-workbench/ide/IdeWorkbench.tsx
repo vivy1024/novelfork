@@ -32,7 +32,7 @@ import { SkillsAndStyleSidebarPanel } from "./SkillsAndStyleSidebarPanel";
 import { StyleDistillationWorkspace, type StyleDistillationFetchJson } from "./StyleDistillationWorkspace";
 import { StyleVaultPanel } from "./StyleVaultPanel";
 import { DissectLibraryPanel } from "../DissectLibraryPanel";
-import { ChapterDirectorySidebar, type PlannedOutlineChapterItem, type VolumeGroupMeta } from "../ChapterDirectorySidebar";
+import { ChapterDirectorySidebar, type ChapterStageStatus, type PlannedOutlineChapterItem, type VolumeGroupMeta } from "../ChapterDirectorySidebar";
 import { ChapterPrepWorkspace, type PrepTargetChapter } from "../ChapterPrepWorkspace";
 import { QualityDashboardWorkspace, type QualityDashboardTabId } from "../QualityDashboardWorkspace";
 import { useNarrativeStructure } from "../useNarrativeStructure";
@@ -703,19 +703,25 @@ export function IdeWorkbench({
   const resourceFileNodes = fileTree.nodes;
   const { state: narrativeStructureState, reload: reloadNarrativeStructure } = useNarrativeStructure(bookId);
   const [chapterAuditSummary, setChapterAuditSummary] = useState<Record<number, ChapterAuditBadgeInfo>>({});
+  const [chapterStageSummary, setChapterStageSummary] = useState<Record<number, ChapterStageStatus>>({});
 
   const loadChapterAuditSummary = useCallback(async () => {
     if (!bookId) {
       setChapterAuditSummary({});
+      setChapterStageSummary({});
       return;
     }
-    try {
-      const fetcher = runtimeFetch ?? (async (input: string) => {
-        const res = await fetch(input);
-        if (!res.ok) return {};
-        return res.json();
-      });
-      const payload = await fetcher(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/audit-issues/summary`) as {
+    const fetcher = runtimeFetch ?? (async (input: string) => {
+      const res = await fetch(input);
+      if (!res.ok) return {};
+      return res.json();
+    });
+    const [auditRes, freshnessRes] = await Promise.allSettled([
+      fetcher(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/audit-issues/summary`),
+      fetcher(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/settlement-freshness`),
+    ]);
+    if (auditRes.status === "fulfilled") {
+      const payload = auditRes.value as {
         chapters?: Array<{ chapterNumber?: unknown; issueCount?: unknown; criticalCount?: unknown; stale?: unknown }>;
       } | null;
       const next: Record<number, ChapterAuditBadgeInfo> = {};
@@ -729,8 +735,23 @@ export function IdeWorkbench({
         }
       }
       setChapterAuditSummary(next);
-    } catch {
-      // 审计摘要失败不阻塞资源树展示
+    }
+    if (freshnessRes.status === "fulfilled") {
+      const payload = freshnessRes.value as {
+        chapters?: Array<{ chapterNumber?: unknown; status?: unknown }>;
+      } | null;
+      const nextStages: Record<number, ChapterStageStatus> = {};
+      for (const item of payload?.chapters ?? []) {
+        if (
+          typeof item.chapterNumber === "number"
+          && Number.isInteger(item.chapterNumber)
+          && item.chapterNumber > 0
+          && (item.status === "uncommitted" || item.status === "unsettled" || item.status === "stale" || item.status === "fresh" || item.status === "unknown")
+        ) {
+          nextStages[item.chapterNumber] = item.status;
+        }
+      }
+      setChapterStageSummary(nextStages);
     }
   }, [bookId, runtimeFetch]);
 
@@ -2523,6 +2544,7 @@ export function IdeWorkbench({
                     activePrepChapterNumber={writeCenterMode === "prep" ? (prepTargetChapter?.chapterNumber ?? null) : null}
                     chapterWordTarget={bookChapterWordTarget}
                     chapterAuditSummary={chapterAuditSummary}
+                    chapterStageSummary={chapterStageSummary}
                     creatingChapter={creatingChapter}
                     creatingNote={creatingNote}
                     onOpenChapter={(chapterNode) => {
@@ -2805,6 +2827,7 @@ export function IdeWorkbench({
                               selectionCandidate={selectionCandidate}
                               onDismissSelectionCandidate={onDismissSelectionCandidate}
                               liveChapterStream={liveChapterStream}
+                              chapterStageSummary={chapterStageSummary}
                               onOpenResourceNode={handleOpen}
                               studioCleanChrome={studioUnifiedSidebar}
                               {...(bookId ? { onCreateFirstChapter: () => void handleQuickCreateChapter() } : {})}
@@ -2868,6 +2891,7 @@ export function IdeWorkbench({
                         selectionCandidate={selectionCandidate}
                         onDismissSelectionCandidate={onDismissSelectionCandidate}
                         liveChapterStream={liveChapterStream}
+                        chapterStageSummary={chapterStageSummary}
                         onOpenResourceNode={handleOpen}
                         onPromoteOutline={(outlineNode) => {
                           void handleResourceAction({ type: "promote-outline", node: outlineNode });

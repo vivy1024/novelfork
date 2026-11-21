@@ -99,4 +99,29 @@ describe("ChapterDirectorySidebar", () => {
     expect(screen.queryByTestId("chapter-card-file:chapters/0001_雨夜起笔.md")).toBeNull();
     expect(screen.getByTestId("chapter-card-file:chapters/0002_青梅入城.md")).toBeTruthy();
   });
+
+  it("显性展示章节生命周期阶段（草稿未入库 / 未结算 / 记忆过期），已闭环不重复堆标", () => {
+    render(
+      <ChapterDirectorySidebar
+        chapterNodes={[
+          makeChapter(1, "已闭环章", 3000),
+          makeChapter(2, "未结算章", 3100),
+          makeChapter(3, "改后过期章", 3200),
+          makeChapter(4, "草稿未入库章", 2900),
+        ]}
+        chapterStageSummary={{
+          1: "fresh",
+          2: "unsettled",
+          3: "stale",
+          4: "uncommitted",
+        }}
+        onOpenChapter={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("chapter-stage-1")).toBeNull();
+    expect(screen.getByTestId("chapter-stage-2").textContent).toBe("未结算");
+    expect(screen.getByTestId("chapter-stage-3").textContent).toBe("记忆过期");
+    expect(screen.getByTestId("chapter-stage-4").textContent).toBe("草稿未入库");
+  });
 });

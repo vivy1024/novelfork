@@ -118,6 +118,21 @@ describe("readBookSettlementFreshness after a file revert (T-20)", () => {
     expect(freshness.chapters[0]?.status).toBe("unknown");
     expect(freshness.staleChapters).toEqual([]);
   });
+
+  it("reports disk chapter files absent from index.json as uncommitted", async () => {
+    // 原生 Write 刚写下第 6 章正文但还没调 chapter.commit 入 index.json：应识别为 uncommitted（草稿未入库）。
+    await writeChapterFile(6, "夜探密室", "他推开石门，寒风迎面扑来。");
+    await writeChapterIndex(bookRoot, []);
+
+    const freshness = await readBookSettlementFreshness(storage, "book-1", bookRoot);
+
+    expect(freshness.chapters).toEqual([
+      expect.objectContaining({ chapterNumber: 6, title: "夜探密室", status: "uncommitted" }),
+    ]);
+    expect(freshness.uncommittedChapters).toEqual([6]);
+    expect(freshness.staleChapters).toEqual([]);
+    expect(freshness.unsettledChapters).toEqual([]);
+  });
 });
 
 describe("readBookSettlementFreshness 指纹缓存（长篇每章写作不再重读全书）", () => {

@@ -29,6 +29,7 @@ import { ChapterContextRail } from "./ChapterContextRail";
 import { ChapterMemoryDiffBoard } from "./ChapterMemoryDiffBoard";
 import { ChapterOutlineBoard } from "./ChapterOutlineBoard";
 import { ChapterQualityRail } from "./ChapterQualityRail";
+import type { ChapterStageStatus } from "./ChapterDirectorySidebar";
 import { InlineWorkflowRunBar } from "./InlineWorkflowRunBar";
 import {
   CHAPTER_CONTEXT_RAIL_DEFAULT_WIDTH,
@@ -178,7 +179,10 @@ function ChapterStatusBar({
   targetWords,
   language,
   sceneSpec,
+  stage,
   onOpenBlueprint,
+  onOpenMemoryTab,
+  onSendToNarrator,
   bookId,
   onOpenStyleVault,
   revision,
@@ -188,7 +192,10 @@ function ChapterStatusBar({
   targetWords?: number;
   language: LengthLanguage;
   sceneSpec: SceneSpec | null;
+  stage?: ChapterStageStatus;
   onOpenBlueprint: () => void;
+  onOpenMemoryTab?: () => void;
+  onSendToNarrator?: (message: string) => Promise<void> | void;
   bookId?: string;
   onOpenStyleVault?: (chapterNumber: number) => void;
   revision?: string | number;
@@ -200,11 +207,47 @@ function ChapterStatusBar({
   const progressLabel = typeof delta === "number"
     ? delta === 0 ? "正好达到目标" : delta > 0 ? `超出 ${delta.toLocaleString()} ${unit}` : `还差 ${Math.abs(delta).toLocaleString()} ${unit}`
     : "暂无目标字数";
+  const stageBadge = stage === "uncommitted"
+    ? { label: "阶段：草稿未入库", className: "border-warning/40 bg-warning/10 text-warning" }
+    : stage === "unsettled"
+      ? { label: "阶段：已入库 · 待结算", className: "border-info/40 bg-info/10 text-info" }
+      : stage === "stale"
+        ? { label: "阶段：已改稿 · 记忆过期", className: "border-warning/40 bg-warning/10 text-warning" }
+        : stage === "fresh"
+          ? { label: "阶段：已入库并结算", className: "border-primary/30 bg-primary/10 text-primary" }
+          : null;
 
   return (
     <div data-testid="chapter-status-bar" className="shrink-0 border-b border-border/70 bg-muted/20 px-4 py-1.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
         {typeof chapterNumber === "number" ? <span>第 {chapterNumber} 章</span> : null}
+        {stageBadge ? (
+          <Badge variant="outline" className={`h-4 px-1.5 text-2xs ${stageBadge.className}`} data-testid="chapter-stage-badge">
+            {stageBadge.label}
+          </Badge>
+        ) : null}
+        {stage === "uncommitted" && typeof chapterNumber === "number" && onSendToNarrator ? (
+          <button
+            type="button"
+            className="font-medium text-primary hover:underline"
+            data-testid="chapter-stage-commit-btn"
+            onClick={() => {
+              void onSendToNarrator(`第 ${chapterNumber} 章正文已写入磁盘但尚未正式入库，请调用 ${toWireToolName("chapter.commit")} 完成审计校验、正式入库与章后记忆结算。`);
+            }}
+          >
+            提交入库
+          </button>
+        ) : null}
+        {(stage === "unsettled" || stage === "stale") && onOpenMemoryTab ? (
+          <button
+            type="button"
+            className="font-medium text-primary hover:underline"
+            data-testid="chapter-stage-memory-btn"
+            onClick={onOpenMemoryTab}
+          >
+            处理本章记忆
+          </button>
+        ) : null}
         <span>蓝图：</span>
         {sceneSpec ? (
           <button type="button" className="font-medium text-primary hover:underline" onClick={onOpenBlueprint}>
@@ -346,6 +389,8 @@ export interface WorkbenchCanvasProps {
   selectionCandidate?: SelectionCandidate | null;
   onDismissSelectionCandidate?: () => void;
   liveChapterStream?: LiveChapterStreamInfo | null;
+  /** 按章号索引的章节生命周期阶段（未入库 / 未结算 / 记忆过期 / 已闭环）。 */
+  chapterStageSummary?: Readonly<Record<number, ChapterStageStatus>>;
   /** 点作者改动占比徽标时跳到「技能文风 › 文风金库」并展开该章。 */
   onOpenStyleVault?: (chapterNumber: number) => void;
   /** 从本章质检伴随板打开全书质检与分析大盘。 */
@@ -360,7 +405,7 @@ export interface WorkbenchCanvasProps {
 
 export type CompanionRailTab = "outline" | "memory" | "quality" | "context";
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, liveChapterStream, onOpenStyleVault, onOpenQualityDashboard, onOpenWorkflowStudio, studioCleanChrome = false, onCreateFirstChapter }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, liveChapterStream, chapterStageSummary, onOpenStyleVault, onOpenQualityDashboard, onOpenWorkflowStudio, studioCleanChrome = false, onCreateFirstChapter }: WorkbenchCanvasProps) {
   const chapterStream = node?.kind === "chapter" && liveChapterStream?.chapterNumber === node.metadata?.chapterNumber ? liveChapterStream : null;
   const isLiveWrite = chapterStream?.toolName === "Write";
   // 暂停本章的手动保存和待执行的自动保存，不把流式正文送进草稿/保存状态。
@@ -835,7 +880,13 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
           targetWords={resolveChapterWordTarget(node, nodes, sceneSpec)}
           language={resolveBookLanguage(nodes)}
           sceneSpec={sceneSpec}
+          stage={typeof node.metadata?.chapterNumber === "number" ? chapterStageSummary?.[node.metadata.chapterNumber] : undefined}
           onOpenBlueprint={() => setSceneSpecOpen(true)}
+          onOpenMemoryTab={() => {
+            switchContextRailTab("memory");
+            setContextRailOpen(true);
+          }}
+          onSendToNarrator={onSendToNarrator}
           bookId={bookId}
           onOpenStyleVault={onOpenStyleVault}
           revision={typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : typeof node.metadata?.version === "number" ? node.metadata.version : undefined}

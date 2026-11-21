@@ -200,7 +200,7 @@ export async function buildChapterTimeline(
 
   // 结算新鲜度本身就是「过期/未结算」的现算判定，复用同一份结果，不重复实现。
   const freshness = await readBookSettlementFreshness(storage, bookId, bookRoot)
-    .catch(() => ({ chapters: [], staleChapters: [], unsettledChapters: [] }));
+    .catch(() => ({ chapters: [], staleChapters: [], unsettledChapters: [], uncommittedChapters: [] }));
   const staleSet = new Set(freshness.staleChapters);
 
   const summaries = readChapterSummaries(storage, bookId);

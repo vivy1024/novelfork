@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, Brain, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  Brain,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Undo2,
+  Wrench,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,19 +22,23 @@ import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 // 待确认事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
 import {
   bulkMutatePendingEvents,
+  fetchTrashedPendingEvents,
   mutatePendingEvent as mutatePendingEventRequest,
   restoreTrashedPendingEvents,
   riskLabel,
   type PendingEvent,
   type PendingEventEdit,
+  type TrashedPendingEvent,
 } from "./narrative-pending-events";
 import {
   correctFact,
+  createFact,
   fetchFactsByEntity,
   retireFact,
   type EntityFact,
   type EntityFactsGroup,
 } from "./narrative-fact-edits";
+import { MEMORY_FACT_CATEGORY_OPTIONS } from "./lore-workspace-split";
 // 叙事线审批台账与章后结算历史是同一件事的两半：都要能回答「谁在什么时候
 // 批了什么」。共用 narrative-line-proposals 这一条通道。
 import {
@@ -381,11 +398,13 @@ function StoryStatusSummary({
   entityGroups = [],
   factEditingId,
   factEditError,
+  currentChapter,
   onOpenFact,
   onOpenEntityDetail,
   onCorrectFact,
   onRetireFact,
   onOpenChapter,
+  onRefresh,
 }: {
   bookId: string;
   stateFacts: MemoryEntry[];
@@ -394,11 +413,13 @@ function StoryStatusSummary({
   entityGroups?: EntityFactsGroup[];
   factEditingId?: string | null;
   factEditError?: string | null;
+  currentChapter?: number;
   onOpenFact?: (entry: MemoryEntry) => void;
   onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   onCorrectFact?: (fact: EntityFact, newObject: string) => void;
   onRetireFact?: (fact: EntityFact) => void;
   onOpenChapter?: (chapterNumber: number) => void;
+  onRefresh?: () => void;
 }) {
   const highRiskCount = events.filter((event) => event.risk === "high").length;
   const factPreview = stateFacts.slice(0, 8);
@@ -417,7 +438,10 @@ function StoryStatusSummary({
     <section className="nf-surface-card p-3 space-y-3" data-testid="narrative-memory-story-status">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold">当前故事状态</h3>
-        <span className="text-2xs text-muted-foreground">自动结算 · 作者可纠错</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-2xs text-muted-foreground">自动结算 · 作者可纠错</span>
+          <ManualFactForm bookId={bookId} currentChapter={currentChapter} onCreated={onRefresh} />
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="nf-surface-sub p-2">
@@ -1089,6 +1113,901 @@ function FactHistoryPanel({ bookId, fact, onClose, onOpenChapter }: { bookId: st
   );
 }
 
+// ---------------------------------------------------------------------------
+// 作者手动补录：新增事实 / 补记事件
+//
+// 章后结算会漏记、抽错，也常在一章改完后才发现某个变化没进记忆。此前面板只能纠错和
+// 作废，不能补写，作者只能去开叙述者对话。这里给出两条最小直写通道：
+//   - 新增事实 → narrative-fact-edits 的 createFact（manual 来源，享结算覆盖保护）；
+//   - 补记事件 → POST …/narrative-memory/events（manual 来源，一律进待确认队列）。
+// 两者都不自己拼请求语义，避免与散落的 fetch 漂移。
+// ---------------------------------------------------------------------------
+
+/** 事件类型的中文说法；与 NarrativeEventTypeSchema 的取值一一对应。 */
+const NARRATIVE_EVENT_TYPE_OPTIONS: ReadonlyArray<{ readonly value: string; readonly label: string }> = [
+  { value: "character_state_changed", label: "角色状态变化" },
+  { value: "relationship_changed", label: "关系变化" },
+  { value: "location_changed", label: "位置变化" },
+  { value: "hook_planted", label: "伏笔埋设" },
+  { value: "hook_progressed", label: "伏笔推进" },
+  { value: "hook_triggered", label: "伏笔触发" },
+  { value: "hook_resolved", label: "伏笔回收" },
+  { value: "world_fact_introduced", label: "世界设定" },
+  { value: "timeline_advanced", label: "时间推进" },
+];
+
+interface MemoryNotice {
+  readonly tone: "ok" | "error";
+  readonly text: string;
+}
+
+function MemoryNoticeLine({ notice }: { notice: MemoryNotice | null }) {
+  if (!notice) return null;
+  return (
+    <p
+      role={notice.tone === "error" ? "alert" : "status"}
+      className={`text-2xs ${notice.tone === "error" ? "text-destructive" : "text-muted-foreground"}`}
+    >
+      {notice.text}
+    </p>
+  );
+}
+
+const DEFAULT_FACT_CATEGORY = MEMORY_FACT_CATEGORY_OPTIONS[0]?.value ?? "state";
+
+/** 手动新增一条叙事事实（折叠表单）。 */
+function ManualFactForm({
+  bookId,
+  currentChapter,
+  onCreated,
+}: {
+  bookId: string;
+  currentChapter?: number;
+  onCreated?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [predicate, setPredicate] = useState("");
+  const [factObject, setFactObject] = useState("");
+  const [category, setCategory] = useState(DEFAULT_FACT_CATEGORY);
+  const [validFromChapter, setValidFromChapter] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<MemoryNotice | null>(null);
+
+  const submit = async () => {
+    if (busy) return;
+    if (!subject.trim() || !predicate.trim() || !factObject.trim()) {
+      setNotice({ tone: "error", text: "主体、属性、值都必须填写。" });
+      return;
+    }
+    const chapter = Number(validFromChapter);
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await createFact(bookId, {
+        subject: subject.trim(),
+        predicate: predicate.trim(),
+        object: factObject.trim(),
+        category,
+        ...(Number.isInteger(chapter) && chapter > 0
+          ? { validFromChapter: chapter }
+          : currentChapter && currentChapter > 0 ? { validFromChapter: currentChapter } : {}),
+      });
+      setNotice({ tone: "ok", text: result.summary ?? "已新增叙事事实。" });
+      setSubject("");
+      setPredicate("");
+      setFactObject("");
+      setValidFromChapter("");
+      onCreated?.();
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : "新增事实失败。" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5" data-testid="memory-manual-fact">
+      <button
+        type="button"
+        aria-expanded={open}
+        data-testid="memory-manual-fact-toggle"
+        onClick={() => setOpen((value) => !value)}
+        className="rounded px-1.5 py-0.5 text-2xs text-primary hover:bg-muted"
+      >
+        {open ? "收起新增事实" : "新增事实"}
+      </button>
+      {open ? (
+        <div className="space-y-1.5 rounded border border-primary/30 bg-primary/5 p-2" data-testid="memory-manual-fact-form">
+          <div className="grid grid-cols-2 gap-1">
+            <input
+              value={subject}
+              onChange={(event) => setSubject(event.currentTarget.value)}
+              placeholder="主体（如：韩立）"
+              aria-label="新事实主体"
+              className="h-6 min-w-0 rounded border border-border bg-background px-1.5 text-2xs"
+            />
+            <input
+              value={predicate}
+              onChange={(event) => setPredicate(event.currentTarget.value)}
+              placeholder="属性（如：境界）"
+              aria-label="新事实属性"
+              className="h-6 min-w-0 rounded border border-border bg-background px-1.5 text-2xs"
+            />
+          </div>
+          <input
+            value={factObject}
+            onChange={(event) => setFactObject(event.currentTarget.value)}
+            placeholder="值（如：筑基初期）"
+            aria-label="新事实的值"
+            className="h-6 w-full rounded border border-border bg-background px-1.5 text-2xs"
+          />
+          <div className="flex flex-wrap items-center gap-1">
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.currentTarget.value)}
+              aria-label="新事实类别"
+              className="h-6 rounded border border-border bg-background px-1.5 text-2xs"
+            >
+              {MEMORY_FACT_CATEGORY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <input
+              value={validFromChapter}
+              onChange={(event) => setValidFromChapter(event.currentTarget.value)}
+              type="number"
+              min={1}
+              placeholder={currentChapter && currentChapter > 0 ? `生效章（默认 ${currentChapter}）` : "生效章号（可选）"}
+              aria-label="新事实生效章号"
+              className="h-6 w-32 rounded border border-border bg-background px-1.5 text-2xs"
+            />
+            <Button
+              type="button"
+              size="xs"
+              className="h-6 gap-1 px-2 text-2xs"
+              disabled={busy}
+              onClick={() => void submit()}
+              data-testid="memory-manual-fact-submit"
+            >
+              {busy ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
+              保存事实
+            </Button>
+            <button
+              type="button"
+              className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground"
+              onClick={() => setOpen(false)}
+            >
+              取消
+            </button>
+          </div>
+          <p className="text-2xs text-muted-foreground">
+            新增的事实记为「作者手写」，章后重新结算不会覆盖它；同类属性被顶替的旧值会自动关闭。
+          </p>
+          <MemoryNoticeLine notice={notice} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 手动补记一条叙事事件（折叠表单）。补记的事件进入待确认队列，不直接生效。 */
+function ManualEventForm({
+  bookId,
+  currentChapter,
+  onCreated,
+}: {
+  bookId: string;
+  currentChapter?: number;
+  onCreated?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [chapterValue, setChapterValue] = useState(currentChapter && currentChapter > 0 ? String(currentChapter) : "");
+  const [eventType, setEventType] = useState(NARRATIVE_EVENT_TYPE_OPTIONS[0]!.value);
+  const [subject, setSubject] = useState("");
+  const [predicate, setPredicate] = useState("");
+  const [eventObject, setEventObject] = useState("");
+  const [evidence, setEvidence] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<MemoryNotice | null>(null);
+
+  const submit = async () => {
+    if (busy) return;
+    const chapter = Number(chapterValue);
+    if (!Number.isInteger(chapter) || chapter <= 0) {
+      setNotice({ tone: "error", text: "章号必须是正整数。" });
+      return;
+    }
+    if (!subject.trim() || !predicate.trim() || !eventObject.trim() || !evidence.trim()) {
+      setNotice({ tone: "error", text: "主体、谓词、客体与正文依据都必须填写。" });
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await fetchJson<{ summary?: string }>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chapterNumber: chapter,
+            eventType,
+            subject: subject.trim(),
+            predicate: predicate.trim(),
+            object: eventObject.trim(),
+            evidenceText: evidence.trim(),
+            confidence: 1,
+          }),
+        },
+      );
+      setNotice({ tone: "ok", text: result?.summary ?? "已补记这条事件，等待你在待确认队列里裁决。" });
+      setSubject("");
+      setPredicate("");
+      setEventObject("");
+      setEvidence("");
+      onCreated?.();
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : "补记事件失败。" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5" data-testid="memory-manual-event">
+      <button
+        type="button"
+        aria-expanded={open}
+        data-testid="memory-manual-event-toggle"
+        onClick={() => setOpen((value) => !value)}
+        className="rounded px-1.5 py-0.5 text-2xs text-primary hover:bg-muted"
+      >
+        {open ? "收起补记事件" : "补记事件"}
+      </button>
+      {open ? (
+        <div className="space-y-1.5 rounded border border-primary/30 bg-primary/5 p-2" data-testid="memory-manual-event-form">
+          <div className="flex flex-wrap items-center gap-1">
+            <input
+              value={chapterValue}
+              onChange={(event) => setChapterValue(event.currentTarget.value)}
+              type="number"
+              min={1}
+              placeholder="章号"
+              aria-label="补记事件章号"
+              className="h-6 w-20 rounded border border-border bg-background px-1.5 text-2xs"
+            />
+            <select
+              value={eventType}
+              onChange={(event) => setEventType(event.currentTarget.value)}
+              aria-label="补记事件类型"
+              className="h-6 rounded border border-border bg-background px-1.5 text-2xs"
+            >
+              {NARRATIVE_EVENT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            <input
+              value={subject}
+              onChange={(event) => setSubject(event.currentTarget.value)}
+              placeholder="主体"
+              aria-label="补记事件主体"
+              className="h-6 min-w-0 rounded border border-border bg-background px-1.5 text-2xs"
+            />
+            <input
+              value={predicate}
+              onChange={(event) => setPredicate(event.currentTarget.value)}
+              placeholder="谓词"
+              aria-label="补记事件谓词"
+              className="h-6 min-w-0 rounded border border-border bg-background px-1.5 text-2xs"
+            />
+            <input
+              value={eventObject}
+              onChange={(event) => setEventObject(event.currentTarget.value)}
+              placeholder="客体"
+              aria-label="补记事件客体"
+              className="h-6 min-w-0 rounded border border-border bg-background px-1.5 text-2xs"
+            />
+          </div>
+          <input
+            value={evidence}
+            onChange={(event) => setEvidence(event.currentTarget.value)}
+            placeholder="正文依据摘录（必填，裁决时要能回查原文）"
+            aria-label="补记事件正文依据"
+            className="h-6 w-full rounded border border-border bg-background px-1.5 text-2xs"
+          />
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              size="xs"
+              className="h-6 gap-1 px-2 text-2xs"
+              disabled={busy}
+              onClick={() => void submit()}
+              data-testid="memory-manual-event-submit"
+            >
+              {busy ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
+              记入待确认
+            </Button>
+            <button
+              type="button"
+              className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground"
+              onClick={() => setOpen(false)}
+            >
+              取消
+            </button>
+          </div>
+          <MemoryNoticeLine notice={notice} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 待确认回收站（30 天）
+//
+// 丢弃是软删除：事件搬进回收站保留 30 天。此前界面上只有「刚丢弃」那一次的撤销入口，
+// 刷新页面后就再也找不到回收站——作者会以为数据被删了。这里给出常驻入口，
+// 支持单条与批量恢复，取数与恢复都复用 narrative-pending-events 的既有通道。
+// ---------------------------------------------------------------------------
+
+const TRASH_RETENTION_DAYS = 30;
+
+function PendingTrashBin({ bookId, onRestored }: { bookId: string; onRestored?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [entries, setEntries] = useState<TrashedPendingEvent[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<MemoryNotice | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const items = await fetchTrashedPendingEvents(bookId);
+      setEntries(items);
+      setSelected(new Set());
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : "读取回收站失败。" });
+    } finally {
+      setLoading(false);
+    }
+  }, [bookId]);
+
+  useEffect(() => {
+    if (!open) return;
+    void load();
+  }, [open, load]);
+
+  const restore = async (eventIds: readonly string[]) => {
+    if (eventIds.length === 0 || busyKey) return;
+    setBusyKey(eventIds.length === 1 ? eventIds[0]! : "bulk");
+    setNotice(null);
+    try {
+      const result = await restoreTrashedPendingEvents(bookId, eventIds);
+      setNotice({ tone: "ok", text: result.summary ?? `已恢复 ${result.restored?.length ?? 0} 条丢弃记录。` });
+      await load();
+      onRestored?.();
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : "恢复失败。" });
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const toggle = (eventId: string) => {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-1.5" data-testid="memory-pending-trash">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          data-testid="memory-pending-trash-toggle"
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          title={`丢弃的待确认事件会保留 ${TRASH_RETENTION_DAYS} 天，随时可以恢复`}
+        >
+          <Trash2 className="size-3" />
+          回收站
+          {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        </button>
+        {open ? (
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            {loading ? "刷新中…" : "刷新"}
+          </button>
+        ) : null}
+      </div>
+      {open ? (
+        <div className="space-y-1.5 rounded border border-border/70 bg-muted/20 p-2" data-testid="memory-pending-trash-list">
+          <p className="text-2xs text-muted-foreground">
+            丢弃的草案在这里保留 {TRASH_RETENTION_DAYS} 天，恢复后会回到待确认队列。
+          </p>
+          {loading && entries.length === 0 ? (
+            <p className="flex items-center gap-1 text-2xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" /> 正在读取回收站…
+            </p>
+          ) : entries.length === 0 ? (
+            <p className="text-2xs text-muted-foreground">回收站是空的。</p>
+          ) : (
+            <>
+              <ul className="space-y-1">
+                {entries.map((entry, index) => {
+                  const id = entry.id ?? `trash-${index}`;
+                  const selectable = Boolean(entry.id);
+                  return (
+                    <li
+                      key={id}
+                      className="flex items-start gap-1.5 rounded border border-border/60 bg-background/60 px-2 py-1 text-2xs"
+                    >
+                      {selectable ? (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(entry.id!)}
+                          onChange={() => toggle(entry.id!)}
+                          aria-label={`选择回收站事件 ${entry.entity ?? entry.subject ?? id}`}
+                          className="mt-0.5 size-3.5 shrink-0 accent-primary"
+                        />
+                      ) : null}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-foreground">
+                          {[entry.entity ?? entry.subject, entry.predicate, entry.object].filter(Boolean).join(" · ") || entry.eventType || "丢弃的记忆草案"}
+                        </span>
+                        <span className="mt-0.5 block text-muted-foreground">
+                          {typeof entry.chapterNumber === "number" ? `第 ${entry.chapterNumber} 章 · ` : ""}
+                          {entry.deletedAt ? `丢弃于 ${formatApprovalTime(entry.deletedAt)}` : "丢弃时间未知"}
+                          {entry.deletedReason ? ` · ${entry.deletedReason}` : ""}
+                        </span>
+                      </span>
+                      {entry.id ? (
+                        <button
+                          type="button"
+                          disabled={busyKey !== null}
+                          onClick={() => void restore([entry.id!])}
+                          className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 text-2xs hover:bg-muted disabled:opacity-50"
+                        >
+                          {busyKey === entry.id ? <Loader2 className="size-2.5 animate-spin" /> : <Undo2 className="size-2.5" />}
+                          恢复
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={busyKey !== null || selected.size === 0}
+                  onClick={() => void restore([...selected])}
+                  className="rounded border border-border px-2 py-0.5 text-2xs hover:bg-muted disabled:opacity-50"
+                >
+                  {busyKey === "bulk" ? "恢复中…" : `恢复选中 ${selected.size} 条`}
+                </button>
+                {selected.size > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelected(new Set())}
+                    className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground"
+                  >
+                    取消选择
+                  </button>
+                ) : null}
+              </div>
+            </>
+          )}
+          <MemoryNoticeLine notice={notice} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 卷 / 阶段摘要
+//
+// 卷摘要与全书梗概由模型从章摘要归纳，落盘为 needs-review；章摘要后来改过 → 过期。
+// 数据结构里早有 freshness 与确认/回填接口，界面一直没有入口，作者只能看章摘要拼接。
+// 这里给出列表 + 新鲜度 + 逐条确认 + 一键回填。
+// ---------------------------------------------------------------------------
+
+interface ArcSummaryView {
+  readonly id: string;
+  readonly kind: string;
+  readonly segmentId: string;
+  readonly segmentTitle: string;
+  readonly chapterFrom: number;
+  readonly chapterTo: number;
+  readonly status: string;
+  readonly fresh?: boolean;
+  readonly content?: { readonly text?: string; readonly gist?: string };
+}
+
+interface ArcSummariesResponse {
+  readonly ok?: boolean;
+  readonly records?: readonly ArcSummaryView[];
+  readonly summary?: string;
+  readonly latestChapter?: number;
+  readonly error?: string;
+}
+
+const ARC_SUMMARY_STATUS_LABELS: Record<string, string> = {
+  "needs-review": "待确认",
+  confirmed: "已确认",
+  stale: "已过期",
+};
+
+function ArcSummaryCard({
+  bookId,
+  onOpenChapter,
+}: {
+  bookId: string;
+  onOpenChapter?: (chapterNumber: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [records, setRecords] = useState<readonly ArcSummaryView[]>([]);
+  const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<MemoryNotice | null>(null);
+  const base = `/api/books/${encodeURIComponent(bookId)}/narrative-memory`;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const payload = await fetchJson<ArcSummariesResponse>(`${base}/arc-summaries`);
+      setRecords(payload.records ?? []);
+      setSummaryText(payload.summary ?? null);
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : "读取卷摘要失败。" });
+    } finally {
+      setLoading(false);
+    }
+  }, [base]);
+
+  useEffect(() => {
+    if (!open) return;
+    void load();
+  }, [open, load]);
+
+  const confirm = async (record: ArcSummaryView) => {
+    if (busyKey) return;
+    setBusyKey(record.id);
+    setNotice(null);
+    try {
+      const payload = await fetchJson<{ summary?: string }>(`${base}/arc-summaries/${encodeURIComponent(record.id)}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      setNotice({ tone: "ok", text: payload?.summary ?? `已确认「${record.segmentTitle}」的摘要。` });
+      await load();
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : "确认摘要失败。" });
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const backfill = async () => {
+    if (busyKey) return;
+    setBusyKey("backfill");
+    setNotice(null);
+    try {
+      const payload = await fetchJson<{ summary?: string }>(`${base}/arc-summaries/backfill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      setNotice({ tone: "ok", text: payload?.summary ?? "回填完成。" });
+      await load();
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : "回填摘要失败。" });
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  return (
+    <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-arc-summaries">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          data-testid="memory-arc-summaries-toggle"
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-foreground"
+        >
+          {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
+          卷 / 阶段摘要
+        </button>
+        <span className="text-2xs text-muted-foreground">模型据章摘要归纳 · 章摘要改过后过期</span>
+      </div>
+      {open ? (
+        <>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="h-6 gap-1 px-2 text-2xs"
+              disabled={busyKey !== null}
+              onClick={() => void backfill()}
+              data-testid="memory-arc-summaries-backfill"
+            >
+              {busyKey === "backfill" ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+              一键回填摘要
+            </Button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void load()}
+              className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              {loading ? "刷新中…" : "刷新"}
+            </button>
+          </div>
+          {summaryText ? <p className="text-2xs text-muted-foreground">{summaryText}</p> : null}
+          {loading && records.length === 0 ? (
+            <p className="flex items-center gap-1 text-2xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" /> 正在读取卷摘要…
+            </p>
+          ) : records.length === 0 ? (
+            <p className="text-2xs text-muted-foreground">还没有卷摘要或全书梗概。点「一键回填摘要」按章摘要生成一轮。</p>
+          ) : (
+            <ul className="space-y-1">
+              {records.map((record) => {
+                const stale = record.fresh === false;
+                return (
+                  <li key={record.id} className="rounded border border-border/60 bg-background/50 px-2 py-1.5 text-2xs space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium text-foreground">{record.segmentTitle || record.segmentId}</span>
+                      <Badge variant="outline" className="h-4 px-1 text-2xs">
+                        {record.kind === "synopsis" ? "全书梗概" : "卷摘要"}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={`h-4 px-1 text-2xs ${stale ? "border-warning/40 text-warning" : ""}`}
+                      >
+                        {stale ? "已过期" : (ARC_SUMMARY_STATUS_LABELS[record.status] ?? record.status)}
+                      </Badge>
+                      <span className="text-muted-foreground">
+                        第 {record.chapterFrom}–{record.chapterTo} 章
+                      </span>
+                      {onOpenChapter ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenChapter(record.chapterTo)}
+                          className="text-primary hover:underline"
+                          title={`打开第 ${record.chapterTo} 章`}
+                        >
+                          打开末章
+                        </button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        className="ml-auto h-5 px-1.5 text-2xs"
+                        disabled={busyKey !== null || stale || record.status === "confirmed"}
+                        title={stale ? "摘要按旧章摘要写的，先回填再确认" : undefined}
+                        onClick={() => void confirm(record)}
+                        data-testid={`memory-arc-summary-confirm-${record.id}`}
+                      >
+                        {busyKey === record.id ? <Loader2 className="size-2.5 animate-spin" /> : "确认摘要"}
+                      </Button>
+                    </div>
+                    {record.content?.gist || record.content?.text ? (
+                      <p className="line-clamp-2 text-muted-foreground">{record.content.gist ?? record.content.text}</p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <MemoryNoticeLine notice={notice} />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 记忆诊断与修复工具箱
+//
+// 记忆链路上的维护接口全部存在，但都散在叙述者工具与运维脚本里；作者遇到
+// 「状态槽有重复当前值」「检索索引落后」「台账里躺着已删章节」时无从下手。
+// 这里把只读诊断（过期事实）与 5 个幂等修复动作收到一处，每个动作如实回显服务端结果。
+// ---------------------------------------------------------------------------
+
+interface MaintenanceAction {
+  readonly key: string;
+  readonly label: string;
+  readonly path: string;
+  readonly hint: string;
+}
+
+const MAINTENANCE_ACTIONS: readonly MaintenanceAction[] = [
+  { key: "state-slots", label: "重算状态槽", path: "state-slots/recompute", hint: "同一属性挂着多个当前值时，保留最新、关闭旧值" },
+  { key: "causal-links", label: "回填因果链", path: "backfill-causal-links", hint: "为历史伏笔事件补上前驱，因果画布才有连线" },
+  { key: "passages", label: "重建章节检索索引", path: "chapter-passages/reindex", hint: "正文搜索索引落后或缺失时补齐" },
+  { key: "ledger", label: "对账结算台账", path: "settlement-ledger/reconcile", hint: "清掉已删章节的残留台账，并把事件被删光的章标为需重结算" },
+  { key: "entity-ids", label: "回填实体身份", path: "backfill-entity-ids", hint: "把旧事件的参与者挂到经纬条目上" },
+  { key: "entity-embeddings", label: "回填实体向量", path: "backfill-entity-embeddings", hint: "为实体补向量，语义召回才用得上" },
+];
+
+interface StaleFactView {
+  readonly id?: string;
+  readonly subject?: string;
+  readonly predicate?: string;
+  readonly object?: string;
+  readonly staleness?: {
+    readonly level?: string;
+    readonly staleChapters?: number | null;
+    readonly label?: string;
+    readonly explanation?: { readonly whatHappened?: string; readonly whyItMatters?: string; readonly suggestedAction?: string };
+  };
+}
+
+interface StaleFactsResponse {
+  readonly staleCount?: number;
+  readonly thresholdChapters?: number;
+  readonly items?: readonly StaleFactView[];
+  readonly summary?: string;
+}
+
+function MemoryMaintenanceCard({ bookId, currentChapter }: { bookId: string; currentChapter?: number }) {
+  const [open, setOpen] = useState(false);
+  const [chapterInput, setChapterInput] = useState(currentChapter && currentChapter > 0 ? String(currentChapter) : "");
+  const [staleLoading, setStaleLoading] = useState(false);
+  const [stale, setStale] = useState<StaleFactsResponse | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<MemoryNotice | null>(null);
+  const base = `/api/books/${encodeURIComponent(bookId)}/narrative-memory`;
+
+  const loadStale = useCallback(async () => {
+    const chapter = Number(chapterInput);
+    const suffix = Number.isInteger(chapter) && chapter > 0 ? `?currentChapter=${chapter}` : "";
+    setStaleLoading(true);
+    try {
+      setStale(await fetchJson<StaleFactsResponse>(`${base}/stale-facts${suffix}`));
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : "读取过期事实失败。" });
+    } finally {
+      setStaleLoading(false);
+    }
+  }, [base, chapterInput]);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadStale();
+  }, [open, loadStale]);
+
+  const run = async (action: MaintenanceAction) => {
+    if (busyKey) return;
+    setBusyKey(action.key);
+    setNotice(null);
+    try {
+      const payload = await fetchJson<{ summary?: string }>(`${base}/${action.path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      setNotice({ tone: "ok", text: payload?.summary ?? `${action.label}已完成。` });
+      await loadStale();
+    } catch (cause) {
+      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : `${action.label}失败。` });
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const staleItems = stale?.items ?? [];
+
+  return (
+    <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-maintenance">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          data-testid="memory-maintenance-toggle"
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-foreground"
+        >
+          {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
+          <Wrench className="size-3 text-muted-foreground" />
+          记忆诊断与修复工具箱
+        </button>
+        <span className="text-2xs text-muted-foreground">只读诊断 + 可重复执行的修复</span>
+      </div>
+      {open ? (
+        <>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input
+              value={chapterInput}
+              onChange={(event) => setChapterInput(event.currentTarget.value)}
+              type="number"
+              min={0}
+              placeholder="当前章号"
+              aria-label="诊断用当前章号"
+              className="h-6 w-24 rounded border border-border bg-background px-1.5 text-2xs"
+            />
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="h-6 gap-1 px-2 text-2xs"
+              disabled={staleLoading}
+              onClick={() => void loadStale()}
+              data-testid="memory-maintenance-scan-stale"
+            >
+              {staleLoading ? <Loader2 className="size-3 animate-spin" /> : <Search className="size-3" />}
+              扫描过期事实
+            </Button>
+            {typeof stale?.staleCount === "number" ? (
+              <Badge variant="outline" className={`h-4 px-1.5 text-2xs ${stale.staleCount > 0 ? "border-warning/40 text-warning" : ""}`}>
+                过期 {stale.staleCount}
+              </Badge>
+            ) : null}
+          </div>
+          {stale?.summary ? <p className="text-2xs text-muted-foreground">{stale.summary}</p> : null}
+          {staleItems.length > 0 ? (
+            <ul className="space-y-1" data-testid="memory-maintenance-stale-list">
+              {staleItems.slice(0, 20).map((item, index) => (
+                <li key={item.id ?? index} className="rounded border border-warning/30 bg-warning/5 px-2 py-1 text-2xs">
+                  <span className="block truncate text-foreground">
+                    {[item.subject, item.predicate, item.object].filter(Boolean).join(" · ") || "未命名状态"}
+                  </span>
+                  <span className="mt-0.5 block text-muted-foreground">
+                    {item.staleness?.label ?? "可能已过时"}
+                    {typeof item.staleness?.staleChapters === "number" ? ` · 已 ${item.staleness.staleChapters} 章未变动` : ""}
+                  </span>
+                  {item.staleness?.explanation?.suggestedAction ? (
+                    <span className="mt-0.5 block text-muted-foreground">{item.staleness.explanation.suggestedAction}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="grid gap-1.5 border-t border-border/40 pt-2 sm:grid-cols-2">
+            {MAINTENANCE_ACTIONS.map((action) => (
+              <div key={action.key} className="flex items-start gap-1.5">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  className="h-6 shrink-0 gap-1 px-2 text-2xs"
+                  disabled={busyKey !== null}
+                  onClick={() => void run(action)}
+                  data-testid={`memory-maintenance-${action.key}`}
+                >
+                  {busyKey === action.key ? <Loader2 className="size-3 animate-spin" /> : <Wrench className="size-3" />}
+                  {action.label}
+                </Button>
+                <span className="pt-0.5 text-2xs text-muted-foreground">{action.hint}</span>
+              </div>
+            ))}
+          </div>
+          <MemoryNoticeLine notice={notice} />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, currentChapter, onOpen, onAction, onOpenEntityDetail, onOpenDevelopmentTimeline, onOpenChapter }: NarrativeMemoryPanelProps) {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSummary | null>(null);
   const [events, setEvents] = useState<PendingEvent[]>([]);
@@ -1750,11 +2669,13 @@ export function NarrativeMemoryPanelShell({
             entityGroups={entityGroups}
             factEditingId={factEditingId}
             factEditError={factEditError}
+            currentChapter={currentChapter}
             onOpenFact={onSearchEntryOpen}
             onOpenEntityDetail={onOpenEntityDetail}
             onCorrectFact={onCorrectFact}
             onRetireFact={onRetireFact}
             onOpenChapter={onOpenChapter}
+            onRefresh={onRefresh}
           />
 
           {memoryNodes.length > 0 && (
@@ -1818,9 +2739,14 @@ export function NarrativeMemoryPanelShell({
                     {pendingOpen ? "收起" : "展开全部"}
                   </button>
                 )}
+                {/* 回收站是常驻入口：丢弃的草案保留 30 天，刷新页面后也要找得到。 */}
+                <PendingTrashBin bookId={bookId} onRestored={onRefresh} />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">章后默认自动结算，这里只剩没把握的变化，可按类别、章节与风险分级批阅。</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="min-w-0 flex-1 text-xs text-muted-foreground">章后默认自动结算，这里只剩没把握的变化，可按类别、章节与风险分级批阅。</p>
+              <ManualEventForm bookId={bookId} currentChapter={currentChapter} onCreated={onRefresh} />
+            </div>
 
             {/* 语义类别筛选胶囊（带每类计数） */}
             <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="待确认语义类别筛选">
@@ -2075,6 +3001,10 @@ export function NarrativeMemoryPanelShell({
               <p className="text-xs text-muted-foreground">另有 {otherPending.length} 条非高风险待确认，已折叠。</p>
             )}
           </section>
+
+          <ArcSummaryCard bookId={bookId} onOpenChapter={onOpenChapter} />
+
+          <MemoryMaintenanceCard bookId={bookId} currentChapter={currentChapter} />
 
           {diagnostics && <DiagnosticsAdvanced diagnostics={diagnostics} />}
 

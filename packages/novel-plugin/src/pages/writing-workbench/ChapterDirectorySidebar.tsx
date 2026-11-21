@@ -46,6 +46,8 @@ export interface VolumeGroupMeta {
   readonly goal?: string;
 }
 
+export type ChapterStageStatus = "uncommitted" | "unsettled" | "stale" | "fresh" | "unknown";
+
 export interface ChapterDirectorySidebarProps {
   readonly bookId?: string;
   readonly chapterNodes: readonly WorkbenchResourceNode[];
@@ -62,6 +64,8 @@ export interface ChapterDirectorySidebarProps {
   readonly activePrepChapterNumber?: number | null;
   readonly chapterWordTarget?: number;
   readonly chapterAuditSummary?: Readonly<Record<number, ChapterAuditBadgeInfo>>;
+  /** 按章号索引的章节生命周期阶段（未入库 / 未结算 / 记忆过期 / 已闭环）。 */
+  readonly chapterStageSummary?: Readonly<Record<number, ChapterStageStatus>>;
   readonly creatingChapter?: boolean;
   readonly creatingNote?: boolean;
   readonly onOpenChapter: (node: WorkbenchResourceNode) => void;
@@ -78,6 +82,7 @@ interface FlatChapterItem {
   readonly chapterNumber: number | null;
   readonly wordCount: number | null;
   readonly audit: ChapterAuditBadgeInfo | undefined;
+  readonly stage: ChapterStageStatus | undefined;
 }
 
 function parseChapterNumber(node: WorkbenchResourceNode): number | null {
@@ -164,6 +169,7 @@ export function ChapterDirectorySidebar({
   activePrepChapterNumber = null,
   chapterWordTarget = 0,
   chapterAuditSummary,
+  chapterStageSummary,
   creatingChapter = false,
   creatingNote = false,
   onOpenChapter,
@@ -196,6 +202,7 @@ export function ChapterDirectorySidebar({
         chapterNumber,
         wordCount: parseWordCount(node, chapterNumber, chapterWordCounts),
         audit: chapterAuditSummary?.[chapterNumber],
+        stage: chapterStageSummary?.[chapterNumber],
       });
     }
     return unique.sort((a, b) => {
@@ -204,7 +211,7 @@ export function ChapterDirectorySidebar({
       }
       return a.node.title.localeCompare(b.node.title, "zh", { numeric: true });
     });
-  }, [chapterNodes, chapterWordCounts, chapterAuditSummary]);
+  }, [chapterNodes, chapterWordCounts, chapterAuditSummary, chapterStageSummary]);
 
   const draftedNumbers = useMemo(() => {
     const set = new Set<number>();
@@ -325,12 +332,22 @@ export function ChapterDirectorySidebar({
     });
   };
 
-  const renderChapterCard = ({ node, chapterNumber, wordCount, audit }: FlatChapterItem) => {
+  const renderChapterCard = ({ node, chapterNumber, wordCount, audit, stage }: FlatChapterItem) => {
     const active = selectedNodeId === node.id;
     const issueCount = audit?.issueCount ?? 0;
     const isAudited = audit !== undefined;
+    const isLiveStreaming = node.metadata?.liveStreaming === true;
     const pct = chapterWordTarget > 0 && wordCount != null
       ? Math.min(100, Math.round((wordCount / chapterWordTarget) * 100))
+      : null;
+    const stagePill = !isLiveStreaming
+      ? stage === "uncommitted"
+        ? { label: "草稿未入库", className: "bg-warning/15 text-warning" }
+        : stage === "unsettled"
+          ? { label: "未结算", className: "bg-info/15 text-info" }
+          : stage === "stale"
+            ? { label: "记忆过期", className: "bg-warning/15 text-warning" }
+            : null
       : null;
 
     return (
@@ -389,14 +406,22 @@ export function ChapterDirectorySidebar({
             </span>
           ) : null}
         </div>
-        {(audit?.criticalCount || audit?.stale) ? (
+        {(audit?.criticalCount || audit?.stale || stagePill) ? (
           <div className="flex flex-wrap items-center gap-1 text-2xs">
-            {audit.criticalCount ? (
+            {stagePill ? (
+              <span
+                className={cn("rounded px-1 py-0.2 font-medium", stagePill.className)}
+                data-testid={chapterNumber != null ? `chapter-stage-${chapterNumber}` : undefined}
+              >
+                {stagePill.label}
+              </span>
+            ) : null}
+            {audit?.criticalCount ? (
               <span className="rounded bg-destructive/12 px-1 py-0.2 text-destructive">
                 重度 {audit.criticalCount}
               </span>
             ) : null}
-            {audit.stale ? (
+            {audit?.stale ? (
               <span className="rounded bg-warning/15 px-1 py-0.2 text-warning">
                 改后待复审
               </span>

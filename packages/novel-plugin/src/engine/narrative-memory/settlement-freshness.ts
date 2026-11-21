@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { listChapterFiles, readChapterIndex } from "../writing-resource/chapter-layout.js";
 import { chapterContentFingerprint, ensureSettlementLedgerSchema } from "./settlement-idempotency.js";
 
-export type ChapterSettlementFreshnessStatus = "fresh" | "stale" | "unsettled" | "unknown";
+export type ChapterSettlementFreshnessStatus = "fresh" | "stale" | "unsettled" | "uncommitted" | "unknown";
 
 export interface ChapterSettlementFreshness {
   readonly chapterNumber: number;
@@ -30,6 +30,8 @@ export interface BookSettlementFreshness {
   readonly chapters: readonly ChapterSettlementFreshness[];
   readonly staleChapters: readonly number[];
   readonly unsettledChapters: readonly number[];
+  /** 磁盘已有章节文件但尚未经 chapter.commit 登记进 chapters/index.json 的章号。 */
+  readonly uncommittedChapters: readonly number[];
 }
 
 // ─── 按文件的指纹缓存 ──────────────────────────────────────────────────────
@@ -132,15 +134,20 @@ export async function readBookSettlementFreshness(
   // 磁盘正文的指纹按文件身份戳缓存（见上），文件被动过就重读，所以回退同样能识别。
   // 按章号而非索引 fileName 找文件，使回退造成的改名或移动也能被识别；同号多份时取排序后的第一份，结果确定。
   const diskFileByNumber = new Map<number, string>();
+  const diskTitleByNumber = new Map<number, string>();
   for (const file of await listChapterFiles(bookRoot)) {
-    if (!diskFileByNumber.has(file.number)) diskFileByNumber.set(file.number, join(bookRoot, file.relativePath));
+    if (!diskFileByNumber.has(file.number)) {
+      diskFileByNumber.set(file.number, join(bookRoot, file.relativePath));
+      diskTitleByNumber.set(file.number, file.title || `第${file.number}章`);
+    }
   }
 
   const cache = bookCache(bookRoot);
+  const indexedNumbers = new Set(index.map((entry) => entry.number));
   const sorted = [...index].sort((a, b) => a.number - b.number);
   const recentNumbers = new Set(sorted.slice(-RECENT_ALWAYS_REREAD).map((entry) => entry.number));
 
-  const chapters = await Promise.all(sorted.map(async (entry): Promise<ChapterSettlementFreshness> => {
+  const indexedChapters = await Promise.all(sorted.map(async (entry): Promise<ChapterSettlementFreshness> => {
     const settled = settledByChapter.get(entry.number);
     const base = {
       chapterNumber: entry.number,
@@ -161,9 +168,23 @@ export async function readBookSettlementFreshness(
     };
   }));
 
+  // 磁盘已由原生 Write 写出但尚未 chapter.commit 登记进 index.json 的章节：如实标为 uncommitted（未入库）。
+  const uncommittedEntries: ChapterSettlementFreshness[] = [];
+  for (const [chapterNumber, title] of diskTitleByNumber.entries()) {
+    if (indexedNumbers.has(chapterNumber)) continue;
+    uncommittedEntries.push({
+      chapterNumber,
+      title,
+      status: "uncommitted",
+    });
+  }
+
+  const chapters = [...indexedChapters, ...uncommittedEntries].sort((a, b) => a.chapterNumber - b.chapterNumber);
+
   return {
     chapters,
     staleChapters: chapters.filter((chapter) => chapter.status === "stale").map((chapter) => chapter.chapterNumber),
     unsettledChapters: chapters.filter((chapter) => chapter.status === "unsettled").map((chapter) => chapter.chapterNumber),
+    uncommittedChapters: chapters.filter((chapter) => chapter.status === "uncommitted").map((chapter) => chapter.chapterNumber),
   };
 }
