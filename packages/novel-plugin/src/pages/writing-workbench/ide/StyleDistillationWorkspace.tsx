@@ -740,6 +740,7 @@ function BookStyleDistillationWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [cancelRequested, setCancelRequested] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [progressBatches, setProgressBatches] = useState<StyleDistillationBatchView[]>([]);
   const [adopted, setAdopted] = useState(false);
@@ -780,6 +781,7 @@ function BookStyleDistillationWorkspace({
       job: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}`,
       jobV2: (id: string) => `/api/books/${encodedBookId}/style-distillations/jobs/${encodeURIComponent(id)}`,
       resume: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/resume`,
+      cancel: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/cancel`,
       adopt: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/adopt`,
       adoptRecommended: (id: string) => `/api/books/${encodedBookId}/style/distillations/jobs/${encodeURIComponent(id)}/adopt-recommended`,
       compare: `/api/books/${encodedBookId}/style/distillations/compare`,
@@ -976,6 +978,7 @@ function BookStyleDistillationWorkspace({
     setOtherSelections({});
     setPreviewSourcePayload(payload);
     setStage("processing");
+    setCancelRequested(false);
     try {
       const created = await postWithFallback([paths.jobsV2, paths.jobsV2Alt, paths.jobs], payload);
       reviewJobId.current = jobId(created);
@@ -1083,6 +1086,20 @@ function BookStyleDistillationWorkspace({
     throw new Error("蒸馏任务等待超时。任务仍保存在本书中，可以保留当前草稿，稍后重新开始。");
   }
 
+  /** 停止正在跑的后台批次：当前批次的模型调用返回后即停，已完成结果保留，之后可继续。 */
+  async function cancelJob(id: string | null) {
+    if (!id || cancelRequested) return;
+    setCancelRequested(true);
+    try {
+      await fetchJson<unknown>(paths.cancel(id), { method: "POST" });
+      if (mounted.current) setNotice("已请求停止：当前批次的模型调用返回后停下，已完成的结果保留，之后可以继续。");
+    } catch (cause) {
+      if (!mounted.current) return;
+      setCancelRequested(false);
+      setError(errorMessage(cause, "停止文风蒸馏失败，请稍后重试。"));
+    }
+  }
+
   async function resumeJob(retryFailed: boolean) {
     const id = reviewJobId.current;
     if (!id || busy) return;
@@ -1090,6 +1107,7 @@ function BookStyleDistillationWorkspace({
     setError(null);
     setNotice(null);
     setStage("processing");
+    setCancelRequested(false);
     try {
       const resumed = await fetchJson<unknown>(paths.resume(id), {
         method: "POST",
@@ -1365,6 +1383,7 @@ function BookStyleDistillationWorkspace({
     setCompareError(null);
     setOtherSelections({});
     setStage("processing");
+    setCancelRequested(false);
     try {
       const sourceBody = previewSourcePayload ?? {
         sourceName: draft.sourceName.trim(),
@@ -1796,6 +1815,17 @@ function BookStyleDistillationWorkspace({
                   正在按章节批次抽取文风规则与精选原文锚点，完成后会自动进入审阅……
                 </div>
                 {progressBatches.length > 0 && <BatchProgress batches={progressBatches} />}
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={cancelRequested || !reviewJobId.current}
+                    onClick={() => void cancelJob(reviewJobId.current)}
+                  >
+                    {cancelRequested ? "正在停止…（当前批次结束后停下）" : "停止蒸馏"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -1879,6 +1909,17 @@ function BookStyleDistillationWorkspace({
                       {review.batches.some((batch) => batch.status === "failed") && (
                         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void resumeJob(true)}>
                           重试失败批次
+                        </Button>
+                      )}
+                      {review.batches.some((batch) => batch.status === "running") && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={cancelRequested}
+                          onClick={() => void cancelJob(reviewJobId.current)}
+                        >
+                          {cancelRequested ? "正在停止…" : "停止蒸馏"}
                         </Button>
                       )}
                     </div>

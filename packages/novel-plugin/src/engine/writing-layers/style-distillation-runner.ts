@@ -50,6 +50,26 @@ function taskKey(bookRoot: string, jobId: string): string {
 // 同一进程内每个任务只允许一个运行者（同步登记，HTTP 可立即返回 running）；
 // 跨进程由任务运行锁（style-distillation-lock.ts）兜底。读改写按任务串行，避免批次结果与采纳互相覆盖。
 const activeRunners = new Map<string, symbol>();
+// 本进程运行者的停止开关：作者在网页或对话里点「停止」时用它中断后续批次（当前批次的模型调用返回后生效）。
+const runControllers = new Map<string, { readonly controller: AbortController; explanation?: { what: string; why: string; next: string } }>();
+
+const AUTHOR_CANCELLED_EXPLANATION = {
+  what: "作者停止了文风蒸馏，后续批次不再处理；进行中的批次已退回待处理，已完成批次的结果都保留。",
+  why: "停止只中断本进程正在执行的后台批次，不删除任务与已抽取的待审条目。",
+  next: "需要时在文风蒸馏页面点「继续未完成批次」，或在叙述者对话中带 jobId 再次 start。",
+};
+
+/**
+ * 停止本进程里正在处理该任务的后台批次。当前批次的模型调用无法中途撤回，返回后即停，不再开始下一批。
+ * 返回 false 表示本进程没有在跑它（可能已结束，或由另一个进程执行）。
+ */
+export function cancelStyleDistillationRun(bookRoot: string, jobId: string): boolean {
+  const entry = runControllers.get(taskKey(bookRoot, jobId));
+  if (!entry || entry.controller.signal.aborted) return false;
+  entry.explanation = AUTHOR_CANCELLED_EXPLANATION;
+  entry.controller.abort(Object.assign(new Error("作者停止了文风蒸馏。"), { name: "AbortError" }));
+  return true;
+}
 const jobWrites = new Map<string, Promise<void>>();
 
 /** 本进程是否有运行者在处理该任务。 */
@@ -408,6 +428,13 @@ export function runStyleDistillationBatches(options: RunStyleDistillationOptions
   }
   const token = Symbol(options.jobId);
   activeRunners.set(key, token);
+  const control: { readonly controller: AbortController; explanation?: { what: string; why: string; next: string } } = {
+    controller: new AbortController(),
+  };
+  runControllers.set(key, control);
+  // 调用方的取消（如叙述者本轮结束）与作者的「停止」任一触发都中断后续批次。
+  const signal = options.signal ? AbortSignal.any([options.signal, control.controller.signal]) : control.controller.signal;
+  options = { ...options, signal };
   const { bookRoot, jobId } = options;
   const execute = async (): Promise<StyleDistillationRunResult> => {
     const acquired = await acquireStyleDistillationLock(bookRoot, jobId);
@@ -422,8 +449,9 @@ export function runStyleDistillationBatches(options: RunStyleDistillationOptions
         if (isAborted) {
           // 用户主动取消：将进行中的批次退回 pending、任务置回 paused（不记作批次失败），便于后续继续。
           // 调用方给了停下原因（如叙述者会话本轮结束）时写进 lastError，界面与状态查询据此说明为什么暂停。
-          const abortExplanation = options.abortExplanation
-            ? { ...options.abortExplanation, at: new Date().toISOString() }
+          const reason = control.explanation ?? options.abortExplanation;
+          const abortExplanation = reason
+            ? { ...reason, at: new Date().toISOString() }
             : undefined;
           await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState({
             ...current,
@@ -452,6 +480,7 @@ export function runStyleDistillationBatches(options: RunStyleDistillationOptions
   };
   return execute().finally(() => {
     if (activeRunners.get(key) === token) activeRunners.delete(key);
+    if (runControllers.get(key) === control) runControllers.delete(key);
   });
 }
 
@@ -482,14 +511,15 @@ async function runBatches(options: RunStyleDistillationOptions, lock: StyleDisti
   const limit = options.maxBatches === undefined ? Number.POSITIVE_INFINITY : Math.max(0, Math.trunc(options.maxBatches));
   const processed: string[] = [];
   while (processed.length < limit) {
+    const job = await loadStyleDistillationJob(bookRoot, jobId);
+    const next = job.batches.find((batch) => batch.status === "pending" && !processed.includes(batch.id));
+    if (!next) break;
+    // 取消只拦「下一批」：停止时正好跑完最后一批的任务照常结束，不误报为被停止。
     if (options.signal?.aborted) {
       throw options.signal.reason instanceof Error
         ? options.signal.reason
         : Object.assign(new Error("Aborted"), { name: "AbortError" });
     }
-    const job = await loadStyleDistillationJob(bookRoot, jobId);
-    const next = job.batches.find((batch) => batch.status === "pending" && !processed.includes(batch.id));
-    if (!next) break;
     // 每批开始前刷新运行锁心跳；锁已被别人接管（本进程被判陈旧）就立即停下，不再写任务文件。
     if (!(await lock.heartbeat())) {
       throw new StyleDistillationError("该文风蒸馏任务的运行锁已被另一个执行者接管，本次执行已停止。", "STYLE_DISTILLATION_BUSY");

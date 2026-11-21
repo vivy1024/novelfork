@@ -18,6 +18,7 @@ import {
 } from "../engine/writing-layers/style-distillation.js";
 import {
   adoptStyleDistillation,
+  cancelStyleDistillationRun,
   createStyleDistillationJob,
   hasLiveStyleDistillationRunner,
   isAllRejectedBatch,
@@ -35,6 +36,7 @@ export const STYLE_DISTILL_TOOL_NAMES = [
   "style.distill_preview",
   "style.distill_start",
   "style.distill_status",
+  "style.distill_cancel",
   "style.distill_adopt",
 ] as const;
 
@@ -211,7 +213,12 @@ function launchBackgroundRun(input: {
       const message = error instanceof Error ? error.message : String(error);
       // 脱离会话的批次不受本轮信号约束：会话结束后它若失败，是真失败，不能算作中断。
       if (isAbortError(error, input.detached ? undefined : input.signal)) {
-        toolOutcomes.set(key, { outcome: "aborted", at: new Date().toISOString(), message: SESSION_ENDED_EXPLANATION.what });
+        const byAuthor = error instanceof Error && error.message.startsWith("作者停止");
+        toolOutcomes.set(key, {
+          outcome: "aborted",
+          at: new Date().toISOString(),
+          message: byAuthor ? "作者停止了文风蒸馏，后续批次不再处理。" : SESSION_ENDED_EXPLANATION.what,
+        });
         return;
       }
       const busy = error instanceof StyleDistillationError && error.code === "STYLE_DISTILLATION_BUSY";
@@ -563,6 +570,31 @@ async function start(
 }
 
 /** 读任务状态；任务仍在处理且给了 waitSeconds 时，等到有批次结束、任务停下或等满为止。 */
+/** 停止本进程里正在跑的后台批次（作者明确要求时）：当前批次的模型调用返回后即停，已完成结果保留。 */
+async function cancel(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+): Promise<RuntimeToolResult> {
+  if (typeof input.jobId !== "string" || !input.jobId.trim()) return fail("job-id-required", "style_manage（action=cancel）需要 jobId。");
+  const jobId = input.jobId.trim();
+  const job = await readStyleDistillationJob(binding.root, jobId);
+  if (job.bookId !== binding.bookId) return fail("STYLE_DISTILLATION_NOT_FOUND", "该蒸馏任务不属于当前书籍。");
+  const revision = (await loadStylePreset(binding.root)).revision;
+  if (!cancelStyleDistillationRun(binding.root, jobId)) {
+    const elsewhere = await hasLiveStyleDistillationRunner(binding.root, jobId);
+    return ok(
+      elsewhere
+        ? `任务 ${jobId} 由另一个进程在处理，这里停不了它；${progressLine(job)}。`
+        : `任务 ${jobId} 当前没有在跑的后台批次；${progressLine(job)}。`,
+      modelView(job, revision, { includeItems: false }),
+    );
+  }
+  return ok(
+    `已请求停止任务 ${jobId}：当前批次的模型调用返回后即停，不再开始下一批，已完成的结果保留；${progressLine(job)}。`,
+    { ...modelView(job, revision, { includeItems: false }), cancelRequested: true },
+  );
+}
+
 async function status(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
@@ -749,6 +781,7 @@ export async function executeStyleDistillationTool(
     }
     if (name === "style.distill_start") return await start(input, binding, context);
     if (name === "style.distill_status") return await status(input, binding, context);
+    if (name === "style.distill_cancel") return await cancel(input, binding);
     if (name === "style.distill_adopt") return await adopt(input, binding);
     return fail("unknown-style-distill-tool", "未知的文风蒸馏工具。");
   } catch (error) {

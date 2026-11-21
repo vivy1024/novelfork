@@ -717,8 +717,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       action: enumSchema(
-        ["index", "preview", "start", "status", "adopt", "consolidate", "negative_override"],
-        "操作：index 索引参考文件 | preview 预览切章 | start 后台启动/续跑蒸馏（立即返回 jobId，不要重复调用）| status 查进度与待审条目（可 waitSeconds 等待）| adopt 采纳规则/范文 | consolidate 规则瘦身 | negative_override 置顶负反馈硬约束。",
+        ["index", "preview", "start", "status", "cancel", "adopt", "consolidate", "negative_override"],
+        "操作：index 索引参考文件 | preview 预览切章 | start 后台启动/续跑蒸馏（立即返回 jobId，不要重复调用）| status 查进度与待审条目（可 waitSeconds 等待）| cancel 停止后台批次（作者要求时）| adopt 采纳规则/范文 | consolidate 规则瘦身 | negative_override 置顶负反馈硬约束。",
       ),
       filePath: relativeBookFileSchema("参考文件相对路径（index/preview/start）。"),
       sourceName: stringSchema("参考来源名。"),

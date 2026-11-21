@@ -19,7 +19,9 @@ import {
 import {
   adoptRecommendedStyleDistillation,
   adoptStyleDistillation,
+  cancelStyleDistillationRun,
   createStyleDistillationJob,
+  hasLiveStyleDistillationRunner,
   readStyleDistillationJob,
   recommendedStyleDistillationRuleIds,
   runStyleDistillationBatches,
@@ -485,6 +487,26 @@ export function createStyleDistillationsRouter(
       // 这里按已开始处理返回，避免网页把刚开始的续跑误判为失败。
       const job = read.status === "failed" ? { ...read, status: "running" as const } : read;
       return c.json(serializeJob(job, (await loadStylePreset(bookRoot)).revision, true), 202);
+    } catch (error) {
+      return errorResponse(c, error);
+    }
+  });
+
+  // 停止本进程正在跑的后台批次：当前批次的模型调用返回后即停，不再开始下一批，已完成结果保留。
+  app.post("/api/books/:bookId/style/distillations/jobs/:jobId/cancel", async (c) => {
+    try {
+      const bookRoot = resolveBookRoot(c.req.param("bookId"));
+      const jobId = c.req.param("jobId");
+      await readStyleDistillationJob(bookRoot, jobId);
+      if (!cancelStyleDistillationRun(bookRoot, jobId)) {
+        const elsewhere = await hasLiveStyleDistillationRunner(bookRoot, jobId);
+        return c.json({
+          error: elsewhere ? "该任务由另一个进程在处理，这里无法停止。" : "该任务当前没有在跑的后台批次。",
+          code: elsewhere ? "STYLE_DISTILLATION_BUSY" : "STYLE_DISTILLATION_NOT_RUNNING",
+        }, 409);
+      }
+      const job = await readStyleDistillationJob(bookRoot, jobId);
+      return c.json({ ...serializeJob(job, (await loadStylePreset(bookRoot)).revision, true), cancelRequested: true }, 202);
     } catch (error) {
       return errorResponse(c, error);
     }

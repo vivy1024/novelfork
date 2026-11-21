@@ -267,6 +267,40 @@ describe("文风自动蒸馏路由", () => {
     }
   });
 
+  it("POST .../cancel 停止正在跑的后台批次，没在跑时返回 409", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nf-style-distill-route-"));
+    roots.push(root);
+    const bookRoot = join(root, "book-a");
+    await mkdir(bookRoot, { recursive: true });
+    let release!: () => void;
+    const gate = new Promise<void>((done) => { release = done; });
+    const generateText = vi.fn(async () => { await gate; return { text: JSON.stringify({ rules: [] }) }; });
+    const router = createStyleDistillationsRouter({
+      state: { bookDir: () => bookRoot }, root, getSessionLlm: async () => undefined,
+    } as unknown as RouterContext, { resolveBookRoot: () => bookRoot, resolveTextGenerator: async () => generateText });
+
+    const createdResponse = await router.request("/api/books/book-a/style/distillations/jobs", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sourceName: "旧稿", text: "第一章 雨夜\n她停在门前，听见雨声。" }),
+    });
+    expect(createdResponse.status).toBe(201);
+    const created = await createdResponse.json() as { job: { jobId: string } };
+    const cancelPath = `/api/books/book-a/style/distillations/jobs/${created.job.jobId}/cancel`;
+    await vi.waitFor(() => expect(generateText).toHaveBeenCalled());
+
+    const cancelled = await router.request(cancelPath, { method: "POST" });
+    expect(cancelled.status).toBe(202);
+    expect(await cancelled.json()).toMatchObject({ cancelRequested: true });
+    release();
+    await vi.waitFor(async () => {
+      const job = await router.request(`/api/books/book-a/style/distillations/jobs/${created.job.jobId}`);
+      expect(((await job.json()) as { job: { status: string } }).job.status).not.toBe("running");
+    });
+    const again = await router.request(cancelPath, { method: "POST" });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ code: "STYLE_DISTILLATION_NOT_RUNNING" });
+  });
+
   it("支持 GET .../files、POST .../index 以及 filePath + chapterList 靶向抽样预览与建任务", async () => {
     const { router, bookRoot } = await setup();
     const content = Array.from({ length: 40 }, (_, i) => (

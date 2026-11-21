@@ -345,13 +345,13 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "style.manage",
     description:
-      "文风蒸馏与约束管理：action=index（列参考文件/大文件机械索引）| preview（预览切章与估算）| start（后台分批抽待审规则，立即返回 jobId；带 jobId 续跑）| status（读进度与待审条目，可 waitSeconds 等待）| adopt（采纳作者点名确认的规则/范文）| consolidate（规则瘦身归约）| negative_override（置顶作者口头负反馈硬约束）。",
+      "文风蒸馏与约束管理：action=index（列参考文件/大文件机械索引）| preview（预览切章与估算）| start（后台分批抽待审规则，立即返回 jobId；带 jobId 续跑）| status（读进度与待审条目，可 waitSeconds 等待）| cancel（作者要求时停止后台批次）| adopt（采纳作者点名确认的规则/范文）| consolidate（规则瘦身归约）| negative_override（置顶作者口头负反馈硬约束）。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["style.manage"]!),
     risk: "draft-write",
     resolveRisk: (input) => {
       const action = normalizedAction(input);
       if (action === "index" || action === "preview" || action === "status") return "read";
-      if (action === "start") return "draft-write";
+      if (action === "start" || action === "cancel") return "draft-write";
       return "confirmed-write";
     },
     renderer: "generic",

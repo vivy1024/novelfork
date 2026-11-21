@@ -229,6 +229,41 @@ describe("叙述者文风蒸馏工具", () => {
     expect(status).toMatchObject({ ok: true, data: { batches: { done: 1, failed: 0 }, background: { lastOutcome: { outcome: "completed" } } } });
   });
 
+  it("cancel 停止脱离会话的后台批次：当前批次收尾后暂停，说明是作者停止；没在跑时如实说明", async () => {
+    const { root, binding } = await setup();
+    let release!: () => void;
+    const gate = new Promise<void>((done) => { release = done; });
+    const background: RuntimeTextGenerator = vi.fn(async () => { await gate; return modelOutput; });
+    const detachedContext: ToolExecutionContext = { ...context(), backgroundGenerateText: background, actorUserId: "user-7" };
+    // 章节够长才会切成多批：停止只拦「下一批」，单批任务会照常跑完。
+    const longChapters = Array.from({ length: 4 }, (_, index) => ({
+      number: index + 1,
+      content: `她没有回头。${"风从巷口灌进来，灯影晃了一下。".repeat(400)}`,
+    }));
+    const started = await executeStyleDistillationTool("style.distill_start", { sourceName: "旧稿", chapters: longChapters }, binding, detachedContext);
+    const jobId = (started.data as ToolData).job.jobId;
+    startedJobs.push({ root, jobId });
+    expect((started.data as ToolData).batches.total).toBeGreaterThan(1);
+    await vi.waitFor(() => expect(background).toHaveBeenCalledTimes(1));
+
+    const cancelled = await executeStyleDistillationTool("style.distill_cancel", { jobId }, binding, context());
+    expect(cancelled).toMatchObject({ ok: true, data: { cancelRequested: true } });
+    release();
+    await awaitStyleDistillationToolRun(root, jobId);
+    const status = await executeStyleDistillationTool("style.distill_status", { jobId }, binding, context());
+    expect(status).toMatchObject({
+      ok: true,
+      data: {
+        explanation: { what: expect.stringContaining("作者停止了文风蒸馏") },
+        background: { lastOutcome: { outcome: "aborted", message: expect.stringContaining("作者停止") } },
+      },
+    });
+
+    const again = await executeStyleDistillationTool("style.distill_cancel", { jobId }, binding, context());
+    expect(again.ok).toBe(true);
+    expect(again.summary).toContain("没有在跑的后台批次");
+  });
+
   it("没有会话模型时保存基线并暂停，之后带 jobId 继续同一任务", async () => {
     const { binding } = await setup();
     const started = await executeStyleDistillationTool("style.distill_start", { sourceName: "旧稿", chapters }, binding, context());

@@ -13,6 +13,7 @@ import { locateStyleEvidence, parseStyleDistillationBatchOutput } from "./style-
 import {
   adoptRecommendedStyleDistillation,
   adoptStyleDistillation,
+  cancelStyleDistillationRun,
   createStyleDistillationJob,
   readStyleDistillationJob,
   recommendedStyleDistillationRuleIds,
@@ -283,6 +284,28 @@ describe("文风蒸馏模型批次", () => {
     const result = await running;
     expect(result.job.batches[0]).toMatchObject({ status: "failed", explanation: { what: "模型调用失败：上游超时" } });
     expect(result.job.batches[1]?.status).toBe("done");
+  });
+
+  it("作者停止后当前批次照常收尾、不再开始下一批，任务暂停并写明原因；没有在跑时停止返回 false", async () => {
+    const root = await bookRoot();
+    const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(4) }, modelAvailable: true });
+    expect(cancelStyleDistillationRun(root, created.jobId)).toBe(false);
+    let calls = 0;
+    const model: RuntimeTextGenerator = async (request) => {
+      calls += 1;
+      // 第一批的模型调用进行中作者点了停止：这一批照常落盘，之后不再开新批次。
+      if (calls === 1) expect(cancelStyleDistillationRun(root, created.jobId)).toBe(true);
+      return fakeModel()(request);
+    };
+    await expect(runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText: model }))
+      .rejects.toMatchObject({ name: "AbortError" });
+    expect(calls).toBe(1);
+    const job = await readStyleDistillationJob(root, created.jobId);
+    expect(job.status).toBe("paused");
+    expect(job.batches[0]?.status).toBe("done");
+    expect(job.batches.slice(1).every((batch) => batch.status === "pending")).toBe(true);
+    expect(job.lastError?.what).toContain("作者停止了文风蒸馏");
+    expect(cancelStyleDistillationRun(root, created.jobId)).toBe(false);
   });
 
   it("整批模型规则都因证据被丢弃：批次照常结束但带提醒、保留被丢弃条目，重试失败批次时一并重跑；过半丢弃的批次完成但带提醒", async () => {

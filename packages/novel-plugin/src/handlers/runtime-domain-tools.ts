@@ -1318,13 +1318,13 @@ export async function executeRuntimeDomainTool(
     }
     case "style_manage": {
       const action = typeof input.action === "string" ? input.action.trim().toLowerCase() : "";
-      if (action === "index" || action === "preview" || action === "start" || action === "status" || action === "adopt") {
+      if (action === "index" || action === "preview" || action === "start" || action === "status" || action === "cancel" || action === "adopt") {
         return executeStyleDistillationTool(`style.distill_${action}`, input, binding, context);
       }
       if (action === "consolidate" || action === "negative_override") {
         return executeStyleConsolidateTool(input, binding, context);
       }
-      return fail("invalid-action", `未知的 style.manage action：${String(input.action ?? "")}。支持 index | preview | start | status | adopt | consolidate | negative_override。`);
+      return fail("invalid-action", `未知的 style.manage action：${String(input.action ?? "")}。支持 index | preview | start | status | cancel | adopt | consolidate | negative_override。`);
     }
     case "mechanism_distill":
       return executeMechanismDistillTool(input, binding, context);
