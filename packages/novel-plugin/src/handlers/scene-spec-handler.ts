@@ -684,6 +684,20 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   };
 }
 
+function formatBeatEmotionSuffix(emotion: BeatBudgetItem["emotion"]): string {
+  if (!emotion) return "";
+  const character = emotion.character?.trim() ?? "";
+  const trigger = emotion.trigger?.trim() ?? "";
+  const reaction = emotion.reaction?.trim() ?? "";
+  if (!character && !trigger && !reaction) return "";
+  if (character && trigger && reaction) {
+    return `｜情绪：${character}因「${trigger}」→ ${reaction}`;
+  }
+  const left = [character, trigger ? `因「${trigger}」` : ""].filter(Boolean).join("");
+  if (left && reaction) return `｜情绪：${left}→ ${reaction}`;
+  return `｜情绪：${left || reaction}`;
+}
+
 /** 将结构化蓝图渲染为可直接提交给 ExitPlanMode(mode="inline") 的可读 Markdown 计划稿。 */
 export function formatBlueprintForPlanApproval(
   spec: SceneSpec,
@@ -705,7 +719,8 @@ export function formatBlueprintForPlanApproval(
   if (spec.beatBudget && spec.beatBudget.length > 0) {
     lines.push("", "## 节奏预算（Beat Budget）");
     for (const beat of spec.beatBudget) {
-      lines.push(`- [${beat.density}] ${beat.summary}（约 ${beat.words} 字）`);
+      const emotionSuffix = formatBeatEmotionSuffix(beat.emotion);
+      lines.push(`- [${beat.density}] ${beat.summary}（约 ${beat.words} 字）${emotionSuffix}`);
     }
     if (budget?.summary) lines.push(`> 校验：${budget.summary}`);
   }

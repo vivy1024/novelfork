@@ -15,6 +15,12 @@
 /** 情节点密度。密=展开，疏=带过，中=常规铺垫。 */
 export type BeatDensity = "dense" | "normal" | "sparse";
 
+export interface BeatBudgetEmotion {
+  readonly character?: string;
+  readonly trigger?: string;
+  readonly reaction?: string;
+}
+
 export interface BeatBudgetItem {
   /** 情节点描述，应写清「发生什么」而不只是动词。 */
   readonly summary: string;
@@ -23,6 +29,8 @@ export interface BeatBudgetItem {
   readonly words: number;
   /** 功能标签，如 信息揭示 / 冲突升级 / 情绪转折。 */
   readonly function?: string;
+  /** 拍级情绪触发与反应（可选，兼容旧蓝图）。 */
+  readonly emotion?: BeatBudgetEmotion;
 }
 
 export interface BeatBudgetInput {
@@ -204,6 +212,20 @@ function buildSummary(
     : `${head}：${detail}；${findingCount} 条提示。`;
 }
 
+function parseBeatEmotion(raw: unknown): BeatBudgetEmotion | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const character = typeof record.character === "string" ? record.character.trim() : "";
+  const trigger = typeof record.trigger === "string" ? record.trigger.trim() : "";
+  const reaction = typeof record.reaction === "string" ? record.reaction.trim() : "";
+  if (!character && !trigger && !reaction) return undefined;
+  return {
+    ...(character ? { character } : {}),
+    ...(trigger ? { trigger } : {}),
+    ...(reaction ? { reaction } : {}),
+  };
+}
+
 /** 从工具入参安全解析情节点列表。 */
 export function parseBeatBudget(raw: unknown): BeatBudgetItem[] {
   if (!Array.isArray(raw)) return [];
@@ -213,6 +235,7 @@ export function parseBeatBudget(raw: unknown): BeatBudgetItem[] {
     const summary = typeof record.summary === "string" ? record.summary.trim() : "";
     const words = Number(record.words);
     if (!summary && !Number.isFinite(words)) return [];
+    const emotion = parseBeatEmotion(record.emotion);
     return [{
       summary,
       density: normalizeDensity(record.density),
@@ -220,6 +243,7 @@ export function parseBeatBudget(raw: unknown): BeatBudgetItem[] {
       ...(typeof record.function === "string" && record.function.trim()
         ? { function: record.function.trim() }
         : {}),
+      ...(emotion ? { emotion } : {}),
     }];
   });
 }

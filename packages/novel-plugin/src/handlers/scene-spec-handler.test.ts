@@ -315,4 +315,60 @@ describe("scene.spec deterministic contract", () => {
     expect(flat.summary).toContain("非事件场");
     expect(flat.summary).toContain("鸿沟");
   });
+
+  it("beatBudget 透传拍级 emotion 并在 planMarkdown 的节奏预算中渲染情绪触发与反应", async () => {
+    const result = await handleSceneSpec({
+      bookId: "book-1",
+      chapterNumber: 9,
+      userDirectives: "林舟当堂亮出旧账封皮反咬刘管事",
+      skipContextGate: true,
+      cockpitSnapshot: { bookConfig: { chapterWordCount: 3000 } },
+      sceneSpec: spec(9, "当堂对质", [
+        {
+          summary: "刘管事拍桌逼林舟当众签字认亏空",
+          density: "normal",
+          words: 900,
+          function: "冲突施压",
+          emotion: {
+            character: "林舟",
+            trigger: "被当众诬陷贪墨四千八百灵石",
+            reaction: "指节按紧袖中封皮，声音反而压低半度",
+          },
+        },
+        {
+          summary: "林舟翻出带朱砂指印的折旧底册封皮",
+          density: "dense",
+          words: 1200,
+          function: "反转打脸",
+          emotion: {
+            character: "刘管事",
+            trigger: "认出自己私押的朱砂暗记暴露",
+            reaction: "茶盏脱手砸碎，脸色瞬间失血",
+          },
+        },
+        {
+          summary: "执事长老下令封存库房并收押刘管事",
+          density: "dense",
+          words: 900,
+          function: "收束留钩",
+        },
+      ]),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.beatBudget?.ok).toBe(true);
+    expect(result.data.sceneSpec.beatBudget?.[0]?.emotion).toEqual({
+      character: "林舟",
+      trigger: "被当众诬陷贪墨四千八百灵石",
+      reaction: "指节按紧袖中封皮，声音反而压低半度",
+    });
+    expect(result.data.sceneSpec.beatBudget?.[2]?.emotion).toBeUndefined();
+    expect(result.data.planMarkdown).toContain(
+      "｜情绪：林舟因「被当众诬陷贪墨四千八百灵石」→ 指节按紧袖中封皮，声音反而压低半度",
+    );
+    expect(result.data.planMarkdown).toContain(
+      "｜情绪：刘管事因「认出自己私押的朱砂暗记暴露」→ 茶盏脱手砸碎，脸色瞬间失血",
+    );
+  });
 });

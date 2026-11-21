@@ -155,6 +155,31 @@ describe("密度型（advisory）", () => {
     const report = detectZhAiFlavor("他深吸一口气，眼中闪过一丝寒意，嘴角勾起。".repeat(4));
     expect(report.advisory.some((item) => item.ruleId === "body-cliche")).toBe(true);
   });
+
+  it("高频解释性结论冒号会命中，但不误伤对话引号与角色名冒号台词", () => {
+    const aiHeavy = [
+      filler(10),
+      "这不是偶然：它证明了背后的手早已伸进内院。",
+      "真相只有一个：账本早就被人调包过两次。",
+      "答案很明显：有人不想让他活着走出城门。",
+    ].join("");
+    const bad = detectZhAiFlavor(aiHeavy);
+    const hit = bad.advisory.find((item) => item.ruleId === "explanatory-colon");
+    expect(hit).toBeTruthy();
+    expect(hit!.count).toBeGreaterThanOrEqual(3);
+
+    // 正常对话（说话动词+冒号+引号、引号内结论冒号、以及剧本式角色名冒号）均不误伤
+    const dialogueHeavy = [
+      filler(10),
+      "林舟冷声说道：“真相只有一个：账本被人换了。”",
+      "老周摇头问：“答案很明显：你打算今晚动手？”",
+      "林舟：明早辰时城门见。",
+      "老周：我带旧账册过去。",
+      "掌柜低声答：“这不是偶然：门锁被人动过。”",
+    ].join("\n");
+    const ok = detectZhAiFlavor(dialogueHeavy);
+    expect(ok.advisory.some((item) => item.ruleId === "explanatory-colon")).toBe(false);
+  });
 });
 
 describe("白名单", () => {

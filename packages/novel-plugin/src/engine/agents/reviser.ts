@@ -16,6 +16,13 @@ import {
 import { applySpotFixPatches, parseSpotFixPatches } from "@vivy1024/novelfork-core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  checkFactConservation,
+  evaluateRevisionEffectiveness,
+  STAGNANT_REVISION_PROMPT_WARNING,
+  type FactConservationReport,
+  type RevisionEffectivenessReport,
+} from "./revision-effectiveness.js";
 
 export type ReviseMode = "polish" | "rewrite" | "rework" | "spot-fix";
 
@@ -28,6 +35,10 @@ export interface ReviseOutput {
   readonly updatedState: string;
   readonly updatedLedger: string;
   readonly updatedHooks: string;
+  readonly effectiveness?: RevisionEffectivenessReport;
+  readonly factConservation?: FactConservationReport;
+  /** 检出原地换词或事实丢失时生成的下一轮修订提示，供调用方直接注入重试轮次。 */
+  readonly nextRoundHint?: string;
   readonly tokenUsage?: {
     readonly promptTokens: number;
     readonly completionTokens: number;
@@ -61,6 +72,10 @@ export class ReviserAgent extends BaseAgent {
       contextPackage?: ContextPackage;
       ruleStack?: RuleStack;
       lengthSpec?: LengthSpec;
+      /** 需要做事实守恒校验的专名（角色名、关键器物名等）。 */
+      protectedNames?: readonly string[];
+      /** 上一轮修订检测出的防原地换词或事实守恒告警，直接注入本轮修订提示。 */
+      previousRevisionHint?: string;
     },
   ): Promise<ReviseOutput> {
     const [currentState, ledger, hooks, styleGuideRaw, volumeOutline, storyBible, characterMatrix, chapterSummaries, parentCanon, fanficCanon] = await Promise.all([
@@ -223,12 +238,15 @@ ${outputFormat}`;
     const styleGuideBlock = reducedControlBlock.length === 0
       ? `\n## 文风指南\n${styleGuide}`
       : "";
+    const previousHintBlock = options?.previousRevisionHint?.trim()
+      ? `\n## 上一轮修订诊断告警（本轮必须落实）\n${options.previousRevisionHint.trim()}\n`
+      : "";
 
     const userPrompt = `请修正第${chapterNumber}章。
 
 ## 审稿问题
 ${issueList}
-
+${previousHintBlock}
 ## 当前状态卡
 ${currentState}
 ${ledgerBlock}
@@ -257,7 +275,40 @@ ${chapterContent}`;
     const wordCount = options?.lengthSpec
       ? countChapterLength(mergedOutput.revisedContent, options.lengthSpec.countingMode)
       : mergedOutput.wordCount;
-    return { ...mergedOutput, wordCount, tokenUsage: response.usage };
+
+    const protectedNames = [
+      ...(options?.protectedNames ?? []),
+      ...(bookRules?.protagonist?.name ? [bookRules.protagonist.name] : []),
+    ];
+    const effectiveness = evaluateRevisionEffectiveness(
+      chapterContent,
+      mergedOutput.revisedContent,
+      { povCharacter: bookRules?.protagonist?.name },
+    );
+    const factConservation = checkFactConservation(
+      chapterContent,
+      mergedOutput.revisedContent,
+      protectedNames,
+    );
+    const nextRoundHints: string[] = [];
+    if (effectiveness.stagnantRevision) {
+      nextRoundHints.push(
+        effectiveness.advisoryNote ?? STAGNANT_REVISION_PROMPT_WARNING,
+      );
+    }
+    if (!factConservation.ok) {
+      nextRoundHints.push(`事实守恒告警：${factConservation.warnings.join("；")}`);
+    }
+    const nextRoundHint = nextRoundHints.length > 0 ? nextRoundHints.join("\n") : undefined;
+
+    return {
+      ...mergedOutput,
+      wordCount,
+      effectiveness,
+      factConservation,
+      ...(nextRoundHint ? { nextRoundHint } : {}),
+      tokenUsage: response.usage,
+    };
   }
 
   private parseOutput(
