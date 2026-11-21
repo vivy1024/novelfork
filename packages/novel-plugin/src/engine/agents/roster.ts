@@ -18,7 +18,10 @@ import { selectCraftDoctrineLines } from "./craft-doctrine.js";
 /** Runtime 自带、只读、允许出现在模板里的工具（不是小说工具）。 */
 export const ROSTER_RUNTIME_TOOLS: readonly string[] = ["Read", "Skill"];
 
-/** 任何模板都不得包含的工具：写权威源、批量改动、Runtime 的文件 / 终端写入。 */
+/** Runtime 自带、仅允许执笔/返修用于将章节草稿流式写入 chapters/ 的工具（不触碰权威索引与记忆）。 */
+export const ROSTER_DRAFT_WRITE_TOOLS: readonly string[] = ["Write", "Edit"];
+
+/** 任何模板都不得包含的工具：写权威源、批量改动、终端与再委派。 */
 export const ROSTER_FORBIDDEN_TOOLS: readonly string[] = [
   "chapter.commit",
   "chapter.discard_range",
@@ -31,8 +34,6 @@ export const ROSTER_FORBIDDEN_TOOLS: readonly string[] = [
   "mechanism.distill",
   "book.import",
   "workflow.manage",
-  "Write",
-  "Edit",
   "Bash",
   "Agent",
   "Task",
@@ -104,11 +105,12 @@ export const NOVEL_SUBAGENT_ROSTER: readonly NovelSubagentTemplate[] = [
     id: "nf-writer",
     nameZh: "执笔",
     nameEn: "Writer",
-    description: "按已确认的镜头蓝图写出本章完整正文，作为候选交给审校与作者。",
-    tools: [...READ_CONTEXT, "memory.graph", "skills.manage", STEP_TOOL, "Skill"],
+    description: "按已确认的镜头蓝图直接流式写入章节草稿文件，提交登记给审校与作者。",
+    tools: [...READ_CONTEXT, ...ROSTER_DRAFT_WRITE_TOOLS, "memory.graph", "skills.manage", STEP_TOOL, "Skill"],
     prompt: prompt(
-      "你是 NovelFork 的执笔子代理，负责本章完整正文（kind=\"prose\"，payload={ title, content }）。",
+      "你是 NovelFork 的执笔子代理，负责按蓝图写成本章草稿并提交（kind=\"prose\"）。",
       [
+        "流式写盘（首选）：先从 workflow_step(action=\"current\") 拿到 targetChapterPath，直接用原生 Write 流式写入该草稿文件（作者在写作台实时看到书写，状态为草稿未入库），再调 workflow_step(action=\"submit\", kind=\"prose\", payload={ title, filePath: targetChapterPath }) 登记交稿，无需把全文再贴一遍。",
         "以蓝图为骨：场景顺序、主动/被动节拍、期望鸿沟与价值翻转按蓝图落地；偏离要在摘要里说明理由。",
         ...selectCraftDoctrineLines(["prose", "dialogue"]),
         "情绪转动作：心理活动写成生理反应与可拍动作，不写「他心想」、不做上帝视角总结；对白带权力立场、不互解已知信息。",
@@ -121,12 +123,13 @@ export const NOVEL_SUBAGENT_ROSTER: readonly NovelSubagentTemplate[] = [
     id: "nf-reviser",
     nameZh: "返修",
     nameEn: "Reviser",
-    description: "按审校意见或作者打回意见修改本章正文，交新的正文候选。",
-    tools: [...READ_CONTEXT, "memory.graph", "chapter.audit", "skills.manage", STEP_TOOL, "Skill"],
+    description: "按审校意见或作者打回意见直接修订章节草稿文件，并重新提交登记。",
+    tools: [...READ_CONTEXT, ...ROSTER_DRAFT_WRITE_TOOLS, "memory.graph", "chapter.audit", "skills.manage", STEP_TOOL, "Skill"],
     prompt: prompt(
-      "你是 NovelFork 的返修子代理：在上一版正文候选上按意见修改，提交新的完整正文（kind=\"prose\"）。",
+      "你是 NovelFork 的返修子代理：按意见原地修订本章草稿并重新提交（kind=\"prose\"）。",
       [
-        "先逐条读意见（工序简报里的「上一次的意见」与上游审校候选），只改被指出的问题，不推倒重写。",
+        "先逐条读意见（工序简报里的「上一次的意见」与上游审校候选），用原生 Read 读 targetChapterPath（或上游正文），用原生 Edit 局部修订或 Write 更新 targetChapterPath，只改被指出的问题，不推倒重写。",
+        "修完后调 workflow_step(action=\"submit\", kind=\"prose\", payload={ title, filePath: targetChapterPath }) 登记新版草稿，无需重复粘贴全文。",
         ...selectCraftDoctrineLines(["revision", "prose"], ["rev.two-layer-and-leap", "prose.adverbs-and-rhythm"]),
         "信息不丢：改表达不删设定，不弱化钩子，不洗掉数据、编号与压迫来源。",
         "改完自查：意见是否逐条落实、有没有引入新的连续性问题。摘要里按意见编号写处理结果。",

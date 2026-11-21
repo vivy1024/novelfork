@@ -28,7 +28,7 @@ const KIND_LABEL: Record<WorkflowCandidateKind, string> = {
 const PAYLOAD_SHAPE: Record<WorkflowCandidateKind, string> = {
   "scene-spec":
     '{ "sceneSpec": { "chapter": 章号, "title": "标题", "wordTarget": 字数, "scenes": [{ "characters": [], "location": "", "conflict": "", "mood": "", "outcome": "", "hooks_used": [], "hooks_planted": [] }], "constraints": [] } }',
-  prose: '{ "title": "章节标题", "content": "完整正文" }',
+  prose: '{ "title": "章节标题", "filePath": "chapters/卷XX/XXXX_标题.md" }（先用原生 Write/Edit 写盘，或传 "content"）',
   audit: '{ "passed": true 或 false, "summary": "结论", "issues": [{ "severity": "error | warning | info", "description": "问题与定位" }] }',
   outline:
     '{ "summary": "调整思路", "fromChapter": 起始章号, "chapters": [{ "chapter": 章号, "title": "暂定标题", "goal": "本章目标", "conflict": "冲突", "hooks": ["埋设或回收的伏笔"] }], "risks": ["与卷纲或设定的冲突"] }',
@@ -147,11 +147,19 @@ function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multi
  * 委派子代理的简报：只讲分给它的工序（目标、必交产物、上一次的意见），不讲团队编排与其它工序。
  * allowedStepIds 为空时说明现在没有它能做的事。
  */
-export function buildDelegatedStepBrief(run: WorkflowRunRecord, template: string, allowedStepIds: readonly string[]): string {
+export function buildDelegatedStepBrief(
+  run: WorkflowRunRecord,
+  template: string,
+  allowedStepIds: readonly string[],
+  options?: { readonly targetChapterPath?: string },
+): string {
   const lines = [
     `【创作工作流 · 你是内置子代理 ${template}】`,
     `运行 ${run.id}（版本 ${run.state.revision}）｜第 ${run.chapterNumber} 章｜方案「${run.recipe.name}」`,
   ];
+  if (options?.targetChapterPath) {
+    lines.push(`本章草稿路径（targetChapterPath）：${options.targetChapterPath}（执笔/返修可直接用原生 Write/Edit 流式写盘，再交 filePath）`);
+  }
   const steps = runningSteps(run.state).filter((step) => allowedStepIds.includes(step.stepId));
   if (steps.length === 0) {
     lines.push("现在没有分给你的进行中工序：不要提交任何产物，把情况写成一两句摘要交还领导者。");

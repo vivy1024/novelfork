@@ -8,6 +8,7 @@ import {
   GENERAL_PROPOSAL_TOOLS,
   listNovelSubagentTemplateContributions,
   NOVEL_SUBAGENT_ROSTER,
+  ROSTER_DRAFT_WRITE_TOOLS,
   ROSTER_FORBIDDEN_TOOLS,
   ROSTER_RUNTIME_TOOLS,
   rosterTemplatesForStep,
@@ -50,12 +51,17 @@ describe("内置子代理名册", () => {
     }
   });
 
-  it("小说工具都是已贡献给 Runtime 的工具；除提交 / 报阻塞与通用帮手的候选工具外只用读类", () => {
+  it("小说工具都是已贡献给 Runtime 的工具；除提交 / 报阻塞、执笔返修草稿写盘与通用帮手候选工具外只用读类", () => {
     const contributed = new Map((NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => [tool.definition.name, tool.definition.risk]));
     const catalog = new Map(NOVEL_RUNTIME_TOOL_CATALOG.map((tool) => [tool.name, tool.risk]));
     for (const template of NOVEL_SUBAGENT_ROSTER) {
       for (const tool of template.tools) {
         if (ROSTER_RUNTIME_TOOLS.includes(tool)) continue;
+        if (ROSTER_DRAFT_WRITE_TOOLS.includes(tool)) {
+          // 方案 1：只允许执笔（nf-writer）与返修（nf-reviser）流式写草稿，其余模板依然禁止 Write/Edit。
+          expect(["nf-writer", "nf-reviser"], `${template.id} → ${tool}`).toContain(template.id);
+          continue;
+        }
         expect(contributed.has(tool), `${template.id} → ${tool} 未贡献`).toBe(true);
         if (tool === "workflow.step") continue;
         if (template.id === "nf-general" && GENERAL_PROPOSAL_TOOLS.includes(tool)) {

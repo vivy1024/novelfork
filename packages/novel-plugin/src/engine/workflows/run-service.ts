@@ -201,12 +201,14 @@ export function validateWorkflowCandidate(
       }
       const wordCount = countChars(content);
       const title = typeof body.title === "string" ? body.title.trim() : "";
+      const filePath = typeof body.filePath === "string" ? body.filePath.trim() : "";
       return {
         ok: true,
         value: {
-          payload: { ...(title ? { title } : {}), content },
+          payload: { ...(title ? { title } : {}), ...(filePath ? { filePath } : {}), content },
           validation: {
             wordCount,
+            ...(filePath ? { filePath } : {}),
             ...(context.wordTarget ? { wordTarget: context.wordTarget, ratio: Math.round((wordCount / context.wordTarget) * 100) / 100 } : {}),
           },
         },

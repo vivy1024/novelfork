@@ -268,6 +268,28 @@ describe("工作流工具（内置子代理侧）", () => {
     // 被打回后返修子代理也能接写正文这道工序
     const reviser = await stepAsSubagent({ action: "current" }, "nf-reviser");
     expect(reviser.data).toMatchObject({ assignedSteps: [{ stepId: "step-draft" }] });
+    expect(typeof reviser.data!.targetChapterPath).toBe("string");
+    expect(String(reviser.data!.targetChapterPath)).toContain("chapters/");
+  });
+
+  it("方案 1（统一流式写盘）：执笔子代理先原生 Write 写入草稿文件，再仅提交 filePath 完成交稿", async () => {
+    const draftRun = await toDraft();
+    const writerBrief = await stepAsSubagent({ action: "current" }, "nf-writer");
+    const targetPath = String(writerBrief.data!.targetChapterPath);
+    expect(targetPath).toMatch(/^chapters\/.+\/0003_/);
+
+    const absDraft = join(testDir, targetPath);
+    await mkdir(join(absDraft, ".."), { recursive: true });
+    await writeFile(absDraft, `# 第3章 破局\n\n${"风".repeat(2000)}`, "utf8");
+
+    const submitted = await stepAsSubagent({
+      action: "submit",
+      runRevision: draftRun.state.revision,
+      kind: "prose",
+      payload: { title: "破局", filePath: targetPath },
+    }, "nf-writer");
+    expect(submitted.ok).toBe(true);
+    expect(submitted.data?.candidateId).toBeTruthy();
   });
 });
 

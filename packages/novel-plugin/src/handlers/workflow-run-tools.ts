@@ -6,14 +6,24 @@
  * 那是状态机与作者的事。
  */
 
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { RuntimeToolResult, ToolExecutionContext } from "@vivy1024/novelfork-core/plugins";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { rosterTemplatesForStep } from "../engine/agents/roster.js";
+import {
+  CHAPTERS_DIRECTORY,
+  chapterRelativePath,
+  chapterTitleFromContent,
+  listChapterFiles,
+  normalizeChapterRelativePath,
+  parseChapterFileName,
+} from "../engine/writing-resource/chapter-layout.js";
+import { createChapterFileResolver } from "../engine/writing-resource/chapter-path-guard.js";
+import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 import type { ChapterLengthRule } from "./chapter-length-check.js";
 import { buildDelegatedStepBrief, buildWorkflowRunBrief } from "../engine/workflows/run-brief.js";
 import {
@@ -45,6 +55,110 @@ const CARD_RUN_STATUS: Record<WorkflowRunStatus, string> = {
   done: "completed",
   cancelled: "stopped",
 };
+
+/** 推算工作流当前章节的目标草稿相对路径（chapters/卷XX/XXXX_标题.md），优先复用磁盘已有章文件。 */
+async function resolveWorkflowTargetChapterPath(
+  storage: StorageDatabase,
+  binding: TrustedRuntimeBookBinding,
+  run: WorkflowRunRecord,
+  preferredTitle?: string,
+): Promise<string> {
+  const existingFiles = await listChapterFiles(binding.root).catch(() => []);
+  const existing = existingFiles.find((file) => file.number === run.chapterNumber);
+  if (existing) return existing.relativePath;
+  const approvedSpec = getLatestApprovedCandidate(storage, run.id, "scene-spec");
+  const specObj = approvedSpec?.payload && typeof approvedSpec.payload === "object"
+    ? (approvedSpec.payload as { sceneSpec?: { title?: unknown } }).sceneSpec
+    : undefined;
+  const specTitle = typeof specObj?.title === "string" ? specObj.title.trim() : "";
+  const title = preferredTitle?.trim() || specTitle || `第${run.chapterNumber}章`;
+  const volDir = resolveChapterVolumeDirectory(storage, run.bookId, run.chapterNumber);
+  return `${CHAPTERS_DIRECTORY}/${chapterRelativePath(volDir, run.chapterNumber, title)}`;
+}
+
+/**
+ * 方案 1（统一流式写盘）：
+ * - 当 submit(kind="prose") 传入 filePath（不重复传 content）时，自动从磁盘读取草稿正文补齐 content，
+ *   并保留 filePath 供下游审校与最终 chapter.commit 定位；
+ * - 当 submit(kind="prose") 仅传入 content（兼容既有调用与旧测试）时，顺带镜像写入磁盘草稿文件，
+ *   让编辑器立即呈现未入库草稿（uncommitted），作者可直接审阅与手改。
+ */
+async function hydrateOrMirrorWorkflowProsePayload(
+  storage: StorageDatabase,
+  binding: TrustedRuntimeBookBinding,
+  run: WorkflowRunRecord,
+  rawPayload: unknown,
+): Promise<{ readonly ok: true; readonly payload: unknown } | { readonly ok: false; readonly result: RuntimeToolResult }> {
+  if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) {
+    return { ok: true, payload: rawPayload };
+  }
+  const body = rawPayload as Record<string, unknown>;
+  const rawContent = typeof body.content === "string" ? body.content : "";
+  const rawFilePath = typeof body.filePath === "string" ? body.filePath.trim() : "";
+  const chaptersDir = join(binding.root, CHAPTERS_DIRECTORY);
+  const resolveChapterFile = createChapterFileResolver(chaptersDir);
+
+  if (!rawContent.trim() && rawFilePath) {
+    const normalizedRel = normalizeChapterRelativePath(rawFilePath);
+    const chapterRel = normalizedRel.startsWith(`${CHAPTERS_DIRECTORY}/`)
+      ? normalizedRel.slice(CHAPTERS_DIRECTORY.length + 1)
+      : normalizedRel;
+    const absPath = resolveChapterFile(chapterRel);
+    if (!absPath) {
+      return { ok: false, result: fail("invalid-file-path", `filePath 必须指向本书 chapters/ 目录内的章节文件（收到：${rawFilePath}）。`) };
+    }
+    try {
+      const diskContent = await readFile(absPath, "utf8");
+      const parsed = parseChapterFileName(basename(absPath));
+      const title = (typeof body.title === "string" && body.title.trim())
+        || (parsed ? chapterTitleFromContent(parsed, diskContent) : undefined);
+      return {
+        ok: true,
+        payload: {
+          ...body,
+          ...(title ? { title } : {}),
+          content: diskContent,
+          filePath: `${CHAPTERS_DIRECTORY}/${chapterRel}`,
+        },
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return {
+          ok: false,
+          result: fail("draft-file-not-found", `找不到草稿文件 ${rawFilePath}，请先用原生 Write 写入章节草稿后再提交。`),
+        };
+      }
+      throw error;
+    }
+  }
+
+  // 若未传 filePath 但传了 content，尝试镜像到章节草稿路径（不改 chapters/index.json，保持 uncommitted 态）
+  if (rawContent.trim()) {
+    try {
+      const targetRel = rawFilePath
+        ? (() => {
+            const norm = normalizeChapterRelativePath(rawFilePath);
+            return norm.startsWith(`${CHAPTERS_DIRECTORY}/`) ? norm : `${CHAPTERS_DIRECTORY}/${norm}`;
+          })()
+        : await resolveWorkflowTargetChapterPath(
+            storage,
+            binding,
+            run,
+            typeof body.title === "string" ? body.title : undefined,
+          );
+      const chapterRel = targetRel.slice(CHAPTERS_DIRECTORY.length + 1);
+      const absPath = resolveChapterFile(chapterRel);
+      if (absPath) {
+        await mkdir(dirname(absPath), { recursive: true });
+        await writeFile(absPath, rawContent, "utf8");
+        return { ok: true, payload: { ...body, filePath: targetRel } };
+      }
+    } catch {
+      // 镜像落盘失败不影响候选提交本身
+    }
+  }
+  return { ok: true, payload: rawPayload };
+}
 
 const CARD_STEP_STATUS: Record<WorkflowStepStatus, string> = {
   pending: "pending",
@@ -125,6 +239,7 @@ export function toDelegatedWorkflowView(
   run: WorkflowRunRecord,
   template: string,
   allowedStepIds: readonly string[],
+  targetChapterPath?: string,
 ): Record<string, unknown> {
   const steps = run.state.steps.filter((step) => allowedStepIds.includes(step.stepId));
   return {
@@ -132,6 +247,7 @@ export function toDelegatedWorkflowView(
     runRevision: run.state.revision,
     runStatus: run.state.status,
     chapterNumber: run.chapterNumber,
+    ...(targetChapterPath ? { targetChapterPath } : {}),
     template,
     assignedSteps: steps.map((step) => ({
       stepId: step.stepId,
@@ -140,7 +256,7 @@ export function toDelegatedWorkflowView(
       ...(step.outcomes.length > 0 ? { outcomes: step.outcomes } : {}),
       ...(step.note ? { note: step.note } : {}),
     })),
-    brief: buildDelegatedStepBrief(run, template, allowedStepIds),
+    brief: buildDelegatedStepBrief(run, template, allowedStepIds, targetChapterPath ? { targetChapterPath } : undefined),
     upstream: {
       sceneSpec: candidateMaterial(getLatestApprovedCandidate(storage, run.id, "scene-spec")),
       prose: candidateMaterial(getLatestCandidateOfKind(storage, run.id, "prose")),
@@ -264,16 +380,21 @@ export async function executeWorkflowRunTool(
     if (!run) {
       return { ok: true, summary: "当前没有进行中的创作工作流，按作者的普通指令继续即可。", data: { runStatus: "none", brief: null } };
     }
+    const targetChapterPath = await resolveWorkflowTargetChapterPath(storage, binding, run);
     if (delegation) {
       return {
         ok: true,
         summary: allowedStepIds && allowedStepIds.length > 0
           ? `第 ${run.chapterNumber} 章 · 分给你的工序：${allowedStepIds.join("、")}`
           : `第 ${run.chapterNumber} 章 · 现在没有分给你的工序`,
-        data: toDelegatedWorkflowView(storage, run, delegation.template, allowedStepIds ?? []),
+        data: toDelegatedWorkflowView(storage, run, delegation.template, allowedStepIds ?? [], targetChapterPath),
       };
     }
-    return { ok: true, summary: `第 ${run.chapterNumber} 章 · ${run.recipe.name}：${run.state.status}`, data: toWorkflowToolView(storage, run) };
+    return {
+      ok: true,
+      summary: `第 ${run.chapterNumber} 章 · ${run.recipe.name}：${run.state.status}`,
+      data: { ...toWorkflowToolView(storage, run), targetChapterPath },
+    };
   }
 
   if (!run) {
@@ -288,12 +409,19 @@ export async function executeWorkflowRunTool(
     const lengthRule = await readChapterLengthRule(binding.root);
     const wordTarget = lengthRule?.chapterWordCount;
     const capture: { candidateId?: string } = {};
+    const kind = typeof input.kind === "string" ? input.kind : "";
+    let submitPayload: unknown = input.payload;
+    if (kind === "prose") {
+      const prepared = await hydrateOrMirrorWorkflowProsePayload(storage, binding, run, input.payload);
+      if (!prepared.ok) return prepared.result;
+      submitPayload = prepared.payload;
+    }
     const result = submitWorkflowStepOutput({
       storage,
       narratorId,
       runRevision,
-      kind: typeof input.kind === "string" ? input.kind : "",
-      payload: input.payload,
+      kind,
+      payload: submitPayload,
       ...(typeof input.stepId === "string" && input.stepId.trim() ? { stepId: input.stepId.trim() } : {}),
       ...(typeof input.outcome === "string" && input.outcome.trim() ? { outcome: input.outcome.trim() } : {}),
       ...(wordTarget ? { wordTarget } : {}),

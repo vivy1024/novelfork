@@ -60,6 +60,7 @@ import {
   type ChapterIndexRecord,
 } from "../engine/writing-resource/chapter-layout.js";
 import { createChapterFileResolver } from "../engine/writing-resource/chapter-path-guard.js";
+import { autoCommitBookChapter } from "../engine/writing-resource/book-git-commit.js";
 import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
 
 export interface TrustedRuntimeBookBinding {
@@ -1049,7 +1050,8 @@ async function chapterCommit(
   binding: TrustedRuntimeBookBinding,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
-  if (input.fromWorkflowRun === true) {
+  const fromWorkflowRun = input.fromWorkflowRun === true;
+  if (fromWorkflowRun) {
     const resolved = resolveWorkflowRunCandidates(input, binding, context);
     if (!resolved.ok) return resolved.result;
     input = resolved.input;
@@ -1083,11 +1085,24 @@ async function chapterCommit(
       { bookRoot: binding.root, storage: getStorageDatabase(), purpose: "revision" },
     );
     if (!written.ok) return fail(written.error, written.summary, written.data);
+    const gitCommit = await autoCommitBookChapter({
+      bookRoot: binding.root,
+      chapterNumber,
+      title: inferredTitle ?? `第${chapterNumber}章`,
+      wordCount: written.data.wordCount,
+      mode: "revision",
+      fromWorkflowRun,
+      relativePaths: [
+        `${CHAPTERS_DIRECTORY}/${normalizeChapterRelativePath(written.data.fileName)}`,
+        `${CHAPTERS_DIRECTORY}/index.json`,
+      ],
+    });
+    const gitNote = gitCommit.status === "committed" && gitCommit.commitSha ? ` Git 已记录（${gitCommit.commitSha}）。` : "";
     const settleResult = await memorySettle({ chapterNumber, ...(inferredTitle ? { title: inferredTitle } : {}) }, binding, context);
     const settlementFailed = !settleResult.ok;
     const summary = settlementFailed
-      ? `第 ${chapterNumber} 章改稿已提交入库（${written.data.wordCount} 字），但章后重结算未完成，请重试 memory.settle。`
-      : `第 ${chapterNumber} 章改稿已提交入库（${written.data.wordCount} 字）。${settleResult.summary ?? ""}`;
+      ? `第 ${chapterNumber} 章改稿已提交入库（${written.data.wordCount} 字）。${gitNote}但章后重结算未完成，请重试 memory.settle。`
+      : `第 ${chapterNumber} 章改稿已提交入库（${written.data.wordCount} 字）。${gitNote}${settleResult.summary ?? ""}`;
     const data = {
       saved: true,
       mode: "revision",
@@ -1097,6 +1112,7 @@ async function chapterCommit(
       title: inferredTitle ?? `第${chapterNumber}章`,
       wordCount: written.data.wordCount,
       length: written.data.length,
+      gitCommit,
       settlementDispatch: {
         toolName: "memory.settle",
         ok: settleResult.ok,
@@ -1155,6 +1171,23 @@ async function chapterCommit(
       ...(result.explanation ? { explanation: result.explanation } : {}),
     });
   }
+  const stageRelativePaths: string[] = [`${CHAPTERS_DIRECTORY}/index.json`];
+  if (result.path) {
+    const normalizedPath = normalizeChapterRelativePath(result.path);
+    stageRelativePaths.unshift(
+      normalizedPath.startsWith(`${CHAPTERS_DIRECTORY}/`) ? normalizedPath : `${CHAPTERS_DIRECTORY}/${normalizedPath}`,
+    );
+  }
+  const gitCommit = await autoCommitBookChapter({
+    bookRoot: binding.root,
+    chapterNumber: result.chapterNumber,
+    title: result.title,
+    wordCount: result.wordCount,
+    mode: "new",
+    fromWorkflowRun,
+    relativePaths: stageRelativePaths,
+  });
+  const gitNote = gitCommit.status === "committed" && gitCommit.commitSha ? ` Git 已记录（${gitCommit.commitSha}）。` : "";
   const settlementFailed = result.settlementDispatch !== undefined && !result.settlementDispatch.ok;
   const settlementSummary = settlementFailed
     ? ` 章后结算未完成（${result.settlementDispatch.toolName}）：正文已保存，需重试结算。`
@@ -1181,6 +1214,7 @@ async function chapterCommit(
     factCheckRound: result.factCheckRound,
     revised: result.revised,
     chapterId: result.chapterId,
+    gitCommit,
     narrativeSettlement: result.narrativeSettlement,
     settlementDispatch: result.settlementDispatch,
     publishHint: result.publishHint,
@@ -1191,7 +1225,7 @@ async function chapterCommit(
     artifact: result.artifact,
     ...(settlementFailed ? { code: "settlement-pending", needsSettlementRetry: true } : {}),
   };
-  const summary = `第${result.chapterNumber}章「${result.title}」入库完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}。${settlementSummary}`;
+  const summary = `第${result.chapterNumber}章「${result.title}」入库完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}。${gitNote}${settlementSummary}`;
   return settlementFailed
     ? fail("settlement-pending", summary, resultData)
     : ok(summary, resultData);
