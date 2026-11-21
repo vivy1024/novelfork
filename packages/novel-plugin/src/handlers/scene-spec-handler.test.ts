@@ -80,6 +80,10 @@ describe("scene.spec deterministic contract", () => {
     if (!result.ok) return;
     expect(result.data.namedEntities).toEqual(expect.arrayContaining(["账本", "林舟"]));
     expect(result.summary).toContain("点名实体");
+    expect(result.summary).toContain("EnterPlanMode");
+    expect(result.summary).toContain("ExitPlanMode");
+    expect(result.data.planMarkdown).toContain("# 第 5 章写作蓝图 · 雨夜");
+    expect(result.data.planMarkdown).toContain("## 场次安排");
   });
 
   it("留白：合法条目原样透传，非法条目剔除而不让蓝图失败", async () => {

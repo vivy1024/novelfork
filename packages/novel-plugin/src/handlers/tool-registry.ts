@@ -162,7 +162,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "chapter.blueprint",
     description:
-      "校验并按章缓存结构化写作蓝图（Scene Spec），写正文前必调。先 chapter.preflight，按需 jingwei.read / memory.read 补资料，再提交包含场景模式、价值翻转、期望鸿沟与字数预算的蓝图。userDirectives 须≥8 字明确目标，勿塞理论空话。",
+      "校验并缓存结构化写作蓝图（Scene Spec），写正文前必调。返回 planMarkdown 后须用 EnterPlanMode + ExitPlanMode（inline_plan）呈给作者审批修改，通过后再写正文。userDirectives 须≥8 字明确目标。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["chapter.blueprint"]!),
     risk: "read",
     renderer: "scene.spec",

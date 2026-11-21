@@ -64,10 +64,10 @@ checks:
 
 ## 操作（NovelFork）
 
-1. `chapter_preflight` 确认可写，取本章召回包（recall.text）和目标章节路径；预检不过就停。用 Skill 读取相关写作技能。
+1. `chapter_preflight` 确认可写，取本章召回包（recall.text）和目标章节路径（targetChapterPath）；预检不过就停。用 Skill 读取相关写作技能。
 2. `jingwei_read` 查出场角色/地点/规则；需要补看某一栏（如角色近况）再用 `memory_read`。禁止现编设定。
-3. 用 `chapter_blueprint` 校验并缓存本章蓝图（含 beatBudget）；通过后**以召回包为前情依据**写正文。
-4. 用原生 `Write` 流式写入预检的 targetChapterPath，勿自行拼路径或覆盖作者的改动；再调 `chapter_commit` 审计、入库并结算。召回过期就重新预检，其他阻断按提示修正，不把落盘当成完稿。
+3. 用 `chapter_blueprint` 校验并缓存本章蓝图（含 beatBudget），拿到 `planMarkdown` 后立即通过 `EnterPlanMode` + `ExitPlanMode`（`mode="inline"`，直接传 `planMarkdown`）呈给作者审阅修改；审批通过后再开写。
+4. **以召回包和已批蓝图为依据**，用原生 `Write` 流式写入预检的 `targetChapterPath`（写作台实时呈现草稿，勿自行拼路径或覆盖作者的改动）；写完后调 `chapter_commit` 完成审计、正式入库、自动 Git 记录并结算。召回过期就重新预检，其他阻断按提示用原生 `Edit` 修正后重调 `chapter_commit`，不把落盘草稿当成完稿。
 5. 同轮收尾：结算失败用 `memory_settle` 传 chapterNumber；从正文提取的新设定用 `jingwei_write` 提交待审（layer=dynamic、status=needs-review）。
 
 ## 禁止

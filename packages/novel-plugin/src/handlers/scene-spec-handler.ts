@@ -138,6 +138,8 @@ export interface SceneSpecSuccess {
   summary: string;
   data: {
     sceneSpec: SceneSpec;
+    /** 可直接作为 ExitPlanMode(mode="inline") 提交给作者审批修改的 Markdown 蓝图稿。 */
+    planMarkdown?: string;
     /** 情节点预算校验结果；未提供 beatBudget 时也会给，用于提示未拆点。 */
     beatBudget?: BeatBudgetReport;
     namedEntities?: readonly string[];
@@ -665,11 +667,13 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     ? ` 已附上 ${planningMechanisms.length} 张可迁移机制卡供细纲推演参考${pinnedMechanismIds.length > 0 ? "（含作者点选置顶）" : ""}。`
     : "";
   cacheValidatedSceneSpec(bookId, sceneSpec);
+  const planMarkdown = formatBlueprintForPlanApproval(sceneSpec, chapterNumber, wordTarget, budget, craftFindings);
   return {
     ok: true,
-    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${densityNote}${craftNote}${anchorNote}${skillNote}${expansionNote}${mechanismNote}`,
+    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${densityNote}${craftNote}${anchorNote}${skillNote}${expansionNote}${mechanismNote} 下一步请用 EnterPlanMode + ExitPlanMode（inline_plan 可直接用本结果返回的 planMarkdown）把蓝图呈给作者审阅修改；通过后再用原生 Write 流式写入正文。`,
     data: {
       sceneSpec,
+      planMarkdown,
       beatBudget: budget,
       namedEntities,
       ...(entityExpansion ? { entityExpansion } : {}),
@@ -678,6 +682,63 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
       ...(craftFindings.length > 0 ? { craftFindings } : {}),
     },
   };
+}
+
+/** 将结构化蓝图渲染为可直接提交给 ExitPlanMode(mode="inline") 的可读 Markdown 计划稿。 */
+export function formatBlueprintForPlanApproval(
+  spec: SceneSpec,
+  chapterNumber: number,
+  wordTarget: number,
+  budget?: BeatBudgetReport,
+  craftFindings?: readonly SceneCraftFinding[],
+): string {
+  const lines: string[] = [
+    `# 第 ${chapterNumber} 章写作蓝图 · ${spec.title}`,
+    "",
+    `- **目标字数**：${wordTarget} 字（共 ${spec.scenes.length} 场）`,
+    ...(spec.engineRole ? [`- **章级引擎职责**：${spec.engineRole}`] : []),
+    ...(spec.contractCheck?.agencyOwner || spec.contractCheck?.payoffOwner
+      ? [`- **驱动与回报归属**：推动者=${spec.contractCheck.agencyOwner ?? "—"} / 兑现者=${spec.contractCheck.payoffOwner ?? "—"}`]
+      : []),
+  ];
+
+  if (spec.beatBudget && spec.beatBudget.length > 0) {
+    lines.push("", "## 节奏预算（Beat Budget）");
+    for (const beat of spec.beatBudget) {
+      lines.push(`- [${beat.density}] ${beat.summary}（约 ${beat.words} 字）`);
+    }
+    if (budget?.summary) lines.push(`> 校验：${budget.summary}`);
+  }
+
+  lines.push("", "## 场次安排");
+  spec.scenes.forEach((scene, index) => {
+    const modeLabel = scene.sceneMode ? ` · ${scene.sceneMode}` : "";
+    const infoLabel = scene.infoMode ? ` · ${scene.infoMode}` : "";
+    lines.push(`### 场 ${index + 1}：${scene.location}${modeLabel}${infoLabel}`);
+    lines.push(`- **出场人物**：${scene.characters.join("、")}`);
+    if (scene.entryPoint) lines.push(`- **切入点**：${scene.entryPoint}`);
+    lines.push(`- **核心冲突**：${scene.conflict}`);
+    if (scene.expectationGap) {
+      lines.push(`- **期望—结果鸿沟**：期望「${scene.expectationGap.expectation}」→ 实际「${scene.expectationGap.reality}」`);
+    }
+    if (scene.valueTurn) {
+      lines.push(`- **价值翻转**：${scene.valueTurn.from} → ${scene.valueTurn.to}`);
+    }
+    lines.push(`- **情绪弧与结果**：${scene.mood} ｜ 结果：${scene.outcome}`);
+    if (scene.hooks_used.length > 0) lines.push(`- **回收/推进伏笔**：${scene.hooks_used.join("；")}`);
+    if (scene.hooks_planted.length > 0) lines.push(`- **新埋伏笔**：${scene.hooks_planted.join("；")}`);
+    if (scene.forbid && scene.forbid.length > 0) lines.push(`- **禁区**：${scene.forbid.join("；")}`);
+  });
+
+  if (spec.constraints.length > 0) {
+    lines.push("", "## 本章硬约束");
+    for (const item of spec.constraints) lines.push(`- ${item}`);
+  }
+  if (craftFindings && craftFindings.length > 0) {
+    lines.push("", "## 戏剧结构提醒");
+    for (const item of craftFindings) lines.push(`- ${item.message}`);
+  }
+  return lines.join("\n");
 }
 
 function uniqueNamedEntities(explicit: unknown, sceneSpec: SceneSpec): string[] {
