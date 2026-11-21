@@ -2280,7 +2280,7 @@ export function IdeWorkbench({
       >
       {studioUnifiedSidebar ? (
         <header
-          className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-card/85 px-3"
+          className="flex min-h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-card/85 px-3 py-1"
           data-testid="studio-book-topbar"
         >
           <div className="flex min-w-0 items-center gap-2">
@@ -2292,7 +2292,7 @@ export function IdeWorkbench({
             </span>
             {effectiveStudioZone === "write" ? (
               <div
-                className="ml-1 inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-2xs"
+                className="ml-1 inline-flex items-stretch rounded-md border border-border bg-muted/40 p-0.5 text-2xs"
                 role="tablist"
                 aria-label="写正文中心工作台模式"
                 data-testid="write-zone-mode-switcher"
@@ -2311,7 +2311,7 @@ export function IdeWorkbench({
                     aria-selected={writeCenterMode === mode.id}
                     data-testid={`write-mode-tab-${mode.id}`}
                     onClick={() => setWriteCenterMode(mode.id)}
-                    className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                    className={`nf-card-transition inline-flex min-h-8 items-center rounded px-2.5 py-1.5 font-medium ${
                       writeCenterMode === mode.id
                         ? "bg-card text-foreground shadow-2xs"
                         : "text-muted-foreground hover:text-foreground"
@@ -2324,7 +2324,7 @@ export function IdeWorkbench({
             ) : null}
             {effectiveStudioZone === "dissect" ? (
               <div
-                className="ml-1 inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-2xs"
+                className="ml-1 inline-flex items-stretch rounded-md border border-border bg-muted/40 p-0.5 text-2xs"
                 role="tablist"
                 aria-label="拆书与文风切换"
               >
@@ -2336,7 +2336,7 @@ export function IdeWorkbench({
                     setDissectSubMode("dissect");
                     setDissectOpen(true);
                   }}
-                  className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                  className={`nf-card-transition inline-flex min-h-8 items-center rounded px-2.5 py-1.5 font-medium ${
                     dissectSubMode === "dissect" ? "bg-card text-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -2351,7 +2351,7 @@ export function IdeWorkbench({
                     setDissectOpen(false);
                     revealPanel("skills-style");
                   }}
-                  className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                  className={`nf-card-transition inline-flex min-h-8 items-center rounded px-2.5 py-1.5 font-medium ${
                     dissectSubMode === "style" ? "bg-card text-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -2364,7 +2364,7 @@ export function IdeWorkbench({
           <div className="flex shrink-0 items-center gap-1.5">
             {/* 五套书房风格主题一键切换（联动色彩、字体、圆角、材质与侧栏搭配） */}
             <div
-              className="inline-flex items-center rounded-[var(--nf-control-radius,var(--radius-md))] border border-border bg-muted/45 p-0.5 text-2xs"
+              className="inline-flex items-stretch rounded-[var(--nf-control-radius,var(--radius-md))] border border-border bg-muted/45 p-0.5 text-2xs"
               role="radiogroup"
               aria-label="书房和纸主题"
               data-testid="studio-style-theme-switcher"
@@ -2379,7 +2379,7 @@ export function IdeWorkbench({
                     aria-checked={active}
                     title={`${meta.label} · ${meta.tag}：${meta.description}`}
                     onClick={() => setStyleTheme(meta.id)}
-                    className={`rounded-[var(--radius-sm)] px-1.5 py-0.5 font-medium whitespace-nowrap transition-colors ${
+                    className={`nf-card-transition inline-flex min-h-8 items-center rounded-[var(--radius-sm)] px-2 py-1 font-medium whitespace-nowrap ${
                       active
                         ? "bg-primary text-primary-foreground shadow-2xs"
                         : "text-muted-foreground hover:text-foreground"

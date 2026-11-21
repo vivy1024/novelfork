@@ -170,6 +170,7 @@ function CausalCanvasInner({ bookId, structure, query, onOpenChapter, className 
   const base = `/api/books/${encodeURIComponent(bookId)}/narrative-memory`;
   const [data, setData] = useState<SceneGraphData>(structure);
   const [selection, setSelection] = useState<Selection>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [dropLaneId, setDropLaneId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -206,13 +207,58 @@ function CausalCanvasInner({ bookId, structure, query, onOpenChapter, className 
     stalledGap: STALLED_LANE_GAP,
   }), [data, structure.foreshadows, structure.currentChapter]);
   const layout = useMemo(() => layoutCausalGraph(graph), [graph]);
-  const flow = useMemo(() => toCausalFlow(graph, layout, {
-    selectedSceneId: selection?.kind === "scene" ? selection.id : null,
-    focusLaneId: selection?.kind === "lane" ? selection.id : null,
-    query: query ?? "",
-    dropLaneId,
-    showHooks,
-  }), [graph, layout, selection, query, dropLaneId, showHooks]);
+  const selectedNodeId = selection?.kind === "scene" ? selection.id : null;
+  const focusedNodeId = hoveredNodeId ?? selectedNodeId;
+
+  const flow = useMemo(() => {
+    const baseFlow = toCausalFlow(graph, layout, {
+      selectedSceneId: selectedNodeId,
+      focusLaneId: selection?.kind === "lane" ? selection.id : null,
+      query: query ?? "",
+      dropLaneId,
+      showHooks,
+    });
+
+    if (!focusedNodeId) return baseFlow;
+
+    // 聚光降噪（Focus Spotlight）：计算与聚焦节点直接相连的一跳上下游节点与边集合
+    const neighborNodeIds = new Set<string>([focusedNodeId]);
+    const connectedEdgeIds = new Set<string>();
+    for (const edge of baseFlow.edges) {
+      if (edge.source === focusedNodeId || edge.target === focusedNodeId) {
+        connectedEdgeIds.add(edge.id);
+        neighborNodeIds.add(edge.source);
+        neighborNodeIds.add(edge.target);
+      }
+    }
+
+    const spotlightNodes = baseFlow.nodes.map((node) => {
+      if (node.type !== "scene") return node;
+      const inSpotlight = neighborNodeIds.has(node.id);
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          dimmed: node.data.dimmed || !inSpotlight,
+          spotlight: inSpotlight,
+        },
+      };
+    });
+
+    const spotlightEdges = baseFlow.edges.map((edge) => {
+      const inSpotlight = connectedEdgeIds.has(edge.id);
+      return {
+        ...edge,
+        data: {
+          ...edge.data!,
+          dimmed: !inSpotlight,
+          emphasized: inSpotlight,
+        },
+      };
+    });
+
+    return { nodes: spotlightNodes, edges: spotlightEdges };
+  }, [graph, layout, selection, selectedNodeId, focusedNodeId, query, dropLaneId, showHooks]);
 
   const [nodes, setNodes] = useState<CausalCanvasNode[]>(flow.nodes);
   useEffect(() => setNodes(flow.nodes), [flow.nodes]);
@@ -321,6 +367,12 @@ function CausalCanvasInner({ bookId, structure, query, onOpenChapter, className 
             defaultEdgeOptions={{ markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 } }}
             onNodesChange={onNodesChange}
             onNodeClick={(_, node) => setSelection(node.type === "scene" ? { kind: "scene", id: node.id } : null)}
+            onNodeMouseEnter={(_, node) => {
+              if (node.type === "scene") setHoveredNodeId(node.id);
+            }}
+            onNodeMouseLeave={(_, node) => {
+              if (node.type === "scene") setHoveredNodeId((current) => (current === node.id ? null : current));
+            }}
             onNodeDoubleClick={(_, node) => {
               if (node.type !== "scene" || !instance) return;
               void instance.setCenter(node.position.x + 88, node.position.y + 42, {
@@ -328,7 +380,10 @@ function CausalCanvasInner({ bookId, structure, query, onOpenChapter, className 
                 duration: 380,
               });
             }}
-            onPaneClick={() => setSelection(null)}
+            onPaneClick={() => {
+              setSelection(null);
+              setHoveredNodeId(null);
+            }}
             onNodeDrag={(_, node) => {
               if (node.type === "scene") setDropLaneId(laneAtY(graph, node.position.y).id);
             }}

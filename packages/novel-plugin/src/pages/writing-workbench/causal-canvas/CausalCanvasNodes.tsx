@@ -37,11 +37,20 @@ function SceneView({ data, selected }: NodeProps & { data: CausalSceneNodeData }
   const planted = scene.hooksPlanted?.length ?? 0;
   const used = scene.hooksUsed?.length ?? 0;
   const pending = scene.status === "needs-review";
+  const spotlight = Boolean(data.spotlight);
   return (
     <div
-      className={`nf-canvas-node-card flex flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm ${selected ? "ring-2 ring-primary nf-node-border-beam" : ""} ${data.matched ? "ring-2 ring-warning nf-node-awaiting-aura" : ""} ${data.dimmed ? "opacity-25" : ""} ${pending ? "border-dashed" : ""}`}
-      style={{ width: SCENE_WIDTH, height: SCENE_HEIGHT, borderLeft: `4px solid ${data.homeColor}` }}
+      className={`nf-canvas-node-card nf-card-transition flex flex-col gap-1 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm ${selected ? "ring-2 ring-primary nf-node-border-beam" : ""} ${spotlight && !selected ? "ring-1 ring-primary/50 shadow-md" : ""} ${data.matched ? "ring-2 ring-warning nf-node-awaiting-aura" : ""} ${pending ? "border-dashed" : ""}`}
+      style={{
+        width: SCENE_WIDTH,
+        height: SCENE_HEIGHT,
+        borderLeft: `4px solid ${data.homeColor}`,
+        opacity: data.dimmed ? 0.22 : 1,
+        transition: "opacity var(--nf-motion-base), box-shadow var(--nf-motion-fast), border-color var(--nf-motion-fast), transform var(--nf-motion-fast)",
+      }}
       data-testid={`causal-scene-${scene.id}`}
+      data-dimmed={data.dimmed ? "true" : "false"}
+      data-spotlight={spotlight ? "true" : "false"}
       title={scene.summary || undefined}
     >
       <Handle id="in" type="target" position={Position.Left} className={hiddenHandle} isConnectable={false} />
@@ -100,11 +109,12 @@ function LineEdgeView(props: EdgeProps<CausalCanvasEdge>) {
       <BaseEdge
         id={props.id}
         path={path}
+        className={emphasized ? "nf-edge-flow" : undefined}
         style={{
           stroke: color,
           strokeWidth: emphasized ? 3 : 2.2,
-          opacity: dimmed ? 0.12 : 0.88,
-          transition: "opacity 220ms ease, stroke-width 200ms ease",
+          opacity: dimmed ? 0.14 : 0.9,
+          transition: "opacity var(--nf-motion-base), stroke-width var(--nf-motion-fast)",
         }}
       />
       {emphasized ? (
@@ -130,13 +140,13 @@ function HookEdgeView(props: EdgeProps<CausalCanvasEdge>) {
         id={props.id}
         path={path}
         markerEnd={props.markerEnd}
-        className={emphasized ? "nf-edge-flow-forward" : undefined}
+        className={emphasized ? "nf-edge-flow nf-edge-flow-forward" : undefined}
         style={{
           stroke: color,
           strokeWidth: emphasized ? 1.8 : 1.5,
           strokeDasharray: emphasized ? undefined : "5 4",
-          opacity: dimmed ? 0.12 : 0.9,
-          transition: "opacity 220ms ease",
+          opacity: dimmed ? 0.14 : 0.9,
+          transition: "opacity var(--nf-motion-base)",
         }}
       />
       {emphasized ? (

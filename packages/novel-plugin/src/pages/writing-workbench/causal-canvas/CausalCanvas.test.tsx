@@ -142,4 +142,87 @@ describe("因果画布", () => {
     renderCanvas({ ...baseStructure, scenes: [], mounts: [] } as NarrativeStructurePayload);
     expect(screen.getByTestId("causal-canvas-empty").textContent).toContain("写完一章后会出现");
   });
+
+  it("聚光降噪：选中或悬停场景时仅高亮自身与直接相连节点，无关节点淡退至低透明度", () => {
+    mockFetch(() => undefined);
+    const threeScenesStructure = {
+      ...baseStructure,
+      storylines: [lineRow("main", "夺回师门", "main"), lineRow("romance", "感情线", "romance")],
+      scenes: [
+        sceneRow("s1", 1, 1, "初遇"),
+        sceneRow("s2", 3, 1, "药园夜谈"),
+        sceneRow("s3", 5, 1, "独立支线"),
+      ],
+      mounts: [
+        { sceneId: "s1", storylineId: "main", role: "primary", createdAt: 0 },
+        { sceneId: "s2", storylineId: "main", role: "primary", createdAt: 0 },
+        { sceneId: "s3", storylineId: "romance", role: "primary", createdAt: 0 },
+      ],
+    } as unknown as NarrativeStructurePayload;
+
+    renderCanvas(threeScenesStructure);
+
+    const s1 = screen.getByTestId("causal-scene-s1");
+    const s2 = screen.getByTestId("causal-scene-s2");
+    const s3 = screen.getByTestId("causal-scene-s3");
+
+    // 初始全图清晰
+    expect(s1.getAttribute("data-dimmed")).toBe("false");
+    expect(s2.getAttribute("data-dimmed")).toBe("false");
+    expect(s3.getAttribute("data-dimmed")).toBe("false");
+
+    // 选中 s1：s1 与直连的 s2 保持聚光高亮，无关节点 s3 淡退（opacity: 0.22）
+    fireEvent.click(s1);
+    expect(screen.getByTestId("causal-scene-s1").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s1").getAttribute("data-spotlight")).toBe("true");
+    expect(screen.getByTestId("causal-scene-s2").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s2").getAttribute("data-spotlight")).toBe("true");
+    expect(screen.getByTestId("causal-scene-s3").getAttribute("data-dimmed")).toBe("true");
+    expect(screen.getByTestId("causal-scene-s3").style.opacity).toBe("0.22");
+
+    // 悬停到独立节点 s3：立即切换聚光至 s3，s1/s2 淡退；移出后恢复选中态
+    fireEvent.mouseEnter(screen.getByTestId("causal-scene-s3"));
+    expect(screen.getByTestId("causal-scene-s3").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s1").getAttribute("data-dimmed")).toBe("true");
+
+    fireEvent.mouseLeave(screen.getByTestId("causal-scene-s3"));
+    expect(screen.getByTestId("causal-scene-s1").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s3").getAttribute("data-dimmed")).toBe("true");
+
+    // 关闭右侧面板（清空 selection）后全图恢复清晰
+    fireEvent.click(screen.getByRole("button", { name: "收起面板" }));
+    expect(screen.getByTestId("causal-scene-s1").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s2").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s3").getAttribute("data-dimmed")).toBe("false");
+  });
+
+  it("聚光降噪：悬停场景后鼠标移出立即恢复全图清晰", () => {
+    mockFetch(() => undefined);
+    const threeScenesStructure = {
+      ...baseStructure,
+      storylines: [lineRow("main", "夺回师门", "main"), lineRow("romance", "感情线", "romance")],
+      scenes: [
+        sceneRow("s1", 1, 1, "初遇"),
+        sceneRow("s2", 3, 1, "药园夜谈"),
+        sceneRow("s3", 5, 1, "独立支线"),
+      ],
+      mounts: [
+        { sceneId: "s1", storylineId: "main", role: "primary", createdAt: 0 },
+        { sceneId: "s2", storylineId: "main", role: "primary", createdAt: 0 },
+        { sceneId: "s3", storylineId: "romance", role: "primary", createdAt: 0 },
+      ],
+    } as unknown as NarrativeStructurePayload;
+
+    renderCanvas(threeScenesStructure);
+
+    fireEvent.mouseEnter(screen.getByTestId("causal-scene-s2"));
+    expect(screen.getByTestId("causal-scene-s1").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s2").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s3").getAttribute("data-dimmed")).toBe("true");
+
+    fireEvent.mouseLeave(screen.getByTestId("causal-scene-s2"));
+    expect(screen.getByTestId("causal-scene-s1").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s2").getAttribute("data-dimmed")).toBe("false");
+    expect(screen.getByTestId("causal-scene-s3").getAttribute("data-dimmed")).toBe("false");
+  });
 });

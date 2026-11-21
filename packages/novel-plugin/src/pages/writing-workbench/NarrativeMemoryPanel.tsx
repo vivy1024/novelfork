@@ -483,12 +483,12 @@ function StoryStatusSummary({
                   key={fact.id}
                   type="button"
                   onClick={() => onOpenFact?.(fact)}
-                  className="block w-full rounded border border-border/50 px-2 py-1.5 text-left hover:bg-muted"
+                  className="nf-surface-sub nf-card-transition block w-full px-2 py-1.5 text-left hover:bg-muted/80"
                 >
                   <div className="truncate text-2xs font-medium">{entryTitle(fact)}</div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
                     <OpenSourceChapterButton chapterNumber={fact.sourceChapter ?? fact.validFromChapter} onOpenChapter={onOpenChapter} nested />
-                    {typeof fact.confidence === "number" ? <span>置信 {fact.confidence.toFixed(2)}</span> : null}
+                    {typeof fact.confidence === "number" ? <span className="tabular-nums">置信 {fact.confidence.toFixed(2)}</span> : null}
                   </div>
                   {fact.evidenceText ? <div className="mt-0.5 truncate text-2xs text-muted-foreground">{fact.evidenceText}</div> : null}
                   {fact.summary ? <div className="truncate text-2xs text-muted-foreground">{fact.summary}</div> : null}
@@ -549,7 +549,7 @@ function EntityStatusBoard({
             >
               {group.entity}
             </button>
-            <span className="text-2xs text-muted-foreground">{group.facts.length} 条</span>
+            <span className="text-2xs text-muted-foreground tabular-nums">{group.facts.length} 条</span>
           </div>
           <div className="space-y-1">
             {group.facts.map((fact) => (
@@ -592,7 +592,7 @@ function OpenSourceChapterButton({
   nested?: boolean;
 }) {
   if (!chapterNumber) return null;
-  if (!onOpenChapter) return <span className="shrink-0 text-2xs text-muted-foreground">第 {chapterNumber} 章</span>;
+  if (!onOpenChapter) return <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">第 {chapterNumber} 章</span>;
   if (nested) {
     return (
       <span
@@ -608,7 +608,7 @@ function OpenSourceChapterButton({
           event.stopPropagation();
           onOpenChapter(chapterNumber);
         }}
-        className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-2xs text-primary hover:bg-muted"
+        className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-2xs text-primary tabular-nums hover:bg-muted"
         title={`打开来源第 ${chapterNumber} 章`}
       >
         第 {chapterNumber} 章
@@ -619,7 +619,7 @@ function OpenSourceChapterButton({
     <button
       type="button"
       onClick={() => onOpenChapter(chapterNumber)}
-      className="shrink-0 rounded px-1.5 py-0.5 text-xs text-primary hover:bg-muted"
+      className="shrink-0 rounded px-1.5 py-0.5 text-xs text-primary tabular-nums hover:bg-muted"
       title={`打开来源第 ${chapterNumber} 章`}
     >
       第 {chapterNumber} 章
@@ -681,11 +681,11 @@ function EditableFactRow({
   const conflictLabel = factConflictLabel(fact);
   return (
     <div className="space-y-1" data-testid={`memory-fact-row-${fact.id}`}>
-      <div className="flex items-center gap-1.5 rounded border border-border/50 px-2 py-1">
+      <div className="nf-card-transition flex items-center gap-1.5 rounded-[var(--nf-control-radius,var(--radius-md))] bg-background/65 px-2 py-1">
         <span className="shrink-0 text-2xs text-muted-foreground">{fact.predicate}</span>
         <span className="min-w-0 flex-1 truncate text-2xs font-medium">{fact.object}</span>
         {conflictLabel ? <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">{conflictLabel}</span> : null}
-        {typeof fact.confidence === "number" ? <span className="shrink-0 text-2xs text-muted-foreground">置信 {fact.confidence.toFixed(2)}</span> : null}
+        {typeof fact.confidence === "number" ? <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">置信 {fact.confidence.toFixed(2)}</span> : null}
         <OpenSourceChapterButton chapterNumber={sourceChapter} onOpenChapter={onOpenChapter} />
         <button type="button" onClick={() => setShowHistory((value) => !value)} className="shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted" title="查看变迁史">
           历史
@@ -726,22 +726,22 @@ function SearchResults({
 }) {
   if (!query) return null;
   return (
-    <section className="rounded-lg border border-border bg-card p-3 space-y-2">
+    <section className="nf-surface-card p-3 space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-muted-foreground">搜索结果</h3>
-        {loading ? <Loader2 className="size-3 animate-spin" /> : <span className="text-2xs text-muted-foreground">{results.length} 条</span>}
+        {loading ? <Loader2 className="size-3 animate-spin" /> : <span className="text-2xs text-muted-foreground tabular-nums">{results.length} 条</span>}
       </div>
       {results.length === 0 && !loading ? (
         <p className="text-xs text-muted-foreground">没有匹配的章后事实。</p>
       ) : results.map((entry) => (
-        <button key={`${entry.kind}:${entry.id}`} type="button" onClick={() => onOpen?.(entry)} className="block w-full rounded border border-border/60 p-2 text-left hover:bg-muted">
+        <button key={`${entry.kind}:${entry.id}`} type="button" onClick={() => onOpen?.(entry)} className="nf-surface-sub nf-card-transition block w-full p-2 text-left hover:bg-muted/80">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium">{entryTitle(entry)}</span>
             <span className="text-2xs text-muted-foreground">{entry.kind}</span>
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-2xs text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-2xs text-muted-foreground tabular-nums">
             <OpenSourceChapterButton chapterNumber={entry.sourceChapter ?? entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
-            {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
+            {typeof entry.confidence === "number" ? <span className="tabular-nums">· 置信 {entry.confidence.toFixed(2)}</span> : null}
             {entry.summary || entryPredicateText(entry) ? <span>· {entry.summary ?? entryPredicateText(entry)}</span> : null}
           </div>
           {entry.evidenceText ? <div className="mt-0.5 truncate text-2xs text-muted-foreground">{entry.evidenceText}</div> : null}
@@ -770,13 +770,13 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
         <span className="text-2xs text-muted-foreground">{open ? "收起" : "展开"}</span>
       </button>
       {!open ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground tabular-nums">
           最近召回 {diagnostics.purpose} · 第 {formatNumber(diagnostics.chapterNumber)} 章 · {formatMs(diagnostics.totalMs)} · {formatNumber(diagnostics.totalEstimatedTokens)} tokens
           {(diagnostics.warnings?.length ?? 0) > 0 ? ` · ${diagnostics.warnings!.length} 条警告` : ""}
         </p>
       ) : (
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-2xs">
+          <div className="grid grid-cols-2 gap-2 text-2xs tabular-nums">
             <span>目的：{diagnostics.purpose}</span>
             <span>章节：{formatNumber(diagnostics.chapterNumber)}</span>
             <span>耗时：{formatMs(diagnostics.totalMs)}</span>
@@ -794,12 +794,12 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
           )}
           <div className="space-y-1">
             {(diagnostics.channels ?? []).map((channel) => (
-              <div key={channel.channel} className="rounded border border-border/60 p-2">
+              <div key={channel.channel} className="nf-surface-sub p-2">
                 <div className="flex items-center justify-between text-2xs">
                   <span className="font-medium">{channel.channel}</span>
                   <span className="text-muted-foreground">{channel.status}</span>
                 </div>
-                <div className="mt-1 grid grid-cols-3 gap-1 text-2xs text-muted-foreground">
+                <div className="mt-1 grid grid-cols-3 gap-1 text-2xs text-muted-foreground tabular-nums">
                   <span>{formatMs(channel.latencyMs)}</span>
                   <span>检索 {formatNumber(channel.candidateCount)}</span>
                   <span>返回 {formatNumber(channel.returnedCount)}</span>
@@ -807,7 +807,7 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
               </div>
             ))}
           </div>
-          <div className="flex gap-3 text-2xs">
+          <div className="flex gap-3 text-2xs tabular-nums">
             <span>降级 {formatNumber(diagnostics.degradedCount)}</span>
             <span>丢弃 {formatNumber(diagnostics.droppedCount)}</span>
           </div>
@@ -914,10 +914,10 @@ function PendingEventCard({
         </div>
         <span className={`shrink-0 rounded px-1.5 py-0.5 text-2xs ${event.risk === "high" ? "bg-warning/15 font-medium text-warning" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
         <span>{event.entity ?? event.subject ?? "未命名实体"} · 置信度 {event.confidence ?? "—"}</span>
         <OpenSourceChapterButton chapterNumber={event.chapterNumber} onOpenChapter={onOpenChapter} />
-        {!event.chapterNumber ? <span>第 — 章</span> : null}
+        {!event.chapterNumber ? <span className="tabular-nums">第 — 章</span> : null}
       </div>
       {event.predicate || event.object ? (
         <div className="text-xs text-foreground/90">
@@ -992,7 +992,7 @@ function RelationshipMatrix({ facts }: { facts: EntityFact[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/60">
+    <div className="nf-surface-sub overflow-x-auto">
       <table className="w-full border-collapse text-2xs">
         <thead>
           <tr>
@@ -1042,14 +1042,14 @@ function HookBoard({ facts, currentChapter, onOpenChapter }: { facts: EntityFact
         const planted = hook.sourceChapter ?? hook.validFromChapter;
         const stale = currentChapter !== undefined && planted !== undefined && currentChapter - planted > 20;
         return (
-          <div key={hook.id} className={`flex items-center gap-2 rounded border p-2 ${stale ? "border-warning/60 bg-warning/10" : "border-border/60"}`}>
+          <div key={hook.id} className={`flex items-center gap-2 p-2 ${stale ? "rounded-[var(--nf-sub-radius,var(--nf-control-radius))] border border-warning/60 bg-warning/10" : "nf-surface-sub"}`}>
             <div className="min-w-0 flex-1">
               <div className="truncate text-2xs font-medium">{hook.object}</div>
-              <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
                 <span>{hook.subject} · {hook.predicate} · 埋于</span>
                 <OpenSourceChapterButton chapterNumber={planted} onOpenChapter={onOpenChapter} />
-                {!planted ? <span>第 — 章</span> : null}
-                {typeof hook.confidence === "number" ? <span>· 置信 {hook.confidence.toFixed(2)}</span> : null}
+                {!planted ? <span className="tabular-nums">第 — 章</span> : null}
+                {typeof hook.confidence === "number" ? <span className="tabular-nums">· 置信 {hook.confidence.toFixed(2)}</span> : null}
               </div>
               {hook.evidenceText ? <div className="truncate text-2xs text-muted-foreground">{hook.evidenceText}</div> : null}
             </div>
@@ -1086,7 +1086,7 @@ function FactHistoryPanel({ bookId, fact, onClose, onOpenChapter }: { bookId: st
   }, [bookId, fact.id]);
 
   return (
-    <div className="rounded-lg border border-border/60 p-2.5 space-y-1.5">
+    <div className="nf-surface-sub p-2.5 space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-2xs font-medium">{fact.subject} / {fact.predicate} 变迁史</span>
         <button type="button" onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">收起</button>
@@ -1097,12 +1097,12 @@ function FactHistoryPanel({ bookId, fact, onClose, onOpenChapter }: { bookId: st
             const chapter = factSourceChapter(item);
             const closed = item.validUntilChapter !== undefined && item.validUntilChapter !== null;
             return (
-              <div key={item.id ?? index} className="flex flex-wrap items-center gap-2 text-2xs">
+              <div key={item.id ?? index} className="flex flex-wrap items-center gap-2 text-2xs tabular-nums">
                 <OpenSourceChapterButton chapterNumber={chapter} onOpenChapter={onOpenChapter} />
-                {!chapter ? <span className="shrink-0 text-2xs text-muted-foreground">第 — 章</span> : null}
+                {!chapter ? <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">第 — 章</span> : null}
                 <span>{item.object}</span>
-                {typeof item.confidence === "number" ? <span className="text-2xs text-muted-foreground">置信 {item.confidence.toFixed(2)}</span> : null}
-                {closed ? <span className="text-2xs text-muted-foreground">{item.sourceType === "manual" ? "已纠正" : "已关闭"} → 第 {item.validUntilChapter} 章</span> : <span className="text-2xs text-success">当前</span>}
+                {typeof item.confidence === "number" ? <span className="text-2xs text-muted-foreground tabular-nums">置信 {item.confidence.toFixed(2)}</span> : null}
+                {closed ? <span className="text-2xs text-muted-foreground tabular-nums">{item.sourceType === "manual" ? "已纠正" : "已关闭"} → 第 {item.validUntilChapter} 章</span> : <span className="text-2xs text-success">当前</span>}
                 {item.evidenceText ? <span className="w-full text-2xs text-muted-foreground">{item.evidenceText}</span> : null}
               </div>
             );
@@ -1533,8 +1533,8 @@ function PendingTrashBin({ bookId, onRestored }: { bookId: string; onRestored?: 
         ) : null}
       </div>
       {open ? (
-        <div className="space-y-1.5 rounded border border-border/70 bg-muted/20 p-2" data-testid="memory-pending-trash-list">
-          <p className="text-2xs text-muted-foreground">
+        <div className="nf-surface-sub space-y-1.5 p-2" data-testid="memory-pending-trash-list">
+          <p className="text-2xs text-muted-foreground tabular-nums">
             丢弃的草案在这里保留 {TRASH_RETENTION_DAYS} 天，恢复后会回到待确认队列。
           </p>
           {loading && entries.length === 0 ? (
@@ -1552,7 +1552,7 @@ function PendingTrashBin({ bookId, onRestored }: { bookId: string; onRestored?: 
                   return (
                     <li
                       key={id}
-                      className="flex items-start gap-1.5 rounded border border-border/60 bg-background/60 px-2 py-1 text-2xs"
+                      className="flex items-start gap-1.5 rounded-[var(--nf-control-radius,var(--radius-md))] bg-background/70 px-2 py-1 text-2xs"
                     >
                       {selectable ? (
                         <input
@@ -1567,7 +1567,7 @@ function PendingTrashBin({ bookId, onRestored }: { bookId: string; onRestored?: 
                         <span className="block truncate text-foreground">
                           {[entry.entity ?? entry.subject, entry.predicate, entry.object].filter(Boolean).join(" · ") || entry.eventType || "丢弃的记忆草案"}
                         </span>
-                        <span className="mt-0.5 block text-muted-foreground">
+                        <span className="mt-0.5 block text-muted-foreground tabular-nums">
                           {typeof entry.chapterNumber === "number" ? `第 ${entry.chapterNumber} 章 · ` : ""}
                           {entry.deletedAt ? `丢弃于 ${formatApprovalTime(entry.deletedAt)}` : "丢弃时间未知"}
                           {entry.deletedReason ? ` · ${entry.deletedReason}` : ""}
@@ -1593,7 +1593,7 @@ function PendingTrashBin({ bookId, onRestored }: { bookId: string; onRestored?: 
                   type="button"
                   disabled={busyKey !== null || selected.size === 0}
                   onClick={() => void restore([...selected])}
-                  className="rounded border border-border px-2 py-0.5 text-2xs hover:bg-muted disabled:opacity-50"
+                  className="rounded border border-border px-2 py-0.5 text-2xs tabular-nums hover:bg-muted disabled:opacity-50"
                 >
                   {busyKey === "bulk" ? "恢复中…" : `恢复选中 ${selected.size} 条`}
                 </button>
@@ -1772,7 +1772,7 @@ function ArcSummaryCard({
               {records.map((record) => {
                 const stale = record.fresh === false;
                 return (
-                  <li key={record.id} className="rounded border border-border/60 bg-background/50 px-2 py-1.5 text-2xs space-y-0.5">
+                  <li key={record.id} className="nf-surface-sub px-2 py-1.5 text-2xs space-y-0.5">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-medium text-foreground">{record.segmentTitle || record.segmentId}</span>
                       <Badge variant="outline" className="h-4 px-1 text-2xs">
@@ -1784,7 +1784,7 @@ function ArcSummaryCard({
                       >
                         {stale ? "已过期" : (ARC_SUMMARY_STATUS_LABELS[record.status] ?? record.status)}
                       </Badge>
-                      <span className="text-muted-foreground">
+                      <span className="text-muted-foreground tabular-nums">
                         第 {record.chapterFrom}–{record.chapterTo} 章
                       </span>
                       {onOpenChapter ? (
@@ -1958,7 +1958,7 @@ function MemoryMaintenanceCard({ bookId, currentChapter }: { bookId: string; cur
               扫描过期事实
             </Button>
             {typeof stale?.staleCount === "number" ? (
-              <Badge variant="outline" className={`h-4 px-1.5 text-2xs ${stale.staleCount > 0 ? "border-warning/40 text-warning" : ""}`}>
+              <Badge variant="outline" className={`h-4 px-1.5 text-2xs tabular-nums ${stale.staleCount > 0 ? "border-warning/40 text-warning" : ""}`}>
                 过期 {stale.staleCount}
               </Badge>
             ) : null}
@@ -2579,11 +2579,26 @@ export function NarrativeMemoryPanelShell({
     }
   }, [lastDiscarded, onRestoreTrashed]);
 
-  if (loading) {
+  if (loading && stateFacts.length === 0 && events.length === 0 && historyEvents.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-        加载故事状态...
+      <div className="flex h-full flex-col gap-3 p-3 text-xs text-muted-foreground" data-testid="narrative-memory-skeleton">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">加载故事状态...</span>
+        </div>
+        <div className="space-y-2.5" aria-hidden="true">
+          <div className="nf-surface-card space-y-2 p-3">
+            <div className="nf-skeleton-pulse h-3.5 w-1/3" />
+            <div className="nf-skeleton-pulse h-8 w-full" />
+          </div>
+          <div className="nf-surface-card space-y-2 p-3">
+            <div className="nf-skeleton-pulse h-3.5 w-1/2" />
+            <div className="nf-skeleton-pulse h-12 w-full" />
+          </div>
+          <div className="nf-surface-card space-y-2 p-3">
+            <div className="nf-skeleton-pulse h-3.5 w-2/5" />
+            <div className="nf-skeleton-pulse h-10 w-full" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -2697,16 +2712,16 @@ export function NarrativeMemoryPanelShell({
                 key={`${entry.kind}:${entry.id}`}
                 type="button"
                 onClick={() => onSearchEntryOpen?.(entry)}
-                className="block w-full rounded border border-border/60 p-2 text-left hover:bg-muted"
+                className="nf-surface-sub nf-card-transition block w-full p-2 text-left hover:bg-muted/80"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{entryTitle(entry)}</span>
                   <span className="text-2xs text-muted-foreground">{entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已驳回" : entry.status}</span>
                 </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-2xs text-muted-foreground">
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-2xs text-muted-foreground tabular-nums">
                   <OpenSourceChapterButton chapterNumber={entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
                   <span>· {entryCategoryLabel(entry)}</span>
-                  {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
+                  {typeof entry.confidence === "number" ? <span className="tabular-nums">· 置信 {entry.confidence.toFixed(2)}</span> : null}
                 </div>
                 {entry.evidenceText ? <div className="mt-0.5 truncate text-2xs text-muted-foreground">{entry.evidenceText}</div> : null}
               </button>
@@ -2715,9 +2730,9 @@ export function NarrativeMemoryPanelShell({
 
           <section className="nf-surface-card p-3 space-y-2.5" data-testid="narrative-memory-pending">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-semibold text-foreground">
+              <h3 className="text-xs font-semibold text-foreground tabular-nums">
                 待确认 ({events.length})
-                {highRiskEvents.length > 0 ? <span className="ml-1.5 font-medium text-warning">· 高风险 {highRiskEvents.length}</span> : ""}
+                {highRiskEvents.length > 0 ? <span className="ml-1.5 font-medium text-warning tabular-nums">· 高风险 {highRiskEvents.length}</span> : ""}
               </h3>
               <div className="flex items-center gap-2">
                 {hasActivePendingFilter && (
@@ -2762,12 +2777,12 @@ export function NarrativeMemoryPanelShell({
                     aria-selected={active}
                     data-testid={`memory-pending-cat-${cat.value}`}
                     onClick={() => setSemanticFilter(cat.value)}
-                    className={`nf-tab-pill inline-flex items-center gap-1 px-2.5 py-0.5 text-2xs transition-colors ${
+                    className={`nf-tab-pill nf-card-transition inline-flex min-h-7 items-center gap-1 px-2.5 py-1 text-2xs ${
                       active
                         ? "bg-primary font-medium text-primary-foreground shadow-2xs"
                         : dimmed
                           ? "bg-transparent text-muted-foreground/45 hover:text-muted-foreground"
-                          : "border border-border/60 bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                          : "nf-surface-sub text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
                     <span>{cat.label}</span>
@@ -2779,7 +2794,7 @@ export function NarrativeMemoryPanelShell({
 
             {/* 来源章节筛选下拉 + 按章分组 + 风险等级筛选胶囊 */}
             <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-2">
-              <div className="flex items-center gap-1" aria-label="待确认风险等级筛选">
+              <div className="flex flex-wrap items-center gap-1" aria-label="待确认风险等级筛选">
                 {PENDING_RISK_FILTERS.map((rf) => {
                   const active = riskFilter === rf.value;
                   return (
@@ -2789,7 +2804,7 @@ export function NarrativeMemoryPanelShell({
                       aria-pressed={active}
                       data-testid={`memory-pending-risk-${rf.value}`}
                       onClick={() => setRiskFilter(rf.value)}
-                      className={`rounded-md px-2 py-0.5 text-2xs transition-colors ${
+                      className={`nf-card-transition inline-flex min-h-7 items-center rounded-md px-2.5 py-1 text-2xs ${
                         active
                           ? rf.value === "high"
                             ? "bg-warning/20 font-medium text-warning ring-1 ring-warning/40"
@@ -2812,7 +2827,7 @@ export function NarrativeMemoryPanelShell({
                     const val = e.currentTarget.value;
                     setChapterFilter(val === "all" ? "all" : Number(val));
                   }}
-                  className="h-6 rounded-md border border-border/80 bg-background px-1.5 text-2xs text-foreground outline-none"
+                  className="h-7 rounded-md border border-border/80 bg-background px-2 text-2xs text-foreground tabular-nums outline-none"
                 >
                   <option value="all">全部章节</option>
                   {pendingChapterOptions.map((opt) => (
@@ -2827,7 +2842,7 @@ export function NarrativeMemoryPanelShell({
                   aria-pressed={groupByChapter}
                   data-testid="memory-pending-group-by-chapter"
                   onClick={() => setGroupByChapter((v) => !v)}
-                  className={`h-6 rounded-md border px-2 text-2xs transition-colors ${
+                  className={`nf-card-transition inline-flex min-h-7 items-center rounded-md border px-2.5 py-1 text-2xs ${
                     groupByChapter
                       ? "border-primary/40 bg-primary/10 font-medium text-primary"
                       : "border-border/70 bg-background text-muted-foreground hover:text-foreground"
@@ -2846,7 +2861,7 @@ export function NarrativeMemoryPanelShell({
                   type="button"
                   aria-pressed={confidenceFilter === filter.value}
                   onClick={() => setConfidenceFilter(filter.value)}
-                  className={`nf-tab-pill px-2 py-0.5 text-2xs transition-colors ${
+                  className={`nf-tab-pill nf-card-transition inline-flex min-h-7 items-center px-2.5 py-1 text-2xs tabular-nums ${
                     confidenceFilter === filter.value ? "bg-primary text-primary-foreground shadow-2xs" : "bg-muted text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -2869,7 +2884,7 @@ export function NarrativeMemoryPanelShell({
 
             {selectedEventIds.size > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 rounded border border-primary/30 bg-primary/5 p-2">
-                <span className="text-2xs text-muted-foreground">已选 {selectedEventIds.size} 条</span>
+                <span className="text-2xs text-muted-foreground tabular-nums">已选 {selectedEventIds.size} 条</span>
                 {confirmingDiscard ? (
                   <>
                     <span className="text-2xs text-muted-foreground">
@@ -2924,8 +2939,8 @@ export function NarrativeMemoryPanelShell({
               </div>
             )}
             {lastDiscarded.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 rounded border border-border bg-muted/40 p-2">
-                  <span className="text-2xs text-muted-foreground">已丢弃 {lastDiscarded.length} 条 · 回收站保留 30 天</span>
+              <div className="nf-surface-sub flex flex-wrap items-center gap-1.5 p-2">
+                <span className="text-2xs text-muted-foreground tabular-nums">已丢弃 {lastDiscarded.length} 条 · 回收站保留 30 天</span>
                 <button
                   type="button"
                   disabled={bulkLoading !== null}
@@ -2950,14 +2965,14 @@ export function NarrativeMemoryPanelShell({
                 {pendingChapterBuckets.map((bucket) => {
                   const collapsed = collapsedPendingChapters.has(bucket.id);
                   return (
-                    <div key={bucket.id} className="rounded-md border border-border/60 bg-background/50">
+                    <div key={bucket.id} className="nf-surface-sub">
                       <button
                         type="button"
                         aria-expanded={!collapsed}
                         onClick={() => togglePendingChapterCollapse(bucket.id)}
                         className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs font-medium hover:bg-muted/40"
                       >
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1 tabular-nums">
                           {collapsed ? <ChevronRight className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
                           <span>{bucket.label}</span>
                         </span>
@@ -2998,7 +3013,7 @@ export function NarrativeMemoryPanelShell({
               />
             ))}
             {!pendingOpen && !hasActivePendingFilter && !groupByChapter && otherPending.length > 0 && highRiskEvents.length > 0 && (
-              <p className="text-xs text-muted-foreground">另有 {otherPending.length} 条非高风险待确认，已折叠。</p>
+              <p className="text-xs text-muted-foreground tabular-nums">另有 {otherPending.length} 条非高风险待确认，已折叠。</p>
             )}
           </section>
 
@@ -3018,7 +3033,7 @@ export function NarrativeMemoryPanelShell({
 
           <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-hook-section">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold">伏笔事实 ({allEntityFacts.filter((f) => f.category === "hook").length})</h3>
+              <h3 className="text-xs font-semibold tabular-nums">伏笔事实 ({allEntityFacts.filter((f) => f.category === "hook").length})</h3>
               <span className="text-2xs text-muted-foreground">伏笔的埋设与推进</span>
             </div>
             <HookBoard facts={allEntityFacts} currentChapter={currentChapter} onOpenChapter={onOpenChapter} />
@@ -3026,7 +3041,7 @@ export function NarrativeMemoryPanelShell({
 
           <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-history-full">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
+            <h3 className="text-xs font-semibold tabular-nums">结算历史 ({historyEvents.length})</h3>
             <EvidenceChainLookup bookId={bookId} />
           </div>
                     {historyEvents.length === 0 ? (
@@ -3036,7 +3051,7 @@ export function NarrativeMemoryPanelShell({
               key={`${entry.kind}:${entry.id}`}
               type="button"
               onClick={() => onSearchEntryOpen?.(entry)}
-              className="block w-full rounded border border-border/60 p-2 text-left hover:bg-muted"
+              className="nf-surface-sub nf-card-transition block w-full p-2 text-left hover:bg-muted/80"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">{entryTitle(entry)}</span>
@@ -3044,10 +3059,10 @@ export function NarrativeMemoryPanelShell({
                   {entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已驳回" : entry.status ?? "history"}
                 </span>
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
                 <OpenSourceChapterButton chapterNumber={entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
                 <span>· {entryCategoryLabel(entry)}</span>
-                {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
+                {typeof entry.confidence === "number" ? <span className="tabular-nums">· 置信 {entry.confidence.toFixed(2)}</span> : null}
                 {entry.summary ? <span>· {entry.summary}</span> : null}
               </div>
               {entry.evidenceText ? <div className="mt-0.5 text-2xs text-muted-foreground">{entry.evidenceText}</div> : null}
@@ -3075,13 +3090,13 @@ export function NarrativeMemoryPanelShell({
             与章后结算历史并列，因为两者回答的是同一类问题。
           */}
           <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-line-approvals">
-          <h3 className="text-xs font-semibold">叙事线审批 ({lineApprovals.length})</h3>
+          <h3 className="text-xs font-semibold tabular-nums">叙事线审批 ({lineApprovals.length})</h3>
                     {lineApprovals.length === 0 ? (
             <p className="text-xs text-muted-foreground">暂无叙事线修改记录。</p>
           ) : lineApprovals.map((approval) => (
             <div
               key={approval.previewId}
-              className="rounded border border-border/60 p-2"
+              className="nf-surface-sub p-2"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="min-w-0 flex-1 truncate font-medium">{approval.summary}</span>
@@ -3089,7 +3104,7 @@ export function NarrativeMemoryPanelShell({
                   {approval.decision === "rejected" ? "已驳回" : "已批准"}
                 </span>
               </div>
-              <div className="mt-0.5 text-2xs text-muted-foreground">
+              <div className="mt-0.5 text-2xs text-muted-foreground tabular-nums">
                 {formatApprovalTime(approval.approvedAt)}
                 {approvalScopeText(approval)}
               </div>
@@ -3210,13 +3225,13 @@ export function EvidenceChainLookup({ bookId }: { bookId: string }) {
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
       {payload && (
-        <div className="rounded border border-border/60 bg-muted/20 p-2 text-2xs space-y-1" data-testid="evidence-chain-result">
-          <p className="font-medium text-foreground">
+        <div className="nf-surface-sub p-2 text-2xs space-y-1" data-testid="evidence-chain-result">
+          <p className="font-medium text-foreground tabular-nums">
             第 {payload.chapterNumber} 章证据链
             <span className="ml-1 font-normal text-muted-foreground">指纹 {payload.fingerprint.slice(0, 8)}…</span>
           </p>
           {(payload.artifact.sandboxIntercepted ?? 0) > 0 && (
-            <p className="text-warning">收敛沙漏拦截 {payload.artifact.sandboxIntercepted} 条</p>
+            <p className="text-warning tabular-nums">收敛沙漏拦截 {payload.artifact.sandboxIntercepted} 条</p>
           )}
           {(payload.artifact.drafts ?? []).map((draft, index) => (
             <div key={index} className="flex items-start gap-1.5">
@@ -3264,8 +3279,8 @@ function InjectionReportView({ report }: { report: WriteInjectionReport }) {
   const visibleTrims = showAllTrims ? trimReasons : trimReasons.slice(0, TRIM_REASON_DISPLAY_LIMIT);
   const samples = report.style.samples;
   return (
-    <div className="space-y-3 rounded border border-border/60 bg-muted/20 p-2 text-2xs" data-testid="write-injection-report">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
+    <div className="nf-surface-sub space-y-3 p-2 text-2xs" data-testid="write-injection-report">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground tabular-nums">
         <span className="font-medium text-foreground">
           {report.purposeLabel} · 第 {report.chapterNumber ?? "—"} 章
         </span>
@@ -3275,7 +3290,7 @@ function InjectionReportView({ report }: { report: WriteInjectionReport }) {
 
       {/* 写作技能：当前启用状态，正文由模型按需加载，不进检索日志。 */}
       <div className="space-y-1" data-testid="write-injection-skills">
-        <div className="font-medium">写作技能（{report.skills.items.length}）</div>
+        <div className="font-medium tabular-nums">写作技能（{report.skills.items.length}）</div>
         {report.skills.items.length === 0 ? (
           <p className="text-muted-foreground">{report.skills.source === "unavailable" ? "读不到启用清单。" : "当前没有启用任何写作技能。"}</p>
         ) : (
@@ -3352,8 +3367,8 @@ function InjectionReportView({ report }: { report: WriteInjectionReport }) {
                 ) : null}
                 <ul className="space-y-1">
                   {samples.selected.map((sample) => (
-                    <li key={sample.key} className="rounded border border-border/50 p-1.5">
-                      <div className="flex flex-wrap items-center gap-1.5">
+                    <li key={sample.key} className="rounded-[var(--nf-control-radius,var(--radius-md))] bg-background/65 p-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5 tabular-nums">
                         <span className="font-medium">第{sample.rank}名 · {sample.key}</span>
                         <span className="rounded bg-muted px-1 py-px text-muted-foreground">{sample.sceneTypeLabel}</span>
                         <span className="rounded bg-muted px-1 py-px text-muted-foreground">{sample.matchLabel}</span>
@@ -3506,7 +3521,7 @@ export function WriteInjectionSection({ bookId, currentChapter }: { bookId: stri
         {currentChapter ? (
           <button
             type="button"
-            className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+            className="rounded px-1.5 py-0.5 text-xs text-muted-foreground tabular-nums hover:bg-muted"
             onClick={() => setChapterInput(String(currentChapter))}
           >
             填入当前章（第 {currentChapter} 章）
@@ -3516,7 +3531,7 @@ export function WriteInjectionSection({ bookId, currentChapter }: { bookId: stri
       {inputError ? <p className="text-xs text-destructive">{inputError}</p> : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       {data && !data.exists ? (
-        <div className="space-y-1 rounded border border-border/60 bg-muted/20 p-2 text-2xs" data-testid="write-injection-empty">
+        <div className="nf-surface-sub space-y-1 p-2 text-2xs" data-testid="write-injection-empty">
           <p className="font-medium">{data.summary}</p>
           <InjectionExplanation explanation={data.explanation} />
         </div>
@@ -3599,17 +3614,17 @@ export function NarrativeMemorySummary({ bookId, onOpenCenter }: NarrativeMemory
           <AlertTriangle className="mt-0.5 size-3 shrink-0" /> {error}
         </p>
       ) : (
-        <div className="space-y-1 rounded-lg border border-border bg-card p-2 text-2xs" data-testid="narrative-memory-summary-body">
+        <div className="nf-surface-card space-y-1 p-2 text-2xs" data-testid="narrative-memory-summary-body">
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">待确认</span>
-            <span>
+            <span className="tabular-nums">
               {pendingCount} 条
-              {highRiskCount > 0 ? <span className="ml-1 text-destructive">· 高风险 {highRiskCount}</span> : null}
+              {highRiskCount > 0 ? <span className="ml-1 text-destructive tabular-nums">· 高风险 {highRiskCount}</span> : null}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">已结算记忆</span>
-            <span>{stats?.total ?? 0} 条</span>
+            <span className="tabular-nums">{stats?.total ?? 0} 条</span>
           </div>
           {pendingCount === 0 && (
             <p className="pt-0.5 text-xs text-muted-foreground">章后默认自动结算，当前没有需要你处理的事项。</p>

@@ -1126,4 +1126,22 @@ describe("NarrativeMemoryPanel（容器）generation 竞态", () => {
     fireEvent.click(within(pendingSection).getByTestId("memory-pending-group-by-chapter"));
     expect(within(pendingSection).getByTestId("memory-pending-chapter-groups")).toBeTruthy();
   });
+
+  it("首次加载且暂无数据时展示骨架屏而非裸转圈，同时保留加载文案", () => {
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        loading
+        empty={false}
+        error={null}
+        events={[]}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    const skeleton = screen.getByTestId("narrative-memory-skeleton");
+    expect(skeleton.textContent).toContain("加载故事状态...");
+    expect(skeleton.querySelectorAll(".nf-skeleton-pulse").length).toBeGreaterThanOrEqual(3);
+  });
 });

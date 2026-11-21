@@ -12,6 +12,16 @@
     侧栏  --nf-head-* / --nf-subsurface / --nf-sub-*
 */
 
+/* 动效性格令牌（统一时长与物理缓动，拖拽/直接操控零延迟无回弹） */
+:root {
+  --nf-motion-instant: 0ms;
+  --nf-motion-fast: 140ms cubic-bezier(0.22, 1, 0.36, 1);
+  --nf-motion-base: 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  --nf-motion-spring: 300ms cubic-bezier(0.34, 1.4, 0.64, 1);
+  --nf-ink-weight-body: 400;
+  --nf-ink-weight-ui: 500;
+}
+
 /* 材质高光：只随明暗切换，不随主题——浅色用近白的前景色做釉光，深色用偏亮的正文色勾一道亮边。
    同时挂到 [data-nf-theme-preview]：预览卡片要按自己那套主题的 --primary-foreground 取色，
    只写在 :root 上会被主题页的主色算死。 */
@@ -158,6 +168,12 @@
 /* ── 夜更烛光：稿面上方一圈柔烛晕光，16px 大圆角、漫反射暖影、饱满胶囊页签与徽章 ── */
 :root[data-nf-style="yegeng"],
 [data-nf-theme-preview="yegeng"] {
+  /* 暗色抗光晕字重降档：消除黑底白字光学发胖感 */
+  --nf-ink-weight-body: 380;
+  --nf-ink-weight-ui: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
   --nf-manuscript-bg: var(--nf-paper);
   --nf-manuscript-pattern: radial-gradient(ellipse 80% 420px at 50% 0, var(--nf-glow), transparent 78%);
   --nf-manuscript-pattern-size: 100% 100%;
@@ -630,3 +646,80 @@
   --muted: #111111;
   --nf-paper: #000000;
 }
+
+/* ── 夜更烛光暗色书房正文与面板抗光晕渲染 ── */
+:root[data-nf-style="yegeng"] .chapter-editor-wrapper,
+[data-nf-theme-preview="yegeng"] .nf-preview-paper {
+  font-weight: var(--nf-ink-weight-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-nf-style="yegeng"] .nf-surface-card,
+:root[data-nf-style="yegeng"] .nf-surface-sub,
+:root[data-nf-style="yegeng"] [data-slot="card"] {
+  font-weight: var(--nf-ink-weight-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── 流动因果线、骨架屏微脉冲与卡片微动效工具类 ── */
+@keyframes nfDashFlow {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.nf-edge-flow {
+  stroke-dasharray: 6 6;
+  animation: nfDashFlow 1.2s linear infinite;
+}
+
+@keyframes nfSkeletonPulse {
+  0%, 100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.nf-skeleton-pulse {
+  border-radius: var(--nf-control-radius, var(--radius-md));
+  background: color-mix(in srgb, var(--muted-foreground) 14%, var(--muted));
+  animation: nfSkeletonPulse 1.6s ease-in-out infinite;
+}
+
+.nf-card-transition {
+  transition:
+    background-color var(--nf-motion-fast),
+    border-color var(--nf-motion-fast),
+    color var(--nf-motion-fast),
+    box-shadow var(--nf-motion-fast),
+    opacity var(--nf-motion-fast),
+    transform var(--nf-motion-fast);
+}
+
+/* ── 全局无障碍降级：晕动症与减动效偏好用户归零过渡并停用循环动画 ── */
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  [data-nf-theme-preview] {
+    --nf-motion-instant: 0ms;
+    --nf-motion-fast: 0ms;
+    --nf-motion-base: 0ms;
+    --nf-motion-spring: 0ms;
+  }
+
+  .nf-edge-flow,
+  .nf-skeleton-pulse {
+    animation: none !important;
+  }
+
+  .nf-card-transition {
+    transition: none !important;
+  }
+}
+
