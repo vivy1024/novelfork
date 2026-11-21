@@ -11,11 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Save, Trash2, Loader2, FileText, Link2, History, Eye, Pencil, RotateCcw, X,
+  Save, Trash2, Loader2, FileText, Link2, History, Eye, Pencil, RotateCcw, X, GitBranch, Network, Plus,
 } from "lucide-react";
 import { CATEGORY_SCHEMAS, getCategorySchema, type CategoryFieldSchema } from "./jingwei/category-schemas";
 import { WorldCardPage, isWorldCardCategory } from "./WorldCardPage";
 import { Textarea } from "@/components/ui/textarea";
+import { parseChapterWindowInput } from "./JingweiCanonPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,37 @@ export interface JingweiRevision {
 export interface RelatedEntryItem {
   id: string;
   title: string;
+}
+
+/** 条目字段演变台账的一行（GET /jingwei/entries/:entryId/progressions）。 */
+export interface ProgressionRecord {
+  id: string;
+  entry_id: string;
+  field_key: string;
+  old_value?: string | null;
+  new_value: string;
+  chapter_number?: number | null;
+  description?: string | null;
+  created_at: number;
+}
+
+/** 结构化依赖的一端（依赖谁 / 被谁依赖）。 */
+export interface DependencyItem {
+  depId: string;
+  relationType?: string | null;
+  targetEntryId?: string;
+  sourceEntryId?: string;
+  title: string;
+  category?: string | null;
+}
+
+/** 静态关系（带关系类型，如师徒 / 敌对 / 隶属）。 */
+export interface RelationRecord {
+  id: string;
+  source_entry_id: string;
+  target_entry_id: string;
+  relation_type: string;
+  label?: string | null;
 }
 
 interface RevisionRecord {
@@ -171,6 +203,11 @@ function parseStringArray(value: unknown): string[] {
   }
 }
 
+/** 章节窗口输入框的显示值：空 = 不限。 */
+function chapterInputText(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
 /** 阅读态显示：select 字段按 optionLabels 显示中文名。 */
 function fieldValueToDisplay(value: unknown, field: CategoryFieldSchema): string {
   const raw = fieldValueToInput(value, field);
@@ -259,6 +296,117 @@ function JingweiSchemaField({
   );
 }
 
+// ─── 依赖 / 关系的轻量选择器 ──────────────────────────────────────────────
+
+/** 搜索条目并选定：依赖与关系两处共用同一套交互。 */
+function StructurePicker({
+  label,
+  query,
+  results,
+  onQueryChange,
+  onPick,
+  disabled,
+}: {
+  label: string;
+  query: string;
+  results: readonly RelatedEntryItem[];
+  onQueryChange: (query: string) => void;
+  onPick: (item: RelatedEntryItem) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-1 rounded-md border border-border p-2">
+      <Input
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+        placeholder={label}
+        aria-label={label}
+        className="h-7 text-xs"
+        autoFocus
+      />
+      {query.trim() && results.length === 0 ? (
+        <p className="px-1 text-2xs text-muted-foreground">没有匹配的条目</p>
+      ) : null}
+      {results.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onPick(item)}
+          disabled={disabled}
+          className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-muted disabled:opacity-50"
+        >
+          {item.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface DependencyColumnItem {
+  readonly key: string;
+  readonly title: string;
+  readonly entryId?: string;
+  readonly relationType?: string | null;
+  readonly canRemove: boolean;
+}
+
+/** 依赖的一列（依赖谁 / 被谁依赖）：标题 + 可跳转 + 可移除。 */
+function DependencyColumn({
+  title,
+  emptyText,
+  items,
+  onNavigate,
+  onRemove,
+  removeLabel,
+  disabled,
+}: {
+  title: string;
+  emptyText: string;
+  items: readonly DependencyColumnItem[];
+  onNavigate?: (entryId: string) => void;
+  onRemove: (key: string) => void;
+  removeLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-2xs font-medium text-muted-foreground">{title}</p>
+      {items.length === 0 ? (
+        <p className="text-2xs text-muted-foreground/70">{emptyText}</p>
+      ) : (
+        <ul className="space-y-1">
+          {items.map((item) => (
+            <li key={item.key} className="nf-surface-sub flex items-center gap-1.5 px-2 py-1 text-2xs" data-testid="jingwei-dependency-row">
+              <button
+                type="button"
+                onClick={() => item.entryId && onNavigate?.(item.entryId)}
+                className="min-w-0 flex-1 truncate text-left hover:underline"
+                title={`跳转到「${item.title}」`}
+              >
+                {item.title}
+              </button>
+              {item.relationType ? (
+                <Badge variant="secondary" className="text-2xs px-1 py-0">{item.relationType}</Badge>
+              ) : null}
+              {item.canRemove ? (
+                <button
+                  type="button"
+                  onClick={() => onRemove(item.key)}
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label={`${removeLabel} ${item.title}`}
+                  disabled={disabled}
+                >
+                  <X className="size-3" />
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────
 
 /**
@@ -292,6 +440,11 @@ function JingweiEntryEditorForm({
   const [priorityTier, setPriorityTier] = useState<JingweiPriorityTier>(entry.priorityTier ?? "auto");
   const [layer, setLayer] = useState<string>(entry.layer ?? "dynamic");
   const [visibility, setVisibility] = useState<"global" | "tracked" | "nested">(entry.visibility ?? "tracked");
+  // 章节窗口：之前只是把原值透传回服务端，作者改不了；现在可编辑并计入 dirty。
+  const [visibleAfterChapter, setVisibleAfterChapter] = useState<number | null>(entry.visibleAfterChapter ?? null);
+  const [visibleUntilChapter, setVisibleUntilChapter] = useState<number | null>(entry.visibleUntilChapter ?? null);
+  const [afterChapterInput, setAfterChapterInput] = useState(() => chapterInputText(entry.visibleAfterChapter));
+  const [untilChapterInput, setUntilChapterInput] = useState(() => chapterInputText(entry.visibleUntilChapter));
   const [status, setStatus] = useState<string>(entry.status ?? "confirmed");
   const [category, setCategory] = useState<string>(entry.category ?? "unclassified");
   const [aliases, setAliases] = useState<string[]>(entry.aliases ?? []);
@@ -301,6 +454,8 @@ function JingweiEntryEditorForm({
   const [savedPriorityTier, setSavedPriorityTier] = useState<JingweiPriorityTier>(entry.priorityTier ?? "auto");
   const [savedLayer, setSavedLayer] = useState<string>(entry.layer ?? "dynamic");
   const [savedVisibility, setSavedVisibility] = useState<"global" | "tracked" | "nested">(entry.visibility ?? "tracked");
+  const [savedVisibleAfterChapter, setSavedVisibleAfterChapter] = useState<number | null>(entry.visibleAfterChapter ?? null);
+  const [savedVisibleUntilChapter, setSavedVisibleUntilChapter] = useState<number | null>(entry.visibleUntilChapter ?? null);
   const [savedStatus, setSavedStatus] = useState<string>(entry.status ?? "confirmed");
   const [savedCategory, setSavedCategory] = useState<string>(entry.category ?? "unclassified");
   const [savedAliases, setSavedAliases] = useState<string[]>(entry.aliases ?? []);
@@ -310,7 +465,7 @@ function JingweiEntryEditorForm({
   const [error, setError] = useState<string | null>(null);
   // 保存成功但附带动作没做完时的提示（如确认人物后实体图谱没同步）；下次保存或换条目时清掉。
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"details" | "relations" | "history">("details");
+  const [activeTab, setActiveTab] = useState<"details" | "relations" | "progressions" | "history">("details");
   const [previewMode, setPreviewMode] = useState(false);
   // 档案式阅读为默认形态；未确认条目（needs-review / draft）打开即编辑，便于作者先改再确认。
   const [isEditing, setIsEditing] = useState(opensInEditMode(entry.status));
@@ -330,6 +485,32 @@ function JingweiEntryEditorForm({
   const [conflictDetail, setConflictDetail] = useState(entry.conflictDetail);
   const [revertingRevisionId, setRevertingRevisionId] = useState<string | null>(null);
 
+  // ── 演变台账（progressions） / 结构化依赖 / 静态关系 ──────────────────
+  // 这三块都按需拉取：只在对应 Tab 打开时请求，避免电影响应默认阅读态的首屏。
+  const [progressions, setProgressions] = useState<ProgressionRecord[]>([]);
+  const [progressionLoading, setProgressionLoading] = useState(false);
+  const [progressionError, setProgressionError] = useState<string | null>(null);
+  const [progressionSaving, setProgressionSaving] = useState(false);
+  const [progressionForm, setProgressionForm] = useState({
+    chapterNumber: "",
+    fieldKey: "",
+    oldValue: "",
+    newValue: "",
+    description: "",
+  });
+  const [dependsOn, setDependsOn] = useState<DependencyItem[]>([]);
+  const [dependedBy, setDependedBy] = useState<DependencyItem[]>([]);
+  const [relations, setRelations] = useState<RelationRecord[]>([]);
+  const [structureLoading, setStructureLoading] = useState(false);
+  const [structureError, setStructureError] = useState<string | null>(null);
+  const [structureBusy, setStructureBusy] = useState(false);
+  const [structurePicker, setStructurePicker] = useState<null | "dependency" | "relation">(null);
+  const [structureSearch, setStructureSearch] = useState("");
+  const [structureResults, setStructureResults] = useState<RelatedEntryItem[]>([]);
+  const [relationTypeInput, setRelationTypeInput] = useState("references");
+  const [relationLabelInput, setRelationLabelInput] = useState("");
+  const [entryTitles, setEntryTitles] = useState<Record<string, string>>({});
+
   const schemaFields = (getCategorySchema(category)?.fields ?? []).filter((field) => field.key !== "name");
   // 阅读模式只列出有值的字段，空字段整行隐藏。
   const filledSchemaFields = isJingweiEntry
@@ -340,6 +521,8 @@ function JingweiEntryEditorForm({
     || layer !== savedLayer || visibility !== savedVisibility || status !== savedStatus
     || category !== savedCategory || aliases.join("\u0000") !== savedAliases.join("\u0000")
     || relatedEntryIds.join("\u0000") !== savedRelatedEntryIds.join("\u0000")
+    || (visibleAfterChapter ?? null) !== (savedVisibleAfterChapter ?? null)
+    || (visibleUntilChapter ?? null) !== (savedVisibleUntilChapter ?? null)
     || JSON.stringify(fields) !== JSON.stringify(savedFields);
   const relationItems = relatedEntries && relatedEntries.length > 0 ? relatedEntries : resolvedRelatedEntries;
   const historyCount = revisionRecords.length;
@@ -398,6 +581,10 @@ function JingweiEntryEditorForm({
     setPriorityTier(entry.priorityTier ?? "auto");
     setLayer(entry.layer ?? "dynamic");
     setVisibility(entry.visibility ?? "tracked");
+    setVisibleAfterChapter(entry.visibleAfterChapter ?? null);
+    setVisibleUntilChapter(entry.visibleUntilChapter ?? null);
+    setAfterChapterInput(chapterInputText(entry.visibleAfterChapter));
+    setUntilChapterInput(chapterInputText(entry.visibleUntilChapter));
     setStatus(entry.status ?? "confirmed");
     setCategory(entry.category ?? "unclassified");
     setAliases(entry.aliases ?? []);
@@ -409,6 +596,8 @@ function JingweiEntryEditorForm({
     setSavedPriorityTier(entry.priorityTier ?? "auto");
     setSavedLayer(entry.layer ?? "dynamic");
     setSavedVisibility(entry.visibility ?? "tracked");
+    setSavedVisibleAfterChapter(entry.visibleAfterChapter ?? null);
+    setSavedVisibleUntilChapter(entry.visibleUntilChapter ?? null);
     setSavedStatus(entry.status ?? "confirmed");
     setSavedCategory(entry.category ?? "unclassified");
     setSavedAliases(entry.aliases ?? []);
@@ -469,6 +658,8 @@ function JingweiEntryEditorForm({
         const current = allEntries.find((candidate) => String(candidate.id ?? "") === entry.id);
         const relatedIds = entry.relatedEntryIds ?? parseStringArray(current?.relatedEntryIds ?? current?.related_entry_ids_json);
         const byId = new Map(allEntries.map((candidate) => [String(candidate.id ?? ""), String(candidate.title ?? "未命名条目")]));
+        // 依赖 / 关系两端只给 id：拿这份标题表补上可读名称（缺的回落成 id）。
+        setEntryTitles(Object.fromEntries(byId));
         setResolvedRelatedEntries(
           relatedIds
             .filter((id) => id !== entry.id)
@@ -482,6 +673,78 @@ function JingweiEntryEditorForm({
     // loadRevisions is intentionally scoped to the active entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, entry.id, relatedEntryIdsKey, entry.conflictStatus, entry.conflictDetail, relatedEntriesKey]);
+
+  // ── 演变台账：进入「演变」Tab 时按需拉取 ──────────────────────────────
+  async function loadProgressions(isStale: () => boolean = () => false): Promise<void> {
+    if (!bookId) {
+      setProgressions([]);
+      return;
+    }
+    setProgressionLoading(true);
+    setProgressionError(null);
+    try {
+      const data = await fetchJson<{ progressions?: ProgressionRecord[] }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entry.id)}/progressions`,
+      );
+      if (isStale()) return;
+      setProgressions(Array.isArray(data.progressions) ? data.progressions : []);
+    } catch (cause) {
+      if (isStale()) return;
+      setProgressions([]);
+      setProgressionError(cause instanceof Error ? cause.message : "演变记录加载失败");
+    } finally {
+      if (!isStale()) setProgressionLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== "progressions" || !bookId) return;
+    let cancelled = false;
+    void loadProgressions(() => cancelled);
+    return () => { cancelled = true; };
+    // 只在切到「演变」Tab 或换条目时重拉。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, bookId, entry.id]);
+
+  // ── 结构化依赖 + 静态关系：进入「关联」Tab 时按需拉取 ─────────────────
+  async function loadStructure(isStale: () => boolean = () => false): Promise<void> {
+    if (!bookId) {
+      setDependsOn([]);
+      setDependedBy([]);
+      setRelations([]);
+      return;
+    }
+    setStructureLoading(true);
+    setStructureError(null);
+    const base = `/api/books/${encodeURIComponent(bookId)}/jingwei`;
+    try {
+      const [dependencyData, relationData] = await Promise.all([
+        fetchJson<{ dependsOn?: DependencyItem[]; dependedBy?: DependencyItem[] }>(
+          `${base}/entries/${encodeURIComponent(entry.id)}/dependencies`,
+        ).catch(() => ({ dependsOn: [], dependedBy: [] })),
+        fetchJson<{ relations?: RelationRecord[] }>(
+          `${base}/relations?entryId=${encodeURIComponent(entry.id)}`,
+        ).catch(() => ({ relations: [] })),
+      ]);
+      if (isStale()) return;
+      setDependsOn(Array.isArray(dependencyData.dependsOn) ? dependencyData.dependsOn : []);
+      setDependedBy(Array.isArray(dependencyData.dependedBy) ? dependencyData.dependedBy : []);
+      setRelations(Array.isArray(relationData.relations) ? relationData.relations : []);
+    } catch (cause) {
+      if (isStale()) return;
+      setStructureError(cause instanceof Error ? cause.message : "依赖与关系加载失败");
+    } finally {
+      if (!isStale()) setStructureLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab !== "relations" || !bookId) return;
+    let cancelled = false;
+    void loadStructure(() => cancelled);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, bookId, entry.id]);
 
   // ── Handlers ──────────────────────────────────────────────────────────
 
@@ -506,10 +769,9 @@ function JingweiEntryEditorForm({
         relatedEntryIds,
         visibility,
         fields: nextFields,
-        // 章节窗口不在编辑器里修改，但保存时必须带上原值：
-        // 服务端会把 visibilityRule 整体重写，漏传就会把已有的窗口字段清掉。
-        visibleAfterChapter: entry.visibleAfterChapter ?? null,
-        visibleUntilChapter: entry.visibleUntilChapter ?? null,
+        // 章节窗口由作者直接编辑；空值显式传 null，服务端整体重写 visibilityRule 时不会留下旧窗口。
+        visibleAfterChapter: visibleAfterChapter ?? null,
+        visibleUntilChapter: visibleUntilChapter ?? null,
         // 乐观并发：只有拿到有效版本时才带上；缺失则走原有无版本路径，不传非法值。
         ...(Number.isInteger(entry.version) && (entry.version as number) >= 1 ? { expectedVersion: entry.version } : {}),
       });
@@ -517,6 +779,9 @@ function JingweiEntryEditorForm({
       setSavedContent(content);
       setSavedPriorityTier(priorityTier);
       setSavedLayer(layer);
+      setSavedVisibility(visibility);
+      setSavedVisibleAfterChapter(visibleAfterChapter ?? null);
+      setSavedVisibleUntilChapter(visibleUntilChapter ?? null);
       setSavedStatus(status);
       setSavedCategory(category);
       setSavedAliases(aliases);
@@ -563,6 +828,10 @@ function JingweiEntryEditorForm({
     setPriorityTier(savedPriorityTier);
     setLayer(savedLayer);
     setVisibility(savedVisibility);
+    setVisibleAfterChapter(savedVisibleAfterChapter);
+    setVisibleUntilChapter(savedVisibleUntilChapter);
+    setAfterChapterInput(chapterInputText(savedVisibleAfterChapter));
+    setUntilChapterInput(chapterInputText(savedVisibleUntilChapter));
     setStatus(savedStatus);
     setCategory(savedCategory);
     setAliases(savedAliases);
@@ -618,6 +887,16 @@ function JingweiEntryEditorForm({
       setSavedPriorityTier(restoredPriority);
       if (restored?.layer) { setLayer(restored.layer); setSavedLayer(restored.layer); }
       if (restored?.status) { setStatus(restored.status); setSavedStatus(restored.status); }
+      if (restored && "visibleAfterChapter" in restored) {
+        setVisibleAfterChapter(restored.visibleAfterChapter ?? null);
+        setSavedVisibleAfterChapter(restored.visibleAfterChapter ?? null);
+        setAfterChapterInput(chapterInputText(restored.visibleAfterChapter));
+      }
+      if (restored && "visibleUntilChapter" in restored) {
+        setVisibleUntilChapter(restored.visibleUntilChapter ?? null);
+        setSavedVisibleUntilChapter(restored.visibleUntilChapter ?? null);
+        setUntilChapterInput(chapterInputText(restored.visibleUntilChapter));
+      }
       if (restored?.category) { setCategory(restored.category); setSavedCategory(restored.category); }
       if (Array.isArray(restored?.aliases)) { setAliases(restored.aliases); setSavedAliases(restored.aliases); }
       if (Array.isArray(restored?.relatedEntryIds)) { setRelatedEntryIds(restored.relatedEntryIds); setSavedRelatedEntryIds(restored.relatedEntryIds); }
@@ -629,6 +908,139 @@ function JingweiEntryEditorForm({
     } finally {
       setRevertingRevisionId(null);
     }
+  }
+
+  // ── 演变台账 / 依赖 / 关系的写入动作 ──────────────────────────────────
+
+  async function handleAddProgression() {
+    if (!bookId || progressionSaving) return;
+    const fieldKey = progressionForm.fieldKey.trim();
+    const newValue = progressionForm.newValue.trim();
+    if (!fieldKey || !newValue) {
+      setProgressionError("字段名和新值都要填。");
+      return;
+    }
+    const chapter = progressionForm.chapterNumber.trim() === "" ? null : Number(progressionForm.chapterNumber);
+    if (chapter !== null && (!Number.isInteger(chapter) || chapter < 1)) {
+      setProgressionError("章号必须是正整数，或留空。");
+      return;
+    }
+    setProgressionSaving(true);
+    setProgressionError(null);
+    try {
+      await fetchJson<{ progression?: ProgressionRecord }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entry.id)}/progressions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fieldKey,
+            newValue,
+            oldValue: progressionForm.oldValue.trim() || null,
+            chapterNumber: chapter,
+            description: progressionForm.description.trim() || null,
+          }),
+        },
+      );
+      setProgressionForm({ chapterNumber: "", fieldKey: "", oldValue: "", newValue: "", description: "" });
+      await loadProgressions();
+    } catch (cause) {
+      setProgressionError(cause instanceof Error ? cause.message : "新增演变记录失败");
+    } finally {
+      setProgressionSaving(false);
+    }
+  }
+
+  async function handleAddDependency(targetEntryId: string) {
+    if (!bookId || structureBusy) return;
+    setStructureBusy(true);
+    setStructureError(null);
+    try {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/dependencies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceEntryId: entry.id, targetEntryId, relationType: "references" }),
+      });
+      setStructurePicker(null);
+      setStructureSearch("");
+      setStructureResults([]);
+      await loadStructure();
+    } catch (cause) {
+      setStructureError(cause instanceof Error ? cause.message : "添加依赖失败");
+    } finally {
+      setStructureBusy(false);
+    }
+  }
+
+  async function handleRemoveDependency(depId: string) {
+    if (!bookId || structureBusy) return;
+    setStructureBusy(true);
+    setStructureError(null);
+    try {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/dependencies/${encodeURIComponent(depId)}`, { method: "DELETE" });
+      await loadStructure();
+    } catch (cause) {
+      setStructureError(cause instanceof Error ? cause.message : "移除依赖失败");
+    } finally {
+      setStructureBusy(false);
+    }
+  }
+
+  async function handleAddRelation(targetEntryId: string) {
+    if (!bookId || structureBusy) return;
+    const relationType = relationTypeInput.trim();
+    if (!relationType) {
+      setStructureError("关系类型要填（如：师徒 / 敌对 / 隶属）。");
+      return;
+    }
+    setStructureBusy(true);
+    setStructureError(null);
+    try {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/relations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceEntryId: entry.id,
+          targetEntryId,
+          relationType,
+          ...(relationLabelInput.trim() ? { label: relationLabelInput.trim() } : {}),
+        }),
+      });
+      setStructurePicker(null);
+      setStructureSearch("");
+      setStructureResults([]);
+      setRelationLabelInput("");
+      await loadStructure();
+    } catch (cause) {
+      setStructureError(cause instanceof Error ? cause.message : "添加关系失败");
+    } finally {
+      setStructureBusy(false);
+    }
+  }
+
+  async function handleRemoveRelation(relationId: string) {
+    if (!bookId || structureBusy) return;
+    setStructureBusy(true);
+    setStructureError(null);
+    try {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/relations/${encodeURIComponent(relationId)}`, { method: "DELETE" });
+      await loadStructure();
+    } catch (cause) {
+      setStructureError(cause instanceof Error ? cause.message : "移除关系失败");
+    } finally {
+      setStructureBusy(false);
+    }
+  }
+
+  function searchEntriesForStructure(query: string) {
+    setStructureSearch(query);
+    if (!query.trim() || !bookId) {
+      setStructureResults([]);
+      return;
+    }
+    fetchJson<{ results?: RelatedEntryItem[] }>(`/api/books/${encodeURIComponent(bookId)}/jingwei/search?q=${encodeURIComponent(query)}`)
+      .then((data) => setStructureResults((Array.isArray(data.results) ? data.results : []).filter((item) => item.id !== entry.id).slice(0, 8)))
+      .catch(() => setStructureResults([]));
   }
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -692,6 +1104,12 @@ function JingweiEntryEditorForm({
           <Link2 className="size-3 mr-1" />关联
           {relationItems.length > 0 && (
             <Badge variant="secondary" className="ml-1 text-2xs px-1 py-0">{relationItems.length}</Badge>
+          )}
+        </Button>
+        <Button variant={activeTab === "progressions" ? "default" : "ghost"} size="xs" onClick={() => setActiveTab("progressions")}>
+          <GitBranch className="size-3 mr-1" />演变
+          {progressions.length > 0 && (
+            <Badge variant="secondary" className="ml-1 text-2xs px-1 py-0">{progressions.length}</Badge>
           )}
         </Button>
         <Button variant={activeTab === "history" ? "default" : "ghost"} size="xs" onClick={() => setActiveTab("history")}>
@@ -776,6 +1194,256 @@ function JingweiEntryEditorForm({
               <Link2 className="size-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm">暂无关联条目</p>
               <p className="text-xs mt-1">设定条目之间的引用；剧情里的关系变化在章后事实里看</p>
+            </div>
+          )}
+
+          {/* 结构化依赖：依赖谁 / 被谁依赖。与上面的 relatedEntryIds 简单引用并存。 */}
+          {isJingweiEntry && (
+            <section className="space-y-2 rounded-md border border-border/60 px-3 py-2.5" data-testid="jingwei-dependencies">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium">结构化依赖</span>
+                <span className="text-2xs text-muted-foreground">「依赖谁」的方向写入数据库，供上下文装配与影响面分析使用</span>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="ml-auto"
+                  onClick={() => { setStructurePicker((current) => (current === "dependency" ? null : "dependency")); setStructureSearch(""); setStructureResults([]); }}
+                  disabled={structureBusy}
+                >
+                  <Plus className="size-3 mr-1" />添加依赖
+                </Button>
+              </div>
+              {structureError ? (
+                <p className="text-2xs text-destructive" role="alert">{structureError}</p>
+              ) : null}
+              {structurePicker === "dependency" ? (
+                <StructurePicker
+                  label="搜索被依赖的条目"
+                  query={structureSearch}
+                  results={structureResults}
+                  onQueryChange={searchEntriesForStructure}
+                  onPick={(item) => void handleAddDependency(item.id)}
+                  disabled={structureBusy}
+                />
+              ) : null}
+              {structureLoading ? (
+                <p className="flex items-center gap-1 text-2xs text-muted-foreground"><Loader2 className="size-3 animate-spin" />正在加载依赖…</p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <DependencyColumn
+                    title="依赖谁"
+                    emptyText="还没有依赖任何条目"
+                    items={dependsOn.map((item) => ({
+                      key: item.depId,
+                      title: item.title,
+                      entryId: item.targetEntryId,
+                      relationType: item.relationType,
+                      canRemove: true,
+                    }))}
+                    onNavigate={onNavigateToEntry}
+                    onRemove={(key) => void handleRemoveDependency(key)}
+                    removeLabel="移除依赖"
+                    disabled={structureBusy}
+                  />
+                  <DependencyColumn
+                    title="被谁依赖"
+                    emptyText="还没有条目依赖它"
+                    items={dependedBy.map((item) => ({
+                      key: item.depId,
+                      title: item.title,
+                      entryId: item.sourceEntryId,
+                      relationType: item.relationType,
+                      canRemove: true,
+                    }))}
+                    onNavigate={onNavigateToEntry}
+                    onRemove={(key) => void handleRemoveDependency(key)}
+                    removeLabel="移除依赖"
+                    disabled={structureBusy}
+                  />
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 静态关系：带关系类型（师徒 / 敌对 / 隶属）的双向档案。 */}
+          {isJingweiEntry && (
+            <section className="space-y-2 rounded-md border border-border/60 px-3 py-2.5" data-testid="jingwei-relations">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium">静态关系</span>
+                <Input
+                  value={relationTypeInput}
+                  onChange={(event) => setRelationTypeInput(event.target.value)}
+                  aria-label="关系类型"
+                  placeholder="关系类型（师徒 / 敌对 / 隶属）"
+                  className="h-7 w-48 text-2xs"
+                />
+                <Input
+                  value={relationLabelInput}
+                  onChange={(event) => setRelationLabelInput(event.target.value)}
+                  aria-label="关系说明"
+                  placeholder="补充说明（可选）"
+                  className="h-7 w-40 text-2xs"
+                />
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="ml-auto"
+                  onClick={() => { setStructurePicker((current) => (current === "relation" ? null : "relation")); setStructureSearch(""); setStructureResults([]); }}
+                  disabled={structureBusy}
+                >
+                  <Network className="size-3 mr-1" />添加关系
+                </Button>
+              </div>
+              {structurePicker === "relation" ? (
+                <StructurePicker
+                  label="搜索关系另一端的条目"
+                  query={structureSearch}
+                  results={structureResults}
+                  onQueryChange={searchEntriesForStructure}
+                  onPick={(item) => void handleAddRelation(item.id)}
+                  disabled={structureBusy}
+                />
+              ) : null}
+              {relations.length === 0 ? (
+                <p className="text-2xs text-muted-foreground">还没有登记静态关系</p>
+              ) : (
+                <ul className="space-y-1">
+                  {relations.map((relation) => {
+                    const outgoing = relation.source_entry_id === entry.id;
+                    const otherId = outgoing ? relation.target_entry_id : relation.source_entry_id;
+                    const otherTitle = entryTitles[otherId] ?? otherId;
+                    return (
+                      <li
+                        key={relation.id}
+                        className="nf-surface-sub flex items-center gap-2 px-2 py-1 text-2xs"
+                        data-testid="jingwei-relation-row"
+                      >
+                        <Badge variant="secondary" className="text-2xs px-1.5 py-0">{relation.relation_type}</Badge>
+                        <span className="text-muted-foreground">{outgoing ? "指向" : "来自"}</span>
+                        <button
+                          type="button"
+                          onClick={() => onNavigateToEntry?.(otherId)}
+                          className="min-w-0 truncate text-left hover:underline"
+                          title={`跳转到「${otherTitle}」`}
+                        >
+                          {otherTitle}
+                        </button>
+                        {relation.label ? <span className="truncate text-muted-foreground">{relation.label}</span> : null}
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveRelation(relation.id)}
+                          className="ml-auto text-muted-foreground hover:text-destructive"
+                          aria-label={`移除关系 ${relation.relation_type}`}
+                          disabled={structureBusy}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* ─── Tab: 演变（字段演变台账） ─────────────────────────────────── */}
+      {activeTab === "progressions" && (
+        <div className="py-4 px-1 space-y-3" data-testid="jingwei-progressions">
+          <p className="text-xs text-muted-foreground">
+            条目随剧情推进的字段变化：章号、字段名、旧值 → 新值。留空章号表示不绑具体章节。
+          </p>
+          <div className="grid gap-2 rounded-md border border-border/60 px-3 py-2.5 sm:grid-cols-2">
+            <label className="text-2xs text-muted-foreground">
+              章号
+              <Input
+                type="number"
+                min={1}
+                value={progressionForm.chapterNumber}
+                onChange={(event) => setProgressionForm((current) => ({ ...current, chapterNumber: event.target.value }))}
+                placeholder="第几章发生"
+                className="mt-1 h-7 text-xs"
+              />
+            </label>
+            <label className="text-2xs text-muted-foreground">
+              字段名
+              <Input
+                value={progressionForm.fieldKey}
+                onChange={(event) => setProgressionForm((current) => ({ ...current, fieldKey: event.target.value }))}
+                placeholder="如：realm / 当前位置"
+                className="mt-1 h-7 text-xs"
+              />
+            </label>
+            <label className="text-2xs text-muted-foreground">
+              旧值
+              <Input
+                value={progressionForm.oldValue}
+                onChange={(event) => setProgressionForm((current) => ({ ...current, oldValue: event.target.value }))}
+                placeholder="变化前（可空）"
+                className="mt-1 h-7 text-xs"
+              />
+            </label>
+            <label className="text-2xs text-muted-foreground">
+              新值
+              <Input
+                value={progressionForm.newValue}
+                onChange={(event) => setProgressionForm((current) => ({ ...current, newValue: event.target.value }))}
+                placeholder="变化后"
+                className="mt-1 h-7 text-xs"
+              />
+            </label>
+            <label className="text-2xs text-muted-foreground sm:col-span-2">
+              说明
+              <Input
+                value={progressionForm.description}
+                onChange={(event) => setProgressionForm((current) => ({ ...current, description: event.target.value }))}
+                placeholder="为什么变（可空）"
+                className="mt-1 h-7 text-xs"
+              />
+            </label>
+            <div className="flex items-center gap-2 sm:col-span-2">
+              <Button size="xs" onClick={() => void handleAddProgression()} disabled={progressionSaving || !progressionForm.fieldKey.trim() || !progressionForm.newValue.trim()}>
+                {progressionSaving ? <Loader2 className="size-3 mr-1 animate-spin" /> : <Plus className="size-3 mr-1" />}
+                记一条演变
+              </Button>
+              {progressionError ? <span className="text-2xs text-destructive" role="alert">{progressionError}</span> : null}
+            </div>
+          </div>
+
+          {progressionLoading ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />正在加载演变记录…
+            </div>
+          ) : progressions.length > 0 ? (
+            <ol className="relative space-y-3 pl-4">
+              <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" aria-hidden="true" />
+              {progressions.map((progression) => (
+                <li key={progression.id} className="relative flex items-start gap-3" data-testid="jingwei-progression-row">
+                  <span className="absolute -left-4 top-1.5 size-[7px] rounded-full bg-primary ring-2 ring-background" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="text-2xs px-1.5 py-0">
+                        {typeof progression.chapter_number === "number" ? `第 ${progression.chapter_number} 章` : "未标章号"}
+                      </Badge>
+                      <span className="text-xs font-medium">{progression.field_key}</span>
+                      <span className="text-2xs text-muted-foreground">
+                        {progression.old_value ? `${progression.old_value} → ` : "→ "}
+                        <span className="text-foreground">{progression.new_value}</span>
+                      </span>
+                    </div>
+                    {progression.description ? (
+                      <p className="mt-0.5 text-2xs text-muted-foreground">{progression.description}</p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="py-6 text-center text-muted-foreground">
+              <GitBranch className="mx-auto mb-2 size-8 opacity-30" />
+              <p className="text-sm">还没有演变记录</p>
+              <p className="mt-1 text-xs">条目随剧情变化时在这里登记，写作时按章号取当时的设定</p>
             </div>
           )}
         </div>
@@ -1011,6 +1679,54 @@ function JingweiEntryEditorForm({
                   </Select>
                 </div>
               </div>
+
+              {/* 章节可见性窗口：作者直接填「第 N 章起 / 至第 M 章」，留空 = 不限 */}
+              <fieldset className="space-y-2 rounded-md border border-border/60 px-3 py-2" data-testid="jingwei-chapter-window">
+                <legend className="px-1 text-xs text-muted-foreground">章节可见性窗口</legend>
+                <p className="text-2xs text-muted-foreground">留空表示不限；只有「可见性 = 追踪（按章节窗口）」时才影响注入。</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="jingwei-editor-visible-after" className="text-xs text-muted-foreground mb-1 block">生效起始章</label>
+                    <Input
+                      id="jingwei-editor-visible-after"
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      value={afterChapterInput}
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        setAfterChapterInput(raw);
+                        const parsed = parseChapterWindowInput(raw);
+                        if (parsed === undefined) return;
+                        setVisibleAfterChapter(parsed);
+                      }}
+                      onBlur={() => setAfterChapterInput(chapterInputText(visibleAfterChapter))}
+                      placeholder="第 N 章起"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="jingwei-editor-visible-until" className="text-xs text-muted-foreground mb-1 block">退场截止章</label>
+                    <Input
+                      id="jingwei-editor-visible-until"
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      value={untilChapterInput}
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        setUntilChapterInput(raw);
+                        const parsed = parseChapterWindowInput(raw);
+                        if (parsed === undefined) return;
+                        setVisibleUntilChapter(parsed);
+                      }}
+                      onBlur={() => setUntilChapterInput(chapterInputText(visibleUntilChapter))}
+                      placeholder="至第 M 章"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              </fieldset>
 
               {/* 别名 */}
               <div>

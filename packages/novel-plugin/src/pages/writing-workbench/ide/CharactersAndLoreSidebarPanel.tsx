@@ -17,10 +17,16 @@ import {
   ArrowDown,
   ArrowUp,
   BookOpen,
+  Check,
+  CopyCheck,
   Eye,
+  Layers,
+  Loader2,
   Network,
+  Plus,
   Search,
   Snowflake,
+  Trash2,
   Upload,
   UserPlus,
   UserRound,
@@ -89,6 +95,7 @@ export interface CharactersAndLoreSidebarPanelProps {
 
 type MainTab = "characters" | "cast" | "settings" | "draft";
 type SettingsCategoryFilter = JingweiCategory | "all";
+type JingweiTemplateId = "blank" | "basic" | "enhanced" | "genre-recommended";
 
 const WORLD_CREATE_CATEGORY_META = CATEGORY_META.filter(
   (meta) => workspaceForCategory(meta.id) === "settings" && meta.allowCanon && meta.id !== "characters",
@@ -114,6 +121,42 @@ function entryCategory(node: WorkbenchResourceNode): JingweiCategory {
   return normalizeCategory(String(node.metadata?.category ?? "unclassified")).category;
 }
 
+/** 条目在服务端的主键（`jingwei-entry:<id>` 里的 id）。 */
+function entryNodeId(node: WorkbenchResourceNode): string | undefined {
+  const explicit = node.metadata?.entryId;
+  if (typeof explicit === "string" && explicit) return explicit;
+  const prefix = "jingwei-entry:";
+  return node.id.startsWith(prefix) ? node.id.slice(prefix.length) : undefined;
+}
+
+/** 合并建议接口里一个重复分组。 */
+export interface MergeSuggestionGroup {
+  readonly groupKey: string;
+  readonly score: number;
+  readonly reasons: ReadonlyArray<{ readonly reason: string; readonly score?: number; readonly detail?: string }>;
+  readonly survivor: string;
+  readonly duplicates: ReadonlyArray<string>;
+  readonly entries: ReadonlyArray<{ readonly id: string; readonly title: string; readonly category?: string }>;
+}
+
+/** 合并原因的中文说明；认不出的原因原样给出，不吞信息。 */
+const MERGE_REASON_LABELS: Record<string, string> = {
+  "exact-entry-key": "条目键完全相同",
+  "exact-title": "标题完全相同",
+  "title-alias-cross": "标题与别名交叉命中",
+  "normalized-title": "规范化后标题相同",
+  "chapter-summary-same-chapter": "同一章的章节摘要",
+  "relationship-key-match": "关系键相同",
+  "source-refs-overlap": "来源引用重叠",
+};
+
+const TEMPLATE_OPTIONS: ReadonlyArray<{ readonly id: JingweiTemplateId; readonly label: string }> = [
+  { id: "blank", label: "空白（只要一个骨架）" },
+  { id: "basic", label: "基础（人物 / 设定 / 力量体系）" },
+  { id: "enhanced", label: "增强（再加势力 / 地点 / 伏笔）" },
+  { id: "genre-recommended", label: "按题材推荐" },
+];
+
 export function CharactersAndLoreSidebarPanel({
   bookId,
   nodes,
@@ -136,6 +179,34 @@ export function CharactersAndLoreSidebarPanel({
   const [newCharCategory, setNewCharCategory] = useState<string>(WORLD_CREATE_CATEGORY_META[0]?.id ?? "world-model");
   const [creatingBusy, setCreatingBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // ── 批量管理（POST /jingwei/bulk） ─────────────────────────────────
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<ReadonlyArray<string>>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkMoveCategory, setBulkMoveCategory] = useState<string>(WORLD_CREATE_CATEGORY_META[0]?.id ?? "world-model");
+  // 删除是两步内联确认：第一次点只切到「确认删除」，不弹 window.confirm。
+  const [bulkConfirmDelete, setBulkConfirmDelete] = useState(false);
+
+  // ── 查重（GET /jingwei/merge-suggestions） ────────────────────────
+  const [showMergeSuggestions, setShowMergeSuggestions] = useState(false);
+  const [mergeGroups, setMergeGroups] = useState<readonly MergeSuggestionGroup[]>([]);
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
+
+  // ── 题材模板 & 自定义分类 ─────────────────────────────────────────
+  const [showSetup, setShowSetup] = useState(false);
+  const [templateId, setTemplateId] = useState<JingweiTemplateId>("basic");
+  const [genreInput, setGenreInput] = useState("");
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState<string | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [customCategoryName, setCustomCategoryName] = useState("");
+  const [customCategoryBusy, setCustomCategoryBusy] = useState(false);
+  const [customCategoryNotice, setCustomCategoryNotice] = useState<string | null>(null);
+  const [customCategoryError, setCustomCategoryError] = useState<string | null>(null);
 
   // 角色当前内核（每个角色的当前动机/情绪一行摘要），来自结算后写入的 character_kernel。
   // 这个角色册面板就是作者查「这个角色现在是谁」的地方——顺带把内核贴上来，不必再翻叙事记忆面板。
@@ -384,6 +455,173 @@ export function CharactersAndLoreSidebarPanel({
     }
   };
 
+  // ── 批量管理动作 ───────────────────────────────────────────────────
+
+  const toggleSelected = (entryId: string) => {
+    setBulkNotice(null);
+    setBulkError(null);
+    setSelectedEntryIds((current) => (current.includes(entryId) ? current.filter((id) => id !== entryId) : [...current, entryId]));
+  };
+
+  const selectAllVisible = () => {
+    setBulkConfirmDelete(false);
+    setBulkNotice(null);
+    setBulkError(null);
+    setSelectedEntryIds(filteredList.map(entryNodeId).filter((id): id is string => Boolean(id)));
+  };
+
+  const clearSelection = () => {
+    setBulkConfirmDelete(false);
+    setSelectedEntryIds([]);
+  };
+
+  const runBulk = async (action: "set-status" | "move" | "delete", target: string) => {
+    if (bulkBusy) return;
+    if (selectedEntryIds.length === 0) {
+      setBulkError("先勾选要处理的条目。");
+      return;
+    }
+    setBulkBusy(true);
+    setBulkError(null);
+    setBulkNotice(null);
+    try {
+      const data = await fetchJson<{ ok?: boolean; affected?: number }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/bulk`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, target, entryIds: selectedEntryIds }),
+        },
+      );
+      const affected = typeof data?.affected === "number" ? data.affected : selectedEntryIds.length;
+      setBulkNotice(`已处理 ${affected} 条`);
+      setBulkConfirmDelete(false);
+      setSelectedEntryIds([]);
+      onChanged?.();
+    } catch (cause) {
+      setBulkError(cause instanceof Error ? cause.message : "批量操作失败");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // ── 查重（只读建议，写操作复用批量接口） ────────────────────────────
+
+  const loadMergeSuggestions = async () => {
+    if (mergeLoading) return;
+    setMergeLoading(true);
+    setMergeError(null);
+    try {
+      const data = await fetchJson<{ groups?: MergeSuggestionGroup[] }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/merge-suggestions?limit=10`,
+      );
+      setMergeGroups(Array.isArray(data.groups) ? data.groups : []);
+    } catch (cause) {
+      setMergeGroups([]);
+      setMergeError(cause instanceof Error ? cause.message : "查重失败");
+    } finally {
+      setMergeLoading(false);
+    }
+  };
+
+  const toggleMergeSuggestions = () => {
+    const next = !showMergeSuggestions;
+    setShowMergeSuggestions(next);
+    if (next) void loadMergeSuggestions();
+  };
+
+  /** 一键归档多余条目：保留幸存者，其余软删除。 */
+  const archiveDuplicates = async (group: MergeSuggestionGroup) => {
+    if (bulkBusy) return;
+    const extras = group.entries.map((entry) => entry.id).filter((id) => id !== group.survivor);
+    if (extras.length === 0) return;
+    setBulkBusy(true);
+    setMergeError(null);
+    setBulkNotice(null);
+    try {
+      const data = await fetchJson<{ affected?: number }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/bulk`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", entryIds: extras }),
+        },
+      );
+      const affected = typeof data?.affected === "number" ? data.affected : extras.length;
+      setBulkNotice(`已归档 ${affected} 条重复条目`);
+      setMergeGroups((current) => current.filter((item) => item.groupKey !== group.groupKey));
+      onChanged?.();
+    } catch (cause) {
+      setMergeError(cause instanceof Error ? cause.message : "归档失败");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // ── 题材模板 & 自定义分类 ─────────────────────────────────────────
+
+  const applyTemplate = async () => {
+    if (templateBusy) return;
+    setTemplateBusy(true);
+    setTemplateError(null);
+    setTemplateNotice(null);
+    try {
+      const data = await fetchJson<{ templateId?: string; sections?: unknown[] }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/templates/apply`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            templateId,
+            ...(templateId === "genre-recommended" && genreInput.trim() ? { genre: genreInput.trim() } : {}),
+          }),
+        },
+      );
+      const count = Array.isArray(data?.sections) ? data.sections.length : 0;
+      setTemplateNotice(`模板已套用，当前共 ${count} 个设定分区`);
+      onChanged?.();
+    } catch (cause) {
+      setTemplateError(cause instanceof Error ? cause.message : "套用模板失败");
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const createCustomCategory = async () => {
+    const name = customCategoryName.trim();
+    if (!name || customCategoryBusy) return;
+    setCustomCategoryBusy(true);
+    setCustomCategoryError(null);
+    setCustomCategoryNotice(null);
+    try {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/categories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      setCustomCategoryName("");
+      setCustomCategoryNotice(`已新增分类「${name}」`);
+      onChanged?.();
+    } catch (cause) {
+      setCustomCategoryError(cause instanceof Error ? cause.message : "新增分类失败");
+    } finally {
+      setCustomCategoryBusy(false);
+    }
+  };
+
+  const mergeTitle = (entryId: string) => {
+    for (const group of mergeGroups) {
+      const hit = group.entries.find((entry) => entry.id === entryId);
+      if (hit) return hit.title;
+    }
+    return entryId;
+  };
+
+  const navigateToEntry = (entryId: string) => {
+    const node = allEntries.find((entry) => entryNodeId(entry) === entryId);
+    if (node) onOpen(node);
+  };
+
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="characters-and-lore-panel">
       {/* 页头模具（设计板 sd-head）：这本书的骨头——人物、设定、待确认的草案 */}
@@ -426,6 +664,48 @@ export function CharactersAndLoreSidebarPanel({
             <Network className="size-3" />
             设定图谱
           </Button>
+          <Button
+            size="xs"
+            variant={bulkMode ? "secondary" : "outline"}
+            aria-pressed={bulkMode}
+            onClick={() => {
+              const next = !bulkMode;
+              setBulkMode(next);
+              if (!next) clearSelection();
+              setBulkNotice(null);
+              setBulkError(null);
+            }}
+            className="h-6 text-xs gap-1"
+            title="勾选多条批量改状态、换分类或删除"
+            data-testid="lore-bulk-toggle"
+          >
+            <Layers className="size-3" />
+            批量
+          </Button>
+          <Button
+            size="xs"
+            variant={showMergeSuggestions ? "secondary" : "outline"}
+            aria-pressed={showMergeSuggestions}
+            onClick={toggleMergeSuggestions}
+            className="h-6 text-xs gap-1"
+            title="找出疑似重复的条目"
+            data-testid="lore-merge-toggle"
+          >
+            <CopyCheck className="size-3" />
+            查重
+          </Button>
+          <Button
+            size="xs"
+            variant={showSetup ? "secondary" : "outline"}
+            aria-pressed={showSetup}
+            onClick={() => setShowSetup((v) => !v)}
+            className="h-6 text-xs gap-1"
+            title="套用题材模板、新增自定义分类"
+            data-testid="lore-setup-toggle"
+          >
+            <Plus className="size-3" />
+            骨架
+          </Button>
         </div>
 
         <Button
@@ -454,6 +734,65 @@ export function CharactersAndLoreSidebarPanel({
       {/* AI 注入预览 */}
       {showPreview && (
         <InjectionPreviewSection bookId={bookId} onClose={() => setShowPreview(false)} />
+      )}
+
+      {/* 设定骨架：套用题材模板 / 新增自定义分类 */}
+      {showSetup && (
+        <div className="shrink-0 space-y-2 border-b border-border bg-muted/30 p-2.5" data-testid="lore-setup-section">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold">设定骨架</span>
+            <Button size="xs" variant="ghost" aria-label="关闭设定骨架" onClick={() => setShowSetup(false)} className="h-5 w-5 p-0">
+              <X className="size-3" />
+            </Button>
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="lore-template-select" className="text-2xs text-muted-foreground">套用题材模板（已存在的分区不会重复创建）</label>
+            <div className="flex items-center gap-1.5">
+              <select
+                id="lore-template-select"
+                className="h-7 flex-1 rounded border border-border bg-background px-1.5 text-xs text-foreground"
+                value={templateId}
+                onChange={(event) => setTemplateId(event.target.value as JingweiTemplateId)}
+              >
+                {TEMPLATE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+              {templateId === "genre-recommended" && (
+                <Input
+                  value={genreInput}
+                  onChange={(event) => setGenreInput(event.target.value)}
+                  placeholder="题材（如：仙侠）"
+                  aria-label="题材"
+                  className="h-7 w-28 text-xs"
+                />
+              )}
+              <Button size="xs" onClick={() => void applyTemplate()} disabled={templateBusy} data-testid="lore-template-apply">
+                {templateBusy ? <Loader2 className="size-3 animate-spin" /> : "套用"}
+              </Button>
+            </div>
+            {templateNotice ? <p className="text-2xs text-success" role="status" data-testid="lore-template-notice">{templateNotice}</p> : null}
+            {templateError ? <p className="text-2xs text-destructive" role="alert">{templateError}</p> : null}
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="lore-custom-category" className="text-2xs text-muted-foreground">新增自定义分类</label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                id="lore-custom-category"
+                value={customCategoryName}
+                onChange={(event) => setCustomCategoryName(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") void createCustomCategory(); }}
+                placeholder="如：宗门势力 / 灵兽录"
+                className="h-7 flex-1 text-xs"
+              />
+              <Button size="xs" onClick={() => void createCustomCategory()} disabled={customCategoryBusy || !customCategoryName.trim()} data-testid="lore-category-create">
+                {customCategoryBusy ? <Loader2 className="size-3 animate-spin" /> : "新增"}
+              </Button>
+            </div>
+            {customCategoryNotice ? <p className="text-2xs text-success" role="status" data-testid="lore-category-notice">{customCategoryNotice}</p> : null}
+            {customCategoryError ? <p className="text-2xs text-destructive" role="alert">{customCategoryError}</p> : null}
+          </div>
+        </div>
       )}
 
       {/* 快速新建卡片栏 */}
@@ -591,6 +930,165 @@ export function CharactersAndLoreSidebarPanel({
       </div>
       )}
 
+      {/* 批量动作条：只在批量模式出现，紧凑一行，全选 / 清空 / 状态 / 移动 / 删除 */}
+      {bulkMode && activeTab !== "draft" && (
+        <div
+          className="shrink-0 flex flex-wrap items-center gap-1 border-b border-border bg-[var(--nf-subsurface,var(--muted))] px-2 py-1.5"
+          data-testid="lore-bulk-bar"
+        >
+          <span className="text-2xs font-medium text-foreground">已选 {selectedEntryIds.length} / {filteredList.length}</span>
+          <Button size="xs" variant="ghost" className="h-6 px-1.5 text-2xs" onClick={selectAllVisible} data-testid="lore-bulk-select-all">
+            全选
+          </Button>
+          <Button size="xs" variant="ghost" className="h-6 px-1.5 text-2xs" onClick={clearSelection} data-testid="lore-bulk-clear">
+            清空
+          </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            className="h-6 px-1.5 text-2xs gap-1"
+            disabled={bulkBusy}
+            onClick={() => void runBulk("set-status", "confirmed")}
+            data-testid="lore-bulk-confirm"
+          >
+            <Check className="size-3" />标为已确认
+          </Button>
+          <Button
+            size="xs"
+            variant="outline"
+            className="h-6 px-1.5 text-2xs"
+            disabled={bulkBusy}
+            onClick={() => void runBulk("set-status", "needs-review")}
+            data-testid="lore-bulk-needs-review"
+          >
+            标为待确认
+          </Button>
+          <span className="flex items-center gap-1">
+            <select
+              aria-label="批量移动到分类"
+              className="h-6 rounded border border-border bg-background px-1 text-2xs text-foreground"
+              value={bulkMoveCategory}
+              onChange={(event) => setBulkMoveCategory(event.target.value)}
+              data-testid="lore-bulk-move-category"
+            >
+              {CATEGORY_META.map((meta) => (
+                <option key={meta.id} value={meta.id}>{meta.name}</option>
+              ))}
+            </select>
+            <Button
+              size="xs"
+              variant="outline"
+              className="h-6 px-1.5 text-2xs"
+              disabled={bulkBusy}
+              onClick={() => void runBulk("move", bulkMoveCategory)}
+              data-testid="lore-bulk-move"
+            >
+              移动
+            </Button>
+          </span>
+          {bulkConfirmDelete ? (
+            <span className="flex items-center gap-1">
+              <span className="text-2xs text-destructive">确认删除 {selectedEntryIds.length} 条？</span>
+              <Button
+                size="xs"
+                variant="destructive"
+                className="h-6 px-1.5 text-2xs"
+                disabled={bulkBusy}
+                onClick={() => void runBulk("delete", "delete")}
+                data-testid="lore-bulk-delete-confirm"
+              >
+                {bulkBusy ? <Loader2 className="size-3 animate-spin" /> : "确认"}
+              </Button>
+              <Button size="xs" variant="ghost" className="h-6 px-1.5 text-2xs" onClick={() => setBulkConfirmDelete(false)}>
+                取消
+              </Button>
+            </span>
+          ) : (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="h-6 px-1.5 text-2xs gap-1 text-destructive hover:text-destructive"
+              onClick={() => setBulkConfirmDelete(true)}
+              data-testid="lore-bulk-delete"
+            >
+              <Trash2 className="size-3" />删除
+            </Button>
+          )}
+          {bulkNotice ? (
+            <span className="text-2xs text-success" role="status" data-testid="lore-bulk-notice">{bulkNotice}</span>
+          ) : null}
+          {bulkError ? (
+            <span className="text-2xs text-destructive" role="alert" data-testid="lore-bulk-error">{bulkError}</span>
+          ) : null}
+        </div>
+      )}
+
+      {/* 查重抽屉：疑似重复分组 + 一键归档多余条目 */}
+      {showMergeSuggestions && (
+        <div className="shrink-0 space-y-1.5 border-b border-border bg-muted/30 p-2.5" data-testid="lore-merge-suggestions">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold">疑似重复条目</span>
+            <div className="flex items-center gap-1">
+              <Button size="xs" variant="ghost" className="h-5 px-1.5 text-2xs" onClick={() => void loadMergeSuggestions()} disabled={mergeLoading}>
+                重新查
+              </Button>
+              <Button size="xs" variant="ghost" aria-label="关闭查重" onClick={() => setShowMergeSuggestions(false)} className="h-5 w-5 p-0">
+                <X className="size-3" />
+              </Button>
+            </div>
+          </div>
+          {mergeLoading ? (
+            <p className="flex items-center gap-1 text-2xs text-muted-foreground"><Loader2 className="size-3 animate-spin" />正在查重…</p>
+          ) : mergeError ? (
+            <p className="text-2xs text-destructive" role="alert">{mergeError}</p>
+          ) : mergeGroups.length === 0 ? (
+            <p className="text-2xs text-muted-foreground">没有发现疑似重复的条目。</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {mergeGroups.map((group) => (
+                <li key={group.groupKey} className="nf-surface-card space-y-1 px-2 py-1.5" data-testid="lore-merge-group">
+                  <div className="flex flex-wrap items-center gap-1 text-2xs text-muted-foreground">
+                    <span>得分 {Math.round(group.score)}</span>
+                    <span>·</span>
+                    <span>建议保留「{mergeTitle(group.survivor)}」</span>
+                    {group.reasons.length > 0 ? (
+                      <span className="truncate">· {group.reasons.map((reason) => MERGE_REASON_LABELS[reason.reason] ?? reason.reason).join("、")}</span>
+                    ) : null}
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      className="ml-auto h-5 px-1.5 text-2xs"
+                      disabled={bulkBusy || group.entries.length < 2}
+                      onClick={() => void archiveDuplicates(group)}
+                      data-testid="lore-merge-archive"
+                    >
+                      归档多余 {Math.max(group.entries.length - 1, 0)} 条
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {group.entries.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => navigateToEntry(entry.id)}
+                        className={`rounded border px-1.5 py-0.5 text-2xs ${
+                          entry.id === group.survivor
+                            ? "border-primary/40 bg-primary/10 text-primary"
+                            : "border-border bg-background text-foreground hover:border-primary"
+                        }`}
+                        title={`跳转到「${entry.title}」`}
+                      >
+                        {entry.title}
+                      </button>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {/* 卡片流展示区：草案 tab 时替换为拆书草案确认面板；人物表 tab 时换成表格 */}
       {activeTab === "draft" ? (
         <div className="flex-1 min-h-0">
@@ -649,19 +1147,36 @@ export function CharactersAndLoreSidebarPanel({
         ) : (
           // 侧栏拉宽时自动排成多列；每列等宽、每张卡等高
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-1.5" data-testid="lore-card-grid">
-            {cards.list.map(({ node, face }) => (
-              <li key={node.id} className="min-w-0">
-                <LoreCard
-                  node={node}
-                  face={face}
-                  isCharacter={activeTab === "characters"}
-                  isSelected={selectedNodeId === node.id}
-                  showStatusRow={cards.showStatusRow}
-                  showProgressRow={cards.showProgressRow}
-                  onClick={() => onOpen(node)}
-                />
-              </li>
-            ))}
+            {cards.list.map(({ node, face }) => {
+              const entryId = entryNodeId(node);
+              const selectedForBulk = entryId !== undefined && selectedEntryIds.includes(entryId);
+              return (
+                <li key={node.id} className="min-w-0">
+                  <div className={bulkMode ? "flex items-start gap-1" : undefined}>
+                    {bulkMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedForBulk}
+                        disabled={entryId === undefined}
+                        onChange={() => { if (entryId) toggleSelected(entryId); }}
+                        aria-label={`选择「${node.title}」`}
+                        className="mt-2 size-3 shrink-0 accent-[var(--primary)]"
+                        data-testid="lore-card-checkbox"
+                      />
+                    )}
+                    <LoreCard
+                      node={node}
+                      face={face}
+                      isCharacter={activeTab === "characters"}
+                      isSelected={selectedNodeId === node.id}
+                      showStatusRow={cards.showStatusRow}
+                      showProgressRow={cards.showProgressRow}
+                      onClick={() => onOpen(node)}
+                    />
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -786,7 +1301,7 @@ function CastTable({
       <tbody>
         {rows.map(({ node, row }) => {
           const selected = selectedNodeId === node.id;
-          return (
+  return (
             <tr key={node.id} className={`border-b border-border/50 last:border-b-0 ${selected ? "bg-primary/5" : "hover:bg-muted/40"}`} data-testid="cast-row">
               <th scope="row" className="py-1.5 pl-2.5 pr-2 text-left font-normal">
                 <button

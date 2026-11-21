@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NarrativeStructureState } from "../useNarrativeStructure";
@@ -549,5 +549,189 @@ describe("CharactersAndLoreSidebarPanel 新建与导入的失败提示", () => {
 
     fireEvent.change(screen.getByLabelText("搜索角色"), { target: { value: "韩老魔" } });
     expect(screen.getAllByTestId("lore-card").map((el) => el.textContent)).toEqual([expect.stringContaining("韩立")]);
+  });
+});
+
+describe("CharactersAndLoreSidebarPanel 批量管理", () => {
+  it("默认不显示复选框；开启批量后卡片带复选框、顶部出现动作条", () => {
+    renderPanel([characterNode("林舟"), characterNode("沈砚")], []);
+
+    expect(screen.queryAllByTestId("lore-card-checkbox")).toHaveLength(0);
+    expect(screen.queryByTestId("lore-bulk-bar")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("lore-bulk-toggle"));
+    expect(screen.getAllByTestId("lore-card-checkbox")).toHaveLength(2);
+    expect(screen.getByTestId("lore-bulk-bar").textContent).toContain("已选 0 / 2");
+  });
+
+  it("全选 / 清空只作用于当前列表；批量标为已确认后调用 bulk 接口并报告条数", async () => {
+    const onChanged = vi.fn();
+    fetchJson.mockImplementation(async (url: string) => {
+      if (String(url).includes("/jingwei/staging")) return { total: 0 };
+      if (String(url).includes("/jingwei/bulk")) return { ok: true, affected: 2 };
+      return {};
+    });
+    render(
+      <CharactersAndLoreSidebarPanel
+        bookId="book-1"
+        nodes={[characterNode("林舟"), characterNode("沈砚")]}
+        facts={[]}
+        selectedNodeId={null}
+        onOpen={vi.fn()}
+        onChanged={onChanged}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("lore-bulk-toggle"));
+    fireEvent.click(screen.getByTestId("lore-bulk-select-all"));
+    expect(screen.getByTestId("lore-bulk-bar").textContent).toContain("已选 2 / 2");
+
+    fireEvent.click(screen.getByTestId("lore-bulk-clear"));
+    expect(screen.getByTestId("lore-bulk-bar").textContent).toContain("已选 0 / 2");
+
+    fireEvent.click(screen.getByTestId("lore-bulk-select-all"));
+    fireEvent.click(screen.getByTestId("lore-bulk-confirm"));
+
+    expect((await screen.findByTestId("lore-bulk-notice")).textContent).toContain("已处理 2 条");
+    const bulkCall = fetchJson.mock.calls.find((call) => String(call[0]).includes("/jingwei/bulk"));
+    expect(bulkCall).toBeTruthy();
+    expect(JSON.parse(String((bulkCall![1] as RequestInit).body))).toEqual({
+      action: "set-status",
+      target: "confirmed",
+      entryIds: ["林舟", "沈砚"],
+    });
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("批量移到其他分类与批量删除：删除要两步内联确认", async () => {
+    fetchJson.mockImplementation(async (url: string) => {
+      if (String(url).includes("/jingwei/staging")) return { total: 0 };
+      if (String(url).includes("/jingwei/bulk")) return { ok: true, affected: 1 };
+      return {};
+    });
+    renderPanel([characterNode("林舟")], []);
+
+    fireEvent.click(screen.getByTestId("lore-bulk-toggle"));
+    fireEvent.click(screen.getByTestId("lore-bulk-select-all"));
+
+    fireEvent.change(screen.getByTestId("lore-bulk-move-category"), { target: { value: "factions" } });
+    fireEvent.click(screen.getByTestId("lore-bulk-move"));
+    await waitFor(() => expect(screen.getByTestId("lore-bulk-notice")).toBeTruthy());
+    const bulkBodies = () => fetchJson.mock.calls
+      .filter((call) => String(call[0]).includes("/jingwei/bulk"))
+      .map((call) => JSON.parse(String((call[1] as RequestInit | undefined)?.body)));
+    const moveBody = bulkBodies().find((body) => body.action === "move");
+    expect(moveBody).toEqual({ action: "move", target: "factions", entryIds: ["林舟"] });
+
+    // 第一次点删除只切到确认态，不发请求
+    fireEvent.click(screen.getByTestId("lore-bulk-select-all"));
+    fireEvent.click(screen.getByTestId("lore-bulk-delete"));
+    expect(screen.getByText("确认删除 1 条？")).toBeTruthy();
+    expect(bulkBodies().some((body) => body.action === "delete")).toBe(false);
+
+    fireEvent.click(screen.getByTestId("lore-bulk-delete-confirm"));
+    await waitFor(() => expect(bulkBodies().some((body) => body.action === "delete")).toBe(true));
+  });
+
+  it("没勾选就点动作时给出提示，不发请求", () => {
+    renderPanel([characterNode("林舟")], []);
+    fireEvent.click(screen.getByTestId("lore-bulk-toggle"));
+    fireEvent.click(screen.getByTestId("lore-bulk-confirm"));
+
+    expect(screen.getByTestId("lore-bulk-error").textContent).toContain("先勾选");
+    expect(fetchJson.mock.calls.some((call) => String(call[0]).includes("/jingwei/bulk"))).toBe(false);
+  });
+});
+
+describe("CharactersAndLoreSidebarPanel 查重", () => {
+  it("点查重拉取疑似重复分组，列出条目与原因，可跳转", async () => {
+    const onOpen = vi.fn();
+    fetchJson.mockImplementation(async (url: string) => {
+      if (String(url).includes("/jingwei/staging")) return { total: 0 };
+      if (String(url).includes("/jingwei/merge-suggestions")) {
+        return {
+          ok: true,
+          groups: [{
+            groupKey: "g1",
+            score: 82,
+            reasons: [{ reason: "exact-title", score: 80 }, { reason: "normalized-title", score: 2 }],
+            survivor: "林舟",
+            duplicates: ["沈砚"],
+            entries: [{ id: "林舟", title: "林舟" }, { id: "沈砚", title: "沈砚" }],
+          }],
+          ungrouped: [],
+        };
+      }
+      return {};
+    });
+    renderPanel([characterNode("林舟"), characterNode("沈砚")], [], onOpen);
+
+    fireEvent.click(screen.getByTestId("lore-merge-toggle"));
+
+    const group = await screen.findByTestId("lore-merge-group");
+    expect(group.textContent).toContain("建议保留「林舟」");
+    expect(group.textContent).toContain("标题完全相同、规范化后标题相同");
+    expect(group.textContent).toContain("归档多余 1 条");
+
+    fireEvent.click(within(group).getByRole("button", { name: "沈砚" }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ title: "沈砚" }));
+  });
+
+  it("没有疑似重复时说明清楚，而不是空白", async () => {
+    fetchJson.mockImplementation(async (url: string) => {
+      if (String(url).includes("/jingwei/staging")) return { total: 0 };
+      if (String(url).includes("/jingwei/merge-suggestions")) return { ok: true, groups: [], ungrouped: [] };
+      return {};
+    });
+    renderPanel([characterNode("林舟")], []);
+
+    fireEvent.click(screen.getByTestId("lore-merge-toggle"));
+    expect(await screen.findByText("没有发现疑似重复的条目。")).toBeTruthy();
+  });
+});
+
+describe("CharactersAndLoreSidebarPanel 设定骨架", () => {
+  it("套用题材模板后报告分区数，并通知上层刷新", async () => {
+    const onChanged = vi.fn();
+    fetchJson.mockImplementation(async (url: string) => {
+      if (String(url).includes("/jingwei/staging")) return { total: 0 };
+      if (String(url).includes("/jingwei/templates/apply")) return { templateId: "basic", sections: [{}, {}, {}] };
+      return {};
+    });
+    render(
+      <CharactersAndLoreSidebarPanel
+        bookId="book-1"
+        nodes={[characterNode("林舟")]}
+        facts={[]}
+        selectedNodeId={null}
+        onOpen={vi.fn()}
+        onChanged={onChanged}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("lore-setup-toggle"));
+    fireEvent.change(screen.getByLabelText("套用题材模板（已存在的分区不会重复创建）"), { target: { value: "enhanced" } });
+    fireEvent.click(screen.getByTestId("lore-template-apply"));
+
+    expect((await screen.findByTestId("lore-template-notice")).textContent).toContain("当前共 3 个设定分区");
+    const call = fetchJson.mock.calls.find((item) => String(item[0]).includes("/jingwei/templates/apply"));
+    expect(JSON.parse(String((call![1] as RequestInit).body))).toEqual({ templateId: "enhanced" });
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("新增自定义分类后清空输入并提示", async () => {
+    fetchJson.mockImplementation(async (url: string) => {
+      if (String(url).includes("/jingwei/staging")) return { total: 0 };
+      if (String(url).includes("/jingwei/categories")) return { ok: true, id: "灵兽录" };
+      return {};
+    });
+    renderPanel([characterNode("林舟")], []);
+
+    fireEvent.click(screen.getByTestId("lore-setup-toggle"));
+    fireEvent.change(screen.getByLabelText("新增自定义分类"), { target: { value: "灵兽录" } });
+    fireEvent.click(screen.getByTestId("lore-category-create"));
+
+    expect((await screen.findByTestId("lore-category-notice")).textContent).toContain("已新增分类「灵兽录」");
+    expect((screen.getByLabelText("新增自定义分类") as HTMLInputElement).value).toBe("");
   });
 });

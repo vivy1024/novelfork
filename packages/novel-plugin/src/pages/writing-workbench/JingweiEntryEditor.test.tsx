@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
@@ -361,5 +361,274 @@ describe("JingweiEntryEditor optimistic concurrency payload (T-24)", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     const payload = onSave.mock.calls[0]![1] as Record<string, unknown>;
     expect(payload).not.toHaveProperty("expectedVersion");
+  });
+});
+
+describe("JingweiEntryEditor 章节可见性窗口", () => {
+  function stubEditorApi(entry: Record<string, unknown> = {}) {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.endsWith("/revisions")) return json({ revisions: [] });
+      if (url.endsWith("/progressions")) {
+        if (init?.method === "POST") return json({ progression: { id: "p-new" } });
+        return json({ progressions: entry.progressions ?? [] });
+      }
+      if (url.includes("/dependencies")) return json(entry.dependencies ?? { dependsOn: [], dependedBy: [] });
+      if (url.includes("/relations")) return json(entry.relations ?? { relations: [] });
+      if (/\/jingwei\/entries$/.test(url)) return json({ entries: entry.entries ?? [] });
+      return json({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("作者能直接填章节窗口，保存时作为 visibleAfterChapter / visibleUntilChapter 传出", async () => {
+    stubEditorApi();
+    const onSave = vi.fn(async () => undefined);
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "cw-1", title: "林舟", contentMd: "正文", sectionId: "sec-1", category: "characters", status: "confirmed", visibility: "tracked" }}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    const window = await screen.findByTestId("jingwei-chapter-window");
+    expect(within(window).getByLabelText("生效起始章")).toBeTruthy();
+
+    // 没有改动时保存是禁用的：窗口本身不能凭空造出 dirty
+    expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(within(window).getByLabelText("生效起始章"), { target: { value: "5" } });
+    fireEvent.change(within(window).getByLabelText("退场截止章"), { target: { value: "12" } });
+    expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave).toHaveBeenCalledWith("cw-1", expect.objectContaining({
+      visibleAfterChapter: 5,
+      visibleUntilChapter: 12,
+    }));
+  });
+
+  it("清空章节窗口后保存传 null，不会把旧窗口留在服务端", async () => {
+    stubEditorApi();
+    const onSave = vi.fn(async () => undefined);
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{
+          id: "cw-2",
+          title: "林舟",
+          contentMd: "正文",
+          sectionId: "sec-1",
+          category: "characters",
+          status: "confirmed",
+          visibility: "tracked",
+          visibleAfterChapter: 3,
+          visibleUntilChapter: 9,
+        }}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    const window = await screen.findByTestId("jingwei-chapter-window");
+    const after = within(window).getByLabelText("生效起始章") as HTMLInputElement;
+    const until = within(window).getByLabelText("退场截止章") as HTMLInputElement;
+    expect(after.value).toBe("3");
+    expect(until.value).toBe("9");
+
+    fireEvent.change(after, { target: { value: "" } });
+    fireEvent.change(until, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const payload = onSave.mock.calls[0]![1] as Record<string, unknown>;
+    expect(payload.visibleAfterChapter).toBeNull();
+    expect(payload.visibleUntilChapter).toBeNull();
+  });
+
+  it("取消编辑把窗口输入还原成已保存值", async () => {
+    stubEditorApi();
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "cw-3", title: "林舟", contentMd: "正文", sectionId: "sec-1", category: "characters", status: "confirmed", visibleAfterChapter: 4 }}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    const window = await screen.findByTestId("jingwei-chapter-window");
+    fireEvent.change(within(window).getByLabelText("生效起始章"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "放弃" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    const reopened = await screen.findByTestId("jingwei-chapter-window");
+    expect((within(reopened).getByLabelText("生效起始章") as HTMLInputElement).value).toBe("4");
+  });
+});
+
+describe("JingweiEntryEditor 演变台账", () => {
+  it("演变 Tab 列出章号 / 字段 / 旧值 → 新值，并能新增一条", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.endsWith("/revisions")) return json({ revisions: [] });
+      if (url.endsWith("/progressions")) {
+        if (init?.method === "POST") return json({ progression: { id: "p-2" } }, );
+        return json({
+          progressions: [{
+            id: "p-1",
+            entry_id: "pg-1",
+            field_key: "realm",
+            old_value: "炼气七层",
+            new_value: "筑基初期",
+            chapter_number: 20,
+            description: "突破",
+            created_at: 1,
+          }],
+        });
+      }
+      return json({ entries: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "pg-1", title: "林舟", contentMd: "正文", sectionId: "sec-1", category: "characters", status: "confirmed" }}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /演变/ }));
+    const row = await screen.findByTestId("jingwei-progression-row");
+    expect(row.textContent).toContain("第 20 章");
+    expect(row.textContent).toContain("realm");
+    expect(row.textContent).toContain("炼气七层 →");
+    expect(row.textContent).toContain("筑基初期");
+    expect(row.textContent).toContain("突破");
+
+    fireEvent.change(screen.getByLabelText("字段名"), { target: { value: "location" } });
+    fireEvent.change(screen.getByLabelText("新值"), { target: { value: "黄枫谷" } });
+    fireEvent.click(screen.getByRole("button", { name: /记一条演变/ }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find((call) => String(call[0]).endsWith("/progressions") && (call[1] as RequestInit | undefined)?.method === "POST");
+      expect(post).toBeTruthy();
+      expect(JSON.parse(String((post![1] as RequestInit).body))).toMatchObject({
+        fieldKey: "location",
+        newValue: "黄枫谷",
+        chapterNumber: null,
+      });
+    });
+  });
+
+  it("没有演变记录时给出空态说明", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.endsWith("/revisions")) return json({ revisions: [] });
+      if (url.endsWith("/progressions")) return json({ progressions: [] });
+      return json({ entries: [] });
+    }));
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "pg-empty", title: "林舟", contentMd: "正文", sectionId: "sec-1", category: "characters", status: "confirmed" }}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /演变/ }));
+    expect(await screen.findByText("还没有演变记录")).toBeTruthy();
+  });
+});
+
+describe("JingweiEntryEditor 结构化依赖与静态关系", () => {
+  it("关联 Tab 同时展示简单引用、依赖双向与静态关系，并可跳转", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.endsWith("/revisions")) return json({ revisions: [] });
+      if (url.includes("/dependencies")) {
+        return json({
+          dependsOn: [{ depId: "dep-1", relationType: "references", targetEntryId: "entry-loc", title: "青云山" }],
+          dependedBy: [{ depId: "dep-2", relationType: "references", sourceEntryId: "entry-fac", title: "青云宗" }],
+        });
+      }
+      if (url.includes("/relations")) {
+        return json({ relations: [{ id: "rel-1", source_entry_id: "entry-lin", target_entry_id: "entry-fac", relation_type: "师徒", label: "授业" }] });
+      }
+      if (/\/jingwei\/entries$/.test(url)) {
+        return json({ entries: [{ id: "entry-loc", title: "青云山" }, { id: "entry-fac", title: "青云宗" }] });
+      }
+      return json({});
+    }));
+    const onNavigateToEntry = vi.fn();
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "entry-lin", title: "林舟", contentMd: "正文", sectionId: "sec-1", category: "characters", status: "confirmed" }}
+        onNavigateToEntry={onNavigateToEntry}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /关联/ }));
+
+    const dependencies = await screen.findByTestId("jingwei-dependencies");
+    await waitFor(() => expect(within(dependencies).getAllByTestId("jingwei-dependency-row")).toHaveLength(2));
+    fireEvent.click(within(dependencies).getByRole("button", { name: "青云山" }));
+    expect(onNavigateToEntry).toHaveBeenCalledWith("entry-loc");
+
+    const relations = screen.getByTestId("jingwei-relations");
+    await waitFor(() => expect(within(relations).getByTestId("jingwei-relation-row")).toBeTruthy());
+    expect(within(relations).getByTestId("jingwei-relation-row").textContent).toContain("师徒");
+    fireEvent.click(within(relations).getByRole("button", { name: "青云宗" }));
+    expect(onNavigateToEntry).toHaveBeenCalledWith("entry-fac");
+  });
+
+  it("移除依赖会调用 DELETE 接口", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.endsWith("/revisions")) return json({ revisions: [] });
+      if (url.includes("/dependencies")) {
+        if (init?.method === "DELETE") return json({ ok: true });
+        return json({ dependsOn: [{ depId: "dep-9", relationType: "references", targetEntryId: "entry-loc", title: "青云山" }], dependedBy: [] });
+      }
+      if (url.includes("/relations")) return json({ relations: [] });
+      if (/\/jingwei\/entries$/.test(url)) return json({ entries: [{ id: "entry-loc", title: "青云山" }] });
+      return json({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{ id: "entry-lin", title: "林舟", contentMd: "正文", sectionId: "sec-1", category: "characters", status: "confirmed" }}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /关联/ }));
+    const dependencies = await screen.findByTestId("jingwei-dependencies");
+    const remove = await within(dependencies).findByRole("button", { name: /移除依赖 青云山/ });
+    fireEvent.click(remove);
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/jingwei/dependencies/dep-9") && (call[1] as RequestInit | undefined)?.method === "DELETE")).toBe(true);
+    });
   });
 });

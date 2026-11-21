@@ -29,6 +29,10 @@ export interface JingweiCanonValues {
   readonly priorityTier: JingweiPriorityTier;
   readonly aliases: readonly string[];
   readonly relatedEntryIds: readonly string[];
+  /** 生效起始章（null = 不限）；作者可直接改，随 payload 写回 visibilityRule。 */
+  readonly visibleAfterChapter?: number | null;
+  /** 退场截止章（null = 一直有效）。 */
+  readonly visibleUntilChapter?: number | null;
   readonly fields: Record<string, unknown>;
 }
 
@@ -123,6 +127,22 @@ function parseFieldInput(field: CategoryFieldSchema, raw: string): unknown {
   return raw;
 }
 
+/**
+ * 章节窗口输入解析：空白 = 不限（null），非正整数视为非法返回 undefined（调用方丢弃这次输入）。
+ * 0 与负数都不是「第 N 章」，不能悄悄当成生效起始章。
+ */
+export function parseChapterWindowInput(raw: string): number | null | undefined {
+  const text = raw.trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed) || parsed < 1) return undefined;
+  return parsed;
+}
+
+function chapterWindowText(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
 export function canonValuesFromEntry(entry: JingweiEntryData): JingweiCanonValues {
   return {
     category: entry.category ?? "unclassified",
@@ -132,6 +152,9 @@ export function canonValuesFromEntry(entry: JingweiEntryData): JingweiCanonValue
     priorityTier: entry.priorityTier ?? "auto",
     aliases: [...(entry.aliases ?? [])],
     relatedEntryIds: [...(entry.relatedEntryIds ?? [])],
+    // 章节窗口曾在这里被写死透传原值，作者改不了；现在随 values 一起可编辑。
+    visibleAfterChapter: entry.visibleAfterChapter ?? null,
+    visibleUntilChapter: entry.visibleUntilChapter ?? null,
     fields: { ...(entry.fields ?? {}) },
   };
 }
@@ -145,8 +168,9 @@ export function toCanonSaveSlice(values: JingweiCanonValues, entry: JingweiEntry
     aliases: [...values.aliases],
     relatedEntryIds: [...values.relatedEntryIds],
     visibility: values.visibility,
-    visibleAfterChapter: entry.visibleAfterChapter ?? null,
-    visibleUntilChapter: entry.visibleUntilChapter ?? null,
+    // 空值必须显式传 null：服务端整体重写 visibilityRule，漏传就会把窗口清掉。
+    visibleAfterChapter: values.visibleAfterChapter ?? null,
+    visibleUntilChapter: values.visibleUntilChapter ?? null,
     fields: values.fields,
   };
 }
@@ -254,6 +278,16 @@ const READ_VISIBILITY_LABELS: Record<string, string> = {
   nested: "随父条目",
 };
 
+/** 章节窗口的一行摘要：只有真的填了窗口才给。 */
+function chapterWindowLabel(values: JingweiCanonValues): string | null {
+  const after = values.visibleAfterChapter;
+  const until = values.visibleUntilChapter;
+  if (after == null && until == null) return null;
+  const from = after == null ? "开篇" : `第 ${after} 章`;
+  const to = until == null ? "持续有效" : `第 ${until} 章`;
+  return `章节窗口·${from} → ${to}`;
+}
+
 export function JingweiCanonPanel({
   entry,
   bookId,
@@ -267,6 +301,9 @@ export function JingweiCanonPanel({
   readOnly = false,
 }: JingweiCanonPanelProps) {
   const [aliasInput, setAliasInput] = useState("");
+  // 章节窗口输入框保留作者原始输入（如正在输入的「0」），提交值只在合法时进 values。
+  const [afterInput, setAfterInput] = useState(() => chapterWindowText(values.visibleAfterChapter));
+  const [untilInput, setUntilInput] = useState(() => chapterWindowText(values.visibleUntilChapter));
   const [relationSearch, setRelationSearch] = useState("");
   const [relationSearchResults, setRelationSearchResults] = useState<RelatedEntryItem[]>([]);
   const [relationAdding, setRelationAdding] = useState(false);
@@ -344,6 +381,14 @@ export function JingweiCanonPanel({
     onChange({ ...values, ...partial });
   };
 
+  // 外部值变化（切换条目 / 回滚）时同步输入框；作者正在输入的非法中间值不覆盖。
+  useEffect(() => {
+    setAfterInput((current) => (parseChapterWindowInput(current) === (values.visibleAfterChapter ?? null) ? current : chapterWindowText(values.visibleAfterChapter)));
+  }, [values.visibleAfterChapter]);
+  useEffect(() => {
+    setUntilInput((current) => (parseChapterWindowInput(current) === (values.visibleUntilChapter ?? null) ? current : chapterWindowText(values.visibleUntilChapter)));
+  }, [values.visibleUntilChapter]);
+
   async function handleRevert(revision: RevisionRecord) {
     if (!bookId || revertingRevisionId) return;
     setRevertingRevisionId(revision.id);
@@ -392,6 +437,11 @@ export function JingweiCanonPanel({
               <Badge variant="outline" className="text-2xs text-muted-foreground">层级·{READ_LAYER_LABELS[values.layer] ?? values.layer}</Badge>
               <Badge variant="outline" className="text-2xs text-muted-foreground">优先级·{READ_PRIORITY_LABELS[values.priorityTier] ?? values.priorityTier}</Badge>
               <Badge variant="outline" className="text-2xs text-muted-foreground">可见性·{READ_VISIBILITY_LABELS[values.visibility] ?? values.visibility}</Badge>
+              {chapterWindowLabel(values) ? (
+                <Badge variant="outline" className="text-2xs text-muted-foreground" data-testid="jingwei-canon-window-reading">
+                  {chapterWindowLabel(values)}
+                </Badge>
+              ) : null}
             </div>
             {filledSchemaFields.length > 0 && (
               <dl className="nf-surface-sub space-y-1.5 px-3 py-2.5" data-testid="jingwei-canon-fields-reading">
@@ -467,7 +517,7 @@ export function JingweiCanonPanel({
               </SelectContent>
             </Select>
           </div>
-          <div className="col-span-2">
+          <div>
             <label className="text-xs text-muted-foreground mb-1 block">上下文优先级</label>
             <Select value={values.priorityTier} onValueChange={(value) => patch({ priorityTier: value as JingweiPriorityTier })}>
               <SelectTrigger className="w-48 h-8 text-xs" aria-label="上下文优先级">
@@ -482,6 +532,54 @@ export function JingweiCanonPanel({
             </Select>
           </div>
         </div>
+
+        {/* 章节可见性窗口：作者直接填「第 N 章起 / 至第 M 章」，空 = 不限 */}
+        <fieldset className="space-y-2 rounded-md border border-border/60 px-3 py-2" data-testid="jingwei-chapter-window">
+          <legend className="px-1 text-xs text-muted-foreground">章节可见性窗口</legend>
+          <p className="text-2xs text-muted-foreground">留空表示不限：起始章为空即开篇有效，截止章为空即一直有效。</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="jingwei-visible-after" className="text-xs text-muted-foreground mb-1 block">生效起始章</label>
+              <Input
+                id="jingwei-visible-after"
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={afterInput}
+                onChange={(event) => {
+                  const raw = event.target.value;
+                  setAfterInput(raw);
+                  const parsed = parseChapterWindowInput(raw);
+                  if (parsed === undefined) return;
+                  patch({ visibleAfterChapter: parsed });
+                }}
+                onBlur={() => setAfterInput(chapterWindowText(values.visibleAfterChapter))}
+                placeholder="第 N 章起"
+                className="h-8 text-xs"
+              />
+            </div>
+            <div>
+              <label htmlFor="jingwei-visible-until" className="text-xs text-muted-foreground mb-1 block">退场截止章</label>
+              <Input
+                id="jingwei-visible-until"
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={untilInput}
+                onChange={(event) => {
+                  const raw = event.target.value;
+                  setUntilInput(raw);
+                  const parsed = parseChapterWindowInput(raw);
+                  if (parsed === undefined) return;
+                  patch({ visibleUntilChapter: parsed });
+                }}
+                onBlur={() => setUntilInput(chapterWindowText(values.visibleUntilChapter))}
+                placeholder="至第 M 章"
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+        </fieldset>
 
         {schemaFields.length > 0 ? (
           <div className="grid grid-cols-2 gap-3" data-testid="jingwei-entry-fields">
