@@ -1,7 +1,6 @@
 import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type {
   BuildJingweiLegacyContextInput,
-  BuildJingweiLegacyContextResult,
   JingweiContextItemType,
   JingweiContextSource,
   JingweiMode,
@@ -11,9 +10,13 @@ import type {
 import { createBookRepository } from "../repositories/book-repo.js";
 import { createStoryJingweiEntryRepository } from "../repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "../repositories/section-repo.js";
-import { composeJingweiContext, type ComposableJingweiContextItem } from "./compose-context.js";
+import {
+  composeJingweiContext,
+  type ComposableJingweiContextItem,
+  type ComposedJingweiContextResult,
+} from "./compose-context.js";
 import { resolveNestedRefs } from "./nested-resolver.js";
-import { estimateTokens } from "./token-budget.js";
+import { estimateTokens, type DroppedEntryPointer } from "./token-budget.js";
 import { getEntryReadableContent, toJingweiReadableItem } from "../read-model/entry-summary.js";
 import { resolveJingweiReadCategory, type JingweiCategory } from "../read-model/category-map.js";
 
@@ -181,7 +184,7 @@ export async function injectCharacterArcs(options: { storage: StorageDatabase; b
   });
 }
 
-export async function buildJingweiContext(input: BuildJingweiLegacyContextOptions): Promise<BuildJingweiLegacyContextResult> {
+export async function buildJingweiContext(input: BuildJingweiLegacyContextOptions): Promise<ComposedJingweiContextResult> {
   const storage = input.storage ?? getStorageDatabase();
   const book = await createBookRepository(storage).getById(input.bookId);
   if (!book) throw new Error(`Book not found: ${input.bookId}`);
@@ -203,5 +206,9 @@ export async function buildJingweiContext(input: BuildJingweiLegacyContextOption
 
 /** @deprecated 名称仅为外部兼容；实现已统一读取 story_jingwei_entry。 */
 export const buildJingweiLegacyContext = buildJingweiContext;
-export type { BuildJingweiLegacyContextOptions as BuildJingweiContextOptions };
+export type {
+  BuildJingweiLegacyContextOptions as BuildJingweiContextOptions,
+  ComposedJingweiContextResult,
+  DroppedEntryPointer,
+};
 export { estimateTokens as estimateJingweiTokens } from "./token-budget.js";

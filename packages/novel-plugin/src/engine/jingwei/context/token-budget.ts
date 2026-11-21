@@ -32,14 +32,51 @@ export function estimateTokens(text: string): number {
 }
 import type { JingweiLegacyContextItem } from "../types.js";
 
+/**
+ * 超预算裁剪后保留的极简索引指针（Harness L3）：
+ * 让模型知道该经纬条目依然存在，只是受预算限制折叠，可按需通过 `jingwei.read` 回读。
+ */
+export interface DroppedEntryPointer {
+  id: string;
+  title: string;
+  category: string;
+  snippet?: string;
+}
+
+export const MAX_DROPPED_ENTRY_POINTERS = 30;
+export const MAX_DROPPED_POINTER_SNIPPET_CHARS = 40;
+
 export interface TokenBudgetResult<TItem extends JingweiLegacyContextItem = JingweiLegacyContextItem> {
   items: TItem[];
   totalTokens: number;
   droppedIds: string[];
+  droppedPointers: DroppedEntryPointer[];
 }
 
 export interface BudgetedJingweiContextItem extends JingweiLegacyContextItem {
   updatedAt?: Date;
+  rawContent?: string;
+}
+
+function buildDroppedSnippet(item: BudgetedJingweiContextItem): string | undefined {
+  const raw = (item.rawContent ?? item.content ?? "")
+    .replace(/^【[^】]+】[^：:]*[：:]/u, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (!raw) return undefined;
+  const chars = Array.from(raw);
+  if (chars.length <= MAX_DROPPED_POINTER_SNIPPET_CHARS) return raw;
+  return `${chars.slice(0, MAX_DROPPED_POINTER_SNIPPET_CHARS - 1).join("").trimEnd()}…`;
+}
+
+function toDroppedEntryPointer(item: BudgetedJingweiContextItem): DroppedEntryPointer {
+  const snippet = buildDroppedSnippet(item);
+  return {
+    id: item.id,
+    title: item.name,
+    category: item.category ?? item.type,
+    ...(snippet ? { snippet } : {}),
+  };
 }
 
 const sourceRank: Record<JingweiLegacyContextItem["source"], number> = {
@@ -91,6 +128,7 @@ export function applyTokenBudget<TItem extends BudgetedJingweiContextItem>(
   const kept = sortByContextPriority(items);
   let totalTokens = kept.reduce((sum, item) => sum + item.estimatedTokens, 0);
   const droppedIds: string[] = [];
+  const droppedPointers: DroppedEntryPointer[] = [];
 
   for (const candidate of sortByDropPriority(kept)) {
     if (totalTokens <= tokenBudget) break;
@@ -101,11 +139,15 @@ export function applyTokenBudget<TItem extends BudgetedJingweiContextItem>(
     if (!dropped) continue;
     totalTokens -= dropped.estimatedTokens;
     droppedIds.push(dropped.id);
+    if (droppedPointers.length < MAX_DROPPED_ENTRY_POINTERS) {
+      droppedPointers.push(toDroppedEntryPointer(dropped));
+    }
   }
 
   return {
     items: kept,
     totalTokens,
     droppedIds,
+    droppedPointers,
   };
 }

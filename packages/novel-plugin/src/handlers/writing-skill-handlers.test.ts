@@ -339,4 +339,117 @@ checks:
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("Harness 两层按需加载：scope=enabled 默认只返目录摘要省 Token，显式 includeBody 或单技能查询再返完整正文", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-writing-skill-two-tier-"));
+    const home = join(root, "home");
+    const bookRoot = join(root, "book");
+    const bookId = "book-two-tier-skills";
+    const longGuide = "这是一段用于验证按需加载省 Token 的超长写作方法论正文。".repeat(80);
+    try {
+      await setupBook(bookRoot, bookId, { title: "两层加载测试" });
+      for (const idx of [1, 2]) {
+        const dir = join(bookRoot, ".novelfork", "skills", `heavy-skill-${idx}`);
+        await mkdir(dir, { recursive: true });
+        await writeFile(
+          join(dir, "SKILL.md"),
+          `---
+id: heavy-skill-${idx}
+name: 重型技能${idx}
+description: 第 ${idx} 个带长正文的技能
+kind: prose
+mode: manual
+tags: ["节奏", "镜头"]
+checks:
+  - type: forbidden-terms
+    terms: ["禁词${idx}"]
+---
+
+# 重型技能${idx}
+
+${longGuide}
+`,
+          "utf8",
+        );
+      }
+
+      // Layer 1：默认 scope=enabled 返回目录摘要，不携带完整 body / content，显著压低 payload 体积。
+      const summaryResult = await handleWritingSkillsRead({ bookId, scope: "enabled" }, { bookRoot, home });
+      expect(summaryResult.ok).toBe(true);
+      const summaryData = summaryResult.data as {
+        loadingMode: string;
+        onDemandHint?: string;
+        skills: Array<Record<string, unknown>>;
+      };
+      expect(summaryData.loadingMode).toBe("summary");
+      expect(summaryData.onDemandHint).toContain("Skill");
+      expect(summaryData.skills).toHaveLength(2);
+      for (const item of summaryData.skills) {
+        expect(item).toMatchObject({
+          kind: "prose",
+          tags: ["节奏", "镜头"],
+          checkCount: 1,
+          enabled: true,
+          projectActive: true,
+        });
+        expect(item).not.toHaveProperty("body");
+        expect(item).not.toHaveProperty("content");
+      }
+
+      // Layer 2a：显式 includeBody: true 返回完整正文。
+      const fullResult = await handleWritingSkillsRead(
+        { bookId, scope: "enabled", includeBody: true },
+        { bookRoot, home },
+      );
+      expect(fullResult.ok).toBe(true);
+      const fullData = fullResult.data as {
+        loadingMode: string;
+        skills: Array<Record<string, unknown>>;
+      };
+      expect(fullData.loadingMode).toBe("full");
+      expect(fullData.skills).toHaveLength(2);
+      for (const item of fullData.skills) {
+        expect(String(item.body ?? "")).toContain("超长写作方法论正文");
+      }
+
+      // 摘要层序列化体积应显著小于完整层。
+      const summaryBytes = JSON.stringify(summaryResult).length;
+      const fullBytes = JSON.stringify(fullResult).length;
+      expect(summaryBytes).toBeLessThan(fullBytes * 0.25);
+
+      // Layer 2b：指定单个 slug 查询时自动附带该技能的完整正文，且只返回目标技能。
+      const singleResult = await handleWritingSkillsRead(
+        { bookId, scope: "enabled", slug: "heavy-skill-1" },
+        { bookRoot, home },
+      );
+      expect(singleResult.ok).toBe(true);
+      const singleData = singleResult.data as {
+        loadingMode: string;
+        skills: Array<Record<string, unknown>>;
+      };
+      expect(singleData.loadingMode).toBe("full");
+      expect(singleData.skills).toHaveLength(1);
+      expect(singleData.skills[0]).toMatchObject({
+        id: "heavy-skill-1",
+        slug: "heavy-skill-1",
+        checkCount: 1,
+        enabled: true,
+      });
+      expect(String(singleData.skills[0]?.body ?? "")).toContain("超长写作方法论正文");
+
+      // scope=available + summaryOnly: true 也不携带 project 原始 content 与 body。
+      const availableSummary = await handleWritingSkillsRead(
+        { bookId, scope: "available", summaryOnly: true },
+        { bookRoot, home },
+      );
+      expect(availableSummary.ok).toBe(true);
+      const availableItems = (availableSummary.data as { skills: Array<Record<string, unknown>> }).skills;
+      const heavyInAvailable = availableItems.find((item) => item.slug === "heavy-skill-1");
+      expect(heavyInAvailable).toMatchObject({ slug: "heavy-skill-1", checkCount: 1, enabled: true });
+      expect(heavyInAvailable).not.toHaveProperty("body");
+      expect(heavyInAvailable).not.toHaveProperty("content");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -47,6 +47,19 @@ export interface TrustedWritingSkillOptions {
 export interface WritingSkillsReadInput {
   readonly bookId: string;
   readonly scope?: "available" | "enabled";
+  /**
+   * Harness 两层按需加载控制：
+   * - `scope: "enabled"` 默认采用目录摘要层（不返回完整正文），仅在显式传 `includeBody: true`
+   *   或通过 `slug` / `skillId` 指定单个技能时附带完整正文。
+   * - `scope: "available"` 默认保持前端管理页兼容；传入 `summaryOnly: true` 或 `includeBody: false`
+   *   时同样仅返回目录级摘要。
+   */
+  readonly includeBody?: boolean;
+  readonly summaryOnly?: boolean;
+  /** 指定单个技能（按 slug 精确匹配）；命中时默认附带完整正文。 */
+  readonly slug?: string;
+  /** 指定单个技能（按 id 精确匹配）；命中时默认附带完整正文。 */
+  readonly skillId?: string;
 }
 
 export interface WritingSkillsWriteInput {
@@ -210,6 +223,9 @@ export async function loadActiveWritingSkillsForBook(
   };
 }
 
+const ON_DEMAND_SKILL_LOAD_HINT =
+  "当前为目录级摘要；需要遵循某项技能的方法细则时，请使用 Skill 工具按技能名按需读取对应 SKILL.md，或显式传入 includeBody: true / slug 获取完整正文。";
+
 function toListItem(skill: ParsedWritingSkill, projectActive: boolean) {
   return {
     id: skill.id,
@@ -221,11 +237,19 @@ function toListItem(skill: ParsedWritingSkill, projectActive: boolean) {
     mode: skill.mode,
     entry: skill.entry ?? null,
     tags: skill.tags ?? [],
+    checkCount: skill.checks?.length ?? 0,
     version: skill.version ?? null,
     provenance: skill.provenance ?? null,
     editable: skill.source === "user",
+    enabled: projectActive,
     projectActive,
   };
+}
+
+function matchesRequestedSkill(skill: ParsedWritingSkill, targetSlug: string, targetId: string): boolean {
+  if (targetSlug && skill.slug === targetSlug) return true;
+  if (targetId && (skill.id === targetId || skill.slug === targetId)) return true;
+  return false;
 }
 
 /**
@@ -239,35 +263,75 @@ export async function handleWritingSkillsRead(
 ): Promise<HandlerResult> {
   try {
     const bookId = normalizeBookId(input.bookId);
+    const scope = input.scope ?? "available";
+    const targetSlug = asText(input.slug);
+    const targetId = asText(input.skillId);
+    const isSingleSkillLookup = Boolean(targetSlug || targetId);
+
+    // Harness 两层加载：
+    // - 显式 summaryOnly=true 或 includeBody=false 强制仅返回目录摘要；
+    // - 指定单个技能（slug/skillId）或显式 includeBody=true 返回完整正文；
+    // - scope="enabled" 批量读取默认仅返回目录摘要，避免把全部启用技能的正文一次性塞进上下文；
+    // - scope="available" 默认保持前端管理页兼容（为项目独有技能附带原始 content 供只读查看）。
+    const shouldIncludeBody = input.summaryOnly === true || input.includeBody === false
+      ? false
+      : (input.includeBody === true || isSingleSkillLookup);
+    const shouldIncludeProjectRawContent = input.summaryOnly === true || input.includeBody === false
+      ? false
+      : (scope === "available" || shouldIncludeBody);
+
     const catalog = await loadWritingSkills(options.home);
     const active = await loadActiveWritingSkillsForBook(bookId, options);
     const activeSlugs = new Set(active.projectSkillSlugs);
     const catalogSlugs = new Set(catalog.map((skill) => skill.slug));
     const projectOnly = active.skills.filter((skill) => !catalogSlugs.has(skill.slug));
     const available = [...catalog, ...projectOnly];
-    const projectContent = new Map(
-      await Promise.all(
-        active.skills
-          .filter((skill) => skill.source === "project")
-          .map(async (skill) => [skill.slug, await readProjectWritingSkillRaw(options.bookRoot, skill.slug)] as const),
-      ),
-    );
+
+    const pool = scope === "enabled" ? active.skills : available;
+    const selectedSkills = isSingleSkillLookup
+      ? pool.filter((skill) => matchesRequestedSkill(skill, targetSlug, targetId))
+      : pool;
+
+    if (isSingleSkillLookup && selectedSkills.length === 0) {
+      const requested = targetSlug || targetId;
+      return fail("writing-skill-not-found", `未找到 Writing Skill「${requested}」。`);
+    }
+
+    const projectContent = shouldIncludeProjectRawContent
+      ? new Map(
+        await Promise.all(
+          selectedSkills
+            .filter((skill) => skill.source === "project")
+            .map(async (skill) => [skill.slug, await readProjectWritingSkillRaw(options.bookRoot, skill.slug)] as const),
+        ),
+      )
+      : new Map<string, string | null>();
+
     const listItem = (skill: ParsedWritingSkill, projectActive: boolean) => ({
       ...toListItem(skill, projectActive),
       // 曾经内置、现已移出内置的第三方技能：书内副本继续生效，界面据此标明来源已移出。
       retiredFromBuiltin: !catalogSlugs.has(skill.slug) && retiredBuiltinSourceOf(skill.slug) !== null,
-      ...(projectContent.has(skill.slug) ? { content: projectContent.get(skill.slug) } : {}),
+      ...(shouldIncludeProjectRawContent && projectContent.has(skill.slug)
+        ? { content: projectContent.get(skill.slug) }
+        : {}),
+      ...(shouldIncludeBody ? { body: skill.body } : {}),
     });
 
-    if ((input.scope ?? "available") === "enabled") {
+    const loadingMode = shouldIncludeBody ? "full" : "summary";
+
+    if (scope === "enabled") {
       return {
         ok: true,
-        summary: `已加载 ${active.skills.length} 个项目目录中的生效 Writing Skills。`,
+        summary: shouldIncludeBody
+          ? `已加载 ${selectedSkills.length} 个项目目录中的生效 Writing Skills（含完整正文）。`
+          : `已列出 ${selectedSkills.length} 个项目目录中的生效 Writing Skills 目录摘要（可用 Skill 工具按需读取对应 SKILL.md）。`,
         data: {
           bookId,
           projectSkillSlugs: active.projectSkillSlugs,
           projectSkillsDirectory: ".novelfork/skills",
-          skills: active.skills.map((skill) => ({ ...listItem(skill, true), body: skill.body })),
+          loadingMode,
+          ...(shouldIncludeBody ? {} : { onDemandHint: ON_DEMAND_SKILL_LOAD_HINT }),
+          skills: selectedSkills.map((skill) => listItem(skill, true)),
           migration: active.migration,
         },
       };
@@ -275,12 +339,16 @@ export async function handleWritingSkillsRead(
 
     return {
       ok: true,
-      summary: `共 ${available.length} 个可用 Writing Skills，其中 ${active.skills.length} 个来自当前项目目录。`,
+      summary: isSingleSkillLookup
+        ? `已加载 Writing Skill「${selectedSkills[0]!.name}」。`
+        : `共 ${available.length} 个可用 Writing Skills，其中 ${active.skills.length} 个来自当前项目目录。`,
       data: {
         bookId,
         projectSkillSlugs: active.projectSkillSlugs,
         projectSkillsDirectory: ".novelfork/skills",
-        skills: available.map((skill) => listItem(skill, skill.mode === "always" || activeSlugs.has(skill.slug))),
+        loadingMode,
+        ...(shouldIncludeBody ? {} : { onDemandHint: ON_DEMAND_SKILL_LOAD_HINT }),
+        skills: selectedSkills.map((skill) => listItem(skill, skill.mode === "always" || activeSlugs.has(skill.slug))),
         migration: active.migration,
       },
     };
