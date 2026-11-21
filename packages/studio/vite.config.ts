@@ -140,6 +140,7 @@ export default defineConfig({
       "node:zlib": resolve(__dirname, "src/lib/browser-node-stubs.ts"),
       "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel": resolve(runtimePaths.frontendRoot, "components/narrator/EmbeddedNarratorDockHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/query-client": resolve(runtimePaths.frontendRoot, "lib/query-client.ts"),
+      "@vivy1024/narrafork-runtime-bridge/frontend/narrator-ws": resolve(runtimePaths.frontendRoot, "lib/narrator-ws-manager.ts"),
       "@vivy1024/narrafork-runtime-bridge/frontend/provider-settings": resolve(runtimePaths.frontendRoot, "components/providers/EmbeddedProviderSettingsHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/project-settings": resolve(runtimePaths.frontendRoot, "components/host/EmbeddedProjectSettingsHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/runtime-page": resolve(runtimePaths.frontendRoot, "components/host/EmbeddedRuntimePageHost.tsx"),

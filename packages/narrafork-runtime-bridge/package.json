@@ -27,6 +27,11 @@
       "import": "./src/frontend/query-client.ts",
       "default": "./src/frontend/query-client.ts"
     },
+    "./frontend/narrator-ws": {
+      "types": "./src/frontend/narrator-ws.ts",
+      "import": "./src/frontend/narrator-ws.ts",
+      "default": "./src/frontend/narrator-ws.ts"
+    },
     "./frontend/provider-settings": {
       "types": "./src/frontend/provider-settings.ts",
       "import": "./src/frontend/provider-settings.ts",

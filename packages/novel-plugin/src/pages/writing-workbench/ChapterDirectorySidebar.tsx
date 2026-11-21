@@ -355,6 +355,12 @@ export function ChapterDirectorySidebar({
           >
             {formatChapterCardTitle(node, chapterNumber)}
           </span>
+          {node.metadata?.liveStreaming === true ? (
+            <Badge variant="secondary" className="shrink-0 gap-1">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" />
+              执笔中
+            </Badge>
+          ) : null}
           {issueCount > 0 ? (
             <Badge variant="destructive" className="h-4 shrink-0 px-1.5 text-2xs">
               {issueCount}

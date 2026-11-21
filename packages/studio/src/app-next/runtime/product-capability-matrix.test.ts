@@ -147,6 +147,10 @@ describe("NovelFork Runtime product capability matrix", () => {
 			'from "@vivy1024/narrafork-runtime-bridge/frontend/query-client"',
 		);
 		expect(commandCacheSource).not.toContain("@frontend/");
+		const narratorWs = "@vivy1024/narrafork-runtime-bridge/frontend/narrator-ws";
+		expect(tsconfigSource).toContain(`"${narratorWs}": ["../narrafork-runtime-bridge/src/frontend/narrator-ws.ts"]`);
+		expect(viteConfigSource).toContain(`"${narratorWs}": resolve(runtimePaths.frontendRoot, "lib/narrator-ws-manager.ts")`);
+		expect(vitestConfigSource).toContain(`"${narratorWs}": resolve(__dirname, "../narrafork-runtime-private/frontend/lib/narrator-ws-manager.ts")`);
 	});
 
 	it("removes the parallel ConversationSurface implementation from Studio", async () => {

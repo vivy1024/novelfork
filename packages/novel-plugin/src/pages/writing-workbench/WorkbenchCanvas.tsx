@@ -15,7 +15,7 @@ import { fetchJson } from "@/hooks/use-api";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { useResourceAutosave } from "./use-resource-autosave";
 import { ResourceViewer } from "./resource-viewers";
-import type { SelectionCandidate } from "./resource-viewers/ChapterEditor";
+import type { LiveChapterStreamInfo, SelectionCandidate } from "./resource-viewers/ChapterEditor";
 import { useNarrativeStructure } from "./useNarrativeStructure";
 import type { MentionEntity } from "./ide/EntityMentionExtension";
 import { summarizeStyleProfile } from "./resource-viewers/style-profile-summary";
@@ -345,6 +345,7 @@ export interface WorkbenchCanvasProps {
   /** 叙述者结果卡送回的待审阅选区候选；仅在 chapterNumber 与当前章节一致时显示。 */
   selectionCandidate?: SelectionCandidate | null;
   onDismissSelectionCandidate?: () => void;
+  liveChapterStream?: LiveChapterStreamInfo | null;
   /** 点作者改动占比徽标时跳到「技能文风 › 文风金库」并展开该章。 */
   onOpenStyleVault?: (chapterNumber: number) => void;
   /** 从本章质检伴随板打开全书质检与分析大盘。 */
@@ -359,8 +360,14 @@ export interface WorkbenchCanvasProps {
 
 export type CompanionRailTab = "outline" | "memory" | "quality" | "context";
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, onOpenStyleVault, onOpenQualityDashboard, onOpenWorkflowStudio, studioCleanChrome = false, onCreateFirstChapter }: WorkbenchCanvasProps) {
-  const { resourceKey, content, dirty, saving, saveError, setContent, save: handleSave, setSaveError } = useResourceAutosave(node, bookId, onSave);
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenWriteView, onOpenJingweiEntry, onOpenEntityDetail, onOpenEntityDrawer, onPromoteOutline, onSendToNarrator, onOpenResourceNode, narratorId, selectionCandidate, onDismissSelectionCandidate, liveChapterStream, onOpenStyleVault, onOpenQualityDashboard, onOpenWorkflowStudio, studioCleanChrome = false, onCreateFirstChapter }: WorkbenchCanvasProps) {
+  const chapterStream = node?.kind === "chapter" && liveChapterStream?.chapterNumber === node.metadata?.chapterNumber ? liveChapterStream : null;
+  const isLiveWrite = chapterStream?.toolName === "Write";
+  // 暂停本章的手动保存和待执行的自动保存，不把流式正文送进草稿/保存状态。
+  const saveNode = useMemo(() => node && isLiveWrite
+    ? { ...node, capabilities: { ...node.capabilities, readonly: true, edit: false } }
+    : node, [node, isLiveWrite]);
+  const { resourceKey, content, dirty, saving, saveError, setContent, save: handleSave, setSaveError } = useResourceAutosave(saveNode, bookId, onSave);
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -690,7 +697,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
     );
   }
 
-  const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
+  const readonly = isLiveWrite || node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
   const needsHydration = resourceNeedsDetailHydration(node);
   const hydrateError = typeof node.metadata?.detailError === "string" ? node.metadata.detailError : null;
 
@@ -907,6 +914,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             <ResourceViewer key={resourceKey} node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} styleProfileSummary={styleProfileSummary} mentionEntities={mentionEntities} onOpenEntity={onOpenEntityDetail} onContentChange={setContent}
               selectionCandidate={typeof node.metadata?.chapterNumber === "number" && selectionCandidate?.chapterNumber === node.metadata.chapterNumber ? selectionCandidate : null}
               onDismissSelectionCandidate={onDismissSelectionCandidate}
+              liveChapterStream={chapterStream}
               studioCleanChrome={studioCleanChrome}
               companionMode={showContextRail ? (contextRailOpen ? contextRailTab : "closed") : undefined}
               onCompanionModeChange={showContextRail ? (nextMode) => {
@@ -1098,7 +1106,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             chapterNumber={node.metadata.chapterNumber}
             content={content}
             {...(onSendToNarrator
-              ? { onAskResettle: () => { void onSendToNarrator(`请对第 ${node.metadata?.chapterNumber} 章重新执行 ${toWireToolName("memory.settle_chapter")}（force=true），正文已修改需要刷新叙事记忆。`); } }
+              ? { onAskResettle: () => { void onSendToNarrator(`请对第 ${node.metadata?.chapterNumber} 章重新执行 ${toWireToolName("memory.settle")}（action=chapter，force=true），正文已修改需要刷新叙事记忆。`); } }
               : {})}
           />
         </Suspense>

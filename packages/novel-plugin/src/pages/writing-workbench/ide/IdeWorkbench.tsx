@@ -21,7 +21,7 @@ import { createLoreTreesNode, createMemoryCenterNode, createStoryProgressionNode
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
 import { groupEntriesByCategory, memoryFactLabel, workspaceForCategory } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
-import type { SelectionCandidate } from "../resource-viewers/ChapterEditor";
+import type { LiveChapterStreamInfo, SelectionCandidate } from "../resource-viewers/ChapterEditor";
 import type { JingweiEntrySavePayload } from "../JingweiEntryEditor";
 import { EditorTabs } from "./EditorTabs";
 import { useIdeTabs, type TabKind, type TabView } from "./use-ide-tabs";
@@ -237,6 +237,7 @@ export interface IdeWorkbenchProps {
   /** 叙述者结果卡送回的选区改写候选；经 Canvas 传给候选章打开的编辑器。 */
   selectionCandidate?: SelectionCandidate | null;
   onDismissSelectionCandidate?: () => void;
+  liveChapterStream?: LiveChapterStreamInfo | null;
   /** v6 书房单栏模式：拆除内层 64px ActivityBar，与外层唯一书房侧栏的 6 大创作分区直接联动。 */
   studioUnifiedSidebar?: boolean;
   activeZone?: StudioWorkbenchZone;
@@ -267,7 +268,7 @@ export function loadedFileKey(bookId: string | undefined, nodeId: string): strin
   return `${bookId ?? "global"}:${nodeId}`;
 }
 
-/** 从文件树采集 chapters/ 下的附注/作者说/章节说文件（已与正文章号章节隔离）。 */
+/** 从文件树采集 chapters/ 下的附注/作者说/章节说文件（已与正文章号章节隔离，排除 index.json 等元数据文件）。 */
 function collectChapterNoteNodes(
   nodes: readonly WorkbenchResourceNode[],
   withinChapters = false,
@@ -277,7 +278,10 @@ function collectChapterNoteNodes(
     const path = filePathOf(node);
     const inChapters = withinChapters || path === "chapters" || path.startsWith("chapters/");
     if (inChapters && node.kind === "file" && !node.metadata?.isDirectory) {
-      result.push(node);
+      const fileName = (path.split("/").pop() ?? node.title).toLowerCase();
+      if (/\.(?:md|txt)$/u.test(fileName) && !fileName.startsWith(".")) {
+        result.push(node);
+      }
     }
     if (node.children) {
       result.push(...collectChapterNoteNodes(node.children, inChapters));
@@ -389,6 +393,7 @@ export function IdeWorkbench({
   runtimeFetch,
   selectionCandidate,
   onDismissSelectionCandidate,
+  liveChapterStream,
   studioUnifiedSidebar = false,
   activeZone,
   onZoneChange,
@@ -829,27 +834,25 @@ export function IdeWorkbench({
     return () => abortFileReads();
   }, [abortFileReads, bookId]);
 
-  const activeNode = useMemo(() => {
-    if (!ideTabs.activeTabId) return null;
-    return loadedFiles.get(loadedFileKey(bookId, ideTabs.activeTabId)) ?? resourceMap.get(ideTabs.activeTabId) ?? null;
-  }, [bookId, ideTabs.activeTabId, resourceMap, loadedFiles]);
-
-  // 分屏节点解析
-  const splitNode = useMemo(() => {
-    if (!splitNodeId) return null;
-    return loadedFiles.get(loadedFileKey(bookId, splitNodeId)) ?? resourceMap.get(splitNodeId) ?? null;
-  }, [bookId, splitNodeId, resourceMap, loadedFiles]);
+  const resolveTabNode = useCallback((id: string) => {
+    const node = resourceMap.get(id);
+    // Runtime 工作区刷新给出了已对账的正式正文，不能让早先的文件读取缓存覆盖它。
+    if (runtimeProductMode && node?.kind === "chapter" && id.startsWith("chapter:") && typeof node.content === "string") return node;
+    return loadedFiles.get(loadedFileKey(bookId, id)) ?? node ?? null;
+  }, [bookId, loadedFiles, resourceMap, runtimeProductMode]);
+  const activeNode = ideTabs.activeTabId ? resolveTabNode(ideTabs.activeTabId) : null;
+  const splitNode = splitNodeId ? resolveTabNode(splitNodeId) : null;
 
   // 多实例条件渲染：收集所有需要保持 mount 的 Tab 节点
   const multiTabNodes = useMemo(() => {
     return ideTabs.tabs
       .map(tab => {
-        const node = loadedFiles.get(loadedFileKey(bookId, tab.id)) ?? resourceMap.get(tab.id) ?? null;
+        const node = resolveTabNode(tab.id);
         if (!node) return null;
         return { tabId: tab.id, node };
       })
       .filter((x): x is { tabId: string; node: WorkbenchResourceNode } => x !== null);
-  }, [bookId, ideTabs.tabs, resourceMap, loadedFiles]);
+  }, [ideTabs.tabs, resolveTabNode]);
 
   // 章节文件对账：叙述者的通用写工具、Runtime 编辑器、外部编辑器改过的章节，服务端补做附带动作后
   // 这里刷新面板；已打开且没有未保存修改的章节读到新正文后原地替换，有未保存修改的只提示，不覆盖作者的输入。
@@ -995,6 +998,13 @@ export function IdeWorkbench({
         setSidebarVisible(true);
       }
     };
+    // Write 刚提取路径时文件还不存在，不能等文件读取后才打开流式稿纸。
+    if (node.kind === "chapter" && node.metadata?.livePreview === true) {
+      setWriteCenterMode("draft");
+      revealTab("chapter", studioUnifiedSidebar ? "resources" : activeViewRef.current);
+      onOpen(node);
+      return;
+    }
     // 文件树节点：先加载内容
     if (node.metadata?.isFile && bookId && typeof node.metadata.filePath === "string") {
       const filePath = node.metadata.filePath;
@@ -1058,7 +1068,7 @@ export function IdeWorkbench({
     // 章节同上：留在点开它的工作区（资源树里的章节点开时当前视图本就是资源，行为不变）。
     if (node.capabilities.open) revealTab(toTabKind(node), node.kind === "chapter" ? activeViewRef.current : toTabView(node));
     onOpen(node);
-  }, [onOpen, bookId, showPanel, resourceMap, runtimeFetch]);
+  }, [onOpen, bookId, showPanel, resourceMap, runtimeFetch, studioUnifiedSidebar]);
 
   // 不看 selectedNode：它在后台刷新、保存后都会换成新对象，据它重开会把侧栏拽回资源所在视图。
   const handledOpenRequestRef = useRef<number | null>(null);
@@ -1311,7 +1321,7 @@ export function IdeWorkbench({
     });
     switch (tool) {
       // 只读查询走 HTTP；任何写入都必须经叙述者与 Runtime 权限确认。
-      case "write.preflight":
+      case "chapter.preflight":
         return post("/write/preflight", input);
       // 卷驾驶舱只读当前卷上下文：复用写作就绪路由的 outline.volume(action=get)，
       // 不新造 fetch 封装，也不在前端拼装书籍路径或 narrator 标识。
@@ -1515,7 +1525,7 @@ export function IdeWorkbench({
     // 导入是写操作：交给叙述者执行，保留 Runtime 的权限确认；没有叙述者会话时明说而不静默。
     openImportWizard: onSendToNarrator
       ? () => { void onSendToNarrator(
-        `我要导入一本已有的旧书继续写。请先问我要导入的文本或文件，然后用 ${toWireToolName("pipeline.import_chapters")}（autoSettle+extractBrief）导入；拆书产物先留在 needs-review，等我确认再入 canon。`,
+        `我要导入一本已有的旧书继续写。请先问我要导入的文本或文件，然后用 ${toWireToolName("book.import")}（action=import_chapters，autoSettle=true，extractBrief=true）导入；拆书产物先留在 needs-review，等我确认再入 canon。`,
       ); }
       : () => { void alertDialog({ title: "导入旧书", description: "先在对话里开启叙述者会话，再导入旧书。" }); },
     sendToNarrator: (message: string) => { void onSendToNarrator?.(message); },
@@ -2076,8 +2086,22 @@ export function IdeWorkbench({
   const pureChapterNodes = useMemo(() => {
     const fromFileTree = collectChapterTreeNodes(fileTree.nodes);
     const fromWorkspace = collectChapterTreeNodes(nodes);
-    return fromFileTree.length > 0 ? fromFileTree : fromWorkspace;
-  }, [nodes, fileTree.nodes]);
+    if (!runtimeProductMode) return fromFileTree.length > 0 ? fromFileTree : fromWorkspace;
+    // Studio 正文章节目录按章号合并两个来源。正式/虚拟节点取工作区身份，文件树缓存迟到也不会出现双份或闪空。
+    const chapters = new Map<number | string, WorkbenchResourceNode>();
+    const collect = (items: readonly WorkbenchResourceNode[]) => {
+      for (const item of items) {
+        if (item.kind === "chapter") {
+          const number = item.metadata?.chapterNumber;
+          chapters.set(typeof number === "number" ? number : item.id, item);
+        }
+        if (item.children) collect(item.children);
+      }
+    };
+    collect(fromFileTree);
+    collect(fromWorkspace);
+    return [...chapters.values()];
+  }, [nodes, fileTree.nodes, runtimeProductMode]);
 
   const chapterNoteNodes = useMemo(
     () => collectChapterNoteNodes(fileTree.nodes),
@@ -2211,6 +2235,7 @@ export function IdeWorkbench({
       {...(activeSessionId ? { narratorId: activeSessionId } : {})}
       selectionCandidate={selectionCandidate}
       onDismissSelectionCandidate={onDismissSelectionCandidate}
+      liveChapterStream={liveChapterStream}
       studioCleanChrome={studioUnifiedSidebar}
       {...(bookId ? { onCreateFirstChapter: () => void handleQuickCreateChapter() } : {})}
       onPromoteOutline={(outlineNode) => {
@@ -2316,9 +2341,9 @@ export function IdeWorkbench({
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
-            {/* 三套书房和纸主题一键切换（对齐 GenUI v6 顶栏） */}
+            {/* 五套书房风格主题一键切换（联动色彩、字体、圆角、材质与侧栏搭配） */}
             <div
-              className="inline-flex items-center rounded-md border border-border bg-muted/45 p-0.5 text-2xs"
+              className="inline-flex items-center rounded-[var(--nf-control-radius,var(--radius-md))] border border-border bg-muted/45 p-0.5 text-2xs"
               role="radiogroup"
               aria-label="书房和纸主题"
               data-testid="studio-style-theme-switcher"
@@ -2331,9 +2356,9 @@ export function IdeWorkbench({
                     type="button"
                     role="radio"
                     aria-checked={active}
-                    title={meta.description}
+                    title={`${meta.label} · ${meta.tag}：${meta.description}`}
                     onClick={() => setStyleTheme(meta.id)}
-                    className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                    className={`rounded-[var(--radius-sm)] px-1.5 py-0.5 font-medium whitespace-nowrap transition-colors ${
                       active
                         ? "bg-primary text-primary-foreground shadow-2xs"
                         : "text-muted-foreground hover:text-foreground"
@@ -2779,6 +2804,7 @@ export function IdeWorkbench({
                               {...(activeSessionId ? { narratorId: activeSessionId } : {})}
                               selectionCandidate={selectionCandidate}
                               onDismissSelectionCandidate={onDismissSelectionCandidate}
+                              liveChapterStream={liveChapterStream}
                               onOpenResourceNode={handleOpen}
                               studioCleanChrome={studioUnifiedSidebar}
                               {...(bookId ? { onCreateFirstChapter: () => void handleQuickCreateChapter() } : {})}
@@ -2841,6 +2867,7 @@ export function IdeWorkbench({
                         {...(activeSessionId ? { narratorId: activeSessionId } : {})}
                         selectionCandidate={selectionCandidate}
                         onDismissSelectionCandidate={onDismissSelectionCandidate}
+                        liveChapterStream={liveChapterStream}
                         onOpenResourceNode={handleOpen}
                         onPromoteOutline={(outlineNode) => {
                           void handleResourceAction({ type: "promote-outline", node: outlineNode });

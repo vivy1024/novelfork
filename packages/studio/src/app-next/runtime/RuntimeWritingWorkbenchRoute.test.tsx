@@ -2,16 +2,20 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeNarratorSummary } from "./product-contract";
+import type { RuntimeNarratorSummary, RuntimeWorkspaceResource } from "./product-contract";
+import type { LiveChapterStreamState } from "./use-chapter-live-stream";
 import type { WorkbenchResourceNode } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 const mocks = vi.hoisted(() => ({
+  addListener: vi.fn((_options: unknown, _receive: (frame: unknown) => void) => ({ _id: 1 })),
+  removeListener: vi.fn(),
   mountProps: [] as Array<{ bookId: string; narrator: RuntimeNarratorSummary; compact?: boolean; onOpenArtifact?: (artifact: { kind: string; id: string; [key: string]: unknown }) => void }>,
   workbenchProps: [] as Array<{
     bookId?: string;
-    nodes: unknown[];
-    selectedNode?: { id: string } | null;
-    openRequest?: { bookId: string; node: { id: string }; seq: number } | null;
+    nodes: WorkbenchResourceNode[];
+    selectedNode?: WorkbenchResourceNode | null;
+    openRequest?: { bookId: string; node: WorkbenchResourceNode; seq: number } | null;
+    liveChapterStream?: LiveChapterStreamState | null;
     focusRequest?: { bookId: string; tab: string; seq: number } | null;
     chatSlot?: ReactNode;
     bookSessions?: readonly { id: string; title: string; updatedAt?: string }[];
@@ -23,6 +27,10 @@ const mocks = vi.hoisted(() => ({
     selectionCandidate?: { requestId: string; chapterNumber: number } | null;
     onDismissSelectionCandidate?: () => void;
   }>,
+}));
+
+vi.mock("@vivy1024/narrafork-runtime-bridge/frontend/narrator-ws", () => ({
+  narratorWSManager: { addListener: mocks.addListener, removeListener: mocks.removeListener },
 }));
 
 vi.mock("./RuntimeNarratorPanelMount", () => ({
@@ -47,7 +55,7 @@ vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide", async ()
   },
 }));
 
-import { artifactResourceId, mapRuntimeWorkspaceToWorkbenchNodes, parseSelectionCandidate, RuntimeWritingWorkbenchRoute } from "./RuntimeWritingWorkbenchRoute";
+import { artifactResourceId, findWorkbenchNode, mapRuntimeWorkspaceToWorkbenchNodes, parseSelectionCandidate, RuntimeWritingWorkbenchRoute } from "./RuntimeWritingWorkbenchRoute";
 
 const narrator: RuntimeNarratorSummary = {
   id: "narrator-1",
@@ -71,6 +79,69 @@ afterEach(() => {
 });
 
 describe("RuntimeWritingWorkbenchRoute", () => {
+  it("Write 提前打开虚拟章节，只在静默刷新后切换到正式正文", async () => {
+    const book = { id: "book-1", title: "测试书", capabilities: { read: true } };
+    const client = {
+      getWorkspace: vi.fn(async () => ({ book, resources: [] as RuntimeWorkspaceResource[], capabilities: { read: true } })),
+      listNarrators: vi.fn(async () => [{ ...narrator, cwd: "D:/books/book-1" }]),
+    };
+    const onZoneChange = vi.fn();
+    render(<RuntimeWritingWorkbenchRoute bookId={book.id} activeZone="outline" onZoneChange={onZoneChange}
+      onCanvasContextChange={vi.fn()} onNavigateToConversation={vi.fn()} client={client as never} />);
+    await screen.findByTestId("ide-workbench-mock");
+    const receive = mocks.addListener.mock.calls[0]![1];
+    const start = { type: "tool_use_chunk", narratorId: narrator.id, toolUseId: "write-12", toolName: "Write" };
+    const path = "chapters/卷一/0012_初雪.md";
+    act(() => receive({ ...start, extractedFilePath: `D:/books/book-1/${path}` }));
+    const opened = mocks.workbenchProps.at(-1)!;
+    expect(opened.openRequest?.node).toMatchObject({ id: "chapter:12", title: "初雪", path, metadata: { livePreview: true, liveStreaming: true } });
+    expect(onZoneChange).toHaveBeenCalledExactlyOnceWith("write");
+    act(() => receive({ ...start, streamingField: { name: "content", delta: "雪落无声" } }));
+    expect(mocks.workbenchProps.at(-1)?.openRequest).toBe(opened.openRequest);
+    expect(mocks.workbenchProps.at(-1)?.liveChapterStream?.content).toBe("雪落无声");
+
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    client.getWorkspace.mockImplementationOnce(async () => {
+      await pending;
+      return { book, capabilities: { read: true }, resources: [{ id: "chapter:12", kind: "chapter", title: "初雪", path,
+        content: "落盘正文", capabilities: { read: true, update: true } }] };
+    });
+    act(() => receive({ ...start, type: "tool_completed" }));
+    expect(mocks.workbenchProps.at(-1)?.liveChapterStream).toMatchObject({ status: "completing" });
+    expect(await screen.findByTestId("ide-workbench-mock")).toBeTruthy();
+    await act(async () => { finish(); });
+    const refreshed = mocks.workbenchProps.at(-1)!;
+    expect(refreshed.liveChapterStream).toBeNull();
+    expect(findWorkbenchNode(refreshed.nodes, "chapter:12")).toMatchObject({ content: "落盘正文", capabilities: { edit: true } });
+    expect(findWorkbenchNode(refreshed.nodes, "chapter:12")?.metadata?.liveStreaming).toBeUndefined();
+    expect(client.getWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it("Edit 提示精修并选中已有章，不把替换片段注入正文；reset 后刷新", async () => {
+    const book = { id: "book-1", title: "测试书", capabilities: { read: true } };
+    const path = "chapters/0007_归来.md";
+    const chapter = { id: "chapter:7", kind: "chapter" as const, title: "归来", content: "原正文", path, capabilities: { read: true, update: true } };
+    const client = {
+      getWorkspace: vi.fn(async () => ({ book, resources: [chapter], capabilities: { read: true } })),
+      listNarrators: vi.fn(async () => [narrator]),
+    };
+    render(<RuntimeWritingWorkbenchRoute bookId={book.id} onCanvasContextChange={vi.fn()} onNavigateToConversation={vi.fn()} client={client as never} />);
+    await screen.findByTestId("ide-workbench-mock");
+    const receive = mocks.addListener.mock.calls[0]![1];
+    act(() => receive({ type: "tool_use_chunk", narratorId: narrator.id, toolUseId: "edit-7", toolName: "Edit", extractedFilePath: path,
+      streamingField: { name: "new_string", delta: "替换片段" } }));
+    const editing = mocks.workbenchProps.at(-1)!;
+    expect(editing.openRequest?.node).toMatchObject({ id: "chapter:7", content: "原正文", metadata: { liveStreaming: true } });
+    expect(editing.liveChapterStream).toMatchObject({ toolName: "Edit", content: "" });
+    client.getWorkspace.mockResolvedValueOnce({ book, resources: [{ ...chapter, content: "精修后正文" }], capabilities: { read: true } });
+    await act(async () => receive({ type: "streaming_reset", narratorId: narrator.id }));
+    const refreshed = mocks.workbenchProps.at(-1)!;
+    expect(refreshed.liveChapterStream).toBeNull();
+    expect(findWorkbenchNode(refreshed.nodes, chapter.id)?.content).toBe("精修后正文");
+    expect(client.getWorkspace).toHaveBeenCalledTimes(2);
+  });
+
   it("文件树章节按真实路径映射到正式资源 ID，保存不使用 UI ID 或猜测章号", async () => {
     const resource = { id: "chapter:7", kind: "chapter", title: "归来", content: "原正文", path: "chapters/卷01/自定义文件.md",
       capabilities: { read: true, update: true } };

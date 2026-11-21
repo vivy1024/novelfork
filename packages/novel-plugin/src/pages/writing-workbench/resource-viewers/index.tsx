@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
-import { ChapterEditor, type SelectionCandidate } from "./ChapterEditor";
+import { ChapterEditor, type LiveChapterStreamInfo, type SelectionCandidate } from "./ChapterEditor";
 import type { MentionEntity } from "../ide/EntityMentionExtension";
 
-export type { SelectionCandidate, SelectionRequest, SelectionAction } from "./ChapterEditor";
+export type { LiveChapterStreamInfo, SelectionCandidate, SelectionRequest, SelectionAction } from "./ChapterEditor";
 import { getImageRawUrl, isImageResourceNode } from "./image-resource";
 import { submitNarrativeLineChange } from "../narrative-line-proposals";
 import { memoryFactLabel } from "../lore-workspace-split";
@@ -47,6 +47,7 @@ export interface ResourceViewerRenderOptions {
   /** 叙述者结果卡送回的待审阅选区候选；作者在编辑器里决定应用或放弃。 */
   selectionCandidate?: SelectionCandidate | null;
   onDismissSelectionCandidate?: () => void;
+  liveChapterStream?: LiveChapterStreamInfo | null;
   /** 书房纯净外观：章节正文省去外层工程路径头，并透传伴随画板切换器。 */
   studioCleanChrome?: boolean;
   companionMode?: "outline" | "memory" | "quality" | "context" | "closed";
@@ -120,6 +121,7 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
       onOpenEntity={options.onOpenEntity}
       selectionCandidate={options.selectionCandidate}
       onDismissSelectionCandidate={options.onDismissSelectionCandidate}
+      liveChapterStream={options.liveChapterStream}
       companionMode={options.companionMode}
       onCompanionModeChange={options.onCompanionModeChange}
     />
@@ -908,6 +910,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate, studioCleanChrome, companionMode, onCompanionModeChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"]; styleProfileSummary?: string; mentionEntities?: readonly MentionEntity[]; onOpenEntity?: (name: string) => void; selectionCandidate?: SelectionCandidate | null; onDismissSelectionCandidate?: () => void; studioCleanChrome?: boolean; companionMode?: "outline" | "memory" | "quality" | "context" | "closed"; onCompanionModeChange?: (mode: "outline" | "memory" | "quality" | "context" | "closed") => void }) {
-  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator, styleProfileSummary, mentionEntities, onOpenEntity, selectionCandidate, onDismissSelectionCandidate, studioCleanChrome, companionMode, onCompanionModeChange })}</>;
+export function ResourceViewer({ node, ...options }: ResourceViewerRenderOptions & { node: WorkbenchResourceNode }) {
+  return <>{getResourceViewer(node).render(node, options)}</>;
 }

@@ -517,8 +517,17 @@ function countWords(text: string, language: LengthLanguage): number {
 // ChapterEditor 组件
 // ---------------------------------------------------------------------------
 
+export interface LiveChapterStreamInfo {
+  readonly chapterNumber: number;
+  readonly title: string;
+  readonly toolName: "Write" | "Edit";
+  readonly content: string;
+  readonly status: "streaming" | "completing";
+}
+
 interface ChapterEditorProps {
   content: string;
+  liveChapterStream?: LiveChapterStreamInfo | null;
   readonly?: boolean;
   onContentChange?: (content: string) => void;
   placeholder?: string;
@@ -555,7 +564,8 @@ interface ChapterEditorProps {
 
 export function ChapterEditor({
   content,
-  readonly,
+  readonly: resourceReadonly,
+  liveChapterStream,
   onContentChange,
   placeholder,
   ariaLabel = "章节正文",
@@ -573,6 +583,20 @@ export function ChapterEditor({
   companionMode,
   onCompanionModeChange,
 }: ChapterEditorProps) {
+  const activeStream = liveChapterStream?.chapterNumber === chapterNumber ? liveChapterStream : null;
+  const writePreview = activeStream?.toolName === "Write" ? activeStream.content : null;
+  const isLiveWrite = writePreview !== null;
+  const readonly = resourceReadonly || isLiveWrite;
+  const streamScrollerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (writePreview === null) return;
+    const viewport = streamScrollerRef.current;
+    if (viewport && viewport.scrollHeight > viewport.clientHeight) {
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: reduceMotion ? "instant" : "smooth" });
+    }
+  }, [writePreview]);
+
   const [wordCount, setWordCount] = useState(0);
   const [paperMode, setPaperMode] = useState<PaperMode>(loadPaperMode);
   const paperLines = paperMode !== "none";
@@ -707,7 +731,7 @@ export function ChapterEditor({
       },
     },
     onUpdate: ({ editor: ed, transaction }) => {
-      if (isExternalUpdate.current) return;
+      if (isExternalUpdate.current || isLiveWrite) return;
 
       // Update word count and surface content changes immediately so the
       // containing canvas can mark the resource dirty without waiting for an
@@ -909,6 +933,21 @@ export function ChapterEditor({
 .chapter-editor[data-paper-mode="grid"] .chapter-editor__content .tiptap { background-image: linear-gradient(to right, color-mix(in srgb, var(--nf-grid, var(--border)) 72%, transparent) 1px, transparent 1px), repeating-linear-gradient(to bottom, transparent 0, transparent calc(2rem - 1px), var(--nf-grid, color-mix(in srgb, var(--border) 65%, transparent)) calc(2rem - 1px), var(--nf-grid, color-mix(in srgb, var(--border) 65%, transparent)) 2rem); background-size: 1.5rem 2rem, 100% 2rem; }
 .chapter-editor[data-mobile-width="true"] .chapter-editor__content { max-width: 380px; padding-inline: 16px; border-radius: 14px; border-color: var(--primary); }
 .chapter-editor[data-reading="true"] .tiptap { caret-color: transparent; }`}</style>
+      {activeStream ? (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-primary/10 px-4 py-2 text-xs text-primary">
+          <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-current motion-safe:animate-pulse" />
+          <span role="status">
+            {isLiveWrite
+              ? activeStream.status === "completing"
+                ? `正在同步第 ${chapterNumber} 章，稍后恢复编辑…`
+                : `叙述者正在流式执笔第 ${chapterNumber} 章`
+              : `叙述者正在局部精修第 ${chapterNumber} 章，完成后自动刷新…`}
+          </span>
+          {writePreview !== null ? (
+            <span className="tabular-nums">· {countWords(writePreview, language)} {language === "en" ? "words" : "字"}</span>
+          ) : null}
+        </div>
+      ) : null}
       {showPaperBar && <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-card/85 px-3 py-1.5 text-xs text-muted-foreground" role="toolbar" aria-label="码字工具条">
         <BubbleButton disabled={readonly || reading} onClick={formatChapter}>一键排版</BubbleButton>
         <BubbleButton disabled={readonly || reading} onClick={() => editor.chain().focus().setHorizontalRule().run()}>插入分隔线</BubbleButton>
@@ -1169,18 +1208,26 @@ export function ChapterEditor({
           setActiveAuditPopup({ highlight: match, top, left });
         }}
       >
-        <div ref={editorRef} className="chapter-editor-wrapper flex-1 min-h-0 overflow-y-auto">
+        {/* 流式稿只占据稿纸视图，不写入 TipTap 文档、撤销历史或作者草稿。 */}
+        <div ref={editorRef} hidden={isLiveWrite} className="chapter-editor-wrapper flex-1 min-h-0 overflow-y-auto">
           <EditorContent editor={editor} className="chapter-editor__content" />
         </div>
+        {writePreview !== null ? (
+          <div ref={streamScrollerRef} className="chapter-editor-wrapper min-w-0 flex-1 overflow-y-auto">
+            <div className="chapter-editor__content">
+              <div role="textbox" aria-label={ariaLabel} aria-multiline="true" aria-readonly="true" tabIndex={0} className="tiptap whitespace-pre-wrap break-words focus-visible:ring-1 focus-visible:ring-ring">{writePreview}</div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Task B: Minimap */}
-        {showMinimap && editor && (
+        {!isLiveWrite && showMinimap && editor && (
           <EditorMinimap editor={editor} scrollContainerRef={editorRef} />
         )}
       </div>
 
       {/* Floating search bar */}
-      {searchMode && (
+      {!isLiveWrite && searchMode && (
         <SearchBar editor={editor} mode={searchMode} onClose={handleCloseSearch} />
       )}
 

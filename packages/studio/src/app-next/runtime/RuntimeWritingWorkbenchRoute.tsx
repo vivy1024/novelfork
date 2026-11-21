@@ -12,7 +12,7 @@ import type {
   WorkbenchCanvasContext,
   WorkbenchResourceNode,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
-import { WRITING_PROGRESS_EVENT, writingProgressBookId } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/writing-progress-event";
+import { dispatchWritingProgress, WRITING_PROGRESS_EVENT, writingProgressBookId } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/writing-progress-event";
 
 import { runtimeJson } from "./auth";
 import {
@@ -25,6 +25,9 @@ import type { ToolResultArtifact } from "../tool-results/types";
 import { RuntimeNarratorPanelMount } from "./RuntimeNarratorPanelMount";
 import { RuntimeProjectSettingsMount } from "./RuntimeProjectSettingsMount";
 import { useWorkbenchNavigationGuard } from "./use-workbench-navigation-guard";
+import { useChapterLiveStream, type LiveChapterStreamState } from "./use-chapter-live-stream";
+
+const LIVE_CHAPTER_REFRESH_REASON = "narrator-chapter-write";
 
 export interface RuntimeWritingWorkbenchRouteProps {
   readonly bookId: string;
@@ -243,6 +246,40 @@ function replaceNode(nodes: readonly WorkbenchResourceNode[], replacement: Workb
     if (node.id === replacement.id) return replacement;
     return node.children?.length ? { ...node, children: replaceNode(node.children, replacement) } : node;
   });
+}
+
+function liveChapterPath(filePath: string, bookRoot: string | null | undefined): string {
+  const path = filePath.replaceAll("\\", "/").replace(/\/+/gu, "/");
+  // 上游已使用 bookRoot 验证绝对路径属于本书；树节点只用工作区相对路径。
+  if (bookRoot && /^(?:[a-z]:\/|\/)/iu.test(path)) {
+    const root = bookRoot.replaceAll("\\", "/").replace(/\/+/gu, "/").replace(/\/$/u, "");
+    return path.slice(root.length + 1);
+  }
+  return path.replace(/^\.\//u, "");
+}
+
+function overlayLiveChapter(
+  nodes: WorkbenchResourceNode[], bookId: string, chapterNumber: number, title: string, path: string, liveStreaming: boolean,
+): { nodes: WorkbenchResourceNode[]; node: WorkbenchResourceNode } {
+  const id = `chapter:${chapterNumber}`;
+  const existing = findWorkbenchNode(nodes, id);
+  const liveMetadata = { chapterNumber, liveStreaming, livePreview: true, isChapter: true };
+  if (existing) {
+    const node = { ...existing, metadata: { ...existing.metadata, ...liveMetadata } };
+    return { nodes: replaceNode(nodes, node), node };
+  }
+  const node: WorkbenchResourceNode = {
+    id, kind: "chapter", title, path, content: "",
+    metadata: { bookId, filePath: path, detailSource: "detail", ...liveMetadata },
+    capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+  };
+  const parent = findWorkbenchNode(nodes, `file-dir:${path.slice(0, path.lastIndexOf("/"))}`)
+    ?? findWorkbenchNode(nodes, "file-dir:chapters")
+    ?? findWorkbenchNode(nodes, `book:${bookId}`);
+  return {
+    nodes: parent ? replaceNode(nodes, { ...parent, children: [...(parent.children ?? []), node] }) : [...nodes, node],
+    node,
+  };
 }
 
 /** 文件树的 file:… 是界面身份；保存必须匹配服务端工作区返回的正式章节身份。 */
@@ -468,6 +505,7 @@ export function RuntimeWritingWorkbenchRoute({
 
   useEffect(() => {
     const handler = (event: Event) => {
+      if ((event as CustomEvent<{ reason?: string }>).detail?.reason === LIVE_CHAPTER_REFRESH_REASON) return;
       const eventBookId = writingProgressBookId(event);
       if (eventBookId && eventBookId !== bookId) return;
       void reload({ silent: true });
@@ -539,6 +577,52 @@ export function RuntimeWritingWorkbenchRoute({
   }, [bookId, client, creatingSession, onChanged]);
 
   const activeNarrator = narrators.find((candidate) => candidate.id === activeNarratorId) ?? null;
+  const boundNarrator = activeNarrator?.bookId === bookId && activeNarrator.capabilities.read ? activeNarrator : null;
+  const bookRoot = boundNarrator?.cwd;
+  const narratorId = boundNarrator?.id;
+  const liveStreamRef = useRef<LiveChapterStreamState | null>(null);
+  const [finishingWrite, setFinishingWrite] = useState<{ narratorId: string; stream: LiveChapterStreamState } | null>(null);
+  const handleChapterWriteCompleted = useCallback((chapterNumber: number) => {
+    const previous = liveStreamRef.current;
+    // 新章还没出现在工作区快照时，保留当前视图直到刷新完成，避免标签闪回空白画布。
+    const finishing = narratorId && previous?.bookId === bookId && previous.chapterNumber === chapterNumber
+      ? { narratorId, stream: { ...previous, status: "completing" as const } }
+      : null;
+    if (finishing) setFinishingWrite(finishing);
+    void reload({ silent: true }).then((next) => {
+      if (next && currentBookIdRef.current === bookId) {
+        // reload 在服务端完成章节对账，再通知独立的文件树缓存和伴随面板刷新。
+        dispatchWritingProgress({ bookId, reason: LIVE_CHAPTER_REFRESH_REASON });
+      }
+    }).finally(() => {
+      if (finishing) setFinishingWrite((current) => current === finishing ? null : current);
+    });
+  }, [bookId, narratorId, reload]);
+  const liveStream = useChapterLiveStream({ bookId, narratorId, bookRoot, onChapterWriteCompleted: handleChapterWriteCompleted });
+  liveStreamRef.current = liveStream;
+  const liveChapterStream = liveStream ?? (
+    finishingWrite && finishingWrite.narratorId === narratorId && finishingWrite.stream.bookId === bookId ? finishingWrite.stream : null
+  );
+  const liveChapterNumber = liveChapterStream?.chapterNumber;
+  const liveChapterTitle = liveChapterStream?.title;
+  const liveFilePath = liveChapterStream?.filePath;
+  const isStreaming = liveStream !== null;
+  const liveOverlay = useMemo(() => liveChapterNumber !== undefined && liveChapterTitle && liveFilePath
+    ? overlayLiveChapter(nodes, bookId, liveChapterNumber, liveChapterTitle, liveChapterPath(liveFilePath, bookRoot), isStreaming)
+    : null, [nodes, bookId, bookRoot, liveChapterNumber, liveChapterTitle, liveFilePath, isStreaming]);
+  const liveToolUseId = liveStream?.toolUseId;
+  const lastAutoOpenedTool = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveToolUseId || !liveOverlay) return;
+    const key = JSON.stringify([bookId, narratorId, liveToolUseId]);
+    if (lastAutoOpenedTool.current === key) return;
+    lastAutoOpenedTool.current = key;
+    const { node } = liveOverlay;
+    setOpenNotice(null);
+    setSelectedNode(node);
+    setOpenRequest((previous) => ({ bookId, node, seq: (previous?.seq ?? 0) + 1 }));
+    if (activeZone && activeZone !== "write") onZoneChange?.("write");
+  }, [bookId, narratorId, liveToolUseId, liveOverlay, activeZone, onZoneChange]);
 
   /**
    * 写作视图的动作按钮：把已确认的写章请求交给当前书籍已授权的叙述者。
@@ -601,9 +685,10 @@ export function RuntimeWritingWorkbenchRoute({
           studioUnifiedSidebar
           {...(activeZone ? { activeZone } : {})}
           {...(onZoneChange ? { onZoneChange } : {})}
-          nodes={nodes}
+          nodes={liveOverlay?.nodes ?? nodes}
           selectedNode={selectedNode}
           openRequest={openRequest}
+          liveChapterStream={liveChapterStream}
           focusRequest={focusRequest}
           selectionCandidate={selectionCandidate}
           onDismissSelectionCandidate={() => setSelectionCandidate(null)}
