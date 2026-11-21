@@ -116,7 +116,7 @@ describe("WorkflowTimelinePanel：本书默认工作流与落盘受阻", () => {
   it("落盘工序受阻：隐藏跳过并说明原因，写意见后打回重写正文", async () => {
     const blocked = detail("blocked", "step-2", [
       step("step-1", 1, "起草正文", "done"),
-      step("step-2", 2, "成品落盘", "failed", { tools: ["pipeline.write"], note: { what: "正文字数不在范围内", why: "只有 1200 字", action: "打回补写" } }),
+      step("step-2", 2, "成品落盘", "failed", { tools: ["chapter.commit"], note: { what: "正文字数不在范围内", why: "只有 1200 字", action: "打回补写" } }),
     ]);
     const calls = mockFetch({
       "/workflow-recipes": () => ({ recipes }),

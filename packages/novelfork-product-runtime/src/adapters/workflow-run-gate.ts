@@ -287,8 +287,8 @@ function directSteps(run: WorkflowRunRecord) {
 	return runningSteps(run.state).filter((step) => step.executorKind !== "subagent");
 }
 
-/** 内置子代理与状态机对话用的三个运行工具（提交 / 报阻塞是草稿级写入，工人可见性默认不露）。 */
-const DELEGATED_RUN_TOOLS = new Set(["workflow.get_current_step", "workflow.submit_step_output", "workflow.report_blocker"]);
+/** 内置子代理与状态机对话用的运行工具（提交 / 报阻塞在 workflow.step 内，工人可见性默认不露）。 */
+const DELEGATED_RUN_TOOLS = new Set(["workflow.step"]);
 
 export function isDelegatedRunTool(canonicalName: string): boolean {
 	return DELEGATED_RUN_TOOLS.has(canonicalName);
@@ -353,7 +353,7 @@ export function explainWorkflowDenial(
 		return {
 			what: `${canonicalName} 被拦下：「${step.label}」要求委派子代理完成`,
 			why: "方案把这道工序交给了指定子代理，由你直接写入等于跳过了它",
-			action: `优先用团队编排：team_status 看编排后用 team_dispatch 派给「工作流工人·」工人；没有团队工具时改用 task(general) 委派通用子代理（能力降级），拿到结果后用 workflow_submit_step_output 提交`,
+			action: `优先用团队编排：team_status 看编排后用 team_dispatch 派给「工作流工人·」工人；没有团队工具时改用 task(general) 委派通用子代理（能力降级），拿到结果后用 workflow_step（action="submit"）提交`,
 		};
 	}
 	if (!direct.some((step) => step.tools.includes(canonicalName))) {
@@ -361,7 +361,7 @@ export function explainWorkflowDenial(
 		const labels = direct.map((step) => `「${step.label}」`).join("、");
 		return {
 			what: `${canonicalName} 被拦下：${labels}不允许这个写入工具`,
-			why: `进行中的工序只能用 ${allowed.length > 0 ? allowed.join("、") : "（无写入工具）"}；工序产物应通过 workflow_submit_step_output 提交`,
+			why: `进行中的工序只能用 ${allowed.length > 0 ? allowed.join("、") : "（无写入工具）"}；工序产物应通过 workflow_step（action="submit"）提交`,
 			action: "改用允许的工具，或把产物提交给工作流",
 		};
 	}
@@ -406,8 +406,8 @@ export function buildWorkflowWorkerBrief(run: WorkflowRunRecord): string {
 		teamId ? `团队：${teamId}（team_report / team_context 都用这个 teamId，不要另建团队）` : "",
 		`工序：${runningSteps(run.state).map((step) => `「${step.label}」${step.agentId ? `（角色 ${step.agentId}）` : ""}`).join("、") || "（当前没有进行中的工序）"}`,
 		"做法：按领导者派发的任务产出结果，完成后用 team_report 汇报给领导者；结论、引用与必要片段都写清楚。",
-		"边界：你没有这本书的写入权——chapter_write / pipeline_write / lore_write / memory_* 等写类工具在本运行期间会被拒绝。",
-		"不要调用 workflow_submit_step_output / workflow_report_blocker：产物提交与阻塞报告由领导者负责。",
+		"边界：你没有这本书的写入权——chapter_commit / jingwei_write / memory_events / memory_settle 等写类工具在本运行期间会被拒绝。",
+		"不要调用 workflow_step（action=\"submit\" / \"blocker\"）：产物提交与阻塞报告由领导者负责。",
 		"需要更多上下文时用 team_context_log 或读类工具，不要凭猜测补设定。",
 	]
 		.filter(Boolean)

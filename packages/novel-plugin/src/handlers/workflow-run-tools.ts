@@ -34,9 +34,7 @@ import { runningSteps, type WorkflowRunStatus, type WorkflowStepStatus } from ".
 import type { TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 
 export const WORKFLOW_RUN_TOOL_NAMES = [
-  "workflow.get_current_step",
-  "workflow.submit_step_output",
-  "workflow.report_blocker",
+  "workflow.step",
 ] as const;
 
 /** 进度卡（Studio `workflow` 渲染器）的状态口径。 */
@@ -59,7 +57,7 @@ const CARD_STEP_STATUS: Record<WorkflowStepStatus, string> = {
   failed: "failed",
 };
 
-const PROSE_WRITE_TOOLS = new Set(["pipeline.write", "chapter.write"]);
+const PROSE_WRITE_TOOLS = new Set(["chapter.commit"]);
 
 function fail(error: string, summary: string, data?: unknown): RuntimeToolResult {
   return { ok: false, error, summary, ...(data === undefined ? {} : { data }) };
@@ -242,10 +240,13 @@ export async function executeWorkflowRunTool(
   binding: TrustedRuntimeBookBinding,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult | null> {
-  // 入参可能是目录名（workflow.get_current_step）或线上名（workflow_get_current_step）。
   const wire = toolName.replace(/\./g, "_");
-  const normalized = WORKFLOW_RUN_TOOL_NAMES.find((name) => name.replace(/\./g, "_") === wire);
-  if (!normalized) return null;
+  if (wire !== "workflow_step") return null;
+
+  const stepAction = typeof input.action === "string" ? input.action.trim().toLowerCase() : "current";
+  if (stepAction !== "current" && stepAction !== "submit" && stepAction !== "blocker") {
+    return fail("invalid-action", `未知的 workflow.step action：${String(input.action ?? "")}。支持 current | submit | blocker。`);
+  }
 
   const sessionId = resolveNarratorId(context);
   if (!sessionId) {
@@ -259,7 +260,7 @@ export async function executeWorkflowRunTool(
   const run = activeRunFor(storage, binding, narratorId);
   const allowedStepIds = delegation && run ? delegatedStepIdsFor(run, delegation.template) : undefined;
 
-  if (normalized === "workflow.get_current_step") {
+  if (stepAction === "current") {
     if (!run) {
       return { ok: true, summary: "当前没有进行中的创作工作流，按作者的普通指令继续即可。", data: { runStatus: "none", brief: null } };
     }
@@ -280,10 +281,10 @@ export async function executeWorkflowRunTool(
   }
   const runRevision = typeof input.runRevision === "number" ? input.runRevision : Number.NaN;
   if (!Number.isInteger(runRevision)) {
-    return fail("run-revision-required", "必须传入 runRevision（取自工序简报或 workflow_get_current_step）。", toWorkflowToolView(storage, run));
+    return fail("run-revision-required", "必须传入 runRevision（取自工序简报或 workflow_step action=current）。", toWorkflowToolView(storage, run));
   }
 
-  if (normalized === "workflow.submit_step_output") {
+  if (stepAction === "submit") {
     const lengthRule = await readChapterLengthRule(binding.root);
     const wordTarget = lengthRule?.chapterWordCount;
     const capture: { candidateId?: string } = {};
@@ -307,6 +308,10 @@ export async function executeWorkflowRunTool(
       : view;
   }
 
+  // action === "blocker"
+  const blockerAction = typeof input.suggestion === "string" && input.suggestion.trim()
+    ? input.suggestion
+    : "";
   if (delegation) {
     const result = reportWorkflowBlocker({
       storage,
@@ -317,7 +322,7 @@ export async function executeWorkflowRunTool(
       explanation: {
         what: typeof input.what === "string" ? input.what : "",
         why: typeof input.why === "string" ? input.why : "",
-        action: typeof input.action === "string" ? input.action : "",
+        action: blockerAction,
       },
     });
     return fromStoreDelegated(storage, result, run, delegation.template, undefined);
@@ -331,7 +336,7 @@ export async function executeWorkflowRunTool(
     explanation: {
       what: typeof input.what === "string" ? input.what : "",
       why: typeof input.why === "string" ? input.why : "",
-      action: typeof input.action === "string" ? input.action : "",
+      action: blockerAction,
     },
   });
   return fromStore(storage, result, (next) => next.state.status === "blocked"

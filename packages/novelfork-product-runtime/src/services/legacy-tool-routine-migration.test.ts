@@ -65,15 +65,15 @@ describe("单层迁移（纯函数）", () => {
 	});
 
 	test("已对单个工具表过态的不被组档位覆盖", () => {
-		const own = getNovelToolRoutineId(maintenanceTools[0]!);
+		const own = getNovelToolRoutineId(writingTools[0]!);
 		const { config } = migrateLegacyToolRoutineLayer<RoutineModeConfig>({
-			toolModes: { "novelfork.maintenance": "resident", [own]: "manual" },
+			toolModes: { "novelfork.writing": "resident", [own]: "manual" },
 			disabledRoutines: [own],
 		});
 		expect(config.toolModes[own]).toBe("manual");
 		expect(config.disabledRoutines).toContain(own);
 		expect(config.enabledRoutines).not.toContain(own);
-		expect(config.toolModes[getNovelToolRoutineId(maintenanceTools[1]!)]).toBe("resident");
+		expect(config.toolModes[getNovelToolRoutineId(writingTools[1]!)]).toBe("resident");
 	});
 
 	test("没有旧组表态时原样返回，不产生任何字段", () => {

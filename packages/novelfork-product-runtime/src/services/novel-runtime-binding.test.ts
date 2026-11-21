@@ -91,7 +91,7 @@ describe("trusted novel runtime binding", () => {
 			bookId: "book-a",
 			root: resolve(externalBookRoot),
 		});
-		expect(await adapter.resolveToolNames("narrator-a")).toContain(toRuntimeToolName("chapter.read"));
+		expect(await adapter.resolveToolNames("narrator-a")).toContain(toRuntimeToolName("chapter.list"));
 	});
 
 	test("fails closed for an unmarked external workspace", async () => {
@@ -103,7 +103,7 @@ describe("trusted novel runtime binding", () => {
 	test("fails closed without binding and rejects cross-project book reuse", async () => {
 		const { service, adapter } = createHarness();
 		expect(await service.resolveForNarrator("narrator-a")).toBeNull();
-		expect((await adapter.execute("chapter.read", { bookId: "book-a", chapterNumber: 1 }, "narrator-a")).isError).toBe(true);
+		expect((await adapter.execute("chapter.list", { bookId: "book-a" }, "narrator-a")).isError).toBe(true);
 		await service.upsert("project-a", "book-a", null);
 		await expect(service.upsert("project-b", "book-a", null)).rejects.toThrow("another runtime project");
 		expect((await service.resolveForNarrator("narrator-b"))).toBeNull();
@@ -112,7 +112,7 @@ describe("trusted novel runtime binding", () => {
 	test("rejects forged tool bookId before reading another book", async () => {
 		const { service, adapter } = createHarness();
 		await service.upsert("project-a", "book-a", null);
-		const result = await adapter.execute("chapter.read", { bookId: "book-b", chapterNumber: 1 }, "narrator-a");
+		const result = await adapter.execute("chapter.list", { bookId: "book-b" }, "narrator-a");
 		expect(result.isError).toBe(true);
 		expect(JSON.parse(result.output).error).toBe("invalid-tool-input");
 	});
@@ -127,7 +127,7 @@ describe("trusted novel runtime binding", () => {
 		const { service, adapter } = createHarness();
 		expect(await adapter.resolveToolNames("narrator-a")).toEqual([]);
 		await service.upsert("project-a", "book-a", null);
-		expect(await adapter.resolveToolNames("narrator-a")).toContain(toRuntimeToolName("chapter.read"));
+		expect(await adapter.resolveToolNames("narrator-a")).toContain(toRuntimeToolName("chapter.list"));
 	});
 
 	test("returns one trusted product prompt extension", async () => {
@@ -140,7 +140,7 @@ describe("trusted novel runtime binding", () => {
 
 	test("adapter preserves portable raw JSON schema", () => {
 		const { adapter } = createHarness();
-		const definition = adapter.toolDefinitions().find((tool) => tool.name === toRuntimeToolName("chapter.read"));
+		const definition = adapter.toolDefinitions().find((tool) => tool.name === toRuntimeToolName("chapter.list"));
 		expect(definition?.rawJsonSchema).toBeDefined();
 	});
 });

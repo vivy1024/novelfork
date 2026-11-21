@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChapterRevisionCard } from "./ChapterRevisionCard";
-import { LoreProposalCard } from "./LoreProposalCard";
+import { renderToolResult } from "./registry";
 
 const revisionArtifact = {
   kind: "chapter-revision",
@@ -45,7 +45,7 @@ describe("整章改动候选卡", () => {
   it("显示原因、差异统计与前后预览，「采用」把 originalHash 与新正文发给 apply 接口", async () => {
     render(
       <ChapterRevisionCard
-        toolName="chapter.propose_revision"
+        toolName="Edit"
         result={{ renderer: "chapter.revision", data: { artifact: revisionArtifact } }}
       />,
     );
@@ -71,12 +71,10 @@ describe("整章改动候选卡", () => {
 
 describe("设定改动候选卡", () => {
   it("按字段显示改前/改后，「采用」走 PUT fieldsPatch 不重写条目", async () => {
-    render(
-      <LoreProposalCard
-        toolName="lore.propose_update"
-        result={{ renderer: "lore.update-proposal", data: { artifact: loreArtifact } }}
-      />,
-    );
+    render(<>{renderToolResult({
+      toolName: "jingwei_write",
+      result: { renderer: "jingwei.write", data: { artifact: loreArtifact } },
+    })}</>);
 
     expect(screen.getByTestId("lore-update-reason").textContent).toContain("突破筑基");
     const fields = screen.getByTestId("lore-update-fields");

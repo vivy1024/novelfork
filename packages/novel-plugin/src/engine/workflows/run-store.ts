@@ -715,10 +715,10 @@ function compactProsePayload(payloadJson: string, at: number): string | null {
 }
 
 const TERMINAL_RUN_STATUSES = ["done", "cancelled"] as const;
-const PROSE_LANDING_TOOLS = new Set(["pipeline.write", "chapter.write"]);
+const PROSE_LANDING_TOOLS = new Set(["chapter.commit"]);
 
 /**
- * 已批准的正文能否压缩：只有运行正常完成、且落盘工序（工具含 pipeline.write / chapter.write）
+ * 已批准的正文能否压缩：只有运行正常完成、且落盘工序（工具含 chapter.commit）
  * 已完成时，章节文件里才一定有它。取消的运行、没有落盘工序的方案，已批准正文可能是唯一一份，保留全文。
  */
 function approvedProseLanded(storage: StorageDatabase, runId: string): boolean {

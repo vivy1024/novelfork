@@ -17,7 +17,8 @@ import { toWireToolName } from "../../engine/workflows/run-brief";
  */
 export const HANDOFF_TOOL_NAMES = {
   proposeSelection: toWireToolName("chapter.propose_selection"),
-  readChapter: toWireToolName("chapter.read"),
+  listChapters: toWireToolName("chapter.list"),
+  readChapter: "Read",
 } as const;
 
 /** 一条消息里最多列出的命中数；多出来的只报数量，先处理前面这些。 */
@@ -85,7 +86,7 @@ export function buildPolishMessage(
   customConstraints?: readonly string[],
 ): string {
   const lines = [
-    `请对第 ${chapterNumber} 章做一遍通篇语言润色：先用 ${HANDOFF_TOOL_NAMES.readChapter} 读这一章正文，通读之后逐处打磨，每处用 ${HANDOFF_TOOL_NAMES.proposeSelection} 提交一条候选（action 用 "polish"），按正文先后顺序交。`,
+    `请对第 ${chapterNumber} 章做一遍通篇语言润色：先用 ${HANDOFF_TOOL_NAMES.listChapters} 找到这一章的文件路径，再用原生 ${HANDOFF_TOOL_NAMES.readChapter} 读正文，通读之后逐处打磨，每处用 ${HANDOFF_TOOL_NAMES.proposeSelection} 提交一条候选（action 用 "polish"），按正文先后顺序交。`,
     "",
     "要求：",
     "- 打磨范围：错别字与病句、重复用词与搭配不当、句式与节奏、段落衔接、标点规范、叙述视角与称呼的一致性。",

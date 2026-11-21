@@ -150,7 +150,7 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         execute: () => options.switchView("write"),
       },
       {
-        id: "write.preflight",
+        id: "chapter.preflight",
         label: "写章预检（就绪度检查）",
         category: "写作",
         execute: () => options.switchView("write"),
@@ -170,11 +170,11 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         ),
       },
       {
-        id: "publish.check",
+        id: "chapter.audit.publish",
         label: "投稿风险自检",
         category: "写作",
         execute: () => options.sendToNarrator?.(
-          `请用 ${toWireToolName("publish.check")} 对最近章节做投稿风险自检，展示规则来源、敏感词与 AI 味线索的正文证据，并给出人工复核建议。`,
+          `请用 ${toWireToolName("chapter.audit")}（mode=publish）对最近章节做投稿风险自检，展示规则来源、敏感词与 AI 味线索的正文证据，并给出人工复核建议。`,
         ),
       },
       {

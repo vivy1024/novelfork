@@ -54,5 +54,5 @@ AI 写的初稿一般能读，但常有套话、节奏平、人物说话一个�
 
 ## Agent 查阅提示
 
-- 「改这段」按行范围替换，用 `rewrite_apply`；改前先给作者看对照。
+- 「改这段」先用原生 `Read` 核对原文，给作者看对照；确认后用原生 `Edit` 精确替换，再用 `chapter_commit`（`mode=revision`）校验并更新索引。划词候选用 `chapter_propose_selection`。
 - 「审这一章」的规则审计用 `chapter_audit`，不调模型。

@@ -977,7 +977,7 @@ describe("IdeWorkbench 静默交互修复", () => {
     render(<IdeWorkbench nodes={[]} selectedNode={null} onOpen={vi.fn()} onSave={vi.fn()} onSendToNarrator={onSendToNarrator} />);
     await screen.findByTestId("ide-workbench");
     act(() => { saveHarness.commands!.openImportWizard(); });
-    expect(onSendToNarrator).toHaveBeenCalledWith(expect.stringContaining("pipeline_import_chapters"));
+    expect(onSendToNarrator).toHaveBeenCalledWith(expect.stringContaining("book_import（action=import_chapters"));
     expect(saveHarness.alert).not.toHaveBeenCalled();
   });
 

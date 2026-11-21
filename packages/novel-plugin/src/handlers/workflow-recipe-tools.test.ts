@@ -17,7 +17,8 @@ let binding: TrustedRuntimeBookBinding;
 
 type ToolResult = { ok: boolean; error?: string; summary?: string; data?: Record<string, any> };
 
-async function call(toolName: string, input: Record<string, unknown>, sessionId = "narrator-1"): Promise<ToolResult> {
+/** workflow.manage 只有一个线上工具名，动作由 action 决定。 */
+async function manage(input: Record<string, unknown>, sessionId = "narrator-1"): Promise<ToolResult> {
   const context = {
     runtimeProjectId: "project-1",
     projectRoot: testDir,
@@ -26,8 +27,8 @@ async function call(toolName: string, input: Record<string, unknown>, sessionId 
     resourceBindings: {},
     sessionId,
   } as unknown as Parameters<typeof executeRuntimeDomainTool>[3];
-  const result = await executeRuntimeDomainTool(toolName, input, binding, context);
-  if (!result) throw new Error(`${toolName} 没有被分派`);
+  const result = await executeRuntimeDomainTool("workflow.manage", { action: "list", ...input }, binding, context);
+  if (!result) throw new Error(`workflow.manage(action=${String(input.action ?? "list")}) 没有被分派`);
   return result as ToolResult;
 }
 
@@ -48,7 +49,7 @@ afterEach(async () => {
 });
 
 const buildOps = [
-  { op: "add_node", node: { type: "step", id: "plan", label: "写蓝图", kind: "guided-plan", tools: ["scene.spec"] } },
+  { op: "add_node", node: { type: "step", id: "plan", label: "写蓝图", kind: "guided-plan", tools: ["chapter.blueprint"] } },
   { op: "add_node", node: { type: "step", id: "draft", label: "起草", kind: "writer-generate", requiresApproval: true } },
   { op: "connect", source: "start", target: "plan" },
   { op: "connect", source: "plan", target: "draft" },
@@ -58,14 +59,14 @@ const buildOps = [
 
 describe("工作流方案工具（叙述者侧）", () => {
   it("列出方案：未配置时就是全部内置方案，都已发布", async () => {
-    const listed = await call("workflow_list_recipes", {});
+    const listed = await manage({ action: "list" });
     expect(listed.ok).toBe(true);
     expect(listed.data!.recipes).toHaveLength(NOVEL_BUILTIN_WORKFLOWS.length);
     expect(listed.data!.recipes.every((recipe: { status: string; issueCount: number }) => recipe.status === "published" && recipe.issueCount === 0)).toBe(true);
   });
 
   it("用编辑指令从空白建一份草稿：标为叙述者所建，结构完整，给模型的结构里没有画布位置", async () => {
-    const created = await call("workflow.edit_recipe", { name: "快写流", recipeId: "quick", ops: buildOps });
+    const created = await manage({ action: "edit", name: "快写流", recipeId: "quick", ops: buildOps });
     expect(created.ok).toBe(true);
     expect(created.summary).toContain("确认发布");
     expect(created.data!.recipe).toMatchObject({ id: "quick", status: "draft", revision: 1, createdBy: "narrator", issues: [] });
@@ -74,16 +75,17 @@ describe("工作流方案工具（叙述者侧）", () => {
     const onDisk = JSON.parse(await readFile(join(testDir, WORKFLOW_RECIPES_RELATIVE_PATH), "utf8")) as Array<{ id: string }>;
     expect(onDisk.map((recipe) => recipe.id)).toContain("quick");
 
-    const fetched = await call("workflow_get_recipe", { recipeId: "quick" });
+    const fetched = await manage({ action: "get", recipeId: "quick" });
     expect(fetched.data!.recipe.edges.filter((edge: { kind: string }) => edge.kind === "reject")).toHaveLength(1);
   });
 
   it("已发布的方案不能直接改，要用 copyFrom 另建草稿", async () => {
-    const denied = await call("workflow_edit_recipe", { recipeId: "fanqie-xuanhuan-serial", ops: [{ op: "set_meta", patch: { name: "乱改" } }] });
+    const denied = await manage({ action: "edit", recipeId: "fanqie-xuanhuan-serial", ops: [{ op: "set_meta", patch: { name: "乱改" } }] });
     expect(denied).toMatchObject({ ok: false, error: "recipe-published" });
     expect(denied.summary).toContain("copyFrom");
 
-    const copied = await call("workflow_edit_recipe", {
+    const copied = await manage({
+      action: "edit",
       copyFrom: "fanqie-xuanhuan-serial",
       ops: [{ op: "disconnect", source: "step-adversarial-audit", target: "step-settlement" }],
     });
@@ -95,30 +97,36 @@ describe("工作流方案工具（叙述者侧）", () => {
   });
 
   it("一批指令里有一条不合法：整批不生效、不落盘，并指出第几条", async () => {
-    const rejected = await call("workflow_edit_recipe", { name: "坏流程", ops: [...buildOps, { op: "connect", source: "draft", target: "不存在" }] });
+    const rejected = await manage({ action: "edit", name: "坏流程", ops: [...buildOps, { op: "connect", source: "draft", target: "不存在" }] });
     expect(rejected).toMatchObject({ ok: false, error: "ops-rejected" });
     expect(rejected.data!.failedIndex).toBe(6);
-    const listed = await call("workflow_list_recipes", {});
+    const listed = await manage({ action: "list" });
     expect(listed.data!.recipes).toHaveLength(NOVEL_BUILTIN_WORKFLOWS.length);
   });
 
   it("按旧版本号修改草稿会被拒，提示重新读取", async () => {
-    await call("workflow_edit_recipe", { name: "快写流", recipeId: "quick", ops: buildOps });
-    await call("workflow_edit_recipe", { recipeId: "quick", expectedRevision: 1, ops: [{ op: "set_meta", patch: { description: "第二版" } }] });
-    const stale = await call("workflow_edit_recipe", { recipeId: "quick", expectedRevision: 1, ops: [{ op: "set_meta", patch: { description: "过期修改" } }] });
+    await manage({ action: "edit", name: "快写流", recipeId: "quick", ops: buildOps });
+    await manage({ action: "edit", recipeId: "quick", expectedRevision: 1, ops: [{ op: "set_meta", patch: { description: "第二版" } }] });
+    const stale = await manage({ action: "edit", recipeId: "quick", expectedRevision: 1, ops: [{ op: "set_meta", patch: { description: "过期修改" } }] });
     expect(stale).toMatchObject({ ok: false, error: "revision-conflict" });
     expect(stale.summary).toContain("重新读取");
   });
 
   it("启动运行：草稿不能运行；已发布方案启动后返回进度卡与简报", async () => {
-    await call("workflow_edit_recipe", { name: "快写流", recipeId: "quick", ops: buildOps });
-    const draftRun = await call("workflow_start_run", { recipeId: "quick", chapterNumber: 2 });
+    await manage({ action: "edit", name: "快写流", recipeId: "quick", ops: buildOps });
+    const draftRun = await manage({ action: "start", recipeId: "quick", chapterNumber: 2 });
     expect(draftRun).toMatchObject({ ok: false, error: "recipe-not-published" });
     expect(draftRun.summary).toContain("画布");
 
-    const started = await call("workflow_start_run", { recipeId: "fanqie-xuanhuan-serial", chapterNumber: 2 });
+    const started = await manage({ action: "start", recipeId: "fanqie-xuanhuan-serial", chapterNumber: 2 });
     expect(started.ok).toBe(true);
     expect(started.data).toMatchObject({ runStatus: "running", currentStepId: "step-context" });
     expect(String(started.data!.brief)).toContain("▶ 工序 1");
+  });
+
+  it("未知动作被拒并列出可用动作", async () => {
+    const invalid = await manage({ action: "publish" });
+    expect(invalid).toMatchObject({ ok: false, error: "invalid-action" });
+    expect(invalid.summary).toContain("list | get | edit | start");
   });
 });

@@ -41,6 +41,23 @@ describe("runtime-workflow-catalog", () => {
     expect(fromProviders).toEqual([
       { value: "4sapi-2:deepseek-v4.1-flash", label: "4SAPI · DeepSeek V4.1 Flash", providerName: "4SAPI" },
     ]);
+
+    const fromRuntimeSettings = parseRuntimeModelsResponse({
+      agent: { hiddenModels: ["nug:hidden-m"] },
+      openaiModelsGrouped: [
+        { id: "o1", prefix: "4sapi", name: "4SAPI", models: [{ id: "deepseek-v4", name: "DeepSeek V4" }] },
+      ],
+      nugModelsGrouped: [
+        { id: "n1", prefix: "nug", name: "NUG", models: [{ id: "hidden-m" }, { id: "gemini-4", name: "Gemini 4" }] },
+      ],
+      codexAvailable: true,
+      codexModels: ["gpt-5.4"],
+    });
+    expect(fromRuntimeSettings).toEqual([
+      { value: "4sapi:deepseek-v4", label: "4SAPI · DeepSeek V4", providerName: "4SAPI" },
+      { value: "nug:gemini-4", label: "NUG · Gemini 4", providerName: "NUG" },
+      { value: "codex:gpt-5.4", label: "Codex · gpt-5.4", providerName: "Codex" },
+    ]);
   });
 
   it("parseRuntimeGlobalSubagentsResponse 兼容数组与对象包装并去重", () => {
@@ -80,15 +97,14 @@ describe("runtime-workflow-catalog", () => {
     const names = AUTHORITATIVE_WRITABLE_NOVEL_TOOLS.map((t) => t.name);
     expect(names).toEqual(
       expect.arrayContaining([
-        "pipeline.write",
-        "chapter.write",
-        "lore.write",
+        "chapter.commit",
+        "jingwei.write",
         "hooks.manage",
         "outline.volume",
-        "memory.settle_chapter",
+        "memory.settle",
       ]),
     );
-    expect(names).not.toContain("chapter.read");
-    expect(names).not.toContain("lore.read");
+    expect(names).not.toContain("chapter.list");
+    expect(names).not.toContain("jingwei.read");
   });
 });

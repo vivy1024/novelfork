@@ -21,7 +21,7 @@ import { settleConfirmedChapter } from "./chapter-settlement-service.js";
 import { formatAuthorExplanation } from "./diagnostic-explanation.js";
 
 /** 工具名与 renderer 的单一来源；tool-registry 的声明必须与之一致（见 memory-settle-chapter.test.ts）。 */
-export const SETTLE_CHAPTER_TOOL_NAME = "memory.settle_chapter";
+export const SETTLE_CHAPTER_TOOL_NAME = "memory.settle";
 /** 复用已在 Studio 侧表态过的 Narrative Memory 管理渲染器，不新增未注册的 renderer 名。 */
 export const SETTLE_CHAPTER_TOOL_RENDERER = "narrative-memory.admin";
 

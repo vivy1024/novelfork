@@ -20,7 +20,7 @@ import { SceneSpecCard } from "./SceneSpecCard";
 import { SelectionCandidateCard } from "./SelectionCandidateCard";
 import { WorkflowProgressRenderer } from "./WorkflowProgressCard";
 import { WritePreflightCard } from "./WritePreflightCard";
-import type { ToolResultRenderer, ToolResultRendererContext } from "./types";
+import { asRecord, getToolResultArtifact, getToolResultData, type ToolResultRenderer, type ToolResultRendererContext } from "./types";
 
 const customRenderers = new Map<string, ToolResultRenderer>();
 
@@ -61,8 +61,8 @@ const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number],
   "publish-export": PublishExportCard,
   "scene-spec": SceneSpecCard,
   "selection-candidate": SelectionCandidateCard,
-  "chapter-revision": ChapterRevisionCard,
-  "lore-update-proposal": LoreProposalCard,
+  "chapter-revision": (context) => <ChapterRevisionCard {...context} />,
+  "lore-update-proposal": (context) => <LoreProposalCard {...context} />,
   "chapter-audit": ChapterAuditCard,
   "memory-read": MemoryReadCard,
   // memory.graph 改走树：原来把图数据渲染成三元组文本行，本来是图却画成文字
@@ -77,19 +77,31 @@ const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDE
   questionnaire: "questionnaire",
   guided: "guided",
   narrative: "narrative",
-  // memory.read_line 声明 renderer="narrative.line"，同样此前未登记。
+  // 保留历史叙事线结果使用的 renderer 声明。
   "narrative.line": "narrative",
   workflow: "workflow",
   pipeline: "pipeline",
   "pipeline.chapter-result": "pipeline",
-  "pipeline.write": "pipeline",
+  "chapter.commit": "pipeline",
+  "chapter_commit": "pipeline",
+  "book.overview": "cockpit",
+  "book_overview": "cockpit",
+  "chapter.preflight": "write-preflight",
+  "chapter_preflight": "write-preflight",
+  "chapter.blueprint": "scene-spec",
+  "chapter_blueprint": "scene-spec",
+  "book.import": "book-dissect",
+  "book_import": "book-dissect",
+  "workflow.step": "workflow",
+  "workflow_step": "workflow",
+  "workflow.manage": "workflow",
+  "workflow_manage": "workflow",
   "write.preflight": "write-preflight",
   "write-preflight": "write-preflight",
   "book.dissect": "book-dissect",
   "book-dissect": "book-dissect",
   "outline.volume": "outline-volume",
   "outline-volume": "outline-volume",
-  "publish.check": "publish-readiness",
   "publish-readiness": "publish-readiness",
   "compliance.publish-readiness": "publish-readiness",
   "publish.export": "publish-export",
@@ -99,24 +111,28 @@ const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDE
   "chapter.propose_selection": "selection-candidate",
   "chapter.selection-candidate": "selection-candidate",
   "selection-candidate": "selection-candidate",
-  "chapter.propose_revision": "chapter-revision",
+  "chapter_propose_selection": "selection-candidate",
   "chapter.revision": "chapter-revision",
   "chapter-revision": "chapter-revision",
-  "lore.propose_update": "lore-update-proposal",
   "lore.update-proposal": "lore-update-proposal",
   "lore-update-proposal": "lore-update-proposal",
   "chapter.audit": "chapter-audit",
+  "chapter_audit": "chapter-audit",
   "chapter-audit": "chapter-audit",
+  "memory.read": "memory-read",
+  "memory_read": "memory-read",
   "narrative-memory.read": "memory-read",
   "memory-read": "memory-read",
+  "memory.graph": "memory-graph",
+  "memory_graph": "memory-graph",
   "narrative-memory.graph": "memory-graph",
   "memory-graph": "memory-graph",
+  "memory.events": "memory-events",
+  "memory_events": "memory-events",
   "narrative-memory.events": "memory-events",
   "memory-events": "memory-events",
-  // lore.read / jingwei.read 此前没有任何渲染器登记，落到 generic 吐原始结构；
-  // 现在走树，与工作台「故事树」同一实现。
-  "lore.read": "lore-tree",
-  "lore-read": "lore-tree",
+  // 经纬结果卡复用工作台的「故事树」。
+  "jingwei_read": "lore-tree",
   "lore-tree": "lore-tree",
   "jingwei.read": "lore-tree",
   "jingwei-read": "lore-tree",
@@ -129,12 +145,20 @@ function rendererFromValue(value: unknown): string | null {
 }
 
 export function resolveToolResultRendererKey(context: ToolResultRendererContext): string {
-  if (context.result && typeof context.result === "object") {
-    const renderer = rendererFromValue((context.result as Record<string, unknown>).renderer);
-    if (renderer) return renderer;
+  const renderer = rendererFromValue(asRecord(context.result)?.renderer);
+  const toolRenderer = rendererFromValue(context.toolName);
+  // 合并后的经纬写工具只在返回改动候选时使用差异卡。
+  if (context.toolName === "jingwei.write" || context.toolName === "jingwei_write") {
+    if (getToolResultArtifact(context.result)?.kind === "lore-update") return "lore-update-proposal";
   }
-
-  return rendererFromValue(context.toolName) ?? "generic";
+  // 投稿检查与常规审计共用 chapter.audit 声明，但返回不同的数据结构。
+  if ((renderer ?? toolRenderer) === "chapter-audit") {
+    const data = asRecord(getToolResultData(context.result));
+    if (typeof data?.platformLabel === "string" && typeof data.checkedChapters === "number") {
+      return "publish-readiness";
+    }
+  }
+  return renderer ?? toolRenderer ?? "generic";
 }
 
 export function registerToolResultRenderer(key: string, renderer: ToolResultRenderer) {

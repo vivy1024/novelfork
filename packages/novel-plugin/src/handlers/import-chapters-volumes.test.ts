@@ -33,7 +33,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
+describe("book.import action=import_chapters 的卷结构（T4.2 旧稿导入）", () => {
   it("带卷标题的旧稿：按卷分目录写章，并把卷纲落成经纬 outline", async () => {
     const filler = "这是一段足够长的正文，用来超过 1000 字的最小导入门槛。";
     const content = [
@@ -51,8 +51,8 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
     ].join("\r\n");
 
     const result = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content, sourceName: "测试旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content, sourceName: "测试旧稿.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -91,8 +91,8 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
   it("自定义 pattern 时不做卷捕获（与 splitChapters 兼容）", async () => {
     const content = `第一卷 x\r\n第一章 甲\r\n${"一段足够长的正文，过千字的门槛。".repeat(80)}\r\n第二章 乙\r\n第二段。`;
     const result = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content, splitPattern: "^第[一二三四五六七八九十百千万\\d]+章", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content, splitPattern: "^第[一二三四五六七八九十百千万\\d]+章", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -104,8 +104,8 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
   it("CRLF 正文里卷标题也能识别（之前 `…$\r` 不匹配导致全书进卷01）", async () => {
     const content = `第一卷 光\r\n第一章 甲\r\n${"一段足够长的正文，过千字的门槛。".repeat(80)}\r\n第二卷 影\r\n第二章 乙\r\nB。`;
     const result = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content, autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content, autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -118,8 +118,8 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
     const filler = "这是一段足够长的正文，用来超过 1000 字的最小导入门槛。";
     const content = ["第一章 正义", filler.repeat(30), "第二章 坠落", filler.repeat(10)].join("\r\n");
     const result = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content, sourceName: "我的旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content, sourceName: "我的旧稿.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -151,8 +151,8 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
   it("二次导入追加新的快照，旧条目的 importSource 不被改写", async () => {
     const filler = "这是一段足够长的正文，用来超过 1000 字的最小导入门槛。";
     const first = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content: ["第一章 甲", filler.repeat(40)].join("\r\n"), sourceName: "稿A.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content: ["第一章 甲", filler.repeat(40)].join("\r\n"), sourceName: "稿A.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -161,8 +161,8 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
     expect(afterFirst).toHaveLength(1);
 
     const second = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content: ["第一章 乙", filler.repeat(40)].join("\r\n"), sourceName: "稿B.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content: ["第一章 乙", filler.repeat(40)].join("\r\n"), sourceName: "稿B.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -191,8 +191,8 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
     }
     const content = parts.join("\r\n");
     const result = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content, sourceName: "长篇旧稿.txt", autoSettle: false, extractBrief: true } as never,
+      "book.import",
+      { action: "import_chapters", content, sourceName: "长篇旧稿.txt", autoSettle: false, extractBrief: true } as never,
       binding,
       {} as never,
     );
@@ -239,8 +239,8 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
     const oversized = `第一章 x\n${"字".repeat(MAX_SPLIT_TEXT_LENGTH)}`;
 
     const result = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content: oversized, sourceName: "超大旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content: oversized, sourceName: "超大旧稿.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -252,7 +252,7 @@ describe("pipeline.import_chapters 的卷结构（T4.2 旧稿导入）", () => {
   });
 });
 
-describe("pipeline.import_chapters 读旧索引的兼容回退也经路径守卫（T-01）", () => {
+describe("book.import action=import_chapters 读旧索引的兼容回退也经路径守卫（T-01）", () => {
   const filler = "这是一段足够长的正文，用来超过 1000 字的最小导入门槛。";
   const content = ["第一章 正义", filler.repeat(40)].join("\r\n");
   const indexPath = () => join(testDir, "chapters", "index.json");
@@ -266,8 +266,8 @@ describe("pipeline.import_chapters 读旧索引的兼容回退也经路径守卫
     ]), "utf8");
 
     const result = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -284,8 +284,8 @@ describe("pipeline.import_chapters 读旧索引的兼容回退也经路径守卫
     ]), "utf8");
 
     const result = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
@@ -303,8 +303,8 @@ describe("pipeline.import_chapters 读旧索引的兼容回退也经路径守卫
     await writeFile(indexPath(), original, "utf8");
 
     await expect(executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", content, sourceName: "旧稿.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     )).rejects.toMatchObject({ code: "CHAPTER_INDEX_CORRUPT" });
@@ -325,16 +325,16 @@ describe("pipeline.import_chapters 读旧索引的兼容回退也经路径守卫
     await writeFile(join(testDir, "旧书gbk.txt"), gbkBody);
 
     const escape = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { filePath: "../outside.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", filePath: "../outside.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );
     expect(escape).toMatchObject({ ok: false, error: "invalid-import-file" });
 
     const imported = await executeRuntimeDomainTool(
-      "pipeline.import_chapters",
-      { filePath: "旧书gbk.txt", autoSettle: false, extractBrief: false } as never,
+      "book.import",
+      { action: "import_chapters", filePath: "旧书gbk.txt", autoSettle: false, extractBrief: false } as never,
       binding,
       {} as never,
     );

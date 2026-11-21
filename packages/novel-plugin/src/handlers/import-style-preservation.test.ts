@@ -17,7 +17,8 @@ describe("导入正文不覆盖作者文风", () => {
     const original = JSON.stringify(value);
     await writeFile(join(root, "story", filename), original);
     const context = { projectRoot: root, runtimeProjectId: "test", sessionId: "test", projectType: "novel", enabledPluginIds: ["novel"], resourceBindings: {} } as Parameters<typeof executeRuntimeDomainTool>[3];
-    const result = await executeRuntimeDomainTool("pipeline_import_chapters", {
+    const result = await executeRuntimeDomainTool("book.import", {
+      action: "import_chapters",
       content: `第一章 归来\n${"她走过长街，停在家门口。".repeat(120)}`,
       autoSettle: false, extractBrief: false,
     }, { bookId: "book-a", root }, context);

@@ -13,7 +13,7 @@ function chars(text: string): number {
   return text.length;
 }
 
-/** chapter.propose_revision 的整章改动候选卡：before/after 摘要 + 采用/放弃；应用走 product 接口按 hash 闸门落盘。 */
+/** 整章改动候选卡：before/after 摘要 + 采用/放弃；应用走 product 接口按 hash 闸门落盘。 */
 export const ChapterRevisionCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const artifact = getToolResultArtifact(context.result);
   if (!artifact || artifact.kind !== "chapter-revision") return null;

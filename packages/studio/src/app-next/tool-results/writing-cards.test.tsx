@@ -9,7 +9,7 @@ afterEach(() => cleanup());
 describe("write.preflight 预检卡", () => {
   it("展示阻断项的人话三段式，而不是裸 code", () => {
     render(<>{renderToolResult({
-      toolName: "write.preflight",
+      toolName: "chapter.preflight",
       result: {
         renderer: "write.preflight",
         data: {
@@ -41,7 +41,7 @@ describe("write.preflight 预检卡", () => {
 
   it("通过时展示指示、卷纲与平台", () => {
     render(<>{renderToolResult({
-      toolName: "write.preflight",
+      toolName: "chapter.preflight",
       result: {
         renderer: "write.preflight",
         data: {
@@ -70,7 +70,7 @@ describe("write.preflight 预检卡", () => {
 describe("book.dissect 采纳卡", () => {
   it("说明产物是 needs-review 待确认，而非直接入 canon", () => {
     render(<>{renderToolResult({
-      toolName: "book.dissect",
+      toolName: "book.import",
       result: {
         renderer: "book.dissect",
         data: {
@@ -101,7 +101,7 @@ describe("book.dissect 采纳卡", () => {
 
   it("未 apply 时说明尚未写入经纬", () => {
     render(<>{renderToolResult({
-      toolName: "book.dissect",
+      toolName: "book.import",
       result: { renderer: "book.dissect", data: { ok: true, applied: false, draft: { characters: ["林舟"] } } },
     })}</>);
 
@@ -112,7 +112,7 @@ describe("book.dissect 采纳卡", () => {
     const actions: ToolResultAction[] = [];
     const renderCard = (id: string) =>
       render(<>{renderToolResult({
-        toolName: "book.dissect",
+        toolName: "book.import",
         result: {
           renderer: "book.dissect",
           data: {
@@ -139,8 +139,8 @@ describe("book.dissect 采纳卡", () => {
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
     await waitFor(() => expect(actions).toHaveLength(1));
     expect(actions[0]).toEqual({
-      type: "lore.write.staging",
-      toolName: "lore.write",
+      type: "jingwei.write.staging",
+      toolName: "jingwei.write",
       input: { stagingId: "staging-reject", stagingDecision: "reject", title: "边界规则" },
     });
     expect(actions[0]?.input).not.toHaveProperty("bookId");
@@ -151,8 +151,8 @@ describe("book.dissect 采纳卡", () => {
     fireEvent.click(screen.getByRole("button", { name: "提升" }));
     await waitFor(() => expect(actions).toHaveLength(2));
     expect(actions[1]).toEqual({
-      type: "lore.write.staging",
-      toolName: "lore.write",
+      type: "jingwei.write.staging",
+      toolName: "jingwei.write",
       input: { stagingId: "staging-promote", stagingDecision: "promote", title: "边界规则" },
     });
     expect(actions[1]?.input).not.toHaveProperty("bookId");
@@ -167,7 +167,7 @@ describe("book.dissect 采纳卡", () => {
       return Promise.resolve({ ok: true, summary: "已拒绝「边界规则」。" });
     });
     render(<>{renderToolResult({
-      toolName: "book.dissect",
+      toolName: "book.import",
       result: {
         renderer: "book.dissect",
         data: {
@@ -247,9 +247,9 @@ describe("outline.volume 卷纲卡", () => {
 describe("publish.check 投稿风险自检卡", () => {
   it("展示规则来源、复核状态与正文证据", () => {
     render(<>{renderToolResult({
-      toolName: "publish.check",
+      toolName: "chapter.audit",
       result: {
-        renderer: "compliance.publish-readiness",
+        renderer: "chapter.audit",
         data: {
           ok: true,
           status: "needs-review",
@@ -281,8 +281,8 @@ describe("publish.check 投稿风险自检卡", () => {
 
   it("ready 状态不把结果表述为平台通过", () => {
     render(<>{renderToolResult({
-      toolName: "publish.check",
-      result: { renderer: "publish.check", data: { ok: true, status: "ready", blockCount: 0, warnCount: 0, suggestCount: 0 } },
+      toolName: "chapter.audit",
+      result: { renderer: "chapter.audit", data: { ok: true, status: "ready", platformLabel: "起点中文网", checkedChapters: 1, blockCount: 0, warnCount: 0, suggestCount: 0 } },
     })}</>);
 
     expect(screen.getByText("未发现明显线索")).toBeTruthy();
@@ -320,7 +320,7 @@ describe("publish.export 发布包卡", () => {
 
 describe("卡片健壮性", () => {
   it("载荷缺失时退回 generic 而不是崩", () => {
-    for (const renderer of ["write.preflight", "book.dissect", "outline.volume", "publish.check", "publish.export"]) {
+    for (const renderer of ["write.preflight", "book.dissect", "outline.volume", "compliance.publish-readiness", "publish.export"]) {
       cleanup();
       render(<>{renderToolResult({ toolName: renderer, result: { renderer, data: null } })}</>);
       expect(screen.getByTestId("tool-result-generic")).toBeTruthy();
@@ -328,7 +328,7 @@ describe("卡片健壮性", () => {
   });
 });
 
-describe("pipeline.write 结果卡", () => {
+describe("chapter.commit 结果卡", () => {
   it("写章成功后派发写作进度事件，不刷新整页", async () => {
     const seen: string[] = [];
     const handler = (event: Event) => {
@@ -336,7 +336,7 @@ describe("pipeline.write 结果卡", () => {
     };
     window.addEventListener("novelfork:writing-progress", handler);
     render(<>{renderToolResult({
-      toolName: "pipeline.write",
+      toolName: "chapter.commit",
       result: {
         renderer: "pipeline.chapter-result",
         data: {
@@ -355,7 +355,7 @@ describe("pipeline.write 结果卡", () => {
 
   it("展示真实阶段状态、技能结果、结算重试和人工复核建议", () => {
     render(<>{renderToolResult({
-      toolName: "pipeline.write",
+      toolName: "chapter.commit",
       result: {
         renderer: "pipeline.chapter-result",
         data: {
@@ -403,7 +403,7 @@ describe("pipeline.write 结果卡", () => {
 
   it("失败结果展示错误信息和对应恢复建议，不假装已保存", () => {
     render(<>{renderToolResult({
-      toolName: "pipeline.write",
+      toolName: "chapter.commit",
       result: {
         renderer: "pipeline.chapter-result",
         ok: false,
@@ -459,7 +459,7 @@ describe("memory.read 七栏 write profile", () => {
 describe("scene.spec 点名实体", () => {
   it("展示 namedEntities", () => {
     render(<>{renderToolResult({
-      toolName: "scene.spec",
+      toolName: "chapter.blueprint",
       result: {
         renderer: "scene.spec",
         data: {

@@ -13,9 +13,14 @@ let storage: StorageDatabase;
 let testDir: string;
 let binding: TrustedRuntimeBookBinding;
 
-async function start(input: Record<string, unknown>) {
+type ToolResult = { ok: boolean; error?: string; data?: Record<string, any> };
+
+/** 启动运行现在走 workflow.manage(action="start")。 */
+async function start(input: Record<string, unknown>): Promise<ToolResult> {
   const context = { runtimeProjectId: "p", projectRoot: testDir, projectType: "novel", enabledPluginIds: ["novel"], resourceBindings: {}, sessionId: "narrator-1" } as unknown as Parameters<typeof executeRuntimeDomainTool>[3];
-  return (await executeRuntimeDomainTool("workflow_start_run", input, binding, context)) as { ok: boolean; error?: string; data?: Record<string, unknown> };
+  const result = await executeRuntimeDomainTool("workflow.manage", { action: "start", ...input }, binding, context);
+  if (!result) throw new Error("workflow.manage 没有被分派");
+  return result as ToolResult;
 }
 
 async function writeBook(extra: Record<string, unknown> = {}) {
@@ -37,7 +42,7 @@ afterEach(async () => {
   await rm(testDir, { recursive: true, force: true });
 });
 
-describe("workflow_start_run 省略方案时用本书默认工作流", () => {
+describe("workflow.manage(action=start) 省略方案时用本书默认工作流", () => {
   it("有默认：按默认方案启动", async () => {
     await writeBook({ defaultWorkflowRecipeId: "zhihu-short-story" });
     const started = await start({ chapterNumber: 1 });

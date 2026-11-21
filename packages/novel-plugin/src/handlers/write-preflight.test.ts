@@ -594,17 +594,18 @@ describe("审修阶段的技能约束来源", () => {
   });
 });
 
-describe("scene.spec hard gate descriptions", () => {
-  it("requires write.preflight in tool registry description", async () => {
+describe("chapter.blueprint / chapter.commit 的写前硬门说明", () => {
+  it("requires chapter.preflight in tool registry description", async () => {
     const { NOVEL_SESSION_TOOL_DEFINITIONS } = await import("./tool-registry.js");
-    const preflight = NOVEL_SESSION_TOOL_DEFINITIONS.find((tool) => tool.name === "write.preflight");
-    const scene = NOVEL_SESSION_TOOL_DEFINITIONS.find((tool) => tool.name === "scene.spec");
-    const pipeline = NOVEL_SESSION_TOOL_DEFINITIONS.find((tool) => tool.name === "pipeline.write");
+    const preflight = NOVEL_SESSION_TOOL_DEFINITIONS.find((tool) => tool.name === "chapter.preflight");
+    const blueprint = NOVEL_SESSION_TOOL_DEFINITIONS.find((tool) => tool.name === "chapter.blueprint");
+    const commit = NOVEL_SESSION_TOOL_DEFINITIONS.find((tool) => tool.name === "chapter.commit");
 
     expect(preflight).toBeTruthy();
-    expect(scene?.description).toContain("write.preflight");
-    expect(pipeline?.description).toContain("write.preflight");
-    expect(pipeline?.description).toContain("context-not-ready");
+    expect(blueprint?.description).toContain("chapter.preflight");
+    // commit 必须讲清「先预检再提交」和拒存码，否则模型会跳过预检直接写。
+    expect(commit?.description).toContain("chapter.preflight");
+    expect(commit?.description).toContain("context-not-ready");
   });
 });
 

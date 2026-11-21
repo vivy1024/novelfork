@@ -4,7 +4,7 @@
  * 候选表不是新的权威源。提交路径只有一条是真写入：
  *   scene-spec → replaceChapterScenes → narrative_scene（机器场景一律 dynamic + needs-review）
  * 其余类别只留在候选表：
- *   prose → 作为「已批准正文」钉住；之后的落盘工序调用 pipeline.write / chapter.write 时，
+ *   prose → 作为「已批准正文」钉住；之后的落盘工序调用 chapter.commit 时，
  *           产品适配器要求写入内容与它逐字一致（见 findApprovedProseMismatch）
  *   audit / outline / other → 仅供作者查看（outline 经作者确认后由叙述者自己落到卷纲，引擎不代写）
  * 任何提交之前，权威源零变化；提交与状态迁移在同一事务里，失败整体回滚。
@@ -66,7 +66,7 @@ function targetStepOf<T>(run: WorkflowRunRecord, stepId: string | undefined): { 
     return { error: invalid("unknown-step", {
       what: `工作流里没有工序「${stepId}」`,
       why: "stepId 必须取自工序简报",
-      action: "调用 workflow_get_current_step 重新读取进行中的工序",
+      action: "调用 workflow_step（action=\"current\"）重新读取进行中的工序",
     }) };
   }
   const running = runningSteps(run.state);
@@ -143,7 +143,7 @@ export function validateWorkflowCandidate(
   context: {
     readonly chapterNumber: number;
     readonly wordTarget?: number;
-    /** 本书字数硬范围规则；给了就按与 pipeline.write 相同的口径校验正文。 */
+    /** 本书字数硬范围规则；给了就按与 chapter.commit 相同的口径校验正文。 */
     readonly lengthRule?: ChapterLengthRule;
   },
 ): { ok: true; value: CandidateValidation; code?: undefined } | { ok: false; explanation: WorkflowExplanation; code?: string } {
@@ -183,7 +183,7 @@ export function validateWorkflowCandidate(
         } };
       }
       if (context.lengthRule) {
-        // 与 pipeline.write 落盘前的硬校验同一函数：过不了落盘的正文，在这里就不让它进审校与作者确认。
+        // 与 chapter.commit 落盘前的硬校验同一函数：过不了落盘的正文，在这里就不让它进审校与作者确认。
         const violation = checkChapterHardLength(content, context.lengthRule);
         if (violation) {
           return {
@@ -191,7 +191,7 @@ export function validateWorkflowCandidate(
             code: "length-out-of-range",
             explanation: {
               what: `正文 ${violation.count}${violation.unit}，不在本书 ${violation.target}${violation.unit} 的硬范围 ${violation.hardMin}-${violation.hardMax} 内（${describeLengthGap(violation)}）`,
-              why: "落盘（pipeline.write）按同一硬范围拒存；不合格的正文过了审校和作者确认也写不进书里",
+              why: "落盘（chapter_commit）按同一硬范围拒存；不合格的正文过了审校和作者确认也写不进书里",
               action: violation.delta < 0
                 ? `补写到至少 ${violation.hardMin}${violation.unit}（目标 ${violation.target}${violation.unit}）后重交`
                 : `删减到不超过 ${violation.hardMax}${violation.unit}（目标 ${violation.target}${violation.unit}）后重交`,
@@ -297,7 +297,7 @@ export interface SubmitStepOutputInput {
   /** 分支工序必填：取工序声明的结果之一。 */
   readonly outcome?: string;
   readonly wordTarget?: number;
-  /** 本书字数硬范围规则（book.json）；正文候选按它校验，口径与 pipeline.write 一致。 */
+  /** 本书字数硬范围规则（book.json）；正文候选按它校验，口径与 chapter.commit 一致。 */
   readonly lengthRule?: ChapterLengthRule;
   /** 提交成功时写入新候选的 id（返回给提交者，供领导者按 id 引用，不再转贴正文）。 */
   readonly capture?: { candidateId?: string };
@@ -323,7 +323,7 @@ function delegatedStepOf<T>(
       explanation: {
         what,
         why: "委派子代理只能提交分给它的那道工序，其余工序由领导者或对应的子代理负责",
-        action: "调用 workflow_get_current_step 确认分给你的 stepId；不是你的工序就把情况写进摘要交还领导者",
+        action: "调用 workflow_step（action=\"current\"）确认分给你的 stepId；不是你的工序就把情况写进摘要交还领导者",
       },
     },
   });
@@ -597,7 +597,7 @@ export function getWorkflowRunDetail(storage: StorageDatabase, runId: string, si
 
 // ─── 落盘守卫 ────────────────────────────────────────────────────────────────
 
-const PROSE_WRITE_TOOLS = new Set(["pipeline.write", "chapter.write"]);
+const PROSE_WRITE_TOOLS = new Set(["chapter.commit"]);
 
 function normalizeProse(text: string): string {
   return text.replace(/\r\n/g, "\n").trim();
@@ -625,7 +625,7 @@ export function findApprovedProseMismatch(
     return {
       what: `${canonicalToolName} 被拦下：本运行的正文还没有经作者确认`,
       why: "正文要先过审校与作者确认才能写进书里；现在落盘会让未审的内容成为正式章节",
-      action: "等作者在「写作 › 工作流」确认正文后，再用 pipeline_write（fromWorkflowRun=true）落盘",
+      action: "等作者在「写作 › 工作流」确认正文后，再用 chapter_commit（fromWorkflowRun=true）落盘",
     };
   }
   // 引用已批准的候选：正文由工具自己从运行里取，不经模型转贴，天然一致。
@@ -635,7 +635,7 @@ export function findApprovedProseMismatch(
   return {
     what: `${canonicalToolName} 要写入的正文与作者批准的版本不一致`,
     why: "作者在「工作流」页批准的是另一份正文；落盘不同内容会让审过的和写进书里的对不上",
-    action: "用 workflow_get_current_step 取回已批准的正文原样写入；若确需改动，先重新提交正文等作者确认",
+    action: "用 workflow_step（action=\"current\"）取回已批准的正文原样写入；若确需改动，先重新提交正文等作者确认",
   };
 }
 

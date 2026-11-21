@@ -301,9 +301,9 @@ describe("WriteViewPanel 一键修落点", () => {
     fireEvent.click(screen.getByTestId("write-refresh"));
 
     await waitFor(() => {
-      const preflightCalls = callTool.mock.calls.filter(([tool]) => tool === "write.preflight");
+      const preflightCalls = callTool.mock.calls.filter(([tool]) => tool === "chapter.preflight");
       expect(preflightCalls).toContainEqual([
-        "write.preflight",
+        "chapter.preflight",
         {
           userDirectives: directive,
           acceptFocusDefault: false,
@@ -502,7 +502,8 @@ describe("WriteViewPanel 章节循环（写 → 改 → 收尾）", () => {
 
     const message = onSendToNarrator.mock.calls[0]![0] as string;
     expect(message).toContain("第 11 章做一遍通篇语言润色");
-    expect(message).toContain("chapter_read");
+    expect(message).toContain("chapter_list");
+    expect(message).toContain("原生 Read");
     expect(message).toContain("chapter_propose_selection");
     expect(message).not.toContain("chapter.propose_selection");
     expect(message).toContain("不整章重写");

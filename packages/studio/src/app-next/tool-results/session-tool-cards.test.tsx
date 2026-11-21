@@ -11,8 +11,8 @@ describe("renderer key 错配修正", () => {
     expect(resolveToolResultRendererKey({ toolName: "memory.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
   });
 
-  it("scene.spec / chapter.audit / memory.* 各自命中专属卡", () => {
-    expect(resolveToolResultRendererKey({ toolName: "scene.spec", result: { renderer: "scene.spec" } })).toBe("scene-spec");
+  it("chapter.blueprint / chapter.audit / memory.* 各自命中专属卡", () => {
+    expect(resolveToolResultRendererKey({ toolName: "chapter.blueprint", result: { renderer: "scene.spec" } })).toBe("scene-spec");
     expect(resolveToolResultRendererKey({ toolName: "chapter.audit", result: { renderer: "chapter.audit" } })).toBe("chapter-audit");
     expect(resolveToolResultRendererKey({ toolName: "memory.read", result: { renderer: "narrative-memory.read" } })).toBe("memory-read");
     expect(resolveToolResultRendererKey({ toolName: "memory.graph", result: { renderer: "narrative-memory.graph" } })).toBe("memory-graph");
@@ -54,10 +54,10 @@ describe("memory.read_line 叙事线卡", () => {
   });
 });
 
-describe("scene.spec 写作蓝图卡", () => {
+describe("chapter.blueprint 写作蓝图卡", () => {
   it("展示场景、情节点预算与不合规拦截", () => {
     render(<>{renderToolResult({
-      toolName: "scene.spec",
+      toolName: "chapter.blueprint",
       result: {
         renderer: "scene.spec",
         data: {
@@ -90,7 +90,7 @@ describe("scene.spec 写作蓝图卡", () => {
             ],
           },
           modelCalls: [{
-            id: "scene.spec:model-call:1",
+            id: "chapter.blueprint:model-call:1",
             purpose: "生成结构化写作蓝图",
             provider: "test-provider",
             model: "test-current-model",
@@ -151,10 +151,10 @@ describe("chapter.audit 审计卡", () => {
   });
 });
 
-describe("pipeline.write 结果卡", () => {
+describe("chapter.commit 结果卡", () => {
   it("按真实结果字段展示审计、修订、结算与内部模型调用", () => {
     render(<>{renderToolResult({
-      toolName: "pipeline.write",
+      toolName: "chapter.commit",
       result: {
         renderer: "pipeline.chapter-result",
         data: {
@@ -172,7 +172,7 @@ describe("pipeline.write 结果卡", () => {
           publishHint: { status: "has-warnings", warnings: ["建议抽查关键事实。"] },
           modelCalls: [
             {
-              id: "pipeline.write:model-call:1",
+              id: "chapter.commit:model-call:1",
               purpose: "执行章节生成、审计、修订与结算",
               provider: "test-provider",
               model: "test-current-model",
@@ -182,7 +182,7 @@ describe("pipeline.write 结果卡", () => {
               usage: { totalTokens: 2400 },
             },
             {
-              id: "pipeline.write:model-call:2",
+              id: "chapter.commit:model-call:2",
               purpose: "执行章节生成、审计、修订与结算",
               provider: "test-provider",
               model: "test-current-model",
@@ -208,7 +208,7 @@ describe("pipeline.write 结果卡", () => {
 
   it("后端返回上下文来源与管线阶段时如实展示", () => {
     render(<>{renderToolResult({
-      toolName: "pipeline.write",
+      toolName: "chapter.commit",
       result: {
         renderer: "pipeline.chapter-result",
         data: {
@@ -217,7 +217,7 @@ describe("pipeline.write 结果卡", () => {
           wordCount: 3200,
           auditPassed: true,
           contextSources: [
-            { source: "scene.spec", reason: "本章写作蓝图与硬约束", chars: 812 },
+            { source: "chapter.blueprint", reason: "本章写作蓝图与硬约束", chars: 812 },
             { source: "narrative-memory/state", reason: "角色当前状态与位置", chars: 460 },
           ],
           pipelineStages: [
@@ -231,7 +231,7 @@ describe("pipeline.write 结果卡", () => {
 
     expect(screen.getByTestId("pipeline-context-sources")).toBeTruthy();
     expect(screen.getByText("本章实际注入的上下文（2 项）")).toBeTruthy();
-    expect(screen.getByText("scene.spec")).toBeTruthy();
+    expect(screen.getByText("chapter.blueprint")).toBeTruthy();
     expect(screen.getByText("角色当前状态与位置")).toBeTruthy();
     expect(screen.getByText("812 字")).toBeTruthy();
 
@@ -244,7 +244,7 @@ describe("pipeline.write 结果卡", () => {
 
   it("后端没返回上下文来源与阶段时不渲染这两块，不伪造内容", () => {
     render(<>{renderToolResult({
-      toolName: "pipeline.write",
+      toolName: "chapter.commit",
       result: {
         renderer: "pipeline.chapter-result",
         data: {
@@ -286,7 +286,7 @@ describe("memory.read 召回卡", () => {
   });
 });
 
-describe("memory.graph / lore.read 故事树卡", () => {
+describe("memory.graph / jingwei.read 故事树卡", () => {
   it("没有经纬条目时如实说明，并交代事件走时间线", () => {
     render(<>{renderToolResult({
       toolName: "memory.graph",
@@ -317,9 +317,9 @@ describe("memory.graph / lore.read 故事树卡", () => {
     expect(screen.getByText("1 条关系 · 1 个事件 · 共现 1 · 因果 1 · 伏笔 1")).toBeTruthy();
   });
 
-  it("lore.read 走树卡，不再落 generic 吐原始结构", () => {
+  it("jingwei.read 走树卡，不再落 generic 吐原始结构", () => {
     render(<>{renderToolResult({
-      toolName: "lore.read",
+      toolName: "jingwei.read",
       result: {
         data: {
           scope: "category",
@@ -347,7 +347,7 @@ describe("memory.graph / lore.read 故事树卡", () => {
 
   it("树卡带事件时，「去时间线看」交出故事推进 › 时间线的产物，工作台据此切侧栏", () => {
     const onOpenArtifact = vi.fn();
-    render(<>{renderToolResult({ toolName: "lore.read", result: treeWithEvents, onOpenArtifact })}</>);
+    render(<>{renderToolResult({ toolName: "jingwei.read", result: treeWithEvents, onOpenArtifact })}</>);
 
     const events = screen.getByTestId("tool-result-lore-tree-events");
     expect(events.textContent).toContain("2 个叙事事件（第 3–7 章）");
@@ -361,7 +361,7 @@ describe("memory.graph / lore.read 故事树卡", () => {
   });
 
   it("独立对话页（没有工作台）只给文字说明，不放点了没反应的按钮", () => {
-    render(<>{renderToolResult({ toolName: "lore.read", result: treeWithEvents })}</>);
+    render(<>{renderToolResult({ toolName: "jingwei.read", result: treeWithEvents })}</>);
     expect(screen.getByTestId("tool-result-lore-tree-events")).toBeTruthy();
     expect(screen.queryByTestId("tool-result-lore-tree-open-timeline")).toBeNull();
   });

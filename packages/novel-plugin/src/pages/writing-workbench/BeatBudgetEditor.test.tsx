@@ -1,6 +1,6 @@
 /**
  * 情节点预算编辑器：只验作者能不能改节奏、本地校验有没有如实反馈。
- * 权威校验在后端 scene.spec / pipeline.write，这里不测后端行为。
+ * 权威校验在后端 chapter.blueprint / chapter.commit，这里不测后端行为。
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";

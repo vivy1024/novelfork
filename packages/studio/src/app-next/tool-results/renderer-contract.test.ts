@@ -24,36 +24,15 @@ const TOOL_REGISTRY_PATH = resolve(
  * 想收窄体验就为它写专属卡并从这里删掉；不要反过来往这里加以让测试变绿。
  */
 const GENERIC_BY_DESIGN = new Set<string>([
-  "chapter.content",
   "chapter.discard_range",
   "chapter.list",
-  "character.arcs",
   "character.consistency",
   "hooks.manage",
-  "jingwei.audit",
-  // jingwei.read / lore.read 已改用 LoreTreeCard（故事树），不再走 generic。
   "jingwei.write",
-  // 市场扫榜/查询/榜单注册表/抽样目前走市场页，不在对话结果卡里做专属 UI。
+  // 市场数据的专属 UI 在市场页。
   "market.query",
-  "market.ranks",
-  "market.sample_public_chapters",
-  "market.scan",
-  // narrative.mutationPreview（propose_change / approve_change）暂无专属差异预览卡，
-  // NarrativeLineCard 只覆盖 memory.read_line 的只读快照，故此项仍显式走 generic。
-  "narrative.mutationPreview",
   "narrative-memory.admin",
-  "pipeline.import_chapters",
-  // storyline.propose 的结果是草稿提交回执（草稿进「待确认」面板确认），登记处不值得做专属卡。
-  "storyline.proposal",
-  "resource.manage",
-  "tool.rewrite-apply",
-  // Writing Skills 迁移后的工具暫走 generic；H-3 提供专属卡后从这里删除。
-  // writing-skills.list 已随 S-9 下线（写作技能面板降级为本书清单，叙述者的技能浏览工具删除）。
   "writing-skills.compliance",
-  "writing-skills.import",
-  // skills.recommend 直接把 renderer 声明成 "generic"：推荐结果是扁平的
-  // name/kind/reason 列表，generic 卡足够；作者真正的交互发生在随后的
-  // AskUserQuestion（由 Runtime 原生渲染）。
   "generic",
 ]);
 
@@ -73,7 +52,8 @@ describe("tool renderer 契约", () => {
   const renderers = declaredRenderers();
 
   it("能从 tool-registry 读到 renderer 声明", () => {
-    expect(renderers.length).toBeGreaterThan(20);
+    const source = readFileSync(TOOL_REGISTRY_PATH, "utf8");
+    expect([...source.matchAll(/^\s+name:\s*"([^"]+)"/gmu)]).toHaveLength(25);
     expect(renderers).toContain("write.preflight");
   });
 

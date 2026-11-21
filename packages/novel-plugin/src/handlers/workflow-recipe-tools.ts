@@ -26,10 +26,7 @@ import type { TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 import { toWorkflowToolView } from "./workflow-run-tools.js";
 
 export const WORKFLOW_RECIPE_TOOL_NAMES = [
-  "workflow.list_recipes",
-  "workflow.get_recipe",
-  "workflow.edit_recipe",
-  "workflow.start_run",
+  "workflow.manage",
 ] as const;
 
 function fail(error: string, summary: string, data?: unknown): RuntimeToolResult {
@@ -99,8 +96,12 @@ export async function executeWorkflowRecipeTool(
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult | null> {
   const wire = toolName.replace(/\./g, "_");
-  const normalized = WORKFLOW_RECIPE_TOOL_NAMES.find((name) => name.replace(/\./g, "_") === wire);
-  if (!normalized) return null;
+  if (wire !== "workflow_manage") return null;
+
+  const manageAction = typeof input.action === "string" ? input.action.trim().toLowerCase() : "";
+  if (!["list", "get", "edit", "start"].includes(manageAction)) {
+    return fail("invalid-action", `未知的 workflow.manage action：${String(input.action ?? "")}。支持 list | get | edit | start。`);
+  }
 
   let recipes: readonly WorkflowGraphRecipe[];
   try {
@@ -111,7 +112,7 @@ export async function executeWorkflowRecipeTool(
   }
   const findRecipe = (id: unknown) => (typeof id === "string" ? recipes.find((recipe) => recipe.id === id.trim()) : undefined);
 
-  if (normalized === "workflow.list_recipes") {
+  if (manageAction === "list") {
     return {
       ok: true,
       summary: `本书有 ${recipes.length} 个工作流方案（${recipes.filter((recipe) => recipe.status === "published").length} 个已发布）。`,
@@ -119,13 +120,13 @@ export async function executeWorkflowRecipeTool(
     };
   }
 
-  if (normalized === "workflow.get_recipe") {
+  if (manageAction === "get") {
     const recipe = findRecipe(input.recipeId);
-    if (!recipe) return fail("recipe-not-found", `找不到方案「${String(input.recipeId ?? "")}」。先调用 workflow_list_recipes 查看可用方案。`);
+    if (!recipe) return fail("recipe-not-found", `找不到方案「${String(input.recipeId ?? "")}」。先调用 workflow_manage(action="list") 查看可用方案。`);
     return { ok: true, summary: `方案「${recipe.name}」（${recipe.status === "published" ? "已发布" : "草稿"}，第 ${recipe.revision} 版）。`, data: { recipe: recipeForModel(recipe) } };
   }
 
-  if (normalized === "workflow.start_run") {
+  if (manageAction === "start") {
     const narratorId = context.sessionId?.trim();
     if (!narratorId) return fail("missing-session", "缺少宿主注入的会话标识，无法启动工作流。");
     const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : Number.NaN;
@@ -137,7 +138,7 @@ export async function executeWorkflowRecipeTool(
         return explainedFailure("default-workflow-missing", fallback.notice ?? {
           what: "本书还没有默认工作流",
           why: "没指定方案时按本书默认工作流启动",
-          action: "先用 workflow_list_recipes 选一个已发布的方案，带 recipeId 启动",
+          action: "先用 workflow_manage(action=\"list\") 选一个已发布的方案，带 recipeId 启动",
         });
       }
       recipeId = fallback.recipeId;
@@ -159,7 +160,7 @@ export async function executeWorkflowRecipeTool(
     };
   }
 
-  // workflow.edit_recipe
+  // action === "edit"
   const ops = readOps(input.ops);
   if (ops === null) return fail("invalid-ops", "ops 必须是编辑指令数组（add_node / update_node / remove_node / connect / disconnect / set_meta）。");
   const existing = findRecipe(input.recipeId);
@@ -179,7 +180,7 @@ export async function executeWorkflowRecipeTool(
   } else {
     const source = input.copyFrom === undefined ? undefined : findRecipe(input.copyFrom);
     if (input.copyFrom !== undefined && !source) {
-      return fail("recipe-not-found", `找不到要复制的方案「${String(input.copyFrom)}」。先调用 workflow_list_recipes 查看可用方案。`);
+      return fail("recipe-not-found", `找不到要复制的方案「${String(input.copyFrom)}」。先调用 workflow_manage(action="list") 查看可用方案。`);
     }
     const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : source ? `${source.name}（副本）` : "";
     if (!name) return fail("name-required", "新建方案需要 name（或用 copyFrom 基于已有方案复制）。");

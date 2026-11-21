@@ -2,7 +2,7 @@
  * 故事树视图 —— 一份实现，三处共用。
  *
  *   ① 工作台「故事推进 › 树状图」（mode="full"，全屏）
- *   ② 对话里 lore.read 结果卡（mode="compact"，替掉原来的 generic 原始结构输出）
+ *   ② 对话里 jingwei.read 结果卡（mode="compact"，替掉原来的 generic 原始结构输出）
  *   ③ 对话里 memory.graph 结果卡（mode="compact"，替掉原来的三元组文本列表）
  *
  * 层级来自 NarraBench 分类学（book → Big-4 → 12 特征 → 分类 → 条目），

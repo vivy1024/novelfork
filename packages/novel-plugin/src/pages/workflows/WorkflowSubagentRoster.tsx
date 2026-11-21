@@ -16,8 +16,8 @@ import {
 } from "../writing-workbench/workflow-canvas/runtime-workflow-catalog";
 import { toolDisplayName } from "./workflow-step-list-model";
 
-const SUBMITS = "workflow.submit_step_output";
-const DEFAULT_SAFE_TOOLS = ["chapter.read", "lore.read", "memory.read", "workflow.get_current_step", SUBMITS] as const;
+const SUBMITS = "workflow.step";
+const DEFAULT_SAFE_TOOLS = ["chapter.list", "jingwei.read", "memory.read", SUBMITS] as const;
 
 export interface WorkflowSubagentRosterProps {
   readonly bookId?: string;
@@ -69,7 +69,7 @@ export function WorkflowSubagentRoster({ bookId }: WorkflowSubagentRosterProps) 
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
-      fetchJsonSafe("/api/providers/models"),
+      fetchJsonSafe("/api/settings"),
       fetchJsonSafe("/api/custom-subagents"),
     ]).then(([modelsBody, globalBody]) => {
       if (cancelled) return;

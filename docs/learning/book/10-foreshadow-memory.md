@@ -62,5 +62,5 @@ routes:
 
 ## Agent 查阅提示
 
-- 伏笔以经纬伏笔条目为准，用 `hooks_manage` 列出、埋设、兑现；部分揭示用 `lore_progress`。
-- 补结算历史章节用 `memory_settle_range`；单章用 `memory_settle_chapter`。
+- 伏笔以经纬伏笔条目为准，用 `hooks_manage` 列出、埋设、兑现；部分揭示用 `jingwei_write`（`action=progress`）。
+- 补结算用 `memory_settle`：单章传 `chapterNumber`，范围传 `fromChapter` 和 `toChapter`。

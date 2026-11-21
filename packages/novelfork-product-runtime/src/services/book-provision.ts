@@ -181,7 +181,7 @@ const READY_STATE: ProvisionState = "ready";
  * 的 toRuntimeToolName）：系统提示词不经过工具名翻译，写点号名模型对不上号。有测试核对。
  */
 export const NOVELIST_PROMPT =
-	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 write_preflight 拿到本章写前召回包，再用 scene_spec 建立蓝图，按召回包写好正文后用 pipeline_write 提交；它会执行本书的字数、预设、节拍和审校治理。没有可用文本模型时必须如实说明阻塞，绝不能用 chapter_write 写入短文本充当新章节。chapter_write 仅用于覆盖已存在的完整章节，局部改写使用 rewrite_apply；所有写入都遵守 Runtime 权限确认。通用文件、命令、搜索等工具可以正常使用；但写章节正文请用 chapter_write / pipeline_write，改设定请用 lore_* 工具，这样字数、结算和审计才会正确记录。用与作者相同的语言回复；书的语言为中文时一律用中文。";
+	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 chapter_preflight 拿到目标路径与本章写前召回包，再用 chapter_blueprint 建立并缓存蓝图，按召回包用原生 Write 把正文写到目标章节路径后，再调用 chapter_commit 完成字数、技能、节拍、审校与自动结算。没有可用文本模型时必须如实说明阻塞，绝不能跳过写前预检强行交稿。改写已有章节请用原生 Edit/Write 修改正文后调用 chapter_commit（mode=revision）；所有写入都遵守 Runtime 权限确认。通用文件、命令、搜索等工具可以正常使用；但章节落盘结算请用 chapter_commit，维护设定请用 jingwei_read / jingwei_write，这样字数、结算和审计才会正确记录。用与作者相同的语言回复；书的语言为中文时一律用中文。";
 
 export type RuntimeEntityCapabilities = {
 	read: boolean;

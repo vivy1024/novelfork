@@ -21,13 +21,11 @@ const FORBIDDEN_SET = new Set(ROSTER_FORBIDDEN_TOOLS);
 export const CUSTOM_SUBAGENT_ALLOWED_TOOLS: readonly string[] = Array.from(
   new Set([
     ...NOVEL_SUBAGENT_ROSTER.flatMap((t) => t.tools),
-    "chapter.read",
+    "Read",
     "chapter.list",
-    "lore.read",
+    "jingwei.read",
     "memory.read",
-    "story.timeline",
-    "workflow.get_current_step",
-    "workflow.submit_step_output",
-    "workflow.report_blocker",
+    "memory.graph",
+    "workflow.step",
   ]),
 ).filter((tool) => !FORBIDDEN_SET.has(tool));

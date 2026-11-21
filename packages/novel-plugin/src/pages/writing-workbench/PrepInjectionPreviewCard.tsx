@@ -1,7 +1,7 @@
 /**
  * 本章 AI 注入透视卡片（PrepInjectionPreviewCard）
  *
- * 在作者点击「交叙述者起草本章」之前，将 `write.preflight` 返回的 `recallSummary`、
+ * 在作者点击「交叙述者起草本章」之前，将 `chapter.preflight` 返回的 `recallSummary`、
  * `openHooksForChapter`、`dueForeshadows`、`requiredSkillAcknowledgements` 可视化展开：
  * - 总估计 Token / 预算上限与进度条
  * - 各通道卡片数与 Token 占比

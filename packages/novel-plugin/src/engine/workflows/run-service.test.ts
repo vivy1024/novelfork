@@ -87,7 +87,7 @@ describe("创作工作流运行：服务端到端", () => {
     const { storage, bookRoot } = await setup();
     let run = await startFanqie(storage, bookRoot);
     expect(run.state.currentStepId).toBe("step-context");
-    expect(buildWorkflowRunBrief(run)).toContain("workflow_submit_step_output");
+    expect(buildWorkflowRunBrief(run)).toContain("workflow_step");
 
     // 1. 上下文工序交小结，自动进入蓝图。
     run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "other", payload: { summary: "上下文就绪" } }));
@@ -108,7 +108,7 @@ describe("创作工作流运行：服务端到端", () => {
     run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "prose", payload: { title: "突围", content: "萧炎一路杀出后山。" } }));
     expect(getApprovedProse(storage, run)).toBeNull();
     expect(run.state.currentStepId).toBe("step-adversarial-audit");
-    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "萧炎一路杀出后山。" })?.what).toContain("还没有经作者确认");
+    expect(findApprovedProseMismatch(storage, run, "chapter.commit", { content: "萧炎一路杀出后山。" })?.what).toContain("还没有经作者确认");
 
     // 4. 审校不通过：自动打回写正文的工序，意见进入下一次简报（不经作者）。
     run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "audit", payload: { passed: false, summary: "节奏拖沓", issues: [{ severity: "error", description: "第二场冲突没有升级" }] } }));
@@ -126,10 +126,10 @@ describe("创作工作流运行：服务端到端", () => {
     expect(getApprovedProse(storage, run)).toEqual({ title: "突围", content: "萧炎一路杀出后山。追兵更近了。" });
 
     // 5. 落盘守卫：写入内容必须与已批准正文一致；按引用落盘（不传正文）放行。
-    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "另一份正文" })).not.toBeNull();
-    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "  萧炎一路杀出后山。追兵更近了。\r\n" })).toBeNull();
-    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { fromWorkflowRun: true })).toBeNull();
-    expect(findApprovedProseMismatch(storage, run, "lore.write", { content: "随便" })).toBeNull();
+    expect(findApprovedProseMismatch(storage, run, "chapter.commit", { content: "另一份正文" })).not.toBeNull();
+    expect(findApprovedProseMismatch(storage, run, "chapter.commit", { content: "  萧炎一路杀出后山。追兵更近了。\r\n" })).toBeNull();
+    expect(findApprovedProseMismatch(storage, run, "chapter.commit", { fromWorkflowRun: true })).toBeNull();
+    expect(findApprovedProseMismatch(storage, run, "jingwei.write", { content: "随便" })).toBeNull();
 
     // 6. 最后一道因 requireFinalApproval 需要终审。
     run = ok(submitWorkflowStepOutput({ storage, narratorId: "narrator-1", runRevision: run.state.revision, kind: "other", payload: { summary: "已落盘并结算" } }));
@@ -177,7 +177,7 @@ describe("创作工作流运行：服务端到端", () => {
     run = ok(approveWorkflowStep({ storage, runId: run.id, stepId: "step-adversarial-audit", expectedRevision: run.state.revision }));
     // 进行中：落盘闸门仍能拿到全文。
     expect(getApprovedProse(storage, run)).toEqual({ title: "突围", content: "第二版正文。" });
-    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { content: "另一份" })).not.toBeNull();
+    expect(findApprovedProseMismatch(storage, run, "chapter.commit", { content: "另一份" })).not.toBeNull();
     expect(compactFinishedWorkflowProseCandidates(storage).candidates).toEqual({ approved: 0, rejected: 0, pending: 0 });
 
     run = ok(cancelWorkflowRun({ storage, runId: run.id, expectedRevision: run.state.revision }));
@@ -322,7 +322,7 @@ describe("创作工作流运行：服务端到端", () => {
     expect(buildWorkflowRunBrief(run)).toContain("正文太短，补足到 800 字以上");
     // 旧的已批准正文作废：重写的正文要重新经审校与作者确认才能落盘。
     expect(getApprovedProse(storage, run)).toBeNull();
-    expect(findApprovedProseMismatch(storage, run, "pipeline.write", { fromWorkflowRun: true })?.what).toContain("还没有经作者确认");
+    expect(findApprovedProseMismatch(storage, run, "chapter.commit", { fromWorkflowRun: true })?.what).toContain("还没有经作者确认");
   });
 
   it("打回必须写意见", async () => {

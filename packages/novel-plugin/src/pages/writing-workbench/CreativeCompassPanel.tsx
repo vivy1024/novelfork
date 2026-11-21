@@ -2,7 +2,7 @@
  * 创作罗盘常驻面板 —— 写作侧栏里编辑近 1-3 章焦点。
  *
  * 四字段落盘经纬单例 category=current-focus（不新增统一分类枚举）。
- * 驾驶舱 / write.preflight / pipeline.write 共用同一份条目。
+ * book.overview / chapter.preflight / chapter.commit 共用同一份条目。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Compass, Loader2, RefreshCw } from "lucide-react";

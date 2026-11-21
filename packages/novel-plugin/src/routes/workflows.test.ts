@@ -342,14 +342,14 @@ describe("createWorkflowsRouter & workflow-store", () => {
       body: JSON.stringify({
         nameZh: "节奏审校（定制）",
         description: "专盯前十章节奏",
-        tools: ["chapter.read", "pipeline.write", "Write", "workflow.submit_step_output"],
-        basedOn: "nf-reader",
+        tools: ["Read", "chapter.list", "workflow.step", "chapter.commit", "jingwei.write", "Write"],
+        basedOn: "nf-reader-critic",
         defaultModel: "4sapi-2:deepseek-v4.1-flash",
       }),
     });
     expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as { subagent: { id: string; tools: string[]; defaultModel?: string } };
-    expect(created.subagent.tools).toEqual(["chapter.read", "workflow.submit_step_output"]);
+    expect(created.subagent.tools).toEqual(["Read", "chapter.list", "workflow.step"]);
     expect(created.subagent.defaultModel).toBe("4sapi-2:deepseek-v4.1-flash");
 
     const listRes = await router.request("http://localhost/api/books/book-1/subagents");

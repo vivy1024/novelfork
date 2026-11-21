@@ -57,7 +57,7 @@ describe("内置子代理名册", () => {
       for (const tool of template.tools) {
         if (ROSTER_RUNTIME_TOOLS.includes(tool)) continue;
         expect(contributed.has(tool), `${template.id} → ${tool} 未贡献`).toBe(true);
-        if (tool === "workflow.submit_step_output") continue;
+        if (tool === "workflow.step") continue;
         if (template.id === "nf-general" && GENERAL_PROPOSAL_TOOLS.includes(tool)) {
           // 只产候选卡、作者确认才生效的草稿级工具。
           expect(catalog.get(tool), `${template.id} → ${tool}`).toBe("draft-write");
@@ -71,8 +71,9 @@ describe("内置子代理名册", () => {
   it("贡献形状：工具名转成线上名（点号换下划线），Runtime 工具保持原名", () => {
     const contributions = listNovelSubagentTemplateContributions();
     const writer = contributions.find((t) => t.id === "nf-writer")!;
-    expect(writer.tools).toContain("chapter_read");
-    expect(writer.tools).toContain("workflow_submit_step_output");
+    expect(writer.tools).toContain("Read");
+    expect(writer.tools).toContain("chapter_list");
+    expect(writer.tools).toContain("workflow_step");
     expect(writer.tools).toContain("Skill");
     for (const template of contributions) {
       for (const tool of template.tools) expect(tool, template.id).toMatch(WIRE_NAME);
@@ -80,7 +81,7 @@ describe("内置子代理名册", () => {
   });
 
   it("写手 / 返修 / 审校 / 镜头设计 / 改编导演能提交；结算核对与资料助手不能提交", () => {
-    const canSubmit = (id: string) => NOVEL_SUBAGENT_ROSTER.find((t) => t.id === id)!.tools.includes("workflow.submit_step_output");
+    const canSubmit = (id: string) => NOVEL_SUBAGENT_ROSTER.find((t) => t.id === id)!.tools.includes("workflow.step");
     for (const id of [
       "nf-scene-architect", "nf-writer", "nf-reviser", "nf-continuity-auditor", "nf-pacing-auditor", "nf-deai-auditor",
       "nf-reader-critic", "nf-style-keeper", "nf-market-analyst", "nf-outline-planner",
@@ -94,27 +95,26 @@ describe("内置子代理名册", () => {
 
   it("新模板按职责最小授权：读者 / 文风 / 大纲 / 短剧 / 有声只读加提交，市场带榜单工具，没有删除与批量维护", () => {
     const tools = (id: string) => NOVEL_SUBAGENT_ROSTER.find((t) => t.id === id)!.tools;
-    expect(tools("nf-market-analyst")).toEqual(expect.arrayContaining(["market.ranks", "market.query"]));
-    expect(tools("nf-market-analyst")).not.toContain("market.scan");
-    expect(tools("nf-style-keeper")).toContain("character.voice.read");
-    expect(tools("nf-audiobook-director")).toContain("character.voice.read");
-    expect(tools("nf-script-director")).toEqual(expect.arrayContaining(["chapter.read", "lore.read", "memory.read"]));
+    expect(tools("nf-market-analyst")).toContain("market.radar");
+    expect(tools("nf-style-keeper")).toContain("character.inspect");
+    expect(tools("nf-audiobook-director")).toContain("character.inspect");
+    expect(tools("nf-script-director")).toEqual(expect.arrayContaining(["Read", "chapter.list", "jingwei.read", "memory.read"]));
     expect(tools("nf-outline-planner")).not.toContain("outline.volume");
     for (const id of ["nf-reader-critic", "nf-style-keeper", "nf-outline-planner", "nf-market-analyst", "nf-script-director", "nf-audiobook-director"]) {
       for (const tool of tools(id)) expect(GENERAL_PROPOSAL_TOOLS, `${id} → ${tool}`).not.toContain(tool);
     }
     const general = tools("nf-general");
     expect(general).toEqual(expect.arrayContaining([...GENERAL_PROPOSAL_TOOLS]));
-    for (const banned of ["resource.manage", "chapter.discard_range", "memory.bulk_delete", "memory.bulk_approve", "memory.delete", "market.scan"]) {
+    for (const banned of ["chapter.commit", "chapter.discard_range", "jingwei.write", "memory.events", "memory.settle", "book.import"]) {
       expect(general).not.toContain(banned);
     }
   });
 
   it("提示词点名的工具都在模板自己的上限里（线上名）", () => {
-    const wire = /([a-z]+(?:_[a-z]+)+)/g;
+    const wire = / ([a-z]+(?:_[a-z]+)+) /g;
     const contributions = listNovelSubagentTemplateContributions();
     for (const template of contributions) {
-      const named = [...template.prompt.matchAll(wire)].map((match) => match[1]!).filter((name) => name.includes("_") && /^(chapter|lore|memory|cockpit|market|character|skills|scene|style|storyline|workflow|jingwei|publish|outline)_/.test(name));
+      const named = [...template.prompt.matchAll(wire)].map((match) => match[1]!).filter((name) => name.includes("_") && /^(book|chapter|lore|memory|cockpit|market|character|skills|scene|style|storyline|workflow|jingwei|publish|outline)_/.test(name));
       for (const name of named) expect(template.tools, `${template.id} 提示词点名 ${name}`).toContain(name);
     }
   });

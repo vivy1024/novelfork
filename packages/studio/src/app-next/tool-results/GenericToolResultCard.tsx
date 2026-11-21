@@ -1,4 +1,4 @@
-import { AlertCircle, Compass, Feather, FileText, Layers, Scale } from "lucide-react";
+import { AlertCircle, Feather, FileText, Layers, Scale } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { ArtifactOpenButton } from "./ArtifactOpenButton";
@@ -13,32 +13,19 @@ import {
   type ToolResultRendererContext,
 } from "./types";
 
-const FRIENDLY_TOOL_TITLES: Readonly<Record<string, { readonly title: string; readonly kind: "style" | "mechanism" | "index" | "default" }>> = {
-  style_consolidate: { title: "文风铁律提纯与负反馈", kind: "style" },
-  "style.consolidate": { title: "文风铁律提纯与负反馈", kind: "style" },
+const FRIENDLY_TOOL_TITLES: Readonly<Record<string, { readonly title: string; readonly kind: "style" | "mechanism" | "default" }>> = {
+  style_manage: { title: "文风管理", kind: "style" },
+  "style.manage": { title: "文风管理", kind: "style" },
   mechanism_distill: { title: "中观剧情机制卡拆解", kind: "mechanism" },
   "mechanism.distill": { title: "中观剧情机制卡拆解", kind: "mechanism" },
-  style_distill_index: { title: "参考书零消耗机械索引", kind: "index" },
-  "style.distill_index": { title: "参考书零消耗机械索引", kind: "index" },
-  style_distill_preview: { title: "文风抽样范围预览", kind: "index" },
-  "style.distill_preview": { title: "文风抽样范围预览", kind: "index" },
-  style_distill_start: { title: "文风蒸馏抽取", kind: "style" },
-  "style.distill_start": { title: "文风蒸馏抽取", kind: "style" },
-  style_distill_status: { title: "文风蒸馏进度", kind: "style" },
-  "style.distill_status": { title: "文风蒸馏进度", kind: "style" },
-  style_distill_adopt: { title: "采纳文风规则与范文", kind: "style" },
-  "style.distill_adopt": { title: "采纳文风规则与范文", kind: "style" },
-  skills_check_compliance: { title: "写作技能合规检查", kind: "default" },
-  "skills.check_compliance": { title: "写作技能合规检查", kind: "default" },
-  skills_recommend: { title: "写作技能推荐", kind: "default" },
-  "skills.recommend": { title: "写作技能推荐", kind: "default" },
+  skills_manage: { title: "写作技能管理", kind: "default" },
+  "skills.manage": { title: "写作技能管理", kind: "default" },
 };
 
-function renderIcon(kind: "style" | "mechanism" | "index" | "default", isError: boolean) {
+function renderIcon(kind: "style" | "mechanism" | "default", isError: boolean) {
   if (isError) return <AlertCircle className="size-4 text-destructive" />;
   if (kind === "style") return <Scale className="size-4 text-primary" />;
   if (kind === "mechanism") return <Layers className="size-4 text-primary" />;
-  if (kind === "index") return <Compass className="size-4 text-primary" />;
   return <FileText className="size-4 text-muted-foreground" />;
 }
 

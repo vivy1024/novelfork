@@ -8,9 +8,11 @@ describe("agent roles", () => {
     expect(roleKeys).toEqual(["default", "novelist"]);
   });
 
-  it("novelist role uses pipeline.write as the full-chapter path", () => {
+  it("novelist role uses chapter.commit as the full-chapter path", () => {
     const novelist = AGENT_ROLES.novelist;
-    expect(novelist.workflow).toContain("pipeline.write");
+    expect(novelist.workflow).toContain("chapter.commit");
+    // 已下线的旧入口不得再出现在提示词里。
+    expect(novelist.workflow).not.toContain("pipeline.write");
     expect(novelist.outputSpec).toContain("candidate/draft 主入口已移除");
     expect(novelist.outputSpec).not.toContain("candidate.create_chapter");
   });

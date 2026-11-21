@@ -1,5 +1,6 @@
 /**
- * storyline.propose 的行为契约 —— 经 executeRuntimeDomainTool 走完整分发。
+ * storyline.propose（现为 jingwei.write action="propose_storyline"）的行为契约
+ * —— 经 executeRuntimeDomainTool 走完整分发。
  *
  * 锁住三条产品判断：
  *   · 只产 needs-review 草稿，叙述者不能给自己盖章；
@@ -47,8 +48,12 @@ async function seedEntry(storage: StorageDatabase, id: string, title: string): P
   });
 }
 
+/**
+ * storyline.propose 已并入 jingwei.write（action: "propose_storyline"）：
+ * 25 工具口径下不再有独立入口，测试统一走合并后的那条分发路径。
+ */
 async function propose(input: Record<string, unknown>) {
-  return executeRuntimeDomainTool("storyline.propose", input, binding, {} as never);
+  return executeRuntimeDomainTool("jingwei.write", { action: "propose_storyline", ...input }, binding, {} as never);
 }
 
 beforeEach(async () => {

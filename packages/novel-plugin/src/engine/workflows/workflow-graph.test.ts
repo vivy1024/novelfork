@@ -163,7 +163,7 @@ describe("applyWorkflowOps", () => {
 
   it("用指令从空白搭出一条可发布的流程", () => {
     const result = applyWorkflowOps(empty, [
-      { op: "add_node", node: { type: "step", id: "plan", label: "写蓝图", kind: "guided-plan", tools: ["scene.spec"] } },
+      { op: "add_node", node: { type: "step", id: "plan", label: "写蓝图", kind: "guided-plan", tools: ["chapter.blueprint"] } },
       { op: "add_node", node: { type: "step", id: "draft", label: "起草", kind: "writer-generate", requiresApproval: true } },
       { op: "connect", source: "start", target: "plan" },
       { op: "connect", source: "plan", target: "draft" },

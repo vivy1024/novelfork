@@ -110,7 +110,7 @@ describe("WorkflowTimelinePanel 执行监视器（Studio DOM 集成）", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
     const kickoff = String(onSend.mock.calls[0]![0]);
     expect(kickoff).toContain("第 3 章");
-    expect(kickoff).toContain("workflow_get_current_step");
+    expect(kickoff).toContain("workflow_step");
     expect(kickoff).not.toContain("起草高压反转");
     expect(screen.getByTestId("workflow-running-card").textContent).toContain("拉取悬疑大纲");
   });

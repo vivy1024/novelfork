@@ -74,7 +74,7 @@ describe("学习中心教程与实现一致性", () => {
   });
 
   it("registry 非空且包含教程依赖的工具", () => {
-    for (const tool of ["write.preflight", "memory.settle_range", "chapter.discard_range", "publish.check", "style.distill_adopt", "character.voice.draft", "hooks.manage"]) {
+    for (const tool of ["chapter.preflight", "memory.settle", "chapter.discard_range", "chapter.audit", "style.manage", "character.inspect", "hooks.manage"]) {
       expect(registeredTools.has(tool), `${tool} 未注册`).toBe(true);
     }
   });
@@ -107,7 +107,7 @@ describe("学习中心教程与实现一致性", () => {
     // 这两条是写章纪律：不讲清，作者不知道为什么被拦、写废了该怎么办
     const doc = readDoc("book/04-write-next-chapter.md");
     // 写在「Agent 查阅提示」里，用模型拿到的线上名。
-    expect(doc).toContain("write_preflight");
+    expect(doc).toContain("chapter_preflight");
     expect(doc).toContain("chapter_discard_range");
     expect(doc).toContain("一键修");
   });

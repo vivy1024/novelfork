@@ -62,4 +62,4 @@ routes:
 
 ## Agent 查阅提示
 
-- 投稿风险自检用 `publish_check`；导出正文用 `chapter_list` + `chapter_read`，不假装生成文件。
+- 投稿风险自检用 `chapter_audit`（`mode=publish`）；导出正文先用 `chapter_list` 查路径，再用原生 `Read` 读正文，不假装生成文件。

@@ -15,11 +15,11 @@ import { NOVEL_RUNTIME_TOOL_CATALOG } from "./handlers/tool-registry.js";
 import { NOVEL_RUNTIME_SYSTEM_PROMPT } from "./runtime-contribution.js";
 import { NOVEL_TOOL_SCHEMAS } from "./tool-schemas.js";
 
-/** 2026-11 精简后实测：系统提示 3204、工具说明合计（新增 style.consolidate 与 mechanism.distill 两项聚合工具），各留 5% 余量。 */
-const MAX_SYSTEM_PROMPT_CHARS = 3364;
-const MAX_TOOL_DESCRIPTION_CHARS = 11350;
+/** 25 工具重构后实测：系统提示 3426、工具说明合计 3505（chapter.commit 396 最长），各留 5% 余量。 */
+const MAX_SYSTEM_PROMPT_CHARS = 3597;
+const MAX_TOOL_DESCRIPTION_CHARS = 3681;
 const MAX_SINGLE_TOOL_DESCRIPTION_CHARS = 900;
-const MAX_WRITE_PREFLIGHT_DESCRIPTION_CHARS = 600;
+const MAX_PREFLIGHT_DESCRIPTION_CHARS = 265;
 
 /** 内部表名、列名与开发用标记：模型看不懂，作者也不该在转述里看到。 */
 const INTERNAL_TERMS: readonly RegExp[] = [
@@ -88,8 +88,8 @@ describe("面向模型的文本门禁", () => {
     expect(total).toBeLessThanOrEqual(MAX_TOOL_DESCRIPTION_CHARS);
     const oversized = readyTools.filter((tool) => tool.description.length > MAX_SINGLE_TOOL_DESCRIPTION_CHARS).map((tool) => tool.name);
     expect(oversized).toEqual([]);
-    const preflight = readyTools.find((tool) => tool.name === "write.preflight");
-    expect(preflight?.description.length ?? 0).toBeLessThanOrEqual(MAX_WRITE_PREFLIGHT_DESCRIPTION_CHARS);
+    const preflight = readyTools.find((tool) => tool.name === "chapter.preflight");
+    expect(preflight?.description.length ?? 0).toBeLessThanOrEqual(MAX_PREFLIGHT_DESCRIPTION_CHARS);
   });
 
   it("技能口径一致：按描述判断读哪些技能，硬约束在保存时校验，不写成不可跳过的门禁", () => {
@@ -105,14 +105,17 @@ describe("面向模型的文本门禁", () => {
     expect(NOVEL_RUNTIME_SYSTEM_PROMPT.split("自动发起").length - 1).toBe(1);
   });
 
-  it("结算失败由叙述者重试 memory.settle_chapter，不让作者自己调工具", () => {
-    expect(NOVEL_RUNTIME_SYSTEM_PROMPT).toContain("重试 memory.settle_chapter");
-    expect(readyTools.find((tool) => tool.name === "pipeline.write")?.description).toContain("重试 memory.settle_chapter");
+  it("结算失败由叙述者重试 memory.settle，不让作者自己调工具", () => {
+    expect(NOVEL_RUNTIME_SYSTEM_PROMPT).toContain("重试 memory.settle");
+    expect(readyTools.find((tool) => tool.name === "chapter.commit")?.description).toContain("重试 memory.settle");
     // 内置技能同口径：不让作者去调工具，结算失败不改用范围回填。
     const authorCallsTool = /(提醒|建议|让)作者[^。\n]{0,8}`[a-z]+_[a-z_]+`/u;
     const offenders = BUNDLED_WRITING_SKILLS.filter((skill) => authorCallsTool.test(skill.content)).map((skill) => skill.slug);
     expect(offenders).toEqual([]);
     const writeChapter = BUNDLED_WRITING_SKILLS.find((skill) => skill.slug === "nf-write-chapter")?.content ?? "";
-    expect(writeChapter).toMatch(/settlementError[^\n]*memory_settle_chapter/u);
+    // 技能里写的是模型拿到的线上名，且必须点名 memory_settle（合并后的单章结算入口）。
+    expect(writeChapter).toMatch(/结算失败用 `memory_settle`/u);
+    expect(writeChapter).not.toContain("memory_settle_chapter");
+    expect(writeChapter).not.toContain("memory_settle_range");
   });
 });

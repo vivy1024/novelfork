@@ -33,75 +33,31 @@ let resolver: MemoryResolver;
 let adapter: NovelRuntimeAdapter;
 
 const CANONICAL_READY_TOOL_NAMES = [
-  "cockpit.snapshot",
-  "write.preflight",
-  "memory.settle_range",
-  "memory.settle_chapter",
-  "chapter.discard_range",
-  "memory.read_line",
-  "memory.propose_change",
-  "memory.approve_change",
-  "chapter.read",
-  "chapter.write",
+  "book.overview",
+  "chapter.preflight",
+  "chapter.blueprint",
+  "chapter.commit",
   "chapter.list",
   "chapter.audit",
   "chapter.propose_selection",
-  "chapter.propose_revision",
-  "lore.propose_update",
-  "storyline.propose",
-  "rewrite.apply",
-  "pipeline.import_chapters",
-  "book.dissect",
-  "style.distill_index",
-  "style.distill_preview",
-  "style.distill_start",
-  "style.distill_status",
-  "style.distill_adopt",
-  "style.consolidate",
-  "mechanism.distill",
-  "outline.volume",
-  "arc.character",
-  "publish.check",
-  "character.check_consistency",
-  "character.voice.read",
-  "character.voice.draft",
+  "chapter.discard_range",
+  "jingwei.read",
+  "jingwei.write",
   "hooks.manage",
-  "skills.recommend",
-  "skills.check_compliance",
-  "skills.import_legacy",
-  "pipeline.write",
-  "lore.read",
-  "lore.write",
-  "lore.relate",
-  "lore.progress",
+  "outline.volume",
   "memory.read",
+  "memory.search",
   "memory.graph",
   "memory.events",
-  "memory.list",
-  "memory.read_entry",
-  "memory.search",
-  "memory.search_text",
-  "memory.dedup",
-  "memory.export",
-  "memory.stats",
-  "memory.update",
-  "memory.delete",
-  "memory.bulk_approve",
-  "memory.bulk_delete",
-  "jingwei.audit",
-  "scene.spec",
-  "resource.manage",
-  "market.scan",
-  "market.query",
-  "market.ranks",
-  "market.sample_public_chapters",
-  "workflow.get_current_step",
-  "workflow.submit_step_output",
-  "workflow.report_blocker",
-  "workflow.list_recipes",
-  "workflow.get_recipe",
-  "workflow.edit_recipe",
-  "workflow.start_run",
+  "memory.settle",
+  "character.inspect",
+  "style.manage",
+  "mechanism.distill",
+  "book.import",
+  "market.radar",
+  "skills.manage",
+  "workflow.step",
+  "workflow.manage",
 ];
 
 const READY_TOOL_NAMES = CANONICAL_READY_TOOL_NAMES.map(toRuntimeToolName);
@@ -157,8 +113,8 @@ describe("NovelRuntimeAdapter", () => {
 		expect(await adapter.promptExtensions("narrator-unbound")).toEqual([]);
 
 		const result = await adapter.execute(
-			"chapter.read",
-			{ bookId: "book-a", chapterNumber: 1 },
+			"chapter.list",
+			{ bookId: "book-a" },
 			"narrator-unbound",
 		);
 		expect(result.isError).toBe(true);
@@ -174,11 +130,11 @@ describe("NovelRuntimeAdapter", () => {
 	});
 
 	test("does not hard-block core or optional tools (native Runtime parity)", () => {
-		const enabled = new Set(["chapter.read", "chapter.write", "Terminal"]);
+		const enabled = new Set(["chapter.list", "chapter.commit", "Terminal"]);
 
 		// Product layer no longer filters; Runtime toolFilter handles optional gating.
-		expect(isNovelProductToolAllowed("chapter.read", enabled)).toBe(true);
-		expect(isNovelProductToolAllowed("chapter.write", enabled)).toBe(true);
+		expect(isNovelProductToolAllowed("chapter.list", enabled)).toBe(true);
+		expect(isNovelProductToolAllowed("chapter.commit", enabled)).toBe(true);
 		expect(isNovelProductToolAllowed("AskUserQuestion", enabled)).toBe(true);
 		expect(isNovelProductToolAllowed("Terminal", enabled)).toBe(true);
 		expect(isNovelProductToolAllowed("Terminal", new Set())).toBe(true);
@@ -194,58 +150,61 @@ describe("NovelRuntimeAdapter", () => {
 		const extensions = await adapter.promptExtensions("narrator-a");
 		expect(extensions).toHaveLength(1);
 		expect(extensions[0]).toContain("NovelFork 小说创作运行时");
-		expect(extensions[0]).toContain("lore_write");
-		expect(extensions[0]).not.toContain("lore.write");
+		expect(extensions[0]).toContain("jingwei_write");
+		expect(extensions[0]).not.toContain("jingwei.write");
 
 		const definitions = adapter.toolDefinitions();
 		expect(definitions.map((tool) => tool.name)).toEqual(READY_TOOL_NAMES);
 		expect(definitions.every((tool) => RUNTIME_TOOL_NAME_PATTERN.test(tool.name))).toBe(true);
-		expect(definitions.some((tool) => tool.name === "lore.write")).toBe(false);
-		const chapterRead = definitions.find((tool) => tool.name === toRuntimeToolName("chapter.read"));
-		expect(chapterRead?.rawJsonSchema).toBeDefined();
-		expect(chapterRead?.metadata?.runtimePluginId).toBe("novelfork-novel");
-		expect(chapterRead?.metadata?.runtimeRisk).toBe("read");
-		expect(chapterRead?.metadata?.runtimeRenderer).toBe("chapter.content");
-		expect(chapterRead?.metadata?.runtimeCanonicalToolName).toBe("chapter.read");
-		expect(definitions.find((tool) => tool.name === toRuntimeToolName("lore.write"))?.metadata?.runtimeRisk).toBe(
+		expect(definitions.some((tool) => tool.name === "jingwei.write")).toBe(false);
+		const chapterList = definitions.find((tool) => tool.name === toRuntimeToolName("chapter.list"));
+		expect(chapterList?.rawJsonSchema).toBeDefined();
+		expect(chapterList?.metadata?.runtimePluginId).toBe("novelfork-novel");
+		expect(chapterList?.metadata?.runtimeRisk).toBe("read");
+		expect(chapterList?.metadata?.runtimeRenderer).toBe("chapter.list");
+		expect(chapterList?.metadata?.runtimeCanonicalToolName).toBe("chapter.list");
+		expect(definitions.find((tool) => tool.name === toRuntimeToolName("jingwei.write"))?.metadata?.runtimeRisk).toBe(
 			"draft-write",
 		);
 		expect(
 			definitions.find((tool) => tool.name === toRuntimeToolName("memory.events"))?.metadata?.runtimeRisk,
 		).toBe("draft-write");
-		for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write", "style.distill_adopt"]) {
+		for (const name of ["chapter.commit", "hooks.manage", "outline.volume", "memory.settle", "book.import"]) {
 			expect(definitions.find((tool) => tool.name === toRuntimeToolName(name))?.metadata?.runtimeRisk).toBe("confirmed-write");
 		}
 		expect(definitions.some((tool) => tool.name === toRuntimeToolName("pipeline.revise"))).toBe(false);
-		const chapterImport = definitions.find((tool) => tool.name === toRuntimeToolName("pipeline.import_chapters"));
-		expect(chapterImport?.parameters.safeParse({ content: "正文".repeat(500) }).success).toBe(true);
-		const cockpitSnapshot = definitions.find((tool) => tool.name === toRuntimeToolName("cockpit.snapshot"));
-		expect(cockpitSnapshot?.parameters.safeParse({}).success).toBe(true);
-		expect(cockpitSnapshot?.parameters.safeParse({ bookId: "book-a" }).success).toBe(false);
-		// 自由载荷对象必须保持开放：scene.spec 回传的是工具自己产出的真实快照。
-		const sceneSpec = definitions.find((tool) => tool.name === toRuntimeToolName("scene.spec"));
-		expect(sceneSpec?.parameters.safeParse({
+		const bookImport = definitions.find((tool) => tool.name === toRuntimeToolName("book.import"));
+		expect(bookImport?.parameters.safeParse({ action: "import_chapters", content: "正文".repeat(500) }).success).toBe(true);
+		const bookOverview = definitions.find((tool) => tool.name === toRuntimeToolName("book.overview"));
+		expect(bookOverview?.parameters.safeParse({}).success).toBe(true);
+		expect(bookOverview?.parameters.safeParse({ bookId: "book-a" }).success).toBe(false);
+		const chapterBlueprint = definitions.find((tool) => tool.name === toRuntimeToolName("chapter.blueprint"));
+		expect(chapterBlueprint?.parameters.safeParse({
 			chapterNumber: 2,
 			userDirectives: "让主角进入山门",
-			cockpitSnapshot: { status: "available", progress: { chapterCount: 1 } },
+			sceneSpec: {
+				chapter: 2,
+				title: "山门试炼",
+				wordTarget: 3000,
+				scenes: [{ characters: ["主角"], location: "山门", conflict: "阻拦", outcome: "过关" }],
+				constraints: [],
+			},
 		}).success).toBe(true);
-		const loreWrite = definitions.find((tool) => tool.name === toRuntimeToolName("lore.write"));
-		expect(loreWrite?.parameters.safeParse({
+		const jingweiWrite = definitions.find((tool) => tool.name === toRuntimeToolName("jingwei.write"));
+		expect(jingweiWrite?.parameters.safeParse({
 			title: "设定",
 			tags: ["灵觉"],
 			aliases: ["感知"],
 			relatedEntryIds: ["entry-1"],
 		}).success).toBe(true);
-		expect(loreWrite?.parameters.safeParse({ title: "设定", tags: [{ key: "灵觉" }] }).success).toBe(false);
-		expect(chapterImport?.parameters.safeParse({ filePath: "C:/secret.txt" }).success).toBe(false);
+		expect(jingweiWrite?.parameters.safeParse({ title: "设定", tags: [{ key: "灵觉" }] }).success).toBe(false);
+		expect(bookImport?.parameters.safeParse({ action: "import_chapters", filePath: "C:/secret.txt" }).success).toBe(false);
 		// 叙述者侧不再有技能的读写工具：技能启用只由作者在写作台「技能文风」勾选，
 		// 走产品路由而不是模型工具（见 writing-skill-handlers 的启用/停用闭环用例）。
 		expect(definitions.some((tool) => tool.name === toRuntimeToolName("skills.read"))).toBe(false);
 		expect(definitions.some((tool) => tool.name === toRuntimeToolName("skills.write"))).toBe(false);
-		expect(chapterRead?.parameters.safeParse({ chapterNumber: 1, extra: true }).success).toBe(false);
-		expect(
-			chapterRead?.parameters.safeParse({ bookId: "book-a", chapterNumber: 1 }).success,
-		).toBe(false);
+		expect(chapterList?.parameters.safeParse({ extra: true }).success).toBe(false);
+		expect(chapterList?.parameters.safeParse({ bookId: "book-a" }).success).toBe(false);
 	});
 
 	test("提示缓存：同一输入两次解析，系统提示扩展与工具声明逐字节一致，易变块排在稳定简报之后", async () => {
@@ -339,11 +298,10 @@ RUNTIME_WRITING_SKILL_MARKER
 		let modelCallCount = 0;
 		const streamed: string[] = [];
 		const result = await adapter.hostAdapter.execute(
-			"scene.spec",
+			"chapter.blueprint",
 			{
 				chapterNumber: 2,
-				userDirectives: "让主角进入山门",
-				cockpitSnapshot: { bookConfig: { chapterWordCount: 3000 } },
+				userDirectives: "让主角进入山门参加第一轮外门试炼并脱颖而出",
 				sceneSpec: {
 					chapter: 2,
 					title: "山门试炼",
@@ -371,7 +329,7 @@ RUNTIME_WRITING_SKILL_MARKER
 				model: "current-test-model",
 				generateText: async () => {
 					modelCallCount += 1;
-					throw new Error("scene.spec 不应内部调用模型");
+					throw new Error("chapter.blueprint 不应内部调用模型");
 				},
 				emitOutput: (output) => streamed.push(output),
 			},
@@ -388,32 +346,35 @@ RUNTIME_WRITING_SKILL_MARKER
 		expect(streamed).toEqual([]);
 	});
 
-	test("reads the trusted bound chapter without model-supplied book identity", async () => {
+	test("reads the trusted bound chapter list with relative paths without model-supplied book identity", async () => {
 		bindNarrator();
 		const storage = initializeStorageDatabase({ databasePath: join(workRoot, "novelfork.db") });
 		runStorageMigrations(storage);
 		try {
-			const readResult = await adapter.execute("chapter.read", { chapterNumber: 1 }, "narrator-a");
-			expect(readResult.isError).toBe(false);
-			expect(JSON.parse(readResult.output)).toMatchObject({
+			const listResult = await adapter.execute("chapter.list", {}, "narrator-a");
+			expect(listResult.isError).toBe(false);
+			expect(JSON.parse(listResult.output)).toMatchObject({
 				ok: true,
-				data: { bookId: "book-a", chapterNumber: 1, content: "第一章正文" },
+				data: {
+					bookId: "book-a",
+					chapters: [{ number: 1, title: "第一章", path: "chapters/卷01/0001-opening.md" }],
+				},
 			});
 		} finally {
 			closeStorageDatabase();
 		}
 	});
 
-	test("reads the bound cockpit, chapter index and narrative artifacts", async () => {
+	test("reads the bound overview and chapter index", async () => {
 		bindNarrator();
 
-		const cockpitResult = await adapter.execute("cockpit.snapshot", {}, "narrator-a");
-		expect(cockpitResult.isError).toBe(false);
-		expect(JSON.parse(cockpitResult.output)).toMatchObject({
+		const overviewResult = await adapter.execute("book.overview", {}, "narrator-a");
+		expect(overviewResult.isError).toBe(false);
+		expect(JSON.parse(overviewResult.output)).toMatchObject({
 			ok: true,
 			data: { status: "available", book: { id: "book-a" }, storyDir: "story" },
 		});
-		expect(cockpitResult.output).not.toContain(workRoot);
+		expect(overviewResult.output).not.toContain(workRoot);
 
 		const listResult = await adapter.execute("chapter.list", {}, "narrator-a");
 		expect(listResult.isError).toBe(false);
@@ -421,62 +382,41 @@ RUNTIME_WRITING_SKILL_MARKER
 			ok: true,
 			data: { bookId: "book-a", chapters: [{ number: 1, title: "第一章" }] },
 		});
-
-		const lineResult = await adapter.execute("memory.read_line", {}, "narrator-a");
-		expect(lineResult.isError).toBe(false);
-		expect(JSON.parse(lineResult.output)).toMatchObject({ ok: true, data: { bookId: "book-a" } });
-
-		const proposalResult = await adapter.execute(
-			"memory.propose_change",
-			{ summary: "推进主角进入山门" },
-			"narrator-a",
-		);
-		expect(proposalResult.isError).toBe(false);
-		expect(JSON.parse(proposalResult.output)).toMatchObject({
-			ok: true,
-			data: { summary: "推进主角进入山门" },
-		});
-		// preview 必须能原样回传给 memory.approve_change，所以不含宿主 bookId。
-		expect(proposalResult.output).not.toContain("bookId");
-
-		const approvalResult = await adapter.execute(
-			"memory.approve_change",
-			{
-				preview: (JSON.parse(proposalResult.output) as { data: unknown }).data,
-				decision: "rejected",
-				reason: "仅验证审批闭环",
-			},
-			"narrator-a",
-		);
-		expect(approvalResult.isError).toBe(false);
-		expect(JSON.parse(approvalResult.output)).toMatchObject({
-			ok: true,
-			data: { applied: false, reason: "rejected" },
-		});
 	});
 
-	test("writes only an existing compliant chapter through the trusted book binding", async () => {
+	test("commits an existing compliant chapter revision through the trusted book binding", async () => {
 		bindNarrator();
 		const content = "已确认的改写正文。".repeat(334);
 		const storage = initializeStorageDatabase({ databasePath: join(workRoot, "novelfork.db") });
 		runStorageMigrations(storage);
+		await storage.db.insert(books).values({
+			id: "book-a",
+			name: "测试书籍",
+			createdAt: new Date("2026-01-01T00:00:00.000Z"),
+			updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+		});
 		try {
-			const writeResult = await adapter.execute(
-				"chapter.write",
-				{ chapterNumber: 1, content },
-				"narrator-a",
+			const commitResult = await adapter.hostAdapter.execute(
+				"chapter.commit",
+				{ mode: "revision", chapterNumber: 1, content },
+				{
+					narratorId: "narrator-a",
+					provider: "test-provider",
+					model: "current-test-model",
+					generateText: async () => ({ text: JSON.stringify({ events: [] }) }),
+				},
 			);
 
-			expect(writeResult.isError).toBe(false);
-			expect(JSON.parse(writeResult.output)).toMatchObject({
+			expect(commitResult.isError).toBe(false);
+			expect(JSON.parse(commitResult.output)).toMatchObject({
 				ok: true,
 				data: { bookId: "book-a", chapterNumber: 1, fileName: "卷01/0001-opening.md" },
 			});
 			expect(await readFile(join(bookRoot, "chapters", "卷01", "0001-opening.md"), "utf8")).toBe(content);
 
 			const missingChapter = await adapter.execute(
-				"chapter.write",
-				{ chapterNumber: 2, content },
+				"chapter.commit",
+				{ mode: "revision", chapterNumber: 2, content },
 				"narrator-a",
 			);
 			expect(missingChapter.isError).toBe(true);
@@ -486,7 +426,7 @@ RUNTIME_WRITING_SKILL_MARKER
 			});
 			expect(await readFile(join(bookRoot, "chapters", "卷01", "0001-opening.md"), "utf8")).toBe(content);
 			expect(
-				adapter.toolDefinitions().find((tool) => tool.name === toRuntimeToolName("chapter.write"))?.metadata
+				adapter.toolDefinitions().find((tool) => tool.name === toRuntimeToolName("chapter.commit"))?.metadata
 					?.runtimeRisk,
 			).toBe("confirmed-write");
 		} finally {
@@ -494,7 +434,7 @@ RUNTIME_WRITING_SKILL_MARKER
 		}
 	});
 
-	test("executes a storage-backed ready memory tool after Core storage bootstrap", async () => {
+	test("executes a storage-backed ready memory and jingwei tool after Core storage bootstrap", async () => {
 		bindNarrator();
 		const storage = initializeStorageDatabase({ databasePath: join(workRoot, "novelfork.db") });
 		runStorageMigrations(storage);
@@ -505,19 +445,16 @@ RUNTIME_WRITING_SKILL_MARKER
 			updatedAt: new Date("2026-01-01T00:00:00.000Z"),
 		});
 		try {
-			const result = await adapter.execute("memory.stats", {}, "narrator-a");
-			expect(result.isError).toBe(false);
-			expect(JSON.parse(result.output)).toMatchObject({
-				ok: true,
-				data: { stats: { total: 0 } },
-			});
+			const searchResult = await adapter.execute("memory.search", { mode: "list" }, "narrator-a");
+			expect(searchResult.isError).toBe(false);
+			expect(JSON.parse(searchResult.output)).toMatchObject({ ok: true });
 
-			const loreDefinition = adapter.toolDefinitions().find((tool) => tool.name === "lore_write");
-			expect(loreDefinition).toBeDefined();
-			const loreWriteResult = await loreDefinition!.execute(
+			const jingweiDefinition = adapter.toolDefinitions().find((tool) => tool.name === "jingwei_write");
+			expect(jingweiDefinition).toBeDefined();
+			const jingweiWriteResult = await jingweiDefinition!.execute(
 				{
-					title: "wire alias lore",
-					contentMd: "# Wire alias lore\\n\\n确认安全工具名仍能落库。",
+					title: "wire alias jingwei",
+					contentMd: "# Wire alias jingwei\\n\\n确认安全工具名仍能落库。",
 					category: "world-model",
 					layer: "dynamic",
 					tags: ["wire-alias"],
@@ -525,31 +462,20 @@ RUNTIME_WRITING_SKILL_MARKER
 				},
 				{ narratorId: "narrator-a" },
 			);
-			expect(loreWriteResult.isError).toBe(false);
-			expect(JSON.parse(loreWriteResult.output)).toMatchObject({ ok: true });
+			expect(jingweiWriteResult.isError).toBe(false);
+			expect(JSON.parse(jingweiWriteResult.output)).toMatchObject({ ok: true });
 
-			const loreReadResult = await adapter.execute(
-				"lore_read",
-				{ scope: "search", query: "wire alias lore" },
+			const jingweiReadResult = await adapter.execute(
+				"jingwei_read",
+				{ scope: "search", query: "wire alias jingwei" },
 				"narrator-a",
 			);
-			expect(loreReadResult.isError).toBe(false);
-			expect(loreReadResult.output).toContain("wire alias lore");
+			expect(jingweiReadResult.isError).toBe(false);
+			expect(jingweiReadResult.output).toContain("wire alias jingwei");
 
 			// 技能启用不再经叙述者工具：模型调不到 skills.read / skills.write。
 			expect(adapter.toolDefinitions().some((tool) => tool.name === "skills_read")).toBe(false);
 			expect(adapter.toolDefinitions().some((tool) => tool.name === "skills_write")).toBe(false);
-
-			const resourcesResult = await adapter.execute(
-				"resource.manage",
-				{ action: "list", filter: { type: "chapter", status: "accepted" } },
-				"narrator-a",
-			);
-			expect(resourcesResult.isError).toBe(false);
-			expect(JSON.parse(resourcesResult.output)).toMatchObject({
-				ok: true,
-				data: { bookId: "book-a" },
-			});
 
 			const createEventResult = await adapter.execute(
 				"memory.events",
@@ -580,11 +506,11 @@ RUNTIME_WRITING_SKILL_MARKER
 		["forged bookRoot", { bookRoot: "C:/other", chapterNumber: 1 }],
 		["extra field", { chapterNumber: 1, unexpected: true }],
 		["wrong type", { chapterNumber: "1" }],
-		["missing field", {}],
+		["missing field", { mode: "quality", chapterNumber: "bad" }],
 	] as const) {
 		test(`rejects ${label} before the contribution handler`, async () => {
 			bindNarrator();
-			const result = await adapter.execute("chapter.read", input, "narrator-a");
+			const result = await adapter.execute("chapter.audit", input, "narrator-a");
 			expect(result.isError).toBe(true);
 			expect(JSON.parse(result.output)).toMatchObject({ ok: false, error: "invalid-tool-input" });
 		});
@@ -595,20 +521,20 @@ RUNTIME_WRITING_SKILL_MARKER
 		const enabled = new Set<string>();
 
 		// 高级工具不再由产品另设「是否启用」的闸门：是否装载完全看 Runtime 的套路模式与 /load。
-		expect(isNovelProductToolAllowed("memory_list", enabled)).toBe(true);
-		expect(isNovelProductToolAllowed("memory_bulk_delete", enabled, { permissionMode: "ask" })).toBe(true);
+		expect(isNovelProductToolAllowed("memory_search", enabled)).toBe(true);
+		expect(isNovelProductToolAllowed("chapter_discard_range", enabled, { permissionMode: "ask" })).toBe(true);
 
 		// 模式限制：写工具在 read 模式下不允许
-		expect(isNovelProductToolAllowed("chapter.write", enabled, { permissionMode: "read" })).toBe(false);
-		expect(isNovelProductToolAllowed("chapter.read", enabled, { permissionMode: "read" })).toBe(true);
+		expect(isNovelProductToolAllowed("chapter.commit", enabled, { permissionMode: "read" })).toBe(false);
+		expect(isNovelProductToolAllowed("chapter.list", enabled, { permissionMode: "read" })).toBe(true);
 	});
 
 	test("forwards the contributed permission policy by Runtime registry name", () => {
-		expect(getNovelRuntimeToolPermissionPolicy("chapter_write")).toMatchObject({
+		expect(getNovelRuntimeToolPermissionPolicy("chapter_commit")).toMatchObject({
 			risk: "confirmed-write",
 			visibility: "author",
 		});
-		expect(getNovelRuntimeToolPermissionPolicy("memory_bulk_delete")?.visibility).toBe("advanced");
+		expect(getNovelRuntimeToolPermissionPolicy("chapter_discard_range")?.visibility).toBe("advanced");
 		expect(getNovelRuntimeToolPermissionPolicy("Terminal")).toBeNull();
 	});
 
@@ -621,11 +547,11 @@ RUNTIME_WRITING_SKILL_MARKER
 		expect(routines.every((routine) => routine.toolNames.length === 1)).toBe(true);
 
 		const byTool = new Map(routines.map((routine) => [routine.toolNames[0], routine]));
-		expect(byTool.get("pipeline_write")).toMatchObject({ id: "novelfork.pipeline.write", defaultMode: "resident" });
-		expect(byTool.get("workflow_submit_step_output")?.defaultMode).toBe("resident");
-		expect(byTool.get("market_scan")).toMatchObject({ id: "novelfork.market.scan", defaultMode: "auto" });
-		expect(byTool.get("memory_bulk_delete")?.defaultMode).toBe("manual");
-		expect(byTool.get("memory_settle_range")?.id).toBe("novelfork.memory.settle-range");
+		expect(byTool.get("chapter_commit")).toMatchObject({ id: "novelfork.chapter.commit", defaultMode: "resident" });
+		expect(byTool.get("workflow_step")?.defaultMode).toBe("resident");
+		expect(byTool.get("market_radar")).toMatchObject({ id: "novelfork.market.radar", defaultMode: "resident" });
+		expect(byTool.get("chapter_discard_range")?.defaultMode).toBe("manual");
+		expect(byTool.get("memory_settle")?.id).toBe("novelfork.memory.settle");
 		for (const routine of routines) {
 			// 与 Runtime product-host/tool-routines.ts 的 id 校验同一规则。
 			expect(routine.id).toMatch(/^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$/);
@@ -633,26 +559,20 @@ RUNTIME_WRITING_SKILL_MARKER
 		}
 	});
 
-	test("sceneSpec 只在 scene_spec 里完整展示，下游工具展示开放对象但服务端仍按完整蓝图校验", async () => {
+	test("sceneSpec 只在 chapter_blueprint 里完整展示，下游工具展示开放对象但服务端仍按完整蓝图校验", async () => {
 		const definitions = new Map(adapter.toolDefinitions().map((tool) => [tool.name, tool]));
 		const propertiesOf = (name: string) =>
 			(definitions.get(name)?.rawJsonSchema?.properties ?? {}) as Record<string, Record<string, unknown>>;
-		// scene_spec 保留完整结构。
-		expect(propertiesOf("scene_spec").sceneSpec?.properties).toBeDefined();
-		for (const name of ["pipeline_write", "write_preflight", "chapter_audit"]) {
+		// chapter_blueprint 保留完整结构。
+		expect(propertiesOf("chapter_blueprint").sceneSpec?.properties).toBeDefined();
+		for (const name of ["chapter_commit", "chapter_preflight", "chapter_audit"]) {
 			const sceneSpec = propertiesOf(name).sceneSpec;
 			expect(sceneSpec?.type, name).toBe("object");
 			expect(sceneSpec?.properties, name).toBeUndefined();
-			expect(String(sceneSpec?.description), name).toContain("原样传入 scene_spec 返回的 sceneSpec");
-			// 兼容字段不再展示给模型。
-			expect(propertiesOf(name).acknowledgedSkills, name).toBeUndefined();
+			expect(String(sceneSpec?.description), name).toContain("chapter_blueprint");
 		}
-		expect(propertiesOf("pipeline_write").sceneSpec?.description).not.toContain("可选");
-		expect(propertiesOf("write_preflight").sceneSpec?.description).toContain("可选");
-		// sceneSpec / content 改由 handler 强制：fromWorkflowRun=true 时从运行里的已确认候选取。
-		expect(definitions.get("pipeline_write")?.rawJsonSchema?.required ?? []).toEqual([]);
-		expect(String(propertiesOf("pipeline_write").sceneSpec?.description)).toContain("fromWorkflowRun=true 时省略");
-		expect(propertiesOf("pipeline_write").fromWorkflowRun?.type).toBe("boolean");
+		expect(definitions.get("chapter_commit")?.rawJsonSchema?.required ?? []).toEqual([]);
+		expect(propertiesOf("chapter_commit").fromWorkflowRun?.type).toBe("boolean");
 
 		const validSpec = {
 			chapter: 2,
@@ -661,25 +581,19 @@ RUNTIME_WRITING_SKILL_MARKER
 			scenes: [{ characters: ["林舟"], location: "旧码头", conflict: "交货被截", outcome: "货丢了" }],
 			constraints: [],
 		};
-		const pipelineParameters = definitions.get("pipeline_write")!.parameters;
+		const commitParameters = definitions.get("chapter_commit")!.parameters;
 		// Runtime 执行前的参数校验（parameters）仍是完整蓝图：结构错、多余字段一律拦下。
-		expect(pipelineParameters.safeParse({ sceneSpec: validSpec, content: "正文" }).success).toBe(true);
-		expect(pipelineParameters.safeParse({ sceneSpec: { ...validSpec, scenes: [{ location: "旧码头" }] }, content: "正文" }).success).toBe(false);
-		expect(pipelineParameters.safeParse({ sceneSpec: { ...validSpec, extra: 1 }, content: "正文" }).success).toBe(false);
-		expect(pipelineParameters.safeParse({ sceneSpec: "蓝图", content: "正文" }).success).toBe(false);
-		// 旧客户端还在传的兼容字段照样接受。
-		expect(pipelineParameters.safeParse({
-			sceneSpec: validSpec,
-			content: "正文",
-			acknowledgedSkills: [{ slug: "nf-write-chapter", quote: "引用" }],
-		}).success).toBe(true);
+		expect(commitParameters.safeParse({ sceneSpec: validSpec, content: "正文" }).success).toBe(true);
+		expect(commitParameters.safeParse({ sceneSpec: { ...validSpec, scenes: [{ location: "旧码头" }] }, content: "正文" }).success).toBe(false);
+		expect(commitParameters.safeParse({ sceneSpec: { ...validSpec, extra: 1 }, content: "正文" }).success).toBe(false);
+		expect(commitParameters.safeParse({ sceneSpec: "蓝图", content: "正文" }).success).toBe(false);
 		expect(definitions.get("chapter_audit")!.parameters.safeParse({ chapterNumber: 1, sceneSpec: { title: "缺字段" } }).success).toBe(false);
-		expect(definitions.get("write_preflight")!.parameters.safeParse({ sceneSpec: { ...validSpec, scenes: "x" } }).success).toBe(false);
+		expect(definitions.get("chapter_preflight")!.parameters.safeParse({ sceneSpec: { ...validSpec, scenes: "x" } }).success).toBe(false);
 
 		// execute 内的复核同样走完整 schema，模型绕过 parameters 直接调用也拦得住。
 		bindNarrator();
 		const rejected = await adapter.execute(
-			"pipeline_write",
+			"chapter_commit",
 			{ sceneSpec: { ...validSpec, scenes: [{ location: "旧码头" }] }, content: "正文" },
 			"narrator-a",
 		);

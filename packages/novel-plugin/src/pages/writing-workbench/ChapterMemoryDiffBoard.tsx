@@ -91,9 +91,9 @@ export function ChapterMemoryDiffBoard({
 }: ChapterMemoryDiffBoardProps) {
   const hasChapter = typeof chapterNumber === "number" && chapterNumber > 0;
 
-  const eventsQuery = useApi<{ readonly events?: readonly GraphEventItem[] }>(
+  const eventsQuery = useApi<{ readonly entries?: readonly GraphEventItem[] }>(
     hasChapter
-      ? `/api/books/${encodeURIComponent(bookId)}/narrative-memory/graph?view=timeline&chapterFrom=${chapterNumber}&chapterTo=${chapterNumber}`
+      ? `/api/books/${encodeURIComponent(bookId)}/narrative-memory/list?kind=event&status=applied&chapterFrom=${chapterNumber}&chapterTo=${chapterNumber}&limit=100`
       : null,
   );
   const factsQuery = useApi<FactsResponse>(
@@ -173,7 +173,7 @@ export function ChapterMemoryDiffBoard({
     ]);
   }, [aiDraftQuery, eventsQuery, factsQuery, loadPending]);
 
-  const chapterEvents = eventsQuery.data?.events ?? [];
+  const chapterEvents = eventsQuery.data?.entries ?? [];
   const chapterFacts = useMemo(() => {
     const all = factsQuery.data?.facts ?? [];
     if (!hasChapter) return [];
@@ -265,7 +265,7 @@ export function ChapterMemoryDiffBoard({
                       className="h-6 w-full gap-1 text-2xs border-warning/40 hover:bg-warning/15"
                       onClick={() => {
                         void onSendToNarrator(
-                          `请对第 ${chapterNumber} 章重新执行 ${toWireToolName("memory.settle_chapter")}（force=true），正文已修改需要刷新叙事记忆与事实变动。`,
+                          `请对第 ${chapterNumber} 章重新执行 ${toWireToolName("memory.settle")}（action=chapter，force=true），正文已修改需要刷新叙事记忆与事实变动。`,
                         );
                       }}
                     >
@@ -285,7 +285,7 @@ export function ChapterMemoryDiffBoard({
                       type="button"
                       onClick={() => {
                         void onSendToNarrator(
-                          `请对第 ${chapterNumber} 章强制重新梳理叙事记忆（调用 ${toWireToolName("memory.settle_chapter")}，force=true），核对是否漏记事实或状态变动。`,
+                          `请对第 ${chapterNumber} 章强制重新梳理叙事记忆（调用 ${toWireToolName("memory.settle")}，action=chapter，force=true），核对是否漏记事实或状态变动。`,
                         );
                       }}
                       className="text-muted-foreground hover:text-primary hover:underline"
@@ -302,7 +302,7 @@ export function ChapterMemoryDiffBoard({
                       type="button"
                       onClick={() => {
                         void onSendToNarrator(
-                          `请对第 ${chapterNumber} 章执行 ${toWireToolName("memory.settle_chapter")}，抽取本章叙事事件与设定改动。`,
+                          `请对第 ${chapterNumber} 章执行 ${toWireToolName("memory.settle")}（action=chapter），抽取本章叙事事件与设定改动。`,
                         );
                       }}
                       className="font-medium text-primary hover:underline"

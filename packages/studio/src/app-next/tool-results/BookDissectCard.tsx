@@ -116,8 +116,8 @@ function StagingCandidateList({
     setStates((current) => ({ ...current, [candidate.id]: { status: "pending", decision } }));
     try {
       const result = await onAction({
-        type: "lore.write.staging",
-        toolName: "lore.write",
+        type: "jingwei.write.staging",
+        toolName: "jingwei.write",
         input: {
           stagingId: candidate.id,
           stagingDecision: decision,
@@ -261,7 +261,7 @@ function BookDissectCardView({
   );
 }
 
-/** book.dissect 采纳卡：抽取结果落在 dissection_staging，确认后才经 lore.write 提升。 */
+/** book.import 拆书采纳卡：抽取结果落在 dissection_staging，确认后才经 jingwei.write 提升。 */
 export const BookDissectCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const data = asRecord(getToolResultData(context.result));
   if (!data) return null;

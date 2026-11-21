@@ -32,7 +32,7 @@ import { writeFileAtomic } from "../engine/writing-resource/atomic-write.js";
 import { withChapterIndexLock } from "../engine/writing-resource/chapter-index-lock.js";
 import { executePipelineWrite, type PipelineWriteInput, type PipelineWriteOptions } from "./pipeline-write-service.js";
 import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
-import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
+import { handleSceneSpec, getCachedSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
 import { executeWorkflowRecipeTool } from "./workflow-recipe-tools.js";
 import { executeWorkflowRunTool } from "./workflow-run-tools.js";
 import { getApprovedProse, getApprovedSceneSpec } from "../engine/workflows/run-service.js";
@@ -44,10 +44,16 @@ import { executeMechanismDistillTool, executeStyleConsolidateTool } from "./mech
 import { executeCharacterVoiceTool } from "./character-voice-tools.js";
 import { proposeSelectionCandidate } from "./selection-candidate-tools.js";
 import { handleStorylinePropose } from "./storyline-tools.js";
+import { handleLoreProgress, handleLoreRelate } from "./lore-story-progress.js";
 import {
+  CHAPTERS_DIRECTORY,
   ChapterStoreError,
   DEFAULT_VOLUME_DIRECTORY,
   chapterRelativePath,
+  chapterTitleFromContent,
+  listChapterFiles,
+  normalizeChapterRelativePath,
+  parseChapterFileName,
   readChapterIndex as readChapterLayoutIndex,
   volumeDirectoryName,
   writeChapterIndex,
@@ -290,143 +296,6 @@ async function chapterAudit(
     structureScores = [];
   }
   return ok(audit.summary, { ...audit, softViolations, structureScores });
-}
-
-async function rewriteSegment(
-  input: Readonly<Record<string, unknown>>,
-  binding: TrustedRuntimeBookBinding,
-  context: ToolExecutionContext,
-): Promise<RuntimeToolResult> {
-  const chapterNumber = positiveInteger(input.chapterNumber);
-  const selection = record(input.selection);
-  const start = positiveInteger(selection?.start);
-  const end = positiveInteger(selection?.end);
-  const mode = typeof input.mode === "string" ? input.mode : "";
-  if (!chapterNumber || !start || !end || start > end || !["continue", "expand", "restyle"].includes(mode)) {
-    return fail(
-      "invalid-input",
-      "需要有效的 chapterNumber、selection.start/end 和改写模式（continue | expand | restyle）。去 AI 味已统一由 story-deslop Writing Skill 承担，不再单独提供 reduce_ai 模式。",
-    );
-  }
-  const generator = requireGenerator(context);
-  if (typeof generator !== "function") return generator;
-  const chapter = await readBoundChapter(binding, chapterNumber);
-  if (!chapter.ok || !chapter.data) return fail(chapter.error ?? "chapter-not-found", chapter.summary);
-  const lines = chapter.data.content.split("\n");
-  if (end > lines.length) return fail("invalid-range", `行号范围无效（1-${lines.length}）。`);
-  const originalText = lines.slice(start - 1, end).join("\n");
-  if (!originalText.trim()) return fail("empty-selection", "选中内容为空。");
-
-  const instructions: Record<string, string> = {
-    continue: "续写以下段落，保持风格一致并自然衔接。",
-    expand: "扩写以下段落，增加有效细节和描写，保持原意。",
-    restyle: `按指定风格改写以下段落：${typeof input.styleHint === "string" ? input.styleHint : "更生动自然"}。`,
-  };
-  const generated = await generator({
-    messages: [
-      { role: "system", content: "你是中文网文改写编辑。只输出改写后的正文，不解释，不加 Markdown 围栏。" },
-      { role: "user", content: `${instructions[mode]}\n\n${originalText}` },
-    ],
-    temperature: 0.7,
-    maxTokens: 8192,
-  });
-  const rewrittenText = generated.text.trim();
-  if (!rewrittenText) return fail("empty-model-output", "Runtime 模型没有返回改写文本。");
-  return ok(`已完成第 ${chapterNumber} 章第 ${start}-${end} 行改写。`, {
-    mode,
-    originalText,
-    rewrittenText,
-    lineRange: { start, end },
-  });
-}
-
-async function rewriteApply(
-  input: Readonly<Record<string, unknown>>,
-  binding: TrustedRuntimeBookBinding,
-): Promise<RuntimeToolResult> {
-  const chapterNumber = positiveInteger(input.chapterNumber);
-  const lineRange = record(input.lineRange);
-  const start = positiveInteger(lineRange?.start);
-  const end = positiveInteger(lineRange?.end);
-  const newText = typeof input.newText === "string" ? input.newText : null;
-  const mode = input.mode === "insert_after" ? "insert_after" : "replace";
-  if (!chapterNumber || !start || !end || start > end || newText === null) {
-    return fail("invalid-input", "需要有效的 chapterNumber、lineRange.start/end 和 newText。");
-  }
-  const chapter = await readBoundChapter(binding, chapterNumber);
-  if (!chapter.ok || !chapter.data) return fail(chapter.error ?? "chapter-not-found", chapter.summary);
-  const expectedHash = createHash("sha256").update(chapter.data.content, "utf8").digest("hex");
-  const lines = chapter.data.content.split("\n");
-  if (end > lines.length) return fail("invalid-range", `行号范围无效（1-${lines.length}）。`);
-  const inserted = newText.split("\n");
-  const next = mode === "insert_after"
-    ? [...lines.slice(0, end), ...inserted, ...lines.slice(end)]
-    : [...lines.slice(0, start - 1), ...inserted, ...lines.slice(end)];
-  const written = await handleChapterWrite(
-    { bookId: binding.bookId, chapterNumber, content: next.join("\n"), expectedHash },
-    { bookRoot: binding.root, storage: getStorageDatabase(), purpose: "revision" },
-  );
-  if (!written.ok) return fail(written.error, written.summary);
-  return ok(
-    mode === "insert_after"
-      ? `已在第 ${end} 行后插入 ${inserted.length} 行。`
-      : `已替换第 ${start}-${end} 行。`,
-    { bookId: binding.bookId, chapterNumber, mode, linesAffected: inserted.length },
-  );
-}
-
-/**
- * T5.3：整章改动候选。本工具不改正文——交出 before/after 摘要与原文预览，
- * 由作者在叙述者面板的候选卡里核对后再决定是否采用；应用时校验 originalHash 防覆盖。
- */
-async function proposeChapterRevision(
-  input: Readonly<Record<string, unknown>>,
-  binding: TrustedRuntimeBookBinding,
-): Promise<RuntimeToolResult> {
-  const chapterNumber = positiveInteger(input.chapterNumber);
-  const content = typeof input.content === "string" ? input.content : null;
-  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
-  if (!chapterNumber || content === null || !content.trim() || !reason) {
-    return fail("invalid-input", "需要有效的 chapterNumber、content（改后的完整正文）与 reason（为什么这么改）。候选没有写入章节。");
-  }
-  if (content.length > 60_000) return fail("content-too-large", "单章候选正文不能超过 6 万字；请拆成多个候选分别提交。");
-  const chapter = await readBoundChapter(binding, chapterNumber);
-  const originalText = chapter.ok && chapter.data ? chapter.data.content : "";
-  const originalHash = createHash("sha256").update(originalText, "utf8").digest("hex");
-
-  // 段落级对照（空行分段）：算一致/删除/新增数量，不整段差分。
-  const splitParagraphs = (text: string) => text.split(/\r?\n\r?\n/).map((item) => item.trim()).filter((item) => item.length > 0);
-  const originalParas = splitParagraphs(originalText);
-  const newParas = splitParagraphs(content);
-  const originalSet = new Set(originalParas);
-  const newSet = new Set(newParas);
-  const unchanged = originalParas.filter((item) => newSet.has(item)).length;
-  const removed = originalParas.length - unchanged;
-  const added = newParas.filter((item) => !originalSet.has(item)).length;
-
-  const artifact = {
-    kind: "chapter-revision",
-    id: crypto.randomUUID(),
-    bookId: binding.bookId,
-    chapterNumber,
-    reason,
-    originalHash,
-    originalExists: chapter.ok === true,
-    originalPreview: originalText.slice(0, 600),
-    newPreview: content.slice(0, 600),
-    stats: {
-      originalChars: originalText.length,
-      newChars: content.length,
-      unchangedParagraphs: unchanged,
-      removedParagraphs: removed,
-      addedParagraphs: added,
-    },
-    newText: content,
-  };
-  return ok(
-    `已生成第 ${chapterNumber} 章改动候选（原 ${originalText.length} 字 → 新 ${content.length} 字；保持 ${unchanged} 段、删 ${removed} 段、增 ${added} 段）。请作者在候选卡核对后决定；候选尚未写入正文。`,
-    { artifact },
-  );
 }
 
 /**
@@ -693,10 +562,10 @@ async function importChapters(
         writtenFiles: [importSource, ...writtenFiles],
         preflight,
         nextActions: [
-          "write.preflight",
-          "book.dissect",
-          "skills.recommend",
-          "scene.spec",
+          "chapter.preflight",
+          "book.import",
+          "skills.manage",
+          "chapter.blueprint",
         ],
       },
     );
@@ -773,23 +642,6 @@ async function arcCharacter(
     generateText: undefined,
   });
   if (!result.ok) return fail(result.error ?? "arc-character-failed", result.summary);
-  return ok(result.summary, result);
-}
-
-async function publishExport(
-  input: Readonly<Record<string, unknown>>,
-  binding: TrustedRuntimeBookBinding,
-): Promise<RuntimeToolResult> {
-  const { handlePublishExport } = await import("./publish-export.js");
-  const result = await handlePublishExport({
-    bookId: binding.bookId,
-    bookRoot: binding.root,
-    ...(typeof input.fromChapter === "number" ? { fromChapter: input.fromChapter } : {}),
-    ...(typeof input.toChapter === "number" ? { toChapter: input.toChapter } : {}),
-    ...(typeof input.includeAdvice === "boolean" ? { includeAdvice: input.includeAdvice } : {}),
-    ...(typeof input.platform === "string" ? { platform: input.platform } : {}),
-  });
-  if (!result.ok) return fail(result.error ?? "publish-export-failed", result.summary);
   return ok(result.summary, result);
 }
 
@@ -990,17 +842,41 @@ async function hooksManage(
 }
 
 /**
- * memory.settle_chapter — 单章章后结算。
+ * memory.settle — 单章结算或历史范围补结算。
  *
- * bookId / bookRoot 只来自可信绑定；模型只能指定 chapterNumber。
+ * bookId / bookRoot 只来自可信绑定。
  */
-async function memorySettleChapter(
+async function memorySettle(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
+  const explicitAction = typeof input.action === "string" ? input.action.trim().toLowerCase() : "";
+  const isRange = explicitAction === "range"
+    || (explicitAction !== "chapter" && (typeof input.fromChapter === "number" || typeof input.toChapter === "number"));
+
+  if (isRange) {
+    if (typeof input.fromChapter !== "number" || typeof input.toChapter !== "number") {
+      return fail("invalid-input", "范围补结算需要数字类型的 fromChapter 和 toChapter。");
+    }
+    const { handleMemorySettleRange } = await import("./memory-settle-range.js");
+    const result = await handleMemorySettleRange({
+      bookId: binding.bookId,
+      bookRoot: binding.root,
+      fromChapter: input.fromChapter,
+      toChapter: input.toChapter,
+      ...(typeof input.source === "string"
+        ? { source: input.source as "accepted-resources" | "chapter-files" }
+        : {}),
+      ...(typeof input.dryRun === "boolean" ? { dryRun: input.dryRun } : {}),
+      ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
+    });
+    if (!result.ok) return fail(result.error ?? "settle-range-failed", result.summary, result);
+    return ok(result.summary, result);
+  }
+
   const chapterNumber = positiveInteger(input.chapterNumber);
-  if (chapterNumber === null) return fail("invalid-input", "chapterNumber 必须是 ≥1 的整数。");
+  if (chapterNumber === null) return fail("invalid-input", "单章结算需要 ≥1 的整数 chapterNumber（或传 fromChapter + toChapter 做范围补结算）。");
 
   const { handleMemorySettleChapter } = await import("./memory-settle-chapter.js");
   const result = await handleMemorySettleChapter({
@@ -1008,9 +884,8 @@ async function memorySettleChapter(
     bookRoot: binding.root,
     chapterNumber,
     ...(typeof input.title === "string" ? { title: input.title } : {}),
-    // 章后结算同样走 LLM 抽取：用 host 的 generateText 能力构造，缺省时回退规则兜底。
+    ...(typeof input.force === "boolean" ? { force: input.force } : {}),
     ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
-    // 角色内核重算与事件抽取同源（同一 generateText）；config.characterKernel.enabled=false 时 reconciler 内部直接跳过。
     ...(context.generateText ? { kernelGenerateText: context.generateText } : {}),
   });
 
@@ -1018,6 +893,7 @@ async function memorySettleChapter(
   return ok(result.summary, {
     chapterNumber: result.chapterNumber,
     settlement: result.settlement,
+    ...(result.alreadySettled ? { alreadySettled: true } : {}),
   });
 }
 
@@ -1025,7 +901,7 @@ async function memorySettleChapter(
  * 把管线的章后结算表达成一次真实的领域工具调用。
  *
  * 复用 executeRuntimeDomainTool 的同一分派入口，因此结算与 agent 自己调用
- * memory.settle_chapter 走完全相同的代码路径、权限与渲染约定，不是旁路。
+ * memory.settle 走完全相同的代码路径、权限与渲染约定，不是旁路。
  */
 function createSettlementDispatcher(
   binding: TrustedRuntimeBookBinding,
@@ -1047,7 +923,7 @@ function createSettlementDispatcher(
 }
 
 /**
- * pipeline.write 的 fromWorkflowRun：正文与蓝图从本叙述者进行中运行的已确认候选取，
+ * chapter.commit 的 fromWorkflowRun：正文与蓝图从本叙述者进行中运行的已确认候选取，
  * 模型不必（也不应）把正文再贴一遍。运行按宿主注入的会话 id 定位，且必须属于当前绑定的书。
  */
 function resolveWorkflowRunCandidates(
@@ -1059,7 +935,7 @@ function resolveWorkflowRunCandidates(
   const storage = narratorId ? getStorageDatabase() : null;
   const run = storage && narratorId ? getActiveWorkflowRunForNarrator(storage, narratorId) : null;
   if (!storage || !run || run.bookId !== binding.bookId) {
-    return { ok: false, result: fail("no-active-run", "fromWorkflowRun=true 只能在本书进行中的创作工作流里使用；没有运行时请直接传 content 与 sceneSpec。") };
+    return { ok: false, result: fail("no-active-run", "fromWorkflowRun=true 只能在本书进行中的创作工作流里使用；没有运行时请先用原生 Write/Edit 写盘再调 chapter.commit。") };
   }
   const prose = getApprovedProse(storage, run);
   if (!prose) {
@@ -1073,7 +949,102 @@ function resolveWorkflowRunCandidates(
   return { ok: true, input: { ...rest, sceneSpec, content: prose.content } };
 }
 
-async function pipelineWrite(
+/**
+ * 从磁盘解析章节正文：支持模型传入相对路径 filePath（如 chapters/卷01/0003_标题.md），
+ * 或按 chapterNumber 在本书 chapters/ 目录下查找（包含刚用原生 Write 写入的新章文件）。
+ */
+async function readChapterContentFromDisk(
+  binding: TrustedRuntimeBookBinding,
+  input: Readonly<Record<string, unknown>>,
+): Promise<
+  | { ok: true; chapterNumber: number; content: string; title?: string; filePath?: string }
+  | { ok: false; result: RuntimeToolResult }
+> {
+  const chaptersDir = join(binding.root, CHAPTERS_DIRECTORY);
+  const resolveChapterFile = createChapterFileResolver(chaptersDir);
+  const rawFilePath = typeof input.filePath === "string" ? input.filePath.trim() : "";
+  let chapterNumber = positiveInteger(input.chapterNumber)
+    ?? positiveInteger(record(input.sceneSpec)?.chapter);
+
+  if (rawFilePath) {
+    const normalizedRel = normalizeChapterRelativePath(rawFilePath);
+    const chapterRel = normalizedRel.startsWith(`${CHAPTERS_DIRECTORY}/`)
+      ? normalizedRel.slice(CHAPTERS_DIRECTORY.length + 1)
+      : normalizedRel;
+    const resolvedPath = resolveChapterFile(chapterRel);
+    if (!resolvedPath) {
+      return { ok: false, result: fail("invalid-file-path", `filePath 必须指向本书 chapters/ 目录内的章节文件（收到：${rawFilePath}）。`) };
+    }
+    let content: string;
+    try {
+      content = await readFile(resolvedPath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { ok: false, result: fail("chapter-file-not-found", `找不到章节文件 ${rawFilePath}，请先用原生 Write 写入正文后再调用 chapter.commit。`) };
+      }
+      throw error;
+    }
+    const parsed = parseChapterFileName(basename(resolvedPath));
+    const resolvedNumber = chapterNumber ?? parsed?.number ?? null;
+    if (!resolvedNumber) {
+      return { ok: false, result: fail("invalid-input", "无法从 filePath 解析章节号，请显式传入 chapterNumber。") };
+    }
+    const title = (typeof input.title === "string" && input.title.trim())
+      || (parsed ? chapterTitleFromContent(parsed, content) : undefined);
+    return {
+      ok: true,
+      chapterNumber: resolvedNumber,
+      content,
+      ...(title ? { title } : {}),
+      filePath: `${CHAPTERS_DIRECTORY}/${chapterRel}`,
+    };
+  }
+
+  if (!chapterNumber) {
+    return { ok: false, result: fail("invalid-input", "请传入 chapterNumber 或 filePath 指明要提交的章节。") };
+  }
+
+  // 优先扫描磁盘章节文件（兼容刚由原生 Write 写入、尚未同步到 index.json 的新章）
+  try {
+    const files = await listChapterFiles(binding.root);
+    const matched = files.find((item) => item.number === chapterNumber);
+    if (matched) {
+      const resolvedPath = resolveChapterFile(matched.chapterRelativePath);
+      if (resolvedPath) {
+        const content = await readFile(resolvedPath, "utf8");
+        const title = (typeof input.title === "string" && input.title.trim())
+          || chapterTitleFromContent(matched, content);
+        return {
+          ok: true,
+          chapterNumber,
+          content,
+          title,
+          filePath: matched.relativePath,
+        };
+      }
+    }
+  } catch {
+    // 扫描失败时退回章节读取服务
+  }
+
+  const chapter = await readBoundChapter(binding, chapterNumber);
+  if (chapter.ok && chapter.data) {
+    const parsed = parseChapterFileName(basename(chapter.data.fileName));
+    const title = parsed ? chapterTitleFromContent(parsed, chapter.data.content) : undefined;
+    return {
+      ok: true,
+      chapterNumber,
+      content: chapter.data.content,
+      ...(title ? { title } : {}),
+    };
+  }
+  return {
+    ok: false,
+    result: fail("chapter-file-not-found", `未找到第 ${chapterNumber} 章的磁盘正文；请先用原生 Write 将正文写入目标章节文件（见 chapter.preflight 返回的 targetChapterPath），再调用 chapter.commit。`),
+  };
+}
+
+async function chapterCommit(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
   context: ToolExecutionContext,
@@ -1083,56 +1054,95 @@ async function pipelineWrite(
     if (!resolved.ok) return resolved.result;
     input = resolved.input;
   }
-  const sceneSpec = record(input.sceneSpec) as SceneSpec | undefined;
+
+  const mode = input.mode === "revision" ? "revision" : "new";
+  let content = typeof input.content === "string" && input.content.trim() ? input.content : "";
+  let chapterNumber = positiveInteger(input.chapterNumber)
+    ?? positiveInteger(record(input.sceneSpec)?.chapter);
+  let inferredTitle = typeof input.title === "string" && input.title.trim() ? input.title.trim() : undefined;
+
+  if (!content) {
+    const fromDisk = await readChapterContentFromDisk(binding, input);
+    if (!fromDisk.ok) return fromDisk.result;
+    content = fromDisk.content;
+    chapterNumber = chapterNumber ?? fromDisk.chapterNumber;
+    inferredTitle = inferredTitle ?? fromDisk.title;
+  }
+
+  if (!content.trim()) {
+    return fail("content-required", "章节正文为空；请先用原生 Write/Edit 写入完整正文后再调用 chapter.commit。");
+  }
+
+  // mode="revision"：已有章节改稿提交（校验长度/技能/高风险门禁、更新索引、自动重结算）
+  if (mode === "revision") {
+    if (!chapterNumber) {
+      return fail("invalid-input", "mode=revision 需要有效的 chapterNumber（或带章号的 filePath）。");
+    }
+    const written = await handleChapterWrite(
+      { bookId: binding.bookId, chapterNumber, content },
+      { bookRoot: binding.root, storage: getStorageDatabase(), purpose: "revision" },
+    );
+    if (!written.ok) return fail(written.error, written.summary, written.data);
+    const settleResult = await memorySettle({ chapterNumber, ...(inferredTitle ? { title: inferredTitle } : {}) }, binding, context);
+    const settlementFailed = !settleResult.ok;
+    const summary = settlementFailed
+      ? `第 ${chapterNumber} 章改稿已提交入库（${written.data.wordCount} 字），但章后重结算未完成，请重试 memory.settle。`
+      : `第 ${chapterNumber} 章改稿已提交入库（${written.data.wordCount} 字）。${settleResult.summary ?? ""}`;
+    const data = {
+      saved: true,
+      mode: "revision",
+      bookId: binding.bookId,
+      chapterNumber,
+      fileName: written.data.fileName,
+      title: inferredTitle ?? `第${chapterNumber}章`,
+      wordCount: written.data.wordCount,
+      length: written.data.length,
+      settlementDispatch: {
+        toolName: "memory.settle",
+        ok: settleResult.ok,
+        ...(settleResult.summary ? { summary: settleResult.summary } : {}),
+        ...(settleResult.error ? { error: settleResult.error } : {}),
+      },
+      ...(settlementFailed ? { code: "settlement-pending", needsSettlementRetry: true } : {}),
+    };
+    return settlementFailed ? fail("settlement-pending", summary, data) : ok(summary, data);
+  }
+
+  // mode="new"：写新章入库（优先取显式 sceneSpec，缺省自动复用 chapter.blueprint 缓存）
+  let sceneSpec = record(input.sceneSpec) as SceneSpec | undefined;
+  if (!sceneSpec && chapterNumber) {
+    sceneSpec = getCachedSceneSpec(binding.bookId, chapterNumber) ?? undefined;
+  }
   if (!sceneSpec) {
-    return fail("invalid-input", "sceneSpec 必填。", {
+    return fail("scene-spec-required", "缺少本章蓝图（sceneSpec）：请先调用 chapter.blueprint 提交并缓存本章蓝图，或在本次调用中传入 sceneSpec。", {
       ok: false,
-      code: "invalid-input",
-      error: "sceneSpec 必填。",
+      code: "scene-spec-required",
+      error: "缺少本章蓝图（sceneSpec）：请先调用 chapter.blueprint 提交并缓存本章蓝图，或在本次调用中传入 sceneSpec。",
     });
   }
-  if (typeof input.content !== "string" || !input.content.trim()) {
-    return fail("content-required", "pipeline.write 必须接收当前 Runtime Agent 已完成的正文 content；工具不会在内部生成正文。", {
-      ok: false,
-      code: "content-required",
-      error: "pipeline.write 必须接收当前 Runtime Agent 已完成的正文 content；工具不会在内部生成正文。",
-    });
-  }
-  context.emitOutput?.("正在校验并保存 Runtime Agent 提交的章节正文…");
-  // 章后叙事记忆结算的 LLM 抽取器：用 host 的 generateText 能力构造，缺省时回退规则兜底。
+
+  context.emitOutput?.("正在审计校验并正式入库章节正文…");
   const llmExtractor = context.generateText ? createRuntimeChapterEventExtractor(context.generateText) : undefined;
   const result = await executePipelineWrite(
     {
       bookId: binding.bookId,
       sceneSpec,
-      content: input.content,
+      content,
       ...(typeof input.jingweiContext === "string" ? { jingweiContext: input.jingweiContext } : {}),
       ...(typeof input.previousChapterTail === "string" ? { previousChapterTail: input.previousChapterTail } : {}),
-      autoRevise: input.autoRevise !== false,
-      ...(typeof input.adversarialAudit === "boolean" ? { adversarialAudit: input.adversarialAudit } : {}),
-      ...(typeof input.maxReviseRounds === "number" ? { maxReviseRounds: input.maxReviseRounds } : {}),
-      ...(writingSkillAcknowledgements(input.acknowledgedSkills)
-        ? { acknowledgedSkills: writingSkillAcknowledgements(input.acknowledgedSkills) }
-        : {}),
       ...(context.loadedSkills ? { loadedSkills: context.loadedSkills } : {}),
       ...(typeof input.requireFactCheckPass === "boolean" ? { requireFactCheckPass: input.requireFactCheckPass } : {}),
-      ...(typeof input.factCheckAutoRevise === "boolean" ? { factCheckAutoRevise: input.factCheckAutoRevise } : {}),
       ...(typeof input.expectedHash === "string" ? { expectedHash: input.expectedHash } : {}),
       ...(typeof input.expectedVersion === "number" ? { expectedVersion: input.expectedVersion } : {}),
       ...(typeof input.expectedChapterHash === "string" ? { expectedChapterHash: input.expectedChapterHash } : {}),
       ...(typeof input.expectedChapterVersion === "number" ? { expectedChapterVersion: input.expectedChapterVersion } : {}),
     },
     {
-      // root 是项目根（books/ 的父目录），bookRoot 才是这本书的目录。
-      // 过去两者都传 binding.root，导致 StateManager 把书目录当项目根，
-      // 凡是走 booksDir 的下游就会拼出 <bookRoot>/books/<bookId> 而找不到 book.json。
       root: context.projectRoot || binding.root,
       bookRoot: binding.root,
-      // 写前召回记录按叙述者会话查：会话 id 由宿主可信传入，不走模型参数。
       ...(context.sessionId ? { sessionId: context.sessionId } : {}),
       onStream: context.emitOutput,
       llmExtractor,
-      // 正文落盘后由管线显式发起 memory.settle_chapter，使结算在叙述者面板可见且可重试。
       dispatchToolCall: createSettlementDispatcher(binding, context),
     },
   );
@@ -1160,7 +1170,6 @@ async function pipelineWrite(
     chapterNumber: result.chapterNumber,
     title: result.title,
     wordCount: result.wordCount,
-    // 只回正文指纹与首尾摘录；整章正文以章节文件为准，需要时用 chapter.read 读取。
     ...(result.path ? { path: result.path } : {}),
     sha256: result.prose.sha256,
     bytes: result.prose.bytes,
@@ -1177,13 +1186,12 @@ async function pipelineWrite(
     publishHint: result.publishHint,
     needsHumanReview: result.needsHumanReview,
     settlementError: result.settlementError,
-    // 上下文来源与真实阶段：让作者在结果卡里核对本章读了什么、管线走过哪几步。
     contextSources: result.contextSources,
     pipelineStages: result.pipelineStages,
     artifact: result.artifact,
     ...(settlementFailed ? { code: "settlement-pending", needsSettlementRetry: true } : {}),
   };
-  const summary = `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}${result.revised ? "，已自动修订" : ""}。${settlementSummary}`;
+  const summary = `第${result.chapterNumber}章「${result.title}」入库完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}。${settlementSummary}`;
   return settlementFailed
     ? fail("settlement-pending", summary, resultData)
     : ok(summary, resultData);
@@ -1202,10 +1210,9 @@ export async function executeRuntimeDomainTool(
 ): Promise<RuntimeToolResult | null> {
   const normalized = toolName.replace(/\./g, "_");
   switch (normalized) {
-    case "scene_spec":
-    case "scene.spec": {
+    case "chapter_blueprint": {
       const sceneSpec = record(input.sceneSpec);
-      if (!sceneSpec) return fail("scene-spec-required", "scene.spec 必须接收当前 Runtime Agent 显式提交的 sceneSpec 蓝图；工具不会在内部调用模型生成。");
+      if (!sceneSpec) return fail("scene-spec-required", "chapter.blueprint 必须接收当前 Runtime Agent 显式提交的 sceneSpec 蓝图；工具不会在内部调用模型生成。");
       return okResult(await handleSceneSpec({
         ...(input as unknown as Parameters<typeof handleSceneSpec>[0]),
         sceneSpec,
@@ -1213,94 +1220,90 @@ export async function executeRuntimeDomainTool(
         bookRoot: binding.root,
       }));
     }
-    case "chapter_audit":
-    case "chapter.audit":
+    case "chapter_commit":
+      return chapterCommit(input, binding, context);
+    case "chapter_audit": {
+      const mode = typeof input.mode === "string" ? input.mode.trim().toLowerCase() : "quality";
+      if (mode === "publish") return publishCheck(input, binding);
       return chapterAudit(input, binding);
+    }
     case "chapter_propose_selection":
       return proposeSelectionCandidate(input, binding.bookId, async (chapterNumber) => {
         const chapter = await readBoundChapter(binding, chapterNumber);
         return chapter.ok && chapter.data ? chapter.data.content : null;
       });
-    case "chapter_propose_revision":
-      return proposeChapterRevision(input, binding);
-    case "lore_propose_update":
-      return proposeLoreUpdate(input, binding);
-    case "storyline_propose":
-    case "storyline.propose": {
-      const result = await handleStorylinePropose({
-        bookId: binding.bookId,
-        name: typeof input.name === "string" ? input.name : "",
-        ...(typeof input.kind === "string" ? { kind: input.kind } : {}),
-        ...(typeof input.goal === "string" ? { goal: input.goal } : {}),
-        ...(Array.isArray(input.relatedEntryTitles)
-          ? { relatedEntryTitles: input.relatedEntryTitles.filter((v): v is string => typeof v === "string") }
-          : {}),
-        ...(typeof input.evidenceNote === "string" ? { evidenceNote: input.evidenceNote } : {}),
-      });
-      if (!result.ok) return fail(result.error ?? "storyline-propose-failed", result.summary);
-      return ok(result.summary, result.data);
+    case "jingwei_write": {
+      const action = typeof input.action === "string" ? input.action.trim().toLowerCase() : "";
+      if (action === "relate") {
+        const result = await handleLoreRelate({
+          ...(input as unknown as Parameters<typeof handleLoreRelate>[0]),
+          bookId: binding.bookId,
+        });
+        return result.ok ? ok(result.summary, result) : fail(result.error ?? "jingwei-relate-failed", result.summary);
+      }
+      if (action === "progress") {
+        const result = await handleLoreProgress({
+          ...(input as unknown as Parameters<typeof handleLoreProgress>[0]),
+          bookId: binding.bookId,
+        });
+        return result.ok ? ok(result.summary, result) : fail(result.error ?? "jingwei-progress-failed", result.summary);
+      }
+      if (action === "propose") {
+        return proposeLoreUpdate(input, binding);
+      }
+      if (action === "propose_storyline") {
+        const result = await handleStorylinePropose({
+          bookId: binding.bookId,
+          name: typeof input.name === "string" ? input.name : "",
+          ...(typeof input.kind === "string" ? { kind: input.kind } : {}),
+          ...(typeof input.goal === "string" ? { goal: input.goal } : {}),
+          ...(Array.isArray(input.relatedEntryTitles)
+            ? { relatedEntryTitles: input.relatedEntryTitles.filter((v): v is string => typeof v === "string") }
+            : {}),
+          ...(typeof input.evidenceNote === "string" ? { evidenceNote: input.evidenceNote } : {}),
+        });
+        if (!result.ok) return fail(result.error ?? "storyline-propose-failed", result.summary);
+        return ok(result.summary, result.data);
+      }
+      // create / update / delete / retire / 缺省：交由 runtime-contribution 的 handleJingweiWrite 执行
+      return null;
     }
-    case "rewrite_apply":
-    case "rewrite.apply":
-      return rewriteApply(input, binding);
-    case "pipeline_import_chapters":
-    case "pipeline.import_chapters":
-      return importChapters(input, binding, context);
-    case "book_dissect":
-    case "book.dissect":
-      return bookDissect(input, binding, context);
-    case "style_distill_index":
-    case "style.distill_index":
-    case "style_distill_preview":
-    case "style.distill_preview":
-    case "style_distill_start":
-    case "style.distill_start":
-    case "style_distill_status":
-    case "style.distill_status":
-    case "style_distill_adopt":
-    case "style.distill_adopt":
-      return executeStyleDistillationTool(toolName, input, binding, context);
-    case "style_consolidate":
-    case "style.consolidate":
-      return executeStyleConsolidateTool(input, binding, context);
+    case "book_import": {
+      const action = typeof input.action === "string" ? input.action.trim().toLowerCase() : "";
+      if (action === "import_chapters") return importChapters(input, binding, context);
+      if (action === "dissect") return bookDissect(input, binding, context);
+      return fail("invalid-action", `未知的 book.import action：${String(input.action ?? "")}。支持 import_chapters | dissect。`);
+    }
+    case "style_manage": {
+      const action = typeof input.action === "string" ? input.action.trim().toLowerCase() : "";
+      if (action === "index" || action === "preview" || action === "start" || action === "status" || action === "adopt") {
+        return executeStyleDistillationTool(`style.distill_${action}`, input, binding, context);
+      }
+      if (action === "consolidate" || action === "negative_override") {
+        return executeStyleConsolidateTool(input, binding, context);
+      }
+      return fail("invalid-action", `未知的 style.manage action：${String(input.action ?? "")}。支持 index | preview | start | status | adopt | consolidate | negative_override。`);
+    }
     case "mechanism_distill":
-    case "mechanism.distill":
       return executeMechanismDistillTool(input, binding, context);
     case "outline_volume":
-    case "outline.volume":
       return outlineVolume(input, binding, context);
-    case "arc_character":
-    case "arc.character":
-      return arcCharacter(input, binding, context);
-    case "publish_check":
-    case "publish.check":
-      return publishCheck(input, binding);
-    case "publish_export":
-    case "publish.export":
-      return publishExport(input, binding);
-    case "character_check_consistency":
-    case "character.check_consistency":
-      return characterConsistency(input, binding);
-    case "character_voice_read":
-    case "character_voice_draft":
-      return executeCharacterVoiceTool(toolName, input, binding, context);
+    case "character_inspect": {
+      const action = typeof input.action === "string" ? input.action.trim().toLowerCase() : "";
+      if (action === "consistency") return characterConsistency(input, binding);
+      if (action === "arc_status") return arcCharacter({ ...input, action: "status" }, binding, context);
+      if (action === "arc_sync") return arcCharacter({ ...input, action: "sync" }, binding, context);
+      if (action === "voice_read") return executeCharacterVoiceTool("character.voice.read", input, binding, context);
+      if (action === "voice_draft") return executeCharacterVoiceTool("character.voice.draft", input, binding, context);
+      return fail("invalid-action", `未知的 character.inspect action：${String(input.action ?? "")}。支持 consistency | arc_status | arc_sync | voice_read | voice_draft。`);
+    }
     case "hooks_manage":
-    case "hooks.manage":
       return hooksManage(input, binding);
-    case "memory_settle_chapter":
-    case "memory.settle_chapter":
-      return memorySettleChapter(input, binding, context);
-    case "pipeline_write":
-    case "pipeline.write":
-      return pipelineWrite(input, binding, context);
-    case "workflow_get_current_step":
-    case "workflow_submit_step_output":
-    case "workflow_report_blocker":
+    case "memory_settle":
+      return memorySettle(input, binding, context);
+    case "workflow_step":
       return executeWorkflowRunTool(toolName, input, binding, context);
-    case "workflow_list_recipes":
-    case "workflow_get_recipe":
-    case "workflow_edit_recipe":
-    case "workflow_start_run":
+    case "workflow_manage":
       return executeWorkflowRecipeTool(toolName, input, binding, context);
     default:
       return null;

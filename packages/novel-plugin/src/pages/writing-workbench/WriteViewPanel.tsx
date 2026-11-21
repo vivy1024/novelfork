@@ -2,7 +2,7 @@
  * WriteViewPanel — 写作视图（ActivityBar ✍️ 的主面板）
  *
  * 一屏回答三个问题：现在能不能写、缺什么、下一步点哪。
- * 写前状态只来自 write.preflight；文案只来自 preflight 的 explanation，不按 code 自造。
+ * 写前状态只来自 chapter.preflight；文案只来自 preflight 的 explanation，不按 code 自造。
  *
  * 章节循环（W1）：面板顶部是「写 → 改 → 收尾」步骤条，当前步由 chapter-loop-state
  * 从写前预检、结算新鲜度与文风金库推出，不另存。写 = 写前准备 + 写下一章；
@@ -181,7 +181,7 @@ export function WriteViewPanel({
     setLoading(true);
     setError(null);
     try {
-      setRaw(await callTool("write.preflight", {
+      setRaw(await callTool("chapter.preflight", {
         userDirectives: directiveDraftRef.current,
         acceptFocusDefault: acceptFocusDefaultRef.current,
       }));
@@ -657,7 +657,7 @@ export function WriteViewPanel({
       <div className="mt-auto flex flex-col gap-2">
         {/*
           情节点预算：作者可选地亲手排本章节奏。
-          编辑结果随写章请求交给叙述者，由它作为 scene.spec 的 beatBudget 传入；
+          编辑结果随写章请求交给叙述者，由它作为 chapter.blueprint 的 sceneSpec.beatBudget 传入；
           本面板只做本地校验预览，不自行调用工具。
         */}
         <section className="rounded border border-border bg-card/40" data-testid="write-beat-budget">

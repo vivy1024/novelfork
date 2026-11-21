@@ -79,12 +79,18 @@ describe("memory.search_text", () => {
     expect(none.error).toBe("query-too-short");
   });
 
-  it("登记为自动档的记忆组只读工具，schema 不暴露书籍目录", () => {
-    const entry = NOVEL_RUNTIME_TOOL_CATALOG.find((tool) => tool.name === "memory.search_text");
+  it("登记为常驻档的记忆组只读工具，schema 不暴露书籍目录", () => {
+    // 正文检索已并入 memory.search(mode=text)：不再是独立工具，风险与档位由合并后的工具承担。
+    const entry = NOVEL_RUNTIME_TOOL_CATALOG.find((tool) => tool.name === "memory.search");
     expect(entry?.risk).toBe("read");
     expect(entry?.runtimeStatus).toBe("ready");
-    expect(getNovelToolRoutine("memory.search_text")).toMatchObject({ defaultMode: "auto", nameZh: "记忆·搜正文" });
-    const properties = (NOVEL_TOOL_SCHEMAS["memory.search_text"] as { properties: Record<string, unknown> }).properties;
+    const description = entry?.description ?? "";
+    expect(description).toContain("mode=text");
+    expect(description).toContain("章号与命中片段");
+    expect(getNovelToolRoutine("memory.search")).toMatchObject({ defaultMode: "resident", nameZh: "记忆·记忆与正文检索" });
+    expect(NOVEL_RUNTIME_TOOL_CATALOG.find((tool) => tool.name === "memory.search_text")).toBeUndefined();
+    expect(getNovelToolRoutine("memory.search_text")).toBeNull();
+    const properties = (NOVEL_TOOL_SCHEMAS["memory.search"] as { properties: Record<string, unknown> }).properties;
     expect(Object.keys(properties)).not.toContain("bookRoot");
   });
 });

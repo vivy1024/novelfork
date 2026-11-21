@@ -6,8 +6,8 @@ describe("WorkflowTimelinePanel 开工提示", () => {
     const message = buildWorkflowKickoffMessage("后端反转悬疑流", 4);
     expect(message).toContain("第 4 章");
     expect(message).toContain("后端反转悬疑流");
-    expect(message).toContain("workflow_get_current_step");
-    expect(message).toContain("workflow_submit_step_output");
+    expect(message).toContain("workflow_step（action=current）");
+    expect(message).toContain("workflow_step（action=submit）");
     // 工序简报由产品在系统层注入并随工序更新；用户消息里不再塞整份方案。
     expect(message).not.toContain("【创作工作流执行请求】");
     expect(message).not.toContain("推荐工具");

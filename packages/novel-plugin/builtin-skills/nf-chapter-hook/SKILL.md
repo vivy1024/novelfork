@@ -42,7 +42,7 @@ checks:
 
 ## 操作（NovelFork）
 
-1. 写章时在 scene_spec 蓝图的 hooks_planted 里声明本章埋的钩子。
+1. 写章时在 chapter_blueprint 的 hooks_planted 里声明本章埋的钩子。
 2. 正文结尾按五类钩子之一写，写后用《去AI味重写》速查防套话。
-3. `pipeline_write` 落盘后，`hooks_manage(action=plant)` 把钩子记入台账。
+3. 正文经 `chapter_commit` 入库后，`hooks_manage(action=plant)` 把钩子记入台账。
 4. 兑现时 `hooks_manage(action=payoff)` 更新，让伏笔台账与正文一致。

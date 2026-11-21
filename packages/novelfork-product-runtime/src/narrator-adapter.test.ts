@@ -15,11 +15,11 @@ describe("产品注册给 Runtime 的书籍叙述者适配器", () => {
 	const narrator = novelForkProductIntegration.narrator;
 
 	test("转发小说工具的权限策略（Runtime 据此按会话权限模式过滤与审批）", () => {
-		expect(narrator?.getToolPermissionPolicy?.("chapter_write")).toMatchObject({
+		expect(narrator?.getToolPermissionPolicy?.("chapter_commit")).toMatchObject({
 			risk: "confirmed-write",
 			visibility: "author",
 		});
-		expect(narrator?.getToolPermissionPolicy?.("memory_bulk_delete")?.visibility).toBe("advanced");
+		expect(narrator?.getToolPermissionPolicy?.("chapter_discard_range")?.visibility).toBe("advanced");
 	});
 
 	test("每个小说工具贡献一个套路，交给「套路 › 可选工具」逐个管理", () => {
@@ -28,10 +28,10 @@ describe("产品注册给 Runtime 的书籍叙述者适配器", () => {
 		expect(routines).toHaveLength(registered.length);
 		expect(routines.every((routine) => routine.toolNames.length === 1)).toBe(true);
 		const byTool = new Map(routines.map((routine) => [routine.toolNames[0], routine]));
-		expect(byTool.get("pipeline_write")).toMatchObject({ id: "novelfork.pipeline.write", defaultMode: "resident" });
-		expect(byTool.get("workflow_submit_step_output")?.defaultMode).toBe("resident");
-		expect(byTool.get("memory_bulk_delete")).toMatchObject({ id: "novelfork.memory.bulk-delete", defaultMode: "manual" });
-		expect(byTool.get("market_scan")?.defaultMode).toBe("auto");
+		expect(byTool.get("chapter_commit")).toMatchObject({ id: "novelfork.chapter.commit", defaultMode: "resident" });
+		expect(byTool.get("workflow_step")?.defaultMode).toBe("resident");
+		expect(byTool.get("chapter_discard_range")).toMatchObject({ id: "novelfork.chapter.discard-range", defaultMode: "manual" });
+		expect(byTool.get("market_radar")?.defaultMode).toBe("resident");
 	});
 
 	test("Runtime 的套路校验全部接受（id 合法、工具都已注册、互不抢占）", async () => {

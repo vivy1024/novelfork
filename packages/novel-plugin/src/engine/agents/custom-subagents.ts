@@ -22,12 +22,12 @@ export const CUSTOM_SUBAGENTS_RELATIVE_PATH = join("story", "custom_subagents.js
 const FORBIDDEN_SET = new Set(ROSTER_FORBIDDEN_TOOLS);
 
 function sanitizeTools(tools: unknown): string[] {
-  if (!Array.isArray(tools)) return ["chapter.read", "lore.read", "memory.read"];
+  if (!Array.isArray(tools)) return ["Read", "chapter.list", "jingwei.read", "memory.read"];
   const cleaned = tools
     .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
     .map((t) => t.trim())
     .filter((t) => !FORBIDDEN_SET.has(t));
-  return cleaned.length > 0 ? Array.from(new Set(cleaned)) : ["chapter.read", "lore.read", "memory.read"];
+  return cleaned.length > 0 ? Array.from(new Set(cleaned)) : ["Read", "chapter.list", "jingwei.read", "memory.read"];
 }
 
 function sanitizeId(raw: unknown, existingIds: ReadonlySet<string>): string {

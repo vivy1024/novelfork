@@ -16,7 +16,7 @@ function show(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** lore.propose_update 的经纬字段改动候选卡：字段级 before/after + 采用（fieldsPatch 合并，其余字段原样）。 */
+/** jingwei.write（action=propose）的经纬字段改动候选卡：字段级 before/after + 采用（fieldsPatch 合并，其余字段原样）。 */
 export const LoreProposalCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const artifact = getToolResultArtifact(context.result);
   if (!artifact || artifact.kind !== "lore-update") return null;

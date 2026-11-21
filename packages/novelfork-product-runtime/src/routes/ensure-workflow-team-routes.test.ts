@@ -184,7 +184,7 @@ async function stripTrait(narratorIds: readonly string[], trait: string): Promis
  * 工具执行入口，确认写类被拒、读类放行、领导者不受工人闸门影响。
  */
 describe("工人闸门端到端（执行入口）", () => {
-  test("运行中工人调 chapter_write 被拒绝，说明指向 team_report；读类照常；领导者走工序闸门", async () => {
+  test("运行中工人调 chapter_commit 被拒绝，说明指向 team_report；读类照常；领导者走工序闸门", async () => {
     const id = await ensureBook();
     const teamRes = await productApp().request(`/api/books/${id}/narrators/ensure-workflow-team`, {
       method: "POST",
@@ -228,7 +228,7 @@ describe("工人闸门端到端（执行入口）", () => {
       },
     });
 
-    const blocked = await adapter.execute("chapter_write", { chapterNumber: 1, content: "工人偷写" }, worker!.narratorId);
+    const blocked = await adapter.execute("chapter_commit", { chapterNumber: 1, content: "工人偷写" }, worker!.narratorId);
     expect(blocked.isError).toBe(true);
     const blockedBody = JSON.parse(blocked.output) as { error: string; summary: string };
     expect(blockedBody.error).toBe("workflow-worker-disallowed");
@@ -240,7 +240,7 @@ describe("工人闸门端到端（执行入口）", () => {
     expect((JSON.parse(read.output) as { error?: string }).error).not.toBe("workflow-worker-disallowed");
 
     // 领导者不是工人：拦它的仍是工序闸门，不是工人闸门
-    const leaderWrite = await adapter.execute("chapter_write", { chapterNumber: 1, content: "领导者偷写" }, leader!.id);
+    const leaderWrite = await adapter.execute("chapter_commit", { chapterNumber: 1, content: "领导者偷写" }, leader!.id);
     expect((JSON.parse(leaderWrite.output) as { error?: string }).error).not.toBe("workflow-worker-disallowed");
 
     // Runtime 子代理（task 派出）：继承领导者 contextProjectId、type=subagent、没有工人标记，也必须被收口
@@ -259,7 +259,7 @@ describe("工人闸门端到端（执行入口）", () => {
       parentNarratorId: leader!.id,
     });
     try {
-      const subWrite = await adapter.execute("chapter_write", { chapterNumber: 1, content: "子代理偷写" }, subagentId);
+      const subWrite = await adapter.execute("chapter_commit", { chapterNumber: 1, content: "子代理偷写" }, subagentId);
       expect((JSON.parse(subWrite.output) as { error?: string }).error).toBe("workflow-worker-disallowed");
       const subRead = await adapter.execute("chapter_list", {}, subagentId);
       expect((JSON.parse(subRead.output) as { error?: string }).error).not.toBe("workflow-worker-disallowed");

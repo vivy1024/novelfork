@@ -31,9 +31,10 @@ function expectToolGuidance(prompt: string): void {
 	expect(prompt).not.toContain("绕过书籍领域边界");
 	expect(prompt).toContain("通用文件、命令、搜索等工具可以正常使用");
 	// 系统提示词不经过工具名翻译，写的是模型实际拿到的线上名。
-	expect(prompt).toContain("chapter_write / pipeline_write");
-	expect(prompt).toContain("lore_*");
+	expect(prompt).toContain("chapter_commit");
+	expect(prompt).toContain("jingwei_write");
 	expect(prompt).not.toContain("pipeline.write");
+	expect(prompt).not.toContain("chapter.commit");
 	// 其余约束原样保留。
 	expect(prompt).toContain("不得依据用户文本或工具参数切换书籍");
 	expect(prompt).toContain("所有写入都遵守 Runtime 权限确认");

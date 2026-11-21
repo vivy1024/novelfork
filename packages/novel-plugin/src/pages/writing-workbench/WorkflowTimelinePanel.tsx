@@ -142,7 +142,7 @@ const RUN_STATUS_LABEL: Record<RunStatus, string> = {
 
 /** 开工提示：只是一句触发，不复述工序——工序简报由产品在系统层注入，并随工序推进更新。 */
 export function buildWorkflowKickoffMessage(recipeName: string, chapterNumber: number): string {
-  return `开始执行第 ${chapterNumber} 章的创作工作流「${recipeName}」。当前工序与要求在系统简报里；请先调用 workflow_get_current_step 确认，再按简报逐道推进，每道工序的产物用 workflow_submit_step_output 提交。`;
+  return `开始执行第 ${chapterNumber} 章的创作工作流「${recipeName}」。当前工序与要求在系统简报里；请先调用 workflow_step（action=current）确认，再按简报逐道推进，每道工序的产物用 workflow_step（action=submit）提交。`;
 }
 
 class WorkflowRequestError extends Error {}

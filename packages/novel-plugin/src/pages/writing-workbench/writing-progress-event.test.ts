@@ -12,7 +12,7 @@ describe("writing progress event", () => {
     const seen: Array<string | undefined> = [];
     const handler = (event: Event) => seen.push(writingProgressBookId(event));
     window.addEventListener(WRITING_PROGRESS_EVENT, handler);
-    dispatchWritingProgress({ reason: "pipeline.write", bookId: "book-1" });
+    dispatchWritingProgress({ reason: "chapter.commit", bookId: "book-1" });
     window.removeEventListener(WRITING_PROGRESS_EVENT, handler);
     expect(seen).toEqual(["book-1"]);
   });

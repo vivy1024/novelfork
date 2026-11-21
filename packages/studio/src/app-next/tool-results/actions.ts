@@ -10,7 +10,7 @@ function asNonEmptyString(value: unknown): string {
 
 /**
  * Host-owned follow-up from a tool-result card.
- * book.dissect 确认走现有 lore.write stagingDecision，不另开第三套工具。
+ * book.import 拆书结果通过经纬的 staging decision 接口确认。
  */
 export async function executeToolResultAction(
   bookId: string,
@@ -18,11 +18,8 @@ export async function executeToolResultAction(
 ): Promise<unknown> {
   const boundBookId = bookId.trim();
   if (!boundBookId) throw new Error("缺少可信的书籍绑定。");
-  if (action.type !== "lore.write.staging") {
+  if (action.type !== "jingwei.write.staging" || action.toolName !== "jingwei.write") {
     throw new Error("不支持的结果卡操作。");
-  }
-  if (action.toolName !== "lore.write" && action.toolName !== "jingwei.write") {
-    throw new Error("拆书确认必须走 lore.write。");
   }
   for (const field of HOST_OWNED_FIELDS) {
     if (field in action.input) {

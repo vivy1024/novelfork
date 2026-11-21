@@ -293,6 +293,8 @@ function eventFromRow(row: any): EventRecord {
     subject: row.subject,
     predicate: row.predicate,
     object: row.object,
+    ...(row.subjectEntryId == null ? {} : { subjectEntryId: row.subjectEntryId }),
+    ...(row.objectEntryId == null ? {} : { objectEntryId: row.objectEntryId }),
     evidenceText: row.evidenceText,
     confidence: row.confidence,
     source: row.source,
@@ -366,6 +368,8 @@ function toEntry(kind: MemoryEntryKind, record: FactRecord | EventRecord | Retri
       subject: event.subject,
       predicate: event.predicate,
       object: event.object,
+      ...(event.subjectEntryId ? { subjectEntryId: event.subjectEntryId } : {}),
+      ...(event.objectEntryId ? { objectEntryId: event.objectEntryId } : {}),
       eventType: event.eventType,
       status: event.status,
       chapterNumber: event.chapterNumber,
@@ -407,7 +411,7 @@ function factSelect(): string {
 }
 
 function eventSelect(): string {
-  return `SELECT id, book_id AS bookId, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object, evidence_text AS evidenceText, confidence, source, status, risk_level AS riskLevel, created_at AS createdAt, applied_at AS appliedAt FROM narrative_event`;
+  return `SELECT id, book_id AS bookId, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object, subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId, evidence_text AS evidenceText, confidence, source, status, risk_level AS riskLevel, created_at AS createdAt, applied_at AS appliedAt FROM narrative_event`;
 }
 
 function logSelect(): string {

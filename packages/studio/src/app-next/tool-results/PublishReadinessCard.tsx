@@ -18,7 +18,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: s
   );
 }
 
-/** publish.check / compliance.publish-readiness：只读投稿风险自检卡。 */
+/** chapter.audit 的 publish 模式：只读投稿风险自检卡。 */
 export const PublishReadinessCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const data = asRecord(getToolResultData(context.result));
   if (!data) return null;

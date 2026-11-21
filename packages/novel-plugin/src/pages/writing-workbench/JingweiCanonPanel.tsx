@@ -394,7 +394,7 @@ export function JingweiCanonPanel({
               <Badge variant="outline" className="text-2xs text-muted-foreground">可见性·{READ_VISIBILITY_LABELS[values.visibility] ?? values.visibility}</Badge>
             </div>
             {filledSchemaFields.length > 0 && (
-              <dl className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5" data-testid="jingwei-canon-fields-reading">
+              <dl className="nf-surface-sub space-y-1.5 px-3 py-2.5" data-testid="jingwei-canon-fields-reading">
                 {filledSchemaFields.map((field) => (
                   <div key={field.key} className="flex gap-3">
                     <dt className="w-20 shrink-0 pt-0.5 text-xs text-muted-foreground">{field.label}</dt>
@@ -576,7 +576,7 @@ export function JingweiCanonPanel({
           {relationItems.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {relationItems.map((item) => (
-                <span key={item.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-secondary text-secondary-foreground border border-border">
+                <span key={item.id} className="nf-tab-pill inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-secondary text-secondary-foreground border border-border">
                   <button type="button" onClick={() => onNavigateToEntry?.(item.id)} className="inline-flex items-center gap-1 hover:underline">
                     <Link2 className="size-3 opacity-60" />
                     {item.title}
@@ -622,7 +622,7 @@ export function JingweiCanonPanel({
               ) : revisionRecords.length > 0 ? (
                 <div className="space-y-2">
                   {revisionRecords.map((revision) => (
-                    <div key={revision.id} className="flex items-start justify-between gap-2 rounded-md border px-3 py-2">
+                    <div key={revision.id} className="nf-surface-sub flex items-start justify-between gap-2 px-3 py-2">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-2xs text-muted-foreground">

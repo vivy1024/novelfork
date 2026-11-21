@@ -3,7 +3,7 @@
  * 工作流是图，可能有多道工序同时进行（并行分支）；每道都单独列出，提交时用 stepId 区分。
  *
  * 同一份文本有两个出口：每趟对话开始时作为 system 级 promptExtension 注入，
- * 以及 workflow.get_current_step / submit_step_output 的返回结果（同一趟内切换工序靠它）。
+ * 以及 workflow.step（action=current/submit）的返回结果（同一趟内切换工序靠它）。
  * 工具名一律写成模型看到的线上名（点换下划线），与 Runtime 的归一化一致。
  */
 
@@ -73,8 +73,8 @@ function executionLine(
     const builtin = templates.length > 0
       ? `执行方式（首选）：委派内置子代理——Agent(subagent_type="${templates[0]}"${recipeStep?.modelOverride ? `, model="${recipeStep.modelOverride}"` : ""})` +
         `${templates.length > 1 ? `（按打回意见返修时可改派 subagent_type="${templates[1]}"）` : ""}。` +
-        `prompt 里只写本工序目标、stepId="${step.stepId}" 与需要它参考的候选 id，不要粘贴正文或蓝图原文（子代理用 workflow_get_current_step 自己取）。` +
-        "子代理会直接用 workflow_submit_step_output 提交本工序产物，交还你的是摘要与 candidateId；你不要再提交一遍，也不要把正文转贴给作者。" +
+        `prompt 里只写本工序目标、stepId="${step.stepId}" 与需要它参考的候选 id，不要粘贴正文或蓝图原文（子代理用 workflow_step action="current" 自己取）。` +
+        "子代理会直接用 workflow_step（action=\"submit\"）提交本工序产物，交还你的是摘要与 candidateId；你不要再提交一遍，也不要把正文转贴给作者。" +
         "内置子代理不可用（没有 Agent 工具或模板未加载）时按下面的次选办法。\n"
       : "";
     const model = recipeStep?.modelOverride ? `，model=${recipeStep.modelOverride}` : "";
@@ -95,7 +95,7 @@ function executionLine(
       `③ team_report / team_status 收集结果。` +
       `没有团队工具时回退：用 task(subagent_type="general") 派 Runtime 通用子代理并把工序目标写进 prompt；` +
       `注意这是能力降级——通用子代理没有该角色的专门技能与工人绑定（团队里的「工作流工人·」叙述者才带书级工具），请优先在画布一键启用 narrator-team 后重试。` +
-      `若既无团队工具也无可用子代理，调用 workflow_report_blocker。${parallel}`
+      `若既无团队工具也无可用子代理，调用 workflow_step（action="blocker"）。${parallel}`
     );
   }
   if (step.executorKind === "domain-tool") return "执行方式：只调用本工序列出的工具完成，不要自行发挥。";
@@ -115,10 +115,8 @@ function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multi
       ? `允许的写入工具：${writeTools.join("、")}（读类工具不受限）。`
       : "不允许调用任何写入工具（读类工具不受限）。",
   );
-  if (step.tools.includes("pipeline.write")) {
-    lines.push("落盘正文：调用 pipeline_write 时传 fromWorkflowRun=true，正文与蓝图由工具从本运行里作者已确认的候选取，不要再把正文贴进 content。");
-  } else if (step.tools.includes("chapter.write")) {
-    lines.push("覆盖已有章节：调用 chapter_write 时 content 原样使用 workflow_get_current_step 返回的 approvedProse.content（作者已确认的那一版），不要改动。");
+  if (step.tools.includes("chapter.commit")) {
+    lines.push("落盘正文：调用 chapter_commit 时传 fromWorkflowRun=true，正文与蓝图由工具从本运行里作者已确认的候选取，不要再把正文贴进 content；若覆盖已有章节则传 mode=\"revision\"。");
   }
   if (recipeStep?.skills?.length) {
     lines.push(`需要遵循的写作技能：${recipeStep.skills.join("、")}（用 Skill 工具读取）。`);
@@ -127,7 +125,7 @@ function runningStepLines(run: WorkflowRunRecord, step: WorkflowStepState, multi
     const stepArg = multiple ? `stepId="${step.stepId}"，` : "";
     const outcomeArg = step.outcomes.length > 0 ? `，outcome 取 ${step.outcomes.map((item) => `"${item}"`).join(" / ")} 之一（决定后续走哪条分支）` : "";
     lines.push(
-      `必交产物：调用 workflow_submit_step_output，${stepArg}runRevision=${run.state.revision}，kind="${step.expectedOutput}"${outcomeArg}，payload=${PAYLOAD_SHAPE[step.expectedOutput]}`,
+      `必交产物：调用 workflow_step（action="submit"），${stepArg}runRevision=${run.state.revision}，kind="${step.expectedOutput}"${outcomeArg}，payload=${PAYLOAD_SHAPE[step.expectedOutput]}`,
       step.requiresApproval
         ? "提交后需要作者确认才继续。"
         : step.expectedOutput === "prose"
@@ -166,11 +164,11 @@ export function buildDelegatedStepBrief(run: WorkflowRunRecord, template: string
     if (recipeStep?.skills?.length) lines.push(`需要遵循的写作技能：${recipeStep.skills.join("、")}（用 Skill 工具读取）。`);
     if (step.expectedOutput) {
       const outcomeArg = step.outcomes.length > 0 ? `，outcome 取 ${step.outcomes.map((item) => `"${item}"`).join(" / ")} 之一` : "";
-      lines.push(`必交产物：workflow_submit_step_output，stepId="${step.stepId}"，runRevision=${run.state.revision}，kind="${step.expectedOutput}"${outcomeArg}，payload=${PAYLOAD_SHAPE[step.expectedOutput]}`);
+      lines.push(`必交产物：workflow_step（action="submit"），stepId="${step.stepId}"，runRevision=${run.state.revision}，kind="${step.expectedOutput}"${outcomeArg}，payload=${PAYLOAD_SHAPE[step.expectedOutput]}`);
     }
     if (step.note) lines.push(`上一次的意见：${step.note.what}；${step.note.why}；建议：${step.note.action}`);
   }
-  lines.push("上游材料（蓝图、上一版正文、各道审校的意见、大纲与市场分析）在本工具结果的 upstream 字段里，按需取用；上游没有正文时用 chapter_read 读已保存的本章。");
+  lines.push("上游材料（蓝图、上一版正文、各道审校的意见、大纲与市场分析）在本工具结果的 upstream 字段里，按需取用；上游没有正文时先用 chapter_list 查路径再用原生 Read 读已保存的本章。");
   lines.push("交还领导者时只写摘要与 candidateId，不贴正文。");
   return lines.join("\n");
 }
@@ -193,7 +191,7 @@ export function buildWorkflowRunBrief(run: WorkflowRunRecord): string | null {
   const awaiting = run.state.steps.filter((step) => step.status === "awaiting_approval");
   if (running.length === 0) {
     if (awaiting.length === 0) {
-      lines.push("运行没有进行中的工序，状态异常。请调用 workflow_report_blocker 说明情况，等待作者处理。");
+      lines.push("运行没有进行中的工序，状态异常。请调用 workflow_step（action=\"blocker\"）说明情况，等待作者处理。");
       return lines.join("\n");
     }
     for (const step of awaiting) {
@@ -215,6 +213,6 @@ export function buildWorkflowRunBrief(run: WorkflowRunRecord): string | null {
   if (awaiting.length > 0) {
     lines.push(`另有等待作者确认的工序：${awaiting.map((step) => step.label).join("、")}（不要再提交它们）。`);
   }
-  lines.push("其他写入工具在工作流运行期间会被拒绝。做不到时调用 workflow_report_blocker（带上 stepId）并写清 what / why / action，不要编造产物。");
+  lines.push("其他写入工具在工作流运行期间会被拒绝。做不到时调用 workflow_step（action=\"blocker\"，带上 stepId）并写清 what / why / action，不要编造产物。");
   return lines.join("\n");
 }

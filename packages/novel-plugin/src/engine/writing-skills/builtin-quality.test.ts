@@ -94,9 +94,9 @@ const TOOL_FIELD_NAMES = new Set(["hooks_planted", "hooks_paid_off", "hooks_adva
 
 /**
  * 从正文与描述里抽出像工具名的引用，分两类：
- * - dotted：目录里的点号名（`chapter.read`）。技能原文直接进模型上下文，不经过 Runtime 的名称翻译，
- *   模型拿到的工具叫 chapter_read，写点号名它对不上号，所以一律判错；
- * - wire：命名空间与现有工具相同的下划线标识符（`chapter_read`、`hooks_manage(action=list)`），必须真实存在。
+ * - dotted：目录里的点号名（`chapter.list`）。技能原文直接进模型上下文，不经过 Runtime 的名称翻译，
+ *   模型拿到的工具叫 chapter_list，写点号名它对不上号，所以一律判错；
+ * - wire：命名空间与现有工具相同的下划线标识符（`chapter_list`、`hooks_manage(action=list)`），必须真实存在。
  */
 function referencedToolNames(text: string): { dotted: string[]; wire: string[] } {
   const dotted = new Set<string>();
@@ -110,7 +110,7 @@ function referencedToolNames(text: string): { dotted: string[]; wire: string[] }
   for (const match of text.matchAll(/(?<![\w./-])([a-z][a-z-]*)\.([a-z][a-z_.]*[a-z])(?![\w-])/g)) {
     if (TOOL_NAMESPACES.has(match[1]!) && !FILE_EXTENSIONS.has(match[2]!.split(".").at(-1)!)) dotted.add(`${match[1]}.${match[2]}`);
   }
-  // 下划线线上名：命名空间与现有工具相同。参数字段也是 snake_case（scene_spec 的 hooks_planted），
+  // 下划线线上名：命名空间与现有工具相同。参数字段也是 snake_case（chapter_blueprint 的 hooks_planted），
   // 已知字段名单独排除；其余同前缀的下划线名都必须是真实工具。
   for (const match of text.matchAll(/(?<![\w./-])([a-z]+)_([a-z][a-z_]*[a-z])(?![\w-])/g)) {
     if (TOOL_NAMESPACES.has(match[1]!) && !TOOL_FIELD_NAMES.has(`${match[1]}_${match[2]}`)) wire.add(`${match[1]}_${match[2]}`);
@@ -203,10 +203,10 @@ describe("创作预设的作者入口", () => {
 
 describe("技能里引用的工具必须是模型可见的线上名", () => {
   it("引用抽取能认出反引号、裸写与下划线的工具名，并忽略文件名", () => {
-    expect(referencedToolNames("先 `chapter.read`，再 rewrite.apply；导出 `story/volume_outline.md`，读 `SKILL.md`").dotted)
-      .toEqual(["chapter.read", "rewrite.apply"]);
-    expect(referencedToolNames("先 `chapter_read`，再 hooks_manage(action=list)；读 `story/volume_outline.md`").wire)
-      .toEqual(["chapter_read", "hooks_manage"]);
+    expect(referencedToolNames("先 `chapter.list`，再 chapter.audit；导出 `story/volume_outline.md`，读 `SKILL.md`").dotted)
+      .toEqual(["chapter.list", "chapter.audit"]);
+    expect(referencedToolNames("先 `chapter_list`，再 hooks_manage(action=list)；读 `story/volume_outline.md`").wire)
+      .toEqual(["chapter_list", "hooks_manage"]);
   });
 
   it.each(builtins.map((skill) => [skill.slug, skill] as const))("%s", (_slug, skill) => {

@@ -4,7 +4,7 @@
  * 纪律：本组件不调用任何工具、不发网络请求。它只做两件事：
  * 1. 编辑情节点数据（增删、排序、改字段）；
  * 2. 用 checkBeatBudget 做本地即时校验，给作者当场反馈。
- * 权威校验仍在后端 scene.spec / pipeline.write，本地结果只是预览。
+ * 权威校验仍在后端 chapter.blueprint / chapter.commit，本地结果只是预览。
  */
 
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";

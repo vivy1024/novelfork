@@ -121,7 +121,7 @@ describe("CharacterCardPage", () => {
     render(<CharacterCardPage entry={entry} bookId="book-1" saving={false} onSave={vi.fn(async () => undefined)} />);
     await waitFor(() => expect(screen.getByTestId("character-development-section")).toBeTruthy());
     const before = fetchJsonMock.mock.calls.length;
-    window.dispatchEvent(new CustomEvent("novelfork:writing-progress", { detail: { reason: "pipeline.write", bookId: "book-1" } }));
+    window.dispatchEvent(new CustomEvent("novelfork:writing-progress", { detail: { reason: "chapter.commit", bookId: "book-1" } }));
     await waitFor(() => expect(fetchJsonMock.mock.calls.length).toBeGreaterThan(before));
     expect(screen.getByTestId("character-development-section")).toBeTruthy();
   });

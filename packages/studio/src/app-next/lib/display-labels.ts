@@ -23,8 +23,8 @@ const PROVIDER_PROTOCOL_DESCRIPTIONS: Record<ProviderProtocol, string> = {
 const PROVIDER_PROTOCOL_BADGE_COLORS: Record<ProviderProtocol, string> = {
   completions: "bg-success/10 text-success",
   responses: "bg-success/10 text-success",
-  anthropic: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-  codex: "bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-300",
+  anthropic: "bg-chart-5/10 text-[color-mix(in_srgb,var(--chart-5)_72%,var(--foreground))]",
+  codex: "bg-muted text-muted-foreground",
   "claude-code": "bg-info/10 text-info",
 };
 

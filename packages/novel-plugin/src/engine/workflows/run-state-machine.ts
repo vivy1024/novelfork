@@ -144,7 +144,7 @@ function isTerminal(status: WorkflowRunStatus): boolean {
 const REVIEW_GATE_KINDS: readonly NovelWorkflowStepKind[] = ["audit", "adversarial-audit", "approval-gate"];
 
 /** 把正文写进书里的小说工具（落盘工具）。 */
-export const CHAPTER_WRITE_TOOLS: ReadonlySet<string> = new Set(["pipeline.write", "chapter.write"]);
+export const CHAPTER_WRITE_TOOLS: ReadonlySet<string> = new Set(["chapter.commit"]);
 
 /**
  * 这道工序负责把正文写进书里（允许调用落盘工具）。

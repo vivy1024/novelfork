@@ -245,8 +245,8 @@ describe("新方案的服务端运行", () => {
     current = ok(approveWorkflowStep({ storage, runId: current.id, expectedRevision: current.state.revision, stepId: "step-revise" }));
     expect(getApprovedProse(storage, getActiveWorkflowRunForNarrator(storage, "leader")!)?.content).toBe("改好的正文。");
     const settleBrief = buildWorkflowRunBrief(current)!;
-    expect(settleBrief).toContain("chapter_write");
-    expect(settleBrief).toContain("approvedProse");
+    expect(settleBrief).toContain("chapter_commit");
+    expect(settleBrief).toContain("fromWorkflowRun=true");
   });
 });
 

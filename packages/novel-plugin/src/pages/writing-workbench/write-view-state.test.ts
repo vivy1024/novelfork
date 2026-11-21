@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildWriteSequence,
   buildWriteViewModel,
   canStartWriting,
   planFixAction,
@@ -87,7 +86,7 @@ describe("buildWriteViewModel", () => {
         explanation: {
           whatHappened: "近章记忆为空。",
           whyItMatters: "写手会自行编造前情。",
-          suggestedAction: "先 memory.settle_range 回填。",
+          suggestedAction: "先 memory.settle（action=range）回填。",
         },
       }],
       recentChapters: [],
@@ -221,7 +220,7 @@ describe("planFixAction", () => {
     const plan = planFixAction("settle-range", { chapterNumber: 47, formalChapterCount: 46 });
     expect(plan.kind).toBe("narrator");
     expect(plan.label).toBe("补结算历史章节");
-    expect(plan.message).toContain("memory_settle_range");
+    expect(plan.message).toContain("memory_settle（action=range，fromChapter=1，toChapter=46）");
     expect(plan.message).toContain("第 1–46 章");
   });
 
@@ -304,21 +303,5 @@ describe("canStartWriting", () => {
     const result = canStartWriting({ model, directiveDraft: "继续", acceptFocusDefault: false });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("8 字");
-  });
-});
-
-describe("buildWriteSequence", () => {
-  it("chains scene.spec then pipeline.write and forwards the preflight", () => {
-    const steps = buildWriteSequence({
-      chapterNumber: 47,
-      directive: "让林舟进入山门试炼。",
-      acceptFocusDefault: true,
-      preflight: readyPreflight,
-    });
-    expect(steps.map((step) => step.tool)).toEqual(["scene.spec", "pipeline.write"]);
-    expect(steps[0]?.input).toMatchObject({ chapterNumber: 47, acceptFocusDefault: true });
-    expect(steps[0]?.input.writePreflight).toBeTruthy();
-    expect(steps[0]?.input.bookId).toBeUndefined();
-    expect(steps[1]?.input).toMatchObject({ autoRevise: true });
   });
 });

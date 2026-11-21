@@ -47,7 +47,7 @@ class MemoryResolver implements NovelRuntimeBindingResolver {
 	}
 }
 
-/** 作者批准的正文：落在本书 3000 字的硬范围内（正文候选提交时按与 pipeline.write 相同的口径校验字数）。 */
+/** 作者批准的正文：落在本书 3000 字的硬范围内（正文候选提交时按与 chapter.commit 相同的口径校验字数）。 */
 const APPROVED_PROSE = `作者批准的正文。${"夜".repeat(3000)}`;
 
 let workRoot: string;
@@ -64,7 +64,7 @@ beforeEach(async () => {
 		targetChapters: 100, chapterWordCount: 3000,
 		createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
 	}), "utf8");
-	// 两道工序：先交正文（需作者确认），再用 chapter.write 落盘。
+	// 两道工序：先交正文（需作者确认），再用 chapter.commit 落盘。
 	await saveWorkflowRecipes(bookRoot, [{
 		id: "gate-test",
 		name: "门禁测试方案",
@@ -72,7 +72,7 @@ beforeEach(async () => {
 		description: "测试用",
 		steps: [
 			{ id: "draft", kind: "writer-generate", label: "写正文", enabled: true, requiresApproval: true },
-			{ id: "save", kind: "post-settlement", label: "落盘", enabled: true, tools: ["chapter.write"] },
+			{ id: "save", kind: "post-settlement", label: "落盘", enabled: true, tools: ["chapter.commit"] },
 		],
 		resultStrategy: "formal-chapter",
 		requireFinalApproval: false,
@@ -118,8 +118,8 @@ function parse(output: string): Record<string, unknown> {
 describe("创作工作流对叙述者的约束", () => {
 	test("没有进行中的运行时，工具与提示与原来逐字一致", async () => {
 		const tools = await adapter.resolveToolNames("narrator-a");
-		expect(tools).toContain("chapter_write");
-		expect(tools).toContain("pipeline_write");
+		expect(tools).toContain("chapter_commit");
+		expect(tools).toContain("jingwei_write");
 		const prompts = await adapter.promptExtensions("narrator-a");
 		expect(prompts.some((prompt) => prompt.includes("创作工作流 · 由产品状态机驱动"))).toBe(false);
 	});
@@ -127,15 +127,15 @@ describe("创作工作流对叙述者的约束", () => {
 	test("运行中：注入工序简报，只露本工序允许的写入工具，读类与 workflow 工具不受影响", async () => {
 		await startRun();
 		const tools = await adapter.resolveToolNames("narrator-a");
-		expect(tools).not.toContain("chapter_write");
-		expect(tools).not.toContain("pipeline_write");
-		expect(tools).not.toContain("lore_write");
+		expect(tools).not.toContain("chapter_commit");
+		expect(tools).not.toContain("jingwei_write");
+		expect(tools).not.toContain("memory_settle");
 		expect(tools).toEqual(expect.arrayContaining([
-			"chapter_read",
-			"lore_read",
-			"workflow_get_current_step",
-			"workflow_submit_step_output",
-			"workflow_report_blocker",
+			"book_overview",
+			"chapter_list",
+			"jingwei_read",
+			"workflow_step",
+			"workflow_manage",
 		]));
 		const prompts = await adapter.promptExtensions("narrator-a");
 		const brief = prompts.find((prompt) => prompt.includes("创作工作流 · 由产品状态机驱动"));
@@ -158,12 +158,12 @@ describe("创作工作流对叙述者的约束", () => {
 
 	test("运行中调用本工序不允许的写入工具：直接拒绝并说明原因", async () => {
 		await startRun();
-		const result = await adapter.execute("chapter_write", { chapterNumber: 1, content: "偷写" }, "narrator-a");
+		const result = await adapter.execute("chapter_commit", { chapterNumber: 1, content: "偷写" }, "narrator-a");
 		expect(result.isError).toBe(true);
 		const body = parse(result.output);
 		expect(body.error).toBe("workflow-step-disallowed");
-		expect(String(body.summary)).toContain("chapter_write 被拦下");
-		expect(String(body.summary)).toContain("workflow_submit_step_output");
+		expect(String(body.summary)).toContain("chapter_commit 被拦下");
+		expect(String(body.summary)).toContain("workflow_step");
 		// 读类工具照常执行。
 		const read = await adapter.execute("chapter_list", {}, "narrator-a");
 		expect(parse(read.output).error).not.toBe("workflow-step-disallowed");
@@ -172,43 +172,43 @@ describe("创作工作流对叙述者的约束", () => {
 	test("提交后等待确认：所有写入被拦；作者批准后进入落盘工序，写入内容必须与批准的正文一致", async () => {
 		await startRun();
 		const submitted = await adapter.execute(
-			"workflow_submit_step_output",
-			{ runRevision: 0, kind: "prose", payload: { title: "开篇", content: APPROVED_PROSE } },
+			"workflow_step",
+			{ action: "submit", runRevision: 0, kind: "prose", payload: { title: "开篇", content: APPROVED_PROSE } },
 			"narrator-a",
 		);
 		expect(submitted.isError).toBe(false);
 		expect(parse(submitted.output)).toMatchObject({ ok: true, data: { runStatus: "awaiting_approval" } });
 
-		const waiting = await adapter.execute("chapter_write", { chapterNumber: 1, content: APPROVED_PROSE }, "narrator-a");
+		const waiting = await adapter.execute("chapter_commit", { chapterNumber: 1, content: APPROVED_PROSE }, "narrator-a");
 		expect(String(parse(waiting.output).summary)).toContain("等作者确认");
-		expect(await adapter.resolveToolNames("narrator-a")).not.toContain("chapter_write");
+		expect(await adapter.resolveToolNames("narrator-a")).not.toContain("chapter_commit");
 
 		const storage = getStorageDatabase();
 		const run = getActiveWorkflowRunForNarrator(storage, "narrator-a")!;
 		const approved = approveWorkflowStep({ storage, runId: run.id, stepId: "draft", expectedRevision: run.state.revision });
 		expect(approved.ok).toBe(true);
 
-		expect(await adapter.resolveToolNames("narrator-a")).toContain("chapter_write");
-		const mismatch = await adapter.execute("chapter_write", { chapterNumber: 1, content: "另一份正文" }, "narrator-a");
+		expect(await adapter.resolveToolNames("narrator-a")).toContain("chapter_commit");
+		const mismatch = await adapter.execute("chapter_commit", { chapterNumber: 1, content: "另一份正文" }, "narrator-a");
 		expect(parse(mismatch.output)).toMatchObject({ error: "workflow-step-disallowed" });
 		expect(String(parse(mismatch.output).summary)).toContain("不一致");
 
-		const matching = await adapter.execute("chapter_write", { chapterNumber: 1, content: APPROVED_PROSE }, "narrator-a");
+		const matching = await adapter.execute("chapter_commit", { chapterNumber: 1, content: APPROVED_PROSE }, "narrator-a");
 		expect(parse(matching.output).error).not.toBe("workflow-step-disallowed");
 
 		// 取当前工序时带回已批准的正文，供落盘原样写入。
-		const current = await adapter.execute("workflow_get_current_step", {}, "narrator-a");
+		const current = await adapter.execute("workflow_step", { action: "current" }, "narrator-a");
 		expect(parse(current.output)).toMatchObject({ data: { approvedProse: { title: "开篇", content: APPROVED_PROSE } } });
 	});
 
 	test("高级写类工具同样随工序收窄（只是可见性，启用状态由 Runtime 套路体系保留），调用时照样被拦", async () => {
 		await startRun();
 		const visible = await adapter.resolveToolNames("narrator-a");
-		expect(visible).not.toContain("memory_bulk_delete");
 		expect(visible).not.toContain("chapter_discard_range");
-		// 只读的高级工具照常可见。
+		expect(visible).not.toContain("memory_settle");
+		// 只读工具照常可见。
 		expect(visible).toContain("memory_search");
-		const result = await adapter.execute("memory_bulk_delete", { kind: "fact", filter: { ids: ["x"] }, reason: "清理测试" }, "narrator-a");
+		const result = await adapter.execute("chapter_discard_range", { fromChapter: 1, toChapter: 1, confirm: true }, "narrator-a");
 		expect(parse(result.output).error).toBe("workflow-step-disallowed");
 	});
 
@@ -258,8 +258,8 @@ describe("资料索引卡扩展（T4.7）", () => {
 
 	test("别的叙述者的运行不影响本叙述者", async () => {
 		await startRun("narrator-b");
-		expect(await adapter.resolveToolNames("narrator-a")).toContain("chapter_write");
-		const result = await adapter.execute("chapter_write", { chapterNumber: 1, content: "x" }, "narrator-a");
+		expect(await adapter.resolveToolNames("narrator-a")).toContain("chapter_commit");
+		const result = await adapter.execute("chapter_commit", { chapterNumber: 1, content: "x" }, "narrator-a");
 		expect(parse(result.output).error).not.toBe("workflow-step-disallowed");
 	});
 });
@@ -319,8 +319,8 @@ describe("正文一致性校验的 fail-closed 闸门", () => {
 		await startRun();
 		const storage = getStorageDatabase();
 		const submitted = await adapter.execute(
-			"workflow_submit_step_output",
-			{ runRevision: 0, kind: "prose", payload: { title: "开篇", content: APPROVED_PROSE } },
+			"workflow_step",
+			{ action: "submit", runRevision: 0, kind: "prose", payload: { title: "开篇", content: APPROVED_PROSE } },
 			"narrator-a",
 		);
 		expect(submitted.isError).toBe(false);
@@ -330,7 +330,7 @@ describe("正文一致性校验的 fail-closed 闸门", () => {
 
 		// 故障注入：关掉产品库，一致性校验读不到已批准正文（getStorageDatabase 直接抛错）。
 		closeStorageDatabase();
-		const denial = explainWorkflowDenial(advanced, "chapter.write", "confirmed-write", { chapterNumber: 1, content: APPROVED_PROSE });
+		const denial = explainWorkflowDenial(advanced, "chapter.commit", "confirmed-write", { chapterNumber: 1, content: APPROVED_PROSE });
 		expect(denial).not.toBeNull();
 		expect(denial!.what).toContain("无法校验");
 		expect(denial!.why).toContain("工作流存储");
@@ -459,7 +459,7 @@ describe("工作流工人闸门（修 A：工人不得直写权威源）", () =>
 		expect(brief).toContain("team_report");
 		expect(brief).toContain("没有这本书的写入权");
 		// 工人不跑状态机：不要诱导它去提交产物
-		expect(brief).toContain("不要调用 workflow_submit_step_output");
+		expect(brief).toContain("不要调用 workflow_step");
 	});
 
 	test("内置子代理委派：领导者派出的名册模板子代理认得出；其余情况不认（仍按工人收口）", async () => {
@@ -482,14 +482,13 @@ describe("工作流工人闸门（修 A：工人不得直写权威源）", () =>
 		expect(await resolveWorkflowDelegation("sub-1", "book-a", { readDelegation: async () => null })).toBeNull();
 	});
 
-	test("内置子代理：只露三个运行工具之外的读类；写入照样被工人闸门拦下", async () => {
+	test("内置子代理：只露运行工具之外的读类；写入照样被工人闸门拦下", async () => {
 		const run = await startRun("leader-a");
-		expect(isDelegatedRunTool("workflow.submit_step_output")).toBe(true);
-		expect(isDelegatedRunTool("workflow.report_blocker")).toBe(true);
-		expect(isDelegatedRunTool("workflow.edit_recipe")).toBe(false);
-		expect(isDelegatedRunTool("pipeline.write")).toBe(false);
+		expect(isDelegatedRunTool("workflow.step")).toBe(true);
+		expect(isDelegatedRunTool("workflow.manage")).toBe(false);
+		expect(isDelegatedRunTool("chapter.commit")).toBe(false);
 		// 写类仍拒：委派身份只交给工作流工具，不放宽其它写入
-		for (const tool of ["chapter.write", "pipeline.write", "lore.write"]) {
+		for (const tool of ["chapter.commit", "jingwei.write", "memory.settle"]) {
 			expect(explainWorkerWorkflowDenial(run, tool, "confirmed-write")).not.toBeNull();
 		}
 	});
@@ -499,7 +498,7 @@ describe("工作流工人闸门（修 A：工人不得直写权威源）", () =>
 		// gate-test 第一道是写正文（writer-generate）
 		const writer = workflowDelegatedExtension(run, "nf-writer").content;
 		expect(writer).toContain('stepId="draft"');
-		expect(writer).toContain("workflow_submit_step_output");
+		expect(writer).toContain("workflow_step");
 		expect(writer).toContain("不贴正文");
 		const auditor = workflowDelegatedExtension(run, "nf-continuity-auditor").content;
 		expect(auditor).toContain("没有分给你的进行中工序");

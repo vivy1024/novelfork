@@ -2,9 +2,9 @@
  * 工作流编辑器与子代理工坊共用的 NarraFork Runtime 动态能力目录解析器。
  *
  * 职责：
- * 1. 解析 `GET /api/providers/models` 返回的可用模型列表（兼容数组、`{ models }` 或 `{ providers }` 形状）；
+ * 1. 解析 `GET /api/settings`（真实 Runtime 模型分组）或兼容数组/`{ models }`/`{ providers }` 形状的可用模型列表；
  * 2. 解析 `GET /api/custom-subagents`（Runtime 全局自定义子代理）与 `${apiBase}/subagents`（本书定制子代理）；
- * 3. 解析并合并 `GET /api/writing-skills` 与 `GET ${apiBase}/runtime/skills`（严格以 `skill.name` 为唯一键）；
+ * 3. 解析并合并 `GET /api/writing-skills` 与 `GET ${apiBase}/skills`（严格以 `skill.name` 为唯一键）；
  * 4. 从 `NOVEL_RUNTIME_TOOL_CATALOG` 提取 `risk !== "read"` 且 `runtimeStatus === "ready"` 的权威可授权写入工具目录。
  */
 
@@ -153,6 +153,57 @@ export function parseRuntimeModelsResponse(payload: unknown): RuntimeModelOption
     }
   }
 
+  // 兼容 NarraFork Runtime 真实 `GET /api/settings` 响应的分组模型字段
+  const hiddenSet = new Set<string>(
+    Array.isArray(asRecord(root.agent)?.hiddenModels)
+      ? ((asRecord(root.agent)!.hiddenModels as unknown[]).filter((v): v is string => typeof v === "string"))
+      : [],
+  );
+  const groupedKeys = [
+    "openaiModelsGrouped",
+    "anthropicModelsGrouped",
+    "geminiModelsGrouped",
+    "nugModelsGrouped",
+    "pluginProviderModelsGrouped",
+  ] as const;
+  for (const key of groupedKeys) {
+    const groups = root[key];
+    if (!Array.isArray(groups)) continue;
+    for (const group of groups) {
+      const gRec = asRecord(group);
+      if (!gRec || gRec.disabled === true || gRec.enabled === false) continue;
+      const gPrefix = asNonEmptyString(gRec.prefix) || asNonEmptyString(gRec.providerId) || asNonEmptyString(gRec.id);
+      const gName = asNonEmptyString(gRec.name) || asNonEmptyString(gRec.providerName) || gPrefix;
+      if (!Array.isArray(gRec.models)) continue;
+      for (const item of gRec.models) {
+        if (typeof item === "string" && item.trim()) {
+          const full = item.includes(":") || !gPrefix ? item.trim() : `${gPrefix}:${item.trim()}`;
+          if (!hiddenSet.has(full)) pushModel({ id: item.trim() }, gPrefix, gName);
+        } else {
+          const mRec = asRecord(item);
+          if (!mRec) continue;
+          const mId = asNonEmptyString(mRec.id) || asNonEmptyString(mRec.modelId) || asNonEmptyString(mRec.model);
+          const full = mId.includes(":") || !gPrefix ? mId : `${gPrefix}:${mId}`;
+          if (full && !hiddenSet.has(full)) pushModel(mRec, gPrefix, gName);
+        }
+      }
+    }
+  }
+  if (root.codexAvailable === true && Array.isArray(root.codexModels)) {
+    for (const m of root.codexModels) {
+      if (typeof m === "string" && m.trim() && !hiddenSet.has(`codex:${m.trim()}`)) {
+        pushModel({ id: m.trim() }, "codex", "Codex");
+      }
+    }
+  }
+  if (root.commandcodeAvailable === true && Array.isArray(root.commandcodeModels)) {
+    for (const m of root.commandcodeModels) {
+      if (typeof m === "string" && m.trim() && !hiddenSet.has(`commandcode:${m.trim()}`)) {
+        pushModel({ id: m.trim() }, "commandcode", "CommandCode");
+      }
+    }
+  }
+
   return result;
 }
 
@@ -241,18 +292,13 @@ export function mergeRuntimeSkillsResponses(...payloads: readonly unknown[]): Ru
 }
 
 const COMMON_WRITABLE_TOOL_ORDER = [
-  "pipeline.write",
-  "chapter.write",
-  "scene.spec",
-  "lore.write",
+  "chapter.commit",
+  "jingwei.write",
   "hooks.manage",
   "outline.volume",
-  "memory.settle_chapter",
-  "resource.manage",
-  "rewrite.apply",
-  "lore.progress",
-  "lore.relate",
-  "arc.character",
+  "memory.settle",
+  "chapter.discard_range",
+  "character.inspect",
 ] as const;
 
 const COMMON_WRITABLE_SET = new Set<string>(COMMON_WRITABLE_TOOL_ORDER);

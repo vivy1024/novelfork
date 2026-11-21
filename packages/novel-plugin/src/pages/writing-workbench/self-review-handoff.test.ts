@@ -122,7 +122,8 @@ describe("自审交叙述者：对白不进清单", () => {
     }
     expect(messages[0]).toContain(HANDOFF_TOOL_NAMES.proposeSelection);
     expect(messages[1]).toContain(HANDOFF_TOOL_NAMES.readChapter);
-    expect(HANDOFF_TOOL_NAMES).toEqual({ proposeSelection: "chapter_propose_selection", readChapter: "chapter_read" });
+    expect(messages[1]).toContain("chapter_list");
+    expect(HANDOFF_TOOL_NAMES).toEqual({ proposeSelection: "chapter_propose_selection", listChapters: "chapter_list", readChapter: "Read" });
   });
 
   it("作者硬约束排在人文化手法之前；未给约束时不出硬约束段", () => {

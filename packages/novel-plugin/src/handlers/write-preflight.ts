@@ -205,6 +205,8 @@ export interface WritePreflightResult {
   readonly ok: boolean;
   readonly bookId: string;
   readonly chapterNumber: number;
+  /** 本章建议写入的相对路径（如 chapters/卷01/0012_第12章.md），供原生 Write/Edit 流式写章。 */
+  readonly targetChapterPath?: string;
   readonly currentFocus: CockpitCurrentFocusSummary;
   readonly resolvedDirective: string | null;
   readonly needsUserConfirm: boolean;
@@ -1181,8 +1183,21 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
 
   // 当前卷统一走 outline-volume 的共享入口：此前这里另有一份推导实现，
   // 结果卷目标只停留在 preflight 结果里，没进生成上下文。
-  const { loadCurrentVolumeContext } = await import("./outline-volume.js");
+  const { loadCurrentVolumeContext, resolveChapterVolumeDirectory } = await import("./outline-volume.js");
+  const { CHAPTERS_DIRECTORY, chapterRelativePath, listChapterFiles } = await import("../engine/writing-resource/chapter-layout.js");
   const volumeContext = loadCurrentVolumeContext(storage, bookId, chapterNumber);
+  let targetChapterPath: string | undefined;
+  if (input.bookRoot?.trim()) {
+    const existingFiles = await listChapterFiles(input.bookRoot).catch(() => []);
+    const existingFile = existingFiles.find((file) => file.number === chapterNumber);
+    if (existingFile) {
+      targetChapterPath = existingFile.relativePath;
+    } else {
+      const volDir = resolveChapterVolumeDirectory(storage, bookId, chapterNumber);
+      const rawTitle = input.sceneSpec?.title?.trim() || `第${chapterNumber}章`;
+      targetChapterPath = `${CHAPTERS_DIRECTORY}/${chapterRelativePath(volDir, chapterNumber, rawTitle)}`;
+    }
+  }
   const currentVolume = volumeContext.current
     ? { title: volumeContext.current.title, goal: volumeContext.current.goal }
     : null;
@@ -1281,6 +1296,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     ...(recallSummary ? { recallSummary } : {}),
     ...(sceneGaps.length > 0 ? { sceneGaps } : {}),
     ...(dueForeshadows.length > 0 ? { dueForeshadows } : {}),
+    ...(targetChapterPath ? { targetChapterPath } : {}),
     bookId,
     chapterNumber,
     currentFocus: snapshot.currentFocus,

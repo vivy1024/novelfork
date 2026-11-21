@@ -1,5 +1,5 @@
 /**
- * 写作视图状态 —— 把 write.preflight 的结构化结果翻译成一屏可读的「就绪条」。
+ * 写作视图状态 —— 把 chapter.preflight 的结构化结果翻译成一屏可读的「就绪条」。
  *
  * 纯逻辑，无 React 依赖，便于单测。
  * 纪律：文案一律来自 preflight 的 explanation（人话三段式），此处不按 code 造词。
@@ -188,7 +188,7 @@ function passedChecks(input: {
 }
 
 /**
- * 把 write.preflight 返回体转成写作视图模型。
+ * 把 chapter.preflight 返回体转成写作视图模型。
  * 输入是宽松的 unknown，以容忍 Runtime 返回体演进。
  */
 export function buildWriteViewModel(preflight: unknown, options: BuildWriteViewModelOptions = {}): WriteViewModel {
@@ -346,7 +346,7 @@ export function planFixAction(
       const to = Math.max(1, context.formalChapterCount ?? Math.max(1, context.chapterNumber - 1));
       return {
         kind: "narrator",
-        message: `近章记忆为空。请用 ${toWireToolName("memory.settle_range")} 回填第 1–${to} 章的叙事记忆，完成后重新 ${toWireToolName("write.preflight")} 并告诉我结果。`,
+        message: `近章记忆为空。请用 ${toWireToolName("memory.settle")}（action=range，fromChapter=1，toChapter=${to}）回填第 1–${to} 章的叙事记忆，完成后重新 ${toWireToolName("chapter.preflight")} 并告诉我结果。`,
         label: "补结算历史章节",
       };
     }
@@ -407,25 +407,4 @@ export function canStartWriting(input: {
     return { ok: false, reason: "本章目标至少 8 字。" };
   }
   return { ok: true };
-}
-
-/** 生成写章调用序列：scene.spec → pipeline.write。 */
-export function buildWriteSequence(input: {
-  readonly chapterNumber: number;
-  readonly directive: string;
-  readonly acceptFocusDefault: boolean;
-  readonly preflight?: unknown;
-}): Array<{ readonly tool: string; readonly input: Record<string, unknown> }> {
-  return [
-    {
-      tool: "scene.spec",
-      input: {
-        chapterNumber: input.chapterNumber,
-        userDirectives: input.directive,
-        acceptFocusDefault: input.acceptFocusDefault,
-        ...(input.preflight ? { writePreflight: input.preflight } : {}),
-      },
-    },
-    { tool: "pipeline.write", input: { autoRevise: true } },
-  ];
 }

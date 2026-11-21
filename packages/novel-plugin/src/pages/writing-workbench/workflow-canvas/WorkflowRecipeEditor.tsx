@@ -99,9 +99,9 @@ export function WorkflowRecipeEditor({ recipe, apiBase, onSaved, onDeleted, onCr
     void Promise.all([
       fetchJsonSafe(`${apiBase}/subagents`),
       fetchJsonSafe("/api/custom-subagents"),
-      fetchJsonSafe("/api/providers/models"),
+      fetchJsonSafe("/api/settings"),
       fetchJsonSafe("/api/writing-skills"),
-      fetchJsonSafe(`${apiBase}/runtime/skills`),
+      fetchJsonSafe(`${apiBase}/skills`),
     ]).then(([bookSubagentsBody, globalSubagentsBody, modelsBody, writingSkillsBody, runtimeSkillsBody]) => {
       if (cancelled) return;
 

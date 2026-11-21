@@ -16,15 +16,14 @@ export interface WriteRequestPayload {
   /**
    * 作者在写作面板里编辑好的情节点预算。
    *
-   * 非空时会原样附在消息里，要求叙述者把它作为 scene.spec 的 beatBudget 传入
-   * （scene.spec 的入参注释写明：给了就不让模型另拟一套）。
+   * 非空时会原样附在消息里，要求叙述者传入 chapter.blueprint 的 sceneSpec.beatBudget。
    */
   readonly beatBudget?: readonly BeatBudgetItem[];
-  /** 作者显式点选的机制卡 ID 列表（直通 scene.spec 的 pinnedMechanismIds）。 */
+  /** 作者显式点选的机制卡 ID 列表（直通 chapter.blueprint 的 pinnedMechanismIds）。 */
   readonly pinnedMechanismIds?: readonly string[];
-  /** 作者显式点选的文风范文 ID 列表（直通 write.preflight 的 pinnedSampleIds）。 */
+  /** 作者显式点选的文风范文 ID 列表（直通 chapter.preflight 的 pinnedSampleIds）。 */
   readonly pinnedSampleIds?: readonly string[];
-  /** 作者指定的信息增量锚点（直通 scene.spec 的 infoAnchors）。 */
+  /** 作者指定的信息增量锚点（直通 chapter.blueprint 的 infoAnchors）。 */
   readonly infoAnchors?: readonly string[];
 }
 
@@ -38,7 +37,7 @@ function beatBudgetLines(beats: readonly BeatBudgetItem[] | undefined): string[]
   if (!beats || beats.length === 0) return [];
   return [
     "",
-    `我已经排好本章 ${beats.length} 个情节点的字数预算，请原样传入 ${toWireToolName("scene.spec")} 的 beatBudget 参数，不要另拟一套：`,
+    `我已经排好本章 ${beats.length} 个情节点的字数预算，请原样传入 ${toWireToolName("chapter.blueprint")} 的 sceneSpec.beatBudget 参数，不要另拟一套：`,
     "```json",
     JSON.stringify(beats, null, 2),
     "```",
@@ -60,21 +59,21 @@ function structuredPrepLines(payload: WriteRequestPayload): string[] {
   ];
   if (pinnedSampleIds.length > 0) {
     lines.push(
-      `- 调用 ${toWireToolName("write.preflight")} 时原样传入 \`pinnedSampleIds\`：${JSON.stringify(pinnedSampleIds)}`,
+      `- 调用 ${toWireToolName("chapter.preflight")} 时原样传入 \`pinnedSampleIds\`：${JSON.stringify(pinnedSampleIds)}`,
     );
   }
   if (pinnedMechanismIds.length > 0) {
     lines.push(
-      `- 调用 ${toWireToolName("scene.spec")} 时原样传入 \`pinnedMechanismIds\`：${JSON.stringify(pinnedMechanismIds)}`,
+      `- 调用 ${toWireToolName("chapter.blueprint")} 时原样传入 \`pinnedMechanismIds\`：${JSON.stringify(pinnedMechanismIds)}`,
     );
   }
   if (infoAnchors.length > 0) {
     lines.push(
-      `- 调用 ${toWireToolName("scene.spec")} 时原样传入 \`infoAnchors\`：${JSON.stringify(infoAnchors)}`,
+      `- 调用 ${toWireToolName("chapter.blueprint")} 时原样传入 \`infoAnchors\`：${JSON.stringify(infoAnchors)}`,
     );
   }
   lines.push(
-    `- 提交 ${toWireToolName("scene.spec")} 的每个场景请包含 \`microBeats\`（因果小节拍）与 \`infoPayloads\`（具体信息增量/物证/规则细节），杜绝空洞大词与环境描写注水。`,
+    `- 提交 ${toWireToolName("chapter.blueprint")} 的每个场景请包含 \`microBeats\`（因果小节拍）与 \`infoPayloads\`（具体信息增量/物证/规则细节），杜绝空洞大词与环境描写注水。`,
   );
   return lines;
 }
@@ -91,7 +90,7 @@ export function buildWriteRequestMessage(payload: WriteRequestPayload): string {
     return [
       `请为${chapter}生成场景蓝图，先不要写正文。`,
       `本章目标：${directive}${accept}`,
-      `流程：${toWireToolName("write.preflight")} 通过后调用 ${toWireToolName("scene.spec")}；蓝图给我确认后再写正文。`,
+      `流程：${toWireToolName("chapter.preflight")} 通过后调用 ${toWireToolName("chapter.blueprint")}；蓝图给我确认后再写正文。`,
       ...beats,
       ...prep,
     ].join("\n");
@@ -100,7 +99,7 @@ export function buildWriteRequestMessage(payload: WriteRequestPayload): string {
   return [
     `请写${chapter}的正文。`,
     `本章目标：${directive}${accept}`,
-    `流程：${toWireToolName("write.preflight")} → ${toWireToolName("scene.spec")} → ${toWireToolName("pipeline.write")}。preflight 不通过就停下告诉我缺什么，不要先写。`,
+    `流程：${toWireToolName("chapter.preflight")} → ${toWireToolName("chapter.blueprint")} → 原生 Write 按预检返回的 targetChapterPath 写入章节文件 → ${toWireToolName("chapter.commit")}（mode=new，filePath 为刚写入的章节相对路径）。预检不通过就停下告诉我缺什么，不要先写。`,
     ...beats,
     ...prep,
   ].join("\n");

@@ -8,7 +8,7 @@ afterEach(() => cleanup());
 describe("写作蓝图卡", () => {
   it("显示场景留白的类别、缺口与真实答案", () => {
     render(SceneSpecCard({
-      toolName: "scene.spec",
+      toolName: "chapter.blueprint",
       result: {
         renderer: "scene.spec",
         data: {
@@ -44,7 +44,7 @@ describe("写作蓝图卡", () => {
 
   it("没有留白的场景照旧渲染，不留空位", () => {
     render(SceneSpecCard({
-      toolName: "scene.spec",
+      toolName: "chapter.blueprint",
       result: {
         renderer: "scene.spec",
         data: { sceneSpec: { chapter: 1, scenes: [{ characters: ["甲"], location: "屋", conflict: "x", mood: "", outcome: "y" }] } },

@@ -108,10 +108,10 @@ describe("pipeline.write canonical result contract", () => {
     // 2026-10-15：删掉本书开关，存在高风险待确认事件就停写；放行只走 NarraFork 的通道（行为见 pipeline-write-high-risk-gate.test.ts）。
     expect(source).not.toContain("blockWriteOnHighRiskPending");
     expect(source).not.toContain("blockOnHighRiskPending");
-    // T-13（D1）：管线不读取模型传入的继续参数。
+    // T-13（D1）：管线不读取模型传入的继续参数；对外工具 chapter.commit 也不暴露该字段。
     expect(source).not.toContain("input.continueWithHighRiskPending");
     expect(source).not.toContain("readonly continueWithHighRiskPending");
-    expect(NOVEL_TOOL_SCHEMAS["pipeline.write"]!.properties).not.toHaveProperty("continueWithHighRiskPending");
+    expect(NOVEL_TOOL_SCHEMAS["chapter.commit"]!.properties).not.toHaveProperty("continueWithHighRiskPending");
     // pipeline.write 不再内部生成正文（无 WriterAgent）。
     expect(source).not.toContain("const writer = new WriterAgent");
   });

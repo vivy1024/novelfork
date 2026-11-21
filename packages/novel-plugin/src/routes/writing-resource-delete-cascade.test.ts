@@ -1,5 +1,5 @@
 /**
- * 删除正式章资源（写作资源 DELETE 路由 / resource.manage delete）必须走删章级联：
+ * 删除正式章资源（写作资源 DELETE 路由 / chapter.discard_range）必须走删章级联：
  * 正文归档进 chapters/_discarded 留底，该章叙事记忆与结算台账同步清理。
  * 旧实现直接 softDelete：正文被删掉、不留底，记忆和台账全部变成孤儿。
  */
@@ -110,9 +110,9 @@ describe("删除正式章资源走删章级联", () => {
     expect(again.status).toBe(404);
   });
 
-  it("resource.manage delete：同样归档并清理，返回 resource", async () => {
-    const contribution = NOVEL_RUNTIME_CONTRIBUTION.tools?.find((candidate) => candidate.definition.name === "resource.manage");
-    if (!contribution) throw new Error("resource.manage missing");
+  it("chapter.discard_range：同样归档并清理，返回 discard 结果", async () => {
+    const contribution = NOVEL_RUNTIME_CONTRIBUTION.tools?.find((candidate) => candidate.definition.name === "chapter.discard_range");
+    if (!contribution) throw new Error("chapter.discard_range missing");
     const context: ToolExecutionContext = {
       runtimeProjectId: "runtime-1",
       projectRoot: root,
@@ -121,8 +121,11 @@ describe("删除正式章资源走删章级联", () => {
       sessionId: "session-1",
       resourceBindings: { "novel.book": { kind: "novel.book", bookId: BOOK, root: bookRoot } },
     };
-    const result = await contribution.handler({ action: "delete", resourceId: "chapter:2" }, context);
-    expect(result).toMatchObject({ ok: true, data: { resource: { id: "chapter:2", title: "第2章" }, cascade: { deletedEvents: 1 } } });
+    const result = await contribution.handler({ fromChapter: 2, toChapter: 2, confirm: true, resetHooks: "none" }, context);
+    expect(result).toMatchObject({
+      ok: true,
+      data: { fromChapter: 2, toChapter: 2, deletedEvents: 1 },
+    });
     await expectChapterTwoDiscarded();
   });
 });

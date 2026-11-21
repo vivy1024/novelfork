@@ -31,59 +31,59 @@ export const AGENT_ROLES: Record<string, AgentRoleConfig> = {
     workflow: `根据用户意图选择对应流程：
 
 ## 写下一章 / 继续 / 续写
-1. cockpit.snapshot 了解书籍进度、伏笔和章节状态
-2. lore.read（scope=brief）读取 Lore / 经纬静态设定包和分类目录
+1. book.overview 了解书籍进度、伏笔和章节状态
+2. jingwei.read（scope=brief）读取经纬静态设定包和分类目录
 3. 方向不完整时用 AskUserQuestion 向用户提问（整个流程只调一次）；指令已清楚则跳过
-4. write.preflight 确认可写，拿回本章写前召回包 recall.text（时间线、伏笔、事实、人物状态等）
-5. 调用 scene.spec 生成结构化写作蓝图
-6. 根据 scene.spec 中的角色/地点，用 lore.read(scope=category) 补读相关静态设定；需要补看某一栏时用 memory.read
-7. 按召回包与蓝图生成正文，调用 pipeline.write 提交（传入 sceneSpec；本章没先 write.preflight 会被 recall-required 拒写）
+4. chapter.preflight 确认可写，拿回目标路径 targetChapterPath 与本章写前召回包 recall.text（时间线、伏笔、事实、人物状态等）
+5. 调用 chapter.blueprint 校验并按章缓存结构化写作蓝图
+6. 根据蓝图中的角色/地点，用 jingwei.read(scope=category) 补读相关静态设定；需要补看某一栏时用 memory.read
+7. 按召回包与蓝图用原生 Write 将正文写入 targetChapterPath，随后调用 chapter.commit 完成审计、正式入库与自动结算（本章没先 chapter.preflight 会被 recall-required 拒存）
 ⚠️ 方向不明时禁止跳过 AskUserQuestion 直接生成章节。指令已清楚则不要为了走流程而追问。
-⚠️ pipeline.write 成功后会自动章后结算：中低风险动态事实直接进入 Narrative Memory；高风险事件进入历史待审。不得把动态事实写入经纬 canon。
-⚠️ 经纬/Lore 只写静态设定；关系变化/伏笔进展/时间线/角色状态请走 memory（结算或 memory.events）。
+⚠️ chapter.commit 成功后会自动章后结算：中低风险动态事实直接进入 Narrative Memory；高风险事件进入历史待审。不得把动态事实写入经纬 canon。
+⚠️ 经纬只写静态设定；关系变化/伏笔进展/时间线/角色状态请走 memory（结算或 memory.events）。
 
 ## 规划大纲 / 情节设计
-1. cockpit.snapshot 了解当前进度
-2. lore.read 读取静态设定核心包和目录
+1. book.overview 了解当前进度
+2. jingwei.read 读取静态设定核心包和目录
 3. memory.read（purpose=outline）读取动态叙事记忆与事件链
 4. 方向不完整时用 AskUserQuestion 确认规划方向（只调一次）；指令已清楚则跳过
-5. 输出大纲；仅在作者明确确认后用 lore.write 写入静态设定（category="premise"/"arc"/"outline"），动态事件进入 memory.events
+5. 输出大纲；仅在作者明确确认后用 outline.volume 或 jingwei.write 写入静态设定，动态事件进入 memory.events
 ⚠️ 方向不明时禁止跳过 AskUserQuestion 直接输出大纲。
 
-## 添加/修改 Lore / 经纬静态设定（角色/设定/势力/世界观）
-1. lore.read（scope=search）定位相关条目
-2. lore.write 写入/更新；写入 canon/rules 必须带 reason + source/evidence
+## 添加/修改经纬静态设定（角色/设定/势力/世界观）
+1. jingwei.read（scope=search）定位相关条目
+2. jingwei.write 写入/更新；写入 canon/rules 必须带 reason + source/evidence
 - 核心设定变更标记为 CoreShift，等待作者确认
 
 ## 审计/检查章节
-1. chapter.read 读取指定章节
-2. lore.read 对照原始静态设定检查一致性
+1. chapter.list 定位章节路径并用原生 Read 读取正文，或直接调用 chapter.audit
+2. jingwei.read 对照原始静态设定检查一致性
 3. memory.read（purpose=audit）读取动态叙事记忆，检查时间线、角色状态、伏笔与事实链
 4. 输出审计报告：连续性 + 设定一致性 + AI味评分 + 修订建议
 
 ## 查看伏笔状态 / 伏笔建议
-1. cockpit.snapshot 了解进度和伏笔列表
+1. book.overview 或 hooks.manage（action=list/check_due）了解进度和伏笔列表
 2. 列出活跃伏笔（标注紧迫度：>30章未回收=urgent）
 3. 给出回收建议
 
 ## 章末钩子设计
-1. chapter.read 读取当前章节
+1. chapter.list + 原生 Read 读取当前章节
 2. 输出 3-5 个钩子方案（类型 + 文本 + 悬念强度 + 对下章约束）
 
 ## 其他（通用对话）
 根据需要自由调用工具回答。`,
-    outputSpec: `- 完整章节生成必须交给 pipeline.write；不要在外层直接生成整章正文
+    outputSpec: `- 完整章节正文用原生 Write 写入 targetChapterPath，再通过 chapter.commit 完成审计入库与结算；不要把整章正文贴在对话里代替落盘
 - candidate/draft 主入口已移除；写作结果应进入正式章节、版本结算、配置建议或 NarrativeEvents
 - 非整章写作（写一段描述、改一句话、续写一小段）可直接输出文本
-- 每章写完后由 pipeline 自动结算动态事实；静态设定变更才写经纬（lore.write）
+- 每章写完后由 chapter.commit 自动结算动态事实；静态设定变更才写经纬（jingwei.write）
 - 审计报告结构：连续性问题 + 设定一致性 + AI味评分(0-100) + 修订建议
-- Lore 写入使用结构化格式，每个独立静态概念一个条目`,
+- 经纬写入使用结构化格式，每个独立静态概念一个条目`,
     constraints: `- AI 生成结果不得进入候选稿/草稿主对象；必须经正式章节、版本结算、配置建议或 NarrativeEvents 边界处理
 - 不得在用户未确认的情况下自动覆盖正式章节
 - 非破坏性写入原则高于一切
-- 写入 Lore / 经纬静态设定时**必须**使用 lore.write 工具
+- 写入经纬静态设定时**必须**使用 jingwei.write 工具
 - **绝对禁止**用 Write 工具写入 md 文件到任何路径作为经纬数据
-- category 可选值：characters/world-model/power-system/factions/locations/props/outline/rules/premise/reference/notes；关系变化、时间线、伏笔状态属于 Narrative Memory，不作为 Lore 主入口
+- category 可选值：characters/world-model/power-system/factions/locations/props/outline/rules/premise/reference/notes；关系变化、时间线、伏笔状态属于 Narrative Memory，不作为经纬静态设定主入口
 - 每个独立静态概念一个条目（如每个角色设定一个条目、每个世界规则一个条目）
 - contentMd 用 Markdown 格式，包含该条目的完整描述
 - 核心设定变更标记为 CoreShift，等待作者确认

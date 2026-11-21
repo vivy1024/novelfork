@@ -44,9 +44,9 @@ function invisible(text: string): string[] {
 
 describe("面向模型的文本只点名模型可见的工具", () => {
 	test("抽取能认出点号、下划线与通配写法，跳过文件名与参数字段", () => {
-		expect(mentionedToolNames("先 chapter.read，再 `chapter_read`、lore_*；看 story/volume_outline.md 与 hooks_planted"))
-			.toEqual(["chapter.read", "chapter_read", "lore_*"]);
-		expect(invisible("先 chapter.read，再 chapter_read，lore_* 也行，chapter_nope 不行")).toEqual(["chapter.read", "chapter_nope"]);
+		expect(mentionedToolNames("先 chapter.list，再 `chapter_list`、jingwei_*；看 story/volume_outline.md 与 hooks_planted"))
+			.toEqual(["chapter.list", "chapter_list", "jingwei_*"]);
+		expect(invisible("先 chapter.list，再 chapter_list，jingwei_* 也行，chapter_nope 不行")).toEqual(["chapter.list", "chapter_nope"]);
 	});
 
 	test("自审交接消息（人文化 / 通篇润色）", () => {
@@ -102,23 +102,23 @@ describe("工具结果出口翻译", () => {
 		const translated = host.toModelFacingResult({
 			ok: false,
 			error: "busy",
-			summary: "稍后用 style.distill_status 查看进度。",
+			summary: "稍后用 style.manage 查看进度。",
 			data: {
-				explanation: { what: "x", why: "y", next: "再调用 style.distill_start 并传入 jobId。" },
-				source: "pipeline.write",
+				explanation: { what: "x", why: "y", next: "再调用 style.manage 并传入 jobId。" },
+				source: "chapter.commit",
 				renderer: "write.preflight",
-				items: [{ suggestedAction: "先 memory.settle_range 回填。", changedBy: "hooks.manage" }],
+				items: [{ suggestedAction: "先 memory.settle 回填。", changedBy: "hooks.manage" }],
 			},
 		});
 		expect(translated).toEqual({
 			ok: false,
 			error: "busy",
-			summary: "稍后用 style_distill_status 查看进度。",
+			summary: "稍后用 style_manage 查看进度。",
 			data: {
-				explanation: { what: "x", why: "y", next: "再调用 style_distill_start 并传入 jobId。" },
-				source: "pipeline.write",
+				explanation: { what: "x", why: "y", next: "再调用 style_manage 并传入 jobId。" },
+				source: "chapter.commit",
 				renderer: "write.preflight",
-				items: [{ suggestedAction: "先 memory_settle_range 回填。", changedBy: "hooks.manage" }],
+				items: [{ suggestedAction: "先 memory_settle 回填。", changedBy: "hooks.manage" }],
 			},
 		});
 		expect(invisible(JSON.stringify([translated.summary, translated.data.explanation.next]))).toEqual([]);

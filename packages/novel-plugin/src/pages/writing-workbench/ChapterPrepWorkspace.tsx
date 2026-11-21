@@ -3,11 +3,11 @@
  *
  * 定位：只服务于「待写/准备写的章节」，不侵入已写章节的正文信纸模式。
  * 左右宽屏双栏布局：
- * - 左栏：本章在全书大纲中的位置（所属卷目标/进度、待写章节上下文、细纲摘要、近章到期伏笔）+ 写前预检（write.preflight）红绿灯与一键修；
+ * - 左栏：本章在全书大纲中的位置（所属卷目标/进度、待写章节上下文、细纲摘要、近章到期伏笔）+ 写前预检（chapter.preflight）红绿灯与一键修；
  * - 右栏：血肉与弹药装配区 —— 「文风范文 & 机制卡」点菜勾选 + 情节点字数预算（BeatBudgetEditor）+ 写作目标指令 + 热梗二创转译派单 + 三大动作按钮（生成蓝图 / AI 写本章 / 铺开空白信纸手写）。
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BookOpen,
@@ -154,8 +154,11 @@ export function ChapterPrepWorkspace({
   }, [targetChapter?.chapterNumber, targetChapter?.summary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pinnedSampleArray = useMemo(() => [...selectedSamples], [selectedSamples]);
+  const preflightSeqRef = useRef(0);
+  const preflightHydratedRef = useRef(false);
 
   const runPreflight = useCallback(async () => {
+    const seq = ++preflightSeqRef.current;
     setPreflightLoading(true);
     setPreflightError(null);
     try {
@@ -180,16 +183,22 @@ export function ChapterPrepWorkspace({
         );
       } catch (httpErr) {
         if (callTool) {
-          resolved = await callTool("write.preflight", payload);
+          resolved = await callTool("chapter.preflight", payload);
         } else {
           throw httpErr;
         }
       }
-      setPreflightRaw(resolved);
+      if (seq === preflightSeqRef.current) {
+        setPreflightRaw(resolved);
+      }
     } catch (err) {
-      setPreflightError(err instanceof Error ? err.message : "预检失败");
+      if (seq === preflightSeqRef.current) {
+        setPreflightError(err instanceof Error ? err.message : "预检失败");
+      }
     } finally {
-      setPreflightLoading(false);
+      if (seq === preflightSeqRef.current) {
+        setPreflightLoading(false);
+      }
     }
   }, [acceptFocusDefault, bookId, callTool, directive, pinnedSampleArray, targetChapter?.chapterNumber]);
 
@@ -244,10 +253,23 @@ export function ChapterPrepWorkspace({
     }
   }, [bookId]);
 
+  // 供料列表只随 bookId 重拉，不随写作指令按键重复请求
   useEffect(() => {
-    void runPreflight();
     void loadSupplies();
-  }, [runPreflight, loadSupplies]);
+  }, [loadSupplies]);
+
+  // 首次挂载立即跑一次预检；后续指令/勾选变化防抖 400ms，避免每次按键触发请求风暴
+  useEffect(() => {
+    if (!preflightHydratedRef.current) {
+      preflightHydratedRef.current = true;
+      void runPreflight();
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void runPreflight();
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [runPreflight]);
 
   const model = useMemo(() => buildWriteViewModel(preflightRaw), [preflightRaw]);
   const effectiveChapterNumber = targetChapter?.chapterNumber ?? (model.chapterNumber > 0 ? model.chapterNumber : 1);
@@ -465,7 +487,7 @@ export function ChapterPrepWorkspace({
     void onSendToNarrator(
       [
         `请为第 ${effectiveChapterNumber} 章（目标：${chapterGoal}）提供「互联网热梗 / 热门桥段同步与本书世界观二次创作方案」：`,
-        `1. 先调用 ${toWireToolName("market.query")} / ${toWireToolName("market.scan")} 或结合当前互联网热梗/职场与社会爽点结构；`,
+        `1. 先调用 ${toWireToolName("market.radar")}（action=query 或 scan），或结合当前互联网热梗/职场与社会爽点结构；`,
         "2. 禁止生硬照抄现代烂梗，必须结合本书世界观和当前出场角色口吻做「二创转译」（给出：原梗逻辑 → 本书映射规则 → 2–3 条可直接放进本章的台词或细节包袱草案）；",
         "3. 输出给我挑选，我选定后再写进正文。",
       ].join("\n"),
@@ -774,7 +796,7 @@ export function ChapterPrepWorkspace({
               <div className="flex items-center justify-between gap-2">
                 <h3 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
                   <BookOpen className="size-3.5 text-primary" />
-                  写前预检（write.preflight）
+                  写前预检（chapter.preflight）
                 </h3>
                 <span className="text-2xs text-muted-foreground">{model.headline}</span>
               </div>

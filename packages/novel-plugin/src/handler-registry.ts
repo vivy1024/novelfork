@@ -1,12 +1,5 @@
 /**
- * Novel plugin handler registry.
- *
- * This file declares which handlers the novel plugin provides.
- * The actual handler implementations remain in studio's service layer
- * (渐进迁移 — handlers will be moved here incrementally in future).
- *
- * For now, this serves as the plugin's declaration of what it handles,
- * enabling the studio to route tool calls through the plugin system.
+ * Novel plugin handler registry (25 streamlined tools).
  */
 
 export interface NovelHandlerDeclaration {
@@ -18,56 +11,38 @@ export interface NovelHandlerDeclaration {
 }
 
 export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
-  // Cockpit tools
-  { toolName: "cockpit.snapshot", serviceKey: "cockpit", method: "getSnapshot" },
-
-  // Narrative tools
-  { toolName: "memory.read_line", serviceKey: "narrative", method: "readLine" },
-  { toolName: "memory.propose_change", serviceKey: "narrative", method: "proposeChange" },
-  { toolName: "memory.approve_change", serviceKey: "narrative", method: "applyChange" },
-
-  // Direct handlers (already implemented in novel-plugin)
-  { toolName: "chapter.read", serviceKey: "direct", method: "handleChapterRead" },
+  // 核心写章与章节（8）
+  { toolName: "book.overview", serviceKey: "cockpit", method: "getSnapshot" },
+  { toolName: "chapter.preflight", serviceKey: "direct", method: "handleWritePreflight" },
+  { toolName: "chapter.blueprint", serviceKey: "direct", method: "handleSceneSpec" },
+  { toolName: "chapter.commit", serviceKey: "direct", method: "handleChapterCommit" },
   { toolName: "chapter.list", serviceKey: "inline", method: "listChapters" },
-  { toolName: "pipeline.write", serviceKey: "direct", method: "handlePipelineWrite" },
-  { toolName: "lore.write", serviceKey: "direct", method: "handleLoreWrite" },
-  { toolName: "lore.read", serviceKey: "direct", method: "handleLoreRead" },
-  { toolName: "jingwei.audit", serviceKey: "direct", method: "handleJingweiAudit" },
+  { toolName: "chapter.audit", serviceKey: "inline", method: "auditChapter" },
+  { toolName: "chapter.propose_selection", serviceKey: "direct", method: "proposeSelectionCandidate" },
+  { toolName: "chapter.discard_range", serviceKey: "direct", method: "handleChapterDiscardRange" },
+
+  // 经纬与大纲（4）
+  { toolName: "jingwei.read", serviceKey: "direct", method: "handleJingweiRead" },
+  { toolName: "jingwei.write", serviceKey: "direct", method: "handleJingweiWrite" },
+  { toolName: "hooks.manage", serviceKey: "inline", method: "manageHooks" },
+  { toolName: "outline.volume", serviceKey: "direct", method: "handleOutlineVolume" },
+
+  // 叙事记忆（5）
   { toolName: "memory.read", serviceKey: "direct", method: "handleMemoryRead" },
+  { toolName: "memory.search", serviceKey: "direct", method: "handleMemorySearch" },
   { toolName: "memory.graph", serviceKey: "direct", method: "handleMemoryGraph" },
   { toolName: "memory.events", serviceKey: "direct", method: "handleMemoryEvents" },
-  { toolName: "memory.list", serviceKey: "direct", method: "handleMemoryList" },
-  { toolName: "memory.read_entry", serviceKey: "direct", method: "handleMemoryReadEntry" },
-  { toolName: "memory.search", serviceKey: "direct", method: "handleMemorySearch" },
-  { toolName: "memory.update", serviceKey: "direct", method: "handleMemoryUpdate" },
-  { toolName: "memory.delete", serviceKey: "direct", method: "handleMemoryDelete" },
-  { toolName: "memory.dedup", serviceKey: "direct", method: "handleMemoryDedup" },
-  { toolName: "memory.export", serviceKey: "direct", method: "handleMemoryExport" },
-  { toolName: "memory.stats", serviceKey: "direct", method: "handleMemoryStats" },
-  { toolName: "memory.bulk_approve", serviceKey: "direct", method: "handleMemoryBulkApprove" },
-  { toolName: "memory.bulk_delete", serviceKey: "direct", method: "handleMemoryBulkDelete" },
+  { toolName: "memory.settle", serviceKey: "direct", method: "handleMemorySettle" },
 
-  // Audit/quality tools
-  { toolName: "chapter.audit", serviceKey: "inline", method: "auditChapter" },
-  { toolName: "character.check_consistency", serviceKey: "inline", method: "checkConsistency" },
-  { toolName: "hooks.manage", serviceKey: "inline", method: "manageHooks" },
-
-  // Writing Skills tools
-  { toolName: "skills.recommend", serviceKey: "direct", method: "handleWritingSkillsRecommend" },
-  { toolName: "skills.check_compliance", serviceKey: "direct", method: "handleWritingSkillsCheckCompliance" },
-  { toolName: "skills.import_legacy", serviceKey: "direct", method: "handleWritingSkillsImportLegacy" },
-
-  // Scene spec (direct handler)
-  { toolName: "scene.spec", serviceKey: "direct", method: "handleSceneSpec" },
-
-  // Resource management
-  { toolName: "resource.manage", serviceKey: "inline", method: "manageResource" },
-
-  // Market research
-  { toolName: "market.scan", serviceKey: "direct", method: "handleMarketScan" },
-  { toolName: "market.query", serviceKey: "direct", method: "handleMarketQuery" },
-  { toolName: "market.ranks", serviceKey: "direct", method: "handleMarketRanks" },
-  { toolName: "market.sample_public_chapters", serviceKey: "direct", method: "handleMarketSamplePublicChapters" },
+  // 专项与工作流（8）
+  { toolName: "character.inspect", serviceKey: "inline", method: "inspectCharacter" },
+  { toolName: "style.manage", serviceKey: "direct", method: "executeStyleManageTool" },
+  { toolName: "mechanism.distill", serviceKey: "direct", method: "executeMechanismDistillTool" },
+  { toolName: "book.import", serviceKey: "inline", method: "importOrDissectBook" },
+  { toolName: "market.radar", serviceKey: "direct", method: "executeMarketRadar" },
+  { toolName: "skills.manage", serviceKey: "direct", method: "executeSkillsManage" },
+  { toolName: "workflow.step", serviceKey: "direct", method: "executeWorkflowRunTool" },
+  { toolName: "workflow.manage", serviceKey: "direct", method: "executeWorkflowRecipeTool" },
 ];
 
 /**

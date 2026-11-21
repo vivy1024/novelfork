@@ -119,7 +119,7 @@ function readStages(value: unknown): StageRow[] {
   });
 }
 
-/** 失败码对应的恢复建议。只覆盖 pipeline.write 已经会返回的 code，不编造未实现的按钮。 */
+/** 失败码对应的恢复建议。只覆盖 chapter.commit 已经会返回的 code，不编造未实现的按钮。 */
 const PIPELINE_RECOVERY: Record<string, { readonly title: string; readonly action: string }> = {
   "invalid-input": { title: "输入不完整", action: "把本章场景蓝图补全后再提交。" },
   "content-required": { title: "缺少正文", action: "写章工具不生成正文。由当前叙述者提交已经写好的正文。" },
@@ -151,7 +151,7 @@ function PipelineProgressNotifier({
   readonly chapterNumber: number | null;
 }) {
   useEffect(() => {
-    dispatchWritingProgress({ reason: "pipeline.write", bookId });
+    dispatchWritingProgress({ reason: "chapter.commit", bookId });
   }, [bookId, chapterNumber]);
   return null;
 }
@@ -207,7 +207,7 @@ function PipelineStages({ stages }: { readonly stages: readonly StageRow[] }) {
   );
 }
 
-/** pipeline.write 结果卡：展示真实管线阶段、错误恢复、技能结果、结算重试与人工干预，不伪造未返回的明细。 */
+/** chapter.commit 结果卡：展示真实管线阶段、错误恢复、技能结果、结算重试与人工干预，不伪造未返回的明细。 */
 export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const wrapper = asRecord(context.result);
   const payload = asRecord(getToolResultData(context.result)) ?? wrapper;

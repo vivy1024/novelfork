@@ -175,7 +175,7 @@ describe("落盘工序失败不能静默跳过", () => {
       description: "",
       steps: [
         { id: "draft", kind: "writer-generate", label: "写正文", enabled: true },
-        { id: "save", kind: "post-settlement", label: "落盘", enabled: true, tools: ["pipeline.write"], onFailure: "skip" },
+        { id: "save", kind: "post-settlement", label: "落盘", enabled: true, tools: ["chapter.commit"], onFailure: "skip" },
         { id: "note", kind: "custom-tool", label: "附注", enabled: true, onFailure: "skip" },
       ],
       resultStrategy: "formal-chapter",
@@ -243,7 +243,7 @@ describe("正文必须经作者确认", () => {
       description: "",
       steps: [
         { id: "draft", kind: "writer-generate", label: "写正文", enabled: true },
-        { id: "save", kind: "post-settlement", label: "落盘", enabled: true, tools: ["pipeline.write"] },
+        { id: "save", kind: "post-settlement", label: "落盘", enabled: true, tools: ["chapter.commit"] },
       ],
       resultStrategy: "formal-chapter",
       requireFinalApproval: false,

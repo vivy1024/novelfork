@@ -105,7 +105,7 @@ function BeatBar({ words, ceiling }: { words: number | null; ceiling: number }) 
   );
 }
 
-/** scene.spec 写作蓝图卡：一眼看清场景与情节点节奏预算，预算不合规会拦 pipeline.write。 */
+/** chapter.blueprint 写作蓝图卡：一眼看清场景与情节点节奏预算。 */
 export const SceneSpecCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const data = asRecord(getToolResultData(context.result));
   if (!data) return null;

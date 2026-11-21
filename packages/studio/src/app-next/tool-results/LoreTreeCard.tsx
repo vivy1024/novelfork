@@ -17,15 +17,9 @@ const STORYLINE_TIMELINE_ARTIFACT: ToolResultArtifact = {
 };
 
 /**
- * lore.read / memory.graph 的树形结果卡。
+ * jingwei.read / memory.graph 的树形结果卡。
  *
- * 改造前：
- *   · `lore.read` 在渲染器注册表里**没有条目**，落到 GenericToolResultCard，
- *     在对话里吐原始结构，作者看到的是一坨 JSON。
- *   · `memory.graph` 有专属卡，但把图数据渲染成「主语 · 谓语 · 宾语」文本行列表
- *     塞在折叠块里——本来是图，却画成了文字。
- *
- * 改造后：两者共用工作台那棵 `StoryTreeView`（同一份实现、同一套层级），
+ * 两者共用工作台那棵 `StoryTreeView`（同一份实现、同一套层级），
  * 用 compact 模式适配对话气泡。层级来自 NarraBench 分类学，不依赖 parent_id。
  *
  * 树组件体量较大（含搜索/详情/折叠），懒加载避免拖慢对话流首帧。

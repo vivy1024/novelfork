@@ -2,10 +2,12 @@
  * 章后结算工具化的**行为**契约（任务 B）。
  *
  * pipeline-write-service.test.ts 里的源码断言只能证明代码这么写；这里证明运行时真的这么跑：
- * 1. 正文落盘成功后，管线确实发起一次 memory.settle_chapter 工具调用（面板可见的那一次）；
+ * 1. 正文落盘成功后，管线确实发起一次 memory.settle 工具调用（面板可见的那一次）；
  * 2. 该工具调用发生在正文落盘**之后** —— 用调用时刻能否读到已落盘正文来证明，
  *    比源码里的字符串位置断言强：它排除了「代码顺序对、运行时顺序错」的情况；
  * 3. 结算失败时正文仍然保留，pipeline.write 仍然 ok，只在 settlementError 里如实报告。
+ * 4. 对外工具名已收口为 chapter.commit：原来直调 executeRuntimeDomainTool("pipeline.write")
+ *    的两条用例改走 chapter.commit（需要显式 sceneSpec，正文直传）。
  */
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -136,8 +138,8 @@ function seedRecentProgress(storage: ReturnType<typeof initializeStorageDatabase
   `).run();
 }
 
-describe("pipeline.write 把章后结算发起为显式工具调用", () => {
-  it("落盘成功后发起 memory.settle_chapter，且发起时正文已可读（顺序保证）", async () => {
+describe("写章管线把章后结算发起为显式工具调用", () => {
+  it("落盘成功后发起 memory.settle，且发起时正文已可读（顺序保证）", async () => {
     const { projectRoot, bookRoot } = await createBook();
     const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });
     runStorageMigrations(storage);
@@ -210,7 +212,7 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
     expect(scenes[0]!.summary.startsWith("[地点: 山门石阶]")).toBe(true);
   });
 
-  it("结算工具调用失败时保留正文，pipeline.write 仍然成功并如实报告可重试", async () => {
+  it("结算工具调用失败时保留正文，整次写入仍然成功并如实报告可重试", async () => {
     const { projectRoot, bookRoot } = await createBook();
     const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });
     runStorageMigrations(storage);
@@ -382,7 +384,7 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
     expect(read.data?.content).toBe(originalContent);
   });
 
-  it("runtime pipelineWrite 在结算失败时返回部分失败并保留 saved/chapter metadata", async () => {
+  it("chapter.commit 在结算失败时返回部分失败并保留 saved/chapter metadata", async () => {
     const { projectRoot, bookRoot } = await createBook();
     const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });
     runStorageMigrations(storage);
@@ -398,7 +400,7 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
       generateText: async () => { throw new Error("extractor unavailable"); },
     };
     const result = await executeRuntimeDomainTool(
-      "pipeline.write",
+      "chapter.commit",
       { sceneSpec, content: CHAPTER_TEXT },
       { bookId: "trusted", root: bookRoot },
       context,
@@ -442,7 +444,7 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
       resourceBindings: {},
     };
     const result = await executeRuntimeDomainTool(
-      "pipeline.write",
+      "chapter.commit",
       { sceneSpec, content },
       { bookId: "trusted", root: bookRoot },
       context,

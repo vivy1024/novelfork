@@ -210,9 +210,11 @@ describe("工作流页：子代理一览", () => {
     const calls = mockFetch({
       "/workflow-recipes": () => ({ recipes: [...builtin] }),
       "GET /workflow-default": () => ({ storedRecipeId: null, recipeId: null, recipeName: null }),
-      "GET /api/providers/models": () => ([
-        { providerId: "xcpcai", providerName: "XCPCAI", modelId: "gpt-6-astra", modelName: "GPT-6 Astra", enabled: true },
-      ]),
+      "GET /api/settings": () => ({
+        openaiModelsGrouped: [
+          { id: "xcpcai", prefix: "xcpcai", name: "XCPCAI", models: [{ id: "gpt-6-astra", name: "GPT-6 Astra" }] },
+        ],
+      }),
       "GET /api/custom-subagents": () => ([
         { name: "storyboard-pro", description: "全局分镜大师", prompt: "按电影分镜拆解", model: "xcpcai:gpt-6-astra" },
       ]),
@@ -297,7 +299,7 @@ describe("运行面板", () => {
   it("落盘工序受阻：没有「跳过」，可写意见打回重写正文", async () => {
     const blocked = detail("blocked", [
       step("draft", 1, "起草正文", "done"),
-      step("settle", 2, "落盘", "failed", { tools: ["pipeline.write"], note: { what: "正文只有 1200 字", why: "低于本书下限", action: "补写或打回" } }),
+      step("settle", 2, "落盘", "failed", { tools: ["chapter.commit"], note: { what: "正文只有 1200 字", why: "低于本书下限", action: "补写或打回" } }),
     ]);
     const calls = renderRuns(blocked, { "POST /reject": () => detail("running", [step("draft", 1, "起草正文", "running"), step("settle", 2, "落盘", "pending")], [], 6) });
     const card = await screen.findByTestId("workflow-run-blocked");
@@ -312,7 +314,7 @@ describe("运行面板", () => {
   });
 
   it("非落盘工序受阻仍可跳过", async () => {
-    renderRuns(detail("blocked", [step("ctx", 1, "读取上下文", "failed", { tools: ["cockpit.snapshot"] })]));
+    renderRuns(detail("blocked", [step("ctx", 1, "读取上下文", "failed", { tools: ["book.overview"] })]));
     const card = await screen.findByTestId("workflow-run-blocked");
     expect(within(card).getByRole("button", { name: "跳过" })).toBeTruthy();
     expect(within(card).queryByRole("button", { name: /打回重写正文/ })).toBeNull();

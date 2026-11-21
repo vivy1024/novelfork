@@ -81,7 +81,7 @@ function readVolume(value: unknown): VolumeCockpitVolume | null {
  * 把 outline.volume get 返回体 + 当前章号转成卷驾驶舱模型。
  *
  * @param raw outline.volume(action=get) 的返回体（宽松 unknown，容忍演进）
- * @param chapterNumber 当前要写的章号（来自 write.preflight）；用于定位本章在本卷位置
+ * @param chapterNumber 当前要写的章号（来自 chapter.preflight）；用于定位本章在本卷位置
  */
 export function buildVolumeCockpitModel(raw: unknown, chapterNumber: number): VolumeCockpitModel {
   const record = asRecord(raw);

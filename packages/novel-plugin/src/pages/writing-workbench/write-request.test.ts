@@ -24,7 +24,7 @@ describe("buildWriteRequestMessage", () => {
     expect(message).toBe([
       "请写第 13 章的正文。",
       "本章目标：让薛行之拿到 B-17 原始数据",
-      "流程：write_preflight → scene_spec → pipeline_write。preflight 不通过就停下告诉我缺什么，不要先写。",
+      "流程：chapter_preflight → chapter_blueprint → 原生 Write 按预检返回的 targetChapterPath 写入章节文件 → chapter_commit（mode=new，filePath 为刚写入的章节相对路径）。预检不通过就停下告诉我缺什么，不要先写。",
     ].join("\n"));
     expect(message).not.toContain("beatBudget");
   });
@@ -47,7 +47,7 @@ describe("buildWriteRequestMessage", () => {
     expect(withEmpty).toBe(without);
   });
 
-  it("有作者节拍时要求原样传入 scene.spec，并附完整 JSON", () => {
+  it("有作者节拍时要求原样传入 chapter.blueprint，并附完整 JSON", () => {
     const message = buildWriteRequestMessage({
       mode: "chapter",
       chapterNumber: 13,
@@ -56,12 +56,12 @@ describe("buildWriteRequestMessage", () => {
       beatBudget: BEATS,
     });
 
-    expect(message).toContain("原样传入 scene_spec 的 beatBudget 参数");
+    expect(message).toContain("原样传入 chapter_blueprint 的 sceneSpec.beatBudget 参数");
     expect(message).toContain("不要另拟一套");
     expect(message).toContain("```json");
     expect(message).toContain(JSON.stringify(BEATS, null, 2));
     // 原有流程指令不能被节拍段落挤掉。
-    expect(message).toContain("write_preflight → scene_spec → pipeline_write");
+    expect(message).toContain("chapter_preflight → chapter_blueprint → 原生 Write 按预检返回的 targetChapterPath 写入章节文件 → chapter_commit（mode=new，filePath 为刚写入的章节相对路径）");
   });
 
   it("蓝图模式同样附带作者节拍", () => {
@@ -89,7 +89,7 @@ describe("buildWriteRequestMessage", () => {
       infoAnchors: ["灵田折旧率 12%", "朱砂暗记"],
     });
 
-    expect(message).toContain("write_preflight");
+    expect(message).toContain("chapter_preflight");
     expect(message).toContain(`\`pinnedSampleIds\`：["src-a:smp-1"]`);
     expect(message).toContain(`\`pinnedMechanismIds\`：["mech-01","mech-02"]`);
     expect(message).toContain(`\`infoAnchors\`：["灵田折旧率 12%","朱砂暗记"]`);

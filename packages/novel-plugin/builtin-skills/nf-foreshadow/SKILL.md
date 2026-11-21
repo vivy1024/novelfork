@@ -1,7 +1,7 @@
 ---
 id: nf-foreshadow
 name: 伏笔
-description: 作者要埋伏笔、兑现伏笔、查哪些伏笔该收了时使用。伏笔以经纬的伏笔条目为准，通过 hooks_manage 列出、埋设、兑现，部分揭示用 lore_progress 记录推进；每次写入前先给作者看方案。
+description: 作者要埋伏笔、兑现伏笔、查哪些伏笔该收了时使用。经纬伏笔条目是台账，用 hooks_manage 列出、埋设、兑现，部分揭示用 jingwei_write 记录推进；写入前先给作者看方案。
 kind: plot
 mode: manual
 entry: 伏笔
@@ -26,7 +26,7 @@ tags:
 | 「哪些该收了」 | `hooks_manage` action=check_due，chapterNumber 取将要写的章号 |
 | 「在这章埋一个」 | 先设计，再 `hooks_manage` action=plant |
 | 「这章把它收了」 | 核对正文，再 `hooks_manage` action=payoff |
-| 「这里只露一角」 | `lore_progress` 把该条目的状态字段推进为部分揭示 |
+| 「这里只露一角」 | `jingwei_write` action=progress，把状态推进为部分揭示 |
 | 「这个伏笔不要了」 | 确认是作者本人的决定，再 `hooks_manage` action=delete |
 
 ## 埋设：先设计，再写入
@@ -42,14 +42,14 @@ tags:
 
 ## 兑现：先核对，再写入
 
-1. 用 `chapter_read` 读回收章，找出真正揭示真相的那段文字。
+1. 按章节路径用原生 `Read` 读回收章（未知路径先查 `chapter_list`），定位揭示真相的原文。
 2. 对照台账描述：揭示的是不是同一件事？埋设的细节有没有被用上？
 3. 对得上，用 `hooks_manage` action=payoff（hookId 取 list 返回的 id，chapterNumber 为回收章）。
 4. 对不上，告诉作者差在哪，不要硬标兑现。
 
 ## 部分揭示
 
-长线伏笔常常分几次露。每露一次，用 `lore_progress` 记一笔：fieldKey 用条目里真实存在的状态字段，newValue 写推进后的状态，chapterNumber 写本章，reason 引一句正文作证据。这样之后能回放它是怎么一步步露出来的。
+每次部分揭示，用 `jingwei_write`（action=progress）记一笔：fieldKey 填条目已有的状态字段，newValue 填推进后的状态，chapterNumber 填本章，reason 引正文作证据。
 
 ## 检查伏笔是否被遗忘
 

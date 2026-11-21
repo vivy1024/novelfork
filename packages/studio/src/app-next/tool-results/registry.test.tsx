@@ -6,21 +6,35 @@ import { GenericToolResultRenderer, renderToolResult, resolveToolResultRendererK
 afterEach(() => cleanup());
 
 describe("tool-results registry", () => {
-  it("只为已验证兼容的 Runtime renderer 启用专用卡", () => {
-    expect(resolveToolResultRendererKey({ toolName: "cockpit.snapshot", result: { data: {} } })).toBe("cockpit");
-    expect(resolveToolResultRendererKey({ toolName: "pipeline.write", result: { data: {} } })).toBe("pipeline");
+  it.each([
+    ["book.overview", "cockpit"],
+    ["chapter.preflight", "write-preflight"],
+    ["chapter.blueprint", "scene-spec"],
+    ["chapter.commit", "pipeline"],
+    ["book.import", "book-dissect"],
+    ["jingwei.read", "lore-tree"],
+    ["workflow.step", "workflow"],
+    ["workflow.manage", "workflow"],
+    ["memory.read", "memory-read"],
+    ["memory.graph", "memory-graph"],
+    ["memory.events", "memory-events"],
+  ])("%s 的目录名和线上名都解析到 %s", (toolName, renderer) => {
+    for (const name of [toolName, toolName.replaceAll(".", "_")]) {
+      expect(resolveToolResultRendererKey({ toolName: name, result: { data: {} } })).toBe(renderer);
+    }
+  });
+
+  it("保留专用 renderer 声明与精确匹配", () => {
     // 补了专属卡后，这些工具名也会解析到对应保留键（不再退回 generic）。
     expect(resolveToolResultRendererKey({ toolName: "chapter.audit", result: { data: {} } })).toBe("chapter-audit");
     expect(resolveToolResultRendererKey({ toolName: "chapter.propose_selection", result: { data: {} } })).toBe("selection-candidate");
     expect(resolveToolResultRendererKey({ toolName: "custom.tool", result: { renderer: "chapter.selection-candidate" } })).toBe("selection-candidate");
-    // memory.read_line 的 renderer 值是 "narrative.line"，工具名本身仍未登记，按名解析回落 generic。
-    expect(resolveToolResultRendererKey({ toolName: "memory.read_line", result: { data: {} } })).toBe("generic");
-    expect(resolveToolResultRendererKey({ toolName: "memory.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
+    expect(resolveToolResultRendererKey({ toolName: "memory.read", result: { renderer: "narrative.line" } })).toBe("narrative");
   });
 
   it("result.renderer 优先于 toolName 且不会按前缀误匹配", () => {
     expect(resolveToolResultRendererKey({ toolName: "custom.wrapper", result: { renderer: "pipeline.chapter-result" } })).toBe("pipeline");
-    expect(resolveToolResultRendererKey({ toolName: "pipeline.import_chapters", result: { renderer: "pipeline.import_chapters" } })).toBe("generic");
+    expect(resolveToolResultRendererKey({ toolName: "book.import_extra", result: { renderer: "book.import_extra" } })).toBe("generic");
   });
 
   it("unknown fallback 保留 raw data，且支持解包 _truncated 长载荷为友好中文摘要卡", () => {
@@ -38,8 +52,8 @@ describe("tool-results registry", () => {
       fullLength: 9788,
       renderer: "generic",
     };
-    render(<GenericToolResultRenderer toolName="style_consolidate" result={truncated} />);
-    expect(screen.getByText("文风铁律提纯与负反馈")).toBeTruthy();
+    render(<GenericToolResultRenderer toolName="style_manage" result={truncated} />);
+    expect(screen.getByText("文风管理")).toBeTruthy();
     expect(screen.getAllByText(/已置顶写入运行时负反馈铁律/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/长载荷 9.8 KB/)).toBeTruthy();
   });
@@ -52,8 +66,8 @@ describe("tool-results registry", () => {
   });
 
   it.each([
-    ["tool-result-cockpit", "cockpit.snapshot", { renderer: "cockpit.snapshot", data: { book: { id: "b", title: "灵潮纪元", status: "active" }, progress: { chapterCount: 3, totalWords: 9000 } } }, "灵潮纪元"],
-    ["tool-result-pipeline", "pipeline.write", { renderer: "pipeline.chapter-result", data: { title: "第三章", chapterNumber: 3, auditPassed: true } }, "第3章 第三章"],
+    ["tool-result-cockpit", "book.overview", { renderer: "cockpit.snapshot", data: { book: { id: "b", title: "灵潮纪元", status: "active" }, progress: { chapterCount: 3, totalWords: 9000 } } }, "灵潮纪元"],
+    ["tool-result-pipeline", "chapter.commit", { renderer: "pipeline.chapter-result", data: { title: "第三章", chapterNumber: 3, auditPassed: true } }, "第3章 第三章"],
   ])("渲染 %s smoke card", (testId, toolName, result, expectedText) => {
     render(<>{renderToolResult({ toolName, result })}</>);
 
@@ -65,7 +79,7 @@ describe("tool-results registry", () => {
     const onOpenArtifact = vi.fn();
     const artifact = { id: "chapter:2", kind: "chapter", title: "第二章", renderer: "chapter.result", openInCanvas: true };
     render(<>{renderToolResult({
-      toolName: "cockpit.snapshot",
+      toolName: "book.overview",
       onOpenArtifact,
       result: {
         renderer: "cockpit.snapshot",
@@ -90,7 +104,7 @@ describe("tool-results registry", () => {
   });
 
   it("驾驶舱快照为空时给出缺省文案，不误报", () => {
-    render(<>{renderToolResult({ toolName: "cockpit.snapshot", result: { renderer: "cockpit.snapshot", data: {} } })}</>);
+    render(<>{renderToolResult({ toolName: "book.overview", result: { renderer: "cockpit.snapshot", data: {} } })}</>);
     expect(screen.getByText("驾驶舱快照")).toBeTruthy();
     expect(screen.getByText("暂无风险提示")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "在画布打开" })).toBeNull();
@@ -126,7 +140,7 @@ describe("tool-results registry", () => {
   it("artifact 结果提供在画布打开动作", () => {
     const onOpenArtifact = vi.fn();
     const artifact = { kind: "chapter", id: "chapter:3", title: "第三章" };
-    render(<>{renderToolResult({ toolName: "pipeline.write", result: { renderer: "pipeline.chapter-result", data: { title: "第三章" }, artifact }, onOpenArtifact })}</>);
+    render(<>{renderToolResult({ toolName: "chapter.commit", result: { renderer: "pipeline.chapter-result", data: { title: "第三章" }, artifact }, onOpenArtifact })}</>);
 
     fireEvent.click(screen.getByRole("button", { name: "在画布打开" }));
 
@@ -137,7 +151,7 @@ describe("tool-results registry", () => {
     const onOpenArtifact = vi.fn();
     const artifact = { kind: "chapter", id: "chapter:4", title: "第四章" };
     render(<>{renderToolResult({
-      toolName: "pipeline.write",
+      toolName: "chapter.commit",
       result: { renderer: "pipeline.chapter-result", data: { title: "第四章", artifact } },
       onOpenArtifact,
     })}</>);

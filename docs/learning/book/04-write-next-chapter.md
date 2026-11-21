@@ -71,5 +71,5 @@ AI 写的原稿还会在文风金库留一份，用来对比你改了哪里，�
 
 ## Agent 查阅提示
 
-- 写作侧栏的按钮只把本章目标和章号交给叙述者；写章顺序是 `write_preflight` → `scene_spec` → `pipeline_write`，写前检查不过就停下。
-- 废稿用 `chapter_discard_range`，补历史章节的记忆用 `memory_settle_range`。
+- 写作侧栏把本章目标和章号交给叙述者。先用 `chapter_preflight` 取召回包和目标章节路径，预检不过就停；再用 `chapter_blueprint` 校验蓝图、原生 `Write` 流式写入目标文件，最后用 `chapter_commit` 审计、入库并结算。
+- 废稿用 `chapter_discard_range`；给历史章节补结算用 `memory_settle`，传 `fromChapter` 和 `toChapter`。

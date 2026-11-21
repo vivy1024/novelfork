@@ -54,7 +54,7 @@ function DiagnosticList({ rows, tone }: { rows: readonly DiagnosticRow[]; tone: 
   );
 }
 
-/** write.preflight 预检卡：能不能写、缺什么、建议怎么做。 */
+/** chapter.preflight 预检卡：能不能写、缺什么、建议怎么做。 */
 export const WritePreflightCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const data = asRecord(getToolResultData(context.result));
   if (!data) return null;

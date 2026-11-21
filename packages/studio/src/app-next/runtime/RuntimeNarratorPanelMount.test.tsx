@@ -189,7 +189,7 @@ describe("RuntimeNarratorPanelMount", () => {
     await waitFor(() => expect(mocks.executeToolResultAction).toHaveBeenCalledWith(
       "book-1",
       expect.objectContaining({
-        toolName: "lore.write",
+        toolName: "jingwei.write",
         input: expect.objectContaining({ stagingId: "staging-1", stagingDecision: "promote" }),
       }),
     ));

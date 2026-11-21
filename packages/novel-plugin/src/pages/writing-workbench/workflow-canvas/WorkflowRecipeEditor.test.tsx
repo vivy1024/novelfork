@@ -9,7 +9,7 @@ import { WorkflowRecipeEditor } from "./WorkflowRecipeEditor";
 
 type FetchCall = { url: string; method: string; body: any };
 
-const CATALOG_URLS = ["/subagents", "/api/custom-subagents", "/api/providers/models", "/api/writing-skills", "/runtime/skills"];
+const CATALOG_URLS = ["/subagents", "/api/custom-subagents", "/api/settings", "/api/writing-skills", "/skills"];
 
 function isCatalogGet(call: FetchCall): boolean {
   return call.method === "GET" && CATALOG_URLS.some((suffix) => call.url.endsWith(suffix));
@@ -187,12 +187,19 @@ describe("工作流方案编辑器", () => {
       if (call.url.endsWith("/api/custom-subagents")) {
         return { body: [{ name: "global-polisher", description: "全局精修师" }] };
       }
-      if (call.url.endsWith("/api/providers/models")) {
+      if (call.url.endsWith("/api/settings")) {
         return {
           body: {
-            models: [
-              { providerId: "4sapi-2", providerName: "4SAPI", modelId: "deepseek-v4.1-flash", modelName: "DeepSeek V4.1", enabled: true },
-              { providerId: "disabled-p", modelId: "old-model", enabled: false },
+            openaiModelsGrouped: [
+              {
+                id: "4sapi-2",
+                prefix: "4sapi-2",
+                name: "4SAPI",
+                models: [
+                  { id: "deepseek-v4.1-flash", name: "DeepSeek V4.1" },
+                  { id: "old-model", enabled: false },
+                ],
+              },
             ],
           },
         };
@@ -207,7 +214,7 @@ describe("工作流方案编辑器", () => {
           },
         };
       }
-      if (call.url.endsWith("/runtime/skills")) {
+      if (call.url.endsWith("/api/books/book-1/skills")) {
         return {
           body: {
             skills: [
@@ -245,9 +252,9 @@ describe("工作流方案编辑器", () => {
     fireEvent.blur(parallelName);
 
     // 3. 权威写入工具胶囊点选与输入框双向同步
-    const pipelineChip = screen.getByRole("button", { name: /写章落盘 · pipeline\.write/ });
-    fireEvent.click(pipelineChip);
-    expect((screen.getByLabelText("可用的写入工具") as HTMLInputElement).value).toContain("pipeline.write");
+    const commitChip = screen.getByRole("button", { name: /写章入库 · chapter\.commit/ });
+    fireEvent.click(commitChip);
+    expect((screen.getByLabelText("可用的写入工具") as HTMLInputElement).value).toContain("chapter.commit");
 
     // 4. Skills 搜索点选（精确使用 skill.name 而非 slug）与 Badge 移除
     const skillSearch = await screen.findByLabelText("搜索可用技能");
@@ -273,7 +280,7 @@ describe("工作流方案编辑器", () => {
       executionMode: "subagent",
       agentId: "global-polisher",
       modelOverride: "4sapi-2:deepseek-v4.1-flash",
-      tools: ["pipeline.write"],
+      tools: ["chapter.commit"],
       skills: ["本书专属设定表"],
       parallelSubagents: [{ name: "action-choreographer" }],
     });
