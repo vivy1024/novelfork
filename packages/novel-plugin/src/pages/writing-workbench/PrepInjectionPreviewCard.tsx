@@ -60,6 +60,7 @@ interface RawHookLite {
 export interface PrepInjectionPreviewCardProps {
   readonly preflightRaw: unknown;
   readonly loading?: boolean;
+  readonly defaultExpanded?: boolean;
 }
 
 function extractPreviewModel(raw: unknown): {
@@ -97,8 +98,12 @@ function extractPreviewModel(raw: unknown): {
   return { summary, fallbackHooks, fallbackSkills };
 }
 
-export function PrepInjectionPreviewCard({ preflightRaw, loading = false }: PrepInjectionPreviewCardProps) {
-  const [expanded, setExpanded] = useState(true);
+export function PrepInjectionPreviewCard({
+  preflightRaw,
+  loading = false,
+  defaultExpanded = true,
+}: PrepInjectionPreviewCardProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const { summary, fallbackHooks, fallbackSkills } = extractPreviewModel(preflightRaw);
 
   const estimatedTokens = summary?.estimatedTokens ?? 0;
@@ -201,7 +206,7 @@ export function PrepInjectionPreviewCard({ preflightRaw, loading = false }: Prep
                   <Cpu className="size-3" />
                   <span>活跃记忆通道分布 ({activeChannels.length})</span>
                 </div>
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   {activeChannels.map((ch) => (
                     <div
                       key={ch.channel}

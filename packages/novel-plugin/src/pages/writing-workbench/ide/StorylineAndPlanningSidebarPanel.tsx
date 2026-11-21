@@ -1,34 +1,40 @@
 /**
- * 故事脉络（Storyline）侧栏面板 —— 推进中心形态。
+ * 故事脉络（Storyline）侧栏面板 —— 主次分明的 3 栏聚合形态。
  *
  * 顶部是所有 tab 共享的「推进驾驶舱」：
  * 1. 位置锚定条：当前第 N 章 / 目标 M 章 · 进度%（打开即见，无需切 tab）；
- * 2. NEXT 下一步卡：维护提醒（缺卷纲 / 提拔规划中的纲 / 待审事件 / 记忆过期）优先；都没有时引用
- *    故事画布「下一章」页的同一份计划（next-chapter-plan），侧栏不再自算第二套伏笔或下一章判断。
+ * 2. NEXT 维护引导条：缺卷纲 / 提拔规划中的纲 / 待审事件 / 记忆过期优先；全部就绪时直达故事画布。
  *
- * 标题行右侧是「打开故事画布」按钮（落在「下一章」；推进 / 故事树在画布顶部切换）。
- * 两个能力 tab 保持单一权威入口：
- * 1. 「章节与大纲」：章节树 + 大纲树 + 一键提拔（★大纲唯一权威入口）；
- * 2. 「章后事实」：轻量摘要卡（待审/高风险计数），完整面板在中央 Tab 打开。
- * 伏笔只在故事画布「下一章」页的伏笔账本（原「进度账本」子页签已下线）。
+ * 3 个固定主聚合页签（无横向滚动、热区 ≥ 32px）：
+ * 1. 「大纲与章」：章节树 + 大纲树 + 一键提拔（★大纲唯一权威入口）；
+ * 2. 「脉络追踪」：聚合伏笔 / 剧情线 / 矛盾 / 关系 / 时间线 / 章摘要，顶部 3 列芯片切换，总览态紧凑折叠防留白；
+ * 3. 「章后事实」：记忆过期章节 + 轻量摘要卡，完整面板在中央 Tab 打开。
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, FilePlus2, FileText, Compass, History, ListTree, Map as MapIcon, Route } from "lucide-react";
+import { ChevronDown, ChevronRight, FilePlus2, FileText, Compass, GitBranch, History, ListTree, Map as MapIcon, Route } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateApiPaths, useApi } from "@/hooks/use-api";
 import { SidebarPageHead } from "./SidebarPageHead";
 import { SidebarTabs, sidebarTabPanelProps } from "./SidebarTabs";
-import { STORYLINE_SUB_TAB_LABELS, type SidebarFocusRequest, type StorylineSubTab } from "./sidebar-tabs-model";
+import {
+  isStorylineThreadTab,
+  STORYLINE_PRIMARY_TAB_LABELS,
+  STORYLINE_SUB_TAB_LABELS,
+  STORYLINE_THREAD_TABS,
+  storylinePrimaryTabOf,
+  type SidebarFocusRequest,
+  type StorylinePrimaryTab,
+  type StorylineSubTab,
+  type StorylineThreadTab,
+} from "./sidebar-tabs-model";
 import { ChapterTimelinePanel } from "../ChapterTimelinePanel";
 import { StoryTimeAxisPanel } from "../StoryTimeAxisPanel";
 import { useNarrativeStructure } from "../useNarrativeStructure";
 import { StaleSettlementList, freshnessPath, useStaleSettlementCount } from "./StaleSettlementList";
 import { useWritingProgressRefresh } from "../use-writing-progress-refresh";
 import { NarrativeMemorySummary } from "../NarrativeMemoryPanel";
-import { describeNextChapterSuggestion } from "../next-chapter-plan";
-import { useNextChapterPlan } from "../use-next-chapter-plan";
 import { createMemoryCenterNode, createStoryProgressionNode } from "../useWorkbenchResources";
 import type { ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
@@ -423,396 +429,596 @@ const OUTLINE_SEED_MESSAGE =
 /**
  * NEXT 规则：按序取第一个命中，永远只给一条建议。
  * 前四级是维护提醒：1 缺纲 → 叙述者 seed；2 有规划未落稿 → 提拔；3 有待审 → 章后事实；
- * 4 有记忆过期的章 → 章后事实重新结算。
- * 都没有时给「下一章写什么」——这一句只引用故事画布「下一章」页的计划（describeNextChapterSuggestion），
- * 侧栏不另算伏笔到期或下一章；计划还没读到时引导去画布看。
+ * 4 有记忆过期的章 → 章后事实重新结算；都就绪时引导直达故事画布。
  */
 export function resolveNextAction(input: {
-  readonly hasOutline: boolean;
-  readonly plannedCount: number;
-  readonly pendingCount: number;
-  /** 正文结算后又被改过的章数（记忆过期）。 */
-  readonly staleCount?: number;
-  /** 下一章计划的一句话建议（来自 next-chapter-plan）；计划未就绪时缺省。 */
-  readonly nextChapterSuggestion?: string;
-}): NextAction {
-  if (!input.hasOutline) return { key: "outline-empty", label: "让叙述者生成第一卷卷纲" };
-  if (input.plannedCount > 0) return { key: "promote-outline", tab: "outline", label: `提拔规划中的大纲落稿（${input.plannedCount} 条）` };
-  if (input.pendingCount > 0) return { key: "review-pending", tab: "memory", label: `处理章后待审事件（${input.pendingCount} 条）` };
-  if ((input.staleCount ?? 0) > 0) return { key: "resettle-stale", tab: "memory", label: `重新结算记忆过期的章节（${input.staleCount} 章）` };
-  return { key: "next-chapter", label: input.nextChapterSuggestion ?? "打开故事画布，看下一章写什么" };
-}
+   readonly hasOutline: boolean;
+   readonly plannedCount: number;
+   readonly pendingCount: number;
+   /** 正文结算后又被改过的章数（记忆过期）。 */
+   readonly staleCount?: number;
+   /** 兼容可选自定义引导文案。 */
+   readonly nextChapterSuggestion?: string;
+ }): NextAction {
+   if (!input.hasOutline) return { key: "outline-empty", label: "让叙述者生成第一卷卷纲" };
+   if (input.plannedCount > 0) return { key: "promote-outline", tab: "outline", label: `提拔规划中的大纲落稿（${input.plannedCount} 条）` };
+   if (input.pendingCount > 0) return { key: "review-pending", tab: "memory", label: `处理章后待审事件（${input.pendingCount} 条）` };
+   if ((input.staleCount ?? 0) > 0) return { key: "resettle-stale", tab: "memory", label: `重新结算记忆过期的章节（${input.staleCount} 章）` };
+   return { key: "next-chapter", label: input.nextChapterSuggestion ?? "打开故事画布，查看全书大纲与推进" };
+ }
 
-function StorylineCockpit({
-  currentChapter,
-  targetChapters,
-  next,
-  onActivate,
-  onSendToNarrator,
-}: {
-  currentChapter: number;
-  targetChapters?: number;
-  next: NextAction;
-  onActivate: (next: NextAction) => void;
-  onSendToNarrator?: (message: string) => Promise<void> | void;
-}) {
-  const percent = targetChapters !== undefined && targetChapters > 0
-    ? Math.min(100, Math.round((currentChapter / targetChapters) * 100))
-    : undefined;
+ function StorylineCockpit({
+   currentChapter,
+   targetChapters,
+   next,
+   onActivate,
+   onSendToNarrator,
+ }: {
+   currentChapter: number;
+   targetChapters?: number;
+   next: NextAction;
+   onActivate: (next: NextAction) => void;
+   onSendToNarrator?: (message: string) => Promise<void> | void;
+ }) {
+   const percent = targetChapters !== undefined && targetChapters > 0
+     ? Math.min(100, Math.round((currentChapter / targetChapters) * 100))
+     : undefined;
 
-  return (
-    <div className="shrink-0 border-b border-border bg-muted/20 px-2 py-1.5 space-y-1.5" data-testid="storyline-cockpit">
-      {/* 行 A · 位置锚定 */}
-      <div className="flex items-center gap-2" data-testid="storyline-position-bar">
-        <span className="text-2xs font-medium text-foreground">第 {currentChapter} 章</span>
-        {targetChapters !== undefined && targetChapters > 0 ? (
-          <>
-            <span className="text-2xs text-muted-foreground">/ 目标 {targetChapters} 章</span>
-            <div className="h-1 flex-1 rounded-full bg-muted overflow-hidden min-w-8">
-              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
-            </div>
-            <span className="text-2xs tabular-nums text-muted-foreground">{percent}%</span>
-          </>
-        ) : null}
-      </div>
+   return (
+     <div className="shrink-0 border-b border-border bg-muted/20 px-2.5 py-2 space-y-1.5" data-testid="storyline-cockpit">
+       {/* 行 A · 位置锚定 */}
+       <div className="flex items-center gap-2" data-testid="storyline-position-bar">
+         <span className="text-2xs font-medium tabular-nums text-foreground">第 {currentChapter} 章</span>
+         {targetChapters !== undefined && targetChapters > 0 ? (
+           <>
+             <span className="text-2xs tabular-nums text-muted-foreground">/ 目标 {targetChapters} 章</span>
+             <div className="h-1 flex-1 rounded-full bg-muted overflow-hidden min-w-8">
+               <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+             </div>
+             <span className="text-2xs tabular-nums text-muted-foreground">{percent}%</span>
+           </>
+         ) : null}
+       </div>
 
-      {/* 行 B · NEXT 下一步卡 */}
-      <button
-        type="button"
-        data-testid={`storyline-next-${next.key}`}
-        onClick={() => onActivate(next)}
-        title={next.label}
-        className="w-full flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-left text-2xs text-foreground transition-colors hover:bg-primary/10"
-      >
-        <Compass className="size-3 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1 truncate">{next.label}</span>
-        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-      </button>
-      {/* 叙述者 seed 动作而没有叙述者通道时明说，不静默吞掉点击（口径同 NextChapterPanel 的 note） */}
-      {next.key === "outline-empty" && !onSendToNarrator ? (
-        <p className="text-xs text-muted-foreground" data-testid="storyline-next-no-narrator">这里还没连上叙述者，请先打开一个对话再点这条建议。</p>
-      ) : null}
-    </div>
-  );
-}
+       {/* 行 B · 维护与快捷导航条 */}
+       <button
+         type="button"
+         data-testid={`storyline-next-${next.key}`}
+         onClick={() => onActivate(next)}
+         title={next.label}
+         className="w-full flex items-center gap-1.5 rounded-md border border-primary/35 bg-primary/5 px-2 py-1.5 text-left text-2xs text-foreground transition-colors hover:bg-primary/10"
+       >
+         <Compass className="size-3 shrink-0 text-primary" />
+         <span className="min-w-0 flex-1 truncate">{next.label}</span>
+         <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+       </button>
+       {next.key === "outline-empty" && !onSendToNarrator ? (
+         <p className="text-xs text-muted-foreground" data-testid="storyline-next-no-narrator">这里还没连上叙述者，请先打开一个对话再点这条建议。</p>
+       ) : null}
+     </div>
+   );
+ }
 
-export function StorylineAndPlanningSidebarPanel({
-  bookId,
-  chapterTreeNodes = [],
-  outlineTreeNodes = [],
-  progressTreeNodes = [],
-  focusRequest,
-  selectedNodeId,
-  onOpen,
-  onAction,
-  onSendToNarrator,
-  bookTargetChapters,
-}: StorylineAndPlanningSidebarPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<StorylineSubTab>(focusRequest?.tab ?? "outline");
-  const focusSeq = focusRequest?.seq;
-  const focusTab = focusRequest?.tab;
-  useEffect(() => {
-    if (focusTab) setActiveSubTab(focusTab);
-  }, [focusSeq, focusTab]);
-  const [timelineMode, setTimelineMode] = useState<"entries" | "story-time" | "chapters">("entries");
+ export function StorylineAndPlanningSidebarPanel({
+   bookId,
+   chapterTreeNodes = [],
+   outlineTreeNodes = [],
+   progressTreeNodes = [],
+   focusRequest,
+   selectedNodeId,
+   onOpen,
+   onAction,
+   onSendToNarrator,
+   bookTargetChapters,
+ }: StorylineAndPlanningSidebarPanelProps) {
+   const initialSubTab: StorylineSubTab = focusRequest?.tab ?? "outline";
+   const [activePrimaryTab, setActivePrimaryTab] = useState<StorylinePrimaryTab>(() => storylinePrimaryTabOf(initialSubTab));
+   const [activeThread, setActiveThread] = useState<"all" | StorylineThreadTab>(() =>
+     isStorylineThreadTab(initialSubTab) ? initialSubTab : "all",
+   );
+   const focusSeq = focusRequest?.seq;
+   const focusTab = focusRequest?.tab;
+   useEffect(() => {
+     if (!focusTab) return;
+     setActivePrimaryTab(storylinePrimaryTabOf(focusTab));
+     if (isStorylineThreadTab(focusTab)) {
+       setActiveThread(focusTab);
+     }
+   }, [focusSeq, focusTab]);
+   const [timelineMode, setTimelineMode] = useState<"entries" | "story-time" | "chapters">("entries");
 
-  // 推进类条目：从宿主分好的「推进」分区按分类取叶子。
-  const progressEntries = useMemo(() => ({
-    foreshadowing: progressEntriesOf(progressTreeNodes, "foreshadowing"),
-    conflicts: progressEntriesOf(progressTreeNodes, "conflicts"),
-    relationships: progressEntriesOf(progressTreeNodes, "relationships"),
-    timeline: progressEntriesOf(progressTreeNodes, "timeline"),
-    "chapter-summaries": [...progressEntriesOf(progressTreeNodes, "chapter-summaries")].sort(
-      (left, right) => (summaryChapterOf(left) ?? Number.MAX_SAFE_INTEGER) - (summaryChapterOf(right) ?? Number.MAX_SAFE_INTEGER),
-    ),
-  }), [progressTreeNodes]);
+   // 推进类条目：从宿主分好的「推进」分区按分类取叶子。
+   const progressEntries = useMemo(() => ({
+     foreshadowing: progressEntriesOf(progressTreeNodes, "foreshadowing"),
+     conflicts: progressEntriesOf(progressTreeNodes, "conflicts"),
+     relationships: progressEntriesOf(progressTreeNodes, "relationships"),
+     timeline: progressEntriesOf(progressTreeNodes, "timeline"),
+     "chapter-summaries": [...progressEntriesOf(progressTreeNodes, "chapter-summaries")].sort(
+       (left, right) => (summaryChapterOf(left) ?? Number.MAX_SAFE_INTEGER) - (summaryChapterOf(right) ?? Number.MAX_SAFE_INTEGER),
+     ),
+   }), [progressTreeNodes]);
 
-  // 伏笔债务与剧情线取全书叙事结构快照（与故事画布同一份数据，同一套超期口径）。
-  const { state: structureState, reload: reloadStructure } = useNarrativeStructure(bookId || undefined);
-  const structure = structureState.status === "ready" ? structureState.data : null;
-  const debtByEntryId = useMemo(() => {
-    const map = new Map<string, NonNullable<typeof structure>["foreshadows"][number]>();
-    for (const debt of structure?.foreshadows ?? []) map.set(debt.entryId, debt);
-    return map;
-  }, [structure]);
+   // 伏笔债务与剧情线取全书叙事结构快照（与故事画布同一份数据，同一套超期口径）。
+   const { state: structureState, reload: reloadStructure } = useNarrativeStructure(bookId || undefined);
+   const structure = structureState.status === "ready" ? structureState.data : null;
+   const debtByEntryId = useMemo(() => {
+     const map = new Map<string, NonNullable<typeof structure>["foreshadows"][number]>();
+     for (const debt of structure?.foreshadows ?? []) map.set(debt.entryId, debt);
+     return map;
+   }, [structure]);
 
-  /** 打开统一的大屏「故事画布」：同一本书共用一个 Tab，落在「下一章」，其余视图在画布顶部切换。 */
-  const openProgressionCanvas = () => {
-    onOpen(createStoryProgressionNode(bookId, "next"));
-  };
+   /** 打开统一的大屏「故事画布」：同一本书共用一个 Tab，默认落在「大纲总览」。 */
+   const openProgressionCanvas = () => {
+     onOpen(createStoryProgressionNode(bookId, "overview"));
+   };
 
-  const storyChapterNodes = useMemo(() => pruneStoryChapterTree(chapterTreeNodes), [chapterTreeNodes]);
-  const orderedOutlineNodes = useMemo(() => orderOutlineTree(outlineTreeNodes), [outlineTreeNodes]);
-  const outlineEntryCount = useMemo(() => countOutlineEntries(outlineTreeNodes), [outlineTreeNodes]);
+   const storyChapterNodes = useMemo(() => pruneStoryChapterTree(chapterTreeNodes), [chapterTreeNodes]);
+   const orderedOutlineNodes = useMemo(() => orderOutlineTree(outlineTreeNodes), [outlineTreeNodes]);
+   const outlineEntryCount = useMemo(() => countOutlineEntries(outlineTreeNodes), [outlineTreeNodes]);
 
-  const draftedChapters = useMemo(() => {
-    const out = new Set<number>();
-    const walk = (node: WorkbenchResourceNode): void => {
-      const num = Number(node.metadata?.chapterNumber);
-      if (Number.isInteger(num) && num > 0) out.add(num);
-      node.children?.forEach(walk);
-    };
-    chapterTreeNodes.forEach(walk);
-    return out;
-  }, [chapterTreeNodes]);
+   const draftedChapters = useMemo(() => {
+     const out = new Set<number>();
+     const walk = (node: WorkbenchResourceNode): void => {
+       const num = Number(node.metadata?.chapterNumber);
+       if (Number.isInteger(num) && num > 0) out.add(num);
+       node.children?.forEach(walk);
+     };
+     chapterTreeNodes.forEach(walk);
+     return out;
+   }, [chapterTreeNodes]);
 
-  // ── 驾驶舱数据 ──
-  const currentChapter = useMemo(() => maxChapterFromTree(chapterTreeNodes), [chapterTreeNodes]);
-  const pendingCount = usePendingEventCount(bookId);
-  const staleCount = useStaleSettlementCount(bookId);
-  // 下一章建议只引用故事画布「下一章」页的同一份计划，不另算伏笔到期。
-  const nextChapterPlan = useNextChapterPlan(bookId, currentChapter > 0 ? currentChapter : undefined);
-  const reloadNextChapterPlan = nextChapterPlan.reload;
-  useWritingProgressRefresh(bookId, () => {
-    reloadNextChapterPlan();
-    reloadStructure();
-    invalidateApiPaths([
-      `/api/books/${encodeURIComponent(bookId)}/jingwei/entries`,
-      `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
-      `/api/books/${encodeURIComponent(bookId)}/narrative-memory/stats`,
-      `/api/books/${encodeURIComponent(bookId)}/state`,
-      freshnessPath(bookId),
-    ]);
-  });
+   // ── 驾驶舱数据 ──
+   const currentChapter = useMemo(() => maxChapterFromTree(chapterTreeNodes), [chapterTreeNodes]);
+   const pendingCount = usePendingEventCount(bookId);
+   const staleCount = useStaleSettlementCount(bookId);
+   useWritingProgressRefresh(bookId, () => {
+     reloadStructure();
+     invalidateApiPaths([
+       `/api/books/${encodeURIComponent(bookId)}/jingwei/entries`,
+       `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
+       `/api/books/${encodeURIComponent(bookId)}/narrative-memory/stats`,
+       `/api/books/${encodeURIComponent(bookId)}/state`,
+       freshnessPath(bookId),
+     ]);
+   });
 
-  const plannedCount = useMemo(
-    () => countPlannedOutlineNodes(outlineTreeNodes, draftedChapters),
-    [outlineTreeNodes, draftedChapters],
-  );
-  const nextChapterSuggestion = nextChapterPlan.plan ? describeNextChapterSuggestion(nextChapterPlan.plan) : undefined;
-  const next = useMemo(
-    () => resolveNextAction({
-      hasOutline: outlineTreeNodes.length > 0,
-      plannedCount,
-      pendingCount,
-      staleCount,
-      ...(nextChapterSuggestion ? { nextChapterSuggestion } : {}),
-    }),
-    [outlineTreeNodes.length, plannedCount, pendingCount, staleCount, nextChapterSuggestion],
-  );
+   const plannedCount = useMemo(
+     () => countPlannedOutlineNodes(outlineTreeNodes, draftedChapters),
+     [outlineTreeNodes, draftedChapters],
+   );
+   const next = useMemo(
+     () => resolveNextAction({
+       hasOutline: outlineTreeNodes.length > 0,
+       plannedCount,
+       pendingCount,
+       staleCount,
+     }),
+     [outlineTreeNodes.length, plannedCount, pendingCount, staleCount],
+   );
 
-  /** NEXT 卡点击的唯一入口：tab 类动作切 tab；叙述者 seed 动作一键发送；下一章建议打开画布「下一章」看全貌。 */
-  const handleNextActivate = (action: NextAction) => {
-    if (action.tab) {
-      setActiveSubTab(action.tab);
-      return;
-    }
-    if (action.key === "outline-empty") {
-      void onSendToNarrator?.(OUTLINE_SEED_MESSAGE);
-      return;
-    }
-    if (action.key === "next-chapter") openProgressionCanvas();
-  };
+   const handleNextActivate = (action: NextAction) => {
+     if (action.tab) {
+       setActivePrimaryTab(storylinePrimaryTabOf(action.tab));
+       if (isStorylineThreadTab(action.tab)) setActiveThread(action.tab);
+       return;
+     }
+     if (action.key === "outline-empty") {
+       void onSendToNarrator?.(OUTLINE_SEED_MESSAGE);
+       return;
+     }
+     if (action.key === "next-chapter") openProgressionCanvas();
+   };
 
-  return (
-    <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="storyline-and-planning-panel">
-      {/* 页头模具（设计板 sd-head）：侧栏自己的口径——维护位置、下一步与章节/大纲/章后事实 */}
-      <SidebarPageHead
-        icon={Route}
-        title="故事推进"
-        purpose="看写到哪、下一步写什么"
-        status={currentChapter > 0 ? `第 ${currentChapter} 章` : undefined}
-        action={
-          <Button
-            size="xs"
-            variant="outline"
-            className="h-7 gap-1 text-2xs"
-            title="在中央打开故事画布：下一章 / 推进 / 故事树"
-            aria-label="打开故事画布"
-            data-testid="storyline-open-canvas"
-            onClick={openProgressionCanvas}
-          >
-            <MapIcon className="size-3.5 text-primary" />
-            {/* 窄侧栏里按钮短一点，给页头标题留位；完整名字在 aria-label 与 title 里 */}
-            画布
-          </Button>
-        }
-      />
+   // 各脉络子类的计数与渲染项（统一装配，避免 6 个独立空页签和横滚）
+   const threadCounts: Record<StorylineThreadTab, number> = {
+     foreshadowing: progressEntries.foreshadowing.length,
+     storylines: structure?.storylines.length ?? 0,
+     conflicts: progressEntries.conflicts.length,
+     relationships: progressEntries.relationships.length,
+     timeline: progressEntries.timeline.length,
+     "chapter-summaries": progressEntries["chapter-summaries"].length,
+   };
+   const totalThreadsCount =
+     threadCounts.foreshadowing
+     + threadCounts.storylines
+     + threadCounts.conflicts
+     + threadCounts.relationships
+     + threadCounts.timeline
+     + threadCounts["chapter-summaries"];
+   const memoryBadgeCount = pendingCount + staleCount;
 
-      {/* 推进驾驶舱：所有 tab 共享的位置锚定与下一步引导 */}
-      <StorylineCockpit
-        currentChapter={currentChapter}
-        targetChapters={bookTargetChapters}
-        next={next}
-        onActivate={handleNextActivate}
-        onSendToNarrator={onSendToNarrator}
-      />
+   const foreshadowItems: EntryListItem[] = progressEntries.foreshadowing.map((node) => {
+     const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : "";
+     const debt = debtByEntryId.get(entryId);
+     const urgency = debt ? FORESHADOW_URGENCY_LABEL[debt.urgency] : undefined;
+     const status = debt ? FORESHADOW_STATUS_LABEL[debt.status] : undefined;
+     return {
+       key: node.id,
+       title: node.title,
+       ...(debt?.plantedChapter !== undefined ? { meta: `埋于第 ${debt.plantedChapter} 章` } : {}),
+       ...(urgency ? { badge: urgency } : status ? { badge: { label: status, tone: "text-muted-foreground" } } : {}),
+       selected: selectedNodeId === node.id,
+       onOpen: () => onOpen(node),
+     };
+   });
 
-      {/* 页签：章节与大纲 + 各类随剧情推进的条目 + 章后事实；单行横向滚动，当前页签自动滚进可见区 */}
-      <SidebarTabs<StorylineSubTab>
-        ariaLabel="故事推进视图"
-        idPrefix="storyline"
-        active={activeSubTab}
-        onChange={setActiveSubTab}
-        tabs={[
-          { id: "outline", label: STORYLINE_SUB_TAB_LABELS.outline, icon: <ListTree className="size-3 text-info" aria-hidden="true" /> },
-          { id: "foreshadowing", label: STORYLINE_SUB_TAB_LABELS.foreshadowing, count: progressEntries.foreshadowing.length },
-          { id: "conflicts", label: STORYLINE_SUB_TAB_LABELS.conflicts, count: progressEntries.conflicts.length },
-          { id: "storylines", label: STORYLINE_SUB_TAB_LABELS.storylines, ...(structure ? { count: structure.storylines.length } : {}) },
-          { id: "relationships", label: STORYLINE_SUB_TAB_LABELS.relationships, count: progressEntries.relationships.length },
-          { id: "timeline", label: STORYLINE_SUB_TAB_LABELS.timeline, count: progressEntries.timeline.length },
-          { id: "chapter-summaries", label: STORYLINE_SUB_TAB_LABELS["chapter-summaries"], count: progressEntries["chapter-summaries"].length },
-          { id: "memory", label: STORYLINE_SUB_TAB_LABELS.memory, icon: <History className="size-3 text-warning" aria-hidden="true" /> },
-        ]}
-      />
+   const storylineItems: EntryListItem[] = (structure?.storylines ?? []).map((line) => {
+     const kind = STORYLINE_KIND_LABEL[line.kind] ?? "";
+     const lifecycle = STORYLINE_LIFECYCLE_LABEL[line.lifecycle] ?? "";
+     return {
+       key: line.id,
+       title: line.name,
+       meta: [kind, lifecycle].filter(Boolean).join(" · "),
+       onOpen: () => onOpen(createStoryProgressionNode(bookId, "board")),
+     };
+   });
 
-      {/* 主体内容区：根据选中的 SubTab 互斥渲染 */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2" {...sidebarTabPanelProps("storyline", activeSubTab)}>
-        {activeSubTab === "outline" && (
-          <section id="storyline-chapter-outline" className="rounded-lg border border-border bg-card p-2 space-y-2" data-testid="storyline-chapter-outline">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-2xs font-semibold">
-                <ListTree className="size-3.5 text-info" />
-                <span>章节与大纲</span>
-              </div>
-              {/* 此前数的是顶层节点（「正文」目录 1 个、分类组 1 个），七章两条纲也显示「章节 1 · 大纲 1」。 */}
-              <span className="text-2xs text-muted-foreground">章节 {draftedChapters.size} · 大纲 {outlineEntryCount}</span>
-            </div>
-            <div className="space-y-2">
-              <div>
-                <div className="mb-1 text-2xs font-medium text-muted-foreground">章节树</div>
-                <StorylineResourceTree nodes={storyChapterNodes} emptyLabel="暂无章节" onOpen={onOpen} onAction={onAction} />
-              </div>
-              <div>
-                <div className="mb-1 text-2xs font-medium text-muted-foreground">大纲</div>
-                <StorylineResourceTree nodes={orderedOutlineNodes} emptyLabel="暂无大纲条目" draftedChapters={draftedChapters} onOpen={onOpen} onAction={onAction} />
-              </div>
-            </div>
-          </section>
-        )}
+   const buildSimpleProgressItems = (key: "conflicts" | "relationships"): EntryListItem[] =>
+     progressEntries[key].map((node) => {
+       const fields = entryFields(node);
+       const state = typeof fields.status === "string" && /\p{Script=Han}/u.test(fields.status) ? fields.status : undefined;
+       return {
+         key: node.id,
+         title: node.title,
+         ...(state ? { meta: state } : {}),
+         selected: selectedNodeId === node.id,
+         onOpen: () => onOpen(node),
+       };
+     });
 
-        {activeSubTab === "foreshadowing" && (
-          <section aria-label="伏笔" className="space-y-1.5">
-            <ProgressEntryList
-              testId="storyline-foreshadowing-list"
-              emptyLabel={PROGRESS_EMPTY_COPY.foreshadowing}
-              items={progressEntries.foreshadowing.map((node) => {
-                const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : "";
-                const debt = debtByEntryId.get(entryId);
-                const urgency = debt ? FORESHADOW_URGENCY_LABEL[debt.urgency] : undefined;
-                const status = debt ? FORESHADOW_STATUS_LABEL[debt.status] : undefined;
-                return {
-                  key: node.id,
-                  title: node.title,
-                  ...(debt?.plantedChapter !== undefined ? { meta: `埋于第 ${debt.plantedChapter} 章` } : {}),
-                  ...(urgency ? { badge: urgency } : status ? { badge: { label: status, tone: "text-muted-foreground" } } : {}),
-                  selected: selectedNodeId === node.id,
-                  onOpen: () => onOpen(node),
-                };
-              })}
-            />
-            <p className="px-1 text-2xs text-muted-foreground">要排进下一章或标记回收，去故事画布「下一章」的伏笔账本。</p>
-          </section>
-        )}
+   const conflictItems = buildSimpleProgressItems("conflicts");
+   const relationshipItems = buildSimpleProgressItems("relationships");
 
-        {(activeSubTab === "conflicts" || activeSubTab === "relationships") && (
-          <ProgressEntryList
-            testId={`storyline-${activeSubTab}-list`}
-            emptyLabel={PROGRESS_EMPTY_COPY[activeSubTab]}
-            items={progressEntries[activeSubTab].map((node) => {
-              const fields = entryFields(node);
-              const state = typeof fields.status === "string" && /\p{Script=Han}/u.test(fields.status) ? fields.status : undefined;
-              return {
-                key: node.id,
-                title: node.title,
-                ...(state ? { meta: state } : {}),
-                selected: selectedNodeId === node.id,
-                onOpen: () => onOpen(node),
-              };
-            })}
-          />
-        )}
+   const summaryItems: EntryListItem[] = progressEntries["chapter-summaries"].map((node) => {
+     const chapter = summaryChapterOf(node);
+     return {
+       key: node.id,
+       title: node.title,
+       ...(chapter !== undefined && !node.title.includes(`${chapter}`) ? { meta: `第 ${chapter} 章` } : {}),
+       selected: selectedNodeId === node.id,
+       onOpen: () => onOpen(node),
+     };
+   });
 
-        {activeSubTab === "storylines" && (
-          <section aria-label="剧情线" className="space-y-1.5">
-            {structureState.status === "loading" ? (
-              <p className="px-1 py-2 text-xs text-muted-foreground" role="status">正在读取剧情线…</p>
-            ) : structureState.status === "error" ? (
-              <p className="px-1 py-2 text-xs text-muted-foreground" role="alert">剧情线没读出来（{structureState.message}），稍后再试。</p>
-            ) : (
-              <ProgressEntryList
-                testId="storyline-storylines-list"
-                emptyLabel="还没有剧情线。在故事画布「推进」页可以新建。"
-                items={(structure?.storylines ?? []).map((line) => {
-                  const kind = STORYLINE_KIND_LABEL[line.kind] ?? "";
-                  const lifecycle = STORYLINE_LIFECYCLE_LABEL[line.lifecycle] ?? "";
-                  return {
-                    key: line.id,
-                    title: line.name,
-                    meta: [kind, lifecycle].filter(Boolean).join(" · "),
-                    // 剧情线的编辑在故事画布「推进」页（以剧情线为行）
-                    onOpen: () => onOpen(createStoryProgressionNode(bookId, "board")),
-                  };
-                })}
-              />
-            )}
-            <p className="px-1 text-2xs text-muted-foreground">点一条剧情线，在故事画布「推进」页查看和调整。</p>
-          </section>
-        )}
+   const timelineEntryItems: EntryListItem[] = progressEntries.timeline.map((node) => ({
+     key: node.id,
+     title: node.title,
+     selected: selectedNodeId === node.id,
+     onOpen: () => onOpen(node),
+   }));
 
-        {activeSubTab === "timeline" && (
-          <section aria-label="时间线" className="flex h-full min-h-0 flex-col gap-1.5">
-            <SidebarTabs<"entries" | "story-time" | "chapters">
-              ariaLabel="时间线视图"
-              idPrefix="storyline-timeline"
-              size="sm"
-              active={timelineMode}
-              onChange={setTimelineMode}
-              tabs={[
-                { id: "entries", label: "时间线条目", count: progressEntries.timeline.length },
-                { id: "story-time", label: "故事时间" },
-                { id: "chapters", label: "按章走势" },
-              ]}
-            />
-            <div className="min-h-0 flex-1" {...sidebarTabPanelProps("storyline-timeline", timelineMode)}>
-              {timelineMode === "entries" ? (
-                <ProgressEntryList
-                  testId="storyline-timeline-list"
-                  emptyLabel={PROGRESS_EMPTY_COPY.timeline}
-                  items={progressEntries.timeline.map((node) => ({
-                    key: node.id,
-                    title: node.title,
-                    selected: selectedNodeId === node.id,
-                    onOpen: () => onOpen(node),
-                  }))}
-                />
-              ) : timelineMode === "story-time" ? (
-                <StoryTimeAxisPanel bookId={bookId} />
-              ) : (
-                <ChapterTimelinePanel bookId={bookId} {...(currentChapter > 0 ? { currentChapter } : {})} />
-              )}
-            </div>
-          </section>
-        )}
+   const aggregatedSections: ReadonlyArray<{
+     readonly id: StorylineThreadTab;
+     readonly label: string;
+     readonly items: readonly EntryListItem[];
+     readonly testId: string;
+   }> = [
+     { id: "foreshadowing", label: STORYLINE_SUB_TAB_LABELS.foreshadowing, items: foreshadowItems, testId: "storyline-foreshadowing-list" },
+     { id: "storylines", label: STORYLINE_SUB_TAB_LABELS.storylines, items: storylineItems, testId: "storyline-storylines-list" },
+     { id: "conflicts", label: STORYLINE_SUB_TAB_LABELS.conflicts, items: conflictItems, testId: "storyline-conflicts-list" },
+     { id: "relationships", label: STORYLINE_SUB_TAB_LABELS.relationships, items: relationshipItems, testId: "storyline-relationships-list" },
+     { id: "timeline", label: STORYLINE_SUB_TAB_LABELS.timeline, items: timelineEntryItems, testId: "storyline-timeline-list" },
+     { id: "chapter-summaries", label: STORYLINE_SUB_TAB_LABELS["chapter-summaries"], items: summaryItems, testId: "storyline-chapter-summaries-list" },
+   ];
+   const nonEmptySections = aggregatedSections.filter((sec) => sec.items.length > 0);
 
-        {activeSubTab === "chapter-summaries" && (
-          <ProgressEntryList
-            testId="storyline-chapter-summaries-list"
-            emptyLabel={PROGRESS_EMPTY_COPY["chapter-summaries"]}
-            items={progressEntries["chapter-summaries"].map((node) => {
-              const chapter = summaryChapterOf(node);
-              return {
-                key: node.id,
-                title: node.title,
-                ...(chapter !== undefined && !node.title.includes(`${chapter}`) ? { meta: `第 ${chapter} 章` } : {}),
-                selected: selectedNodeId === node.id,
-                onOpen: () => onOpen(node),
-              };
-            })}
-          />
-        )}
+   return (
+     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="storyline-and-planning-panel">
+       {/* 页头模具：标题 + 用途 + 打开故事画布 */}
+       <SidebarPageHead
+         icon={Route}
+         title="故事推进"
+         purpose="管理分卷大纲、脉络线索与章后记忆"
+         status={currentChapter > 0 ? `第 ${currentChapter} 章` : undefined}
+         action={
+           <Button
+             size="xs"
+             variant="outline"
+             className="h-7 shrink-0 gap-1 whitespace-nowrap px-2 text-2xs"
+             title="在中央打开故事画布：大纲总览 / 推进网格 / 故事树"
+             aria-label="打开故事画布"
+             data-testid="storyline-open-canvas"
+             onClick={openProgressionCanvas}
+           >
+             <MapIcon className="size-3.5 text-primary" />
+             画布
+           </Button>
+         }
+       />
 
-        {activeSubTab === "memory" && (
-          <div data-testid="storyline-memory-section">
-            <StaleSettlementList bookId={bookId} />
-            <NarrativeMemorySummary
-              bookId={bookId}
-              onOpenCenter={() => onOpen(createMemoryCenterNode(bookId))}
-            />
-          </div>
-        )}
+       {/* 推进驾驶舱：位置锚定与维护引导 */}
+       <StorylineCockpit
+         currentChapter={currentChapter}
+         targetChapters={bookTargetChapters}
+         next={next}
+         onActivate={handleNextActivate}
+         onSendToNarrator={onSendToNarrator}
+       />
 
-      </div>
-    </div>
-  );
-}
+       {/* 主聚合 3 页签：等宽 3 格常驻、彻底消除 8 Tab 横向滚动 */}
+       <div
+         role="tablist"
+         aria-label="故事推进视图"
+         className="grid shrink-0 grid-cols-3 gap-0.5 border-b border-border bg-muted/15 px-1.5 pt-1.5"
+         data-testid="storyline-primary-tabs"
+       >
+         {(
+           [
+             {
+               id: "outline" as const,
+               label: STORYLINE_PRIMARY_TAB_LABELS.outline,
+               icon: <ListTree className="size-3 shrink-0 text-info" aria-hidden="true" />,
+             },
+             {
+               id: "threads" as const,
+               label: STORYLINE_PRIMARY_TAB_LABELS.threads,
+               icon: <GitBranch className="size-3 shrink-0 text-primary" aria-hidden="true" />,
+               count: totalThreadsCount > 0 ? totalThreadsCount : undefined,
+             },
+             {
+               id: "memory" as const,
+               label: STORYLINE_PRIMARY_TAB_LABELS.memory,
+               icon: <History className="size-3 shrink-0 text-warning" aria-hidden="true" />,
+               count: memoryBadgeCount > 0 ? memoryBadgeCount : undefined,
+             },
+           ] as const
+         ).map((tab) => {
+           const selected = activePrimaryTab === tab.id;
+           return (
+             <button
+               key={tab.id}
+               type="button"
+               role="tab"
+               id={`storyline-tab-${tab.id}`}
+               aria-selected={selected}
+               aria-controls={`storyline-panel-${tab.id}`}
+               onClick={() => setActivePrimaryTab(tab.id)}
+               className={cn(
+                 "flex h-8 min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-t-[var(--nf-control-radius,var(--radius-md))] border-b-2 px-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                 selected
+                   ? "border-[var(--nf-tab-active-indicator,var(--primary))] bg-[var(--nf-tab-active-bg,var(--background))] text-primary"
+                   : "border-transparent text-muted-foreground hover:text-foreground",
+               )}
+             >
+               {tab.icon}
+               <span className="truncate">{tab.label}</span>
+               {"count" in tab && tab.count !== undefined ? (
+                 <span className="shrink-0 tabular-nums text-2xs font-normal opacity-80">{tab.count}</span>
+               ) : null}
+             </button>
+           );
+         })}
+       </div>
+
+       {/* 主体内容区：按 3 个主视图切换，紧凑清晰无大片空洞留白 */}
+       <div className="flex-1 min-h-0 overflow-y-auto p-2" {...sidebarTabPanelProps("storyline", activePrimaryTab)}>
+         {activePrimaryTab === "outline" && (
+           <section id="storyline-chapter-outline" className="space-y-2.5" data-testid="storyline-chapter-outline">
+             <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/25 px-2.5 py-1.5">
+               <div className="flex items-center gap-1.5 text-2xs font-semibold text-foreground">
+                 <ListTree className="size-3.5 text-info" />
+                 <span>大纲与章节结构</span>
+               </div>
+               <span className="text-2xs tabular-nums text-muted-foreground">
+                 章节 {draftedChapters.size} · 大纲 {outlineEntryCount}
+               </span>
+             </div>
+
+             <div className="rounded-lg border border-border/80 bg-card p-2 space-y-1.5">
+               <div className="flex items-center justify-between">
+                 <span className="text-2xs font-semibold text-muted-foreground">分卷与细纲</span>
+                 <span className="text-2xs tabular-nums text-muted-foreground">{outlineEntryCount} 条</span>
+               </div>
+               <StorylineResourceTree
+                 nodes={orderedOutlineNodes}
+                 emptyLabel="暂无大纲条目，可点击顶部卡片让叙述者起草第一卷卷纲。"
+                 draftedChapters={draftedChapters}
+                 onOpen={onOpen}
+                 onAction={onAction}
+               />
+             </div>
+
+             <div className="rounded-lg border border-border/80 bg-card p-2 space-y-1.5">
+               <div className="flex items-center justify-between">
+                 <span className="text-2xs font-semibold text-muted-foreground">已写章节</span>
+                 <span className="text-2xs tabular-nums text-muted-foreground">{draftedChapters.size} 章</span>
+               </div>
+               <StorylineResourceTree
+                 nodes={storyChapterNodes}
+                 emptyLabel="暂无已写章节"
+                 onOpen={onOpen}
+                 onAction={onAction}
+               />
+             </div>
+           </section>
+         )}
+
+         {activePrimaryTab === "threads" && (
+           <section aria-label="脉络追踪" className="flex h-full min-h-0 flex-col gap-2" data-testid="storyline-threads-section">
+             {/* 紧凑 3×2 芯片网格筛选：零横向滚动，一眼看清各类条目计数 */}
+             <div className="shrink-0 space-y-1.5">
+               <div className="flex items-center justify-between px-0.5">
+                 <span className="text-2xs font-medium text-muted-foreground">
+                   {activeThread === "all"
+                     ? `全部脉络聚合（${totalThreadsCount} 条）`
+                     : `当前筛选：${STORYLINE_SUB_TAB_LABELS[activeThread]}`}
+                 </span>
+                 {activeThread !== "all" ? (
+                   <button
+                     type="button"
+                     onClick={() => setActiveThread("all")}
+                     className="text-2xs text-primary hover:underline"
+                     data-testid="storyline-thread-reset-all"
+                   >
+                     查看全部
+                   </button>
+                 ) : null}
+               </div>
+               <div
+                 className="grid grid-cols-3 gap-1"
+                 role="group"
+                 aria-label="脉络分类筛选"
+                 data-testid="storyline-thread-filter-grid"
+               >
+                 {STORYLINE_THREAD_TABS.map((key) => {
+                   const active = activeThread === key;
+                   const count = threadCounts[key];
+                   return (
+                     <button
+                       key={key}
+                       type="button"
+                       aria-pressed={active}
+                       data-testid={`storyline-thread-chip-${key}`}
+                       onClick={() => setActiveThread((prev) => (prev === key ? "all" : key))}
+                       className={cn(
+                         "flex h-7 items-center justify-between gap-1 rounded-md border px-2 text-2xs transition-colors",
+                         active
+                           ? "border-primary bg-primary/12 font-semibold text-primary"
+                           : count > 0
+                             ? "border-border/70 bg-background/70 text-foreground hover:bg-muted"
+                             : "border-border/50 bg-muted/20 text-muted-foreground hover:bg-muted/50",
+                       )}
+                     >
+                       <span className="truncate">{STORYLINE_SUB_TAB_LABELS[key]}</span>
+                       <span className="shrink-0 tabular-nums opacity-75">{count}</span>
+                     </button>
+                   );
+                 })}
+               </div>
+             </div>
+
+             {/* 聚合总览态：仅展示非空分组，彻底消除稀疏空白页签 */}
+             <div className="min-h-0 flex-1 overflow-y-auto space-y-2 pr-0.5">
+               {activeThread === "all" ? (
+                 nonEmptySections.length > 0 ? (
+                   nonEmptySections.map((sec) => (
+                     <div
+                       key={sec.id}
+                       className="rounded-lg border border-border/70 bg-background/50 p-2 space-y-1"
+                       data-testid={`storyline-aggregate-group-${sec.id}`}
+                     >
+                       <div className="flex items-center justify-between px-1">
+                         <span className="text-2xs font-semibold text-foreground">{sec.label}</span>
+                         <button
+                           type="button"
+                           onClick={() => setActiveThread(sec.id)}
+                           className="text-2xs tabular-nums text-muted-foreground hover:text-primary"
+                         >
+                           {sec.items.length} 条 ›
+                         </button>
+                       </div>
+                       <ProgressEntryList
+                         testId={sec.testId}
+                         emptyLabel=""
+                         items={sec.items.slice(0, 6)}
+                       />
+                       {sec.items.length > 6 ? (
+                         <button
+                           type="button"
+                           onClick={() => setActiveThread(sec.id)}
+                           className="px-1.5 text-2xs text-primary hover:underline"
+                         >
+                           查看全部 {sec.items.length} 条 →
+                         </button>
+                       ) : null}
+                     </div>
+                   ))
+                 ) : (
+                   <div
+                     className="rounded-lg border border-dashed border-border/80 bg-muted/15 px-3 py-5 text-center space-y-1.5"
+                     data-testid="storyline-threads-empty"
+                   >
+                     <p className="text-xs font-medium text-foreground">暂无随剧情推进的脉络条目</p>
+                     <p className="text-2xs leading-relaxed text-muted-foreground">
+                       写完章节并执行章后结算，或在故事画布新建剧情线后，伏笔、矛盾、关系与时间线会自动汇总到这里。
+                     </p>
+                   </div>
+                 )
+               ) : activeThread === "foreshadowing" ? (
+                 <div className="space-y-1.5">
+                   <ProgressEntryList
+                     testId="storyline-foreshadowing-list"
+                     emptyLabel={PROGRESS_EMPTY_COPY.foreshadowing}
+                     items={foreshadowItems}
+                   />
+                   <p className="px-1 text-2xs text-muted-foreground">要排进后续章节或标记回收，可在故事画布「推进」页的伏笔账本操作。</p>
+                 </div>
+               ) : activeThread === "conflicts" ? (
+                 <ProgressEntryList
+                   testId="storyline-conflicts-list"
+                   emptyLabel={PROGRESS_EMPTY_COPY.conflicts}
+                   items={conflictItems}
+                 />
+               ) : activeThread === "relationships" ? (
+                 <ProgressEntryList
+                   testId="storyline-relationships-list"
+                   emptyLabel={PROGRESS_EMPTY_COPY.relationships}
+                   items={relationshipItems}
+                 />
+               ) : activeThread === "storylines" ? (
+                 <div className="space-y-1.5">
+                   {structureState.status === "loading" ? (
+                     <p className="px-1 py-2 text-xs text-muted-foreground" role="status">正在读取剧情线…</p>
+                   ) : structureState.status === "error" ? (
+                     <p className="px-1 py-2 text-xs text-muted-foreground" role="alert">剧情线没读出来（{structureState.message}），稍后再试。</p>
+                   ) : (
+                     <ProgressEntryList
+                       testId="storyline-storylines-list"
+                       emptyLabel="还没有剧情线。在故事画布「推进」页可以新建。"
+                       items={storylineItems}
+                     />
+                   )}
+                   <p className="px-1 text-2xs text-muted-foreground">点一条剧情线，在故事画布「推进」页查看和调整。</p>
+                 </div>
+               ) : activeThread === "timeline" ? (
+                 <div className="flex h-full min-h-0 flex-col gap-1.5">
+                   <SidebarTabs<"entries" | "story-time" | "chapters">
+                     ariaLabel="时间线视图"
+                     idPrefix="storyline-timeline"
+                     size="sm"
+                     active={timelineMode}
+                     onChange={setTimelineMode}
+                     tabs={[
+                       { id: "entries", label: "时间线条目", count: progressEntries.timeline.length },
+                       { id: "story-time", label: "故事时间" },
+                       { id: "chapters", label: "按章走势" },
+                     ]}
+                   />
+                   <div className="min-h-0 flex-1" {...sidebarTabPanelProps("storyline-timeline", timelineMode)}>
+                     {timelineMode === "entries" ? (
+                       <ProgressEntryList
+                         testId="storyline-timeline-list"
+                         emptyLabel={PROGRESS_EMPTY_COPY.timeline}
+                         items={timelineEntryItems}
+                       />
+                     ) : timelineMode === "story-time" ? (
+                       <StoryTimeAxisPanel bookId={bookId} />
+                     ) : (
+                       <ChapterTimelinePanel bookId={bookId} {...(currentChapter > 0 ? { currentChapter } : {})} />
+                     )}
+                   </div>
+                 </div>
+               ) : (
+                 <ProgressEntryList
+                   testId="storyline-chapter-summaries-list"
+                   emptyLabel={PROGRESS_EMPTY_COPY["chapter-summaries"]}
+                   items={summaryItems}
+                 />
+               )}
+             </div>
+           </section>
+         )}
+
+         {activePrimaryTab === "memory" && (
+           <div data-testid="storyline-memory-section" className="space-y-2">
+             <StaleSettlementList bookId={bookId} />
+             <NarrativeMemorySummary
+               bookId={bookId}
+               onOpenCenter={() => onOpen(createMemoryCenterNode(bookId))}
+             />
+           </div>
+         )}
+       </div>
+     </div>
+   );
+ }

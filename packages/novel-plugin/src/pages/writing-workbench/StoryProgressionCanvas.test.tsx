@@ -5,14 +5,40 @@ vi.mock("./StoryProgressBoard", () => ({
   StoryProgressBoard: ({
     bookId,
     currentChapter,
+    hideNextChapterCard,
     onOpenChapter,
   }: {
     bookId: string;
     currentChapter?: number;
+    hideNextChapterCard?: boolean;
     onOpenChapter?: (chapterNumber: number) => void;
   }) => (
-    <div data-testid="mock-progress-board" data-book={bookId} data-chapter={currentChapter ?? ""}>
-      <button type="button" onClick={() => onOpenChapter?.(30)}>去写第 30 章</button>
+    <div
+      data-testid="mock-progress-board"
+      data-book={bookId}
+      data-chapter={currentChapter ?? ""}
+      data-hide-next={hideNextChapterCard ? "true" : "false"}
+    >
+      <button type="button" onClick={() => onOpenChapter?.(30)}>打开第 30 章</button>
+    </div>
+  ),
+}));
+
+vi.mock("./OutlineOverviewPanel", () => ({
+  OutlineOverviewPanel: ({
+    bookId,
+    currentChapter,
+    onOpenBoardProgress,
+    onOpenStoryTree,
+  }: {
+    bookId: string;
+    currentChapter?: number;
+    onOpenBoardProgress?: () => void;
+    onOpenStoryTree?: () => void;
+  }) => (
+    <div data-testid="mock-outline-overview" data-book={bookId} data-chapter={String(currentChapter ?? "")}>
+      <button type="button" onClick={() => onOpenBoardProgress?.()}>看推进网格</button>
+      <button type="button" onClick={() => onOpenStoryTree?.()}>看故事树</button>
     </div>
   ),
 }));
@@ -49,25 +75,6 @@ vi.mock("./CanonicalTreesPanel", () => ({
   ),
 }));
 
-vi.mock("./NextChapterPanel", () => ({
-  NextChapterPanel: ({
-    bookId,
-    currentChapter,
-    onOpenBoardProgress,
-    onOpenCausalTree,
-  }: {
-    bookId: string;
-    currentChapter?: number;
-    onOpenBoardProgress?: () => void;
-    onOpenCausalTree?: () => void;
-  }) => (
-    <div data-testid="mock-next-chapter" data-book={bookId} data-chapter={String(currentChapter ?? "")}>
-      <button type="button" onClick={() => onOpenBoardProgress?.()}>看推进板</button>
-      <button type="button" onClick={() => onOpenCausalTree?.()}>看因果树</button>
-    </div>
-  ),
-}));
-
 import { StoryProgressionCanvas, normalizeStoryProgressionView } from "./StoryProgressionCanvas";
 
 beforeEach(() => {
@@ -78,47 +85,45 @@ afterEach(() => {
   cleanup();
 });
 
-describe("StoryProgressionCanvas 故事推进外壳", () => {
-  it("默认打开「下一章」整合页；故事树等仍在顶部页签", async () => {
+describe("StoryProgressionCanvas 故事画布外壳", () => {
+  it("默认打开「大纲总览」，已移除与写作台重复的「下一章」页签", async () => {
     render(<StoryProgressionCanvas bookId="book-1" currentChapter={29} />);
 
     expect(screen.getByTestId("story-progression-canvas")).toBeTruthy();
-    expect(screen.getByText("故事推进")).toBeTruthy();
+    expect(screen.getByText("故事画布")).toBeTruthy();
     expect(screen.getByTestId("story-progression-chapter-badge").textContent).toContain("第 29 章");
 
-    // 默认视图 = 下一章（回归：此前组件默认值仍是故事树，「下一章」从没当过落点）
-    await waitFor(() => expect(screen.getByTestId("mock-next-chapter")).toBeTruthy());
-    expect(screen.getByRole("tab", { name: /下一章/ }).getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(screen.getByTestId("mock-outline-overview")).toBeTruthy());
+    expect(screen.getByRole("tab", { name: /大纲总览/ }).getAttribute("aria-selected")).toBe("true");
 
+    expect(screen.queryByRole("tab", { name: /下一章/ })).toBeNull();
     expect(screen.queryByRole("tab", { name: /故事地图/ })).toBeNull();
     expect(screen.queryByRole("tab", { name: /双螺旋/ })).toBeNull();
 
+    expect(screen.getByRole("tab", { name: /推进网格/ })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /故事树/ })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: /推进/ })).toBeTruthy();
-    // 顶层旧重复入口已下线
-    expect(screen.queryByRole("tab", { name: /发展历程/ })).toBeNull();
-    expect(screen.queryByRole("tab", { name: /章节脉络/ })).toBeNull();
-    expect(screen.queryByRole("tab", { name: /关系网/ })).toBeNull();
   });
 
-  it("可切到推进网格并透传章节号", async () => {
+  it("可切到推进网格并透传章节号且隐藏重复的下一章焦点卡", async () => {
     render(<StoryProgressionCanvas bookId="book-1" currentChapter={29} />);
-    fireEvent.click(screen.getByRole("tab", { name: /推进/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /推进网格/ }));
     await waitFor(() => expect(screen.getByTestId("mock-progress-board")).toBeTruthy());
     expect(screen.getByTestId("mock-progress-board").getAttribute("data-chapter")).toBe("29");
+    expect(screen.getByTestId("mock-progress-board").getAttribute("data-hide-next")).toBe("true");
   });
 
-  it("画布提供下一章 / 推进 / 大纲总览 / 故事树；「执行」已迁到写作视图，旧取值落到「下一章」不白屏", async () => {
-    render(<StoryProgressionCanvas bookId="book-1" currentChapter={12} initialView="workflow" />);
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["下一章", "推进", "大纲总览", "故事树"]);
+  it("画布只提供大纲总览 / 推进网格 / 故事树；旧的 next/workflow 取值平滑落到大纲总览不白屏", async () => {
+    render(<StoryProgressionCanvas bookId="book-1" currentChapter={12} initialView="next" />);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["大纲总览", "推进网格", "故事树"]);
     expect(screen.queryByRole("tab", { name: /执行/ })).toBeNull();
-    // 旧的 workflow 取值（历史节点 / 外部传参）落到「下一章」，画布照常有内容
-    await waitFor(() => expect(screen.getByTestId("mock-next-chapter")).toBeTruthy());
-    expect(screen.getByRole("tab", { name: /下一章/ }).getAttribute("aria-selected")).toBe("true");
-    expect(normalizeStoryProgressionView("workflow")).toBe("next");
+    expect(screen.queryByRole("tab", { name: /下一章/ })).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("mock-outline-overview")).toBeTruthy());
+    expect(screen.getByRole("tab", { name: /大纲总览/ }).getAttribute("aria-selected")).toBe("true");
+    expect(normalizeStoryProgressionView("workflow")).toBe("overview");
+    expect(normalizeStoryProgressionView("next")).toBe("overview");
   });
 
-  it("推进页的正图已彻底移除无用的「章节」竖棍，只保留发展历程与因果脉络", async () => {
+  it("故事树只保留发展历程与因果脉络", async () => {
     render(<StoryProgressionCanvas bookId="book-1" initialView="tree" />);
     await waitFor(() => expect(screen.getByTestId("mock-chronicle")).toBeTruthy());
     const kinds = screen.getByTestId("mock-chronicle").getAttribute("data-kinds") ?? "";
@@ -156,29 +161,26 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
     });
   });
 
-  it("「下一章」页的视图入口：推进板切到 board，因果树切到 tree 的 causal 子树", async () => {
+  it("大纲总览内的视图切换入口可切到推进网格与故事树", async () => {
     render(<StoryProgressionCanvas bookId="book-1" />);
-    await waitFor(() => expect(screen.getByTestId("mock-next-chapter")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("mock-outline-overview")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "看推进板" }));
+    fireEvent.click(screen.getByRole("button", { name: "看推进网格" }));
     await waitFor(() => {
       expect(screen.getByTestId("mock-progress-board")).toBeTruthy();
-      expect(screen.getByRole("tab", { name: /推进/ }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByRole("tab", { name: /推进网格/ }).getAttribute("aria-selected")).toBe("true");
     });
 
-    // 回到「下一章」再从因果树入口进：树应定位到 causal 子树
-    fireEvent.click(screen.getByRole("tab", { name: /下一章/ }));
-    await waitFor(() => screen.getByTestId("mock-next-chapter"));
-    fireEvent.click(screen.getByRole("button", { name: "看因果树" }));
+    fireEvent.click(screen.getByRole("tab", { name: /大纲总览/ }));
+    await waitFor(() => screen.getByTestId("mock-outline-overview"));
+    fireEvent.click(screen.getByRole("button", { name: "看故事树" }));
     await waitFor(() => {
-      const tree = screen.getByTestId("mock-network");
-      expect(tree).toBeTruthy();
-      expect(tree.getAttribute("data-kind")).toBe("causal");
+      expect(screen.getByTestId("mock-chronicle")).toBeTruthy();
       expect(screen.getByRole("tab", { name: /故事树/ }).getAttribute("aria-selected")).toBe("true");
     });
   });
 
-  it("旧 initialView 别名正确映射到故事树的对应子树（chapters/outline 均落到 chronicle 发展历程，不再跳章节树）", async () => {
+  it("旧 initialView 别名正确映射到故事树的对应子树", async () => {
     const { rerender } = render(<StoryProgressionCanvas bookId="book-1" initialView="map" />);
     await waitFor(() => expect(screen.getByTestId("mock-network")).toBeTruthy());
     expect(screen.getByTestId("mock-network").getAttribute("data-kind")).toBe("causal");
@@ -199,8 +201,8 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
   it("章节跳转回调透传给推进网格", async () => {
     const onOpenChapter = vi.fn();
     render(<StoryProgressionCanvas bookId="book-1" onOpenChapter={onOpenChapter} />);
-    fireEvent.click(screen.getByRole("tab", { name: /推进/ }));
-    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "去写第 30 章" })));
+    fireEvent.click(screen.getByRole("tab", { name: /推进网格/ }));
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "打开第 30 章" })));
     expect(onOpenChapter).toHaveBeenCalledWith(30);
   });
 
@@ -220,19 +222,21 @@ describe("StoryProgressionCanvas 故事推进外壳", () => {
 
 describe("normalizeStoryProgressionView 与 resolveInitialTreeKind", () => {
   it("保留合法主视图取值", () => {
-    expect(normalizeStoryProgressionView("next")).toBe("next");
+    expect(normalizeStoryProgressionView("overview")).toBe("overview");
     expect(normalizeStoryProgressionView("tree")).toBe("tree");
     expect(normalizeStoryProgressionView("board")).toBe("board");
   });
 
-  it("旧取值落到故事树主视图并解析出对应子树 kind，非法值回落到「下一章」整合页", () => {
+  it("旧取值映射到对应视图，非法值回落到大纲总览", () => {
+    expect(normalizeStoryProgressionView("next")).toBe("overview");
+    expect(normalizeStoryProgressionView("workflow")).toBe("overview");
     expect(normalizeStoryProgressionView("chronicle")).toBe("tree");
     expect(normalizeStoryProgressionView("network")).toBe("tree");
     expect(normalizeStoryProgressionView("timeline")).toBe("tree");
     expect(normalizeStoryProgressionView("map")).toBe("tree");
     expect(normalizeStoryProgressionView("evolution")).toBe("tree");
     expect(normalizeStoryProgressionView("outline")).toBe("tree");
-    expect(normalizeStoryProgressionView(undefined)).toBe("next");
-    expect(normalizeStoryProgressionView(42)).toBe("next");
+    expect(normalizeStoryProgressionView(undefined)).toBe("overview");
+    expect(normalizeStoryProgressionView(42)).toBe("overview");
   });
 });

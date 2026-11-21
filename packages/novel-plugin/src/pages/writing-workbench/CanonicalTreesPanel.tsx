@@ -606,7 +606,7 @@ export function CanonicalTreesPanel({
                   setQuery("");
                 }}
                 className={
-                  "rounded px-2 py-1 text-2xs transition-colors "
+                  "shrink-0 whitespace-nowrap rounded px-2 py-1 text-2xs transition-colors "
                   + (active ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")
                 }
               >

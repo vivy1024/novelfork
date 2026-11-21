@@ -2526,7 +2526,7 @@ export function IdeWorkbench({
                   hasChapters={bookHasChapters}
                   onOpenNewBookGuide={handleShowBookOverview}
                   {...(workflowNode ? { onOpenWorkflow: () => handleOpen(workflowNode) } : {})}
-                  {...(bookId ? { onOpenStoryCanvas: () => handleOpen(createStoryProgressionNode(bookId, "next")) } : {})}
+                  {...(bookId ? { onOpenStoryCanvas: () => handleOpen(createStoryProgressionNode(bookId, "overview")) } : {})}
                 />,
                 getContainer("write")!
               )}

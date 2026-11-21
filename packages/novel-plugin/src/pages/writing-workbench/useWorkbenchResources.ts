@@ -227,12 +227,12 @@ export function createMemoryCenterNode(bookId: string): WorkbenchResourceNode {
   };
 }
 
-/** 故事推进画布的合法初始视图；默认落在「下一章」，旧取值由画布归一化。 */
+/** 故事推进画布的合法初始视图；默认落在「大纲总览」，旧取值由画布归一化。 */
 export type StoryProgressionPreferredView =
-  | "next"
   | "overview"
-  | "tree"
   | "board"
+  | "tree"
+  | "next"
   | "chronicle"
   | "network"
   | "timeline"
@@ -249,7 +249,7 @@ export type StoryProgressionPreferredView =
  */
 export function createStoryProgressionNode(
   bookId: string,
-  preferredView: StoryProgressionPreferredView = "next",
+  preferredView: StoryProgressionPreferredView = "overview",
 ): WorkbenchResourceNode {
   return {
     id: `story-progression:${bookId}`,

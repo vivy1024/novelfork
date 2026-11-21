@@ -31,8 +31,8 @@ function newBeat(): BeatBudgetItem {
 
 export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = false }: BeatBudgetEditorProps) {
   const beats = [...value];
-  // chapterTarget 未知时不跑校验：拿不到目标字数就没有判定依据，不能编一个默认值。
-  const report = chapterTarget > 0 ? checkBeatBudget({ chapterTarget, beats }) : null;
+  // 未手拆情节点时不报红黄阻塞（AI 会在蓝图阶段自动规划节拍）；只有作者手动添加情节点且已知目标字数时才实时校验预算。
+  const report = chapterTarget > 0 && beats.length > 0 ? checkBeatBudget({ chapterTarget, beats }) : null;
 
   const patch = (index: number, next: Partial<BeatBudgetItem>) => {
     const current = beats[index];
@@ -56,7 +56,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
     <div className="flex flex-col gap-1.5" data-testid="beat-budget-editor">
       {beats.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          还没有情节点。
+          未手拆情节点时，AI 会在蓝图阶段按目标字数自动规划节奏；如需亲自定节拍，点击下方添加。
         </p>
       )}
 
@@ -152,7 +152,7 @@ export function BeatBudgetEditor({ chapterTarget, value, onChange, disabled = fa
         添加情节点
       </button>
 
-      {report === null ? (
+      {beats.length === 0 ? null : report === null ? (
         <p className="text-xs text-muted-foreground" data-testid="beat-editor-budget-line">
           未知本章目标字数，无法校验预算。
         </p>

@@ -2,9 +2,11 @@
  * 中间全宽「AI 写章筹备台」（ChapterPrepWorkspace）
  *
  * 定位：只服务于「待写/准备写的章节」，不侵入已写章节的正文信纸模式。
- * 左右宽屏双栏布局：
- * - 左栏：本章在全书大纲中的位置（所属卷目标/进度、待写章节上下文、细纲摘要、近章到期伏笔）+ 写前预检（chapter.preflight）红绿灯与一键修；
- * - 右栏：血肉与弹药装配区 —— 「文风范文 & 机制卡」点菜勾选 + 情节点字数预算（BeatBudgetEditor）+ 写作目标指令 + 热梗二创转译派单 + 三大动作按钮（生成蓝图 / AI 写本章 / 铺开空白信纸手写）。
+ * 居中单列三步线性主流程（适配三栏分屏中宽与宽屏，无 12 列双栏挤压）：
+ * 1. 顶部章头摘要条 + 状态灯 + 一键刷新/手写入口；
+ * 2. 步骤 1 · 确认本章目标与大纲承接（核心指令框 + 大纲/前章/到期伏笔轻量摘要）；
+ * 3. 步骤 2 · 可选增强装配（机制卡 / 文风范文点菜 + 防注水细节锚点 + 按需展开节拍预算与热梗转译）；
+ * 4. 步骤 3 · 起草派单（生成蓝图 / 交叙述者起草本章）+ 底部折叠高级诊断区（写前预检、AI 注入透视、创作罗盘、内嵌工作流）。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -145,6 +147,11 @@ export function ChapterPrepWorkspace({
   const [confirmingCardId, setConfirmingCardId] = useState<string | null>(null);
   const [fixBusy, setFixBusy] = useState<WriteFixActionId | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [outlineExpanded, setOutlineExpanded] = useState(false);
+  const [suppliesOpen, setSuppliesOpen] = useState(true);
+  const [beatsOpen, setBeatsOpen] = useState(false);
+  const [preflightOpen, setPreflightOpen] = useState(false);
+  const [compassOpen, setCompassOpen] = useState(false);
 
   // 当切到新的待写大纲章节时，把细纲摘要预填进指令框（如果作者还没写过其它内容）
   useEffect(() => {
@@ -504,95 +511,108 @@ export function ChapterPrepWorkspace({
           ? { icon: XCircle, label: "存在阻断项", cls: "text-destructive border-destructive/40 bg-destructive/10" }
           : { icon: Compass, label: "等待预检", cls: "text-muted-foreground border-border bg-muted/40" };
   const LightIcon = lightBadge.icon;
+  const blockingOrWarnChecks = useMemo(
+    () => model.checks.filter((c) => c.state !== "ok"),
+    [model.checks],
+  );
+  const selectedSupplyCount = selectedMechanisms.size + selectedSamples.size;
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-background p-4 sm:p-5" data-testid="chapter-prep-workspace">
-      <div className="mx-auto max-w-[1160px] space-y-4">
-        {/* 顶部章头信息条 */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-2xs">
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="gap-1 border-primary/40 bg-primary/8 text-primary">
-                <Sparkles className="size-3" />
-                AI 写章筹备 · 第 {effectiveChapterNumber} 章
-              </Badge>
+    <div className="h-full min-h-0 overflow-y-auto bg-background px-4 py-4 sm:px-6 sm:py-5" data-testid="chapter-prep-workspace">
+      <div className="mx-auto max-w-[820px] space-y-4">
+        {/* 顶部章头摘要条：单行清晰、按钮绝不挤压折行 */}
+        <header className="rounded-xl border border-border/80 bg-card px-4 py-3.5 shadow-2xs space-y-2.5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="shrink-0 gap-1 border-primary/40 bg-primary/8 text-primary">
+                  <Sparkles className="size-3" />
+                  AI 写章筹备 · 第 {effectiveChapterNumber} 章
+                </Badge>
+                <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium", lightBadge.cls)}>
+                  <LightIcon className="size-3" />
+                  {lightBadge.label}
+                </span>
+              </div>
               <h2 className="nf-display truncate text-base font-bold text-foreground">
                 {targetChapter?.title || `第 ${effectiveChapterNumber} 章（待写）`}
               </h2>
-              <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium", lightBadge.cls)}>
-                <LightIcon className="size-3" />
-                {lightBadge.label}
-              </span>
+              <p className="text-xs text-muted-foreground">
+                {outlinePosition?.vol
+                  ? `所属卷：${outlinePosition.vol.title}（已写 ${outlinePosition.draftedCountInVol}/${outlinePosition.span} 章）`
+                  : "尚未绑定卷纲"}
+                {effectiveWordTarget > 0 ? ` · 目标 ${effectiveWordTarget.toLocaleString()} 字` : ""}
+                {primaryStyleTitle ? ` · 主文风：${primaryStyleTitle}` : ""}
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {outlinePosition?.vol
-                ? `所属卷：${outlinePosition.vol.title}（已写 ${outlinePosition.draftedCountInVol}/${outlinePosition.span} 章）`
-                : "尚未绑定卷纲"}
-              {effectiveWordTarget > 0 ? ` · 目标 ${effectiveWordTarget.toLocaleString()} 字` : ""}
-              {primaryStyleTitle ? ` · 主文风：${primaryStyleTitle}` : ""}
-            </p>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                void runPreflight();
-                void loadSupplies();
-                reloadStructure();
-              }}
-              disabled={preflightLoading}
-              className="gap-1 text-xs"
-            >
-              <RefreshCw className={cn("size-3.5", preflightLoading && "animate-spin")} />
-              <span>刷新筹备态</span>
-            </Button>
-            {onOpenWorkflow ? (
-              <Button type="button" size="sm" variant="outline" onClick={onOpenWorkflow} className="gap-1 text-xs">
-                <Workflow className="size-3.5 text-primary" />
-                <span>按工作流工序写</span>
-              </Button>
-            ) : null}
-            {onCreateAndOpenChapter ? (
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => onCreateAndOpenChapter(effectiveChapterNumber, targetChapter?.title)}
-                className="gap-1 text-xs border-primary/40 text-primary hover:bg-primary/10"
-                data-testid="prep-open-blank-paper"
+                onClick={() => {
+                  void runPreflight();
+                  void loadSupplies();
+                  reloadStructure();
+                }}
+                disabled={preflightLoading}
+                className="h-8 shrink-0 gap-1 whitespace-nowrap px-2.5 text-xs"
               >
-                <FilePlus2 className="size-3.5" />
-                <span>直接铺开信纸手写</span>
+                <RefreshCw className={cn("size-3.5", preflightLoading && "animate-spin")} />
+                <span>刷新筹备态</span>
               </Button>
-            ) : null}
+              {onOpenWorkflow ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onOpenWorkflow}
+                  className="h-8 shrink-0 gap-1 whitespace-nowrap px-2.5 text-xs"
+                >
+                  <Workflow className="size-3.5 text-primary" />
+                  <span>按工作流写</span>
+                </Button>
+              ) : null}
+              {onCreateAndOpenChapter ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onCreateAndOpenChapter(effectiveChapterNumber, targetChapter?.title)}
+                  className="h-8 shrink-0 gap-1 whitespace-nowrap border-primary/40 px-2.5 text-xs text-primary hover:bg-primary/10"
+                  data-testid="prep-open-blank-paper"
+                >
+                  <FilePlus2 className="size-3.5" />
+                  <span>直接手写</span>
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        {/* 本章内嵌工作流进度与一键启动条（免切页查看流水线与原地审批） */}
-        <InlineWorkflowRunBar
-          bookId={bookId}
-          chapterNumber={effectiveChapterNumber}
-          {...(narratorId ? { narratorId } : {})}
-          {...(onSendToNarrator ? { onSendToNarrator } : {})}
-          {...(onOpenWorkflow ? { onOpenFullWorkflowStudio: onOpenWorkflow } : {})}
-          onChapterCommitted={() => {
-            reloadStructure();
-            if (onJumpToChapter) onJumpToChapter(effectiveChapterNumber);
-          }}
-          showLauncherWhenIdle
-        />
+          {/* 轻量工作流状态条（只在有活跃任务时显式展开，空闲时极简） */}
+          <InlineWorkflowRunBar
+            bookId={bookId}
+            chapterNumber={effectiveChapterNumber}
+            {...(narratorId ? { narratorId } : {})}
+            {...(onSendToNarrator ? { onSendToNarrator } : {})}
+            {...(onOpenWorkflow ? { onOpenFullWorkflowStudio: onOpenWorkflow } : {})}
+            onChapterCommitted={() => {
+              reloadStructure();
+              if (onJumpToChapter) onJumpToChapter(effectiveChapterNumber);
+            }}
+            showLauncherWhenIdle={false}
+          />
+        </header>
 
         {actionFeedback ? (
-          <div className="rounded-md border border-primary/30 bg-primary/8 px-3 py-2 text-xs text-primary">
+          <div className="rounded-lg border border-primary/30 bg-primary/8 px-3.5 py-2 text-xs text-primary">
             {actionFeedback}
           </div>
         ) : null}
 
         {preflightError ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3.5 py-2 text-xs text-destructive">
             预检失败：{preflightError}
           </div>
         ) : null}
@@ -600,11 +620,11 @@ export function ChapterPrepWorkspace({
         {/* 待确认资产积压提醒条（未确认前不进入 AI 写章上下文） */}
         {pendingSummary && pendingSummary.total > 0 ? (
           <div
-            className="rounded-lg border border-warning/40 bg-warning/8 px-3.5 py-2.5 space-y-2"
+            className="rounded-xl border border-warning/40 bg-warning/8 px-3.5 py-2.5 space-y-2"
             data-testid="prep-pending-review-banner"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex min-w-0 flex-1 items-center gap-2 text-xs">
                 <ClipboardCheck className="size-4 shrink-0 text-warning" />
                 <span className="font-medium text-foreground">
                   当前有 {pendingSummary.total} 项资产（
@@ -615,13 +635,13 @@ export function ChapterPrepWorkspace({
                   ）处于「待确认」状态，未确认前不会注入 AI 写章。
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                 <Button
                   type="button"
                   size="xs"
                   variant="outline"
                   onClick={() => setPendingExpanded((prev) => !prev)}
-                  className="h-6 gap-1 px-2 text-2xs"
+                  className="h-7 shrink-0 gap-1 whitespace-nowrap px-2 text-2xs"
                   data-testid="prep-pending-toggle-btn"
                 >
                   {pendingExpanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
@@ -633,7 +653,7 @@ export function ChapterPrepWorkspace({
                     size="xs"
                     variant="outline"
                     onClick={onOpenLoreZone}
-                    className="h-6 px-2 text-2xs"
+                    className="h-7 shrink-0 whitespace-nowrap px-2 text-2xs"
                   >
                     去设定/声线
                   </Button>
@@ -644,7 +664,7 @@ export function ChapterPrepWorkspace({
                     size="xs"
                     variant="outline"
                     onClick={onOpenDissectZone}
-                    className="h-6 px-2 text-2xs"
+                    className="h-7 shrink-0 whitespace-nowrap px-2 text-2xs"
                   >
                     去文风规则
                   </Button>
@@ -678,7 +698,7 @@ export function ChapterPrepWorkspace({
                             variant="outline"
                             disabled={approvingId !== null}
                             onClick={() => void handleInlinePendingApprove(item)}
-                            className="h-5 shrink-0 gap-1 border-success/40 px-1.5 text-2xs text-success hover:bg-success/10"
+                            className="h-6 shrink-0 gap-1 whitespace-nowrap border-success/40 px-2 text-2xs text-success hover:bg-success/10"
                             data-testid={`prep-inline-approve-${item.id}`}
                           >
                             {isBusy ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
@@ -690,7 +710,7 @@ export function ChapterPrepWorkspace({
                             size="xs"
                             variant="outline"
                             onClick={() => handlePendingNavigate(item)}
-                            className="h-5 shrink-0 px-1.5 text-2xs"
+                            className="h-6 shrink-0 whitespace-nowrap px-2 text-2xs"
                           >
                             去确认 →
                           </Button>
@@ -703,72 +723,68 @@ export function ChapterPrepWorkspace({
           </div>
         ) : null}
 
-        {/* 主体宽屏双栏：左「大纲位置与预检」，右「血肉供料、节拍预算与派单」 */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          {/* 左列（5 格）：大纲位置 + 写前预检 + 创作罗盘 */}
-          <div className="space-y-4 lg:col-span-5">
-            <section className="rounded-lg border border-border bg-card p-3.5 space-y-3" data-testid="prep-outline-position">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                  <Layers className="size-3.5 text-primary" />
-                  在本书大纲中的位置
-                </h3>
-                {onOpenOutlineZone ? (
-                  <button type="button" onClick={onOpenOutlineZone} className="text-2xs text-primary hover:underline">
-                    去大纲画布 →
-                  </button>
+        {/* ════════════════════════════════════════════════════════════════
+            步骤 1 · 确认本章目标与大纲承接
+           ════════════════════════════════════════════════════════════════ */}
+        <section className="rounded-xl border border-border bg-card p-4 space-y-3" data-testid="prep-step-1-goal">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-2xs font-bold text-primary-foreground">
+                1
+              </span>
+              <h3 className="text-sm font-semibold text-foreground">明确本章目标</h3>
+              <span className="text-2xs text-muted-foreground">写清这一章最核心的推进事件或转折</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setOutlineExpanded((prev) => !prev)}
+                className="inline-flex items-center gap-1 whitespace-nowrap text-2xs text-muted-foreground hover:text-foreground"
+                data-testid="prep-outline-toggle"
+              >
+                <Layers className="size-3 text-primary" />
+                <span>{outlineExpanded ? "收起大纲承接" : "查看大纲与伏笔"}</span>
+                {outlinePosition?.urgentHooks && outlinePosition.urgentHooks.length > 0 ? (
+                  <Badge variant="outline" className="h-4 border-warning/40 bg-warning/10 px-1 text-2xs text-warning">
+                    {outlinePosition.urgentHooks.length} 伏笔待收
+                  </Badge>
                 ) : null}
-              </div>
-
-              {outlinePosition?.vol ? (
-                <div className="rounded-md border border-border/70 bg-muted/25 p-2.5 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-foreground">{outlinePosition.vol.title}</span>
-                    <span className="text-2xs text-muted-foreground">
-                      第 {outlinePosition.vol.chapterRange.from}–{outlinePosition.vol.chapterRange.to} 章
-                    </span>
-                  </div>
-                  {outlinePosition.vol.goal ? (
-                    <p className="text-2xs leading-relaxed text-muted-foreground">卷目标：{outlinePosition.vol.goal}</p>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="text-2xs text-muted-foreground">尚未规划卷纲，可先去「大纲」分区或让叙述者起第一卷。</p>
-              )}
-
-              {targetChapter?.summary ? (
-                <div className="rounded-md border border-primary/25 bg-primary/5 p-2.5 text-2xs space-y-1">
-                  <span className="font-semibold text-primary">本章细纲锚点</span>
-                  <p className="leading-relaxed text-foreground">{targetChapter.summary}</p>
-                </div>
+              </button>
+              {onOpenOutlineZone ? (
+                <button
+                  type="button"
+                  onClick={onOpenOutlineZone}
+                  className="whitespace-nowrap text-2xs text-primary hover:underline"
+                >
+                  去大纲画布 →
+                </button>
               ) : null}
+            </div>
+          </div>
 
-              {outlinePosition?.scenes && outlinePosition.scenes.length > 0 ? (
-                <div className="space-y-1.5">
-                  <span className="text-2xs font-medium text-muted-foreground">已挂载场景节拍 ({outlinePosition.scenes.length})</span>
-                  <ul className="space-y-1">
-                    {outlinePosition.scenes.map((sc, i) => (
-                      <li key={sc.id} className="rounded border border-border/70 bg-background/60 px-2.5 py-1.5 text-2xs">
-                        <span className="font-medium text-foreground">
-                          {i + 1}. {sc.title}
-                        </span>
-                        {sc.summary ? <p className="mt-0.5 text-muted-foreground">{sc.summary}</p> : null}
-                      </li>
-                    ))}
-                  </ul>
+          {/* 细纲/前章轻量承接条（一行可见，详情按需展开，不占首屏） */}
+          {(targetChapter?.summary || outlinePosition?.prevChapter || outlineExpanded) ? (
+            <div
+              className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2 space-y-2 text-xs"
+              data-testid="prep-outline-position"
+            >
+              {targetChapter?.summary ? (
+                <div className="space-y-0.5">
+                  <span className="text-2xs font-semibold text-primary">本章细纲锚点</span>
+                  <p className="text-2xs leading-relaxed text-foreground">{targetChapter.summary}</p>
                 </div>
               ) : null}
 
               {outlinePosition?.prevChapter ? (
-                <div className="flex items-center justify-between gap-2 rounded border border-border/60 bg-background/50 px-2.5 py-1.5 text-2xs">
-                  <span className="truncate text-muted-foreground">
+                <div className="flex items-center justify-between gap-2 text-2xs">
+                  <span className="min-w-0 truncate text-muted-foreground">
                     承接上一章：第{outlinePosition.prevChapter.number}章 {outlinePosition.prevChapter.title}
                   </span>
                   {onJumpToChapter ? (
                     <button
                       type="button"
                       onClick={() => onJumpToChapter(outlinePosition.prevChapter!.number)}
-                      className="shrink-0 text-primary hover:underline"
+                      className="shrink-0 whitespace-nowrap text-primary hover:underline"
                     >
                       翻看前章
                     </button>
@@ -776,117 +792,171 @@ export function ChapterPrepWorkspace({
                 </div>
               ) : null}
 
-              {outlinePosition?.urgentHooks && outlinePosition.urgentHooks.length > 0 ? (
-                <div className="space-y-1">
-                  <span className="text-2xs font-medium text-warning">到期/待收伏笔提醒</span>
-                  <ul className="space-y-1">
-                    {outlinePosition.urgentHooks.map((hook) => (
-                      <li key={hook.entryId} className="flex items-center justify-between gap-2 rounded bg-warning/8 px-2 py-1 text-2xs text-warning">
-                        <span className="truncate">{hook.title}</span>
-                        <span className="shrink-0">第{hook.plantedChapter ?? "?"}章埋</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </section>
+              {outlineExpanded ? (
+                <div className="space-y-2 border-t border-border/60 pt-2">
+                  {outlinePosition?.vol ? (
+                    <div className="space-y-0.5 text-2xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-foreground">{outlinePosition.vol.title}</span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">
+                          第 {outlinePosition.vol.chapterRange.from}–{outlinePosition.vol.chapterRange.to} 章
+                        </span>
+                      </div>
+                      {outlinePosition.vol.goal ? (
+                        <p className="leading-relaxed text-muted-foreground">卷目标：{outlinePosition.vol.goal}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-2xs text-muted-foreground">尚未规划卷纲，可先去「大纲」分区或让叙述者起第一卷。</p>
+                  )}
 
-            {/* 写前预检清单 */}
-            <section className="rounded-lg border border-border bg-card p-3.5 space-y-2.5" data-testid="prep-preflight-section">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                  <BookOpen className="size-3.5 text-primary" />
-                  写前预检（chapter.preflight）
-                </h3>
-                <span className="text-2xs text-muted-foreground">{model.headline}</span>
-              </div>
-              {model.checks.length > 0 ? (
-                <ul className="space-y-1.5">
-                  {model.checks.map((check, idx) => {
-                    const icon = CHECK_ICON[check.state];
-                    return (
-                      <li key={`${check.code}-${idx}`} className="flex items-start gap-2 rounded border border-border/60 bg-background/60 px-2.5 py-1.5 text-2xs">
-                        <span className={cn("mt-0.5 font-bold", icon.cls)}>{icon.glyph}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium text-foreground">{check.label}</div>
-                          {check.explanation?.suggestedAction || check.message ? (
-                            <p className="mt-0.5 text-muted-foreground">
-                              {check.explanation?.suggestedAction ?? check.message}
-                            </p>
-                          ) : null}
-                        </div>
-                        {check.fixAction ? (
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="outline"
-                            disabled={fixBusy !== null}
-                            onClick={() => void handleFixAction(check.fixAction!)}
-                            className="h-5 shrink-0 px-1.5 text-2xs"
+                  {outlinePosition?.scenes && outlinePosition.scenes.length > 0 ? (
+                    <div className="space-y-1">
+                      <span className="text-2xs font-medium text-muted-foreground">
+                        已挂载场景节拍 ({outlinePosition.scenes.length})
+                      </span>
+                      <ul className="space-y-1">
+                        {outlinePosition.scenes.map((sc, i) => (
+                          <li key={sc.id} className="rounded border border-border/70 bg-background/60 px-2.5 py-1.5 text-2xs">
+                            <span className="font-medium text-foreground">
+                              {i + 1}. {sc.title}
+                            </span>
+                            {sc.summary ? <p className="mt-0.5 text-muted-foreground">{sc.summary}</p> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {outlinePosition?.urgentHooks && outlinePosition.urgentHooks.length > 0 ? (
+                    <div className="space-y-1">
+                      <span className="text-2xs font-medium text-warning">到期/待收伏笔提醒</span>
+                      <ul className="space-y-1">
+                        {outlinePosition.urgentHooks.map((hook) => (
+                          <li
+                            key={hook.entryId}
+                            className="flex items-center justify-between gap-2 rounded bg-warning/8 px-2 py-1 text-2xs text-warning"
                           >
-                            {fixBusy === check.fixAction ? "处理中" : "一键修"}
-                          </Button>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="text-2xs text-muted-foreground">当前没有预检阻断或告警。</p>
-              )}
-            </section>
-
-            {/* 本章 AI 注入透视卡片（Injection X-Ray） */}
-            <PrepInjectionPreviewCard preflightRaw={preflightRaw} loading={preflightLoading} />
-
-            {/* 创作罗盘（当前焦点） */}
-            <CreativeCompassPanel bookId={bookId} onFillDirective={(goal) => setDirective(goal)} />
-          </div>
-
-          {/* 右列（7 格）：血肉供料 + 节拍预算 + 派单给叙述者 */}
-          <div className="space-y-4 lg:col-span-7">
-            {/* 1. 机制卡与文风范文点菜 */}
-            <section className="rounded-lg border border-border bg-card p-3.5 space-y-3" data-testid="prep-supplies-section">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                    <Wand2 className="size-3.5 text-primary" />
-                    血肉补全：机制卡 & 文风范文点菜
-                  </h3>
-                  <p className="text-2xs text-muted-foreground">
-                    勾选后将作为本章定向写法与桥段骨架注入，避免细纲太薄导致 AI 注水凑字。
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="outline"
-                    onClick={handleMemeAdaptation}
-                    className="h-6 gap-1 px-2 text-2xs border-primary/40 text-primary hover:bg-primary/10"
-                    data-testid="prep-meme-adapt-btn"
-                  >
-                    <Flame className="size-3" />
-                    <span>同步热梗 & 二创转译</span>
-                  </Button>
-                  {onOpenDissectZone ? (
-                    <button type="button" onClick={onOpenDissectZone} className="text-2xs text-muted-foreground hover:text-primary hover:underline">
-                      去拆书/文风库
-                    </button>
+                            <span className="truncate">{hook.title}</span>
+                            <span className="shrink-0">第{hook.plantedChapter ?? "?"}章埋</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : null}
                 </div>
-              </div>
+              ) : null}
+            </div>
+          ) : null}
 
+          <div className="space-y-1.5">
+            <label htmlFor="prep-directive" className="block text-xs font-medium text-foreground">
+              第 {effectiveChapterNumber} 章写作目标与指令
+            </label>
+            <textarea
+              id="prep-directive"
+              rows={3}
+              value={directive}
+              onChange={(e) => setDirective(e.target.value)}
+              placeholder={model.resolvedDirective ?? "一句话说明本章目标，例如：林舟当堂拆穿旧账漏洞，迫使管事交出仓库钥匙…"}
+              className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-xs leading-relaxed outline-none focus:border-primary"
+              data-testid="prep-directive-input"
+            />
+            {model.needsUserConfirm && !directive.trim() ? (
+              <label className="flex items-center gap-1.5 text-2xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={acceptFocusDefault}
+                  onChange={(e) => setAcceptFocusDefault(e.target.checked)}
+                />
+                采用当前焦点的默认目标
+              </label>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="prep-flesh-notes" className="text-xs font-medium text-foreground">
+                本章信息增量 / 道具细节 / 对话包袱（防注水锚点，可选）
+              </label>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                onClick={handleMemeAdaptation}
+                className="h-6 shrink-0 gap-1 whitespace-nowrap px-2 text-2xs text-primary hover:bg-primary/10"
+                data-testid="prep-meme-adapt-btn"
+              >
+                <Flame className="size-3" />
+                <span>热梗二创转译</span>
+              </Button>
+            </div>
+            <textarea
+              id="prep-flesh-notes"
+              rows={2}
+              value={fleshNotes}
+              onChange={(e) => setFleshNotes(e.target.value)}
+              placeholder="例：1）补灵田折旧率算法与管事贪墨账本细节；2）对话里留半句双关讽刺；3）章末抛出黑市丹炉异响。"
+              className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-xs leading-relaxed outline-none focus:border-primary"
+            />
+          </div>
+        </section>
+
+        {/* ════════════════════════════════════════════════════════════════
+            步骤 2 · 血肉供料与节奏微调（单列清晰分组，杜绝双栏挤压）
+           ════════════════════════════════════════════════════════════════ */}
+        <section className="rounded-xl border border-border bg-card p-4 space-y-3" data-testid="prep-supplies-section">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setSuppliesOpen((prev) => !prev)}
+              className="flex items-center gap-2 text-left"
+              data-testid="prep-supplies-toggle"
+            >
+              <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-2xs font-bold text-primary">
+                2
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                <Wand2 className="size-3.5 text-primary" />
+                血肉供料与节拍（可选）
+              </span>
+              {selectedSupplyCount > 0 ? (
+                <Badge className="h-5 px-1.5 text-2xs">已选 {selectedSupplyCount} 项</Badge>
+              ) : (
+                <span className="text-2xs text-muted-foreground">点选机制卡/文风范文或微调节拍</span>
+              )}
+              {suppliesOpen ? (
+                <ChevronDown className="size-3.5 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="size-3.5 text-muted-foreground" />
+              )}
+            </button>
+            {onOpenDissectZone ? (
+              <button
+                type="button"
+                onClick={onOpenDissectZone}
+                className="whitespace-nowrap text-2xs text-muted-foreground hover:text-primary hover:underline"
+              >
+                去拆书/文风库 →
+              </button>
+            ) : null}
+          </div>
+
+          {suppliesOpen ? (
+            <div className="space-y-3 pt-1">
+              {/* 机制卡与文风范文改为紧凑两列（仅在足够宽时并排）且固定单卡片信息密度 */}
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div className="space-y-1.5 rounded-md border border-border/70 bg-background/50 p-2.5">
-                  <div className="flex items-center justify-between text-2xs font-medium text-foreground">
+                <div className="space-y-2 rounded-lg border border-border/70 bg-background/50 p-3">
+                  <div className="flex items-center justify-between text-xs font-medium text-foreground">
                     <span>可迁移机制卡 ({mechanisms.length})</span>
-                    <span className="text-muted-foreground">已选 {selectedMechanisms.size}</span>
+                    <span className="text-2xs tabular-nums text-muted-foreground">已选 {selectedMechanisms.size}</span>
                   </div>
                   {mechanisms.length === 0 ? (
-                    <p className="text-2xs text-muted-foreground">暂未提炼机制卡，可在「拆书与文风」提炼后在此点选。</p>
+                    <p className="text-2xs leading-relaxed text-muted-foreground">
+                      暂未提炼机制卡，可在「拆书与文风」提炼后在此点选。
+                    </p>
                   ) : (
-                    <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                    <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
                       {mechanisms.map((card) => {
                         const checked = selectedMechanisms.has(card.id);
                         const needsReview = card.status === "needs-review";
@@ -895,19 +965,19 @@ export function ChapterPrepWorkspace({
                           <div
                             key={card.id}
                             className={cn(
-                              "rounded border px-2 py-1.5 text-2xs transition-colors",
+                              "rounded-md border px-2.5 py-2 text-2xs transition-colors",
                               checked
                                 ? "border-primary bg-primary/10 text-foreground"
                                 : "border-border/60 bg-card hover:border-border",
                             )}
                           >
-                            <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center justify-between gap-2">
                               <button
                                 type="button"
                                 onClick={() => toggleMechanism(card.id)}
                                 className="min-w-0 flex-1 text-left font-medium"
                               >
-                                <span className="truncate">{card.name}</span>
+                                <span className="block truncate">{card.name}</span>
                               </button>
                               <div className="flex shrink-0 items-center gap-1">
                                 {needsReview ? (
@@ -925,7 +995,7 @@ export function ChapterPrepWorkspace({
                                         variant="outline"
                                         disabled={confirmingCardId !== null}
                                         onClick={() => void handleConfirmMechanismCard(card.id, card.name)}
-                                        className="h-4 border-success/40 px-1 text-2xs text-success hover:bg-success/10"
+                                        className="h-5 whitespace-nowrap border-success/40 px-1.5 text-2xs text-success hover:bg-success/10"
                                         data-testid={`prep-confirm-mech-${card.id}`}
                                       >
                                         {confirming ? "确认中" : "一键确认"}
@@ -940,7 +1010,7 @@ export function ChapterPrepWorkspace({
                               <button
                                 type="button"
                                 onClick={() => toggleMechanism(card.id)}
-                                className="mt-0.5 block w-full text-left"
+                                className="mt-1 block w-full text-left"
                               >
                                 <p className="line-clamp-1 text-muted-foreground">
                                   {card.emotionChain ?? card.readerDesire}
@@ -954,15 +1024,17 @@ export function ChapterPrepWorkspace({
                   )}
                 </div>
 
-                <div className="space-y-1.5 rounded-md border border-border/70 bg-background/50 p-2.5">
-                  <div className="flex items-center justify-between text-2xs font-medium text-foreground">
+                <div className="space-y-2 rounded-lg border border-border/70 bg-background/50 p-3">
+                  <div className="flex items-center justify-between text-xs font-medium text-foreground">
                     <span>已确认文风范文 ({styleSamples.length})</span>
-                    <span className="text-muted-foreground">已选 {selectedSamples.size}</span>
+                    <span className="text-2xs tabular-nums text-muted-foreground">已选 {selectedSamples.size}</span>
                   </div>
                   {styleSamples.length === 0 ? (
-                    <p className="text-2xs text-muted-foreground">暂无已确认范文，蒸馏采纳或文风金库采纳后将自动出现在此。</p>
+                    <p className="text-2xs leading-relaxed text-muted-foreground">
+                      暂无已确认范文，蒸馏采纳或文风金库采纳后将自动出现在此。
+                    </p>
                   ) : (
-                    <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                    <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
                       {styleSamples.map((smp) => {
                         const checked = selectedSamples.has(smp.id);
                         return (
@@ -971,19 +1043,19 @@ export function ChapterPrepWorkspace({
                             type="button"
                             onClick={() => toggleSample(smp.id)}
                             className={cn(
-                              "w-full rounded border px-2 py-1.5 text-left text-2xs transition-colors",
+                              "w-full rounded-md border px-2.5 py-2 text-left text-2xs transition-colors",
                               checked
                                 ? "border-primary bg-primary/10 text-foreground"
                                 : "border-border/60 bg-card hover:border-border",
                             )}
                           >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="font-medium text-foreground">
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="truncate font-medium text-foreground">
                                 {smp.sourceTitle} · {SCENE_TYPE_LABELS[smp.sceneType] ?? smp.sceneType}
                               </span>
-                              {checked ? <Badge className="h-4 px-1 text-2xs">已选</Badge> : null}
+                              {checked ? <Badge className="h-4 shrink-0 px-1 text-2xs">已选</Badge> : null}
                             </div>
-                            <p className="mt-0.5 line-clamp-2 text-muted-foreground">{smp.text}</p>
+                            <p className="mt-1 line-clamp-2 text-muted-foreground">{smp.text}</p>
                           </button>
                         );
                       })}
@@ -991,89 +1063,200 @@ export function ChapterPrepWorkspace({
                   )}
                 </div>
               </div>
-            </section>
 
-            {/* 2. 情节点字数预算 + 信息增量锚点 */}
-            <section className="rounded-lg border border-border bg-card p-3.5 space-y-3" data-testid="prep-beats-section">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-foreground">情节点字数预算与信息增量</h3>
-                {effectiveWordTarget > 0 ? (
-                  <span className="text-2xs tabular-nums text-muted-foreground">目标 {effectiveWordTarget.toLocaleString()} 字</span>
-                ) : null}
-              </div>
-
-              <BeatBudgetEditor
-                chapterTarget={effectiveWordTarget}
-                value={beatBudget}
-                onChange={setBeatBudget}
-              />
-
-              <div className="space-y-1">
-                <label htmlFor="prep-flesh-notes" className="text-2xs font-medium text-foreground">
-                  本章信息增量 / 道具细节 / 对话包袱（防注水锚点）
-                </label>
-                <textarea
-                  id="prep-flesh-notes"
-                  rows={2}
-                  value={fleshNotes}
-                  onChange={(e) => setFleshNotes(e.target.value)}
-                  placeholder="例：1）补灵田折旧率算法与管事贪墨账本细节；2）对话里留半句双关讽刺；3）章末抛出黑市丹炉异响。"
-                  className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label htmlFor="prep-directive" className="text-2xs font-medium text-foreground">
-                  第 {effectiveChapterNumber} 章写作目标与指令
-                </label>
-                <textarea
-                  id="prep-directive"
-                  rows={3}
-                  value={directive}
-                  onChange={(e) => setDirective(e.target.value)}
-                  placeholder={model.resolvedDirective ?? "一句话说明本章目标，或由左侧细纲自动预填…"}
-                  className="w-full resize-y rounded-md border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
-                  data-testid="prep-directive-input"
-                />
-                {model.needsUserConfirm && !directive.trim() ? (
-                  <label className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={acceptFocusDefault}
-                      onChange={(e) => setAcceptFocusDefault(e.target.checked)}
+              {/* 情节点字数预算：默认折叠，避免未拆节点时塞满主界面 */}
+              <div className="rounded-lg border border-border/70 bg-background/40 px-3 py-2.5" data-testid="prep-beats-section">
+                <button
+                  type="button"
+                  onClick={() => setBeatsOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between gap-2 text-left"
+                  data-testid="prep-beats-toggle"
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                    {beatsOpen ? (
+                      <ChevronDown className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="size-3.5 text-muted-foreground" />
+                    )}
+                    <span>手动拆解情节点与字数预算</span>
+                    {beatBudget.length > 0 ? (
+                      <Badge variant="secondary" className="h-4 px-1.5 text-2xs">
+                        {beatBudget.length} 个节拍
+                      </Badge>
+                    ) : (
+                      <span className="text-2xs font-normal text-muted-foreground">默认由 AI 蓝图自动排节奏</span>
+                    )}
+                  </div>
+                  {effectiveWordTarget > 0 ? (
+                    <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
+                      目标 {effectiveWordTarget.toLocaleString()} 字
+                    </span>
+                  ) : null}
+                </button>
+                {beatsOpen ? (
+                  <div className="mt-2.5 border-t border-border/60 pt-2.5">
+                    <BeatBudgetEditor
+                      chapterTarget={effectiveWordTarget}
+                      value={beatBudget}
+                      onChange={setBeatBudget}
                     />
-                    采用当前焦点的默认目标
-                  </label>
+                  </div>
                 ) : null}
               </div>
+            </div>
+          ) : null}
+        </section>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/70 pt-3">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => dispatchWrite("blueprint")}
-                  className="gap-1 text-xs"
-                  data-testid="prep-run-blueprint"
-                >
-                  <Compass className="size-3.5" />
-                  <span>让叙述者先出场景蓝图</span>
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => dispatchWrite("chapter")}
-                  className="gap-1 text-xs"
-                  data-testid="prep-run-chapter"
-                >
-                  <PenLine className="size-3.5" />
-                  <span>交叙述者起草第 {effectiveChapterNumber} 章</span>
-                </Button>
-              </div>
-            </section>
+        {/* ════════════════════════════════════════════════════════════════
+            步骤 3 · 派单起草（每屏仅 1 个实心 Primary 主按钮）
+           ════════════════════════════════════════════════════════════════ */}
+        <section
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/[0.04] px-4 py-3.5"
+          data-testid="prep-step-3-dispatch"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-2xs font-bold text-primary-foreground">
+              3
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-foreground">交由右侧叙述者动笔</p>
+              <p className="text-2xs text-muted-foreground">
+                {selectedSupplyCount > 0 || beatBudget.length > 0
+                  ? `已装配：${selectedMechanisms.size} 张机制卡 · ${selectedSamples.size} 段范文${beatBudget.length > 0 ? ` · ${beatBudget.length} 个手拆节拍` : ""}`
+                  : "可先出场景蓝图再写正文，或直接起草完整章节。"}
+              </p>
+            </div>
           </div>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => dispatchWrite("blueprint")}
+              className="h-9 shrink-0 gap-1.5 whitespace-nowrap px-3 text-xs"
+              data-testid="prep-run-blueprint"
+            >
+              <Compass className="size-3.5" />
+              <span>先出场景蓝图</span>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => dispatchWrite("chapter")}
+              className="h-9 shrink-0 gap-1.5 whitespace-nowrap px-4 text-xs"
+              data-testid="prep-run-chapter"
+            >
+              <PenLine className="size-3.5" />
+              <span>交叙述者起草第 {effectiveChapterNumber} 章</span>
+            </Button>
+          </div>
+        </section>
+
+        {/* ════════════════════════════════════════════════════════════════
+            底部诊断与参考区（低频/进阶信息，避免抢占首屏视觉焦点）
+           ════════════════════════════════════════════════════════════════ */}
+        <div className="space-y-3 pt-1">
+          {/* 写前预检清单：无阻塞/告警时默认收起，有阻塞时自动可见 */}
+          <section className="rounded-xl border border-border bg-card px-4 py-3 space-y-2" data-testid="prep-preflight-section">
+            <button
+              type="button"
+              onClick={() => setPreflightOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-2 text-left"
+              data-testid="prep-preflight-toggle"
+            >
+              <div className="flex items-center gap-1.5">
+                {preflightOpen || blockingOrWarnChecks.length > 0 ? (
+                  <ChevronDown className="size-3.5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="size-3.5 text-muted-foreground" />
+                )}
+                <BookOpen className="size-3.5 text-primary" />
+                <h3 className="text-xs font-semibold text-foreground">写前预检状态</h3>
+                {blockingOrWarnChecks.length > 0 ? (
+                  <Badge variant="outline" className="h-4 border-warning/40 bg-warning/10 px-1.5 text-2xs text-warning">
+                    {blockingOrWarnChecks.length} 项提醒
+                  </Badge>
+                ) : null}
+              </div>
+              <span className="truncate text-2xs text-muted-foreground">{model.headline}</span>
+            </button>
+
+            {preflightOpen || blockingOrWarnChecks.length > 0 ? (
+              model.checks.length > 0 ? (
+                <ul className="space-y-1.5 border-t border-border/60 pt-2">
+                  {model.checks.map((check, idx) => {
+                    const icon = CHECK_ICON[check.state];
+                    return (
+                      <li
+                        key={`${check.code}-${idx}`}
+                        className="flex items-start gap-2 rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 text-2xs"
+                      >
+                        <span className={cn("mt-0.5 font-bold", icon.cls)}>{icon.glyph}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-foreground">{check.label}</div>
+                          {check.explanation?.suggestedAction || check.message ? (
+                            <p className="mt-0.5 text-muted-foreground">
+                              {check.explanation?.suggestedAction ?? check.message}
+                            </p>
+                          ) : null}
+                        </div>
+                        {check.fixAction ? (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            disabled={fixBusy !== null}
+                            onClick={() => void handleFixAction(check.fixAction!)}
+                            className="h-6 shrink-0 whitespace-nowrap px-2 text-2xs"
+                          >
+                            {fixBusy === check.fixAction ? "处理中" : "一键修"}
+                          </Button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="border-t border-border/60 pt-2 text-2xs text-muted-foreground">
+                  当前没有预检阻断或告警。
+                </p>
+              )
+            ) : null}
+          </section>
+
+          {/* 本章 AI 注入透视卡片（Injection X-Ray） */}
+          <PrepInjectionPreviewCard preflightRaw={preflightRaw} loading={preflightLoading} />
+
+          {/* 创作罗盘（近 1–3 章焦点，按需折叠，避免与本章指令框抢主次） */}
+          <section className="rounded-xl border border-border bg-card px-4 py-3 space-y-2" data-testid="prep-compass-section">
+            <button
+              type="button"
+              onClick={() => setCompassOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-2 text-left"
+              data-testid="prep-compass-toggle"
+            >
+              <div className="flex items-center gap-1.5">
+                {compassOpen ? (
+                  <ChevronDown className="size-3.5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="size-3.5 text-muted-foreground" />
+                )}
+                <Compass className="size-3.5 text-primary" />
+                <h3 className="text-xs font-semibold text-foreground">创作罗盘（近 1–3 章方向约束）</h3>
+              </div>
+              <span className="text-2xs text-muted-foreground">
+                {compassOpen ? "收起" : "点击展开编辑"}
+              </span>
+            </button>
+            {compassOpen ? (
+              <div className="pt-1">
+                <CreativeCompassPanel bookId={bookId} onFillDirective={(goal) => setDirective(goal)} />
+              </div>
+            ) : null}
+          </section>
         </div>
       </div>
     </div>
   );
-}
+  }

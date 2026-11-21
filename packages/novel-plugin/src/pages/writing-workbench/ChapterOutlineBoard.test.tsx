@@ -101,7 +101,11 @@ describe("ChapterOutlineBoard & OutlineOverviewPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /第2章/ }));
     expect(onOpenChapter).toHaveBeenCalledWith(2);
 
-    fireEvent.click(screen.getByRole("button", { name: /第3章/ }));
-    expect(onOpenWriteView).toHaveBeenCalledTimes(1);
+    // 下一待写章只高亮提示、不再在总览里开写（筹备与起草统一回写作台）。
+    const next = screen.getByRole("button", { name: /第3章/ }) as HTMLButtonElement;
+    expect(next.disabled).toBe(true);
+    expect(next.title).toContain("下一待写章");
+    fireEvent.click(next);
+    expect(onOpenWriteView).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,39 @@
  * 定位到某一页的请求形状。单独成文件，宿主与 Studio 不必为了几个常量引入整个面板。
  */
 
-/** 故事推进侧栏的页签。 */
+/** 故事推进侧栏的主聚合页签（3 格常驻、无横滚）：章节与大纲 / 脉络追踪 / 章后事实。 */
+export const STORYLINE_PRIMARY_TABS = ["outline", "threads", "memory"] as const;
+export type StorylinePrimaryTab = (typeof STORYLINE_PRIMARY_TABS)[number];
+
+export const STORYLINE_PRIMARY_TAB_LABELS: Record<StorylinePrimaryTab, string> = {
+  outline: "大纲与章",
+  threads: "脉络追踪",
+  memory: "章后事实",
+};
+
+/** 归属于「脉络追踪」聚合视图下的细分类目（伏笔/剧情线/矛盾/关系/时间线/章摘要）。 */
+export const STORYLINE_THREAD_TABS = [
+  "foreshadowing",
+  "storylines",
+  "conflicts",
+  "relationships",
+  "timeline",
+  "chapter-summaries",
+] as const;
+export type StorylineThreadTab = (typeof STORYLINE_THREAD_TABS)[number];
+
+/** 将任意外部定位子页签映射到侧栏主聚合页签。 */
+export function storylinePrimaryTabOf(tab: StorylineSubTab): StorylinePrimaryTab {
+  if (tab === "outline") return "outline";
+  if (tab === "memory") return "memory";
+  return "threads";
+}
+
+export function isStorylineThreadTab(tab: StorylineSubTab): tab is StorylineThreadTab {
+  return (STORYLINE_THREAD_TABS as readonly string[]).includes(tab);
+}
+
+/** 故事推进侧栏的逻辑页签（含命令面板与产物卡定位目标）。 */
 export const STORYLINE_SUB_TABS = [
   "outline",
   "foreshadowing",

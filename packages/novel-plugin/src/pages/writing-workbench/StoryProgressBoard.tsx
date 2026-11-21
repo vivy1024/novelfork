@@ -72,6 +72,8 @@ export interface StoryProgressBoardProps {
   readonly onForeshadowAction?: (entryId: string, action: "mark_paid" | "schedule_next") => void;
   /** 全景 / 嵌套容器时收起焦点卡为单行提示，详情点击展开。 */
   readonly compactHeader?: boolean;
+  /** 嵌入故事画布时隐藏「下一章写什么/去写」焦点卡，避免与写作台/AI 写章筹备台重复。 */
+  readonly hideNextChapterCard?: boolean;
 }
 
 interface StructureScoreItem {
@@ -264,11 +266,11 @@ function EmptyState({
         <p className="text-xs font-medium text-foreground">{title}</p>
         <p className="max-w-md text-xs leading-relaxed text-muted-foreground">{detail}</p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         {onSendToNarrator ? (
           <Button
             size="xs"
-            className="h-7 gap-1 text-xs"
+            className="h-7 shrink-0 gap-1 whitespace-nowrap px-2.5 text-xs"
             data-testid="story-progress-empty-action"
             onClick={() => void onSendToNarrator(prompt)}
           >
@@ -276,7 +278,7 @@ function EmptyState({
             交给叙述者处理
           </Button>
         ) : null}
-        <Button size="xs" variant="outline" className="h-7 gap-1 text-xs" onClick={onReload}>
+        <Button size="xs" variant="outline" className="h-7 shrink-0 gap-1 whitespace-nowrap px-2.5 text-xs" onClick={onReload}>
           <RefreshCw className="size-3" />
           刷新
         </Button>
@@ -701,6 +703,7 @@ export function StoryProgressBoard({
   onAddBeat,
   onForeshadowAction,
   compactHeader,
+  hideNextChapterCard = false,
 }: StoryProgressBoardProps) {
   const { state, reload } = useProgressData(bookId);
   // 写章、结算、改伏笔阈值后都会派发写作进度事件；据此重读，不必刷新页面。
@@ -949,12 +952,14 @@ export function StoryProgressBoard({
         </div>
       ) : null}
 
-      <FocusCard
-        board={board}
-        defaultCollapsed={!!compactHeader}
-        {...(onOpenWriteView ? { onOpenWriteView } : {})}
-        {...(onSendToNarrator ? { onSendToNarrator } : {})}
-      />
+      {!hideNextChapterCard ? (
+        <FocusCard
+          board={board}
+          defaultCollapsed={!!compactHeader}
+          {...(onOpenWriteView ? { onOpenWriteView } : {})}
+          {...(onSendToNarrator ? { onSendToNarrator } : {})}
+        />
+      ) : null}
 
       {/* 网格：横向滚动，行头/列头 sticky */}
       <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
@@ -978,13 +983,13 @@ export function StoryProgressBoard({
               </Button>
             </div>
             {board.chapters.map((column) => {
-              const isFocus = board.focus?.chapterNumber === column.chapterNumber;
+              const isFocus = !hideNextChapterCard && board.focus?.chapterNumber === column.chapterNumber;
               const headerClass =
                 "sticky top-0 z-[1] rounded-md px-2 py-1.5 text-left "
                 + (isFocus ? "bg-primary/15 ring-1 ring-primary/40" : column.future ? "bg-muted/20" : "bg-muted/50");
               const headerBody = (
                 <>
-                  <div className="text-2xs font-semibold">
+                  <div className="text-2xs font-semibold whitespace-nowrap">
                     第 {column.chapterNumber} 章{isFocus ? " ·下一章" : ""}
                   </div>
                   <div className="truncate text-2xs text-muted-foreground" title={column.title}>
