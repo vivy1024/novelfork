@@ -448,4 +448,46 @@ describe("终局储备与卷纲一起持久化", () => {
     expect(read.ok).toBe(true);
     expect(read.overdraft?.findings[0]?.code).toBe("no-reserve-declared");
   });
+
+  it("保留并渲染卷级主控思想、设计原则、对手网络与四段结构支点", async () => {
+    const root = await createBook({ chapters: [1, 2, 16] });
+    const saved = await handleOutlineVolume({
+      bookId: "book-1",
+      bookRoot: root,
+      action: "set",
+      storage: activeStorage,
+      volumes: [
+        {
+          id: "v1",
+          title: "暗账风云",
+          chapterRange: { from: 1, to: 40 },
+          goal: "逼出幕后账房并夺回宗门财权",
+          controllingIdea: "公道胜出，因为主角宁可自毁退路也要把私账摊在阳光下",
+          designPrinciple: "弱点：明哲保身 × 首要行动：公开查账 = 转变：敢于担责掌局",
+          antagonistWeb: "刘管事（明面阻力）、三长老（暗中分赃）、假盟友账房师兄",
+          stageCheckpoints: {
+            setupTurn: "第10章：旧账被焚，主角背上亏空黑锅被迫入局",
+            midpointReversal: "第20章：发现私账直指三长老，明哲保身彻底破产转为主动反攻",
+            darkNight: "第30章：假盟友倒戈交出伪证，主角被禁足待审",
+            climaxShowdown: "第38章：密室长老会压力锅当堂对质翻盘",
+          },
+          status: "active",
+        },
+      ],
+    });
+    expect(saved.ok).toBe(true);
+
+    const ctx = loadCurrentVolumeContext(activeStorage!, "book-1", 20);
+    const focus = renderCurrentVolumeFocus(ctx, 20);
+    expect(focus).toContain("本卷主控思想（价值+原因）：公道胜出");
+    expect(focus).toContain("本卷设计原则（W×A=C）");
+    expect(focus).toContain("对手网络与递增揭露：刘管事");
+    expect(focus).toContain("第二段·反应");
+    expect(focus).toContain("本段支点（中点翻转）：第20章");
+
+    const md = renderVolumeMarkdown(saved.outline!);
+    expect(md).toContain("主控思想（价值+原因）");
+    expect(md).toContain("四段支点");
+    expect(md).toContain("看似落败(75%)");
+  });
 });

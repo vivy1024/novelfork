@@ -5,6 +5,8 @@
  *    以及台词引号外的裸章节指代（如「第三章」「第12章」），自动跳过首行章节标题与台词引号内合理语境。
  * 2. `analyzeWordFrequency`：零外部依赖统计本章网文高频疲劳词（动作/神态/转折套话）与中文高频双字/三字/四字实词，
  *    供编辑器码字条实时展开词频胶囊并一键定位到正文。
+ * 3. `scanAdverbAndHedgingClutter`：扫描叙述段中可被精准动词替代的冗余「……地+说/动作」修饰与高密度弱化词。
+ * 4. `scanPovSelfSightLeaks`：有限视角下初筛「视角角色看到自己此刻看不见的眼神/神情」类穿帮描写（标为复核提醒）。
  */
 
 export interface MetaLeakHit {
@@ -394,3 +396,157 @@ export function analyzeWordFrequency(
   fatigueResults.sort((a, b) => b.count - a.count || b.term.length - a.term.length);
   return [...fatigueResults, ...ngramResults].slice(0, limit);
 }
+
+export interface CraftLensHit {
+  readonly kind: "redundant-adverb" | "hedging-cluster" | "pov-self-sight";
+  readonly term: string;
+  readonly paragraphIndex: number;
+  readonly quote: string;
+  readonly reviewOnly?: boolean;
+  readonly explanation: {
+    readonly whatHappened: string;
+    readonly whyItMatters: string;
+    readonly suggestedAction: string;
+  };
+}
+
+/** 对话标签与常见动作前的冗余副词（叙述段内出现，往往应合并为精准动词或交给前文语境）。 */
+const REDUNDANT_ADVERB_VERB_RE =
+  /(愤怒|冷冷|淡淡|轻轻|缓缓|用力|狠狠|厉声|低声|沉声|大声|怒气冲冲|无可奈何|咬牙切齿|面无表情|不屑|急切|惊恐|温柔|平静|冷漠|激动|痛苦|绝望|虚弱|艰难|小心翼翼|毫不犹豫)地(说道|说|道|问道|问|答道|喊道|喊|吼道|吼|叫道|笑道|笑|叹道|叹|关上|关掉|推开|推|走|看|盯|握|抓)/gu;
+
+/** 叙述段弱化词/模糊副词词表（对话引号内放行，仅检查叙述段聚集）。 */
+const HEDGING_WORDS_RE = /大概|或许|似乎|仿佛|宛如|好像|稍稍|略微|隐约|莫名其妙|非常|极其|格外|颇为/gu;
+
+function iterateBodyParagraphs(content: string): Array<{ paragraphIndex: number; text: string; masked: string }> {
+  if (!content || !content.trim()) return [];
+  const rawLines = content.replace(/\r\n/g, "\n").split("\n");
+  const out: Array<{ paragraphIndex: number; text: string; masked: string }> = [];
+  let seenFirstNonEmpty = false;
+  let paragraphIndex = 0;
+  for (const rawLine of rawLines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+    const isFirst = !seenFirstNonEmpty;
+    seenFirstNonEmpty = true;
+    if (isChapterHeadingLine(trimmed, isFirst)) continue;
+    paragraphIndex += 1;
+    out.push({ paragraphIndex, text: trimmed, masked: maskQuotedDialogue(trimmed) });
+  }
+  return out;
+}
+
+/**
+ * 扫描叙述段中的冗余「副词+地+动词」与弱化词高密度聚集（零 Token，纯确定性）。
+ * 只在整体超过阈值时输出最典型的定位样本，避免单次偶用造成噪音。
+ */
+export function scanAdverbAndHedgingClutter(
+  content: string,
+  options: { readonly adverbThreshold?: number; readonly hedgingPerParagraphThreshold?: number } = {},
+): CraftLensHit[] {
+  const adverbThreshold = options.adverbThreshold ?? 3;
+  const hedgingPerParaThreshold = options.hedgingPerParagraphThreshold ?? 3;
+  const paragraphs = iterateBodyParagraphs(content);
+  if (paragraphs.length === 0) return [];
+
+  const adverbMatches: Array<{ paragraphIndex: number; term: string; quote: string }> = [];
+  const hits: CraftLensHit[] = [];
+
+  for (const para of paragraphs) {
+    for (const match of para.masked.matchAll(REDUNDANT_ADVERB_VERB_RE)) {
+      const term = match[0]!;
+      const idx = match.index ?? 0;
+      adverbMatches.push({
+        paragraphIndex: para.paragraphIndex,
+        term,
+        quote: extractContextQuote(para.text, idx, term.length),
+      });
+    }
+
+    const hedging = [...para.masked.matchAll(HEDGING_WORDS_RE)];
+    if (hedging.length >= hedgingPerParaThreshold) {
+      const first = hedging[0]!;
+      const idx = first.index ?? 0;
+      const terms = [...new Set(hedging.map((m) => m[0]!))];
+      hits.push({
+        kind: "hedging-cluster",
+        term: terms.join(" / "),
+        paragraphIndex: para.paragraphIndex,
+        quote: extractContextQuote(para.text, idx, first[0]!.length),
+        explanation: {
+          whatHappened: `第 ${para.paragraphIndex} 段叙述连续出现 ${hedging.length} 处弱化/模糊修饰词（${terms.join("、")}）。`,
+          whyItMatters: "叙述段堆积「大概/似乎/仿佛/稍稍/非常」等弱化词会稀释画面力度，显出 AI 犹豫腔。",
+          suggestedAction: "删去多余弱化词，改用具体动作、器物或确切感官细节直接落地。",
+        },
+      });
+    }
+  }
+
+  if (adverbMatches.length >= adverbThreshold) {
+    const first = adverbMatches[0]!;
+    const samples = [...new Set(adverbMatches.slice(0, 4).map((m) => `「${m.term}」`))].join("、");
+    hits.unshift({
+      kind: "redundant-adverb",
+      term: first.term,
+      paragraphIndex: first.paragraphIndex,
+      quote: first.quote,
+      explanation: {
+        whatHappened: `本章叙述段累计出现 ${adverbMatches.length} 处冗余「副词+地+动词」修饰（如 ${samples}），首见于第 ${first.paragraphIndex} 段。`,
+        whyItMatters: "前文语境与精准动词本可承载动作力度，高频在对话标签或动作前叠副词容易流于懒惰套话。",
+        suggestedAction: "将强情绪副词并入更精准的动词或身体反应（如「用力地关上」→「摔上门」，「愤怒地喊道」→直接用台词与动作体现）。",
+      },
+    });
+  }
+
+  return hits;
+}
+
+const MIRROR_CONTEXT_RE = /镜|倒影|水面|玻璃|窗影|铜盆|水盆|屏幕反光|反光/u;
+
+function escapeRegexLiteral(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/**
+ * 有限 POV 自我不可见神情初筛（零 Token，软复核）：
+ * 检查第一人称「我」或指定 `povCharacter` 在无镜面/倒影语境的叙述段中，是否描写了自己此刻看不见的眼神、瞳孔或表情变化。
+ */
+export function scanPovSelfSightLeaks(content: string, povCharacter?: string): CraftLensHit[] {
+  const paragraphs = iterateBodyParagraphs(content);
+  if (paragraphs.length === 0) return [];
+
+  const subjects = ["我"];
+  const trimmedPov = povCharacter?.trim();
+  if (trimmedPov && trimmedPov.length >= 1) {
+    subjects.push(trimmedPov);
+  }
+  const subjectGroup = subjects.map(escapeRegexLiteral).join("|");
+  const selfSightRe = new RegExp(
+    `(?:${subjectGroup})(?:的)?(?:眼底|眼中|眸中|眸底|眉宇间|脸上|嘴角)(?:闪过|掠过|浮现|泛起|露出|勾起|扬起)|(?:${subjectGroup})抬起[^，。！？\\n]{0,6}(?:眼眸|双眸|眼睛|双眼)`,
+    "gu",
+  );
+
+  const hits: CraftLensHit[] = [];
+  for (const para of paragraphs) {
+    if (MIRROR_CONTEXT_RE.test(para.text)) continue;
+    for (const match of para.masked.matchAll(selfSightRe)) {
+      const term = match[0]!;
+      const idx = match.index ?? 0;
+      const quote = extractContextQuote(para.text, idx, term.length);
+      hits.push({
+        kind: "pov-self-sight",
+        term,
+        paragraphIndex: para.paragraphIndex,
+        quote,
+        reviewOnly: true,
+        explanation: {
+          whatHappened: `第 ${para.paragraphIndex} 段疑似出现有限 POV 自我不可见描写「${term}」（原句：「${quote}」）。`,
+          whyItMatters: "视角人物在没有镜面或倒影时看不见自己的眼神流转与微表情，直接这样写容易滑回上帝视角。",
+          suggestedAction: "改为视角人物能切身感知的内部生理反应（喉头一紧、指节发白、视线偏移）或借他人反应侧面映出。",
+        },
+      });
+    }
+  }
+
+  return hits;
+}
+

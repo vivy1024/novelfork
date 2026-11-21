@@ -29,6 +29,23 @@ export interface SceneReactionPair {
 
 export type SceneSpecEngineRole = "payoff" | "buildup" | "upgrade" | "pivot";
 
+export type SceneCraftMode = "active" | "reactive";
+export type SceneInfoMode = "suspense" | "mystery" | "irony";
+
+export interface SceneValueTurn {
+  /** 开场价值电荷（如「安全」「信任」「占优」「+」）。 */
+  from: string;
+  /** 收尾价值电荷（如「孤立」「怀疑」「暴露」「-」）；与 from 相同会触发非事件告警。 */
+  to: string;
+}
+
+export interface SceneExpectationGap {
+  /** 视点角色按经验预期的保守结果。 */
+  expectation: string;
+  /** 客观对抗力量劈开的相反或剧烈升级结果（「鸿沟」）。 */
+  reality: string;
+}
+
 export interface SceneSpecContractCheck {
   agencyOwner?: string;
   payoffOwner?: string;
@@ -42,6 +59,16 @@ export interface SceneSpecScene {
   outcome: string;
   hooks_used: string[];
   hooks_planted: string[];
+  /** 场景引擎模式（可选）：active 主动场（目标→冲突→挫折）| reactive 被动场（反应→困境→价值取舍决定）。 */
+  sceneMode?: SceneCraftMode;
+  /** 场景起止价值电荷翻转（可选）：用于检验是否为有真实戏剧变化的事件而非空转「非事件」。 */
+  valueTurn?: SceneValueTurn;
+  /** 期望与结果间的「鸿沟」（可选）：防止人物按预期顺遂办事沦为平淡日常活动。 */
+  expectationGap?: SceneExpectationGap;
+  /** 最后时刻深切入点（可选）：明确跳过哪些到达/寒暄过场，从哪一瞬间直接起戏。 */
+  entryPoint?: string;
+  /** 信息差张力模式（可选）：suspense 悬念 | mystery 神秘 | irony 戏剧反讽。 */
+  infoMode?: SceneInfoMode;
   /** 场内逻辑因果小节拍（A 导致 B 导致 C，防注水）。 */
   microBeats?: string[];
   /** 本场必须向读者交付的具体信息增量 / 物证 / 账目 / 规则细节。 */
@@ -52,6 +79,12 @@ export interface SceneSpecScene {
   forbid?: string[];
   /** 规划留白；可省略。 */
   gaps?: SceneGap[];
+}
+
+export interface SceneCraftFinding {
+  readonly sceneIndex: number;
+  readonly code: "non-event-value-turn" | "flat-expectation-gap" | "missing-drama-turn";
+  readonly message: string;
 }
 
 export interface SceneSpec {
@@ -125,6 +158,10 @@ export interface SceneSpecSuccess {
      * 规划期中观可迁移机制卡辅助参考（仅出现在 scene.spec 返回体供蓝图打磨，绝不进入正文写前 style 通道）。
      */
     planningMechanisms?: readonly PlanningMechanismReference[];
+    /**
+     * 场景戏剧结构自检发现（非事件场、期望与结果无鸿沟等软告警，不阻断提交但提醒蓝图精修）。
+     */
+    craftFindings?: readonly SceneCraftFinding[];
   };
 }
 
@@ -137,6 +174,62 @@ export interface SceneSpecFailure {
 export type SceneSpecResult = SceneSpecSuccess | SceneSpecFailure;
 
 const VALID_ENGINE_ROLES = new Set<SceneSpecEngineRole>(["payoff", "buildup", "upgrade", "pivot"]);
+const VALID_SCENE_MODES = new Set<SceneCraftMode>(["active", "reactive"]);
+const VALID_INFO_MODES = new Set<SceneInfoMode>(["suspense", "mystery", "irony"]);
+
+function parseValueTurn(value: unknown): SceneValueTurn | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const rec = value as Record<string, unknown>;
+  const from = typeof rec.from === "string" ? rec.from.trim() : "";
+  const to = typeof rec.to === "string" ? rec.to.trim() : "";
+  if (!from || !to) return undefined;
+  return { from, to };
+}
+
+function parseExpectationGap(value: unknown): SceneExpectationGap | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const rec = value as Record<string, unknown>;
+  const expectation = typeof rec.expectation === "string" ? rec.expectation.trim() : "";
+  const reality = typeof rec.reality === "string" ? rec.reality.trim() : "";
+  if (!expectation || !reality) return undefined;
+  return { expectation, reality };
+}
+
+function normalizeComparableText(text: string): string {
+  return text.toLowerCase().replace(/[\s，。、；：！？,.;:!?'"“”‘’()（）\[\]【】]/gu, "");
+}
+
+/**
+ * 确定性戏剧结构自检（零 Token）：
+ * 1. 若标注了 valueTurn 但起止价值相同，判定为「疑似非事件场」；
+ * 2. 若标注了 expectationGap 但期望与结果一致，判定为「未劈开鸿沟（平顺活动）」；
+ * 3. 若整章 ≥2 场且全部未标注 valueTurn / expectationGap，且无 microBeats，提示补充价值翻转与鸿沟。
+ */
+export function inspectSceneCraftFindings(scenes: readonly SceneSpecScene[]): SceneCraftFinding[] {
+  const findings: SceneCraftFinding[] = [];
+  for (let i = 0; i < scenes.length; i += 1) {
+    const scene = scenes[i]!;
+    if (scene.valueTurn) {
+      if (normalizeComparableText(scene.valueTurn.from) === normalizeComparableText(scene.valueTurn.to)) {
+        findings.push({
+          sceneIndex: i + 1,
+          code: "non-event-value-turn",
+          message: `场景 ${i + 1} 起止价值电荷未发生变化（${scene.valueTurn.from} → ${scene.valueTurn.to}），疑似「非事件场」：建议合并为过场或制造真实逆转/代价。`,
+        });
+      }
+    }
+    if (scene.expectationGap) {
+      if (normalizeComparableText(scene.expectationGap.expectation) === normalizeComparableText(scene.expectationGap.reality)) {
+        findings.push({
+          sceneIndex: i + 1,
+          code: "flat-expectation-gap",
+          message: `场景 ${i + 1} 主观期望与客观结果一致，未劈开戏剧「鸿沟」：建议加入出乎意料的阻挠、误判或升级反击。`,
+        });
+      }
+    }
+  }
+  return findings;
+}
 
 function parseOptionalStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -199,6 +292,15 @@ function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: n
         const infoPayloads = parseOptionalStringList(s.infoPayloads);
         const reactionPairs = parseReactionPairs(s.reactionPairs);
         const forbid = parseOptionalStringList(s.forbid);
+        const sceneMode = typeof s.sceneMode === "string" && VALID_SCENE_MODES.has(s.sceneMode as SceneCraftMode)
+          ? (s.sceneMode as SceneCraftMode)
+          : undefined;
+        const valueTurn = parseValueTurn(s.valueTurn);
+        const expectationGap = parseExpectationGap(s.expectationGap);
+        const entryPoint = typeof s.entryPoint === "string" && s.entryPoint.trim() ? s.entryPoint.trim() : undefined;
+        const infoMode = typeof s.infoMode === "string" && VALID_INFO_MODES.has(s.infoMode as SceneInfoMode)
+          ? (s.infoMode as SceneInfoMode)
+          : undefined;
         return {
           characters: Array.isArray(s.characters) ? s.characters : ["主角"],
           location: s.location ?? "待定",
@@ -207,6 +309,11 @@ function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: n
           outcome: s.outcome ?? "待定",
           hooks_used: Array.isArray(s.hooks_used) ? s.hooks_used : [],
           hooks_planted: Array.isArray(s.hooks_planted) ? s.hooks_planted : [],
+          ...(sceneMode ? { sceneMode } : {}),
+          ...(valueTurn ? { valueTurn } : {}),
+          ...(expectationGap ? { expectationGap } : {}),
+          ...(entryPoint ? { entryPoint } : {}),
+          ...(infoMode ? { infoMode } : {}),
           ...(microBeats.length > 0 ? { microBeats } : {}),
           ...(infoPayloads.length > 0 ? { infoPayloads } : {}),
           ...(reactionPairs.length > 0 ? { reactionPairs } : {}),
@@ -248,6 +355,28 @@ async function extractWordTarget(cockpitSnapshot?: Record<string, unknown>, book
     }
   }
   return 3000;
+}
+
+const SCENE_SPEC_CACHE_TTL_MS = 60 * 60 * 1000;
+const validatedSceneSpecCache = new Map<string, { readonly spec: SceneSpec; readonly cachedAt: number }>();
+
+function sceneSpecCacheKey(bookId: string, chapterNumber: number): string {
+  return `${bookId}::${chapterNumber}`;
+}
+
+/** 缓存刚通过 chapter.blueprint 校验的蓝图，供下游 chapter.commit / chapter.audit 自动复用。 */
+export function cacheValidatedSceneSpec(bookId: string, spec: SceneSpec, now = Date.now()): void {
+  validatedSceneSpecCache.set(sceneSpecCacheKey(bookId, spec.chapter), { spec, cachedAt: now });
+}
+
+export function getCachedSceneSpec(bookId: string, chapterNumber: number, now = Date.now()): SceneSpec | null {
+  const entry = validatedSceneSpecCache.get(sceneSpecCacheKey(bookId, chapterNumber));
+  if (!entry) return null;
+  if (now - entry.cachedAt > SCENE_SPEC_CACHE_TTL_MS) {
+    validatedSceneSpecCache.delete(sceneSpecCacheKey(bookId, chapterNumber));
+    return null;
+  }
+  return entry.spec;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -486,6 +615,11 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     ? " 密度提示：当前蓝图未拆 beatBudget 且场景缺少 microBeats / infoPayloads（因果小节拍与具体信息增量），建议补充以防正文靠环境描写注水。"
     : "";
 
+  const craftFindings = inspectSceneCraftFindings(sceneSpec.scenes);
+  const craftNote = craftFindings.length > 0
+    ? ` 戏剧结构提醒：${craftFindings.map((item) => item.message).join(" ")}`
+    : "";
+
   const anchorNote = infoAnchors.length > 0
     ? ` 已并入 ${infoAnchors.length} 条作者指定信息增量锚点。`
     : "";
@@ -530,9 +664,10 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   const mechanismNote = planningMechanisms.length > 0
     ? ` 已附上 ${planningMechanisms.length} 张可迁移机制卡供细纲推演参考${pinnedMechanismIds.length > 0 ? "（含作者点选置顶）" : ""}。`
     : "";
+  cacheValidatedSceneSpec(bookId, sceneSpec);
   return {
     ok: true,
-    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${densityNote}${anchorNote}${skillNote}${expansionNote}${mechanismNote}`,
+    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${densityNote}${craftNote}${anchorNote}${skillNote}${expansionNote}${mechanismNote}`,
     data: {
       sceneSpec,
       beatBudget: budget,
@@ -540,6 +675,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
       ...(entityExpansion ? { entityExpansion } : {}),
       ...(writingSkillConstraints.items.length > 0 ? { writingSkillConstraints } : {}),
       ...(planningMechanisms.length > 0 ? { planningMechanisms } : {}),
+      ...(craftFindings.length > 0 ? { craftFindings } : {}),
     },
   };
 }

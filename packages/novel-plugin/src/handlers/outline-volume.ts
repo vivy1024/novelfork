@@ -38,6 +38,17 @@ export interface VolumeMainlineBeat {
 /** 卷纲在经纬中的条目标题（唯一权威承载）。 */
 const VOLUME_ENTRY_TITLE = "卷纲";
 
+export interface VolumeStageCheckpoints {
+  /** 约 25% 第一灾难/第一情节点：逼主角做出不可回头的新决定。 */
+  readonly setupTurn?: string;
+  /** 约 50% 中点/第二次灾难：旧认知或道德前提代价爆发，主角由被动转主动。 */
+  readonly midpointReversal?: string;
+  /** 约 75% 唯一一次看似落败/第三灾难：切忌多次重复以免冲击力钝化。 */
+  readonly darkNight?: string;
+  /** 终局压力锅对决与价值兑现。 */
+  readonly climaxShowdown?: string;
+}
+
 export interface VolumeEntry {
   readonly id: string;
   readonly title: string;
@@ -47,6 +58,14 @@ export interface VolumeEntry {
   /** 本卷目标章数/字数：用于进度展示，不直接替代 chapterRange 硬门。 */
   readonly targetChapters?: number;
   readonly targetWords?: number;
+  /** 本卷主控思想（「价值+原因」完整陈述，作为整卷删改取舍的唯一筛子）。 */
+  readonly controllingIdea?: string;
+  /** 本卷设计原则与主角「弱点 W × 首要行动 A = 转变 C」对立关系。 */
+  readonly designPrinciple?: string;
+  /** 本卷冰山对手/四角对立网络与中段递增揭露清单（打破中盘停滞）。 */
+  readonly antagonistWeb?: string;
+  /** 本卷四段结构支点（布局转折 / 中点翻转 / 看似落败 / 终局对决）。 */
+  readonly stageCheckpoints?: VolumeStageCheckpoints;
   /** 本卷必须推进的主线节点；完成状态用于上下文和驾驶舱展示。 */
   readonly mainlineBeats?: readonly VolumeMainlineBeat[];
   readonly notes?: string;
@@ -150,6 +169,22 @@ function normalizeMainlineBeats(value: unknown): VolumeMainlineBeat[] {
   });
 }
 
+function normalizeStageCheckpoints(value: unknown): VolumeStageCheckpoints | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const rec = value as Record<string, unknown>;
+  const setupTurn = trimText(rec.setupTurn);
+  const midpointReversal = trimText(rec.midpointReversal);
+  const darkNight = trimText(rec.darkNight);
+  const climaxShowdown = trimText(rec.climaxShowdown);
+  if (!setupTurn && !midpointReversal && !darkNight && !climaxShowdown) return undefined;
+  return {
+    ...(setupTurn ? { setupTurn } : {}),
+    ...(midpointReversal ? { midpointReversal } : {}),
+    ...(darkNight ? { darkNight } : {}),
+    ...(climaxShowdown ? { climaxShowdown } : {}),
+  };
+}
+
 /** 归一化外部传入的 volumes；非法条目被丢弃。 */
 export function normalizeVolumes(input: readonly unknown[] | undefined): VolumeEntry[] {
   if (!Array.isArray(input)) return [];
@@ -164,6 +199,10 @@ export function normalizeVolumes(input: readonly unknown[] | undefined): VolumeE
     const toRaw = positiveInt(range.to ?? record.endChapter, from);
     const targetChapters = optionalPositiveInt(record.targetChapters);
     const targetWords = optionalPositiveInt(record.targetWords);
+    const controllingIdea = trimText(record.controllingIdea);
+    const designPrinciple = trimText(record.designPrinciple);
+    const antagonistWeb = trimText(record.antagonistWeb);
+    const stageCheckpoints = normalizeStageCheckpoints(record.stageCheckpoints);
     const mainlineBeats = normalizeMainlineBeats(record.mainlineBeats);
     out.push({
       id: trimText(record.id) || `vol-${index + 1}`,
@@ -173,6 +212,10 @@ export function normalizeVolumes(input: readonly unknown[] | undefined): VolumeE
       status: parseStatus(record.status),
       ...(targetChapters ? { targetChapters } : {}),
       ...(targetWords ? { targetWords } : {}),
+      ...(controllingIdea ? { controllingIdea } : {}),
+      ...(designPrinciple ? { designPrinciple } : {}),
+      ...(antagonistWeb ? { antagonistWeb } : {}),
+      ...(stageCheckpoints ? { stageCheckpoints } : {}),
       ...(mainlineBeats.length > 0 ? { mainlineBeats } : {}),
       ...(trimText(record.notes) ? { notes: trimText(record.notes) } : {}),
     });
@@ -251,6 +294,9 @@ export function renderCurrentVolumeFocus(
     volume.targetChapters ? `本卷目标章数：${volume.targetChapters}` : "",
     volume.targetWords ? `本卷目标字数：${volume.targetWords}` : "",
     volume.goal ? `本卷剧情目标：${volume.goal}` : "本卷剧情目标：未填写（卷纲缺目标，无法据此约束本章走向）",
+    volume.controllingIdea ? `本卷主控思想（价值+原因）：${volume.controllingIdea}` : "",
+    volume.designPrinciple ? `本卷设计原则（W×A=C）：${volume.designPrinciple}` : "",
+    volume.antagonistWeb ? `对手网络与递增揭露：${volume.antagonistWeb}` : "",
     volume.mainlineBeats?.length
       ? `本卷主线节点：${volume.mainlineBeats.map((beat) => `${beat.status === "done" ? "✓" : beat.status === "active" ? "→" : "○"}${beat.title}`).join("；")}`
       : "本卷主线节点：未结构化填写（可在 outline.volume 中补充 mainlineBeats）",
@@ -258,7 +304,26 @@ export function renderCurrentVolumeFocus(
   if (typeof chapterNumber === "number" && chapterNumber > 0 && total > 0) {
     const offset = chapterNumber - from + 1;
     if (offset >= 1 && offset <= total) {
-      lines.push(`本章位置：本卷第 ${offset}/${total} 章，剩余 ${total - offset} 章收束本卷目标。`);
+      const ratio = offset / total;
+      const stageLabel = ratio <= 0.25
+        ? "第一段·布局（建前提与利害，逼向第一灾难）"
+        : ratio <= 0.5
+          ? "第二段·反应（置身危机按旧认知试错，逼向中点翻转）"
+          : ratio <= 0.75
+            ? "第三段·进攻（切换策略主动反击，借递增揭露提速至唯一一次看似落败）"
+            : "第四段·解决（压力锅终局对决与主控价值兑现）";
+      lines.push(`本章位置：本卷第 ${offset}/${total} 章（约 ${Math.round(ratio * 100)}%，处于「${stageLabel}」），剩余 ${total - offset} 章收束本卷目标。`);
+      if (volume.stageCheckpoints) {
+        const cp = volume.stageCheckpoints;
+        const activeCp = ratio <= 0.25
+          ? cp.setupTurn && `本段支点（第一灾难）：${cp.setupTurn}`
+          : ratio <= 0.5
+            ? cp.midpointReversal && `本段支点（中点翻转）：${cp.midpointReversal}`
+            : ratio <= 0.75
+              ? cp.darkNight && `本段支点（看似落败）：${cp.darkNight}`
+              : cp.climaxShowdown && `本段支点（终局对决）：${cp.climaxShowdown}`;
+        if (activeCp) lines.push(activeCp);
+      }
     }
   }
   if (context.inRange === false) {
@@ -306,6 +371,22 @@ export function renderVolumeMarkdown(outline: VolumeOutline): string {
     if (volume.targetChapters) lines.push(`- 目标章数：${volume.targetChapters}`);
     if (volume.targetWords) lines.push(`- 目标字数：${volume.targetWords}`);
     if (volume.goal) lines.push(`- 本卷目标：${volume.goal}`);
+    if (volume.controllingIdea) lines.push(`- 主控思想（价值+原因）：${volume.controllingIdea}`);
+    if (volume.designPrinciple) lines.push(`- 设计原则（W×A=C）：${volume.designPrinciple}`);
+    if (volume.antagonistWeb) lines.push(`- 对手网络与递增揭露：${volume.antagonistWeb}`);
+    if (volume.stageCheckpoints) {
+      const cp = volume.stageCheckpoints;
+      const parts = [
+        cp.setupTurn ? `布局转折(25%)：${cp.setupTurn}` : "",
+        cp.midpointReversal ? `中点翻转(50%)：${cp.midpointReversal}` : "",
+        cp.darkNight ? `看似落败(75%)：${cp.darkNight}` : "",
+        cp.climaxShowdown ? `终局对决：${cp.climaxShowdown}` : "",
+      ].filter(Boolean);
+      if (parts.length > 0) {
+        lines.push("- 四段支点：");
+        for (const p of parts) lines.push(`  - ${p}`);
+      }
+    }
     if (volume.mainlineBeats?.length) {
       lines.push("- 主线节点：");
       for (const beat of volume.mainlineBeats) {
@@ -587,7 +668,7 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
             {
               role: "system",
               content:
-                "你按给定章数与卷数规划卷纲。只输出 JSON 数组，每项 {id,title,chapterRange:{from,to},goal,status}。goal 是本卷要达成的剧情结果，禁止写作理论。",
+                "你按给定章数与卷数规划卷纲。只输出 JSON 数组，每项 {id,title,chapterRange:{from,to},goal,controllingIdea,designPrinciple,antagonistWeb,stageCheckpoints:{setupTurn,midpointReversal,darkNight,climaxShowdown},status}。goal 写本卷要达成的剧情结果，controllingIdea 用「价值+原因」概括，stageCheckpoints 落四段支点（25%第一灾难/50%中点翻转/75%唯一一次看似落败/终局压力锅对决），禁止写作理论说教。",
             },
             {
               role: "user",

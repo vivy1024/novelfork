@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeWordFrequency, scanMetaLeaks } from "./prose-lenses.js";
+import {
+  analyzeWordFrequency,
+  scanAdverbAndHedgingClutter,
+  scanMetaLeaks,
+  scanPovSelfSightLeaks,
+} from "./prose-lenses.js";
 
 describe("prose-lenses: scanMetaLeaks 工程元信息穿帮扫描", () => {
   it("忽略首行 Markdown 章节标题或第一行章名，但精准捕获正文段落中的穿帮词", () => {
@@ -95,5 +100,41 @@ describe("prose-lenses: analyzeWordFrequency 零 Token 高频词与疲劳词透�
     // 已被「青铜古剑」覆盖的子串「青铜」「古剑」不应重复刷屏
     expect(terms).not.toContain("青铜");
     expect(terms).not.toContain("古剑");
+  });
+});
+
+describe("prose-lenses: 冗余副词/弱化词与有限 POV 自我不可见初筛", () => {
+  it("达到阈值时捕获叙述段冗余「副词+地+动词」与弱化词聚集，并放行对白引号内部", () => {
+    const content = [
+      "# 第九章 审讯室",
+      "",
+      "他冷冷地说道：“或许、大概、似乎你早就知道了。”",
+      "陈默愤怒地喊道，接着用力地关上铁门，又缓缓地走回桌前。",
+      "走廊里大概或许似乎稍稍有点不对劲，仿佛连灯光都非常暗淡。",
+    ].join("\n");
+
+    const hits = scanAdverbAndHedgingClutter(content);
+    expect(hits.some((h) => h.kind === "redundant-adverb")).toBe(true);
+    // 第 1 段弱化词在引号内应放行；第 3 段叙述段弱化词聚集应命中
+    const hedgingHits = hits.filter((h) => h.kind === "hedging-cluster");
+    expect(hedgingHits).toHaveLength(1);
+    expect(hedgingHits[0]?.paragraphIndex).toBe(3);
+  });
+
+  it("有限视角无镜面时初筛角色看不见的自我眼神/神情描写，有镜面或倒影语境则放行", () => {
+    const content = [
+      "# 第十章 暗室",
+      "",
+      "沈追眼底闪过一丝寒意。沈追抬起坚毅的双眸望向长廊。",
+      "我走到铜盆边，借着水面看见我眼底闪过一丝疲惫。",
+      "林岚眼底闪过一丝狐疑，没有接话。",
+    ].join("\n");
+
+    const hits = scanPovSelfSightLeaks(content, "沈追");
+    expect(hits).toHaveLength(2);
+    expect(hits.every((h) => h.paragraphIndex === 1 && h.reviewOnly)).toBe(true);
+    // 非视角人物林岚与有水面反光的第 2 段不应误报
+    expect(hits.some((h) => h.quote.includes("林岚"))).toBe(false);
+    expect(hits.some((h) => h.paragraphIndex === 2)).toBe(false);
   });
 });

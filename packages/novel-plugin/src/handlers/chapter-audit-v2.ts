@@ -25,7 +25,11 @@ import {
   checkRegisterGuardrail,
   type CheckRegisterGuardrailInput,
 } from "../engine/compliance/register-guardrail.js";
-import { scanMetaLeaks } from "../engine/compliance/prose-lenses.js";
+import {
+  scanAdverbAndHedgingClutter,
+  scanMetaLeaks,
+  scanPovSelfSightLeaks,
+} from "../engine/compliance/prose-lenses.js";
 
 export interface AuditV2Input {
   readonly bookId: string;
@@ -264,10 +268,31 @@ export function handleChapterAuditV2(input: AuditV2Input): AuditV2Result {
   const runPov = !enabledChecks || enabledChecks.has("pov") || enabledChecks.has("continuity");
   const runRegister = !enabledChecks || enabledChecks.has("register") || enabledChecks.has("ai_taste") || enabledChecks.has("continuity");
   const runMetaLeak = !enabledChecks || enabledChecks.has("meta_leak") || enabledChecks.has("ai_taste") || enabledChecks.has("continuity");
+  const runProseCraft = !enabledChecks || enabledChecks.has("ai_taste") || enabledChecks.has("prose_craft");
 
   const metaLeakViolations: AuditV2Violation[] = runMetaLeak
     ? scanMetaLeaks(content).map((hit) => ({
       ruleId: "S10",
+      severity: "soft" as const,
+      location: `第${hit.paragraphIndex}段`,
+      description: hit.explanation.whatHappened,
+      suggestion: hit.explanation.suggestedAction,
+    }))
+    : [];
+
+  const proseCraftViolations: AuditV2Violation[] = runProseCraft
+    ? scanAdverbAndHedgingClutter(content).map((hit) => ({
+      ruleId: "S11",
+      severity: "soft" as const,
+      location: `第${hit.paragraphIndex}段`,
+      description: hit.explanation.whatHappened,
+      suggestion: hit.explanation.suggestedAction,
+    }))
+    : [];
+
+  const povSelfSightViolations: AuditV2Violation[] = runPov
+    ? scanPovSelfSightLeaks(content, povCharacter).map((hit) => ({
+      ruleId: "S12",
       severity: "soft" as const,
       location: `第${hit.paragraphIndex}段`,
       description: hit.explanation.whatHappened,
@@ -311,6 +336,8 @@ export function handleChapterAuditV2(input: AuditV2Input): AuditV2Result {
     ...canonViolations.filter((v) => v.severity === "soft"),
     ...registerViolations.filter((v) => v.severity === "soft"),
     ...metaLeakViolations,
+    ...proseCraftViolations,
+    ...povSelfSightViolations,
     ...checkSoftConstraints(content, input).filter((v) => {
     if (v.ruleId === "S7") return ledgerEnabled && v.severity === "soft";
     if (!enabledChecks) return true;

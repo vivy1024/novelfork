@@ -234,4 +234,81 @@ describe("scene.spec deterministic contract", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("支持场景戏剧引擎字段（sceneMode / valueTurn / expectationGap / entryPoint / infoMode），并对非事件场与平顺期望给出提醒", async () => {
+    const rich = await handleSceneSpec({
+      bookId: "book-1",
+      chapterNumber: 7,
+      userDirectives: "林舟潜入库房核账却撞见管事毁证",
+      skipContextGate: true,
+      sceneSpec: {
+        chapter: 7,
+        title: "火焚旧账",
+        wordTarget: 3000,
+        scenes: [
+          {
+            characters: ["林舟", "刘管事"],
+            location: "后院旧账库",
+            conflict: "抢在火势吞没前保住折旧底册",
+            mood: "紧张→剧烈反转",
+            outcome: "底册被毁但林舟抢下带朱砂指印的封皮",
+            hooks_used: ["旧账残页"],
+            hooks_planted: ["朱砂指印所属幕后人"],
+            sceneMode: "active",
+            valueTurn: { from: "隐蔽潜入（占优）", to: "身份暴露（陷入追杀）" },
+            expectationGap: { expectation: "趁夜悄然抄完账目脱身", reality: "刘管事早已在库内点火并反锁库门" },
+            entryPoint: "跳过翻墙进院过场，直接从火苗舔上账册封皮的瞬间切入",
+            infoMode: "irony",
+            microBeats: ["火起封门", "抢出半页封皮", "破窗脱身"],
+          },
+        ],
+        constraints: [],
+      },
+    });
+    expect(rich.ok).toBe(true);
+    if (!rich.ok) return;
+    const s0 = rich.data.sceneSpec.scenes[0]!;
+    expect(s0.sceneMode).toBe("active");
+    expect(s0.valueTurn).toEqual({ from: "隐蔽潜入（占优）", to: "身份暴露（陷入追杀）" });
+    expect(s0.expectationGap?.reality).toContain("点火");
+    expect(s0.entryPoint).toContain("火苗");
+    expect(s0.infoMode).toBe("irony");
+    expect(rich.data.craftFindings).toBeUndefined();
+
+    // 起止价值未变 & 期望与结果相同 → 给出戏剧结构提醒（不阻断）
+    const flat = await handleSceneSpec({
+      bookId: "book-1",
+      chapterNumber: 8,
+      userDirectives: "林舟去集市买了一把新柴刀",
+      skipContextGate: true,
+      sceneSpec: {
+        chapter: 8,
+        title: "买刀",
+        wordTarget: 3000,
+        scenes: [
+          {
+            characters: ["林舟", "铁匠"],
+            location: "集市铁匠铺",
+            conflict: "挑一把趁手的柴刀",
+            mood: "平静",
+            outcome: "买到柴刀离开",
+            hooks_used: [],
+            hooks_planted: [],
+            sceneMode: "active",
+            valueTurn: { from: "安全", to: "安全" },
+            expectationGap: { expectation: "付钱买到柴刀", reality: "付钱买到柴刀" },
+          },
+        ],
+        constraints: [],
+      },
+    });
+    expect(flat.ok).toBe(true);
+    if (!flat.ok) return;
+    expect(flat.data.craftFindings?.map((f) => f.code)).toEqual([
+      "non-event-value-turn",
+      "flat-expectation-gap",
+    ]);
+    expect(flat.summary).toContain("非事件场");
+    expect(flat.summary).toContain("鸿沟");
+  });
 });

@@ -93,4 +93,23 @@ describe("chapter-audit-v2 S6 章内重复段落", () => {
     expect(metaHits.some((v) => v.description.includes("上一章") && v.description.includes("「"))).toBe(true);
     expect(metaHits.some((v) => v.description.includes("伏笔"))).toBe(true);
   });
+
+  it("S11 与 S12 分别捕获冗余副词/弱化词聚集与有限 POV 自我不可见神情描写", () => {
+    const content = [
+      "# 第九章 试探",
+      "",
+      "沈追冷冷地说道，随即用力地关上木门，又缓缓地走近窗台。",
+      "他大概似乎仿佛稍稍察觉了什么，沈追眼底闪过一丝冷芒。",
+    ].join("\n");
+
+    const result = handleChapterAuditV2({
+      bookId: "test-book",
+      chapterNumber: 9,
+      povCharacter: "沈追",
+      content,
+    });
+
+    expect(result.softViolations.some((v) => v.ruleId === "S11")).toBe(true);
+    expect(result.softViolations.some((v) => v.ruleId === "S12" && v.description.includes("沈追眼底闪过"))).toBe(true);
+  });
 });
