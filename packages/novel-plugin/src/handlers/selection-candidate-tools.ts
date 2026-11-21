@@ -130,7 +130,7 @@ export async function proposeSelectionCandidate(
       return {
         ok: false,
         error: "chapter-not-found",
-        summary: `找不到第 ${chapterNumber} 章，候选没有提交。请确认章号后用 chapter_read 重读章节再提交。`,
+        summary: `找不到第 ${chapterNumber} 章，候选没有提交。请确认章号后用 chapter_list 定位章节路径并用 Read 重读章节再提交。`,
       };
     }
     const occurrences = countOccurrences(content, sourceText);
@@ -138,14 +138,14 @@ export async function proposeSelectionCandidate(
       return {
         ok: false,
         error: "source-text-not-found",
-        summary: `sourceText 在第 ${chapterNumber} 章正文里找不到逐字相同的原文，候选没有提交。常见原因是抄写时改了字（例如繁体写成简体）、标点或空格。请用 chapter_read 重读这一章，把原文原样复制到 sourceText 后再提交。`,
+        summary: `sourceText 在第 ${chapterNumber} 章正文里找不到逐字相同的原文，候选没有提交。常见原因是抄写时改了字（例如繁体写成简体）、标点或空格。请用 chapter_list + Read 重读这一章，把原文原样复制到 sourceText 后再提交。`,
       };
     }
     if (occurrences > 1) {
       return {
         ok: false,
         error: "source-text-ambiguous",
-        summary: `sourceText 在第 ${chapterNumber} 章正文里出现了不止一次，编辑器没法确定改哪一处，候选没有提交。请用 chapter_read 重读这一章，把 sourceText 扩大到包含前后文、在正文里只出现一次的原文再提交。`,
+        summary: `sourceText 在第 ${chapterNumber} 章正文里出现了不止一次，编辑器没法确定改哪一处，候选没有提交。请用 chapter_list + Read 重读这一章，把 sourceText 扩大到包含前后文、在正文里只出现一次的原文再提交。`,
       };
     }
   }

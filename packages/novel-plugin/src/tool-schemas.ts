@@ -156,6 +156,198 @@ const sceneSpecSchema = {
   additionalProperties: false,
 };
 
+const jingweiSourceRefSchema = {
+  type: "object",
+  properties: { chapterNumber: numberSchema("章节号。"), excerpt: stringSchema("摘录。") },
+  required: ["chapterNumber", "excerpt"],
+  additionalProperties: false,
+};
+
+/** 经纬动态字段对象（提供常见参考字段避免空 OBJECT 触发网关占位改写，同时保留 additionalProperties: true 允许自由键值）。 */
+const openFieldsObjectSchema = (description: string): Record<string, unknown> => ({
+  type: "object",
+  description,
+  properties: {
+    status: stringSchema("状态值（可选，如 active / planted / paid_off）。"),
+    phase: stringSchema("阶段或境界（可选）。"),
+    summary: stringSchema("简短说明（可选）。"),
+    notes: stringSchema("补充备注（可选）。"),
+  },
+  additionalProperties: true,
+});
+
+const jingweiBatchEntrySchema = {
+  type: "object",
+  description: "单条经纬设定项。",
+  properties: {
+    action: enumSchema(["create", "update", "delete", "retire"], "操作：create | update | delete | retire（默认 create/update）。"),
+    title: stringSchema("条目标题。"),
+    contentMd: stringSchema("条目正文 Markdown。"),
+    summaryMd: stringSchema("短摘要（可选）。"),
+    category: stringSchema("经纬分类（如 characters / world-model / factions / power-system / rules / foreshadowing）。"),
+    layer: enumSchema(["canon", "dynamic", "reference"], "数据层（默认 dynamic）。"),
+    aliases: arraySchema("别名列表。", { type: "string" }),
+    tags: arraySchema("标签列表。", { type: "string" }),
+    visibility: enumSchema(["global", "tracked", "nested"], "可见性（默认 tracked）。"),
+    relatedEntryIds: arraySchema("关联条目 ID。", { type: "string" }),
+    entryId: stringSchema("条目 ID（update/delete/retire）。"),
+    entryKey: stringSchema("条目唯一键（可选）。"),
+    mode: enumSchema(["overwrite", "append"], "写入模式（默认 overwrite）。"),
+    confirmCanonEdit: booleanSchema("修改或退役 Canon 时必须为 true。"),
+    reason: stringSchema("变更原因（canon/rules/retire 必填）。"),
+    source: stringSchema("设定来源（canon/rules 时与 evidence 至少一项）。"),
+    evidence: stringSchema("证据摘录。"),
+    status: enumSchema(["draft", "confirmed", "needs-review"], "条目状态。"),
+    sourceRefs: arraySchema("证据来源数组。", jingweiSourceRefSchema),
+    fields: openFieldsObjectSchema("结构化字段对象（可选）。"),
+    fieldsJson: stringSchema("可选：fields 的 JSON 对象字符串形式。"),
+  },
+  additionalProperties: false,
+};
+
+const endgameReserveSchema = {
+  type: "object",
+  description: "终局储备（全书级底牌与升级台阶账，action=set 可选）。",
+  properties: {
+    trumpCards: arraySchema("一次性底牌列表（宿敌/真相/金手指上限等）。", {
+      type: "object",
+      properties: {
+        id: stringSchema("底牌 ID。"),
+        kind: enumSchema(
+          ["arch-enemy", "ultimate-truth", "power-ceiling", "identity-end", "emotion-end"],
+          "底牌类别：arch-enemy | ultimate-truth | power-ceiling | identity-end | emotion-end。",
+        ),
+        name: stringSchema("底牌名称。"),
+        unlockAtVolume: numberSchema("最早允许动用的卷序号（1 起）。"),
+        spentAtVolume: numberSchema("已动用于第几卷（未动用可省略）。"),
+        notes: stringSchema("备注（可选）。"),
+      },
+      required: ["id", "kind", "name", "unlockAtVolume"],
+      additionalProperties: false,
+    }),
+    ladders: arraySchema("递进升级台阶列表（境界/势力/资源阶梯）。", {
+      type: "object",
+      properties: {
+        id: stringSchema("台阶 ID。"),
+        name: stringSchema("台阶名称。"),
+        totalSteps: numberSchema("总档数（如 9）。"),
+        currentStep: numberSchema("当前所处档位（0 起）。"),
+        maxStepThisVolume: numberSchema("本卷允许到达的最高档（可选）。"),
+      },
+      required: ["id", "name", "totalSteps", "currentStep"],
+      additionalProperties: false,
+    }),
+  },
+  additionalProperties: false,
+};
+
+const memoryEventItemSchema = {
+  type: "object",
+  description: "单条叙事事件。",
+  properties: {
+    chapterNumber: numberSchema("章节序号。"),
+    eventType: stringSchema("事件类型（如 character_state_changed / relationship_changed / hook_planted / world_fact_introduced）。"),
+    subject: stringSchema("事件主体。"),
+    predicate: stringSchema("谓词/关系。"),
+    object: stringSchema("客体/状态。"),
+    evidenceText: stringSchema("正文证据摘录。"),
+    confidence: numberSchema("置信度 0–1（默认 0.8）。"),
+    layer: factLayerSchema,
+  },
+  required: ["chapterNumber", "eventType", "subject", "predicate", "object", "evidenceText"],
+  additionalProperties: false,
+};
+
+const memoryEventFilterSchema = {
+  type: "object",
+  description: "bulk_approve 筛选条件（与 eventIds 二选一）。",
+  properties: {
+    ids: arraySchema("限定事件 ID 列表。", { type: "string" }),
+    status: eventStatusSchema,
+    category: stringSchema("按事实分类或事件类型过滤。"),
+    chapterRange: arraySchema("章节范围 [from, to]。", { type: "number" }),
+    query: stringSchema("关键词过滤。"),
+  },
+  additionalProperties: false,
+};
+
+const styleChapterItemSchema = {
+  type: "object",
+  description: "已切分的参考章节对象。",
+  properties: {
+    number: numberSchema("章节序号。"),
+    title: stringSchema("章节标题（可选）。"),
+    content: stringSchema("章节正文。"),
+  },
+  required: ["number", "content"],
+  additionalProperties: false,
+};
+
+const workflowStepPayloadSchema = {
+  type: "object",
+  description: "submit：工序产物对象（scene-spec / prose / audit / outline / other）。",
+  properties: {
+    title: stringSchema("标题（prose/outline 可选）。"),
+    content: stringSchema("正文或文本内容（prose 可选，若已用 Write 落盘可只传 filePath）。"),
+    filePath: relativeBookFileSchema("prose：已用原生 Write 写入的章节草稿相对路径。"),
+    summary: stringSchema("摘要或审校结论（audit/other 可选）。"),
+    passed: booleanSchema("audit：是否通过。"),
+    sceneSpec: sceneSpecSchema,
+    notes: stringSchema("补充说明（可选）。"),
+  },
+  additionalProperties: true,
+};
+
+const workflowGraphOpSchema = {
+  type: "object",
+  description: "单条工作流图编辑指令。",
+  properties: {
+    op: enumSchema(
+      ["add_node", "update_node", "remove_node", "connect", "disconnect", "set_meta"],
+      "指令类型：add_node | update_node | remove_node | connect | disconnect | set_meta。",
+    ),
+    id: stringSchema("节点或连线 ID（update_node / remove_node / disconnect / connect 可选）。"),
+    source: stringSchema("connect/disconnect：源节点 ID。"),
+    target: stringSchema("connect/disconnect：目标节点 ID。"),
+    kind: enumSchema(["next", "reject"], "connect：连线类型 next（默认）| reject（打回线）。"),
+    outcome: stringSchema("connect：分支条件结果键（可选）。"),
+    node: {
+      type: "object",
+      description: "add_node：新增节点定义。",
+      properties: {
+        id: stringSchema("节点 ID（可选，缺省自动生成）。"),
+        type: enumSchema(["start", "end", "step", "join"], "节点类型：step | join | start | end。"),
+        label: stringSchema("节点显示名。"),
+        kind: stringSchema("step 工序类型（如 context-load / guided-plan / writer-generate / audit / approval-gate / post-settlement）。"),
+        description: stringSchema("工序说明。"),
+        requiresApproval: booleanSchema("是否需要作者审批。"),
+        enabled: booleanSchema("是否启用。"),
+        outcomes: arraySchema("分支结果键列表（可选）。", { type: "string" }),
+        tools: arraySchema("工序工具列表（可选）。", { type: "string" }),
+      },
+      required: ["type"],
+      additionalProperties: true,
+    },
+    patch: {
+      type: "object",
+      description: "update_node / set_meta：要修改的字段补丁。",
+      properties: {
+        name: stringSchema("set_meta：方案名称。"),
+        label: stringSchema("update_node：节点名称。"),
+        description: stringSchema("方案或节点描述。"),
+        genre: stringSchema("set_meta：题材标签。"),
+        enabled: booleanSchema("update_node：是否启用。"),
+        requiresApproval: booleanSchema("update_node：是否需要作者审批。"),
+        resultStrategy: stringSchema("set_meta：结果策略。"),
+        maxRetries: numberSchema("set_meta：最大重试次数。"),
+      },
+      additionalProperties: true,
+    },
+  },
+  required: ["op"],
+  additionalProperties: false,
+};
+
 /**
  * 25 个精锐小说领域工具的 inputSchema 定义
  */
@@ -165,6 +357,10 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
+      section: enumSchema(
+        ["all", "progress", "hooks"],
+        "可选：概览范围，默认 all（返回全书进度、卷纲、待收伏笔与最近章节快照）。",
+      ),
     },
     required: [],
     additionalProperties: false,
@@ -219,6 +415,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
+      fromChapter: numberSchema("可选：起始章节序号（含）。"),
+      toChapter: numberSchema("可选：结束章节序号（含）。"),
+      status: stringSchema("可选：按章节状态过滤（如 draft / accepted）。"),
     },
     required: ["bookId"],
     additionalProperties: false,
@@ -309,11 +508,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       tags: arraySchema("标签列表。", { type: "string" }),
       visibility: enumSchema(["global", "tracked", "nested"], "可见性（默认 tracked）。"),
       relatedEntryIds: arraySchema("关联条目 ID。", { type: "string" }),
-      fields: {
-        type: "object",
-        description: "结构化字段（整体写入）。",
-        additionalProperties: true,
-      },
+      fields: openFieldsObjectSchema("结构化字段（整体写入，可选）。"),
+      fieldsJson: stringSchema("可选：fields 的 JSON 对象字符串形式（与 fields 二选一）。"),
       entryId: stringSchema("条目 ID（delete/retire/progress/propose）。"),
       entryKey: stringSchema("条目唯一键（可选）。"),
       mode: enumSchema(["overwrite", "append"], "写入模式（默认 overwrite）。"),
@@ -324,13 +520,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       status: enumSchema(["draft", "confirmed", "needs-review"], "条目状态。"),
       stagingId: stringSchema("拆书暂存候选 ID。"),
       stagingDecision: enumSchema(["promote", "reject"], "拆书候选处理：promote | reject。"),
-      sourceRefs: arraySchema("证据来源数组。", {
-        type: "object",
-        properties: { chapterNumber: numberSchema("章节号。"), excerpt: stringSchema("摘录。") },
-        required: ["chapterNumber", "excerpt"],
-        additionalProperties: false,
-      }),
-      entries: arraySchema("批量写入多条设定（最多 20 条）。", { type: "object", additionalProperties: true }),
+      sourceRefs: arraySchema("证据来源数组。", jingweiSourceRefSchema),
+      entries: arraySchema("批量写入多条设定（最多 20 条）。", jingweiBatchEntrySchema),
       // relate 专用
       sourceName: stringSchema("relate：关系主体名。"),
       targetName: stringSchema("relate：关系客体名。"),
@@ -342,7 +533,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       oldValue: stringSchema("progress：旧值（可选）。"),
       newValue: stringSchema("progress：新值。"),
       // propose 专用
-      fieldsPatch: { type: "object", description: "propose：要改的字段补丁。" },
+      fieldsPatch: openFieldsObjectSchema("propose：要改的字段补丁对象。"),
+      fieldsPatchJson: stringSchema("propose：fieldsPatch 的 JSON 对象字符串形式（与 fieldsPatch 二选一）。"),
       // propose_storyline 专用
       name: stringSchema("propose_storyline：剧情线名称。"),
       kind: enumSchema(["main", "sub", "romance", "faction", "mystery", "character-arc", "other"], "propose_storyline：类别。"),
@@ -404,11 +596,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       }),
       volumeCount: numberSchema("action=suggest 期望卷数（默认 3）。"),
       targetChapters: numberSchema("action=suggest 目标章数。"),
-      endgameReserve: {
-        type: "object",
-        description: "终局储备（底牌与升级台阶，action=set 可选）。",
-        additionalProperties: true,
-      },
+      endgameReserve: endgameReserveSchema,
     },
     required: ["bookId"],
     additionalProperties: false,
@@ -468,7 +656,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       action: enumSchema(["list", "create", "approve", "reject", "bulk_approve"], "操作：list | create | approve | reject | bulk_approve。"),
       eventId: stringSchema("approve/reject：事件 ID。"),
       eventIds: arraySchema("bulk_approve：事件 ID 列表。", { type: "string" }),
-      filter: { type: "object", description: "bulk_approve：可选筛选条件（status/layer/category/chapterRange/query）。", additionalProperties: true },
+      filter: memoryEventFilterSchema,
       chapterNumber: numberSchema("create：章节序号。"),
       eventType: stringSchema("create：事件类型。"),
       subject: stringSchema("create：事件主体。"),
@@ -480,7 +668,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       source: enumSchema(["agent", "manual"], "create：来源（agent 低风险自动生效 | manual 一律待确认）。"),
       reason: stringSchema("approve/reject/bulk_approve：操作原因。"),
       limit: numberSchema("list/bulk_approve：处理条数上限。"),
-      events: arraySchema("create：批量创建事件（最多 20 条）。", { type: "object", additionalProperties: true }),
+      events: arraySchema("create：批量创建事件（最多 20 条）。", memoryEventItemSchema),
     },
     required: ["bookId", "action"],
     additionalProperties: false,
@@ -535,7 +723,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       filePath: relativeBookFileSchema("参考文件相对路径（index/preview/start）。"),
       sourceName: stringSchema("参考来源名。"),
       text: stringSchema("直接传入的参考正文。"),
-      chapters: arraySchema("已切分章节数组。", { type: "object", additionalProperties: true }),
+      chapters: arraySchema("已切分章节数组。", styleChapterItemSchema),
       splitPattern: stringSchema("章节标题正则。"),
       listFilesOnly: booleanSchema("index：仅列出参考文件。"),
       offset: numberSchema("index：分页起点。"),
@@ -651,7 +839,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       stepId: stringSchema("工序 ID（多道并行时必填）。"),
       outcome: stringSchema("submit：分支工序结果键。"),
       kind: enumSchema(["scene-spec", "prose", "audit", "outline", "other"], "submit：产物类别。"),
-      payload: { type: "object", description: "submit：产物内容（scene-spec/prose/audit/outline/other）。" },
+      payload: workflowStepPayloadSchema,
+      payloadJson: stringSchema("submit：可选，payload 的 JSON 对象字符串形式（与 payload 二选一）。"),
       what: stringSchema("blocker：哪一步做不下去。"),
       why: stringSchema("blocker：为什么做不下去。"),
       suggestion: stringSchema("blocker：建议作者如何处理。"),
@@ -669,7 +858,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       name: stringSchema("edit：新建草稿名称。"),
       ops: arraySchema(
         "edit：图编辑指令数组（add_node / update_node / remove_node / connect / disconnect / set_meta）。",
-        { type: "object", additionalProperties: true },
+        workflowGraphOpSchema,
       ),
       chapterNumber: numberSchema("start：目标章节号。"),
     },
@@ -679,20 +868,19 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
 };
 
 /**
- * 面向模型的精简 schema：sceneSpec 完整子结构只在 chapter.blueprint 里展开一次，
- * 下游工具改为开放透传对象，进一步压低每轮常驻 token 开销。
+ * 面向模型的精简 schema：
+ * 下游工具（chapter.preflight / chapter.commit / chapter.audit）的 sceneSpec 由服务端按章缓存、
+ * 可完全省略；不再导出空 properties 对象（会触发 Gemini 兼容网关塞入必填占位键 reason 导致校验冲突）。
+ * 服务端 validationInputSchema 仍保留完整 sceneSpec 校验以兼容测试与显式传入。
  */
-const SCENE_SPEC_PASSTHROUGH_SCHEMA = { type: "object", description: "可选：原样传入 chapter_blueprint 返回的 sceneSpec（服务端已按章缓存，可省略）。" };
-const SCENE_SPEC_PASSTHROUGH_TOOLS: readonly string[] = ["chapter.preflight", "chapter.commit", "chapter.audit"];
+const SCENE_SPEC_OMIT_MODEL_TOOLS: readonly string[] = ["chapter.preflight", "chapter.commit", "chapter.audit"];
 
 function toModelFacingSchema(name: string, schema: ToolInputSchema): ToolInputSchema {
-  if (!SCENE_SPEC_PASSTHROUGH_TOOLS.includes(name) || !schema.properties.sceneSpec) return schema;
+  if (!SCENE_SPEC_OMIT_MODEL_TOOLS.includes(name) || !schema.properties.sceneSpec) return schema;
+  const { sceneSpec: _omitted, ...restProperties } = schema.properties;
   return {
     ...schema,
-    properties: {
-      ...schema.properties,
-      sceneSpec: SCENE_SPEC_PASSTHROUGH_SCHEMA,
-    },
+    properties: restProperties,
   };
 }
 

@@ -308,7 +308,14 @@ async function proposeLoreUpdate(
   binding: TrustedRuntimeBookBinding,
 ): Promise<RuntimeToolResult> {
   const entryId = typeof input.entryId === "string" ? input.entryId.trim() : "";
-  const fieldsPatch = record(input.fieldsPatch);
+  let fieldsPatch = record(input.fieldsPatch);
+  if (!fieldsPatch && typeof input.fieldsPatchJson === "string" && input.fieldsPatchJson.trim()) {
+    try {
+      fieldsPatch = record(JSON.parse(input.fieldsPatchJson));
+    } catch {
+      return fail("invalid-input", "fieldsPatchJson 不是合法的 JSON 对象字符串。候选没有改设定。");
+    }
+  }
   const reason = typeof input.reason === "string" ? input.reason.trim() : "";
   if (!entryId || !fieldsPatch || Object.keys(fieldsPatch).length === 0 || !reason) {
     return fail("invalid-input", "需要有效的 entryId、fieldsPatch（至少一个要改的字段）与 reason。候选没有改设定。");
@@ -584,6 +591,7 @@ async function bookDissect(
     : undefined;
   // settle=true 时叙事事件抽取与 memory.settle_chapter 同源：会话 generateText 构造。
   const { createRuntimeChapterEventExtractor } = await import("../engine/narrative-memory/chapter-event-extractor.js");
+  context.emitOutput?.("正在拆解已导入章节并抽取经纬结构草稿…");
   const result = await handleBookDissect({
     bookId: binding.bookId,
     bookRoot: binding.root,

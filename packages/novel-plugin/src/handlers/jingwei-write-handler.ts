@@ -52,6 +52,8 @@ export interface JingweiWriteInput {
   entryKey?: string;
   sourceRefs?: Array<{ chapterNumber: number; excerpt: string; path?: string; fileName?: string }>;
   fields?: Record<string, unknown>;
+  /** 可选：fields 的 JSON 对象字符串形式（兼容部分模型/协议把自由 KV 传成字符串）。 */
+  fieldsJson?: string;
   mode?: "overwrite" | "append";
   /** 优先层级，影响默认 importance 与注入详细度 */
   priorityTier?: "core" | "relevant" | "reference" | "auto";
@@ -360,6 +362,19 @@ export async function handleJingweiWrite(
     };
   }
   const entryRepo = createStoryJingweiEntryRepository(storage);
+
+  if (!input.fields && typeof input.fieldsJson === "string" && input.fieldsJson.trim()) {
+    try {
+      const parsed = JSON.parse(input.fieldsJson) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        input = { ...input, fields: parsed as Record<string, unknown> };
+      } else {
+        return { ok: false, error: "invalid-input", summary: "fieldsJson 必须是 JSON 对象字符串。" };
+      }
+    } catch {
+      return { ok: false, error: "invalid-input", summary: "fieldsJson 不是合法 JSON。" };
+    }
+  }
 
   // Parse & validate input
   let bookId = String(input.bookId);

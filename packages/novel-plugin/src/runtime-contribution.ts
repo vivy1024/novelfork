@@ -225,6 +225,7 @@ export function toRuntimeInputSchema(schema: unknown): PortableJsonSchema {
       source.properties && typeof source.properties === "object" && !Array.isArray(source.properties),
     );
     const result: Record<string, PortableJsonValue> = {};
+    const explicitlyOpen = source.additionalProperties === true;
     for (const [key, child] of Object.entries(source)) {
       if (key === "properties" && isObjectSchema && child && typeof child === "object" && !Array.isArray(child)) {
         const properties: Record<string, PortableJsonValue> = {};
@@ -241,7 +242,11 @@ export function toRuntimeInputSchema(schema: unknown): PortableJsonSchema {
       if (key === "additionalProperties" && isObjectSchema) continue;
       result[key] = sanitize(child);
     }
-    if (isObjectSchema && declaresProperties) result.additionalProperties = false;
+    if (isObjectSchema && explicitlyOpen) {
+      result.additionalProperties = true;
+    } else if (isObjectSchema && declaresProperties) {
+      result.additionalProperties = false;
+    }
     return result;
   };
 
@@ -400,18 +405,33 @@ async function executeReadyToolImpl(
     }
     if (matchesToolName(tool.name, "chapter.list")) {
       const chapters = await createBoundNovelState(binding).loadChapterIndex(binding.bookId);
-      const items = chapters.map((chapter) => {
-        const fileName = typeof (chapter as unknown as { fileName?: unknown }).fileName === "string"
-          ? (chapter as unknown as { fileName: string }).fileName
-          : undefined;
-        return {
-          number: chapter.number,
-          title: chapter.title ?? `第${chapter.number}章`,
-          ...(fileName ? { path: fileName.startsWith("chapters/") ? fileName : `chapters/${fileName}` } : {}),
-          wordCount: chapter.wordCount ?? 0,
-          status: chapter.status ?? "draft",
-        };
-      });
+      const fromChapter = typeof injectedInput.fromChapter === "number" && Number.isFinite(injectedInput.fromChapter)
+        ? injectedInput.fromChapter
+        : undefined;
+      const toChapter = typeof injectedInput.toChapter === "number" && Number.isFinite(injectedInput.toChapter)
+        ? injectedInput.toChapter
+        : undefined;
+      const statusFilter = typeof injectedInput.status === "string" && injectedInput.status.trim()
+        ? injectedInput.status.trim().toLowerCase()
+        : undefined;
+      const items = chapters
+        .map((chapter) => {
+          const fileName = typeof (chapter as unknown as { fileName?: unknown }).fileName === "string"
+            ? (chapter as unknown as { fileName: string }).fileName
+            : undefined;
+          return {
+            number: chapter.number,
+            title: chapter.title ?? `第${chapter.number}章`,
+            ...(fileName ? { path: fileName.startsWith("chapters/") ? fileName : `chapters/${fileName}` } : {}),
+            wordCount: chapter.wordCount ?? 0,
+            status: chapter.status ?? "draft",
+          };
+        })
+        .filter((item) => (
+          (fromChapter === undefined || item.number >= fromChapter)
+          && (toChapter === undefined || item.number <= toChapter)
+          && (statusFilter === undefined || item.status.toLowerCase() === statusFilter)
+        ));
       return toRuntimeToolResult({
         ok: true,
         summary: `共 ${items.length} 章。`,

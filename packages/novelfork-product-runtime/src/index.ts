@@ -1,11 +1,17 @@
+import { realpath } from "node:fs/promises";
+import { resolve } from "node:path";
 import { NOVEL_RUNTIME_CONTRIBUTION } from "@vivy1024/novelfork-novel-plugin";
 import { listNovelSubagentTemplateContributions } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { Context, Hono, Next } from "hono";
 import {
 	AppError,
+	db as runtimeDb,
 	logger,
+	narrators,
+	projects,
 	type RuntimeProductIntegration,
 } from "@vivy1024/narrafork-runtime-bridge";
+import { eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { getNovelForkProductDatabase } from "./db/database";
 import { getControlledBooksRoot } from "./services/book-binding";
 import { reconcileBookSnapshotExcludes } from "./services/book-snapshot-exclude";
@@ -41,6 +47,7 @@ import {
 	canAccessBoundPermissionFromUserId,
 } from "./services/narrator-access";
 import { migrateLegacySessions } from "./services/legacy-session-migration";
+import { reconcileLegacyBookNarratorPrompts } from "./services/legacy-narrator-prompt-migration";
 import { reconcileBookProjectOwners } from "./services/book-project-owner";
 import { repairLegacyToolCallOutputJson } from "./services/legacy-tool-output-repair";
 import { moveLegacyBundledSkillCopies } from "./services/legacy-skill-copies";
@@ -65,12 +72,51 @@ export {
 
 type ProductActor = { userId: string; role: "admin" | "user" };
 
+async function normalizeDirForCompare(dir: string): Promise<string> {
+	const canonical = (await realpath(dir).catch(() => null)) ?? resolve(dir);
+	return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+}
+
 async function resolveNovelForkTrustedPromptRoot(narratorId: string): Promise<string | null> {
 	const context = await novelRuntimeAdapter.resolve(narratorId);
 	const binding = context?.resourceBindings["novel.book"];
-	return binding && typeof binding === "object" && "root" in binding && typeof binding.root === "string"
-		? binding.root
-		: null;
+	const bookRoot =
+		binding && typeof binding === "object" && "root" in binding && typeof binding.root === "string"
+			? binding.root
+			: null;
+	if (!bookRoot) return null;
+
+	// 当叙述者的有效工作目录已指向同一 bookRoot 时，Runtime 的 instructions.project
+	// 已经注入过该目录的 CLAUDE.md / AGENTS.md；不再通过 instructions.resource 重复注入第二份。
+	try {
+		const row = await runtimeDb.query.narrators.findFirst({
+			where: eq(narrators.id, narratorId),
+			columns: { traits: true, cwd: true, contextProjectId: true },
+		});
+		if (row) {
+			const projectRow = row.contextProjectId
+				? await runtimeDb.query.projects.findFirst({
+					where: eq(projects.id, row.contextProjectId),
+					columns: { gitPath: true },
+				})
+				: null;
+			const effectiveCwd = resolveNovelForkNarratorCwd({
+				traits: row.traits,
+				narratorCwd: row.cwd,
+				worktreePath: null,
+				projectGitPath: projectRow?.gitPath ?? null,
+				fallbackCwd: bookRoot,
+			});
+			const [normBook, normCwd] = await Promise.all([
+				normalizeDirForCompare(bookRoot),
+				normalizeDirForCompare(effectiveCwd),
+			]);
+			if (normBook === normCwd) return null;
+		}
+	} catch {
+		// 查询异常时回落原逻辑，不阻断正常对话
+	}
+	return bookRoot;
 }
 
 function actorFromContext(c: Context): ProductActor {
@@ -136,6 +182,10 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 		await migrateLegacySessions();
 		// 给本次修复前建的书补上 Runtime 项目 owner（幂等；只补 owner 仍为空的）。
 		await reconcileBookProjectOwners();
+		// 将旧版残留含下线工具名（write_preflight/scene_spec/pipeline_write/lore_*）的内置系统提示词升级为最新版。
+		await reconcileLegacyBookNarratorPrompts().catch((error) =>
+			logger.warn("Legacy narrator prompt reconciliation failed", { error: String(error) }),
+		);
 		// 给已有的书补上工作区快照排除规则（参考原著、表格、导出稿不进快照；幂等，失败只告警）。
 		await reconcileBookSnapshotExcludes(
 			await getNovelForkProductDatabase().query.bookRuntimeBindings.findMany(),

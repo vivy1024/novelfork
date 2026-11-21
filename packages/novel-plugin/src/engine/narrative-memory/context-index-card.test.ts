@@ -92,8 +92,10 @@ describe("buildContextIndexCard", () => {
       expect(card).toContain("预算/条数剪裁 2");
       expect(card).toContain('memory_read(purpose="audit", channels=["style"])');
       expect(card).toContain('memory_read(purpose="audit", channels=["state","knowledge"])');
-      expect(card).toContain("lore_read");
-      expect(card).toContain("chapter_read");
+      expect(card).toContain("jingwei_read");
+      expect(card).toContain("chapter_list + Read");
+      expect(card).not.toContain("lore_read");
+      expect(card).not.toContain("chapter_read");
       expect(card).toContain("别凭摘要猜");
       expect(card).toContain("【资料索引卡");
     } finally {

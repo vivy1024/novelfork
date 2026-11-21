@@ -61,7 +61,7 @@ describe("选区候选工具", () => {
     const { from: _from, to: _to, ...withoutRange } = selection;
     const result = await proposeSelectionCandidate({ ...withoutRange, sourceText: "赵太爷走进来。" }, "trusted-book", readChapter);
     expect(result).toMatchObject({ ok: false, error: "source-text-not-found" });
-    expect(result.summary).toContain("chapter_read");
+    expect(result.summary).toContain("chapter_list + Read");
   });
 
   it("按原文定位时 sourceText 在正文里出现多次就拒绝", async () => {

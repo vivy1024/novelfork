@@ -92,7 +92,7 @@ export function renderContextIndexCard(summary: ContextIndexCardSummary): string
     `上次写作注入（${chapter}，日志 ${logTag}）：${channels || "（未注入任何通道）"}${usage}。`,
     `案头资料若已被会话压缩成摘要版，按通道重取原文，别凭摘要猜（重取用 purpose="${RECALL_PURPOSE}"：只读，不会覆盖写作注入保留件，也不会让本卡改指向这次重取）：`,
     ...RECALL_CHANNELS.map((line) => `- ${line.need} → memory_read(purpose="${RECALL_PURPOSE}", channels=[${line.channels.map((c) => `"${c}"`).join(",")}])`),
-    "- 经纬设定原文 → lore_read；章节正文 → chapter_read",
+    "- 经纬设定原文 → jingwei_read；章节正文 → chapter_list + Read",
   ];
   return lines.join("\n");
 }

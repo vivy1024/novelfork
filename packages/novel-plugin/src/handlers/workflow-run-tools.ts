@@ -411,8 +411,15 @@ export async function executeWorkflowRunTool(
     const capture: { candidateId?: string } = {};
     const kind = typeof input.kind === "string" ? input.kind : "";
     let submitPayload: unknown = input.payload;
+    if (submitPayload === undefined && typeof input.payloadJson === "string" && input.payloadJson.trim()) {
+      try {
+        submitPayload = JSON.parse(input.payloadJson);
+      } catch {
+        return fail("invalid-payload-json", "payloadJson 不是合法的 JSON 字符串。");
+      }
+    }
     if (kind === "prose") {
-      const prepared = await hydrateOrMirrorWorkflowProsePayload(storage, binding, run, input.payload);
+      const prepared = await hydrateOrMirrorWorkflowProsePayload(storage, binding, run, submitPayload);
       if (!prepared.ok) return prepared.result;
       submitPayload = prepared.payload;
     }

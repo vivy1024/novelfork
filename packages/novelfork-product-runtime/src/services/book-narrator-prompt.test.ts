@@ -8,6 +8,7 @@ import { AppError, db as runtimeDb, narrators } from "@vivy1024/narrafork-runtim
 import { eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { novelForkProductIntegration } from "../index";
 import { initializeNovelRuntimeStorage } from "../adapters/storage";
+import { isLegacyBuiltInNovelistPrompt, reconcileLegacyBookNarratorPrompts } from "./legacy-narrator-prompt-migration";
 
 const owner = { sub: `narrator-prompt-owner-${crypto.randomUUID()}`, role: "user" as const };
 
@@ -66,6 +67,36 @@ describe("书籍叙述者提示词", () => {
 		const narrator = (await extra.json()) as { id: string };
 		expect(extra.status).toBe(201);
 		expectToolGuidance(await systemPromptOf(narrator.id));
+
+		expect((await app.request(`/api/novelfork/books/${encodeURIComponent(operation.bookId)}`, { method: "DELETE" })).status).toBe(200);
+	});
+
+	test("历史旧版内置提示词会被自动迁移升级，且同目录 bookRoot 不再经 instructions.resource 重复注入", async () => {
+		const app = productApp(owner);
+		const created = await app.request("/api/novelfork/books", {
+			method: "POST",
+			headers: { "content-type": "application/json", "Idempotency-Key": `legacy-prompt-${crypto.randomUUID()}` },
+			body: JSON.stringify({ title: `旧提示词迁移-${crypto.randomUUID()}` }),
+		});
+		const operation = (await created.json()) as { bookId: string; narratorId: string; state: string };
+		expect(created.status).toBe(201);
+
+		const legacyPrompt = "你是 NovelFork 的章节绑定小说创作助手。写章用 write_preflight -> scene_spec -> pipeline_write，改设定用 lore_*。";
+		expect(isLegacyBuiltInNovelistPrompt(legacyPrompt)).toBe(true);
+		expect(isLegacyBuiltInNovelistPrompt("用户自定义提示词，包含 write_preflight 也不应被覆盖")).toBe(false);
+
+		await runtimeDb
+			.update(narrators)
+			.set({ systemPrompt: legacyPrompt })
+			.where(eq(narrators.id, operation.narratorId));
+
+		const migrated = await reconcileLegacyBookNarratorPrompts();
+		expect(migrated.upgraded).toBeGreaterThanOrEqual(1);
+		expectToolGuidance(await systemPromptOf(operation.narratorId));
+
+		// 同目录 bookRoot 应由 instructions.project 注入一次，resolveTrustedPromptRoot 返回 null 避免重复注入 CLAUDE.md
+		const trustedPromptRoot = await novelForkProductIntegration.narrator?.resolveTrustedPromptRoot?.(operation.narratorId);
+		expect(trustedPromptRoot).toBeNull();
 
 		expect((await app.request(`/api/novelfork/books/${encodeURIComponent(operation.bookId)}`, { method: "DELETE" })).status).toBe(200);
 	});
