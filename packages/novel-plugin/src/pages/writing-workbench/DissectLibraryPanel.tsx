@@ -32,11 +32,14 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { fetchJson as defaultFetch } from "@/hooks/use-api";
 import type {
   ChapterSelection,
+  DissectBookKind,
   DissectBuildInput,
   DissectChapterSummaryMetric,
   DissectMeta,
   DissectNode,
   DissectPreviewResult,
+  KnowledgeEssenceSummary,
+  KnowledgeSectionAnalysis,
 } from "../../engine/dissect-library/dissect-library";
 
 interface LibraryTree {
@@ -46,18 +49,23 @@ interface LibraryTree {
 
 interface BookWorkspaceResponse {
   slug: string;
+  bookKind?: DissectBookKind;
   meta: DissectMeta;
   hasStoredSource: boolean;
   chapters: readonly DissectChapterSummaryMetric[];
+  essence?: KnowledgeEssenceSummary;
 }
 
 interface ChapterPairResponse {
   slug: string;
+  bookKind?: DissectBookKind;
   chapterNumber: number;
   title: string;
   sourceText: string;
+  paragraphs?: readonly string[];
   analysisPath: string;
   analysisContent: string;
+  knowledgeAnalysis?: KnowledgeSectionAnalysis | null;
   metrics: {
     words: number;
     dialogueRatio: number;
@@ -81,9 +89,10 @@ type MainViewState =
   | { kind: "welcome" }
   | { kind: "overview"; slug: string }
   | { kind: "document"; slug: string | null; path: string; title: string }
-  | { kind: "chapter"; slug: string; chapterNumber: number };
+  | { kind: "chapter"; slug: string; chapterNumber: number; highlightParagraph?: number };
 
 const CATEGORY_PRESETS = ["仙侠", "玄幻", "都市", "悬疑脑洞", "言情甜宠", "历史架空", "科幻末世", "轻小说"] as const;
+const KNOWLEDGE_CATEGORY_PRESETS = ["写作技巧", "叙事结构", "人物塑造", "对白与场景", "文风与改稿", "编剧方法论"] as const;
 
 export function nextDissectSelection(selection: ChapterSelection): ChapterSelection {
   const end =
@@ -108,6 +117,7 @@ function stripExt(name: string): string {
 }
 
 function encodingLabel(enc?: string): string {
+  if (enc === "obsidian") return "Obsidian 拆书库";
   if (enc === "gb18030") return "GB18030/GBK";
   if (enc === "utf-16le") return "UTF-16";
   if (enc === "epub") return "EPUB";
@@ -156,23 +166,40 @@ function TreeNode({
 function DissectMarkdown({ content }: { content: string }) {
   const [limit, setLimit] = useState(500);
   const all = content.split("\n");
-  const lines = all.slice(0, limit);
+  // 若第 limit 行正好落在表格中间，自动延展到当前表格结束，避免把一张表格拦腰截断
+  let effectiveLimit = Math.min(limit, all.length);
+  while (effectiveLimit < all.length && /^\|/.test(all[effectiveLimit]!)) {
+    effectiveLimit++;
+  }
+  const lines = all.slice(0, effectiveLimit);
   const blocks: React.ReactNode[] = [];
+  const normalizeInline = (raw: string) =>
+    raw
+      .replace(/\$\s*\\rightarrow\s*\$/g, " → ")
+      .replace(/\$\s*\\leftarrow\s*\$/g, " ← ")
+      .replace(/\$\s*\\leftrightarrow\s*\$/g, " ↔ ");
   const inline = (text: string) =>
-    text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, index) =>
-      part.startsWith("**") ? (
-        <strong key={index}>{part.slice(2, -2)}</strong>
-      ) : part.startsWith("`") ? (
-        <code key={index} className="rounded bg-muted px-1 font-mono text-sm">
-          {part.slice(1, -1)}
-        </code>
-      ) : (
-        part
-      ),
-    );
+    normalizeInline(text)
+      .split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
+      .map((part, index) =>
+        part.startsWith("**") ? (
+          <strong key={index}>{part.slice(2, -2)}</strong>
+        ) : part.startsWith("`") ? (
+          <code key={index} className="rounded bg-muted px-1 font-mono text-sm">
+            {part.slice(1, -1)}
+          </code>
+        ) : (
+          part
+        ),
+      );
   for (let i = 0; i < lines.length; ) {
     const line = lines[i]!;
     if (!line.trim()) {
+      i++;
+      continue;
+    }
+    if (/^\s*(?:[-*_]){3,}\s*$/.test(line)) {
+      blocks.push(<hr key={`hr-${i}`} className="my-5 border-border/70" />);
       i++;
       continue;
     }
@@ -187,7 +214,7 @@ function DissectMarkdown({ content }: { content: string }) {
       const rows: string[][] = [];
       while (i < lines.length && /^\|/.test(lines[i]!)) rows.push(cells(lines[i++]!));
       blocks.push(
-        <div key={i} className="my-5 overflow-x-auto rounded-lg border border-border">
+        <div key={`tbl-${i}`} className="my-5 overflow-x-auto rounded-lg border border-border">
           <table className="w-full border-collapse text-left font-sans text-xs leading-relaxed">
             <thead className="bg-muted/50">
               <tr>
@@ -219,15 +246,15 @@ function DissectMarkdown({ content }: { content: string }) {
       const level = heading[1]!.length;
       blocks.push(
         level === 1 ? (
-          <h1 key={i} className="mb-6 mt-1 font-serif text-xl font-semibold text-foreground">
+          <h1 key={`h-${i}`} className="mb-6 mt-1 font-serif text-xl font-semibold text-foreground">
             {inline(heading[2]!)}
           </h1>
         ) : level === 2 ? (
-          <h2 key={i} className="mb-3 mt-6 border-b border-border/60 pb-1.5 font-serif text-base font-semibold text-foreground">
+          <h2 key={`h-${i}`} className="mb-3 mt-6 border-b border-border/60 pb-1.5 font-serif text-base font-semibold text-foreground">
             {inline(heading[2]!)}
           </h2>
         ) : (
-          <h3 key={i} className="mb-2 mt-4 font-serif text-sm font-semibold text-foreground">
+          <h3 key={`h-${i}`} className="mb-2 mt-4 font-serif text-sm font-semibold text-foreground">
             {inline(heading[2]!)}
           </h3>
         ),
@@ -241,7 +268,7 @@ function DissectMarkdown({ content }: { content: string }) {
       while (i < lines.length && !lines[i]!.startsWith("```")) code.push(lines[i++]!);
       i++;
       blocks.push(
-        <pre key={i} className="my-4 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
+        <pre key={`code-${i}`} className="my-4 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
           {code.join("\n")}
         </pre>,
       );
@@ -251,35 +278,83 @@ function DissectMarkdown({ content }: { content: string }) {
       const quote: string[] = [];
       while (i < lines.length && lines[i]!.startsWith(">")) quote.push(lines[i++]!.replace(/^>\s?/, ""));
       blocks.push(
-        <blockquote key={i} className="my-4 rounded-r-md border-l-2 border-primary/40 bg-muted/30 py-2 pl-3.5 pr-3 text-xs leading-relaxed text-muted-foreground">
+        <blockquote key={`bq-${i}`} className="my-4 rounded-r-md border-l-2 border-primary/40 bg-muted/30 py-2 pl-3.5 pr-3 text-xs leading-relaxed text-muted-foreground">
           {inline(quote.join("\n"))}
         </blockquote>,
       );
       continue;
     }
-    if (/^[-*]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i]!)) {
-        items.push(lines[i++]!.replace(/^[-*]\s+/, ""));
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: { text: string; nested: boolean }[] = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i]!)) {
+        const cur = lines[i++]!;
+        items.push({ text: cur.replace(/^\s*[-*]\s+/, ""), nested: /^\s{2,}/.test(cur) });
       }
       blocks.push(
-        <ul key={i} className="my-3 space-y-1.5 pl-4 text-sm leading-relaxed">
+        <ul key={`ul-${i}`} className="my-3 space-y-1.5 pl-4 text-sm leading-relaxed">
           {items.map((item, idx) => (
-            <li key={idx} className="list-disc text-foreground/90">
-              {inline(item)}
+            <li key={idx} className={`list-disc text-foreground/90 ${item.nested ? "ml-5 list-[circle]" : ""}`}>
+              {inline(item.text)}
             </li>
           ))}
         </ul>,
       );
       continue;
     }
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items: { text: string; nestedBullets: string[] }[] = [];
+      while (i < lines.length) {
+        const cur = lines[i]!;
+        if (/^\s*\d+\.\s+/.test(cur)) {
+          items.push({ text: cur.replace(/^\s*\d+\.\s+/, ""), nestedBullets: [] });
+          i++;
+        } else if (/^\s{2,}[-*]\s+/.test(cur) && items.length > 0) {
+          items.at(-1)!.nestedBullets.push(cur.replace(/^\s*[-*]\s+/, ""));
+          i++;
+        } else if (!cur.trim()) {
+          // 跳过有序列表项之间的单个或多个空行，避免把同一个列表拆成多个从 1 开始的 <ol>
+          let nextNonEmpty = i + 1;
+          while (nextNonEmpty < lines.length && !lines[nextNonEmpty]!.trim()) nextNonEmpty++;
+          if (nextNonEmpty < lines.length && /^\s*(?:\d+\.\s+|\s{2,}[-*]\s+)/.test(lines[nextNonEmpty]!)) {
+            i = nextNonEmpty;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+      blocks.push(
+        <ol key={`ol-${i}`} className="my-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed">
+          {items.map((item, idx) => (
+            <li key={idx} className="text-foreground/90">
+              <span>{inline(item.text)}</span>
+              {item.nestedBullets.length > 0 && (
+                <ul className="mt-1 space-y-1 pl-4">
+                  {item.nestedBullets.map((sub, subIdx) => (
+                    <li key={subIdx} className="list-disc text-foreground/85">
+                      {inline(sub)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ol>,
+      );
+      continue;
+    }
     const paragraph: string[] = [line];
     i++;
-    while (i < lines.length && lines[i]!.trim() && !/^(?:#{1,6}\s|\||>|```|[-*]\s)/.test(lines[i]!)) {
+    while (
+      i < lines.length &&
+      lines[i]!.trim() &&
+      !/^(?:#{1,6}\s|\||>|```|\s*[-*]\s|\s*\d+\.\s|\s*(?:[-*_]){3,}\s*$)/.test(lines[i]!)
+    ) {
       paragraph.push(lines[i++]!);
     }
     blocks.push(
-      <p key={i} className="my-3 whitespace-pre-wrap font-serif text-sm leading-loose text-foreground/95">
+      <p key={`p-${i}`} className="my-3 whitespace-pre-wrap font-serif text-sm leading-loose text-foreground/95">
         {inline(paragraph.join("\n"))}
       </p>,
     );
@@ -288,10 +363,15 @@ function DissectMarkdown({ content }: { content: string }) {
     <article aria-label="拆书报告预览" className="h-full overflow-auto bg-card px-6 py-6 text-foreground">
       <div className="mx-auto max-w-3xl">
         {blocks}
-        {all.length > limit && (
-          <Button variant="outline" size="sm" onClick={() => setLimit(limit + 500)}>
-            继续阅读后 500 行
-          </Button>
+        {all.length > effectiveLimit && (
+          <div className="mt-4 flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setLimit(effectiveLimit + 500)}>
+              继续阅读后 500 行（剩余 {all.length - effectiveLimit} 行）
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setLimit(all.length)}>
+              展开全部
+            </Button>
+          </div>
         )}
       </div>
     </article>
@@ -427,6 +507,7 @@ export function DissectLibraryPanel({
   const [notice, setNotice] = useState<string | null>(null);
 
   // 导入表单状态
+  const [importBookKind, setImportBookKind] = useState<DissectBookKind>("novel");
   const [sourceKind, setSourceKind] = useState<ImportSourceKind>("upload");
   const [uploadedFiles, setUploadedFiles] = useState<readonly File[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -447,6 +528,7 @@ export function DissectLibraryPanel({
   const [chapterWindowStart, setChapterWindowStart] = useState(0);
   const [chapterTableLimit, setChapterTableLimit] = useState(120);
   const [showRawTree, setShowRawTree] = useState(false);
+  const [essenceQuery, setEssenceQuery] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -478,12 +560,23 @@ export function DissectLibraryPanel({
     return () => window.removeEventListener("beforeunload", guard);
   }, [dirty]);
 
-  // 提取书架列表（兼容测试构造的精简树结构）
+  // 提取书架列表（同时收录「小说」与「知识书」两类拆书，兼容测试构造的精简树结构）
   const dissectBooks = useMemo(() => {
     const novelsNode = library?.tree.children?.find((child) => child.title === "小说");
-    const list = (novelsNode?.children ?? []).filter((child) => child.kind === "directory");
-    return list;
+    const knowledgeNode = library?.tree.children?.find((child) => child.title === "知识书");
+    const novels = (novelsNode?.children ?? []).filter((child) => child.kind === "directory");
+    const knowledge = (knowledgeNode?.children ?? []).filter((child) => child.kind === "directory");
+    return [...novels, ...knowledge];
   }, [library]);
+
+  const novelBooks = useMemo(
+    () => dissectBooks.filter((book) => (book.meta?.bookKind ?? (book.path.includes("/知识书/") ? "knowledge" : "novel")) !== "knowledge"),
+    [dissectBooks],
+  );
+  const knowledgeBooks = useMemo(
+    () => dissectBooks.filter((book) => (book.meta?.bookKind ?? (book.path.includes("/知识书/") ? "knowledge" : "novel")) === "knowledge"),
+    [dissectBooks],
+  );
 
   const refresh = useCallback(async () => {
     const result = (await fetchJson(`${base}/tree`)) as LibraryTree;
@@ -516,7 +609,8 @@ export function DissectLibraryPanel({
       .then((res) => {
         if (!res || !alive.current) return;
         const novels = res.tree.children?.find((c) => c.title === "小说")?.children ?? [];
-        const firstBook = novels.find((c) => c.kind === "directory");
+        const knowledge = res.tree.children?.find((c) => c.title === "知识书")?.children ?? [];
+        const firstBook = [...novels, ...knowledge].find((c) => c.kind === "directory");
         if (firstBook) {
           setSelectedSlug(firstBook.title);
           setView({ kind: "overview", slug: firstBook.title });
@@ -564,7 +658,7 @@ export function DissectLibraryPanel({
         setDraft(result.content);
         setEditing(false);
         const parts = node.path.split("/");
-        const slug = parts[2] === "小说" && parts[3] ? parts[3] : null;
+        const slug = (parts[2] === "小说" || parts[2] === "知识书") && parts[3] ? parts[3] : null;
         setView({ kind: "document", slug, path: node.path, title: node.title });
         if (slug) {
           setSelectedSlug(slug);
@@ -590,7 +684,7 @@ export function DissectLibraryPanel({
   );
 
   const openChapterStudy = useCallback(
-    async (slug: string, chapterNumber: number) => {
+    async (slug: string, chapterNumber: number, highlightParagraph?: number) => {
       if (dirty && !window.confirm("当前笔记有未保存修改，放弃修改并切换章节？")) return;
       const seq = ++request.current;
       setError(null);
@@ -601,10 +695,14 @@ export function DissectLibraryPanel({
         if (!alive.current || request.current !== seq) return;
         setSelectedSlug(slug);
         setChapterPair(pair);
-        setDocument({ path: pair.analysisPath, title: `第${pair.chapterNumber}章拆解`, content: pair.analysisContent });
+        setDocument({
+          path: pair.analysisPath,
+          title: pair.bookKind === "knowledge" ? `第${pair.chapterNumber}节学习分析` : `第${pair.chapterNumber}章拆解`,
+          content: pair.analysisContent,
+        });
         setDraft(pair.analysisContent);
         setEditing(false);
-        setView({ kind: "chapter", slug, chapterNumber: pair.chapterNumber });
+        setView({ kind: "chapter", slug, chapterNumber: pair.chapterNumber, ...(highlightParagraph ? { highlightParagraph } : {}) });
       } catch (e) {
         if (alive.current) setError(e instanceof Error ? e.message : "读取章节原文与拆解失败");
       }
@@ -635,8 +733,14 @@ export function DissectLibraryPanel({
     }
   };
 
-  const openImportWizard = (preferredKind: ImportSourceKind = "upload") => {
+  const openImportWizard = (preferredKind: ImportSourceKind = "upload", preferredBookKind?: DissectBookKind) => {
     setSourceKind(preferredKind);
+    if (preferredBookKind) {
+      setImportBookKind(preferredBookKind);
+      if (preferredBookKind === "knowledge" && CATEGORY_PRESETS.includes(category as (typeof CATEGORY_PRESETS)[number])) {
+        setCategory("写作技巧");
+      }
+    }
     setPreview(null);
     setError(null);
     setDrawer(true);
@@ -651,9 +755,20 @@ export function DissectLibraryPanel({
     setError(null);
     setUploadedFiles(picked);
     setPreview(null);
+    const relNames = picked.map((f) => ((f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name).replace(/\\/g, "/"));
+    const looksObsidian =
+      relNames.some((n) => /(?:^|\/)00 作品\.md$/u.test(n) || /(?:^|\/)报告\/本书精华\.md$/u.test(n)) &&
+      relNames.some((n) => /(?:^|\/)正文\/[^/]+\.md$/u.test(n));
+    if (looksObsidian) {
+      setImportBookKind("knowledge");
+      if (CATEGORY_PRESETS.includes(category as (typeof CATEGORY_PRESETS)[number])) {
+        setCategory("写作技巧");
+      }
+    }
     if (!title.trim() && picked[0]) {
       const rel = (picked[0] as File & { webkitRelativePath?: string }).webkitRelativePath;
-      setTitle(rel && picked.length > 1 ? rel.split("/")[0] ?? stripExt(picked[0].name) : stripExt(picked[0].name));
+      const rawName = rel && picked.length > 1 ? rel.split("/")[0] ?? stripExt(picked[0].name) : stripExt(picked[0].name);
+      setTitle(rawName.replace(/【[^】]{12,}】?/gu, "").trim().slice(0, 80) || stripExt(picked[0].name));
     }
   };
 
@@ -676,8 +791,9 @@ export function DissectLibraryPanel({
       if (sourceKind === "upload" && uploadedFiles.length > 0) {
         const form = new FormData();
         for (const file of uploadedFiles) {
-          const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
-          form.append("files", file, rel || file.name);
+          const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+          form.append("files", file, rel);
+          form.append("relativePaths", rel);
         }
         if (splitPattern.trim()) form.set("splitPattern", splitPattern.trim());
         result = (await fetchJson(`${base}/preview`, { method: "POST", body: form })) as DissectPreviewResult;
@@ -693,6 +809,11 @@ export function DissectLibraryPanel({
       }
       if (!alive.current) return;
       setPreview(result);
+      if (result.obsidianDetected) {
+        setImportBookKind("knowledge");
+        if (result.detectedTitle) setTitle(result.detectedTitle);
+        if (result.detectedCategory) setCategory(result.detectedCategory);
+      }
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "预览分章失败");
     } finally {
@@ -719,6 +840,7 @@ export function DissectLibraryPanel({
       if (sourceKind === "upload" && uploadedFiles.length > 0) {
         const form = new FormData();
         form.set("bookTitle", title.trim());
+        form.set("bookKind", importBookKind);
         if (category.trim()) form.set("category", category.trim());
         if (splitPattern.trim()) form.set("splitPattern", splitPattern.trim());
         form.set("chapterSelection", JSON.stringify(effectiveSelection));
@@ -726,8 +848,9 @@ export function DissectLibraryPanel({
         form.set("template", template);
         form.set("useModel", String(effectiveUseModel));
         for (const file of uploadedFiles) {
-          const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
-          form.append("files", file, rel || file.name);
+          const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+          form.append("files", file, rel);
+          form.append("relativePaths", rel);
         }
         result = (await fetchJson(`${base}/build`, { method: "POST", body: form })) as typeof result;
       } else {
@@ -736,6 +859,7 @@ export function DissectLibraryPanel({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             bookTitle: title.trim(),
+            ...(importBookKind === "knowledge" ? { bookKind: "knowledge" } : {}),
             category: category.trim(),
             ...(sourceKind === "workspace" && source ? { filePath: source } : { text }),
             ...(splitPattern.trim() ? { splitPattern: splitPattern.trim() } : {}),
@@ -794,6 +918,33 @@ export function DissectLibraryPanel({
       }
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : "模型精拆失败");
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  };
+
+  const rebuildScan = async (slug: string) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = (await fetchJson(`${base}/build`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookTitle: slug,
+          reuseStoredSource: true,
+          rebuildReports: true,
+          chapterSelection: { preset: "all" },
+          useModel: false,
+        }),
+      })) as { meta: DissectMeta; generatedDocuments: number };
+      if (!alive.current) return;
+      setNotice(`已重新清洗分章并刷新《${slug}》全部 ${result.generatedDocuments} 份扫描报告与结构卡（共 ${result.meta.totalChapters} 章）。`);
+      await refresh();
+      await loadWorkspace(slug);
+    } catch (e) {
+      if (alive.current) setError(e instanceof Error ? e.message : "重新扫描建库失败");
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -894,10 +1045,10 @@ export function DissectLibraryPanel({
           </div>
         ) : (
           <>
-            {dissectBooks.length > 0 && (
+            {novelBooks.length > 0 && (
               <div className="space-y-1">
-                <p className="px-1.5 text-2xs font-medium text-muted-foreground">已建参考书（{dissectBooks.length}）</p>
-                {dissectBooks.map((book) => {
+                <p className="px-1.5 text-2xs font-medium text-muted-foreground">小说拆书（{novelBooks.length}）</p>
+                {novelBooks.map((book) => {
                   const active = selectedSlug === book.title;
                   const meta = book.meta;
                   return (
@@ -926,6 +1077,46 @@ export function DissectLibraryPanel({
                           <span className="text-success">已精拆 {meta.refinedChapters.length} 章</span>
                         ) : (
                           <span>待深拆</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {knowledgeBooks.length > 0 && (
+              <div className="space-y-1 border-t border-border/60 pt-2">
+                <p className="px-1.5 text-2xs font-medium text-muted-foreground">知识书 / 方法论（{knowledgeBooks.length}）</p>
+                {knowledgeBooks.map((book) => {
+                  const active = selectedSlug === book.title;
+                  const meta = book.meta;
+                  return (
+                    <button
+                      key={book.path}
+                      type="button"
+                      onClick={() => selectBook(book.title)}
+                      aria-current={active && view.kind === "overview" ? "page" : undefined}
+                      className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                        active
+                          ? "border-primary/40 bg-primary/8 text-foreground"
+                          : "border-transparent hover:border-border hover:bg-muted/50 text-muted-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="truncate text-xs font-medium text-foreground">《{book.title}》</span>
+                        {meta?.category && (
+                          <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-2xs">
+                            {meta.category}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-2xs text-muted-foreground">
+                        <span>{meta ? `${meta.totalChapters} 节` : "目录已就绪"}</span>
+                        {meta?.essenceItemCount ? (
+                          <span className="text-success">精华 {meta.essenceItemCount} 条</span>
+                        ) : (
+                          <span>待提炼</span>
                         )}
                       </div>
                     </button>
@@ -1147,19 +1338,30 @@ export function DissectLibraryPanel({
                   </Button>
                 )}
                 {workspace?.hasStoredSource && (
-                  <Button
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => {
-                      const refinedMax = Math.max(0, ...(workspace.meta.refinedChapters ?? []));
-                      const from = Math.min(refinedMax + 1, workspace.meta.totalChapters);
-                      const to = Math.min(from + 2, workspace.meta.totalChapters);
-                      void refineStoredRange(view.slug, from, to, true);
-                    }}
-                  >
-                    {busy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Sparkles className="mr-1.5 size-3.5" />}
-                    模型精拆下 3 章
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => {
+                        const refinedMax = Math.max(0, ...(workspace.meta.refinedChapters ?? []));
+                        const from = Math.min(refinedMax + 1, workspace.meta.totalChapters);
+                        const to = Math.min(from + 2, workspace.meta.totalChapters);
+                        void refineStoredRange(view.slug, from, to, true);
+                      }}
+                    >
+                      {busy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Sparkles className="mr-1.5 size-3.5" />}
+                      模型精拆下 3 章
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      title="基于已存原文快照重新清洗尾注、刷新章节索引与全部扫描报告（保留已有模型精拆）"
+                      onClick={() => void rebuildScan(view.slug)}
+                    >
+                      刷新扫描报告
+                    </Button>
+                  </>
                 )}
                 {onSendToNarrator && workspace && (
                   <Button
@@ -1184,27 +1386,184 @@ export function DissectLibraryPanel({
             </div>
 
             {/* 四格核心量化卡片 */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-border bg-card p-3.5">
-                <p className="text-2xs text-muted-foreground">平均张力分</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{overviewStats.avgTension} <span className="text-xs font-normal text-muted-foreground">/ 100</span></p>
+            {workspace?.bookKind === "knowledge" ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <p className="text-2xs text-muted-foreground">全书精华条目</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">
+                    {workspace.essence?.coreItems.length ?? workspace.meta.essenceItemCount ?? 0}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">条</span>
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <p className="text-2xs text-muted-foreground">已精炼章节</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">
+                    {workspace.meta.refinedChapters?.length ?? 0}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">/ {workspace.meta.totalChapters} 节</span>
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <p className="text-2xs text-muted-foreground">可操作技巧</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">
+                    {(workspace.essence?.coreItems ?? []).filter((item) => item.kind === "skill").length}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">条</span>
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <p className="text-2xs text-muted-foreground">全书体量</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">
+                    {(workspace.meta.totalWords ?? 0).toLocaleString("zh-CN")}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">字</span>
+                  </p>
+                </div>
               </div>
-              <div className="rounded-xl border border-border bg-card p-3.5">
-                <p className="text-2xs text-muted-foreground">平均对白占比</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{overviewStats.avgDialogue}%</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <p className="text-2xs text-muted-foreground">平均张力分</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{overviewStats.avgTension} <span className="text-xs font-normal text-muted-foreground">/ 100</span></p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <p className="text-2xs text-muted-foreground">平均对白占比</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{overviewStats.avgDialogue}%</p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <p className="text-2xs text-muted-foreground">含章末钩子章</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{overviewStats.hookChapters} <span className="text-xs font-normal text-muted-foreground">章</span></p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-3.5">
+                  <p className="text-2xs text-muted-foreground">均章体量</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{overviewStats.avgWords.toLocaleString("zh-CN")} <span className="text-xs font-normal text-muted-foreground">字</span></p>
+                </div>
               </div>
-              <div className="rounded-xl border border-border bg-card p-3.5">
-                <p className="text-2xs text-muted-foreground">含章末钩子章</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{overviewStats.hookChapters} <span className="text-xs font-normal text-muted-foreground">章</span></p>
-              </div>
-              <div className="rounded-xl border border-border bg-card p-3.5">
-                <p className="text-2xs text-muted-foreground">均章体量</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{overviewStats.avgWords.toLocaleString("zh-CN")} <span className="text-xs font-normal text-muted-foreground">字</span></p>
-              </div>
-            </div>
+            )}
 
-            {/* 节奏曲线图 */}
-            {workspace && workspace.chapters.length > 0 && (
+            {/* 知识书：《本书精华》结构化方法论卡片（含原文段落溯源跳转） */}
+            {workspace?.bookKind === "knowledge" && workspace.essence && (
+              <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <BookMarked className="size-3.5 text-primary" />
+                      <span>本书精华方法论卡片（{workspace.essence.coreItems.length} 条）</span>
+                    </h4>
+                    <p className="mt-0.5 text-2xs text-muted-foreground">{workspace.essence.overview}</p>
+                  </div>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={essenceQuery}
+                      onChange={(e) => setEssenceQuery(e.target.value)}
+                      placeholder="筛方法、问题或步骤…"
+                      className="h-7 w-44 pl-7 text-xs"
+                    />
+                  </div>
+                </div>
+                {workspace.essence.scopeAndLimits && (
+                  <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
+                    <strong className="text-foreground">范围与局限：</strong>
+                    {workspace.essence.scopeAndLimits}
+                  </p>
+                )}
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  {workspace.essence.coreItems
+                    .filter((item) => {
+                      const q = essenceQuery.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        item.title.toLowerCase().includes(q) ||
+                        item.problem.toLowerCase().includes(q) ||
+                        item.explanation.toLowerCase().includes(q) ||
+                        (item.topic ?? "").toLowerCase().includes(q)
+                      );
+                    })
+                    .map((item) => (
+                      <div key={item.id} className="flex flex-col gap-2 rounded-lg border border-border bg-background/70 p-3.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <h5 className="font-serif text-sm font-semibold text-foreground">{item.title}</h5>
+                          <Badge variant={item.kind === "skill" ? "secondary" : "outline"} className="h-5 shrink-0 px-1.5 text-2xs">
+                            {item.kind === "skill" ? "操作技巧" : "理解与判断"}
+                          </Badge>
+                        </div>
+                        {item.problem && (
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            <span className="font-medium text-foreground">解决问题：</span>
+                            {item.problem}
+                          </p>
+                        )}
+                        {item.explanation && (
+                          <p className="text-xs leading-relaxed text-foreground/90">{item.explanation}</p>
+                        )}
+                        {item.steps.length > 0 && (
+                          <ol className="list-decimal space-y-1 pl-4 text-xs text-foreground/90">
+                            {item.steps.map((step, sIdx) => (
+                              <li key={sIdx}>{step}</li>
+                            ))}
+                          </ol>
+                        )}
+                        {(item.conditions || item.limits) && (
+                          <div className="space-y-1 rounded-md bg-muted/35 px-2.5 py-2 text-2xs leading-relaxed text-muted-foreground">
+                            {item.conditions && (
+                              <p>
+                                <strong className="text-foreground">适用条件：</strong>
+                                {item.conditions}
+                              </p>
+                            )}
+                            {item.limits && (
+                              <p>
+                                <strong className="text-foreground">限制与注意：</strong>
+                                {item.limits}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <div className="mt-auto flex flex-wrap items-center justify-between gap-1.5 pt-1">
+                          <div className="flex flex-wrap gap-1">
+                            {item.evidence.slice(0, 3).map((ev, eIdx) => (
+                              <button
+                                key={eIdx}
+                                type="button"
+                                title={ev.quote}
+                                onClick={() => void openChapterStudy(view.slug, ev.chapter, ev.paragraphs[0])}
+                                className="rounded border border-border bg-card px-1.5 py-0.5 text-2xs text-primary hover:border-primary/50 hover:bg-primary/5"
+                              >
+                                回看第 {ev.chapter} 节{ev.paragraphs.length ? `·段${ev.paragraphs[0]}` : ""}
+                              </button>
+                            ))}
+                          </div>
+                          {onSendToNarrator && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-2xs"
+                              onClick={() =>
+                                sendSummaryToNarrator(
+                                  `${view.slug} · ${item.title}`,
+                                  [
+                                    `方法：${item.title}`,
+                                    item.problem ? `解决问题：${item.problem}` : "",
+                                    item.explanation,
+                                    item.steps.length ? `步骤：\n${item.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}` : "",
+                                    item.limits ? `限制与注意：${item.limits}` : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join("\n\n"),
+                                )
+                              }
+                            >
+                              带入写作
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* 节奏曲线图（仅小说模式展示） */}
+            {workspace && workspace.bookKind !== "knowledge" && workspace.chapters.length > 0 && (
               <DissectRhythmChart
                 chapters={workspace.chapters}
                 windowStart={chapterWindowStart}
@@ -1285,6 +1644,16 @@ export function DissectLibraryPanel({
                           {ch.refined && (
                             <Badge variant="secondary" className="h-4 whitespace-nowrap px-1.5 text-2xs text-success">
                               已精拆
+                            </Badge>
+                          )}
+                          {ch.anomaly === "notice" && (
+                            <Badge variant="outline" className="h-4 whitespace-nowrap border-warning/40 px-1.5 text-2xs text-warning">
+                              单章/请假
+                            </Badge>
+                          )}
+                          {ch.anomaly === "truncated" && (
+                            <Badge variant="outline" className="h-4 whitespace-nowrap border-destructive/40 px-1.5 text-2xs text-destructive">
+                              疑似残缺
                             </Badge>
                           )}
                           {ch.hookCount > 0 && (
@@ -1442,11 +1811,25 @@ export function DissectLibraryPanel({
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                   {chapterPair.sourceText ? (
                     <div className="space-y-4 font-serif text-sm leading-loose text-foreground/95">
-                      {chapterPair.sourceText.split(/\n+/).map((para, idx) => (
-                        <p key={idx} className="indent-7">
-                          {para}
-                        </p>
-                      ))}
+                      {(chapterPair.paragraphs?.length ? chapterPair.paragraphs : chapterPair.sourceText.split(/\n+/)).map((para, idx) => {
+                        const paraNo = idx + 1;
+                        const highlighted = view.highlightParagraph === paraNo;
+                        return (
+                          <p
+                            key={idx}
+                            className={`rounded px-2 py-0.5 ${
+                              chapterPair.bookKind === "knowledge" ? "" : "indent-7"
+                            } ${highlighted ? "bg-primary/12 ring-1 ring-primary/40" : ""}`}
+                          >
+                            {chapterPair.bookKind === "knowledge" && (
+                              <span className="mr-2 inline-block font-sans text-2xs text-muted-foreground tabular-nums">
+                                段{paraNo}
+                              </span>
+                            )}
+                            {para}
+                          </p>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">未能读取本章原文，请确认建库时已保存原文快照。</p>
@@ -1557,6 +1940,29 @@ export function DissectLibraryPanel({
               void build();
             }}
           >
+            {/* 拆书类型：小说 vs 知识书/方法论 */}
+            <div className="space-y-1.5">
+              <Label>拆书类型</Label>
+              <ToggleGroup
+                value={[importBookKind]}
+                onValueChange={(value) => {
+                  if (value[0]) {
+                    const nextKind = value[0] as DissectBookKind;
+                    setImportBookKind(nextKind);
+                    if (nextKind === "knowledge" && CATEGORY_PRESETS.includes(category as (typeof CATEGORY_PRESETS)[number])) {
+                      setCategory("写作技巧");
+                    } else if (nextKind === "novel" && KNOWLEDGE_CATEGORY_PRESETS.includes(category as (typeof KNOWLEDGE_CATEGORY_PRESETS)[number])) {
+                      setCategory("仙侠");
+                    }
+                  }
+                }}
+                aria-label="选择拆书类型"
+              >
+                <ToggleGroupItem value="novel">小说拆书（节奏 / 钩子 / 伏笔）</ToggleGroupItem>
+                <ToggleGroupItem value="knowledge">知识书 / 方法论（精华 + 段落溯源 / 支持 Obsidian 目录）</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
             {/* 书名与题材 */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
@@ -1567,22 +1973,22 @@ export function DissectLibraryPanel({
                   required
                   maxLength={120}
                   onChange={(event) => setTitle(event.target.value)}
-                  placeholder="例如：没钱修什么仙"
+                  placeholder={importBookKind === "knowledge" ? "例如：雪花写作法" : "例如：没钱修什么仙"}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="dissect-category">题材分类</Label>
+                <Label htmlFor="dissect-category">{importBookKind === "knowledge" ? "知识分类" : "题材分类"}</Label>
                 <Input
                   id="dissect-category"
                   value={category}
                   onChange={(event) => setCategory(event.target.value)}
-                  placeholder="例如：仙侠 / 都市 / 悬疑"
+                  placeholder={importBookKind === "knowledge" ? "例如：写作技巧 / 叙事结构" : "例如：仙侠 / 都市 / 悬疑"}
                 />
               </div>
             </div>
 
             <div className="flex flex-wrap gap-1.5">
-              {CATEGORY_PRESETS.map((preset) => (
+              {(importBookKind === "knowledge" ? KNOWLEDGE_CATEGORY_PRESETS : CATEGORY_PRESETS).map((preset) => (
                 <button
                   key={preset}
                   type="button"
