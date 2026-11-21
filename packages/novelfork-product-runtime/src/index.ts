@@ -182,7 +182,8 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 		await migrateLegacySessions();
 		// 给本次修复前建的书补上 Runtime 项目 owner（幂等；只补 owner 仍为空的）。
 		await reconcileBookProjectOwners();
-		// 将旧版残留含下线工具名（write_preflight/scene_spec/pipeline_write/lore_*）的内置系统提示词升级为最新版。
+		// 内置提示改为每轮经 promptExtensions 注入、不再存库：把历史建书存下的内置版本（逐字相等才算）清空为 null，
+		// 作者定制的提示词不动（幂等，失败只告警）。
 		await reconcileLegacyBookNarratorPrompts().catch((error) =>
 			logger.warn("Legacy narrator prompt reconciliation failed", { error: String(error) }),
 		);

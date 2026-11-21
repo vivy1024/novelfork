@@ -83,6 +83,7 @@ import {
 } from "./book-binding";
 import { resolveRuntimeOwnerUserId } from "./book-project-owner";
 import { ensureBookSnapshotExclude } from "./book-snapshot-exclude";
+import { isHistoricalBuiltInNovelistPrompt } from "./legacy-narrator-prompt-migration";
 
 type ProvisionState =
 	| "reserved"
@@ -176,12 +177,10 @@ export type GuidedSetupResult = {
 };
 
 const READY_STATE: ProvisionState = "ready";
-/**
- * 产品叙述者的系统提示词。工具名写模型实际拿到的线上名（点换下划线，见 adapters/runtime-host-adapter
- * 的 toRuntimeToolName）：系统提示词不经过工具名翻译，写点号名模型对不上号。有测试核对。
- */
-export const NOVELIST_PROMPT =
-	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 chapter_preflight 拿到目标路径与本章写前召回包，再用 chapter_blueprint 建立并缓存蓝图，按召回包用原生 Write 把正文写到目标章节路径后，再调用 chapter_commit 完成字数、技能、节拍、审校与自动结算。没有可用文本模型时必须如实说明阻塞，绝不能跳过写前预检强行交稿。改写已有章节请用原生 Edit/Write 修改正文后调用 chapter_commit（mode=revision）；所有写入都遵守 Runtime 权限确认。通用文件、命令、搜索等工具可以正常使用；但章节落盘结算请用 chapter_commit，维护设定请用 jingwei_read / jingwei_write，这样字数、结算和审计才会正确记录。用与作者相同的语言回复；书的语言为中文时一律用中文。";
+// 产品叙述者不再在建书时存一份内置系统提示词：内置提示（工具流、书籍绑定边界、回复语言）只有一处来源，
+// 即 novel-plugin 的 promptExtensions（product.novelfork-novel.core），每轮由 Runtime 现算注入，
+// 改版后所有存量叙述者下一轮即生效。narrators.system_prompt 留空（null），只保存作者自己定制的提示词。
+// 历史建书留下的内置版本由 legacy-narrator-prompt-migration 在启动时清空。
 
 export type RuntimeEntityCapabilities = {
 	read: boolean;
@@ -1654,7 +1653,8 @@ export class NovelForkProductBookService {
 				title,
 				model: source.model ?? getProductNarratorModel(),
 				reasoningEffort: source.reasoningEffort,
-				systemPrompt: NOVELIST_PROMPT,
+				// 内置提示每轮由 promptExtensions 注入，不存库。
+				systemPrompt: null,
 				permissionMode: "default",
 				status: "idle",
 				cwd: root,
@@ -2829,7 +2829,8 @@ export class NovelForkProductBookService {
 			.update(narrators)
 			.set({
 				permissionMode: "default",
-				systemPrompt: NOVELIST_PROMPT,
+				// 历史内置提示清空，回落到每轮注入的内置提示；作者定制的提示词原样保留。
+				...(isHistoricalBuiltInNovelistPrompt(narrator.systemPrompt) ? { systemPrompt: null } : {}),
 				traits: [
 						...new Set(
 							narrator.traits.filter((trait: string) => trait !== "read-only").concat("chapter-write"),
@@ -3161,7 +3162,8 @@ export class NovelForkProductBookService {
 				type: "primary",
 				title: `${operation.title} · 小说创作助手`,
 				model: getProductNarratorModel(),
-				systemPrompt: NOVELIST_PROMPT,
+				// 内置提示每轮由 promptExtensions 注入，不存库。
+				systemPrompt: null,
 				// `default` deliberately keeps Runtime's permission gate in the loop.
 				// The product restricts what can be written through the tool registry.
 				permissionMode: "default",

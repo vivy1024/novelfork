@@ -3,14 +3,13 @@
  *
  * Runtime 注册小说工具时把目录名的点换成下划线（toRuntimeToolName），工具描述、promptExtensions
  * 与工具结果的说明字段在出口处统一翻译；但前端交给叙述者的消息、技能原文、学习中心的
- * agentHints 和产品叙述者系统提示词都直接进模型上下文，不经过这层翻译，只能在源头写对。
+ * agentHints 都直接进模型上下文（产品内置叙述者提示已改由 promptExtensions 注入，走出口翻译），不经过这层翻译，只能在源头写对。
  * 这里把这些来源都收集起来，逐个核对。
  */
 import { describe, expect, test } from "bun:test";
 import { NOVEL_LEARNING_CONTRIBUTION, NOVEL_RUNTIME_CONTRIBUTION } from "@vivy1024/novelfork-novel-plugin";
 import { BUNDLED_WRITING_SKILLS } from "../../../novel-plugin/src/engine/writing-skills/bundled-skills.generated";
 import { buildHumanizeMessage, buildPolishMessage } from "../../../novel-plugin/src/pages/writing-workbench/self-review-handoff";
-import { NOVELIST_PROMPT } from "../services/book-provision";
 import { NovelRuntimeAdapter, type NovelRuntimeBindingResolver } from "./runtime-adapter";
 import { toRuntimeToolName } from "./runtime-host-adapter";
 
@@ -58,11 +57,6 @@ describe("面向模型的文本只点名模型可见的工具", () => {
 			expect(mentionedToolNames(message).length).toBeGreaterThan(0);
 			expect(invisible(message), message).toEqual([]);
 		}
-	});
-
-	test("产品叙述者系统提示词", () => {
-		expect(mentionedToolNames(NOVELIST_PROMPT).length).toBeGreaterThan(0);
-		expect(invisible(NOVELIST_PROMPT)).toEqual([]);
 	});
 
 	test.each(BUNDLED_WRITING_SKILLS.map((skill) => [skill.slug, skill] as const))("技能 %s", (_slug, skill) => {
