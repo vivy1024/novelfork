@@ -208,14 +208,19 @@ async function extractBatchWithSplitRetry(input: {
   readonly generateText: RuntimeTextGenerator;
   readonly sourceName: string;
   readonly chapters: readonly DistillableChapter[];
+  readonly signal?: AbortSignal;
+  readonly onSplitRetry?: (firstFailure: StyleDistillationBatch["explanation"]) => void;
 }): Promise<BatchAttempt> {
   const sourceTerms = collectSourceTerms(input.chapters);
   const first = await extractStyleRulesFromBatch({ ...input, sourceTerms });
   if (first.ok || !isStyleBatchFailureShrinkable(first.kind)) return { result: first, splitRetried: false };
   const halves = splitStyleDistillationBatch(input.chapters);
   if (!halves) return { result: first, splitRetried: false };
+  input.onSplitRetry?.(first.explanation);
   const parts = [];
-  for (const half of halves) parts.push(await extractStyleRulesFromBatch({ ...input, chapters: half, sourceTerms }));
+  for (const half of halves) {
+    parts.push(await extractStyleRulesFromBatch({ ...input, chapters: half, sourceTerms }));
+  }
   const succeeded = parts.filter((part): part is Extract<StyleBatchExtraction, { ok: true }> => part.ok);
   const firstFailure = first.explanation;
   if (succeeded.length === 0) {
@@ -356,6 +361,10 @@ export interface RunStyleDistillationOptions {
    * 之后进程重启的自动续跑只替这个人续跑。没有登录身份的入口（叙述者工具）不传，任务上原有的发起人保持不变。
    */
   readonly initiatorId?: string;
+  /** 取消信号：用户中断时立即停止后续批次，并把当前 running 批次退回 pending（不记为失败）。 */
+  readonly signal?: AbortSignal;
+  /** 批次开始执行或半批重试时的实时阶段回调。 */
+  readonly onStage?: (job: StyleDistillationJob, batch: StyleDistillationBatch, stage: "batch-start" | "split-retry", detail?: string) => void;
   readonly onProgress?: (job: StyleDistillationJob, batch: StyleDistillationBatch) => void;
 }
 
@@ -404,6 +413,17 @@ export function runStyleDistillationBatches(options: RunStyleDistillationOptions
       try {
         processed = await runBatches(options, acquired.handle);
       } catch (error) {
+        const isAborted = Boolean(options.signal?.aborted) || (error instanceof Error && error.name === "AbortError");
+        if (isAborted) {
+          // 用户主动取消：将进行中的批次退回 pending、任务置回 paused（不记作错误），便于后续继续。
+          await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState({
+            ...current,
+            batches: current.batches.map((batch) => batch.status === "running"
+              ? { ...batch, status: "pending" as const }
+              : batch),
+          }, false)).catch(() => undefined);
+          throw error;
+        }
         // 任务级失败写进 lastError，界面据此说明为什么停下；写不进去（如任务文件已丢）时由调用方记日志。
         const lastError = { ...styleDistillationRunErrorExplanation(error), at: new Date().toISOString() };
         await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState({ ...current, lastError }, false)).catch(() => undefined);
@@ -452,6 +472,11 @@ async function runBatches(options: RunStyleDistillationOptions, lock: StyleDisti
   const limit = options.maxBatches === undefined ? Number.POSITIVE_INFINITY : Math.max(0, Math.trunc(options.maxBatches));
   const processed: string[] = [];
   while (processed.length < limit) {
+    if (options.signal?.aborted) {
+      throw options.signal.reason instanceof Error
+        ? options.signal.reason
+        : Object.assign(new Error("Aborted"), { name: "AbortError" });
+    }
     const job = await loadStyleDistillationJob(bookRoot, jobId);
     const next = job.batches.find((batch) => batch.status === "pending" && !processed.includes(batch.id));
     if (!next) break;
@@ -460,17 +485,27 @@ async function runBatches(options: RunStyleDistillationOptions, lock: StyleDisti
       throw new StyleDistillationError("该文风蒸馏任务的运行锁已被另一个执行者接管，本次执行已停止。", "STYLE_DISTILLATION_BUSY");
     }
     const startedAt = new Date().toISOString();
-    await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState({
+    const runningJob = await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState({
       ...current,
       batches: current.batches.map((batch) => batch.id === next.id
         ? { ...batch, status: "running" as const, attempts: batch.attempts + 1, startedAt, finishedAt: undefined }
         : batch),
     }, true));
+    const runningBatch = runningJob.batches.find((item) => item.id === next.id) ?? next;
+    options.onStage?.(runningJob, runningBatch, "batch-start");
     const batchChapters = next.chapterNumbers
       .map((number) => byNumber.get(number))
       .filter((chapter): chapter is DistillableChapter => chapter !== undefined);
     const attempt: BatchAttempt = batchChapters.length === next.chapterNumbers.length
-      ? await extractBatchWithSplitRetry({ generateText: options.generateText, sourceName: job.sourceName, chapters: batchChapters })
+      ? await extractBatchWithSplitRetry({
+        generateText: options.generateText,
+        sourceName: job.sourceName,
+        chapters: batchChapters,
+        ...(options.signal ? { signal: options.signal } : {}),
+        onSplitRetry: (firstFailure) => {
+          options.onStage?.(runningJob, runningBatch, "split-retry", firstFailure?.what);
+        },
+      })
       : {
         splitRetried: false,
         result: {

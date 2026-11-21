@@ -521,7 +521,13 @@ export async function extractStyleRulesFromBatch(input: {
   readonly sourceName: string;
   readonly chapters: readonly DistillableChapter[];
   readonly sourceTerms?: SourceTermIndex;
+  readonly signal?: AbortSignal;
 }): Promise<StyleBatchExtraction> {
+  if (input.signal?.aborted) {
+    throw input.signal.reason instanceof Error
+      ? input.signal.reason
+      : Object.assign(new Error("Aborted"), { name: "AbortError" });
+  }
   let text: string;
   let outputTruncated = false;
   try {
@@ -538,6 +544,10 @@ export async function extractStyleRulesFromBatch(input: {
     text = response.text;
     outputTruncated = isStyleDistillationOutputTruncated(response);
   } catch (error) {
+    // 用户点击中止 / 上游 signal 取消时直接向上抛出，避免继续跑后续批次并把批次标为失败。
+    if (input.signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+      throw error;
+    }
     return failure(
       "model-error",
       `模型调用失败：${error instanceof Error ? error.message : String(error)}`,

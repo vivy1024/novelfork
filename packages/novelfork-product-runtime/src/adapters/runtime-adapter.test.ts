@@ -559,17 +559,14 @@ RUNTIME_WRITING_SKILL_MARKER
 		}
 	});
 
-	test("sceneSpec 只在 chapter_blueprint 里完整展示，下游工具展示开放对象但服务端仍按完整蓝图校验", async () => {
+	test("sceneSpec 只在 chapter_blueprint 里向模型展示，下游工具自动复用服务端缓存且仍按完整蓝图校验显式传入", async () => {
 		const definitions = new Map(adapter.toolDefinitions().map((tool) => [tool.name, tool]));
 		const propertiesOf = (name: string) =>
 			(definitions.get(name)?.rawJsonSchema?.properties ?? {}) as Record<string, Record<string, unknown>>;
 		// chapter_blueprint 保留完整结构。
 		expect(propertiesOf("chapter_blueprint").sceneSpec?.properties).toBeDefined();
 		for (const name of ["chapter_commit", "chapter_preflight", "chapter_audit"]) {
-			const sceneSpec = propertiesOf(name).sceneSpec;
-			expect(sceneSpec?.type, name).toBe("object");
-			expect(sceneSpec?.properties, name).toBeUndefined();
-			expect(String(sceneSpec?.description), name).toContain("chapter_blueprint");
+			expect(propertiesOf(name).sceneSpec, name).toBeUndefined();
 		}
 		expect(definitions.get("chapter_commit")?.rawJsonSchema?.required ?? []).toEqual([]);
 		expect(propertiesOf("chapter_commit").fromWorkflowRun?.type).toBe("boolean");
@@ -599,6 +596,42 @@ RUNTIME_WRITING_SKILL_MARKER
 		);
 		expect(rejected.isError).toBe(true);
 		expect(rejected.output).toContain("工具参数无效");
+	});
+
+	test("无参工具与未声明 reason 的工具自动剥离网关合成占位 reason，同时允许 jingwei_write 自由 KV 字段", async () => {
+		const definitions = new Map(adapter.toolDefinitions().map((tool) => [tool.name, tool]));
+		// 1. book_overview / chapter_list 具有非空 properties 且能自动剥离网关塞入的合成 reason
+		expect(Object.keys((definitions.get("book_overview")?.rawJsonSchema?.properties ?? {}) as Record<string, unknown>).length).toBeGreaterThan(0);
+		expect(Object.keys((definitions.get("chapter_list")?.rawJsonSchema?.properties ?? {}) as Record<string, unknown>).length).toBeGreaterThan(0);
+		expect(definitions.get("book_overview")!.parameters.safeParse({ reason: "get overview" }).success).toBe(true);
+		expect(definitions.get("chapter_list")!.parameters.safeParse({ reason: "list chapters" }).success).toBe(true);
+		// 但其他未知字段仍会被严格拒绝
+		expect(definitions.get("chapter_list")!.parameters.safeParse({ unknownKey: 1 }).success).toBe(false);
+
+		// 2. jingwei_write 的 fields / fieldsPatch 保留自由 KV 开放性，合法自定义键不被拒收
+		expect(
+			definitions.get("jingwei_write")!.parameters.safeParse({
+				action: "create",
+				title: "林舟",
+				category: "characters",
+				fields: { realm: "筑基初期", customAttr: 42 },
+			}).success,
+		).toBe(true);
+		expect(
+			definitions.get("jingwei_write")!.parameters.safeParse({
+				action: "propose",
+				entryId: "e-1",
+				reason: "突破境界",
+				fieldsPatch: { realm: "金丹初期" },
+			}).success,
+		).toBe(true);
+
+		// 3. 真正执行 book_overview / chapter_list 传入合成 reason 时不报错
+		bindNarrator();
+		const overview = await adapter.execute("book_overview", { reason: "check progress" }, "narrator-a");
+		expect(overview.isError).toBe(false);
+		const listed = await adapter.execute("chapter_list", { reason: "list chapters" }, "narrator-a");
+		expect(listed.isError).toBe(false);
 	});
 
 	test("preserves provider alias mapping without duplicating ToolDefinitions", () => {

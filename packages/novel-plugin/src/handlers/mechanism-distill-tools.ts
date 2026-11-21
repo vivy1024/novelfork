@@ -72,6 +72,7 @@ export async function executeMechanismDistillTool(
         const chapterList = Array.isArray(input.chapterList)
           ? input.chapterList.filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0).map((n) => Math.trunc(n))
           : undefined;
+        context.emitOutput?.(`正在读取《${typeof input.sourceTitle === "string" && input.sourceTitle.trim() ? input.sourceTitle.trim() : "参考作品"}》并调用模型拆解可迁移机制卡…`);
         const result = await extractAndSaveMechanismCards({
           bookRoot: binding.root,
           ...(typeof input.sourceTitle === "string" ? { sourceTitle: input.sourceTitle } : {}),
@@ -82,6 +83,7 @@ export async function executeMechanismDistillTool(
           ...(stringArray(input.extraForbiddenTerms) ? { extraForbiddenTerms: stringArray(input.extraForbiddenTerms) } : {}),
           ...(context.generateText ? { generateText: context.generateText } : {}),
         });
+        context.emitOutput?.(`拆解完成：提炼 ${result.extracted.length} 张待审机制卡。`);
         const warnText = result.warnings.length > 0 ? ` 注意：${result.warnings.join(" ")}` : "";
         return ok(
           `从《${input.sourceTitle ?? "参考作品"}》（${result.sourceChapterRange}）提炼 ${result.extracted.length} 张待审机制卡（库内共 ${result.allCards.length} 张）。${warnText}`,
@@ -145,11 +147,13 @@ export async function executeStyleConsolidateTool(
       const maxRules = typeof input.maxRules === "number" && Number.isFinite(input.maxRules)
         ? Math.trunc(input.maxRules)
         : undefined;
+      context.emitOutput?.("正在归约与提纯本书文风执行铁律…");
       const result = await consolidateAndSaveStylePreset({
         bookRoot: binding.root,
         ...(context.generateText ? { generateText: context.generateText } : {}),
         ...(maxRules !== undefined ? { maxRules } : {}),
       });
+      context.emitOutput?.(`文风归约完成：收拢为 ${result.consolidatedRules.length} 条执行铁律。`);
       return ok(
         `已将 ${result.inputRuleCount} 条候选规则归约为 ${result.consolidatedRules.length} 条高密度正反例铁律（剔除空泛套话 ${result.droppedPlatitudeCount} 条）。`,
         result,

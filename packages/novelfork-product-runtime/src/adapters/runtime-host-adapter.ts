@@ -76,10 +76,11 @@ function findForbiddenModelField(value: unknown, path = "$input"): string | null
 /**
  * Clone JSON Schema objects into closed-world input schemas for model-originated values.
  *
- * 只收紧声明了 properties 的对象。自由载荷对象（scene.spec 的 cockpitSnapshot /
- * loreBrief / memoryContext / writePreflight、memory.update 的 patch 等）没有字段清单，
- * 收紧后会把工具自己产出、由模型原样回传的真实数据全部判非法。宿主字段走私仍由
- * containsHostControlledField 递归拦截。
+ * 只收紧声明了 properties 且未显式标为 `additionalProperties: true` 的对象。
+ * 动态 KV 载荷对象（如 jingwei_write.fields / fieldsPatch、workflow_step.payload、
+ * workflow_manage.ops[].patch 等）即使为了兼容 Gemini 协议补了示例 properties，
+ * 也需要保留开放性，避免模型写入合法自定义字段时被拒收；宿主字段走私仍由
+ * findForbiddenModelField 递归拦截。
  */
 function closeSchemaObjects(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(closeSchemaObjects);
@@ -92,8 +93,49 @@ function closeSchemaObjects(value: unknown): unknown {
 	const declaresProperties = Boolean(
 		source.properties && typeof source.properties === "object" && !Array.isArray(source.properties),
 	);
-	if (source.type === "object" && declaresProperties) normalized.additionalProperties = false;
+	if (source.type === "object" && declaresProperties && source.additionalProperties !== true) {
+		normalized.additionalProperties = false;
+	}
 	return normalized;
+}
+
+/**
+ * 兜底剥离部分上游网关（如 Gemini/Antigravity 兼容层）向未声明 `reason` 的对象
+ * 注入的合成占位键 `reason`（`"Reason for calling this tool"`）。
+ * 仅在该对象 schema 本身未声明 `reason` 属性、且输入里 `reason` 为字符串时剥离，
+ * 避免影响合法声明了 `reason` 字段的工具（如 jingwei_write、memory_events 等）。
+ */
+function stripGatewaySyntheticReason(value: unknown, schema: unknown): unknown {
+	if (!schema || typeof schema !== "object") return value;
+	const schemaObj = schema as Record<string, unknown>;
+	if (Array.isArray(value)) {
+		return schemaObj.items ? value.map((item) => stripGatewaySyntheticReason(item, schemaObj.items)) : value;
+	}
+	if (!value || typeof value !== "object") return value;
+	const props =
+		schemaObj.properties && typeof schemaObj.properties === "object" && !Array.isArray(schemaObj.properties)
+			? (schemaObj.properties as Record<string, unknown>)
+			: undefined;
+	const inputObj = value as Record<string, unknown>;
+	let mutated = false;
+	const next: Record<string, unknown> = {};
+	for (const [key, child] of Object.entries(inputObj)) {
+		if (
+			key === "reason" &&
+			typeof child === "string" &&
+			props !== undefined &&
+			!Object.prototype.hasOwnProperty.call(props, "reason") &&
+			schemaObj.additionalProperties !== true
+		) {
+			mutated = true;
+			continue;
+		}
+		const childSchema = props?.[key];
+		const cleanedChild = childSchema ? stripGatewaySyntheticReason(child, childSchema) : child;
+		if (cleanedChild !== child) mutated = true;
+		next[key] = cleanedChild;
+	}
+	return mutated ? next : value;
 }
 
 function isPortableJsonValue(value: unknown, ancestors = new WeakSet<object>()): value is PortableJsonValue {
@@ -561,7 +603,12 @@ export class NovelRuntimeHostAdapter {
 	async execute(
 		toolName: string,
 		input: Readonly<Record<string, unknown>>,
-		execution: string | Pick<ToolContext, "narratorId" | "provider" | "model" | "generateText" | "emitOutput">,
+		execution:
+			| string
+			| Pick<
+				ToolContext,
+				"narratorId" | "provider" | "model" | "generateText" | "emitOutput" | "emitStructuredProgress" | "signal"
+			>,
 	): Promise<ToolResult> {
 		const narratorId = typeof execution === "string" ? execution : execution.narratorId;
 		const canonicalToolName = this.toCanonicalToolName(toolName);
@@ -667,6 +714,21 @@ export class NovelRuntimeHostAdapter {
 			// Skill 生效证据只承认原生 Runtime Skill 工具在实际会话中的成功调用；
 			// 项目目录里存在的文件不再被当作已加载（那会把目录当隐形 prompt）。
 			const loadedSkills = await loadRuntimeLoadedSkills(narratorId, bookRoot);
+			// Runtime 的 tool_output 是整段快照语义，而插件工具通常按阶段逐条调用 emitOutput(line)。
+			// 在适配器层维护有界行缓冲，把每条进度累计拼成执行过程轨迹推送给前端，避免前一步瞬间被覆盖。
+			const progressLines: string[] = [];
+			const rawEmitOutput = hostExecution?.emitOutput;
+			const emitOutput = rawEmitOutput
+				? (line: string) => {
+					const text = this.toModelFacingText(line).trim();
+					if (!text) return;
+					if (progressLines[progressLines.length - 1] !== text) {
+						progressLines.push(text);
+						if (progressLines.length > 40) progressLines.shift();
+					}
+					rawEmitOutput(progressLines.join("\n"));
+				}
+				: undefined;
 			const toolContext: PluginToolExecutionContext = {
 				...pluginContext,
 				sessionId: narratorId,
@@ -676,7 +738,11 @@ export class NovelRuntimeHostAdapter {
 					? { model: { provider: hostExecution.provider, id: hostExecution.model } }
 					: {}),
 				...(hostExecution?.generateText ? { generateText: hostExecution.generateText } : {}),
-				...(hostExecution?.emitOutput ? { emitOutput: hostExecution.emitOutput } : {}),
+				...(emitOutput ? { emitOutput } : {}),
+				...(hostExecution?.emitStructuredProgress
+					? { emitStructuredProgress: hostExecution.emitStructuredProgress }
+					: {}),
+				...(hostExecution?.signal ? { signal: hostExecution.signal } : {}),
 			};
 			const result = this.toModelFacingResult(await tool.handler(parsed.data, toolContext));
 			return {
@@ -690,6 +756,12 @@ export class NovelRuntimeHostAdapter {
 				},
 			};
 		} catch (error) {
+			if (
+				(typeof execution !== "string" && execution.signal?.aborted) ||
+				(error instanceof Error && error.name === "AbortError")
+			) {
+				throw error;
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			return errorResult("runtime-tool-error", message, toolName, runtimeMetadata);
 		}
@@ -741,8 +813,11 @@ export class NovelRuntimeHostAdapter {
 		if (existing) return existing;
 		// Contributions may omit additionalProperties. The private host always
 		// treats every model-originated object as closed-world to prevent host-field
-		// or typo smuggling through nested input structures.
-		const validator = z.fromJSONSchema(closeSchemaObjects(inputSchema) as never);
+		// or typo smuggling through nested input structures (unless explicitly marked
+		// open with additionalProperties: true).
+		const closedSchema = closeSchemaObjects(inputSchema);
+		const inner = z.fromJSONSchema(closedSchema as never);
+		const validator = z.preprocess((val) => stripGatewaySyntheticReason(val, closedSchema), inner);
 		this.validators.set(inputSchema, validator);
 		return validator;
 	}

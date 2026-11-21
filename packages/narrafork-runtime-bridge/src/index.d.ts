@@ -41,12 +41,25 @@ export interface RuntimeGenerateTextResult {
 	};
 }
 
+/** Determinate progress a running tool reports (Runtime `ToolProgressPayload`). */
+export interface ToolStructuredProgress {
+	completed: number;
+	total?: number;
+	itemsDone?: number;
+	itemsTotal?: number;
+	currentItem?: string;
+	elapsedMs?: number;
+	phase?: string;
+}
+
 export interface ToolContext {
 	narratorId: string;
 	provider?: string;
 	model?: string;
 	generateText?: (request: RuntimeGenerateTextRequest) => Promise<RuntimeGenerateTextResult>;
 	emitOutput?: (output: string) => void;
+	emitStructuredProgress?: (progress: ToolStructuredProgress) => void;
+	signal?: AbortSignal;
 	[key: string]: unknown;
 }
 

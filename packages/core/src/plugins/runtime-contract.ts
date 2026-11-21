@@ -107,6 +107,17 @@ export interface RuntimeDelegationContext {
   readonly template: string;
 }
 
+/** Determinate progress payload emitted by long-running tools. */
+export interface RuntimeToolStructuredProgress {
+  readonly completed: number;
+  readonly total?: number;
+  readonly itemsDone?: number;
+  readonly itemsTotal?: number;
+  readonly currentItem?: string;
+  readonly elapsedMs?: number;
+  readonly phase?: string;
+}
+
 /** Context handed to a tool handler at execution time. */
 export interface ToolExecutionContext extends RuntimeResolveContext {
   /** Present only when the calling session is a delegated subagent (host-resolved). */
@@ -117,6 +128,8 @@ export interface ToolExecutionContext extends RuntimeResolveContext {
   readonly model?: { readonly provider: string; readonly id: string };
   readonly generateText?: RuntimeTextGenerator;
   readonly emitOutput?: (line: string) => void;
+  readonly emitStructuredProgress?: (progress: RuntimeToolStructuredProgress) => void;
+  readonly signal?: AbortSignal;
 }
 
 /** What a tool handler resolves to. */

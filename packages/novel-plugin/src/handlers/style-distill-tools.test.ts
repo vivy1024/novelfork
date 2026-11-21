@@ -50,7 +50,10 @@ describe("叙述者文风蒸馏工具", () => {
     const started = await executeStyleDistillationTool("style_distill_start", { sourceName: "旧稿", chapters }, binding, context(model, (line) => lines.push(line)));
     expect(started).toMatchObject({ ok: true, data: { job: { status: "ready" }, batches: { total: 1, done: 1 }, expectedVersion: "" } });
     expect(model).toHaveBeenCalledTimes(1);
-    expect(lines[0]).toContain("batch-001");
+    // 先报初始化与就绪，再在调用模型前报「正在分析 batch-001」，结束后报批次结果。
+    expect(lines[0]).toContain("初始化文风蒸馏任务");
+    expect(lines.some((line) => line.includes("正在调用模型分析 batch-001"))).toBe(true);
+    expect(lines.at(-1)).toContain("batch-001");
     const data = started.data as { job: { jobId: string; rules: { origin?: string; status: string }[] } };
     const modelRules = data.job.rules.filter((rule) => rule.origin === "model");
     expect(modelRules).toHaveLength(2);
@@ -58,6 +61,31 @@ describe("叙述者文风蒸馏工具", () => {
 
     const status = await executeStyleDistillationTool("style.distill_status", { jobId: data.job.jobId }, binding, context());
     expect(status).toMatchObject({ ok: true, data: { job: { jobId: data.job.jobId, status: "ready" } } });
+  });
+
+  it("用户中断时抛出 AbortError，进行中的批次退回待处理而不记为失败，之后可继续", async () => {
+    const { root, binding } = await setup();
+    const controller = new AbortController();
+    const aborting: RuntimeTextGenerator = vi.fn(async () => {
+      controller.abort();
+      throw Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+    });
+    const lines: string[] = [];
+    const abortContext = { ...context(aborting, (line) => lines.push(line)), signal: controller.signal };
+    await expect(
+      executeStyleDistillationTool("style.distill_start", { sourceName: "旧稿", chapters }, binding, abortContext),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    // 中断后不再发起拆半重试或后续批次。
+    expect(aborting).toHaveBeenCalledTimes(1);
+
+    const jobId = lines.map((line) => /任务 (\S+)（/.exec(line)?.[1]).find(Boolean);
+    expect(jobId).toBeTruthy();
+    const { readStyleDistillationJob } = await import("../engine/writing-layers/style-distillation-runner.js");
+    const job = await readStyleDistillationJob(root, jobId!);
+    expect(job.batches.map((batch) => batch.status)).toEqual(["pending"]);
+
+    const resumed = await executeStyleDistillationTool("style.distill_start", { jobId }, binding, context(model));
+    expect(resumed).toMatchObject({ ok: true, data: { batches: { done: 1, failed: 0 } } });
   });
 
   it("没有会话模型时保存基线并暂停，之后带 jobId 继续同一任务", async () => {

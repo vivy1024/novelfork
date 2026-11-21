@@ -128,7 +128,7 @@ function modelUnavailable(): Explanation {
   return {
     what: "当前 Runtime 会话没有可用的文本生成能力，模型批次未执行。",
     why: "文风规则需要模型阅读原文后抽取；确定性基线与统计指纹已可审阅，但不能替代模型抽取。",
-    next: "配置会话模型后，再次调用 style.distill_start 并传入 jobId 继续。",
+    next: "配置会话模型后，再次调用 style_manage（action=start）并传入 jobId 继续。",
   };
 }
 
@@ -138,7 +138,7 @@ function toolError(error: unknown): RuntimeToolResult | null {
       explanation: {
         what: error.message,
         why: "参考文件只允许读取本书目录内不超过 60 MB 的普通文本文件，禁止跨目录或读取内部数据。",
-        next: "可先调用 style.distill_index（listFilesOnly=true）查看本书目录下可用的参考文件。",
+        next: "可先调用 style_manage（action=index，listFilesOnly=true）查看本书目录下可用的参考文件。",
       },
     });
   }
@@ -147,7 +147,7 @@ function toolError(error: unknown): RuntimeToolResult | null {
       explanation: {
         what: error.message,
         why: "文风蒸馏任务状态必须与来源快照一致，不能跳过校验或并发写入。",
-        next: error.code === "STYLE_DISTILLATION_BUSY" ? "稍后用 style.distill_status 查看进度。" : "按提示修正输入，或重新提交参考文本新建任务。",
+        next: error.code === "STYLE_DISTILLATION_BUSY" ? "稍后用 style_manage（action=status）查看进度。" : "按提示修正输入，或重新提交参考文本新建任务。",
       },
     });
   }
@@ -158,7 +158,7 @@ function toolError(error: unknown): RuntimeToolResult | null {
       explanation: {
         what: error.message,
         why: "文风预设不能被静默覆盖；作者或网页可能刚改过它。",
-        next: "先用 style.distill_status 取得最新 expectedVersion，向作者确认要采纳的条目后再调用 style.distill_adopt。",
+        next: "先用 style_manage（action=status）取得最新 expectedVersion，向作者确认要采纳的条目后再调用 style_manage（action=adopt）。",
       },
     });
   }
@@ -206,7 +206,7 @@ async function distillIndex(
   const recommendedSet = new Set(index.recommendedChapters.chapterNumbers);
   const recommendedChapterDetails = index.chapters.filter((chapter) => recommendedSet.has(chapter.number));
   return ok(
-    `已建立「${sourceName}」机械索引：共 ${index.chapterCount} 章、${index.totalCharCount} 字（${encoding}），推荐抽样 ${index.recommendedChapters.chapterNumbers.length} 章。可直接将 recommendedChapters.chapterNumbers 作为 chapterList 传给 style.distill_preview 或 style.distill_start。`,
+    `已建立「${sourceName}」机械索引：共 ${index.chapterCount} 章、${index.totalCharCount} 字（${encoding}），推荐抽样 ${index.recommendedChapters.chapterNumbers.length} 章。可直接将 recommendedChapters.chapterNumbers 作为 chapterList 传给 style_manage（action=preview 或 start）。`,
     {
       sourceName,
       ...(rawPath ? { filePath: rawPath } : {}),
@@ -236,6 +236,11 @@ async function start(
 ): Promise<RuntimeToolResult> {
   const generateText = context.generateText;
   const existingJobId = typeof input.jobId === "string" && input.jobId.trim() ? input.jobId.trim() : null;
+  context.emitOutput?.(
+    existingJobId
+      ? `正在加载文风蒸馏任务 ${existingJobId}…`
+      : "正在切分参考章节并初始化文风蒸馏任务…",
+  );
   const job = existingJobId
     ? await readStyleDistillationJob(binding.root, existingJobId)
     : await createStyleDistillationJob({
@@ -256,21 +261,77 @@ async function start(
     );
   }
 
+  const limit = batchLimit(input.maxBatches);
+  const startedMs = Date.now();
+  const initialSummary = summarizeStyleDistillationBatches(job);
+  const targetBatches = Math.min(limit, input.retryFailed === true ? initialSummary.total : initialSummary.pending);
+  context.emitOutput?.(
+    `任务 ${job.jobId}（${job.sourceName}）已就绪：共 ${initialSummary.total} 批，本轮计划处理 ${Math.max(1, targetBatches)} 批…`,
+  );
+  context.emitStructuredProgress?.({
+    completed: initialSummary.done + initialSummary.failed,
+    total: initialSummary.total,
+    itemsDone: initialSummary.done + initialSummary.failed,
+    itemsTotal: initialSummary.total,
+    phase: "style_distill",
+    elapsedMs: Date.now() - startedMs,
+  });
+
   const run = await runStyleDistillationBatches({
     bookRoot: binding.root,
     jobId: job.jobId,
     generateText,
-    maxBatches: batchLimit(input.maxBatches),
+    maxBatches: limit,
     retryFailed: input.retryFailed === true,
-    onProgress: (current, batch) => context.emitOutput?.(
-      `文风蒸馏 ${batch.id}（第 ${batch.chapterNumbers[0]}–${batch.chapterNumbers.at(-1)} 章）：${batch.status === "done" ? `完成，新增 ${batch.ruleIds.length} 条待审规则` : `失败，${batch.explanation?.what ?? "原因未知"}`}；${progressLine(current)}。`,
-    ),
+    ...(context.signal ? { signal: context.signal } : {}),
+    onStage: (current, batch, stage, detail) => {
+      const summary = summarizeStyleDistillationBatches(current);
+      const chapterRange = batch.chapterNumbers.length > 0
+        ? `第 ${batch.chapterNumbers[0]}–${batch.chapterNumbers.at(-1)} 章`
+        : "本批";
+      if (stage === "batch-start") {
+        context.emitOutput?.(
+          `[${summary.done + summary.failed + 1}/${summary.total}] 正在调用模型分析 ${batch.id}（${chapterRange}），请稍候…`,
+        );
+        context.emitStructuredProgress?.({
+          completed: summary.done + summary.failed,
+          total: summary.total,
+          itemsDone: summary.done + summary.failed,
+          itemsTotal: summary.total,
+          currentItem: `${batch.id}（${chapterRange}）`,
+          phase: "style_distill",
+          elapsedMs: Date.now() - startedMs,
+        });
+      } else {
+        context.emitOutput?.(
+          `${batch.id}（${chapterRange}）整批输出受限${detail ? `（${detail.slice(0, 80)}）` : ""}，自动拆成前半/后半重试…`,
+        );
+      }
+    },
+    onProgress: (current, batch) => {
+      const summary = summarizeStyleDistillationBatches(current);
+      const chapterRange = batch.chapterNumbers.length > 0
+        ? `第 ${batch.chapterNumbers[0]}–${batch.chapterNumbers.at(-1)} 章`
+        : "本批";
+      context.emitOutput?.(
+        `文风蒸馏 ${batch.id}（${chapterRange}）：${batch.status === "done" ? `完成，新增 ${batch.ruleIds.length} 条待审规则` : `失败，${batch.explanation?.what ?? "原因未知"}`}；${progressLine(current)}。`,
+      );
+      context.emitStructuredProgress?.({
+        completed: summary.done + summary.failed,
+        total: summary.total,
+        itemsDone: summary.done + summary.failed,
+        itemsTotal: summary.total,
+        currentItem: `${batch.id} ${batch.status === "done" ? "完成" : "失败"}`,
+        phase: "style_distill",
+        elapsedMs: Date.now() - startedMs,
+      });
+    },
   });
   const revision = (await loadStylePreset(binding.root)).revision;
   const remaining = run.summary.pending > 0
-    ? `还有 ${run.summary.pending} 批待处理，可再次调用 style.distill_start 并传入 jobId 继续。`
+    ? `还有 ${run.summary.pending} 批待处理，可再次调用 style_manage（action=start）并传入 jobId=${run.job.jobId} 继续。`
     : run.summary.failed > 0
-      ? "有失败批次，可带 jobId 与 retryFailed=true 重试。"
+      ? `有失败批次，可调用 style_manage（action=start，jobId=${run.job.jobId}，retryFailed=true）重试。`
       : "全部批次已结束，请作者逐条审阅后再采纳。";
   return ok(`本次处理 ${run.processedBatchIds.length} 批；${progressLine(run.job)}。${remaining}`, modelView(run.job, revision));
 }
@@ -279,9 +340,9 @@ async function adopt(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
 ): Promise<RuntimeToolResult> {
-  if (typeof input.jobId !== "string" || !input.jobId.trim()) return fail("job-id-required", "style.distill_adopt 需要 jobId。");
+  if (typeof input.jobId !== "string" || !input.jobId.trim()) return fail("job-id-required", "style_manage（action=adopt）需要 jobId。");
   if (!Object.hasOwn(input, "expectedVersion") || (input.expectedVersion !== null && typeof input.expectedVersion !== "string")) {
-    return fail("expected-version-required", "style.distill_adopt 需要 expectedVersion（取自 style.distill_status；本书尚无预设时传空字符串）。");
+    return fail("expected-version-required", "style_manage（action=adopt）需要 expectedVersion（取自 style_manage action=status；本书尚无预设时传空字符串）。");
   }
   const ruleIds = stringList(input.ruleIds);
   const sampleIds = stringList(input.sampleIds);
@@ -374,7 +435,7 @@ export async function executeStyleDistillationTool(
     }
     if (name === "style.distill_start") return await start(input, binding, context);
     if (name === "style.distill_status") {
-      if (typeof input.jobId !== "string") return fail("job-id-required", "style.distill_status 需要 jobId。");
+      if (typeof input.jobId !== "string") return fail("job-id-required", "style_manage（action=status）需要 jobId。");
       const job = await readStyleDistillationJob(binding.root, input.jobId);
       if (job.bookId !== binding.bookId) return fail("STYLE_DISTILLATION_NOT_FOUND", "该蒸馏任务不属于当前书籍。");
       return ok(`已读取文风来源包状态：${progressLine(job)}。`, modelView(job, (await loadStylePreset(binding.root)).revision));
