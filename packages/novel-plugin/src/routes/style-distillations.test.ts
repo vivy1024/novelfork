@@ -20,7 +20,8 @@ async function setup() {
   } as unknown as RouterContext, { resolveBookRoot: () => bookRoot });
   return { router, bookRoot };
 }
-afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
+// 后台续跑可能还在写任务文件：删除临时目录时允许短暂重试，避免 ENOTEMPTY。
+afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }))); });
 
 describe("文风自动蒸馏路由", () => {
   it("先预览范围，再生成可恢复来源包，采纳只进入预设", async () => {
@@ -253,9 +254,10 @@ describe("文风自动蒸馏路由", () => {
       const created = await createdResponse.json() as { job: { jobId: string } };
 
       let logged = "";
-      for (let attempt = 0; attempt < 100 && !logged; attempt += 1) {
+      // 只认本任务的日志：上一用例残留的后台任务也可能在此期间写日志。
+      for (let attempt = 0; attempt < 500 && !logged.includes(created.job.jobId); attempt += 1) {
         logged = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
-        if (!logged) await new Promise((done) => setTimeout(done, 10));
+        if (!logged.includes(created.job.jobId)) await new Promise((done) => setTimeout(done, 10));
       }
       expect(logged).toContain("[style-distillations]");
       expect(logged).toContain(created.job.jobId);

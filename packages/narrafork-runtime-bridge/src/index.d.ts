@@ -60,6 +60,8 @@ export interface ToolContext {
 	emitOutput?: (output: string) => void;
 	emitStructuredProgress?: (progress: ToolStructuredProgress) => void;
 	signal?: AbortSignal;
+	/** Host user who triggered the current turn (null for anonymous / system turns). */
+	userId?: string | null;
 	[key: string]: unknown;
 }
 

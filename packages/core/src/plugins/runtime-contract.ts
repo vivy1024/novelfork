@@ -127,6 +127,15 @@ export interface ToolExecutionContext extends RuntimeResolveContext {
   /** Model routing for text-generation-capable tools. */
   readonly model?: { readonly provider: string; readonly id: string };
   readonly generateText?: RuntimeTextGenerator;
+  /**
+   * Host text generator NOT bound to the current turn: the author's configured
+   * server-side default model, usage billed to {@link actorUserId}. For work that
+   * must outlive this tool call (background jobs). `generateText` is cancelled
+   * when the turn ends.
+   */
+  readonly backgroundGenerateText?: RuntimeTextGenerator;
+  /** Host user who triggered this turn; recorded as the initiator of background work. */
+  readonly actorUserId?: string;
   readonly emitOutput?: (line: string) => void;
   readonly emitStructuredProgress?: (progress: RuntimeToolStructuredProgress) => void;
   readonly signal?: AbortSignal;

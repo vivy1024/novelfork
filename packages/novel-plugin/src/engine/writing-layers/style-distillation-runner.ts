@@ -363,6 +363,11 @@ export interface RunStyleDistillationOptions {
   readonly initiatorId?: string;
   /** 取消信号：用户中断时立即停止后续批次，并把当前 running 批次退回 pending（不记为失败）。 */
   readonly signal?: AbortSignal;
+  /**
+   * 取消时写进任务 lastError 的停下原因。缺省不写（网页端取消即作者本人操作，无需解释）；
+   * 叙述者工具的后台批次随会话本轮结束被取消时，靠它告诉作者与叙述者为什么暂停、怎么继续。
+   */
+  readonly abortExplanation?: { readonly what: string; readonly why: string; readonly next: string };
   /** 批次开始执行或半批重试时的实时阶段回调。 */
   readonly onStage?: (job: StyleDistillationJob, batch: StyleDistillationBatch, stage: "batch-start" | "split-retry", detail?: string) => void;
   readonly onProgress?: (job: StyleDistillationJob, batch: StyleDistillationBatch) => void;
@@ -415,9 +420,14 @@ export function runStyleDistillationBatches(options: RunStyleDistillationOptions
       } catch (error) {
         const isAborted = Boolean(options.signal?.aborted) || (error instanceof Error && error.name === "AbortError");
         if (isAborted) {
-          // 用户主动取消：将进行中的批次退回 pending、任务置回 paused（不记作错误），便于后续继续。
+          // 用户主动取消：将进行中的批次退回 pending、任务置回 paused（不记作批次失败），便于后续继续。
+          // 调用方给了停下原因（如叙述者会话本轮结束）时写进 lastError，界面与状态查询据此说明为什么暂停。
+          const abortExplanation = options.abortExplanation
+            ? { ...options.abortExplanation, at: new Date().toISOString() }
+            : undefined;
           await updateJob(bookRoot, jobId, (current) => settleStyleDistillationJobState({
             ...current,
+            ...(abortExplanation ? { lastError: abortExplanation } : {}),
             batches: current.batches.map((batch) => batch.status === "running"
               ? { ...batch, status: "pending" as const }
               : batch),

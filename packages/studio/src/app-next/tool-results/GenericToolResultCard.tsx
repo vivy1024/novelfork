@@ -22,6 +22,15 @@ const FRIENDLY_TOOL_TITLES: Readonly<Record<string, { readonly title: string; re
   "skills.manage": { title: "写作技能管理", kind: "default" },
 };
 
+/** 文风蒸馏任务状态（style_manage 的 data.job.status）。 */
+const JOB_STATUS_LABELS: Readonly<Record<string, string>> = {
+  running: "后台处理中",
+  paused: "已暂停",
+  ready: "待审阅",
+  failed: "已停止",
+  adopted: "已采纳",
+};
+
 function renderIcon(kind: "style" | "mechanism" | "default", isError: boolean) {
   if (isError) return <AlertCircle className="size-4 text-destructive" />;
   if (kind === "style") return <Scale className="size-4 text-primary" />;
@@ -66,6 +75,10 @@ export function GenericToolResultRenderer({ toolName, result, onOpenArtifact }: 
   const batchPending = batchesObj ? getNumber(batchesObj.pending) : null;
   const batchFailures = Array.isArray(batchesObj?.failures) ? batchesObj.failures : [];
   const jobId = jobObj ? getString(jobObj.jobId) : "";
+  const jobStatus = jobObj ? getString(jobObj.status) : "";
+  const jobStatusLabel = JOB_STATUS_LABELS[jobStatus] ?? "";
+  const reviewObj = asRecord(data?.reviewItems);
+  const reviewRuleCount = reviewObj ? getNumber(reviewObj.needsReviewCount) : null;
   const rawPayloadText = isTruncated && rawPreview
     ? rawPreview
     : JSON.stringify(unwrapped ?? result, null, 2);
@@ -111,12 +124,14 @@ export function GenericToolResultRenderer({ toolName, result, onOpenArtifact }: 
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-1.5 text-2xs">
             {jobId && <Badge variant="outline" className="font-mono">{jobId}</Badge>}
+            {jobStatusLabel && <Badge variant={jobStatus === "failed" ? "destructive" : "outline"}>{jobStatusLabel}</Badge>}
             <Badge variant="secondary">
               批次 {(batchDone ?? 0) + (batchFailed ?? 0)}/{batchTotal}
             </Badge>
             {batchDone !== null && batchDone > 0 && <Badge variant="secondary">完成 {batchDone}</Badge>}
             {batchFailed !== null && batchFailed > 0 && <Badge variant="destructive">失败 {batchFailed}</Badge>}
             {batchPending !== null && batchPending > 0 && <Badge variant="outline">待处理 {batchPending}</Badge>}
+            {reviewRuleCount !== null && reviewRuleCount > 0 && <Badge variant="outline">待审规则 {reviewRuleCount}</Badge>}
           </div>
           {batchFailures.length > 0 ? (
             <ul className="space-y-1 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-2xs text-destructive">

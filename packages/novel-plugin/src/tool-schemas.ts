@@ -718,7 +718,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       action: enumSchema(
         ["index", "preview", "start", "status", "adopt", "consolidate", "negative_override"],
-        "操作：index 索引参考文件 | preview 预览切章 | start 启动/续跑蒸馏 | status 查任务结果 | adopt 采纳规则/范文 | consolidate 规则瘦身 | negative_override 置顶负反馈硬约束。",
+        "操作：index 索引参考文件 | preview 预览切章 | start 后台启动/续跑蒸馏（立即返回 jobId，不要重复调用）| status 查进度与待审条目（可 waitSeconds 等待）| adopt 采纳规则/范文 | consolidate 规则瘦身 | negative_override 置顶负反馈硬约束。",
       ),
       filePath: relativeBookFileSchema("参考文件相对路径（index/preview/start）。"),
       sourceName: stringSchema("参考来源名。"),
@@ -732,8 +732,11 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       fromChapter: numberSchema("起始章号。"),
       toChapter: numberSchema("结束章号。"),
       jobId: stringSchema("蒸馏任务 ID（start 续跑/status/adopt）。"),
-      maxBatches: numberSchema("start：本次最多批次数（1–10）。"),
+      maxBatches: numberSchema("start：本次后台最多处理几批（缺省全部待处理批次）。"),
       retryFailed: booleanSchema("start：重试失败批次。"),
+      waitSeconds: numberSchema("status：任务处理中时最多等待秒数（0–60，默认 0），有批次结束或任务停下即返回。"),
+      itemOffset: numberSchema("status：待审规则/范文分页起点（默认 0）。"),
+      itemLimit: numberSchema("status：待审规则/范文每页条数（默认 30，最多 100）。"),
       ruleIds: arraySchema("adopt：作者确认采纳的规则 ID。", { type: "string" }),
       sampleIds: arraySchema("adopt：作者确认采纳的范文 ID。", { type: "string" }),
       expectedVersion: stringSchema("adopt：status 返回的版本号（无预设传空串）。"),

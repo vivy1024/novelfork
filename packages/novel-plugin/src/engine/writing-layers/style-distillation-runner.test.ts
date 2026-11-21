@@ -240,6 +240,34 @@ describe("文风蒸馏模型批次", () => {
     expect(run.job.lastError).toBeUndefined();
   });
 
+  it("取消时进行中的批次退回待处理；只有调用方给了 abortExplanation 才写停下原因", async () => {
+    const root = await bookRoot();
+    for (const abortExplanation of [undefined, { what: "会话结束，后台批次暂停。", why: "会话模型调用被取消。", next: "带 jobId 继续。" }]) {
+      const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(2) }, modelAvailable: true });
+      const controller = new AbortController();
+      const aborting = vi.fn(async () => {
+        controller.abort();
+        throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      });
+      await expect(runStyleDistillationBatches({
+        bookRoot: root,
+        jobId: created.jobId,
+        generateText: aborting,
+        signal: controller.signal,
+        ...(abortExplanation ? { abortExplanation } : {}),
+      })).rejects.toMatchObject({ name: "AbortError" });
+      const job = await readStyleDistillationJob(root, created.jobId);
+      expect(job.status).toBe("paused");
+      expect(job.batches.every((batch) => batch.status === "pending")).toBe(true);
+      if (abortExplanation) expect(job.lastError).toMatchObject({ what: abortExplanation.what, at: expect.any(String) });
+      else expect(job.lastError).toBeUndefined();
+      // 之后照常续跑，跑通即清掉停下原因。
+      const run = await runStyleDistillationBatches({ bookRoot: root, jobId: created.jobId, generateText: fakeModel() });
+      expect(run.job.status).toBe("ready");
+      expect(run.job.lastError).toBeUndefined();
+    }
+  });
+
   it("模型调用抛错时本批失败，其余批次继续；同一任务不允许并发运行", async () => {
     const root = await bookRoot();
     const created = await createStyleDistillationJob({ bookRoot: root, bookId: "book-1", source: { sourceName: "旧稿", chapters: chapters(4) }, modelAvailable: true });

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
 	db,
 	narratorToolCalls,
+	runtimeProductHostServices,
 	skillService,
 	type ContributedToolPermissionPolicy,
 	type RuntimeToolRisk,
@@ -614,7 +615,7 @@ export class NovelRuntimeHostAdapter {
 			| string
 			| Pick<
 				ToolContext,
-				"narratorId" | "provider" | "model" | "generateText" | "emitOutput" | "emitStructuredProgress" | "signal"
+				"narratorId" | "provider" | "model" | "generateText" | "emitOutput" | "emitStructuredProgress" | "signal" | "userId"
 			>,
 	): Promise<ToolResult> {
 		const narratorId = typeof execution === "string" ? execution : execution.narratorId;
@@ -754,6 +755,8 @@ export class NovelRuntimeHostAdapter {
 			const loadedSkills = await loadRuntimeLoadedSkills(narratorId, bookRoot);
 			// Runtime 的 tool_output 是整段快照语义，而插件工具通常按阶段逐条调用 emitOutput(line)。
 			// 在适配器层维护有界行缓冲，把每条进度累计拼成执行过程轨迹推送给前端，避免前一步瞬间被覆盖。
+			const actorUserId =
+				typeof hostExecution?.userId === "string" && hostExecution.userId.trim() ? hostExecution.userId : null;
 			const progressLines: string[] = [];
 			const rawEmitOutput = hostExecution?.emitOutput;
 			const emitOutput = rawEmitOutput
@@ -776,6 +779,31 @@ export class NovelRuntimeHostAdapter {
 					? { model: { provider: hostExecution.provider, id: hostExecution.model } }
 					: {}),
 				...(hostExecution?.generateText ? { generateText: hostExecution.generateText } : {}),
+				...(actorUserId
+					? {
+						actorUserId,
+						// 不随本轮取消的服务端模型（作者配置的默认模型，用量记到触发者名下），与网页端同源；
+						// 供必须在本次工具调用之后继续运行的后台任务使用。
+						backgroundGenerateText: async (request) => {
+							const generated = await runtimeProductHostServices.generateText(
+								{
+									messages: request.messages,
+									...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+									...(request.maxTokens !== undefined ? { maxTokens: request.maxTokens } : {}),
+									modelRole: "default",
+								},
+								{ userId: actorUserId },
+							);
+							// 截断判定（如文风蒸馏的拆半重试）读 outputTruncated / usage，原样带出。
+							const result: { text: string; outputTruncated?: boolean; usage?: typeof generated.usage } = {
+								text: generated.text,
+							};
+							if (generated.outputTruncated) result.outputTruncated = true;
+							if (generated.usage) result.usage = generated.usage;
+							return result;
+						},
+					}
+					: {}),
 				...(emitOutput ? { emitOutput } : {}),
 				...(hostExecution?.emitStructuredProgress
 					? { emitStructuredProgress: hostExecution.emitStructuredProgress }

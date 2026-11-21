@@ -92,7 +92,7 @@ chapter.preflight 或 chapter.commit 返回 blockers 时立即停写，不得硬
 ## 其他场景（触发 → 工具）
 - 全局概览 → book.overview；章节目录 → chapter.list。
 - 续写旧书与拆书 → book.import（action=import_chapters 或 action=dissect）；拆书产物是待审草稿，作者确认后才 jingwei.write。
-- 学习文风 → style.manage（index / preview / start / status / adopt / consolidate / negative_override）；只采纳作者点名确认的条目。
+- 学习文风 → style.manage（index / preview / start / status / adopt / consolidate / negative_override）；只采纳作者点名确认的条目。start 在后台跑批并立即返回 jobId，之后用 status 查进度，跑完再读待审条目，不要重复 start。
 - 角色核查、弧线与声线 → character.inspect（consistency / arc_status / arc_sync / voice_read / voice_draft）；待审声线须作者确认后才生效。
 - 中盘防跑偏 → outline.volume 维护卷纲与终局储备，overdraft 告警如实转述并建议改纲；hooks.manage 管理伏笔。
 - 质量审校与投稿自检 → chapter.audit（mode=quality 质量审计 | mode=publish 投稿风险自检）。

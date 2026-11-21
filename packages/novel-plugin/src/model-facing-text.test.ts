@@ -15,8 +15,12 @@ import { NOVEL_RUNTIME_TOOL_CATALOG } from "./handlers/tool-registry.js";
 import { NOVEL_RUNTIME_SYSTEM_PROMPT } from "./runtime-contribution.js";
 import { NOVEL_TOOL_SCHEMAS } from "./tool-schemas.js";
 
-/** 25 工具重构后实测：系统提示 3426、工具说明合计 3505（chapter.commit 396 最长），各留 5% 余量。 */
-const MAX_SYSTEM_PROMPT_CHARS = 3597;
+/**
+ * 25 工具重构后实测：系统提示 3426、工具说明合计 3505（chapter.commit 396 最长），各留 5% 余量。
+ * 2026-11-22 内置叙述者提示（instructions.session，约 420 字）不再存库注入，其中两句并入本系统提示，
+ * 并补了文风蒸馏后台化用法：系统提示实测 3629（每轮总注入反而减少），按同一 5% 余量重定。
+ */
+const MAX_SYSTEM_PROMPT_CHARS = 3810;
 const MAX_TOOL_DESCRIPTION_CHARS = 3681;
 const MAX_SINGLE_TOOL_DESCRIPTION_CHARS = 900;
 const MAX_PREFLIGHT_DESCRIPTION_CHARS = 265;

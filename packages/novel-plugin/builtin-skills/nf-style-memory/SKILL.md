@@ -24,7 +24,7 @@ tags:
 
 1. **确认来源文本**。文本由作者提供或指定，不要自己找。本书章节用原生 `Read` 读正文（未知路径先查 `chapter_list`）。
 2. **预览范围**。用 `style_manage`（action=preview，sourceName 起一个作者认得出的名字，text 或 chapters 二选一），告诉作者章节切分与覆盖范围。不对就调整后再预览。
-3. **开始蒸馏**。作者认可后调 `style_manage`（action=start）。每次最多处理 maxBatches 批，没完成就带 jobId 续跑；失败批次带 retryFailed=true 重试。
+3. **开始蒸馏**。作者认可后调 `style_manage`（action=start）。它在后台分批跑并立即返回 jobId，不要重复 start；用 `style_manage`（action=status，jobId，可带 waitSeconds）查进度，跑完再把待审条目逐条给作者看。任务暂停时带 jobId 再 start 续跑；失败批次带 retryFailed=true 重试。
 4. **读取结果**。用 `style_manage`（action=status）取回规则、范文与统计指纹。
 5. **逐条给作者看**。每条规则写清：
    - 规则本身（一句话）；

@@ -58,6 +58,24 @@ describe("tool-results registry", () => {
     expect(screen.getByText(/长载荷 9.8 KB/)).toBeTruthy();
   });
 
+  it("文风蒸馏精简结果：显示任务号、后台状态、批次汇总与失败原因", () => {
+    const result = {
+      ok: true,
+      summary: "已在后台启动文风蒸馏任务 job-12345678。",
+      data: {
+        job: { jobId: "job-12345678", status: "running" },
+        batches: { total: 4, done: 1, failed: 1, pending: 2, failures: [{ batchId: "batch-002", explanation: { what: "模型调用失败：供应商 500" } }] },
+        reviewItems: { ruleCount: 9, needsReviewCount: 7, sampleCount: 3, recommendedRuleIds: [] },
+      },
+    };
+    render(<GenericToolResultRenderer toolName="style_manage" result={result} />);
+    expect(screen.getByText("job-12345678")).toBeTruthy();
+    expect(screen.getByText("后台处理中")).toBeTruthy();
+    expect(screen.getByText("批次 2/4")).toBeTruthy();
+    expect(screen.getByText("待审规则 7")).toBeTruthy();
+    expect(screen.getByText("batch-002：模型调用失败：供应商 500")).toBeTruthy();
+  });
+
   it("renderToolResult 为 unknown renderer 使用 generic fallback", () => {
     render(<>{renderToolResult({ toolName: "third.party", result: { renderer: "unknown.renderer", data: { hello: "world" } } })}</>);
 
