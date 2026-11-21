@@ -19,6 +19,7 @@ import {
   MarkerType,
   MiniMap,
   ReactFlow,
+  ReactFlowProvider,
   useViewport,
   type NodeChange,
   type ReactFlowInstance,
@@ -156,7 +157,16 @@ const LIFECYCLE_LABEL: Record<string, string> = {
   abandoned: "已放弃",
 };
 
-export function CausalCanvas({ bookId, structure, query, onOpenChapter, className }: CausalCanvasProps) {
+export function CausalCanvas(props: CausalCanvasProps) {
+  // 换一本书就换一个 React Flow 实例，避免沿用上一本书的视口坐标与选中状态
+  return (
+    <ReactFlowProvider key={props.bookId}>
+      <CausalCanvasInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function CausalCanvasInner({ bookId, structure, query, onOpenChapter, className }: CausalCanvasProps) {
   const base = `/api/books/${encodeURIComponent(bookId)}/narrative-memory`;
   const [data, setData] = useState<SceneGraphData>(structure);
   const [selection, setSelection] = useState<Selection>(null);

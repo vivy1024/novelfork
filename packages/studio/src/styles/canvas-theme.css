@@ -143,9 +143,14 @@
     var(--primary) 94%,
     transparent 100%
   );
-  -webkit-mask: linear-gradient(var(--card) 0 0) content-box, linear-gradient(var(--card) 0 0);
+  /* 用不透明实色作为遮罩通道（CSS mask 只看 alpha，用 var(--card) 某些浏览器简写会整条失效） */
+  -webkit-mask-image: linear-gradient(currentColor 0 0), linear-gradient(currentColor 0 0);
+  -webkit-mask-clip: content-box, border-box;
+  -webkit-mask-origin: content-box, border-box;
   -webkit-mask-composite: xor;
-  mask: linear-gradient(var(--card) 0 0) content-box, linear-gradient(var(--card) 0 0);
+  mask-image: linear-gradient(currentColor 0 0), linear-gradient(currentColor 0 0);
+  mask-clip: content-box, border-box;
+  mask-origin: content-box, border-box;
   mask-composite: exclude;
   pointer-events: none;
   animation: nf-border-beam-spin 2.8s linear infinite;
@@ -155,16 +160,16 @@
   animation: nf-warning-pulse 2.2s ease-in-out infinite;
 }
 
-/* 磁性连接锚点微动效 */
+/* 磁性连接锚点微动效：使用独立 CSS scale 属性，绝不覆盖 React Flow 原生定位用的 transform: translate(...) */
 .nf-magnetic-handle {
   transition:
-    transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    scale 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
     background-color 160ms ease,
     box-shadow 160ms ease;
 }
 
 .nf-canvas-node-card:hover .nf-magnetic-handle {
-  transform: scale(1.25);
+  scale: 1.25;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
 }
 

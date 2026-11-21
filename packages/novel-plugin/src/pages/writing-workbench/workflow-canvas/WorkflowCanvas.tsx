@@ -56,7 +56,13 @@ export interface WorkflowCanvasProps {
 const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
 
 /** 放在 ReactFlow 里面才能拿到视口控制。 */
-function FitViewOnChange({ signal, focusNodeId }: { signal: number | undefined; focusNodeId?: string | null }) {
+function FitViewOnChange({
+  signal,
+  focusRequest,
+}: {
+  signal: number | undefined;
+  focusRequest?: { readonly id: string; readonly seq: number } | null;
+}) {
   const { fitView, getNode, setCenter, getZoom } = useReactFlow();
   useEffect(() => {
     if (signal === undefined || signal === 0) return;
@@ -66,8 +72,8 @@ function FitViewOnChange({ signal, focusNodeId }: { signal: number | undefined; 
   }, [signal, fitView]);
 
   useEffect(() => {
-    if (!focusNodeId) return;
-    const node = getNode(focusNodeId);
+    if (!focusRequest) return;
+    const node = getNode(focusRequest.id);
     if (!node) return;
     const width = node.measured?.width ?? 208;
     const height = node.measured?.height ?? 72;
@@ -76,7 +82,7 @@ function FitViewOnChange({ signal, focusNodeId }: { signal: number | undefined; 
       node.position.y + height / 2,
       { zoom: Math.max(0.85, Math.min(1.15, getZoom())), duration: 380 },
     );
-  }, [focusNodeId, getNode, setCenter, getZoom]);
+  }, [focusRequest, getNode, setCenter, getZoom]);
   return null;
 }
 
@@ -139,7 +145,7 @@ export function WorkflowCanvas({
     }
   }, [onOps, onSelect]);
 
-  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ readonly id: string; readonly seq: number } | null>(null);
 
   return (
     <div className={`nf-canvas-animated ${className ?? "h-[600px] w-full"}`} data-testid="workflow-canvas">
@@ -153,10 +159,10 @@ export function WorkflowCanvas({
         onConnect={editable ? onConnect : undefined}
         onDelete={editable ? onDelete : undefined}
         onNodeClick={(_, node) => onSelect?.({ kind: "node", id: node.id })}
-        onNodeDoubleClick={(_, node) => setFocusNodeId((prev) => (prev === node.id ? null : node.id))}
+        onNodeDoubleClick={(_, node) => setFocusRequest((prev) => ({ id: node.id, seq: (prev?.seq ?? 0) + 1 }))}
         onEdgeClick={(_, edge) => onSelect?.({ kind: "edge", id: edge.id })}
         onPaneClick={() => {
-          setFocusNodeId(null);
+          setFocusRequest(null);
           onSelect?.(null);
         }}
         onNodeDragStop={(_, node) => onMoveNode?.(node.id, { x: Math.round(node.position.x), y: Math.round(node.position.y) })}
@@ -172,7 +178,7 @@ export function WorkflowCanvas({
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
         <Controls showInteractive={false} />
-        <FitViewOnChange signal={fitViewKey} focusNodeId={focusNodeId} />
+        <FitViewOnChange signal={fitViewKey} focusRequest={focusRequest} />
       </ReactFlow>
     </div>
   );

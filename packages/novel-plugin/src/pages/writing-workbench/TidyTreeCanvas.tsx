@@ -166,14 +166,14 @@ function TreeNodeView({ id, data, positionAbsoluteX, positionAbsoluteY }: NodePr
   const hasChildren = node.children.length > 0;
   return (
     <div
-      className={`nf-canvas-node-card relative flex items-center overflow-hidden rounded-md border bg-card shadow-sm ${selected ? "border-primary ring-1 ring-primary nf-node-border-beam" : matched ? "border-warning/70 ring-1 ring-warning/60" : "border-border"}`}
+      className={`nf-canvas-node-card relative flex items-center rounded-md border bg-card shadow-sm ${selected ? "border-primary ring-1 ring-primary nf-node-border-beam" : matched ? "border-warning/70 ring-1 ring-warning/60" : "border-border"}`}
       style={{ width: TIDY_NODE_WIDTH, height: TIDY_NODE_HEIGHT }}
       data-testid={`tidy-tree-row-${id}`}
       data-x={positionAbsoluteX.toFixed(1)}
       data-y={positionAbsoluteY.toFixed(1)}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} className="!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent" />
-      <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: KIND_FILL[node.kind] }} />
+      <span className="absolute inset-y-0 left-0 w-[3px] rounded-l-[inherit]" style={{ background: KIND_FILL[node.kind] }} />
       {hasChildren ? (
         <button
           type="button"

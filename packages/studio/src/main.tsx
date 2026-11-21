@@ -1,4 +1,5 @@
-// 随产品打包的字体：正文宋体、绿格稿纸的标题字体、等宽字体。界面文字用系统无衬线字体。
+// 随产品打包的字体：Geist 现代无衬线、正文宋体、绿格/朱砂书封字体、等宽字体。
+import "@fontsource-variable/geist";
 import "@fontsource-variable/noto-serif-sc";
 import "@fontsource/zcool-xiaowei";
 import "@fontsource-variable/jetbrains-mono";

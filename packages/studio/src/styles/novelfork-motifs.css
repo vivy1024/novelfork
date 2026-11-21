@@ -1,12 +1,12 @@
 /*
-  NovelFork 书房主题的纹样：稿面、书封、函套。
+  NovelFork 书房主题的纹样与组件风格令牌：稿面、书封、函套、卡片、按钮、页签与侧栏材质。
 
-  颜色、字体、圆角来自 DESIGN.md 生成的 novelfork-themes.css；这里把它们组合成纹样。
+  颜色、字体、圆角来自 DESIGN.md 生成的 novelfork-themes.css；这里把它们组合成纹样与组件级形态令牌。
   主题差异一律写成 CSS 变量（--nf-*），挂在主题作用域上（<html data-nf-style> 与设置页预览卡片的
-  [data-nf-theme-preview]），组件只读变量、不按主题名写分支——这样预览卡片能就地呈现另一套主题。
+  [data-nf-theme-preview]），组件只读变量、不按主题名写分支——这样预览卡片也能完整呈现整套风格。
 */
 
-/* ── 绿格稿纸：稿面铺淡绿方格，书封是格纸 ── */
+/* ── 绿格稿纸（默认）：稿面铺淡绿方格，书封是格纸，卡片简洁轻影 ── */
 :root,
 [data-nf-theme-preview="gaozhi"] {
   --nf-manuscript-bg: var(--nf-paper);
@@ -26,9 +26,32 @@
   --nf-cover-slip-bg: var(--nf-paper);
   --nf-cover-slip-border: color-mix(in srgb, var(--primary) 35%, transparent);
   --nf-cover-slip-ink: var(--primary);
+
+  /* 组件级形态与材质令牌（供 Button / Card / Badge / Sidebar / Tabs 读取） */
+  --nf-card-radius: var(--radius-lg);
+  --nf-card-bg: var(--card);
+  --nf-card-border: color-mix(in srgb, var(--border) 90%, transparent);
+  --nf-card-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 5%, transparent);
+  --nf-card-accent-bar: none;
+
+  --nf-control-radius: var(--radius-md);
+  --nf-badge-radius: 9999px;
+  --nf-btn-shadow: none;
+  --nf-btn-primary-bg: var(--primary);
+  --nf-btn-primary-border: transparent;
+
+  --nf-tab-active-bg: var(--background);
+  --nf-tab-active-indicator: var(--primary);
+  --nf-tab-pill-radius: 9999px;
+
+  --nf-head-bg: color-mix(in srgb, var(--muted) 32%, transparent);
+  --nf-head-icon-bg: color-mix(in srgb, var(--primary) 11%, transparent);
+  --nf-head-icon-border: color-mix(in srgb, var(--primary) 20%, transparent);
+  --nf-panel-surface: var(--card);
+  --nf-subsurface: color-mix(in srgb, var(--muted) 45%, var(--card));
 }
 
-/* ── 书函藏青：稿面素白；书封是藏青函套加米黄题签；活动栏与侧栏是函套 ── */
+/* ── 书函藏青：稿面素白；书封是藏青函套加米黄题签；锐利书脊线条与沉稳方角 ── */
 :root[data-nf-style="shuhan"],
 [data-nf-theme-preview="shuhan"] {
   --nf-manuscript-bg: var(--nf-paper);
@@ -44,9 +67,31 @@
   --nf-cover-slip-bg: var(--nf-slip);
   --nf-cover-slip-border: var(--nf-slip-edge);
   --nf-cover-slip-ink: var(--nf-slip-ink);
+
+  --nf-card-radius: var(--radius-md);
+  --nf-card-bg: var(--card);
+  --nf-card-border: color-mix(in srgb, var(--primary) 20%, var(--border));
+  --nf-card-shadow: 0 1px 0 color-mix(in srgb, var(--primary) 10%, transparent);
+  --nf-card-accent-bar: inset 0 2px 0 color-mix(in srgb, var(--primary) 26%, transparent);
+
+  --nf-control-radius: var(--radius-sm);
+  --nf-badge-radius: var(--radius-sm);
+  --nf-btn-shadow: inset 0 -1px 0 color-mix(in srgb, var(--foreground) 14%, transparent);
+  --nf-btn-primary-bg: var(--primary);
+  --nf-btn-primary-border: color-mix(in srgb, var(--primary) 75%, var(--foreground));
+
+  --nf-tab-active-bg: color-mix(in srgb, var(--accent) 70%, var(--card));
+  --nf-tab-active-indicator: var(--primary);
+  --nf-tab-pill-radius: var(--radius-sm);
+
+  --nf-head-bg: color-mix(in srgb, var(--accent) 55%, var(--card));
+  --nf-head-icon-bg: color-mix(in srgb, var(--primary) 14%, var(--card));
+  --nf-head-icon-border: color-mix(in srgb, var(--primary) 34%, transparent);
+  --nf-panel-surface: var(--card);
+  --nf-subsurface: color-mix(in srgb, var(--secondary) 65%, var(--card));
 }
 
-/* ── 夜更烛光：稿面上方一圈烛光，书封是暖纸加烛光 ── */
+/* ── 夜更烛光：稿面上方一圈柔烛晕光，柔和圆润大圆角与低眩光暖调层次 ── */
 :root[data-nf-style="yegeng"],
 [data-nf-theme-preview="yegeng"] {
   --nf-manuscript-bg: var(--nf-paper);
@@ -62,10 +107,120 @@
   --nf-cover-slip-bg: transparent;
   --nf-cover-slip-border: transparent;
   --nf-cover-slip-ink: var(--primary);
+
+  --nf-card-radius: var(--radius-lg);
+  --nf-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--nf-glow) 60%, var(--card)), var(--card) 55%);
+  --nf-card-border: color-mix(in srgb, var(--primary) 18%, var(--border));
+  --nf-card-shadow: 0 3px 12px -4px color-mix(in srgb, var(--foreground) 12%, transparent);
+  --nf-card-accent-bar: none;
+
+  --nf-control-radius: var(--radius-md);
+  --nf-badge-radius: 9999px;
+  --nf-btn-shadow: 0 2px 8px -2px color-mix(in srgb, var(--primary) 30%, transparent);
+  --nf-btn-primary-bg: linear-gradient(180deg, color-mix(in srgb, var(--primary) 92%, #ffffff), var(--primary));
+  --nf-btn-primary-border: transparent;
+
+  --nf-tab-active-bg: color-mix(in srgb, var(--accent) 85%, var(--card));
+  --nf-tab-active-indicator: var(--primary);
+  --nf-tab-pill-radius: 9999px;
+
+  --nf-head-bg: linear-gradient(90deg, color-mix(in srgb, var(--nf-glow) 85%, var(--card)), color-mix(in srgb, var(--muted) 35%, transparent));
+  --nf-head-icon-bg: color-mix(in srgb, var(--primary) 16%, transparent);
+  --nf-head-icon-border: color-mix(in srgb, var(--primary) 28%, transparent);
+  --nf-panel-surface: var(--card);
+  --nf-subsurface: color-mix(in srgb, var(--accent) 45%, var(--card));
 }
 
-/* ── 函套：书函藏青下的活动栏与侧栏，局部改写令牌，里面的组件照常读令牌 ── */
-:root[data-nf-style="shuhan"] [data-nf-surface="rail"] {
+/* ── 朱砂印谱：宋刊雕版编辑感，素宣 + 墨鸦侧栏 + 朱砂印章边框 + 极锐切角 ── */
+:root[data-nf-style="zhusha"],
+[data-nf-theme-preview="zhusha"] {
+  --nf-manuscript-bg: var(--nf-paper);
+  --nf-manuscript-pattern:
+    linear-gradient(to right, transparent 0, transparent 28px, color-mix(in srgb, var(--primary) 16%, transparent) 28px, color-mix(in srgb, var(--primary) 16%, transparent) 29px, transparent 29px, transparent 32px, color-mix(in srgb, var(--primary) 10%, transparent) 32px, color-mix(in srgb, var(--primary) 10%, transparent) 33px, transparent 33px);
+  --nf-manuscript-pattern-size: 100% 100%;
+  --nf-manuscript-attachment: local;
+
+  --nf-cover-bg: var(--nf-paper);
+  --nf-cover-pattern:
+    linear-gradient(to bottom, color-mix(in srgb, var(--primary) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(to top, color-mix(in srgb, var(--primary) 18%, transparent) 1px, transparent 1px);
+  --nf-cover-pattern-size: 100% 100%;
+  --nf-cover-border: color-mix(in srgb, var(--primary) 55%, var(--border));
+  --nf-cover-spine: var(--primary);
+  --nf-cover-slip-bg: var(--nf-slip);
+  --nf-cover-slip-border: var(--nf-slip-edge);
+  --nf-cover-slip-ink: var(--nf-slip-ink);
+
+  --nf-card-radius: var(--radius-md);
+  --nf-card-bg: var(--card);
+  --nf-card-border: color-mix(in srgb, var(--foreground) 16%, var(--border));
+  --nf-card-shadow: none;
+  --nf-card-accent-bar: inset 3px 0 0 color-mix(in srgb, var(--primary) 52%, transparent);
+
+  --nf-control-radius: var(--radius-sm);
+  --nf-badge-radius: var(--radius-sm);
+  --nf-btn-shadow: none;
+  --nf-btn-primary-bg: var(--primary);
+  --nf-btn-primary-border: color-mix(in srgb, var(--primary) 80%, var(--foreground));
+
+  --nf-tab-active-bg: var(--card);
+  --nf-tab-active-indicator: var(--primary);
+  --nf-tab-pill-radius: var(--radius-sm);
+
+  --nf-head-bg: color-mix(in srgb, var(--secondary) 55%, var(--card));
+  --nf-head-icon-bg: color-mix(in srgb, var(--primary) 10%, var(--card));
+  --nf-head-icon-border: color-mix(in srgb, var(--primary) 45%, transparent);
+  --nf-panel-surface: var(--card);
+  --nf-subsurface: color-mix(in srgb, var(--muted) 65%, var(--card));
+}
+
+/* ── 天青汝窑：青瓷釉面、温润大圆角、微光通透层叠感 ── */
+:root[data-nf-style="ruyao"],
+[data-nf-theme-preview="ruyao"] {
+  --nf-manuscript-bg: var(--nf-paper);
+  --nf-manuscript-pattern:
+    radial-gradient(ellipse 90% 340px at 85% 0%, var(--nf-glow), transparent 72%),
+    radial-gradient(ellipse 70% 280px at 15% 100%, var(--nf-glow), transparent 75%);
+  --nf-manuscript-pattern-size: 100% 100%;
+  --nf-manuscript-attachment: scroll;
+
+  --nf-cover-bg: linear-gradient(155deg, var(--card), color-mix(in srgb, var(--accent) 85%, var(--card)));
+  --nf-cover-pattern: radial-gradient(circle at 75% 22%, var(--nf-glow), transparent 65%);
+  --nf-cover-pattern-size: 100% 100%;
+  --nf-cover-border: color-mix(in srgb, var(--primary) 28%, var(--border));
+  --nf-cover-spine: color-mix(in srgb, var(--primary) 45%, transparent);
+  --nf-cover-slip-bg: color-mix(in srgb, var(--card) 82%, transparent);
+  --nf-cover-slip-border: color-mix(in srgb, var(--primary) 24%, var(--border));
+  --nf-cover-slip-ink: var(--primary);
+
+  --nf-card-radius: var(--radius-lg);
+  --nf-card-bg: linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, #ffffff), var(--card));
+  --nf-card-border: color-mix(in srgb, var(--primary) 16%, var(--border));
+  --nf-card-shadow:
+    0 1px 0 color-mix(in srgb, #ffffff 35%, transparent) inset,
+    0 4px 14px -6px color-mix(in srgb, var(--primary) 18%, transparent);
+  --nf-card-accent-bar: none;
+
+  --nf-control-radius: var(--radius-md);
+  --nf-badge-radius: 9999px;
+  --nf-btn-shadow: 0 2px 10px -3px color-mix(in srgb, var(--primary) 32%, transparent);
+  --nf-btn-primary-bg: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 82%, var(--info)));
+  --nf-btn-primary-border: transparent;
+
+  --nf-tab-active-bg: color-mix(in srgb, var(--primary) 10%, var(--card));
+  --nf-tab-active-indicator: var(--primary);
+  --nf-tab-pill-radius: 9999px;
+
+  --nf-head-bg: linear-gradient(180deg, color-mix(in srgb, var(--accent) 62%, var(--card)), color-mix(in srgb, var(--card) 92%, transparent));
+  --nf-head-icon-bg: color-mix(in srgb, var(--primary) 12%, var(--card));
+  --nf-head-icon-border: color-mix(in srgb, var(--primary) 24%, transparent);
+  --nf-panel-surface: var(--card);
+  --nf-subsurface: color-mix(in srgb, var(--accent) 42%, var(--card));
+}
+
+/* ── 函套与墨鸦侧栏：书函藏青、朱砂印谱下的活动栏与侧栏局部改写令牌 ── */
+:root[data-nf-style="shuhan"] [data-nf-surface="rail"],
+:root[data-nf-style="zhusha"] [data-nf-surface="rail"] {
   --background: var(--nf-rail);
   --card: var(--nf-rail);
   --secondary: var(--nf-rail);
@@ -82,6 +237,70 @@
   --primary-foreground: var(--nf-rail);
   --ring: var(--nf-highlight);
   color: var(--foreground);
+}
+
+/* 天青汝窑侧栏：浅雾青瓷底与微透光泽 */
+:root[data-nf-style="ruyao"] [data-nf-surface="rail"] {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 72%, var(--background)), var(--secondary));
+}
+
+/* 夜更烛光侧栏：顶部一缕暖光 */
+:root[data-nf-style="yegeng"] [data-nf-surface="rail"] {
+  background-image: radial-gradient(ellipse 140% 240px at 50% 0%, var(--nf-glow), transparent 72%);
+}
+
+/* ── 组件级通用风格修饰（绑定 data-slot，不按主题名写死分支） ── */
+[data-slot="card"] {
+  border-radius: var(--nf-card-radius);
+  background: var(--nf-card-bg);
+  border-color: var(--nf-card-border);
+  box-shadow: var(--nf-card-shadow);
+}
+
+[data-slot="button"] {
+  border-radius: var(--nf-control-radius);
+}
+
+[data-slot="button"][data-variant="default"] {
+  background: var(--nf-btn-primary-bg);
+  border-color: var(--nf-btn-primary-border);
+  box-shadow: var(--nf-btn-shadow);
+}
+
+[data-slot="badge"] {
+  border-radius: var(--nf-badge-radius);
+}
+
+[data-slot="input"] {
+  border-radius: var(--nf-control-radius);
+}
+
+/* 统一风格化卡片与页头辅助类（供「作品基础」「叙事记忆」及工作台侧栏复用） */
+.nf-surface-card {
+  border-radius: var(--nf-card-radius);
+  border: 1px solid var(--nf-card-border);
+  background: var(--nf-card-bg);
+  box-shadow: var(--nf-card-shadow);
+}
+
+.nf-surface-sub {
+  border-radius: var(--nf-control-radius);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  background: var(--nf-subsurface);
+}
+
+.nf-sidebar-head {
+  background: var(--nf-head-bg);
+}
+
+.nf-sidebar-head-icon {
+  border-radius: var(--nf-control-radius);
+  background: var(--nf-head-icon-bg);
+  border: 1px solid var(--nf-head-icon-border);
+}
+
+.nf-tab-pill {
+  border-radius: var(--nf-tab-pill-radius);
 }
 
 /* ── 稿面：章节编辑器 ── */

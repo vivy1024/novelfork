@@ -27,6 +27,10 @@ const VARIANTS: readonly Variant[] = [
   { theme: "shuhan", mode: "dark", prefix: "shuhan-dark-" },
   { theme: "yegeng", mode: "light", prefix: "yegeng-" },
   { theme: "yegeng", mode: "dark", prefix: "yegeng-dark-" },
+  { theme: "zhusha", mode: "light", prefix: "zhusha-" },
+  { theme: "zhusha", mode: "dark", prefix: "zhusha-dark-" },
+  { theme: "ruyao", mode: "light", prefix: "ruyao-" },
+  { theme: "ruyao", mode: "dark", prefix: "ruyao-dark-" },
 ];
 
 /**
@@ -87,6 +91,8 @@ const MOTIF_COLORS = new Set([
 const FONT_STACKS: Readonly<Record<string, string>> = {
   "System Sans":
     'system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif',
+  Geist:
+    '"Geist Variable", "Geist", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif',
   "Noto Serif SC":
     '"Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif',
   "ZCOOL XiaoWei": '"ZCOOL XiaoWei", "Noto Serif SC Variable", "Songti SC", STSong, serif',

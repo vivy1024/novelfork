@@ -164,11 +164,13 @@ export function SidebarTabs<Id extends string>({
             onClick={() => onChange(tab.id)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={size === "md"
-              ? `flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t-md border-b-2 px-2 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                selected ? "border-primary bg-background text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+              ? `flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t-[var(--nf-control-radius,var(--radius-md))] border-b-2 px-2 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                selected
+                  ? "border-[var(--nf-tab-active-indicator,var(--primary))] bg-[var(--nf-tab-active-bg,var(--background))] text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               }`
-              : `flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+              : `nf-tab-pill flex shrink-0 items-center gap-1 whitespace-nowrap px-2 py-0.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                selected ? "bg-primary text-primary-foreground shadow-2xs" : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
           >
             {tab.icon}

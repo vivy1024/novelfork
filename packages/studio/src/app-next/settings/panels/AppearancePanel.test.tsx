@@ -19,19 +19,25 @@ afterEach(() => {
 });
 
 describe("AppearancePanel 书房主题", () => {
-  it("三套主题各有一张就地预览的卡片，点选后整套界面切换", async () => {
+  it("五套主题各有一张就地预览的卡片，点选后整套界面切换", async () => {
     render(<AppearancePanel />);
 
     const group = await screen.findByRole("radiogroup", { name: "书房主题" });
     const options = screen.getAllByRole("radio");
     expect(group).toBeTruthy();
-    expect(options.map((option) => option.getAttribute("data-nf-theme-preview"))).toEqual(["gaozhi", "shuhan", "yegeng"]);
+    expect(options.map((option) => option.getAttribute("data-nf-theme-preview"))).toEqual([
+      "gaozhi",
+      "shuhan",
+      "yegeng",
+      "zhusha",
+      "ruyao",
+    ]);
     expect(screen.getByTestId("style-theme-gaozhi").getAttribute("aria-checked")).toBe("true");
 
-    fireEvent.click(screen.getByTestId("style-theme-shuhan"));
+    fireEvent.click(screen.getByTestId("style-theme-zhusha"));
 
-    expect(document.documentElement.dataset.nfStyle).toBe("shuhan");
-    expect(screen.getByTestId("style-theme-shuhan").getAttribute("aria-checked")).toBe("true");
+    expect(document.documentElement.dataset.nfStyle).toBe("zhusha");
+    expect(screen.getByTestId("style-theme-zhusha").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("style-theme-gaozhi").getAttribute("aria-checked")).toBe("false");
   });
 

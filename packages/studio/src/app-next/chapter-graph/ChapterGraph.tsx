@@ -4,7 +4,7 @@
  * 对标 NarraFork 项目页：章节作为可拖拽节点，边表示 fork/merge 关系。
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -20,8 +20,9 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { Button } from "@/components/ui/button";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { chartColor } from "@/styles/chart-palette";
-import { ChapterNode, type ChapterNodeData, type ChapterNodeType } from "./ChapterNode";
+import { ChapterNode, type ChapterNodeType } from "./ChapterNode";
 
 export interface ChapterGraphChapter {
   id: string;
@@ -62,13 +63,15 @@ const EDGE_COLORS: Record<string, string> = {
 };
 
 export function ChapterGraph({ chapters, edges: graphEdges, onChapterSelect, onPositionChange, onNewChapter, onForkChapter }: ChapterGraphProps) {
+  const colorMode = useColorScheme();
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
-  const nodes: ChapterNodeType[] = useMemo(
+  const derivedNodes: ChapterNodeType[] = useMemo(
     () =>
       chapters.map((ch, i) => ({
         id: ch.id,
         type: "chapterNode",
         position: ch.position ?? { x: i * 420, y: 0 },
+        selected: selectedChapterId === ch.id,
         data: {
           id: ch.id,
           title: ch.title,
@@ -79,10 +82,10 @@ export function ChapterGraph({ chapters, edges: graphEdges, onChapterSelect, onP
         },
         style: { width: 380, height: 500 },
       })),
-    [chapters],
+    [chapters, selectedChapterId],
   );
 
-  const flowEdges: Edge[] = useMemo(
+  const derivedEdges: Edge[] = useMemo(
     () =>
       graphEdges.map((e) => ({
         id: e.id,
@@ -95,27 +98,34 @@ export function ChapterGraph({ chapters, edges: graphEdges, onChapterSelect, onP
     [graphEdges],
   );
 
+  const [nodes, setNodes] = useState<ChapterNodeType[]>(derivedNodes);
+  const [flowEdges, setFlowEdges] = useState<Edge[]>(derivedEdges);
+  useEffect(() => setNodes(derivedNodes), [derivedNodes]);
+  useEffect(() => setFlowEdges(derivedEdges), [derivedEdges]);
+
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => {
-      const updated = applyNodeChanges(changes, nodes);
-      // 通知位置变化
-      const positionChanges = changes.filter((c) => c.type === "position" && c.position);
-      if (positionChanges.length > 0 && onPositionChange) {
-        const positions: Record<string, { x: number; y: number }> = {};
-        for (const node of updated) {
-          positions[node.id] = node.position;
+      setNodes((current) => {
+        const updated = applyNodeChanges(changes, current) as ChapterNodeType[];
+        const positionChanges = changes.filter((c) => c.type === "position" && c.position);
+        if (positionChanges.length > 0 && onPositionChange) {
+          const positions: Record<string, { x: number; y: number }> = {};
+          for (const node of updated) {
+            positions[node.id] = node.position;
+          }
+          onPositionChange(positions);
         }
-        onPositionChange(positions);
-      }
+        return updated;
+      });
     },
-    [nodes, onPositionChange],
+    [onPositionChange],
   );
 
   const onEdgesChange: OnEdgesChange = useCallback(
     (changes) => {
-      applyEdgeChanges(changes, flowEdges);
+      setFlowEdges((current) => applyEdgeChanges(changes, current));
     },
-    [flowEdges],
+    [],
   );
 
   const onNodeClick = useCallback(
@@ -152,6 +162,7 @@ export function ChapterGraph({ chapters, edges: graphEdges, onChapterSelect, onP
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        colorMode={colorMode}
         fitView
         minZoom={0.3}
         maxZoom={2}

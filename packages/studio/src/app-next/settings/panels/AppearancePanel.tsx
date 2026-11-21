@@ -27,8 +27,8 @@ export function AppearancePanel() {
       title="书房主题"
       description="选择界面配色与明暗。"
     >
-      <SettingsGroup title="书房主题" description="每套主题都有浅色与深色。">
-        <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="书房主题">
+      <SettingsGroup title="书房主题" description="五套差异化书房风格，切换后同步联动配色、字体、圆角、卡片与侧栏材质，均含浅色与深色。">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="书房主题">
           {STYLE_THEMES.map((option) => {
             const selected = styleTheme === option.id;
             return (
@@ -41,16 +41,31 @@ export function AppearancePanel() {
                 data-nf-theme-preview={option.id}
                 onClick={() => setStyleTheme(option.id)}
                 className={cn(
-                  "flex flex-col gap-3 rounded-lg border bg-background p-3 text-left text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/60",
+                  "nf-surface-card flex flex-col gap-3 p-3 text-left text-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  selected ? "!border-primary ring-1 ring-primary" : "hover:!border-primary/60",
                 )}
               >
                 <div className="flex items-end gap-3">
                   <BookCover title={option.label} />
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5 pb-1">
-                    <span className="h-2 w-3/4 rounded-sm bg-foreground/80" />
-                    <span className="h-2 w-1/2 rounded-sm bg-muted-foreground/60" />
-                    <span className="mt-1 inline-flex h-5 w-14 items-center justify-center rounded-md bg-primary text-2xs text-primary-foreground">主色</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-3/5 rounded-[var(--nf-control-radius)] bg-foreground/80" />
+                      <span className="nf-tab-pill bg-accent px-1.5 py-0.5 text-2xs leading-none text-accent-foreground">
+                        {option.tag}
+                      </span>
+                    </div>
+                    <span className="h-2 w-1/2 rounded-[var(--nf-control-radius)] bg-muted-foreground/55" />
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span
+                        className="inline-flex h-5 w-14 items-center justify-center rounded-[var(--nf-control-radius)] text-2xs text-primary-foreground"
+                        style={{ background: "var(--nf-btn-primary-bg)" }}
+                      >
+                        主色
+                      </span>
+                      <span className="inline-flex h-5 items-center rounded-[var(--nf-badge-radius)] border border-border bg-secondary px-1.5 text-2xs text-secondary-foreground">
+                        徽标
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div>

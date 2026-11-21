@@ -379,6 +379,7 @@ export function BookWorkflowStudio({
                     </div>
                     <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-[var(--nf-paper,var(--card))]">
                       <WorkflowCanvas
+                        key={selected.id}
                         recipe={selected}
                         issues={selectedIssues}
                         editable={false}

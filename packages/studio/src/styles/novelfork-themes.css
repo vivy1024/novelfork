@@ -297,3 +297,197 @@
   --nf-paper: #1b1813;
   --nf-glow: #e3a64929;
 }
+
+/* zhusha · 浅色 */
+:root[data-nf-style="zhusha"],
+[data-nf-theme-preview="zhusha"] {
+  --font-display: "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --font-cover: "ZCOOL XiaoWei", "Noto Serif SC Variable", "Songti SC", STSong, serif;
+  --font-cover-weight: 400;
+  --font-display-weight: 700;
+  --font-display-tracking: 0.06em;
+  --display-line-height: 1.2;
+  --font-serif: "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --font-prose: var(--font-serif);
+  --font-prose-weight: 400;
+  --prose-size: 16px;
+  --prose-line-height: 1.95;
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius: var(--radius-md);
+  --background: #f8f6f2;
+  --foreground: #1e1b18;
+  --card: #ffffff;
+  --primary: #9e2a2b;
+  --primary-foreground: #fdfbf7;
+  --secondary: #efeae2;
+  --muted: #f2eee7;
+  --muted-foreground: #655d55;
+  --accent: #f7ece8;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --warning: #9a4f00;
+  --success: #1e6f48;
+  --info: #1a5f94;
+  --border: #ddd5ca;
+  --input: #e3dcd2;
+  --chart-1: #9e2a2b;
+  --chart-2: #255e99;
+  --chart-3: #247353;
+  --chart-4: #9e5e00;
+  --chart-5: #6b46b2;
+  --chart-6: #18738f;
+  --chart-7: #a8336b;
+  --chart-8: #785136;
+  --card-foreground: #1e1b18;
+  --popover: #ffffff;
+  --popover-foreground: #1e1b18;
+  --secondary-foreground: #1e1b18;
+  --accent-foreground: #1e1b18;
+  --ring: #9e2a2b;
+  --nf-paper: #fcfaf6;
+  --nf-rail: #211c1a;
+  --nf-rail-ink: #f2ebe1;
+  --nf-rail-muted: #ada296;
+  --nf-rail-line: #362e2a;
+  --nf-rail-hover: #2d2623;
+  --nf-slip: #faf6ee;
+  --nf-slip-edge: #9e2a2b;
+  --nf-slip-ink: #9e2a2b;
+  --nf-highlight: #e86f66;
+}
+
+/* zhusha · 深色 */
+:root.dark[data-nf-style="zhusha"],
+.dark [data-nf-theme-preview="zhusha"] {
+  --background: #141211;
+  --foreground: #eae4dc;
+  --card: #1d1917;
+  --primary: #e86f66;
+  --primary-foreground: #1b0d0c;
+  --secondary: #26211e;
+  --muted: #231f1c;
+  --muted-foreground: #a69c92;
+  --accent: #322220;
+  --destructive: #f06a6a;
+  --destructive-foreground: #1c0b0b;
+  --warning: #f0b45a;
+  --success: #6fd09a;
+  --info: #74b9ea;
+  --border: #322b27;
+  --input: #2c2623;
+  --chart-1: #f07a71;
+  --chart-2: #7aa2f7;
+  --chart-3: #68d39f;
+  --chart-4: #f0b45a;
+  --chart-5: #b89cf5;
+  --chart-6: #5cc4e8;
+  --chart-7: #f27ca8;
+  --chart-8: #cfa37a;
+  --card-foreground: #eae4dc;
+  --popover: #1d1917;
+  --popover-foreground: #eae4dc;
+  --secondary-foreground: #eae4dc;
+  --accent-foreground: #eae4dc;
+  --ring: #e86f66;
+  --nf-paper: #181513;
+  --nf-rail: #0e0c0b;
+  --nf-rail-ink: #e4dcd2;
+  --nf-rail-muted: #958a7f;
+  --nf-rail-line: #27211e;
+  --nf-rail-hover: #1e1a18;
+  --nf-slip: #291d1b;
+  --nf-slip-edge: #e86f66;
+  --nf-slip-ink: #f3c7c2;
+  --nf-highlight: #e86f66;
+}
+
+/* ruyao · 浅色 */
+:root[data-nf-style="ruyao"],
+[data-nf-theme-preview="ruyao"] {
+  --font-display: "Geist Variable", "Geist", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --font-cover: "Geist Variable", "Geist", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --font-cover-weight: 500;
+  --font-display-weight: 500;
+  --font-display-tracking: 0.02em;
+  --display-line-height: 1.25;
+  --font-serif: "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --font-prose: var(--font-serif);
+  --font-prose-weight: 380;
+  --prose-size: 16px;
+  --prose-line-height: 1.95;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius: var(--radius-md);
+  --background: #f0f4f5;
+  --foreground: #182428;
+  --card: #fafcfd;
+  --primary: #24606b;
+  --primary-foreground: #f4fafb;
+  --secondary: #e2ecef;
+  --muted: #e8f0f2;
+  --muted-foreground: #53676e;
+  --accent: #d9eaee;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --warning: #945000;
+  --success: #1c7349;
+  --info: #196399;
+  --border: #ccd9dd;
+  --input: #d5e1e5;
+  --chart-1: #24606b;
+  --chart-2: #3168c4;
+  --chart-3: #b83b74;
+  --chart-4: #a86200;
+  --chart-5: #724bbf;
+  --chart-6: #1d7a5c;
+  --chart-7: #bd382c;
+  --chart-8: #82553a;
+  --card-foreground: #182428;
+  --popover: #fafcfd;
+  --popover-foreground: #182428;
+  --secondary-foreground: #182428;
+  --accent-foreground: #182428;
+  --ring: #24606b;
+  --nf-paper: #f7fafb;
+  --nf-glow: #24606b18;
+}
+
+/* ruyao · 深色 */
+:root.dark[data-nf-style="ruyao"],
+.dark [data-nf-theme-preview="ruyao"] {
+  --background: #0f1619;
+  --foreground: #e1ecef;
+  --card: #162126;
+  --primary: #74c2cc;
+  --primary-foreground: #0b1518;
+  --secondary: #1e2d34;
+  --muted: #1b282e;
+  --muted-foreground: #90a7b0;
+  --accent: #21363f;
+  --destructive: #f06a6a;
+  --destructive-foreground: #1c0b0b;
+  --warning: #f0b45a;
+  --success: #6fd09a;
+  --info: #74b9ea;
+  --border: #263840;
+  --input: #22333a;
+  --chart-1: #74c2cc;
+  --chart-2: #7aa2f7;
+  --chart-3: #f27ca8;
+  --chart-4: #f0b45a;
+  --chart-5: #b69cf5;
+  --chart-6: #68d39f;
+  --chart-7: #f08070;
+  --chart-8: #c9a27e;
+  --card-foreground: #e1ecef;
+  --popover: #162126;
+  --popover-foreground: #e1ecef;
+  --secondary-foreground: #e1ecef;
+  --accent-foreground: #e1ecef;
+  --ring: #74c2cc;
+  --nf-paper: #121b1f;
+  --nf-glow: #74c2cc26;
+}

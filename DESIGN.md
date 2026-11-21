@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: NovelFork 书房
-description: 网文写作工作台的三套书房主题——绿格稿纸（默认）、书函藏青、夜更烛光，各含浅色与深色。
+description: 网文写作工作台的五套书房主题——绿格稿纸（默认）、书函藏青、夜更烛光、朱砂印谱、天青汝窑，各含浅色与深色，并联动字体、圆角与组件材质。
 colors:
   # ── 绿格稿纸 · 浅色（默认主题，不带前缀） ──
   primary: "#2e6b50"
@@ -181,6 +181,130 @@ colors:
   yegeng-dark-input: "#2e2921"
   yegeng-dark-paper: "#1b1813"
   yegeng-dark-glow: "#e3a64929"
+  # ── 朱砂印谱 · 浅色（宋刊版画：素宣、墨鸦、朱砂印泥、细双线） ──
+  zhusha-primary: "#9e2a2b"
+  zhusha-primary-foreground: "#fdfbf7"
+  zhusha-background: "#f8f6f2"
+  zhusha-foreground: "#1e1b18"
+  zhusha-card: "#ffffff"
+  zhusha-secondary: "#efeae2"
+  zhusha-muted: "#f2eee7"
+  zhusha-muted-foreground: "#655d55"
+  zhusha-accent: "#f7ece8"
+  zhusha-destructive: "#b3261e"
+  zhusha-destructive-foreground: "#ffffff"
+  zhusha-warning: "#9a4f00"
+  zhusha-success: "#1e6f48"
+  zhusha-info: "#1a5f94"
+  zhusha-chart-1: "#9e2a2b"
+  zhusha-chart-2: "#255e99"
+  zhusha-chart-3: "#247353"
+  zhusha-chart-4: "#9e5e00"
+  zhusha-chart-5: "#6b46b2"
+  zhusha-chart-6: "#18738f"
+  zhusha-chart-7: "#a8336b"
+  zhusha-chart-8: "#785136"
+  zhusha-border: "#ddd5ca"
+  zhusha-input: "#e3dcd2"
+  zhusha-paper: "#fcfaf6"
+  zhusha-rail: "#211c1a"
+  zhusha-rail-ink: "#f2ebe1"
+  zhusha-rail-muted: "#ada296"
+  zhusha-rail-line: "#362e2a"
+  zhusha-rail-hover: "#2d2623"
+  zhusha-slip: "#faf6ee"
+  zhusha-slip-edge: "#9e2a2b"
+  zhusha-slip-ink: "#9e2a2b"
+  zhusha-highlight: "#e86f66"
+  # ── 朱砂印谱 · 深色 ──
+  zhusha-dark-primary: "#e86f66"
+  zhusha-dark-primary-foreground: "#1b0d0c"
+  zhusha-dark-background: "#141211"
+  zhusha-dark-foreground: "#eae4dc"
+  zhusha-dark-card: "#1d1917"
+  zhusha-dark-secondary: "#26211e"
+  zhusha-dark-muted: "#231f1c"
+  zhusha-dark-muted-foreground: "#a69c92"
+  zhusha-dark-accent: "#322220"
+  zhusha-dark-destructive: "#f06a6a"
+  zhusha-dark-destructive-foreground: "#1c0b0b"
+  zhusha-dark-warning: "#f0b45a"
+  zhusha-dark-success: "#6fd09a"
+  zhusha-dark-info: "#74b9ea"
+  zhusha-dark-chart-1: "#f07a71"
+  zhusha-dark-chart-2: "#7aa2f7"
+  zhusha-dark-chart-3: "#68d39f"
+  zhusha-dark-chart-4: "#f0b45a"
+  zhusha-dark-chart-5: "#b89cf5"
+  zhusha-dark-chart-6: "#5cc4e8"
+  zhusha-dark-chart-7: "#f27ca8"
+  zhusha-dark-chart-8: "#cfa37a"
+  zhusha-dark-border: "#322b27"
+  zhusha-dark-input: "#2c2623"
+  zhusha-dark-paper: "#181513"
+  zhusha-dark-rail: "#0e0c0b"
+  zhusha-dark-rail-ink: "#e4dcd2"
+  zhusha-dark-rail-muted: "#958a7f"
+  zhusha-dark-rail-line: "#27211e"
+  zhusha-dark-rail-hover: "#1e1a18"
+  zhusha-dark-slip: "#291d1b"
+  zhusha-dark-slip-edge: "#e86f66"
+  zhusha-dark-slip-ink: "#f3c7c2"
+  zhusha-dark-highlight: "#e86f66"
+  # ── 天青汝窑 · 浅色（冰裂瓷釉：青瓷釉面、柔润大圆角、微透雾感） ──
+  ruyao-primary: "#24606b"
+  ruyao-primary-foreground: "#f4fafb"
+  ruyao-background: "#f0f4f5"
+  ruyao-foreground: "#182428"
+  ruyao-card: "#fafcfd"
+  ruyao-secondary: "#e2ecef"
+  ruyao-muted: "#e8f0f2"
+  ruyao-muted-foreground: "#53676e"
+  ruyao-accent: "#d9eaee"
+  ruyao-destructive: "#b3261e"
+  ruyao-destructive-foreground: "#ffffff"
+  ruyao-warning: "#945000"
+  ruyao-success: "#1c7349"
+  ruyao-info: "#196399"
+  ruyao-chart-1: "#24606b"
+  ruyao-chart-2: "#3168c4"
+  ruyao-chart-3: "#b83b74"
+  ruyao-chart-4: "#a86200"
+  ruyao-chart-5: "#724bbf"
+  ruyao-chart-6: "#1d7a5c"
+  ruyao-chart-7: "#bd382c"
+  ruyao-chart-8: "#82553a"
+  ruyao-border: "#ccd9dd"
+  ruyao-input: "#d5e1e5"
+  ruyao-paper: "#f7fafb"
+  ruyao-glow: "#24606b18"
+  # ── 天青汝窑 · 深色 ──
+  ruyao-dark-primary: "#74c2cc"
+  ruyao-dark-primary-foreground: "#0b1518"
+  ruyao-dark-background: "#0f1619"
+  ruyao-dark-foreground: "#e1ecef"
+  ruyao-dark-card: "#162126"
+  ruyao-dark-secondary: "#1e2d34"
+  ruyao-dark-muted: "#1b282e"
+  ruyao-dark-muted-foreground: "#90a7b0"
+  ruyao-dark-accent: "#21363f"
+  ruyao-dark-destructive: "#f06a6a"
+  ruyao-dark-destructive-foreground: "#1c0b0b"
+  ruyao-dark-warning: "#f0b45a"
+  ruyao-dark-success: "#6fd09a"
+  ruyao-dark-info: "#74b9ea"
+  ruyao-dark-chart-1: "#74c2cc"
+  ruyao-dark-chart-2: "#7aa2f7"
+  ruyao-dark-chart-3: "#f27ca8"
+  ruyao-dark-chart-4: "#f0b45a"
+  ruyao-dark-chart-5: "#b69cf5"
+  ruyao-dark-chart-6: "#68d39f"
+  ruyao-dark-chart-7: "#f08070"
+  ruyao-dark-chart-8: "#c9a27e"
+  ruyao-dark-border: "#263840"
+  ruyao-dark-input: "#22333a"
+  ruyao-dark-paper: "#121b1f"
+  ruyao-dark-glow: "#74c2cc26"
 typography:
   body-md:
     fontFamily: System Sans
@@ -256,6 +380,32 @@ typography:
     fontSize: 16px
     fontWeight: 350
     lineHeight: 2
+  zhusha-headline-display:
+    fontFamily: Noto Serif SC
+    fontSize: 36px
+    fontWeight: 700
+    lineHeight: 1.2
+    letterSpacing: 0.06em
+  zhusha-cover:
+    fontFamily: ZCOOL XiaoWei
+    fontWeight: 400
+    letterSpacing: 0.1em
+  zhusha-prose:
+    fontFamily: Noto Serif SC
+    fontSize: 16px
+    fontWeight: 400
+    lineHeight: 1.95
+  ruyao-headline-display:
+    fontFamily: Geist
+    fontSize: 36px
+    fontWeight: 500
+    lineHeight: 1.25
+    letterSpacing: 0.02em
+  ruyao-prose:
+    fontFamily: Noto Serif SC
+    fontSize: 16px
+    fontWeight: 380
+    lineHeight: 1.95
 rounded:
   sm: 5px
   md: 7px
@@ -266,6 +416,12 @@ rounded:
   yegeng-sm: 6px
   yegeng-md: 10px
   yegeng-lg: 14px
+  zhusha-sm: 1px
+  zhusha-md: 2px
+  zhusha-lg: 4px
+  ruyao-sm: 8px
+  ruyao-md: 12px
+  ruyao-lg: 16px
 spacing:
   gutter: 16px
   panel: 24px

@@ -395,7 +395,7 @@ export function CharactersAndLoreSidebarPanel({
       />
 
       {/* 顶部工具条：导入、AI 注入预览、设定图谱；窄侧栏下整体换行，「新角色」始终靠右 */}
-      <div className="shrink-0 flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5 bg-muted/20">
+      <div className="shrink-0 flex flex-wrap items-center gap-1 border-b border-border bg-[var(--nf-subsurface,var(--muted))] px-2 py-1.5">
         <div className="contents">
           <Button
             size="xs"
@@ -528,9 +528,9 @@ export function CharactersAndLoreSidebarPanel({
 
       {/* 搜索框 + 待确认条目快捷筛选 */}
       {activeTab !== "draft" && (
-      <div className="shrink-0 p-2 border-b border-border/60 flex flex-col gap-1.5">
+      <div className="shrink-0 p-2 border-b border-border/60 bg-[var(--nf-panel-surface,var(--card))] flex flex-col gap-1.5">
       <div className="flex items-center gap-1.5">
-        <div className="flex flex-1 min-w-0 items-center gap-1.5 rounded-md border border-input bg-background px-2 h-7">
+        <div className="flex flex-1 min-w-0 items-center gap-1.5 rounded-[var(--nf-control-radius,var(--radius-md))] border border-input bg-background px-2 h-7 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40 transition-colors">
           <Search className="size-3 text-muted-foreground shrink-0" />
           <input
             type="text"
@@ -552,7 +552,7 @@ export function CharactersAndLoreSidebarPanel({
             aria-pressed={onlyNeedsReview}
             data-testid="lore-filter-needs-review"
             onClick={() => setOnlyNeedsReview((v) => !v)}
-            className={`h-7 shrink-0 rounded-md border px-2 text-2xs transition-colors ${
+            className={`h-7 shrink-0 rounded-[var(--nf-control-radius,var(--radius-md))] border px-2 text-2xs transition-colors ${
               onlyNeedsReview
                 ? "border-primary/40 bg-primary/10 font-medium text-primary"
                 : "border-border/70 bg-background text-muted-foreground hover:text-foreground"
@@ -759,15 +759,16 @@ function CastTable({
     ? <span className="block max-w-[8rem] truncate" title={value}>{value}</span>
     : <span className="text-muted-foreground/60" aria-label="未记录">—</span>;
   return (
-    <table className="w-full min-w-[22rem] border-collapse text-2xs" data-testid="cast-table">
+      <div className="nf-surface-card overflow-hidden">
+      <table className="w-full min-w-[22rem] border-collapse text-2xs" data-testid="cast-table">
       <caption className="sr-only">人物表：每个角色的当前境界、位置、立场、最近出场章与存亡，点角色名打开人物卡</caption>
       <thead>
-        <tr className="border-b border-border text-left text-muted-foreground">
-          <th scope="col" className="py-1 pr-2 font-medium">角色</th>
-          <th scope="col" className="py-1 pr-2 font-medium">当前境界</th>
-          <th scope="col" className="py-1 pr-2 font-medium">位置</th>
-          <th scope="col" className="py-1 pr-2 font-medium">立场</th>
-          <th scope="col" className="py-1 pr-2 font-medium" aria-sort={sortDirection === "desc" ? "descending" : "ascending"}>
+        <tr className="border-b border-border bg-[var(--nf-subsurface,var(--muted))] text-left text-muted-foreground">
+          <th scope="col" className="py-1.5 pl-2.5 pr-2 font-medium">角色</th>
+          <th scope="col" className="py-1.5 pr-2 font-medium">当前境界</th>
+          <th scope="col" className="py-1.5 pr-2 font-medium">位置</th>
+          <th scope="col" className="py-1.5 pr-2 font-medium">立场</th>
+          <th scope="col" className="py-1.5 pr-2 font-medium" aria-sort={sortDirection === "desc" ? "descending" : "ascending"}>
             <button
               type="button"
               onClick={onToggleSort}
@@ -779,15 +780,15 @@ function CastTable({
               {sortDirection === "desc" ? <ArrowDown className="size-3" aria-hidden="true" /> : <ArrowUp className="size-3" aria-hidden="true" />}
             </button>
           </th>
-          <th scope="col" className="py-1 font-medium">存亡</th>
+          <th scope="col" className="py-1.5 pr-2.5 font-medium">存亡</th>
         </tr>
       </thead>
       <tbody>
         {rows.map(({ node, row }) => {
           const selected = selectedNodeId === node.id;
           return (
-            <tr key={node.id} className={`border-b border-border/50 ${selected ? "bg-primary/5" : "hover:bg-muted/40"}`} data-testid="cast-row">
-              <th scope="row" className="py-1 pr-2 text-left font-normal">
+            <tr key={node.id} className={`border-b border-border/50 last:border-b-0 ${selected ? "bg-primary/5" : "hover:bg-muted/40"}`} data-testid="cast-row">
+              <th scope="row" className="py-1.5 pl-2.5 pr-2 text-left font-normal">
                 <button
                   type="button"
                   onClick={() => onOpen(node)}
@@ -798,16 +799,17 @@ function CastTable({
                   {node.title}
                 </button>
               </th>
-              <td className="py-1 pr-2">{cell(row.realm)}</td>
-              <td className="py-1 pr-2">{cell(row.location)}</td>
-              <td className="py-1 pr-2">{cell(row.stance)}</td>
-              <td className="py-1 pr-2 tabular-nums">{row.lastChapter !== undefined ? `第 ${row.lastChapter} 章` : cell(undefined)}</td>
-              <td className={`py-1 ${row.life === LIFE_DEAD ? "text-destructive" : ""}`}>{cell(row.life)}</td>
+              <td className="py-1.5 pr-2">{cell(row.realm)}</td>
+              <td className="py-1.5 pr-2">{cell(row.location)}</td>
+              <td className="py-1.5 pr-2">{cell(row.stance)}</td>
+              <td className="py-1.5 pr-2 tabular-nums">{row.lastChapter !== undefined ? `第 ${row.lastChapter} 章` : cell(undefined)}</td>
+              <td className={`py-1.5 pr-2.5 ${row.life === LIFE_DEAD ? "text-destructive" : ""}`}>{cell(row.life)}</td>
             </tr>
           );
         })}
       </tbody>
-    </table>
+      </table>
+      </div>
   );
 }
 
@@ -1040,10 +1042,10 @@ function LoreCard({
       onClick={onClick}
       aria-current={isSelected ? "true" : undefined}
       data-testid="lore-card"
-      className={`flex w-full min-w-0 flex-col gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+      className={`nf-surface-card flex w-full min-w-0 flex-col gap-0.5 px-2.5 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         isSelected
-          ? "border-primary/60 bg-primary/5"
-          : "border-border/70 bg-card hover:border-border hover:bg-muted/40"
+          ? "!border-primary/70 ring-1 ring-primary/35"
+          : "hover:!border-primary/40"
       }`}
     >
       <span className="flex h-5 min-w-0 items-center gap-1.5">
@@ -1051,7 +1053,7 @@ function LoreCard({
           {node.title}
         </span>
         {face.badge && (
-          <span className="shrink-0 rounded-sm bg-secondary px-1 text-2xs leading-4 text-secondary-foreground" data-testid="lore-card-badge">
+          <span className="shrink-0 rounded-[var(--nf-badge-radius,var(--radius-sm))] bg-secondary px-1.5 text-2xs leading-4 text-secondary-foreground" data-testid="lore-card-badge">
             {face.badge}
           </span>
         )}

@@ -103,7 +103,7 @@ export function getRecoveryToneBadgeClassName(tone: RecoveryPresentationTone): s
     case "warning":
       return "border-warning/30 bg-warning/10 text-warning";
     case "danger":
-      return "border-rose-500/30 bg-rose-500/10 text-rose-700";
+      return "border-destructive/30 bg-destructive/10 text-destructive";
     case "neutral":
       return "border-border/60 bg-muted text-muted-foreground";
   }
@@ -119,7 +119,7 @@ export function getRecoveryToneBannerClassName(tone: RecoveryPresentationTone): 
     case "warning":
       return "border-b border-warning/20 bg-warning/10 text-warning";
     case "danger":
-      return "border-b border-rose-500/20 bg-rose-500/10 text-rose-700";
+      return "border-b border-destructive/20 bg-destructive/10 text-destructive";
     case "neutral":
       return "border-b border-border/60 bg-muted/60 text-muted-foreground";
   }

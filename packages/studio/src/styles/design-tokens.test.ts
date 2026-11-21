@@ -48,7 +48,7 @@ describe("书房主题令牌", () => {
       const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
       return (hi! + 0.05) / (lo! + 0.05);
     };
-    const prefixes = ["", "dark-", "shuhan-", "shuhan-dark-", "yegeng-", "yegeng-dark-"];
+    const prefixes = ["", "dark-", "shuhan-", "shuhan-dark-", "yegeng-", "yegeng-dark-", "zhusha-", "zhusha-dark-", "ruyao-", "ruyao-dark-"];
     for (const prefix of prefixes) {
       for (const status of ["warning", "success", "info"]) {
         const color = model.colors[`${prefix}${status}`];
@@ -86,7 +86,7 @@ describe("书房主题令牌", () => {
       const [p, q] = [lab(a), lab(b)];
       return Math.hypot(p[0]! - q[0]!, p[1]! - q[1]!, p[2]! - q[2]!);
     };
-    const prefixes = ["", "dark-", "shuhan-", "shuhan-dark-", "yegeng-", "yegeng-dark-"];
+    const prefixes = ["", "dark-", "shuhan-", "shuhan-dark-", "yegeng-", "yegeng-dark-", "zhusha-", "zhusha-dark-", "ruyao-", "ruyao-dark-"];
     for (const prefix of prefixes) {
       const palette = Array.from({ length: 8 }, (_, index) => model.colors[`${prefix}chart-${index + 1}`]);
       palette.forEach((color, index) => {
@@ -128,7 +128,7 @@ describe("书房主题令牌", () => {
       expect(className, tone).toContain(`var(--${tone})_${CATEGORY_TONE_INK_PERCENT}%,var(--foreground)`);
       expect(className, tone).toContain(`bg-${tone}/10`);
     }
-    const prefixes = ["", "dark-", "shuhan-", "shuhan-dark-", "yegeng-", "yegeng-dark-"];
+    const prefixes = ["", "dark-", "shuhan-", "shuhan-dark-", "yegeng-", "yegeng-dark-", "zhusha-", "zhusha-dark-", "ruyao-", "ruyao-dark-"];
     for (const prefix of prefixes) {
       for (let index = 1; index <= 8; index += 1) {
         const chart = model.colors[`${prefix}chart-${index}`]!;

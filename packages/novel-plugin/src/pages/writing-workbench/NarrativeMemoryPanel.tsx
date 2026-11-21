@@ -414,21 +414,21 @@ function StoryStatusSummary({
   }, [factPreview]);
 
   return (
-    <section className="rounded-lg border border-border bg-card p-3 space-y-3" data-testid="narrative-memory-story-status">
+    <section className="nf-surface-card p-3 space-y-3" data-testid="narrative-memory-story-status">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold">当前故事状态</h3>
         <span className="text-2xs text-muted-foreground">自动结算 · 作者可纠错</span>
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="rounded border border-border/60 p-2">
+        <div className="nf-surface-sub p-2">
           <div className="text-sm font-semibold tabular-nums">{stateFacts.length}</div>
           <div className="text-2xs text-muted-foreground">当前事实</div>
         </div>
-        <div className="rounded border border-border/60 p-2">
+        <div className="nf-surface-sub p-2">
           <div className="text-sm font-semibold tabular-nums">{historyEvents.length}</div>
           <div className="text-2xs text-muted-foreground">已结算</div>
         </div>
-        <div className="rounded border border-border/60 p-2">
+        <div className="nf-surface-sub p-2">
           <div className={`text-sm font-semibold tabular-nums ${highRiskCount > 0 ? "text-warning" : ""}`}>{highRiskCount}</div>
           <div className="text-2xs text-muted-foreground">高风险待确认</div>
         </div>
@@ -505,7 +505,7 @@ function EntityStatusBoard({
   return (
     <div className="space-y-3">
       {groups.map((group) => (
-        <div key={group.entity} className="rounded-lg border border-border/60 p-2.5 space-y-1.5">
+        <div key={group.entity} className="nf-surface-sub p-2.5 space-y-1.5">
           <div className="flex items-center justify-between">
             <button
               type="button"
@@ -866,7 +866,7 @@ function PendingEventCard({
     .join(" · ") || event.eventType || "待确认记忆";
 
   return (
-    <div className="rounded-md border border-border/70 bg-card/80 p-2.5 space-y-1.5">
+    <div className="nf-surface-sub p-2.5 space-y-1.5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-1.5">
           {selectable && event.id && (
@@ -1670,46 +1670,49 @@ export function NarrativeMemoryPanelShell({
   }
 
   return (
-    <div className="h-full overflow-y-auto p-3 space-y-3 text-xs" data-testid="narrative-memory-panel">
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-2 font-medium">
-            <Brain className="size-4 text-primary" />
-            章后事实与故事状态
+    <div className="flex h-full flex-col overflow-hidden bg-background/40 text-xs" data-testid="narrative-memory-panel">
+      <div className="nf-sidebar-head flex items-center justify-between gap-2 border-b border-border px-3 py-2.5 shrink-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="nf-sidebar-head-icon flex size-8 shrink-0 items-center justify-center text-primary">
+            <Brain className="size-4" strokeWidth={1.8} />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-xs font-semibold tracking-tight text-foreground">章后事实与故事状态</div>
+            <p className="mt-0.5 truncate text-2xs text-muted-foreground">查看当前状态与结算历史；不编辑作品基础设定。</p>
           </div>
-          <p className="text-xs text-muted-foreground">查看当前状态与结算历史；不编辑作品基础设定。</p>
         </div>
-        <button type="button" onClick={onRefresh} className="rounded p-1 hover:bg-muted" title="刷新">
-          <RefreshCw className="size-3.5" />
-        </button>
-      </div>
-
-      {/* 轻量跳转：发展历程与伏笔证据的权威入口在别处，这里只给跳转按钮，不内嵌重复内容。 */}
-      {onOpenDevelopmentTimeline && (
-        <div className="flex flex-wrap gap-1.5" data-testid="narrative-memory-jump-links">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onOpenDevelopmentTimeline}
-            className="h-7 gap-1 text-2xs"
-          >
-            <ExternalLink className="size-3" />
-            发展历程
+        <div className="flex shrink-0 items-center gap-1">
+          {onOpenDevelopmentTimeline && (
+            <div className="flex items-center" data-testid="narrative-memory-jump-links">
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                onClick={onOpenDevelopmentTimeline}
+                className="h-6 gap-1 text-2xs"
+              >
+                <ExternalLink className="size-3" />
+                发展历程
+              </Button>
+            </div>
+          )}
+          <Button type="button" variant="ghost" size="icon-xs" onClick={onRefresh} title="刷新" aria-label="刷新叙事记忆">
+            <RefreshCw className="size-3.5" />
           </Button>
         </div>
-      )}
+      </div>
 
-      {error && <div className="rounded border border-destructive/30 bg-destructive/10 p-3 text-destructive">加载失败：{error}</div>}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+      {error && <div className="rounded-[var(--nf-control-radius,var(--radius-md))] border border-destructive/30 bg-destructive/10 p-3 text-destructive">加载失败：{error}</div>}
       {empty && (
-        <div className="rounded-lg border border-dashed border-border p-4 text-muted-foreground">
+        <div className="nf-surface-card border-dashed p-4 text-muted-foreground">
           还没有章后事实，写完一章后会自动出现。
         </div>
       )}
 
       {/* 章后事实本体：故事状态 / 关系矩阵 / 结算历史 / 待确认队列全部平铺。 */}
       <>
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2">
+          <section className="nf-surface-card p-3 space-y-2">
             <form
               className="flex gap-2"
               onSubmit={(event) => {
@@ -1717,8 +1720,8 @@ export function NarrativeMemoryPanelShell({
                 onSearch?.(queryInput);
               }}
             >
-              <div className="flex min-w-0 flex-1 items-center gap-1 rounded border border-border px-2">
-                <Search className="size-3 text-muted-foreground" />
+              <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nf-control-radius,var(--radius-md))] border border-input bg-background px-2 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40 transition-colors">
+                <Search className="size-3 text-muted-foreground shrink-0" />
                 <input
                   value={queryInput}
                   onChange={(event) => setQueryInput(event.currentTarget.value)}
@@ -1726,7 +1729,7 @@ export function NarrativeMemoryPanelShell({
                   className="h-7 min-w-0 flex-1 bg-transparent text-xs outline-none"
                 />
               </div>
-              <button type="submit" className="rounded bg-primary px-3 py-1 text-xs text-primary-foreground">搜索</button>
+              <Button type="submit" size="sm" className="h-7 px-3 text-xs">搜索</Button>
             </form>
           </section>
           <SearchResults
@@ -1755,13 +1758,13 @@ export function NarrativeMemoryPanelShell({
           />
 
           {memoryNodes.length > 0 && (
-            <section className="rounded-lg border border-border bg-card p-2 space-y-2">
+            <section className="nf-surface-card p-2.5 space-y-2">
               <h3 className="px-1 text-xs font-semibold text-muted-foreground">状态树（只读）</h3>
               <MemoryNodeTree nodes={memoryNodes} selectedNodeId={selectedNodeId} onOpen={onOpen} onOpenEntityDetail={onOpenEntityDetail} />
             </section>
           )}
 
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-history">
+          <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-history">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold">最近结算</h3>
               <span className="text-2xs text-muted-foreground">完整历史见下方</span>
@@ -1789,7 +1792,7 @@ export function NarrativeMemoryPanelShell({
             ))}
           </section>
 
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2.5" data-testid="narrative-memory-pending">
+          <section className="nf-surface-card p-3 space-y-2.5" data-testid="narrative-memory-pending">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-xs font-semibold text-foreground">
                 待确认 ({events.length})
@@ -1833,9 +1836,9 @@ export function NarrativeMemoryPanelShell({
                     aria-selected={active}
                     data-testid={`memory-pending-cat-${cat.value}`}
                     onClick={() => setSemanticFilter(cat.value)}
-                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-2xs transition-colors ${
+                    className={`nf-tab-pill inline-flex items-center gap-1 px-2.5 py-0.5 text-2xs transition-colors ${
                       active
-                        ? "bg-primary font-medium text-primary-foreground"
+                        ? "bg-primary font-medium text-primary-foreground shadow-2xs"
                         : dimmed
                           ? "bg-transparent text-muted-foreground/45 hover:text-muted-foreground"
                           : "border border-border/60 bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -1917,8 +1920,8 @@ export function NarrativeMemoryPanelShell({
                   type="button"
                   aria-pressed={confidenceFilter === filter.value}
                   onClick={() => setConfidenceFilter(filter.value)}
-                  className={`rounded-full px-2 py-0.5 text-2xs transition-colors ${
-                    confidenceFilter === filter.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                  className={`nf-tab-pill px-2 py-0.5 text-2xs transition-colors ${
+                    confidenceFilter === filter.value ? "bg-primary text-primary-foreground shadow-2xs" : "bg-muted text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {filter.label}
@@ -2075,7 +2078,7 @@ export function NarrativeMemoryPanelShell({
 
           {diagnostics && <DiagnosticsAdvanced diagnostics={diagnostics} />}
 
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-relationship-matrix">
+          <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-relationship-matrix">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold">关系矩阵</h3>
               <span className="text-2xs text-muted-foreground">当前关系值 · 点击故事状态里的「历史」回溯变迁</span>
@@ -2083,7 +2086,7 @@ export function NarrativeMemoryPanelShell({
             <RelationshipMatrix facts={allEntityFacts} />
           </section>
 
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-hook-section">
+          <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-hook-section">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold">伏笔事实 ({allEntityFacts.filter((f) => f.category === "hook").length})</h3>
               <span className="text-2xs text-muted-foreground">伏笔的埋设与推进</span>
@@ -2091,7 +2094,7 @@ export function NarrativeMemoryPanelShell({
             <HookBoard facts={allEntityFacts} currentChapter={currentChapter} onOpenChapter={onOpenChapter} />
           </section>
 
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-history-full">
+          <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-history-full">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
             <EvidenceChainLookup bookId={bookId} />
@@ -2141,7 +2144,7 @@ export function NarrativeMemoryPanelShell({
             任何入口 —— 作者无法回答「这个节点是谁改的、什么时候批的、理由是什么」。
             与章后结算历史并列，因为两者回答的是同一类问题。
           */}
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-line-approvals">
+          <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-line-approvals">
           <h3 className="text-xs font-semibold">叙事线审批 ({lineApprovals.length})</h3>
                     {lineApprovals.length === 0 ? (
             <p className="text-xs text-muted-foreground">暂无叙事线修改记录。</p>
@@ -2177,6 +2180,7 @@ export function NarrativeMemoryPanelShell({
           )}
         </section>
       </>
+      </div>
     </div>
   );
 }
@@ -2547,7 +2551,7 @@ export function WriteInjectionSection({ bookId, currentChapter }: { bookId: stri
   };
 
   return (
-    <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-write-injection">
+    <section className="nf-surface-card p-3 space-y-2" data-testid="narrative-memory-write-injection">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold">写作注入</h3>
         <span className="text-2xs text-muted-foreground">写这一章时实际带上了哪些资料</span>

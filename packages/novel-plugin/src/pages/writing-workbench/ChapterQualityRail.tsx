@@ -108,8 +108,15 @@ export function ChapterQualityRail({
   }, [content, hasChapter]);
 
   useEffect(() => {
-    runSelfReview();
-  }, [runSelfReview]);
+    if (!hasChapter) {
+      setSelfReview(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      runSelfReview();
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [hasChapter, runSelfReview]);
 
   const issues = useMemo(() => auditData?.issues ?? [], [auditData]);
 

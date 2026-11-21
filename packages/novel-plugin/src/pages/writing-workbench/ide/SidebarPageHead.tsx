@@ -19,12 +19,12 @@ export function SidebarPageHead({ icon: Icon, title, purpose, status, action }: 
 }) {
   const sub = status ? `${purpose} · 当前：${status}` : purpose;
   return (
-    <div className="flex items-center gap-2 border-b border-border bg-muted/20 px-2.5 py-2" data-testid="sidebar-page-head">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+    <div className="nf-sidebar-head flex items-center gap-2 border-b border-border px-2.5 py-2" data-testid="sidebar-page-head">
+      <span className="nf-sidebar-head-icon flex size-8 shrink-0 items-center justify-center text-primary">
         <Icon className="size-4" strokeWidth={1.8} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="whitespace-nowrap text-xs font-semibold text-foreground" data-testid="sidebar-page-head-title">{title}</div>
+        <div className="whitespace-nowrap text-xs font-semibold tracking-tight text-foreground" data-testid="sidebar-page-head-title">{title}</div>
         {/* 用途句是次要信息：小一号、单行截断，悬停看全文，不与标题抢视觉 */}
         <p className="mt-0.5 truncate text-2xs leading-snug text-muted-foreground" title={sub} data-testid="sidebar-page-head-sub">
           {sub}
