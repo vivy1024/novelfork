@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -290,6 +290,38 @@ describe("工作流工具（内置子代理侧）", () => {
     }, "nf-writer");
     expect(submitted.ok).toBe(true);
     expect(submitted.data?.candidateId).toBeTruthy();
+  });
+
+  it("交稿 filePath 只能是本章章节文件：索引、书内数据文件、其他章节一律拒绝，且不借镜像落盘写进去", async () => {
+    const draftRun = await toDraft();
+    const prose = `# 第3章 破局
+
+${"风".repeat(2000)}`;
+    await mkdir(join(testDir, "chapters"), { recursive: true });
+    await writeFile(join(testDir, "chapters", "index.json"), "[]", "utf8");
+    await mkdir(join(testDir, "story"), { recursive: true });
+    await writeFile(join(testDir, "story", "pending_hooks.md"), "伏笔台账", "utf8");
+
+    for (const filePath of ["chapters/index.json", "index.json", "story/pending_hooks.md", "chapters/卷01/0002_上一章.md", "chapters/_discarded/0003_旧稿.md"]) {
+      // 只传 filePath：不能把书内其他文件当正文登记
+      const byPath = await stepAsSubagent({
+        action: "submit",
+        runRevision: draftRun.state.revision,
+        kind: "prose",
+        payload: { title: "破局", filePath },
+      }, "nf-writer");
+      expect(byPath, filePath).toMatchObject({ ok: false, error: "invalid-file-path" });
+      // 带 content：不能借镜像落盘把正文写到这些路径上
+      const byContent = await stepAsSubagent({
+        action: "submit",
+        runRevision: draftRun.state.revision,
+        kind: "prose",
+        payload: { title: "破局", filePath, content: prose },
+      }, "nf-writer");
+      expect(byContent, filePath).toMatchObject({ ok: false, error: "invalid-file-path" });
+    }
+    expect(await readFile(join(testDir, "chapters", "index.json"), "utf8")).toBe("[]");
+    expect(await readFile(join(testDir, "story", "pending_hooks.md"), "utf8")).toBe("伏笔台账");
   });
 });
 

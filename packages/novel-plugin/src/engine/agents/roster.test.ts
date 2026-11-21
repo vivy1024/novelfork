@@ -9,6 +9,7 @@ import {
   listNovelSubagentTemplateContributions,
   NOVEL_SUBAGENT_ROSTER,
   ROSTER_DRAFT_WRITE_TOOLS,
+  ROSTER_DRAFT_WRITER_TEMPLATE_IDS,
   ROSTER_FORBIDDEN_TOOLS,
   ROSTER_RUNTIME_TOOLS,
   rosterTemplatesForStep,
@@ -17,6 +18,10 @@ import {
 const WIRE_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
 describe("内置子代理名册", () => {
+  it("带原生写文件工具的模板只有执笔与返修（草稿写盘审计据此找子代理）", () => {
+    expect([...ROSTER_DRAFT_WRITER_TEMPLATE_IDS].sort()).toEqual(["nf-reviser", "nf-writer"]);
+  });
+
   it("15 个模板齐全（写、改、审、读者、市场、文风、大纲、短剧分镜、有声配音、通用），id 带产品命名空间且不重复", () => {
     expect(NOVEL_SUBAGENT_ROSTER.map((t) => t.id).sort()).toEqual([
       "nf-assistant",

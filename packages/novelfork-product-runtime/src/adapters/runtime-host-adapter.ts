@@ -46,6 +46,11 @@ import {
 	workflowWorkerExtension,
 	writingInjectionPreserveExtension,
 } from "./workflow-run-gate";
+import {
+	auditWorkflowDraftWrites,
+	draftWriteAuditPhase,
+	type DraftWriteAuditSeams,
+} from "./workflow-draft-write-audit";
 
 const FORBIDDEN_MODEL_FIELDS = new Set([
   "bookId",
@@ -392,6 +397,8 @@ export class NovelRuntimeHostAdapter {
 	constructor(
 		private readonly bindings: NovelRuntimeBindingResolver,
 		private readonly diagnosticSink: NovelBindingDiagnosticSink = defaultBindingDiagnosticSink,
+		/** 草稿写盘审计的取证接缝（测试用）；生产走 Runtime 库与工作流存储。 */
+		private readonly draftWriteAuditSeams: DraftWriteAuditSeams = {},
 	) {
 		this.host.register(NOVEL_RUNTIME_CONTRIBUTION);
 	}
@@ -705,6 +712,37 @@ export class NovelRuntimeHostAdapter {
 					this.toModelFacingText(`${denial.what}。${denial.why}。${denial.action}。`),
 					toolName,
 					{ ...runtimeMetadata, workflowRunId: run.id, explanation: denial },
+				);
+			}
+		}
+		// 执笔 / 返修的原生 Write / Edit 不经过这里，事前拦不住；正文交稿与落盘前按 Runtime 的
+		// 工具调用记录核对本轮写盘范围，越出本章草稿的不让推进（见 workflow-draft-write-audit）。
+		const draftAuditPhase = draftWriteAuditPhase(canonicalToolName, parsed.data);
+		const draftAuditRun = draftAuditPhase === "submit"
+			? (delegation?.run ?? run)
+			: draftAuditPhase === "commit"
+				? run
+				: null;
+		if (draftAuditPhase && draftAuditRun) {
+			const audit = await auditWorkflowDraftWrites({
+				run: draftAuditRun,
+				leaderNarratorId: delegation?.narratorId ?? narratorId,
+				callerNarratorId: narratorId,
+				bookRoot: context.resourceBindings["novel.book"]?.root ?? context.projectRoot,
+				phase: draftAuditPhase,
+			}, this.draftWriteAuditSeams);
+			if (!audit.ok) {
+				const denial = audit.explanation;
+				return errorResult(
+					audit.code,
+					this.toModelFacingText(`${denial.what}。${denial.why}。${denial.action}。`),
+					toolName,
+					{
+						...runtimeMetadata,
+						workflowRunId: draftAuditRun.id,
+						explanation: denial,
+						...(audit.violations.length > 0 ? { outOfScopeWrites: audit.violations } : {}),
+					},
 				);
 			}
 		}

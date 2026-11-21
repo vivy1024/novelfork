@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  CUSTOM_SUBAGENT_ALLOWED_TOOLS,
   NOVEL_BUILTIN_WORKFLOWS,
   readWorkflowRecipes,
   saveWorkflowRecipes,
@@ -360,6 +361,30 @@ describe("createWorkflowsRouter & workflow-store", () => {
 
     const delRes = await router.request(`http://localhost/api/books/book-1/subagents/${created.subagent.id}`, { method: "DELETE" });
     expect(delRes.status).toBe(200);
+  });
+
+  it("原生 Write / Edit 只属于内置执笔 / 返修：自定义子代理即使复制自执笔也挑不到", async () => {
+    expect(CUSTOM_SUBAGENT_ALLOWED_TOOLS).not.toContain("Write");
+    expect(CUSTOM_SUBAGENT_ALLOWED_TOOLS).not.toContain("Edit");
+    const dir = await tempDir("novel-subagent-writer-");
+    const router = createWorkflowsRouter({} as never, { resolveBookRoot: () => dir });
+    const createRes = await router.request("http://localhost/api/books/book-1/subagents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nameZh: "执笔（定制）", tools: ["Read", "Write", "Edit", "workflow.step"], basedOn: "nf-writer" }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { subagent: { id: string; tools: string[] } };
+    expect(created.subagent.tools).toEqual(["Read", "workflow.step"]);
+
+    const patchRes = await router.request(`http://localhost/api/books/book-1/subagents/${created.subagent.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tools: ["Edit", "chapter.list"] }),
+    });
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as { subagent: { tools: string[] } };
+    expect(patched.subagent.tools).toEqual(["chapter.list"]);
   });
 });
 

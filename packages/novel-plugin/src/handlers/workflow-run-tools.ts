@@ -26,6 +26,7 @@ import { createChapterFileResolver } from "../engine/writing-resource/chapter-pa
 import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 import type { ChapterLengthRule } from "./chapter-length-check.js";
 import { buildDelegatedStepBrief, buildWorkflowRunBrief } from "../engine/workflows/run-brief.js";
+import { checkWorkflowDraftFilePath } from "../engine/workflows/draft-write-scope.js";
 import {
   getApprovedProse,
   reportWorkflowBlocker,
@@ -97,6 +98,16 @@ async function hydrateOrMirrorWorkflowProsePayload(
   const rawFilePath = typeof body.filePath === "string" ? body.filePath.trim() : "";
   const chaptersDir = join(binding.root, CHAPTERS_DIRECTORY);
   const resolveChapterFile = createChapterFileResolver(chaptersDir);
+
+  // 交稿路径只能是本运行这一章的章节文件：不接受索引、废稿、其他章节或书内其他数据文件
+  // （否则既能把任意书内文件当正文登记，也能借镜像落盘把 content 写进 chapters/index.json）。
+  if (rawFilePath) {
+    const pathCheck = checkWorkflowDraftFilePath(rawFilePath, run.chapterNumber);
+    if (!pathCheck.ok) {
+      const { what, why, action } = pathCheck.explanation;
+      return { ok: false, result: fail("invalid-file-path", `${what}。${why}。${action}。`, { explanation: pathCheck.explanation }) };
+    }
+  }
 
   if (!rawContent.trim() && rawFilePath) {
     const normalizedRel = normalizeChapterRelativePath(rawFilePath);

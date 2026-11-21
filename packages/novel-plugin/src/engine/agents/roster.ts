@@ -4,7 +4,9 @@
  * 每个模板 = 一个窄工具上限 + 一段简短的中文提示词。约束：
  * - 不给任何写权威源的工具（chapter.commit / chapter.discard_range / jingwei.write /
  *   hooks.manage / outline.volume / memory.events / memory.settle / style.manage /
- *   mechanism.distill / book.import / workflow.manage），也不给 Runtime 的 Write / Edit / Bash；
+ *   mechanism.distill / book.import / workflow.manage），也不给 Runtime 的 Bash；Runtime 原生 Write / Edit
+ *   只开给执笔 / 返修（ROSTER_DRAFT_WRITE_TOOLS），用于流式写本章草稿——它们不经过产品工序闸门，
+ *   范围靠交稿路径校验与草稿写盘审计兜住（engine/workflows/draft-write-scope.ts）；
  * - 写手、返修、审校通过 workflow.step（action="submit"）把产物交给工作流状态机，由作者确认、引擎落盘；
  * - 除提交外只给读类工具；唯一例外是通用帮手的草稿级候选工具（GENERAL_PROPOSAL_TOOLS），只产候选卡；
  * - 回给领导者的只有结构化摘要与候选 id，绝不把正文贴回去（正文在候选表里，按 id 引用）。
@@ -363,6 +365,11 @@ export const NOVEL_SUBAGENT_ROSTER: readonly NovelSubagentTemplate[] = [
 ];
 
 export const NOVEL_SUBAGENT_TEMPLATE_IDS: readonly string[] = NOVEL_SUBAGENT_ROSTER.map((template) => template.id);
+
+/** 带原生写文件工具（ROSTER_DRAFT_WRITE_TOOLS）的模板：草稿写盘审计要把它们派出的子代理一并核对。 */
+export const ROSTER_DRAFT_WRITER_TEMPLATE_IDS: readonly string[] = NOVEL_SUBAGENT_ROSTER
+  .filter((template) => template.tools.some((tool) => ROSTER_DRAFT_WRITE_TOOLS.includes(tool)))
+  .map((template) => template.id);
 
 export function isNovelSubagentTemplateId(id: string | null | undefined): boolean {
   return typeof id === "string" && NOVEL_SUBAGENT_TEMPLATE_IDS.includes(id);

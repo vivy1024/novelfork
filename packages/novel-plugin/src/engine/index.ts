@@ -82,6 +82,7 @@ export * from "./workflows/run-service.js";
 export * from "./workflows/workflow-graph.js";
 export * from "./workflows/workflow-team.js";
 export * from "./workflows/book-default-workflow.js";
+export * from "./workflows/draft-write-scope.js";
 export * from "./agents/roster.js";
 export * from "./agents/custom-subagents.js";
 

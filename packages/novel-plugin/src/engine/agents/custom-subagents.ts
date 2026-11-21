@@ -2,7 +2,8 @@
  * 按书存储的自定义子代理工坊（Custom Subagents Store）。
  *
  * 允许作者从内置子代理复制或从零新建专属帮手，配置名称、职责、提示词、默认模型与安全工具集。
- * 严格沿用 ROSTER_FORBIDDEN_TOOLS 护栏：绝不允许自定义子代理直接拿到写权威源或文件系统写入工具。
+ * 严格沿用 CUSTOM_SUBAGENT_FORBIDDEN_TOOLS 护栏：绝不允许自定义子代理直接拿到写权威源或文件系统写入工具
+ * （原生 Write / Edit 只开给内置执笔 / 返修模板）。存量配置里的禁用工具在读取时同样被剔除。
  */
 
 import { mkdir, readFile } from "node:fs/promises";
@@ -11,15 +12,16 @@ import { dirname, join } from "node:path";
 import { writeFileAtomic } from "../writing-resource/atomic-write.js";
 import {
   CUSTOM_SUBAGENT_ALLOWED_TOOLS,
+  CUSTOM_SUBAGENT_FORBIDDEN_TOOLS,
   type CustomSubagentConfig,
 } from "./custom-subagents-shared.js";
-import { NOVEL_SUBAGENT_ROSTER, ROSTER_FORBIDDEN_TOOLS } from "./roster.js";
+import { NOVEL_SUBAGENT_ROSTER } from "./roster.js";
 
-export { CUSTOM_SUBAGENT_ALLOWED_TOOLS, type CustomSubagentConfig };
+export { CUSTOM_SUBAGENT_ALLOWED_TOOLS, CUSTOM_SUBAGENT_FORBIDDEN_TOOLS, type CustomSubagentConfig };
 
 export const CUSTOM_SUBAGENTS_RELATIVE_PATH = join("story", "custom_subagents.json");
 
-const FORBIDDEN_SET = new Set(ROSTER_FORBIDDEN_TOOLS);
+const FORBIDDEN_SET = new Set(CUSTOM_SUBAGENT_FORBIDDEN_TOOLS);
 
 function sanitizeTools(tools: unknown): string[] {
   if (!Array.isArray(tools)) return ["Read", "chapter.list", "jingwei.read", "memory.read"];
