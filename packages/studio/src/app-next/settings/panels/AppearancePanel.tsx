@@ -9,8 +9,24 @@ import { cn } from "@/lib/utils";
 import { SettingsGroup, SettingsPage } from "../components/SettingsPage";
 
 /**
+ * 每套主题一眼可辨的结构差异，写在外观面板里而不是 style-themes.ts——
+ * 那里登记的是产品文案（叫什么、适合什么），这里是给人看形状的图注。
+ */
+const STRUCTURE_HINTS: Record<string, string> = {
+  gaozhi: "方格纸面 · 装订虚线 · 轻影",
+  shuhan: "锐角题签 · 顶压线 · 方耳",
+  yegeng: "暖烛晕光 · 胶囊 · 漫反射",
+  zhusha: "雕版切角 · 朱砂双线 · 方印",
+  ruyao: "瓷釉高光 · 玉润圆角 · 上浮",
+};
+
+/**
  * 书房主题与明暗：嵌入 Runtime「外观与界面」页的顶部区块（见 novelfork-settings-extension）。
  * OLED、全屏、常亮、动画等 Runtime 已有的开关不在这里重复，它们留在 Runtime 那一份里。
+ *
+ * 预览卡里的纸面、卡片、控件全部走 .nf-* 辅助类与 --nf-* 令牌，不按主题名写分支：
+ * 卡片容器带 data-nf-theme-preview，novelfork-motifs.css 的预览作用域就会把那一套
+ * 纹样、圆角、边饰与材质高光就地渲染出来，和真正切换后的界面一致。
  */
 export function AppearancePanel() {
   const { theme, setTheme } = useTheme();
@@ -45,33 +61,39 @@ export function AppearancePanel() {
                   selected ? "!border-primary ring-1 ring-primary" : "hover:!border-primary/60",
                 )}
               >
-                <div className="flex items-end gap-3">
-                  <BookCover title={option.label} />
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5 pb-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="h-2 w-3/5 rounded-[var(--nf-control-radius)] bg-foreground/80" />
-                      <span className="nf-tab-pill bg-accent px-1.5 py-0.5 text-2xs leading-none text-accent-foreground">
-                        {option.tag}
+                {/* 缩略界面：侧栏头 + 稿面纸纹 + 主/次按钮 + 徽章 + 页签，四种材质一次摆出来 */}
+                <span aria-hidden="true" className="nf-surface-sub flex flex-col gap-2 p-2">
+                  <span className="nf-sidebar-head flex items-center gap-1.5 rounded-[var(--nf-control-radius)] px-1.5 py-1">
+                    <span className="nf-sidebar-head-icon block size-3 shrink-0" />
+                    <span className="block h-1.5 w-2/5 rounded-[var(--nf-control-radius)] bg-foreground/55" />
+                    <span className="nf-tab-pill ml-auto bg-accent px-1.5 py-0.5 text-2xs leading-none text-accent-foreground">
+                      {option.tag}
+                    </span>
+                  </span>
+                  <span className="flex items-end gap-2">
+                    <BookCover title={option.label} />
+                    <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <span className="nf-preview-paper flex h-9 items-center px-1.5">
+                        <span className="block h-1 w-full rounded-[var(--nf-control-radius)] bg-foreground/25" />
                       </span>
-                    </div>
-                    <span className="h-2 w-1/2 rounded-[var(--nf-control-radius)] bg-muted-foreground/55" />
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <span
-                        className="inline-flex h-5 w-14 items-center justify-center rounded-[var(--nf-control-radius)] text-2xs text-primary-foreground"
-                        style={{ background: "var(--nf-btn-primary-bg)" }}
-                      >
-                        主色
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="nf-mini-button inline-flex h-4 items-center px-2 text-2xs leading-none">
+                          主色
+                        </span>
+                        <span className="nf-mini-badge inline-flex h-4 items-center px-1.5 text-2xs leading-none">
+                          徽标
+                        </span>
                       </span>
-                      <span className="inline-flex h-5 items-center rounded-[var(--nf-badge-radius)] border border-border bg-secondary px-1.5 text-2xs text-secondary-foreground">
-                        徽标
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <p className="nf-display text-base">{option.label}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{option.description}</p>
-                </div>
+                    </span>
+                  </span>
+                </span>
+                <span className="flex flex-col gap-1">
+                  <span className="nf-display block text-base">{option.label}</span>
+                  <span className="block text-xs text-muted-foreground">{option.description}</span>
+                  <span className="nf-preview-caption block px-1.5 py-0.5 text-2xs leading-snug">
+                    {STRUCTURE_HINTS[option.id] ?? ""}
+                  </span>
+                </span>
               </button>
             );
           })}

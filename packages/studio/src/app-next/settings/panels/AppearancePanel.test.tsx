@@ -41,6 +41,39 @@ describe("AppearancePanel 书房主题", () => {
     expect(screen.getByTestId("style-theme-gaozhi").getAttribute("aria-checked")).toBe("false");
   });
 
+  it("预览卡用同一套 nf-* 表面与控件类渲染纸面、边饰与控件形态，并给出结构特征标签", async () => {
+    render(<AppearancePanel />);
+
+    await screen.findByRole("radiogroup", { name: "书房主题" });
+
+    for (const option of screen.getAllByRole("radio")) {
+      // 卡片本体是风格化表面：纹样、圆角、边饰与材质都从这里取
+      expect(option.className).toContain("nf-surface-card");
+      // 缩略界面里四层材质同时在场：次级表面、侧栏头、稿面纸纹、微型按钮与徽章
+      expect(option.querySelector(".nf-surface-sub")).not.toBeNull();
+      expect(option.querySelector(".nf-sidebar-head")).not.toBeNull();
+      expect(option.querySelector(".nf-sidebar-head-icon")).not.toBeNull();
+      expect(option.querySelector(".nf-preview-paper")).not.toBeNull();
+      expect(option.querySelector(".nf-mini-button")).not.toBeNull();
+      expect(option.querySelector(".nf-mini-badge")).not.toBeNull();
+      expect(option.querySelector(".nf-tab-pill")).not.toBeNull();
+      // 一行结构特征标签点明这套主题「形状上」的不同，而不只是换色
+      const caption = option.querySelector(".nf-preview-caption");
+      expect(caption?.textContent?.trim()).not.toBe("");
+    }
+
+    // 五套主题的标签互不重复，能一眼分辨
+    const captions = screen
+      .getAllByRole("radio")
+      .map((option) => option.querySelector(".nf-preview-caption")?.textContent?.trim());
+    expect(new Set(captions).size).toBe(captions.length);
+    expect(captions[0]).toContain("方格纸面");
+    expect(captions[1]).toContain("题签");
+    expect(captions[2]).toContain("胶囊");
+    expect(captions[3]).toContain("朱砂");
+    expect(captions[4]).toContain("瓷釉");
+  });
+
   it("只保留产品外观设置，通用显示偏好交给 Runtime 原页", async () => {
     render(<AppearancePanel />);
 

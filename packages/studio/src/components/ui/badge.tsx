@@ -4,6 +4,8 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
+  // 形状、字距与印面质感全部读 --nf-badge-*：书函藏青是书签题签、夜更烛光是胶囊、
+  // 朱砂印谱是宽字距的方印，差异只在 novelfork-motifs.css 里换变量。
   "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-[var(--nf-badge-radius,9999px)] border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
   {
     variants: {
@@ -34,6 +36,9 @@ function Badge({
   return (
     <span
       data-slot="badge"
+      // 主题只给「主色徽章」加压印质感（朱砂方印 / 书签题签框 / 釉光边），
+      // outline、ghost 这类描边徽章不该被印面阴影盖住，所以把变体暴露给样式层。
+      data-variant={variant ?? "default"}
       className={cn(badgeVariants({ variant }), className)}
       {...props}
     />
