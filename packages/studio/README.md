@@ -86,7 +86,7 @@ bun run dev            # http://localhost:4567
 bun run build
 
 # 编译单文件
-pnpm --dir packages/studio compile  # → dist/novelfork-v0.1.0-windows-x64.exe + SHA256 (~115MB)
+pnpm --dir packages/studio compile  # → dist/novelfork-v0.1.1-windows-x64.exe + SHA256 (~115MB)
 
 # 测试
 pnpm --dir packages/studio exec vitest run src/app-next  # Task16 app-next 回归：47 files / 271 tests
