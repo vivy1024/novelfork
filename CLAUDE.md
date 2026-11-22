@@ -28,7 +28,7 @@ NarraFork 宿主系统与开发者规则
 
 Runtime 源头权威（公开仓库，不在本仓库内）
 └─ NarraFork/novelfork-runtime（NarraFork/NarraFork 的 fork，MPL-2.0）
-   当前 fork 分支：novelfork/upgrade-0.9.15（头 48d445ac = MPL 快照 source/v0.1.1 = v0.1.1 发货树，已推送；
+   当前 fork 分支：novelfork/upgrade-0.9.15（头 a4c7c709 = MPL 快照 source/v0.1.1 = v0.1.1 发货树（同版本重发，首发为 48d445ac），已推送；
    上游锚点 release: v0.9.15 = d2fcd4c8a）
 
 本地辅助（均不提交）
