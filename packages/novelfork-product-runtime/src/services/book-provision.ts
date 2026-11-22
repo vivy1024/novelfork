@@ -390,6 +390,7 @@ function workspacePathExistsError(relativePath: string): AppError {
 		].join("\n"),
 		409,
 		"WORKSPACE_PATH_EXISTS",
+		undefined,
 		{ path: relativePath },
 	);
 }

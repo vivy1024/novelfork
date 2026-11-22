@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -123,6 +124,53 @@ describe("Runtime release artifact preparation", () => {
 		);
 
 		expect(generatorCalls).toBe(0);
+	});
+
+	test("embeds Runtime builtin plugin packages through the Runtime generator when the Runtime ships them", async () => {
+		await write(join(runtimeRoot, "server", "builtin-plugins", "registry.ts"), "export {};");
+		const calls: string[][] = [];
+
+		const result = prepareRuntimeReleaseArtifacts(
+			{
+				runtimeRoot,
+				productName: "NovelFork",
+				productVersion: "3.2.0",
+				buildCommit: "abcdef0",
+				buildPlatform: "win-x64",
+			},
+			{
+				generateParcelWatcher: () => undefined,
+				runBun: (root, args) => {
+					calls.push([...args]);
+					const output = join(root, "server", "generated", "embedded-builtin-plugins.ts");
+					writeFileSync(output, "export const embeddedBuiltinPlugins = [];");
+				},
+			},
+		);
+
+		expect(calls).toEqual([["scripts/generate-builtin-plugins.ts"]]);
+		expect(result.generatedFiles).toHaveLength(5);
+		expect(result.generatedFiles.some((path) => path.endsWith("embedded-builtin-plugins.ts"))).toBe(true);
+	});
+
+	test("fails before compile when the builtin plugin generator does not write its module", async () => {
+		await write(join(runtimeRoot, "server", "builtin-plugins", "registry.ts"), "export {};");
+
+		expect(() =>
+			prepareRuntimeReleaseArtifacts(
+				{
+					runtimeRoot,
+					productName: "NovelFork",
+					productVersion: "3.2.0",
+					buildCommit: "abcdef0",
+					buildPlatform: "win-x64",
+				},
+				{
+					generateParcelWatcher: () => undefined,
+					generateBuiltinPlugins: () => undefined,
+				},
+			),
+		).toThrow(/Embedded builtin plugin module is missing/);
 	});
 
 	test("fails before compile when any required parcel watcher target is absent", async () => {

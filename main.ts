@@ -1,11 +1,12 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-// 四个协议模块都刻意零副作用（不开库、不读设置），静态导入不会提前触发产品启动。
+// 五个协议模块都刻意零副作用（不开库、不读设置），静态导入不会提前触发产品启动。
 import { DB_INTEGRITY_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/db/integrity-protocol.ts";
 import { DB_SNAPSHOT_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/db/snapshot-protocol.ts";
 import { WATCHER_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/lib/watcher/worker-protocol.ts";
 import { PLUGIN_RUNTIME_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/plugin-runtime-worker.ts";
+import { FILE_CHANGE_PHYSICAL_AUDIT_WORKER_FLAG } from "./packages/narrafork-runtime-private/server/services/file-change-physical-audit.ts";
 
 // 自检与后台 worker 子进程必须在所有产品设置之前分流：
 // - 下面的延迟 import 链（product 集成、bridge 的 db/settings）一旦先求值，
@@ -17,6 +18,7 @@ import { PLUGIN_RUNTIME_WORKER_FLAG } from "./packages/narrafork-runtime-private
 const WORKER_FLAGS = [
   DB_INTEGRITY_WORKER_FLAG,
   DB_SNAPSHOT_WORKER_FLAG,
+  FILE_CHANGE_PHYSICAL_AUDIT_WORKER_FLAG,
   WATCHER_WORKER_FLAG,
   PLUGIN_RUNTIME_WORKER_FLAG,
 ] as const;

@@ -24,6 +24,8 @@ export interface RuntimeReleaseArtifactOptions {
 
 export interface RuntimeReleaseArtifactHooks {
 	readonly generateParcelWatcher?: (runtimeRoot: string) => void;
+	/** Writes server/generated/embedded-builtin-plugins.ts; defaults to the Runtime generator. */
+	readonly generateBuiltinPlugins?: (runtimeRoot: string) => void;
 	/** Test seam for observing the controlled Runtime generator environment. */
 	readonly runBun?: (
 		runtimeRoot: string,
@@ -259,6 +261,33 @@ function verifyParcelWatcherArtifacts(runtimeRoot: string): void {
 }
 
 /**
+ * Runtime 0.9.12 起，编译态从 `@server/generated/embedded-builtin-plugins` 取内置插件包再落盘
+ * （builtin-plugins/materialize.ts）。该动态导入不在 try 里，生成文件缺失时 Bun 打包直接报
+ * Could not resolve，所以只要 Runtime 带内置插件目录就必须先生成。生成逻辑留在 Runtime 自己的
+ * scripts/generate-builtin-plugins.ts，产品不另抄一份。没有该目录的 Runtime（旧版本）跳过。
+ */
+function generateEmbeddedBuiltinPlugins(
+	runtimeRoot: string,
+	environment: NodeJS.ProcessEnv,
+	hooks: RuntimeReleaseArtifactHooks,
+): string | undefined {
+	if (!existsSync(join(runtimeRoot, "server", "builtin-plugins"))) return undefined;
+	const output = join(runtimeRoot, "server", "generated", "embedded-builtin-plugins.ts");
+	if (hooks.generateBuiltinPlugins) {
+		hooks.generateBuiltinPlugins(runtimeRoot);
+	} else {
+		(hooks.runBun ?? runBun)(
+			runtimeRoot,
+			["scripts/generate-builtin-plugins.ts"],
+			"Builtin plugin embedding",
+			environment,
+		);
+	}
+	assertFile(output, "Embedded builtin plugin module");
+	return output;
+}
+
+/**
  * Materialize every generated file that the generic Runtime needs before Bun
  * compiles NovelFork's root entry. This deliberately writes only ignored
  * generated output inside the Runtime; product behavior remains outside it.
@@ -291,6 +320,7 @@ export function prepareRuntimeReleaseArtifacts(
 		}
 	}
 	verifyParcelWatcherArtifacts(options.runtimeRoot);
+	const builtinPlugins = generateEmbeddedBuiltinPlugins(options.runtimeRoot, environment, hooks);
 
 	// The isolated Runtime build seeds the verified, checked-in migration journal
 	// before this function runs. Do not invoke drizzle-kit here: schema-diff
@@ -301,7 +331,13 @@ export function prepareRuntimeReleaseArtifacts(
 	const migrations = generateEmbeddedMigrations(options.runtimeRoot);
 	const changelog = generateEmbeddedChangelog(options.runtimeRoot);
 	const buildInfo = writeRuntimeBuildInfo(options.runtimeRoot, options);
-	const generatedFiles = [frontend.path, migrations.path, changelog.path, buildInfo];
+	const generatedFiles = [
+		frontend.path,
+		migrations.path,
+		changelog.path,
+		buildInfo,
+		...(builtinPlugins ? [builtinPlugins] : []),
+	];
 	for (const path of generatedFiles) assertFile(path, "Generated Runtime release artifact");
 
 	return {

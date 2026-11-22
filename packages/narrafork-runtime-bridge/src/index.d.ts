@@ -314,8 +314,20 @@ export interface RuntimeProductHostServices {
 /** Lazy Runtime text generation; model, routing and usage accounting stay in the Runtime. */
 export const runtimeProductHostServices: RuntimeProductHostServices;
 
+/** Runtime 错误的 i18n 键与插值（与 Runtime 的 AppErrorLocalization 同形，键集合由 Runtime 维护）。 */
+export interface AppErrorLocalization {
+	messageCode?: string;
+	messageParams?: Record<string, unknown>;
+}
+
 export class AppError extends Error {
-	constructor(message: string, statusCode?: number, code?: string, details?: unknown);
+	constructor(
+		message: string,
+		statusCode?: number,
+		code?: string,
+		localization?: AppErrorLocalization,
+		details?: unknown,
+	);
 	readonly statusCode: number;
 	readonly code: string;
 	readonly details?: unknown;
@@ -326,7 +338,7 @@ export class NotFoundError extends AppError {
 }
 
 export class ValidationError extends AppError {
-	constructor(message: string, details?: unknown);
+	constructor(message: string, code?: string, localization?: AppErrorLocalization);
 }
 
 export interface McpToolPermission {
