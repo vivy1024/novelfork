@@ -102,6 +102,52 @@ export function isDesktopWindowDisabled(env: NodeJS.ProcessEnv = process.env): b
   );
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0", "::", "[::]"]);
+
+/**
+ * 窗口地址：只取 origin，并把本机回环/通配写法（127.0.0.1、[::1]、0.0.0.0、[::]）统一成 localhost。
+ *
+ * Runtime 启动状态页与正式服务、管理器观测到的监听地址，主机写法可能各不相同（拿到管理令牌时
+ * 服务会把 localhost 解析成具体 IP）；按原样比较会把同一端口当成两个地址再开一个窗口，按原样
+ * 打开则换了 origin，浏览器存的登录态与偏好都对不上。非回环主机（局域网地址等）保持原样。
+ */
+export function desktopOrigin(raw: string): string {
+  try {
+    const url = new URL(raw);
+    if (LOOPBACK_HOSTS.has(url.hostname.toLowerCase())) url.hostname = "localhost";
+    return url.origin;
+  } catch {
+    return raw;
+  }
+}
+
+export type DesktopLaunchMode = "manager" | "serve";
+
+/**
+ * 产品可执行文件的启动方式。
+ *
+ * Windows 编译产物默认进 Runtime 的图形化管理器（托盘 + 管理窗口），由它以 `--serve` 子进程跑服务、
+ * 打开 NovelFork 窗口；产物隐藏了控制台，没有托盘就没有退出入口。服务模式留给：
+ * - 管理器拉起的服务子进程（`NARRAFORK_MANAGER_MANAGED=1`）；
+ * - 不开窗口的无头运行（`NOVELFORK_NO_BROWSER=1` 等，见 isDesktopWindowDisabled）；
+ * - 非 Windows 平台与源码运行（源码可显式加 `--manager` 调试管理器）。
+ * 编译产物上的 `--serve` 不再表示服务模式：v0.1.1 的自动更新以 `--serve` 拉起替换进程，
+ * 新版本应接管为管理器（管理器把更新交接环境交给第一个服务子进程）。
+ */
+export function resolveDesktopLaunchMode(input: {
+  readonly platform: NodeJS.Platform;
+  readonly argv: readonly string[];
+  readonly compiled: boolean;
+  readonly env?: NodeJS.ProcessEnv;
+}): DesktopLaunchMode {
+  const env = input.env ?? process.env;
+  if (input.platform !== "win32") return "serve";
+  if (env.NARRAFORK_MANAGER_MANAGED === "1") return "serve";
+  if (isDesktopWindowDisabled(env)) return "serve";
+  if (input.argv.includes("--manager")) return "manager";
+  return input.compiled ? "manager" : "serve";
+}
+
 export function buildDesktopWindowLaunchPlan(options: DesktopWindowLaunchOptions): DesktopWindowLaunchPlan {
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;

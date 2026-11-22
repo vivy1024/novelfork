@@ -16,6 +16,7 @@ import {
 	withIsolatedRuntimeEnvironment,
 	writeRuntimeWorkerEntryShims,
 } from "./lib/isolated-runtime-build.ts";
+import { buildNovelForkIco } from "../packages/studio/src/desktop-icon.ts";
 import { prepareEmbeddedProductMigrationData } from "./lib/prepare-product-release-artifacts.ts";
 import { productBuildDefines, writeProductBinaryMetadata } from "./lib/product-release-identity.ts";
 import {
@@ -87,6 +88,27 @@ const supportedPlatforms: readonly ProductPlatform[] = [
 		artifactName: `novelfork-v${version}-windows-x64-baseline.exe`,
 	},
 ];
+
+/**
+ * Windows 产物的资源：不弹控制台（托盘管理器就是界面），带 NovelFork 图标与文件属性。
+ * 图标由 Studio 的 desktop-icon 按需生成（产品没有 .ico 素材）；版本号只取数字部分
+ * （Windows 文件版本只认 1–4 段数字）。
+ */
+function windowsExecutableOptions(
+	productVersion: string,
+	iconPath: string,
+): NonNullable<Bun.CompileBuildOptions["windows"]> {
+	const numericVersion = productVersion.match(/^\d+(?:\.\d+){0,3}/)?.[0] ?? "0.0.0";
+	return {
+		hideConsole: true,
+		icon: iconPath,
+		title: "NovelFork",
+		publisher: "NovelFork",
+		description: "NovelFork",
+		version: numericVersion,
+		copyright: "NovelFork contributors",
+	};
+}
 
 function readCommit(environment: NodeJS.ProcessEnv): string {
 	const result = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], {
@@ -233,6 +255,8 @@ async function compileProduct(): Promise<void> {
 		const buildDate = new Date().toISOString();
 		const entry = join(isolatedRuntime.workspaceRoot, "main.ts");
 		const workerEntries = writeRuntimeWorkerEntryShims(isolatedRuntime.workspaceRoot, isolatedRuntime.root);
+		const windowsIconPath = join(isolatedRuntime.workspaceRoot, "novelfork.ico");
+		writeFileSync(windowsIconPath, buildNovelForkIco());
 
 		// Frontend assets, migrations and changelogs are platform independent, so
 		// they are materialized once even for a full cross-platform matrix; only
@@ -281,6 +305,9 @@ async function compileProduct(): Promise<void> {
 						compile: {
 							target: platform.target as Bun.Build.CompileTarget,
 							outfile: artifact,
+							...(platform.target.startsWith("bun-windows")
+								? { windows: windowsExecutableOptions(version, windowsIconPath) }
+								: {}),
 						},
 						minify,
 						sourcemap: minify ? "none" : "inline",

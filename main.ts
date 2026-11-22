@@ -71,6 +71,28 @@ process.env.PORT ??= "4567";
 const desktopInstance = await import("./packages/studio/src/desktop-instance.ts");
 const desktopWindow = await import("./packages/studio/src/desktop-window.ts");
 const windowDisabled = desktopWindow.isDesktopWindowDisabled();
+const { isCompiledRuntime } = await import("./packages/narrafork-runtime-private/server/lib/runtime-target.ts");
+// Windows 编译产物默认进 Runtime 图形化管理器（托盘 + 管理窗口），服务由它以 `--serve` 子进程拉起；
+// 其余情况（管理器的服务子进程、无头运行、非 Windows、源码）直接跑服务。见 resolveDesktopLaunchMode。
+const requestedLaunchMode = desktopWindow.resolveDesktopLaunchMode({
+  platform: process.platform,
+  argv: process.argv,
+  compiled: isCompiledRuntime(),
+});
+// 管理器定制挂点（fork 层 server/manager/manager-host.ts）。旧版 Runtime 没有它时不进管理器：
+// 否则是一个 NarraFork 品牌、开系统浏览器的上游管理器。
+const managerHostModule =
+  requestedLaunchMode === "manager"
+    ? await import("./packages/narrafork-runtime-private/server/manager/manager-host.ts").catch(() => undefined)
+    : undefined;
+const launchMode = managerHostModule ? requestedLaunchMode : "serve";
+// 管理器拉起的服务子进程：窗口由管理器开，实例锁冲突要报给管理器（它会等旧进程退出后重试）。
+const managedByManager = process.env.NARRAFORK_MANAGER_MANAGED === "1";
+// 自动更新的替换进程：旧服务仍在应答健康检查、正等它来交接（Runtime `restart-handoff`）。
+// 此时不能把窗口交给旧服务后退出，否则交接超时、更新失败。
+const updateHandoff = Boolean(
+  process.env.NARRAFORK_GRACEFUL_RESTART_URL && process.env.NARRAFORK_GRACEFUL_RESTART_TOKEN,
+);
 
 // Windows 上聚焦已开的 NovelFork 应用窗口。Chromium（Edge/Chrome）每个 profile 的浏览器进程有一个
 // 以 user-data-dir 为标题的消息窗口（类 Chrome_MessageWindow），据此找到 NovelFork 专用 profile
@@ -121,29 +143,52 @@ async function loadWindowFocus(userDataDir: string): Promise<((title: string) =>
   }
 }
 
+const focusUserDataDir = () => resolve(process.env.NOVELFORK_DESKTOP_USER_DATA_DIR ?? "");
+
 async function bringRunningInstanceForward(running: { url: string; windowTitle?: string; starting: boolean }) {
   if (windowDisabled) {
     console.log(`[desktop-window] NovelFork is already running at ${running.url}; window launch is disabled.`);
     return;
   }
-  const activation = desktopWindow.activateStudioWindow(running.url, {
+  const url = desktopWindow.desktopOrigin(running.url);
+  const activation = desktopWindow.activateStudioWindow(url, {
     windowTitles: [running.windowTitle, desktopWindow.STUDIO_DOCUMENT_TITLE],
     // Chromium 以规范化的绝对路径（Windows 反斜杠）作消息窗口标题，这里同样规范化。
-    focusWindow: await loadWindowFocus(resolve(process.env.NOVELFORK_DESKTOP_USER_DATA_DIR ?? "")),
+    focusWindow: await loadWindowFocus(focusUserDataDir()),
   });
   console.log(
     activation.kind === "focused"
-      ? `[desktop-window] NovelFork is already running; focused its window (${running.url}).`
-      : `[desktop-window] NovelFork is already running; opened ${running.url}.`,
+      ? `[desktop-window] NovelFork is already running; focused its window (${url}).`
+      : `[desktop-window] NovelFork is already running; opened ${url}.`,
   );
 }
 
-const existingInstance = await desktopInstance.resolveDesktopInstance(runtimeDir, process.pid);
-if (existingInstance.kind === "running") {
-  await bringRunningInstanceForward(existingInstance);
-  process.exit(0);
+if (launchMode === "manager") {
+  // 管理器本身不认领实例记录（记录归它拉起的服务子进程）。服务已在跑就直接把窗口带到前面；
+  // 服务没在跑而管理器在托盘里时，Runtime 管理器的单实例互斥体会把这次启动转成「打开前端」。
+  if (!updateHandoff) {
+    const running = await desktopInstance.probeRunningDesktopInstance(runtimeDir, process.pid);
+    if (running.kind === "running") {
+      await bringRunningInstanceForward(running);
+      process.exit(0);
+    }
+  }
+} else {
+  if (updateHandoff) {
+    desktopInstance.claimDesktopInstanceRecord(runtimeDir, process.pid, { force: true });
+  } else {
+    const existingInstance = await desktopInstance.resolveDesktopInstance(runtimeDir, process.pid);
+    if (existingInstance.kind === "running") {
+      if (!managedByManager) {
+        await bringRunningInstanceForward(existingInstance);
+        process.exit(0);
+      }
+      // 管理器的子进程不替别人开窗也不静默退出：继续启动，由 Runtime 实例锁把冲突报给管理器。
+      console.log(`[desktop-window] Another NovelFork (pid ${existingInstance.pid}) holds this data directory.`);
+    }
+  }
+  process.once("exit", () => desktopInstance.releaseDesktopInstanceRecord(runtimeDir, process.pid));
 }
-process.once("exit", () => desktopInstance.releaseDesktopInstanceRecord(runtimeDir, process.pid));
 
 // The product adapter must be registered before the Runtime server graph evaluates. The
 // Runtime package itself remains usable without this registration via its Null integration,
@@ -158,33 +203,29 @@ async function registerNovelForkProduct(): Promise<void> {
   registerRuntimeProductIntegration(novelForkProductIntegration);
 }
 
-// NovelFork owns the single desktop-window launch below. The embedded Runtime
-// has its own generic browser auto-open setting, which would otherwise launch a
-// second window before the product shell opens its app window.
-const { settings: runtimeSettings } = await import(
-  "./packages/narrafork-runtime-private/server/lib/settings/index.ts"
-);
-runtimeSettings.server.openBrowser = "off";
 // 窗口标题跟随实例显示名（启动状态页标题），记进实例记录，供再次启动时聚焦。
 const { resolveBranding } = await import("./packages/narrafork-runtime-private/shared/branding.ts");
-const windowTitle = resolveBranding(runtimeSettings.branding).name;
-
-function browserUrl(raw: string): string {
-  try {
-    const url = new URL(raw);
-    if (url.hostname === "0.0.0.0" || url.hostname === "[::]") url.hostname = "localhost";
-    return url.origin;
-  } catch {
-    return raw;
-  }
+let windowTitle = resolveBranding(undefined).name;
+if (launchMode === "serve") {
+  // NovelFork owns the desktop window. The embedded Runtime has its own generic browser
+  // auto-open setting; the fork already skips it while startup hooks are registered
+  // (`hostOpensWindow`), this keeps older Runtime trees from opening a second window too.
+  // The manager process skips the settings module: it must not load the server's modules.
+  const { settings: runtimeSettings } = await import(
+    "./packages/narrafork-runtime-private/server/lib/settings/index.ts"
+  );
+  runtimeSettings.server.openBrowser = "off";
+  windowTitle = resolveBranding(runtimeSettings.branding).name;
 }
 
 let openedWindowUrl: string | undefined;
 // 端口一可用（启动状态页）就打开窗口，真服务换了地址（端口回落）时再开新地址。
+// 地址按 desktopOrigin 归一：状态页与正式服务的主机写法不同（127.0.0.1 / localhost / [::1]）时
+// 仍是同一个窗口。
 function openWindowAt(rawUrl: string): boolean {
-  const url = browserUrl(rawUrl);
+  const url = desktopWindow.desktopOrigin(rawUrl);
   desktopInstance.updateDesktopInstanceRecord(runtimeDir, process.pid, { url, windowTitle });
-  if (windowDisabled) return false;
+  if (windowDisabled || managedByManager) return false;
   if (openedWindowUrl === url) return true;
   // 只在第一次打开前清 profile 的 Service Worker 缓存；端口回落后再开时浏览器已在用这个 profile。
   const firstOpen = openedWindowUrl === undefined;
@@ -199,7 +240,8 @@ function openWindowAt(rawUrl: string): boolean {
 }
 
 // Runtime 启动钩子（fork 层 server/lib/startup-hooks.ts）。旧版 Runtime 没有这个模块时退回
-// “先注册产品、Runtime 完整就绪后再开窗口”的旧流程。
+// “先注册产品、Runtime 完整就绪后再开窗口”的旧流程。管理器进程也注册：它接不了更新交接时会
+// 改走服务模式（Runtime `runManager()` 返回 "serve"），那时它就是普通的服务进程。
 const startupHooks = await import("./packages/narrafork-runtime-private/server/lib/startup-hooks.ts").catch(
   () => undefined,
 );
@@ -211,7 +253,9 @@ if (startupHooks) {
       openWindowAt(url);
     },
     // 与另一个进程几乎同时启动、输掉实例锁：等对方写出地址后把窗口交给它。
+    // 管理器的子进程不接这个：冲突要报给管理器。
     onInstanceLocked: async () => {
+      if (managedByManager) return false;
       const running = await desktopInstance.waitForRunningDesktopInstance(runtimeDir, process.pid, {
         timeoutMs: 10_000,
       });
@@ -220,20 +264,63 @@ if (startupHooks) {
       return true;
     },
   });
-} else {
+} else if (launchMode === "serve") {
   await registerNovelForkProduct();
 }
 
-// Runtime 0.9 起，Windows 编译产物默认先进入图形化管理器（不监听端口，再以 `--serve`
-// 拉起服务子进程）。NovelFork 有自己的桌面窗口，产品可执行文件始终直接跑服务：
-// 显式带上 `--serve`，让 Runtime 的启动分流走服务模式。
-if (!process.argv.includes("--serve")) process.argv.push("--serve");
+if (launchMode === "manager" && managerHostModule) {
+  // 托盘管理器（Runtime fork 层 server/manager/manager-host.ts）：NovelFork 的名称、图标与互斥体，
+  // 「打开」走 NovelFork 应用窗口（先聚焦已开窗口），更新入口仍是服务端的 NovelFork 自动更新。
+  const { registerManagerHost } = managerHostModule;
+  const { renderNovelForkIcon } = await import("./packages/studio/src/desktop-icon.ts");
+  const focusWindow = await loadWindowFocus(focusUserDataDir());
+  let managerOpenedWindow = false;
+  registerManagerHost({
+    productName: "NovelFork",
+    instanceKey: "NovelFork",
+    icon: renderNovelForkIcon,
+    sourceServeArgs: [import.meta.path, "--serve"],
+    openFrontend: (request) => {
+      if (windowDisabled) return "none";
+      const url = desktopWindow.desktopOrigin(request.url);
+      // 只在本次运行第一次开窗前清 Service Worker 缓存（EXE 升级后不吃旧前端）。
+      const cleanServiceWorkerCache = !managerOpenedWindow;
+      const open = (target: string) => {
+        managerOpenedWindow = true;
+        return desktopWindow.openStudioWindow(target, { cleanServiceWorkerCache });
+      };
+      const activation = request.forceNewWindow
+        ? open(url)
+        : desktopWindow.activateStudioWindow(url, {
+            windowTitles: [request.windowTitle, desktopWindow.STUDIO_DOCUMENT_TITLE],
+            focusWindow,
+            open: (target) => open(target),
+          });
+      if (activation.kind === "focused") return "focused";
+      return activation.kind === "none" ? "none" : "opened";
+    },
+  });
+  // 管理器不把命令行转给服务子进程（子进程只带 `--serve`），监听参数改由继承的环境变量传过去。
+  for (const [flag, name] of [
+    ["--port=", "PORT"],
+    ["--host=", "HOST"],
+  ] as const) {
+    const value = process.argv.find((arg) => arg.startsWith(flag))?.slice(flag.length);
+    if (value) process.env[name] = value;
+  }
+  // Runtime 的启动分流：不带 `--serve`、带 `--manager` 即进管理器。
+  process.argv = process.argv.filter((arg) => arg !== "--serve");
+  if (!process.argv.includes("--manager")) process.argv.push("--manager");
+} else if (!process.argv.includes("--serve")) {
+  // Runtime 0.9 起，Windows 编译产物默认先进入图形化管理器；服务模式显式带上 `--serve`。
+  process.argv.push("--serve");
+}
 
 // Keep the specifier literal so Bun includes the complete Runtime dependency graph
 // in the root executable without maintaining a second Runtime implementation package.
 await import("./packages/narrafork-runtime-private/server/index.ts");
 
-if (!startupHooks) {
+if (!startupHooks && launchMode === "serve") {
   // 旧流程：Runtime 已绑定真实监听后再开窗口。Prefer the Runtime-registered address getter;
   // fall back to the product default port so a missing export cannot crash a healthy server.
   const serverRestart = await import(

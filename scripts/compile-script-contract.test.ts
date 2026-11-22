@@ -106,14 +106,27 @@ function packageVersion(manifestPath: string): string {
 }
 
 describe("根 Host 编译契约", () => {
+  test("Windows 产物隐藏控制台并带 NovelFork 图标与文件属性", () => {
+    expect(productCompileScript).toContain('platform.target.startsWith("bun-windows")');
+    expect(productCompileScript).toContain("windows: windowsExecutableOptions(version, windowsIconPath)");
+    expect(productCompileScript).toContain("hideConsole: true");
+    expect(productCompileScript).toContain("writeFileSync(windowsIconPath, buildNovelForkIco())");
+  });
+
   test("根入口直接加载完整 NarraFork Runtime 后端", () => {
     const runtimeImport = 'await import("./packages/narrafork-runtime-private/server/index.ts")';
     expect(rootMain).toContain(runtimeImport);
-    // Runtime 0.9 起 Windows 编译产物默认进图形化管理器（不监听端口）；产品入口必须在加载
-    // Runtime 之前补上 --serve，否则 EXE 卡在管理器里永不就绪。
-    const forceServe = 'if (!process.argv.includes("--serve")) process.argv.push("--serve");';
-    expect(rootMain).toContain(forceServe);
-    expect(rootMain.indexOf(forceServe)).toBeLessThan(rootMain.lastIndexOf(runtimeImport));
+    // Runtime 0.9 起 Windows 编译产物默认进图形化管理器。产品入口在加载 Runtime 之前明确分流：
+    // 管理器模式注册 NovelFork 定制（名称、图标、互斥体、开 NovelFork 窗口）并带 --manager；
+    // 服务模式（管理器子进程、无头、非 Windows、源码）补上 --serve。缺任何一支，EXE 要么卡在
+    // 上游品牌的管理器里，要么隐藏控制台后没有退出入口。
+    expect(rootMain).toContain("desktopWindow.resolveDesktopLaunchMode(");
+    const managerArgv = 'if (!process.argv.includes("--manager")) process.argv.push("--manager");';
+    const serveArgv = '} else if (!process.argv.includes("--serve")) {';
+    for (const marker of ["registerManagerHost({", managerArgv, serveArgv, 'process.argv.push("--serve");']) {
+      expect(rootMain).toContain(marker);
+      expect(rootMain.indexOf(marker)).toBeLessThan(rootMain.lastIndexOf(runtimeImport));
+    }
     expect(rootMain).not.toContain("runtime-core-private");
     expect(rootMain).not.toContain("legacy-runtime-loader");
     expect(existsSync(join(repositoryRoot, "packages", "runtime-core-private"))).toBe(false);

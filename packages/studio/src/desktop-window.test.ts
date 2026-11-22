@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   activateStudioWindow,
   buildDesktopWindowLaunchPlan,
+  desktopOrigin,
   isDesktopWindowDisabled,
+  resolveDesktopLaunchMode,
   STUDIO_DOCUMENT_TITLE,
 } from "./desktop-window";
 
@@ -142,5 +144,52 @@ describe("desktop window disable switches and re-activation", () => {
       open: () => plan,
     });
     expect(result).toBe(plan);
+  });
+});
+
+describe("desktop window origin", () => {
+  it("treats every loopback spelling of one port as the same localhost window", () => {
+    const origins = [
+      "http://127.0.0.1:4567",
+      "http://[::1]:4567/",
+      "http://0.0.0.0:4567",
+      "http://[::]:4567/api/health",
+      "http://localhost:4567",
+      "http://LOCALHOST:4567",
+    ].map(desktopOrigin);
+    expect(new Set(origins)).toEqual(new Set(["http://localhost:4567"]));
+  });
+
+  it("keeps the protocol, the port and non-loopback hosts apart", () => {
+    expect(desktopOrigin("https://127.0.0.1:4567")).toBe("https://localhost:4567");
+    expect(desktopOrigin("http://[::1]:4568")).toBe("http://localhost:4568");
+    expect(desktopOrigin("http://192.168.1.5:4567/")).toBe("http://192.168.1.5:4567");
+    expect(desktopOrigin("not a url")).toBe("not a url");
+  });
+});
+
+describe("desktop launch mode", () => {
+  const compiled = { platform: "win32" as const, argv: ["novelfork.exe"], compiled: true, env: {} };
+
+  it("starts the Windows executable as the tray manager", () => {
+    expect(resolveDesktopLaunchMode(compiled)).toBe("manager");
+    // v0.1.1 的自动更新以 --serve 拉起替换进程：新版本照样接管为管理器。
+    expect(resolveDesktopLaunchMode({ ...compiled, argv: ["novelfork.exe", "--serve"] })).toBe("manager");
+  });
+
+  it("runs the server directly for the manager's child and for headless runs", () => {
+    expect(resolveDesktopLaunchMode({ ...compiled, env: { NARRAFORK_MANAGER_MANAGED: "1" } })).toBe("serve");
+    expect(resolveDesktopLaunchMode({ ...compiled, env: { NOVELFORK_NO_BROWSER: "1" } })).toBe("serve");
+    expect(resolveDesktopLaunchMode({ ...compiled, env: { NOVELFORK_WINDOW_MODE: "none" } })).toBe("serve");
+  });
+
+  it("keeps Linux, macOS and source runs on the server path unless --manager is asked for", () => {
+    expect(resolveDesktopLaunchMode({ ...compiled, platform: "linux" })).toBe("serve");
+    expect(resolveDesktopLaunchMode({ ...compiled, platform: "darwin" })).toBe("serve");
+    expect(resolveDesktopLaunchMode({ ...compiled, compiled: false })).toBe("serve");
+    expect(resolveDesktopLaunchMode({ ...compiled, compiled: false, argv: ["main.ts", "--manager"] })).toBe(
+      "manager",
+    );
+    expect(resolveDesktopLaunchMode({ ...compiled, platform: "linux", argv: ["x", "--manager"] })).toBe("serve");
   });
 });
