@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import type { Plugin, PluginOption } from "vite";
+import { productBuildDefines } from "../../scripts/lib/product-release-identity";
 
 const defaultRuntimeRoot = resolve(__dirname, "../narrafork-runtime-private");
 
@@ -109,6 +110,8 @@ const runtimeSyncExternalStoreShims = (() => {
 const runtimePort = Number(process.env.NOVELFORK_RUNTIME_PORT ?? process.env.PORT ?? "7778");
 
 export default defineConfig({
+  // 嵌入的 Runtime 前端（设置页更新区块等）与后端共用同一份产品发版身份。
+  define: productBuildDefines(),
   plugins: [
     runtimeRouteTreePlugin(),
     runtimeShikiAssets(),

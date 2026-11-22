@@ -17,6 +17,7 @@ import {
 	writeRuntimeWorkerEntryShims,
 } from "./lib/isolated-runtime-build.ts";
 import { prepareEmbeddedProductMigrationData } from "./lib/prepare-product-release-artifacts.ts";
+import { productBuildDefines, writeProductBinaryMetadata } from "./lib/product-release-identity.ts";
 import {
 	prepareRuntimeReleaseArtifacts,
 	writeRuntimeBuildInfo,
@@ -229,6 +230,7 @@ async function compileProduct(): Promise<void> {
 
 		mkdirSync(distRoot, { recursive: true });
 		const buildCommit = readCommit(isolatedRuntime.environment);
+		const buildDate = new Date().toISOString();
 		const entry = join(isolatedRuntime.workspaceRoot, "main.ts");
 		const workerEntries = writeRuntimeWorkerEntryShims(isolatedRuntime.workspaceRoot, isolatedRuntime.root);
 
@@ -282,6 +284,8 @@ async function compileProduct(): Promise<void> {
 						},
 						minify,
 						sourcemap: minify ? "none" : "inline",
+						// 更新器按这些编译期常量只检查本产品的 GitHub Release（资产名与 Runtime 一致）。
+						define: productBuildDefines(),
 						external: ["electron"],
 						naming: { asset: "[dir]/[name].[ext]" },
 						plugins: [isolatedRuntime.resolverPlugin],
@@ -294,6 +298,19 @@ async function compileProduct(): Promise<void> {
 				throw new Error(`Compiler did not produce a non-empty artifact: ${artifact}`);
 			}
 			const checksum = writeChecksum(artifact);
+			// 自动更新必需的 sidecar：Runtime 更新器只认带 `<产物>.metadata.json` 的 Release 资产。
+			const metadata = await writeProductBinaryMetadata({
+				runtimeRoot: isolatedRuntime.root,
+				artifactPath: artifact,
+				version,
+				platformId: platform.buildPlatform,
+				target: platform.target,
+				commit: buildCommit,
+				buildDate,
+			});
+			if (metadata.metadata.sha256 !== checksum) {
+				throw new Error(`Metadata checksum does not match ${platform.artifactName}`);
+			}
 			compiled.push({ artifactName: platform.artifactName, checksum });
 			console.log(`✓ Built ${artifact} (${(statSync(artifact).size / 1024 / 1024).toFixed(1)} MiB)`);
 		}

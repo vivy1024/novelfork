@@ -109,7 +109,7 @@ novelfork-vX.Y.Z-macos-arm64
 novelfork-vX.Y.Z-macos-x64
 ```
 
-Windows 用户优先选择 `windows-x64.exe`；不支持 AVX2 的旧 CPU 或部分虚拟机选择 `windows-x64-baseline.exe`。每个产物旁有 `.sha256` 文件，Release 同时提供聚合校验文件。
+Windows 用户优先选择 `windows-x64.exe`；不支持 AVX2 的旧 CPU 或部分虚拟机选择 `windows-x64-baseline.exe`。每个产物旁有 `.sha256` 文件，Release 同时提供聚合校验文件；`<产物>.metadata.json` 是程序内自动更新用来核对版本、平台、大小与哈希的清单，手动下载时不需要。
 
 双击 Windows EXE 运行，无需安装。
 
