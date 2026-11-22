@@ -26,6 +26,11 @@ export interface DesktopWindowLaunchOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly homeDir?: string;
   readonly pathExists?: (path: string) => boolean;
+  /**
+   * 打开前清掉专用 profile 的 Service Worker 缓存（默认 true）。再次启动时浏览器可能正开着这个
+   * profile，不去动它的文件。
+   */
+  readonly cleanServiceWorkerCache?: boolean;
 }
 
 function defaultBrowserPlan(platform: NodeJS.Platform, url: string): DesktopWindowLaunchPlan {
@@ -88,13 +93,22 @@ function canUseCandidate(
   return pathExists(candidate);
 }
 
+/** `NOVELFORK_NO_BROWSER=1` / `NARRAFORK_NO_BROWSER=1` / `NOVELFORK_WINDOW_MODE=none`：不开任何窗口。 */
+export function isDesktopWindowDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (
+    env.NOVELFORK_NO_BROWSER === "1" ||
+    env.NARRAFORK_NO_BROWSER === "1" ||
+    env.NOVELFORK_WINDOW_MODE?.trim().toLowerCase() === "none"
+  );
+}
+
 export function buildDesktopWindowLaunchPlan(options: DesktopWindowLaunchOptions): DesktopWindowLaunchPlan {
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;
   const mode = env.NOVELFORK_WINDOW_MODE?.trim().toLowerCase();
   const url = options.url;
 
-  if (env.NOVELFORK_NO_BROWSER === "1" || mode === "none") {
+  if (isDesktopWindowDisabled(env)) {
     return { kind: "none", reason: "disabled" };
   }
   if (mode === "browser") {
@@ -132,7 +146,8 @@ export function openStudioWindow(
 
   if (plan.kind === "app") {
     mkdirSync(plan.userDataDir, { recursive: true });
-
+  }
+  if (plan.kind === "app" && options.cleanServiceWorkerCache !== false) {
     // The profile is dedicated to NovelFork, so best-effort cleanup prevents an old
     // service worker from serving stale frontend assets after an exe upgrade.
     const serviceWorkerCacheDir = join(plan.userDataDir, "Default", "Service Worker");
@@ -154,4 +169,51 @@ export function openStudioWindow(
   });
   child.unref();
   return plan;
+}
+
+/** Studio 页面的固定标题（`packages/studio/index.html` 的 `<title>`）；`--app` 窗口标题就是它。 */
+export const STUDIO_DOCUMENT_TITLE = "NovelFork";
+
+export type StudioWindowActivation =
+  | DesktopWindowLaunchPlan
+  | {
+      readonly kind: "focused";
+      readonly title: string;
+    };
+
+export interface StudioWindowActivationOptions extends Omit<DesktopWindowLaunchOptions, "url"> {
+  /**
+   * 已开窗口的候选标题（启动状态页标题是实例显示名，Studio 页面是 STUDIO_DOCUMENT_TITLE）。
+   * 空白与重复会被去掉。
+   */
+  readonly windowTitles?: readonly (string | undefined)[];
+  /** 按标题找到已开的应用窗口并前置；找到返回 true。平台不支持时不传。 */
+  readonly focusWindow?: (title: string) => boolean;
+  /** 测试注入；默认 openStudioWindow。 */
+  readonly open?: (url: string, options: Omit<DesktopWindowLaunchOptions, "url">) => DesktopWindowLaunchPlan;
+}
+
+/**
+ * 再次启动时把 NovelFork 窗口带到前面：先聚焦已开的应用窗口，没有再新开一个。
+ *
+ * 实测（Edge，同一 --user-data-dir）：对已运行的 profile 再执行 `msedge --app=<url>`，
+ * 浏览器进程复用但总是新开一个应用窗口（带不带 --new-window 都一样），不会聚焦旧窗口；
+ * 所以重复双击若直接再 spawn，窗口会越开越多。浏览器模式（NOVELFORK_WINDOW_MODE=browser）
+ * 不聚焦：普通浏览器标签页的窗口标题不是页面标题本身。
+ */
+export function activateStudioWindow(
+  url: string,
+  options: StudioWindowActivationOptions = {},
+): StudioWindowActivation {
+  const { windowTitles = [], focusWindow, open = openStudioWindow, ...launchOptions } = options;
+  const env = launchOptions.env ?? process.env;
+  if (isDesktopWindowDisabled(env)) return { kind: "none", reason: "disabled" };
+  const mode = env.NOVELFORK_WINDOW_MODE?.trim().toLowerCase();
+  if (focusWindow && mode !== "browser") {
+    const titles = [...new Set(windowTitles.map((title) => title?.trim()).filter((title): title is string => !!title))];
+    for (const title of titles) {
+      if (focusWindow(title)) return { kind: "focused", title };
+    }
+  }
+  return open(url, { ...launchOptions, cleanServiceWorkerCache: false });
 }

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDesktopWindowLaunchPlan } from "./desktop-window";
+import {
+  activateStudioWindow,
+  buildDesktopWindowLaunchPlan,
+  isDesktopWindowDisabled,
+  STUDIO_DOCUMENT_TITLE,
+} from "./desktop-window";
 
 const url = "http://localhost:4567";
 
@@ -64,5 +69,78 @@ describe("desktop app window launch planning", () => {
     });
 
     expect(plan).toEqual({ kind: "browser", command: "explorer.exe", args: [url] });
+  });
+});
+
+describe("desktop window disable switches and re-activation", () => {
+  it("honors NARRAFORK_NO_BROWSER and window mode none", () => {
+    expect(isDesktopWindowDisabled({ NARRAFORK_NO_BROWSER: "1" })).toBe(true);
+    expect(isDesktopWindowDisabled({ NOVELFORK_NO_BROWSER: "1" })).toBe(true);
+    expect(isDesktopWindowDisabled({ NOVELFORK_WINDOW_MODE: " None " })).toBe(true);
+    expect(isDesktopWindowDisabled({ NOVELFORK_NO_BROWSER: "0" })).toBe(false);
+    expect(
+      buildDesktopWindowLaunchPlan({ url, platform: "win32", env: { NARRAFORK_NO_BROWSER: "1" }, pathExists: () => true }),
+    ).toEqual({ kind: "none", reason: "disabled" });
+  });
+
+  it("focuses an open app window before opening a new one", () => {
+    const focused: string[] = [];
+    let opened = 0;
+    const result = activateStudioWindow(url, {
+      env: {},
+      windowTitles: ["我的书房", undefined, " ", STUDIO_DOCUMENT_TITLE, "我的书房"],
+      focusWindow: (title) => {
+        focused.push(title);
+        return title === STUDIO_DOCUMENT_TITLE;
+      },
+      open: () => {
+        opened++;
+        return { kind: "none", reason: "disabled" };
+      },
+    });
+    expect(result).toEqual({ kind: "focused", title: STUDIO_DOCUMENT_TITLE });
+    expect(focused).toEqual(["我的书房", STUDIO_DOCUMENT_TITLE]);
+    expect(opened).toBe(0);
+  });
+
+  it("opens a window when none is found or focusing is unavailable", () => {
+    const plan = { kind: "browser", command: "explorer.exe", args: [url] } as const;
+    const openedUrls: string[] = [];
+    const open = (target: string, options: { cleanServiceWorkerCache?: boolean }) => {
+      openedUrls.push(target);
+      // 再次启动时浏览器可能正开着这个 profile：不动它的缓存文件
+      expect(options.cleanServiceWorkerCache).toBe(false);
+      return plan;
+    };
+    expect(activateStudioWindow(url, { env: {}, windowTitles: ["NovelFork"], focusWindow: () => false, open })).toBe(plan);
+    expect(activateStudioWindow(url, { env: {}, open })).toBe(plan);
+    expect(openedUrls).toEqual([url, url]);
+  });
+
+  it("neither focuses nor opens when windows are disabled", () => {
+    const result = activateStudioWindow(url, {
+      env: { NOVELFORK_NO_BROWSER: "1" },
+      windowTitles: ["NovelFork"],
+      focusWindow: () => {
+        throw new Error("must not focus");
+      },
+      open: () => {
+        throw new Error("must not open");
+      },
+    });
+    expect(result).toEqual({ kind: "none", reason: "disabled" });
+  });
+
+  it("does not focus in normal browser mode", () => {
+    const plan = { kind: "browser", command: "explorer.exe", args: [url] } as const;
+    const result = activateStudioWindow(url, {
+      env: { NOVELFORK_WINDOW_MODE: "browser" },
+      windowTitles: ["NovelFork"],
+      focusWindow: () => {
+        throw new Error("must not focus");
+      },
+      open: () => plan,
+    });
+    expect(result).toBe(plan);
   });
 });

@@ -65,14 +65,98 @@ process.env.NARRAFORK_MIGRATIONS_DIR ??= runtimeMigrationsDir;
 // --port=XXXX values remain supported by the Runtime server.
 process.env.PORT ??= "4567";
 
-// Register the product adapter before the Runtime server graph evaluates. The
-// Runtime package itself remains usable without this registration via its Null
-// integration, while the NovelFork executable opts into product behavior here.
+// 桌面单实例：同一数据目录已有 NovelFork 在跑（实例记录的进程存活、地址答 Runtime 健康检查），
+// 就把窗口交给它并以退出码 0 退出——不再撞端口与实例锁。判断只读产品自己的实例记录与
+// Runtime 实例锁文件，不加载 Runtime；陈旧记录按没有实例处理，之后由 Runtime 原有实例锁逻辑裁决。
+const desktopInstance = await import("./packages/studio/src/desktop-instance.ts");
+const desktopWindow = await import("./packages/studio/src/desktop-window.ts");
+const windowDisabled = desktopWindow.isDesktopWindowDisabled();
+
+// Windows 上聚焦已开的 NovelFork 应用窗口。Chromium（Edge/Chrome）每个 profile 的浏览器进程有一个
+// 以 user-data-dir 为标题的消息窗口（类 Chrome_MessageWindow），据此找到 NovelFork 专用 profile
+// 的浏览器进程，只聚焦这个进程里标题匹配的顶层窗口（类 Chrome_WidgetWin_1）——不会误聚焦
+// 另一个数据目录的 NovelFork 窗口或同名的资源管理器窗口。FFI 不可用时返回 undefined（只新开窗口）。
+// 写在入口里而不是 studio 包：这是 Bun 专属代码，studio 的 Node 类型检查不认 bun:ffi。
+async function loadWindowFocus(userDataDir: string): Promise<((title: string) => boolean) | undefined> {
+  if (process.platform !== "win32") return undefined;
+  try {
+    const { dlopen, FFIType, ptr } = await import("bun:ffi");
+    const { symbols: user32 } = dlopen("user32.dll", {
+      FindWindowExW: { args: [FFIType.i64, FFIType.i64, FFIType.ptr, FFIType.ptr], returns: FFIType.i64 },
+      GetWindowThreadProcessId: { args: [FFIType.i64, FFIType.ptr], returns: FFIType.u32 },
+      IsWindowVisible: { args: [FFIType.i64], returns: FFIType.i32 },
+      IsIconic: { args: [FFIType.i64], returns: FFIType.i32 },
+      ShowWindow: { args: [FFIType.i64, FFIType.i32], returns: FFIType.i32 },
+      SetForegroundWindow: { args: [FFIType.i64], returns: FFIType.i32 },
+    });
+    const HWND_MESSAGE = -3;
+    const SW_RESTORE = 9;
+    const wide = (text: string) => Buffer.from(`${text}\0`, "utf16le");
+    const windowPid = (hwnd: number | bigint) => {
+      const pid = new Uint32Array(1);
+      user32.GetWindowThreadProcessId(hwnd, ptr(pid));
+      return pid[0];
+    };
+    const messageClass = wide("Chrome_MessageWindow");
+    const appClass = wide("Chrome_WidgetWin_1");
+    return (title) => {
+      const messageWindow = user32.FindWindowExW(HWND_MESSAGE, 0, ptr(messageClass), ptr(wide(userDataDir)));
+      if (!messageWindow) return false;
+      const browserPid = windowPid(messageWindow);
+      const name = wide(title);
+      let hwnd: number | bigint = 0;
+      for (let index = 0; index < 64; index++) {
+        hwnd = user32.FindWindowExW(0, hwnd, ptr(appClass), ptr(name));
+        if (!hwnd) return false;
+        if (windowPid(hwnd) !== browserPid || !user32.IsWindowVisible(hwnd)) continue;
+        // 只唤出最小化的窗口；最大化/普通窗口只前置，不改尺寸。
+        if (user32.IsIconic(hwnd)) user32.ShowWindow(hwnd, SW_RESTORE);
+        user32.SetForegroundWindow(hwnd);
+        return true;
+      }
+      return false;
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function bringRunningInstanceForward(running: { url: string; windowTitle?: string; starting: boolean }) {
+  if (windowDisabled) {
+    console.log(`[desktop-window] NovelFork is already running at ${running.url}; window launch is disabled.`);
+    return;
+  }
+  const activation = desktopWindow.activateStudioWindow(running.url, {
+    windowTitles: [running.windowTitle, desktopWindow.STUDIO_DOCUMENT_TITLE],
+    // Chromium 以规范化的绝对路径（Windows 反斜杠）作消息窗口标题，这里同样规范化。
+    focusWindow: await loadWindowFocus(resolve(process.env.NOVELFORK_DESKTOP_USER_DATA_DIR ?? "")),
+  });
+  console.log(
+    activation.kind === "focused"
+      ? `[desktop-window] NovelFork is already running; focused its window (${running.url}).`
+      : `[desktop-window] NovelFork is already running; opened ${running.url}.`,
+  );
+}
+
+const existingInstance = await desktopInstance.resolveDesktopInstance(runtimeDir, process.pid);
+if (existingInstance.kind === "running") {
+  await bringRunningInstanceForward(existingInstance);
+  process.exit(0);
+}
+process.once("exit", () => desktopInstance.releaseDesktopInstanceRecord(runtimeDir, process.pid));
+
+// The product adapter must be registered before the Runtime server graph evaluates. The
+// Runtime package itself remains usable without this registration via its Null integration,
+// while the NovelFork executable opts into product behavior here. Importing the adapter opens
+// the Runtime database (instance lock, migrations), so with startup hooks it runs under the
+// Runtime startup status page instead of before it.
 const { registerRuntimeProductIntegration } = await import(
   "./packages/narrafork-runtime-private/server/lib/product-host/index.ts"
 );
-const { novelForkProductIntegration } = await import("./packages/novelfork-product-runtime/src/index.ts");
-registerRuntimeProductIntegration(novelForkProductIntegration);
+async function registerNovelForkProduct(): Promise<void> {
+  const { novelForkProductIntegration } = await import("./packages/novelfork-product-runtime/src/index.ts");
+  registerRuntimeProductIntegration(novelForkProductIntegration);
+}
 
 // NovelFork owns the single desktop-window launch below. The embedded Runtime
 // has its own generic browser auto-open setting, which would otherwise launch a
@@ -81,6 +165,64 @@ const { settings: runtimeSettings } = await import(
   "./packages/narrafork-runtime-private/server/lib/settings/index.ts"
 );
 runtimeSettings.server.openBrowser = "off";
+// 窗口标题跟随实例显示名（启动状态页标题），记进实例记录，供再次启动时聚焦。
+const { resolveBranding } = await import("./packages/narrafork-runtime-private/shared/branding.ts");
+const windowTitle = resolveBranding(runtimeSettings.branding).name;
+
+function browserUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    if (url.hostname === "0.0.0.0" || url.hostname === "[::]") url.hostname = "localhost";
+    return url.origin;
+  } catch {
+    return raw;
+  }
+}
+
+let openedWindowUrl: string | undefined;
+// 端口一可用（启动状态页）就打开窗口，真服务换了地址（端口回落）时再开新地址。
+function openWindowAt(rawUrl: string): boolean {
+  const url = browserUrl(rawUrl);
+  desktopInstance.updateDesktopInstanceRecord(runtimeDir, process.pid, { url, windowTitle });
+  if (windowDisabled) return false;
+  if (openedWindowUrl === url) return true;
+  // 只在第一次打开前清 profile 的 Service Worker 缓存；端口回落后再开时浏览器已在用这个 profile。
+  const firstOpen = openedWindowUrl === undefined;
+  openedWindowUrl = url;
+  const launchPlan = desktopWindow.openStudioWindow(url, { cleanServiceWorkerCache: firstOpen });
+  if (launchPlan.kind === "app") {
+    console.log(`[desktop-window] Opened NovelFork app window at ${url}`);
+  } else if (launchPlan.kind === "browser") {
+    console.log(`[desktop-window] Opened NovelFork in the system browser at ${url}`);
+  }
+  return launchPlan.kind !== "none";
+}
+
+// Runtime 启动钩子（fork 层 server/lib/startup-hooks.ts）。旧版 Runtime 没有这个模块时退回
+// “先注册产品、Runtime 完整就绪后再开窗口”的旧流程。
+const startupHooks = await import("./packages/narrafork-runtime-private/server/lib/startup-hooks.ts").catch(
+  () => undefined,
+);
+if (startupHooks) {
+  startupHooks.registerRuntimeStartupHooks({
+    beforeServerMain: registerNovelForkProduct,
+    onStartupPageListening: (url) => openWindowAt(url),
+    onServerListening: (url) => {
+      openWindowAt(url);
+    },
+    // 与另一个进程几乎同时启动、输掉实例锁：等对方写出地址后把窗口交给它。
+    onInstanceLocked: async () => {
+      const running = await desktopInstance.waitForRunningDesktopInstance(runtimeDir, process.pid, {
+        timeoutMs: 10_000,
+      });
+      if (running.kind !== "running") return false;
+      await bringRunningInstanceForward(running);
+      return true;
+    },
+  });
+} else {
+  await registerNovelForkProduct();
+}
 
 // Runtime 0.9 起，Windows 编译产物默认先进入图形化管理器（不监听端口，再以 `--serve`
 // 拉起服务子进程）。NovelFork 有自己的桌面窗口，产品可执行文件始终直接跑服务：
@@ -91,17 +233,12 @@ if (!process.argv.includes("--serve")) process.argv.push("--serve");
 // in the root executable without maintaining a second Runtime implementation package.
 await import("./packages/narrafork-runtime-private/server/index.ts");
 
-// Open the product UI only after the Runtime has bound its actual listener.
-// Prefer the Runtime-registered address getter when available; fall back to the
-// product default port so a missing export cannot crash an otherwise healthy server.
-if (
-  process.env.NOVELFORK_NO_BROWSER !== "1" &&
-  process.env.NARRAFORK_NO_BROWSER !== "1"
-) {
+if (!startupHooks) {
+  // 旧流程：Runtime 已绑定真实监听后再开窗口。Prefer the Runtime-registered address getter;
+  // fall back to the product default port so a missing export cannot crash a healthy server.
   const serverRestart = await import(
     "./packages/narrafork-runtime-private/server/lib/server-restart.ts"
   );
-  const { openStudioWindow } = await import("./packages/studio/src/desktop-window.ts");
   const fallbackPort = Number(process.env.PORT ?? "4567");
   const address =
     typeof serverRestart.getRuntimeAddress === "function"
@@ -114,14 +251,7 @@ if (
   const host =
     address.host === "0.0.0.0" || address.host === "::" ? "localhost" : address.host;
   const browserHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-  const studioUrl = `${address.protocol}://${browserHost}:${address.port}`;
-  const launchPlan = openStudioWindow(studioUrl);
-
-  if (launchPlan.kind === "app") {
-    console.log(`[desktop-window] Opened NovelFork app window at ${studioUrl}`);
-  } else if (launchPlan.kind === "browser") {
-    console.log(`[desktop-window] Opened NovelFork in the system browser at ${studioUrl}`);
-  }
+  openWindowAt(`${address.protocol}://${browserHost}:${address.port}`);
 }
 
 }
