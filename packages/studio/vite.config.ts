@@ -5,7 +5,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import type { Plugin, PluginOption } from "vite";
-import { productBuildDefines } from "../../scripts/lib/product-release-identity";
+import { productBuildDefines } from "./product-build-identity";
 
 const defaultRuntimeRoot = resolve(__dirname, "../narrafork-runtime-private");
 
