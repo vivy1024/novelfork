@@ -97,10 +97,9 @@
 
 ### Option 1: 下载 EXE（推荐）
 
-从 [GitHub Releases](https://github.com/vivy1024/novelfork/releases/latest) 下载单个平台文件，或下载七平台统一压缩包：
+从 [GitHub Releases](https://github.com/vivy1024/novelfork/releases/latest) 下载对应平台的单个文件：
 
 ```text
-novelfork-vX.Y.Z-7-platforms.tar.xz
 novelfork-vX.Y.Z-windows-x64.exe
 novelfork-vX.Y.Z-windows-x64-baseline.exe
 novelfork-vX.Y.Z-linux-x64

@@ -28,12 +28,17 @@ NarraFork 宿主系统与开发者规则
 
 Runtime 源头权威（公开仓库，不在本仓库内）
 └─ NarraFork/novelfork-runtime（NarraFork/NarraFork 的 fork，MPL-2.0）
-   当前 fork 分支：novelfork/upgrade-0.8.3（内容 = 物化树 = MPL 快照 source/v0.0.5）
+   当前 fork 分支：novelfork/upgrade-0.9.15（头 48d445ac = MPL 快照 source/v0.1.1 = v0.1.1 发货树，已推送；
+   上游锚点 release: v0.9.15 = d2fcd4c8a）
 
 本地辅助（均不提交）
 ├─ packages/.narrafork-runtime-sync/          宿主 git 库：公开上游镜像 + 公开 fork 分支（worktree 从这里开）
-├─ packages/.narrafork-runtime-fork-staging/  私有线时代的宿主库（留档，不再参与流程）
-└─ .runtime-backup-v0.7.12-20261008/          上一次物化目录备份（回滚用，当前唯一一份）
+├─ packages/.narrafork-runtime-baseline-<版本>/  纯上游同锚点基线 worktree（0.8.3、0.9.11、0.9.15，对照 tsgo / 测试用）
+├─ packages/.narrafork-runtime-upgrade-<名>/    fork 分支 worktree（0.9.15 为当前主线，其余为旧版或专项分支）
+├─ packages/.narrafork-runtime-wt-<名>/         功能分支 worktree（如 self-update、startup-ux，合入主线后可保留留档）
+├─ packages/.narrafork-runtime-upstream-pr/     向上游提 PR 的 worktree（经 vivy-public = vivy1024/NarraFork）
+├─ .runtime-backup-v0.9.11-20261122/          升级 0.9.15 前的物化目录备份（回滚用）
+└─ .runtime-backup-v0.7.12-20261008/          更早的物化目录备份
 ```
 
 | 路径 | 角色 | Git |
@@ -46,7 +51,7 @@ Runtime 源头权威（公开仓库，不在本仓库内）
 | `packages/fitness-plugin/` | 示例/扩展插件 | 跟踪（公开） |
 | `packages/narrafork-runtime-private/` | 可运行的完整 Runtime 物化树（= 公开 fork 分支内容） | **ignore，仅本地**（例外：`UPSTREAM.lock.json` 作为来源元数据被跟踪） |
 | `packages/.narrafork-runtime-sync/` | 宿主 git 库：公开上游镜像 + 公开 fork 分支 | **ignore，仅本地** |
-| `NarraFork/novelfork-runtime` | Runtime fork 权威仓库，当前分支 `novelfork/upgrade-0.8.3` | **独立公开仓库（MPL-2.0，不在本仓库内）** |
+| `NarraFork/novelfork-runtime` | Runtime fork 权威仓库，当前分支 `novelfork/upgrade-0.9.15` | **独立公开仓库（MPL-2.0，不在本仓库内）** |
 
 ### 公开边界（硬约束）
 
@@ -215,10 +220,13 @@ NarraFork/novelfork-runtime      公开 fork，分支 novelfork/upgrade-<版本>
 1. `GIT_DIR=packages/.narrafork-runtime-sync git fetch upstream-public main`，例行先查锚点：`git log --grep='^release: v' upstream-public/main`；再查历史连续性：`git merge-base --is-ancestor <上次基点> upstream-public/main`——若上次基点不在公开历史（上游又重写了），退回树级移植而非 merge。
 2. 从公开锚点开分支 `novelfork/upgrade-<版本>`（worktree 放 `packages/.narrafork-runtime-upgrade-<版本>`，纯基线对照 worktree 另开 `--detach`）。
 3. `git merge upstream-public/main`——常规三方合并（公开线fork 层冲突面以当次评估为准）；首次从私有线换轨按 0.8.3 的树级移植（49 独有 checkout / 单边重放 / 手工冲突 / 删除跟随）。
-4. 补齐上游缺失项（上游不带 SQLite `drizzle/`：对 `runtime-migrations` 末版快照求差 `bunx drizzle-kit generate`，产物同步进 `drizzle/` 与 `runtime-migrations/` 两处并提交；语义期 typecheck 本机可能 OOM，可按 server/frontend 拆分 include 分段跑）。
-5. 验证：与**纯上游同锚点基线** worktree 对照 tsgo（合并独有错误应为 0，已知 codegen 恒红家族豁免）；权限/agent 工具/迁移缺口相关套件由红转绿；双路径迁移（新库从零 + 旧库升级哨兵）；隔离实例冷启动 + 工序闸门拦/放 + 权限过滤各一例；EXE 冒烟（bun 1.4.2，`bun run compile`，旧库副本升级 + health + 零 error）。
+4. 补齐上游缺失项：上游自 0.9.12 前后已跟踪 SQLite `drizzle/`，合并时原样跟上游，**不要往 `drizzle/` 加文件**；只对 fork 层的 `runtime-migrations/` 以其末版快照为基线 `bunx drizzle-kit generate` 生成增量（输出指向临时副本再拷回，不手改），生成的快照应与上游 `drizzle/meta` 末版除 id/prevId 外一致；语义期 typecheck 本机可能 OOM，可按 server/frontend 拆分 include 分段跑）。
+5. 验证：与**纯上游同锚点基线** worktree 对照 tsgo（合并独有错误应为 0，已知 codegen 恒红家族豁免）；权限/agent 工具/迁移缺口相关套件由红转绿；双路径迁移（新库从零 + 旧库升级哨兵）；隔离实例冷启动 + 工序闸门拦/放 + 权限过滤各一例；EXE 冒烟（Bun 版本按 Runtime `packageManager`，0.9.11 起 1.4.3；`bun run compile`，旧库副本升级 + health + 零 error）。
 6. 推送 fork 分支到公开仓 `NarraFork/novelfork-runtime` → 备份旧物化目录到 `.runtime-backup-v<旧版本>-<日期>/` → 更新 `UPSTREAM.lock.json`（repository/remote 指公开仓，provenance 记 publicBase/virtualBase/移植方式）→ `pnpm runtime:sync` 导 → `bun install` → 主仓定向契约（`RUNTIME_WORKER_ENTRIES` 随上游 Worker 增减对齐，契约测试先行报缺）→ 全仓 typecheck + 测试 → master 提交推送 → MPL 快照：**`source/vX` 分支必须等于 vX 实际发货 EXE 里的 Runtime 树**（与 `UPSTREAM.lock.json` 的 commit 核对一致后再打；只追加不 force-push）。2026-10-09 教训：升级窗口顺移后快照分支名与实际发货树错位过一次，发版前一刻必须核对这个等式。
-7. 已知锚点：公开 v0.7.12 = `f275816a4`；公开 v0.8.3 = `be6240400`（main 头曾 `4e04d2f2`，0.8.3+2）；当前 fork 分支 `novelfork/upgrade-0.8.3`（头 `6f02fc259`，物化与 lock 已对齐）。
+7. 已知锚点：公开 v0.7.12 = `f275816a4`；公开 v0.8.3 = `be6240400`；公开 v0.9.11 = `5c6cbebb5`；公开 v0.9.15 = `d2fcd4c8a`（当前 fork 分支 `novelfork/upgrade-0.9.15` 的合并基点，2026-11-22 合并 816 个上游提交、22 个冲突）。
+   - 0.9.11 → 0.9.15 升级记录见 `CHANGELOG.md` 的 v0.1.1 节与 `UPSTREAM.lock.json` 的 provenance。上游 main 在 0.9.15 之后加了 Teams（`server/services/teams/`、`Team` 工具、删项目的 `projectHasTeams` 守卫与单事务）；下次升级时 fork 的 `deleteProjectById` 导出要并入该守卫。
+   - 产品编译定义的编译期常量（`packages/studio/product-build-identity.ts`）让 Runtime 更新器只认 NovelFork 自己的 Release；fork 的 `shared/build-product.ts` 未注入时保持上游行为。
+   - 0.8.3 → 0.9.11 升级记录见 `CHANGELOG.md` 的 v0.1.0 节（上游删除 chapters 层、叙述者改挂项目，产品层改按 `context_project_id` 认书）。
    - 注意公开 0.8.3 锚点树自带 3 处历史重写的文本损坏（settings/index.ts 声明丢失、narrator-event-handler 截断、malformed-request-dump 残片），已在 fork 分支用 main 头文本修复；纯基线对照跑测试会复现这些损坏，属上游重写残损非 fork 问题。
    - 0.7.x 起 Agent 循环主体在 `server/services/agent-runtime/orchestrator.ts`，fork 的产品叙述者判断收在 `server/services/product-narrator-tools.ts`；上游不跟踪 SQLite `drizzle/`。
 
@@ -227,6 +235,9 @@ NarraFork/novelfork-runtime      公开 fork，分支 novelfork/upgrade-<版本>
 - **宿主库 `git status` 会报约 2689 个"已修改"文件，是假的。** 内容哈希与索引、HEAD 三方一致，`git diff HEAD` 只有个位数真实改动；`update-index --really-refresh` 与 `git reset` 都清不掉，属文件系统层 stat 问题。以真实 `git diff` 为准。
 - **物化树的 tsgo typecheck 恒红**，源于 `frontend/routeTree.gen.ts`、`server/generated/embedded-licenses.ts` 等构建期 codegen 产物不在跟踪文件里（0.6.5 时代同样如此）。判断合并是否引入问题，要与**纯上游同版本基线**对照，不是看绝对错误数。
 - 上游 0.6.6 的 `bash-analyze.test.ts` 有一条假设 POSIX 路径解析的测试，在 Windows 上必然失败，非本地引入。
+- Runtime 全量测试在本机：`memory-snapshot.test.ts` 会卡死（纯上游 0.9.15 基线同样），全量跑需排除它；`pool-user-browser.test.ts` 会从本机 Puppeteer 缓存找到 Chrome 并**真的弹出有头窗口**约 1 秒，用户在用屏幕时不要跑；`db-worker pool` 部分用例在 Windows 上漂移；`shutdown-activity` / `sqlite-template` / `remote-access/supervisor` 各有因 fork 结构导致的固定失败。
+- 主仓 `bun test scripts/<名>` 会按文件名顺带扫到 `tmp/`、`酒馆预设兼容/` 下的旧副本而报失败，用显式 `./scripts/<名>` 路径；`scripts/start-isolated-verify.postgres-contract.test.ts` 有 4 条测试写法导致的固定失败。
+- **停止验证用的 EXE 只能按自己启动的 PID**（`taskkill /PID <pid> /T`），不要按进程名 `/IM` 结束，用户可能开着自己的 NovelFork。
 - **`packages/.narrafork-runtime-sync` 的 `origin` 已于 2026-10-16 改指公开 fork `NarraFork/novelfork-runtime`**（原先指向已 archive 的私有仓 `NarraFork/novelfork-runtime-private`，那个仓仍在、archived+private，但不再是 Runtime 远端）。改指后 `bun scripts/sync-runtime.ts --check` 实测仍对齐（退出 0）。`upstream-public` 仍指向上游 `NarraFork/NarraFork`，未动。
 
 ### 变迁历史（均已停用，仅历史排查参考）
@@ -333,7 +344,7 @@ pnpm run compile:all     # 全部 7 个平台，发版用
 4. MPL 快照核对：`UPSTREAM.lock.json` 的 commit == 公开 fork `source/v<版本>` 分支头——该分支就是随 EXE 分发的 MPL §3.2 源码提供载体，Release 说明须附链接。
 5. 只有在用户明确要求时才 commit、tag、push 与创建 Release；上传时带上聚合校验和文件。
 
-产物校验：每个产物旁生成 `<产物名>.sha256`；多平台构建额外生成 `dist/novelfork-v<版本>-SHA256SUMS` 汇总全部产物，Release 资产以它为准。
+产物校验：每个产物旁生成 `<产物名>.sha256` 与 `<产物名>.metadata.json`（自动更新用，必须上传）；多平台构建额外生成 `dist/novelfork-v<版本>-SHA256SUMS` 汇总全部产物，Release 资产以它为准。
 
 Bun 版本：编译用的 Bun 必须与 Runtime `package.json` 的 `packageManager` 完全一致（Runtime 0.7.10–0.8.3 为 1.4.2，0.9.11 起为 1.4.3，脚本常量 `REQUIRED_RUNTIME_BUN_VERSION`），不一致时编译在开头就报错。产物内嵌的就是这个 Bun，与上游发布和测试用的版本对齐。注意版本检查的是**每个进程**的 `Bun.version`：本机 PATH 上是旧版（1.3.13）时，光用绝对路径调 1.4.3 不够——编译脚本嵌套 spawn `bun` 子进程仍按 PATH 解析，会在中途炸掉。正确姿势是把 1.4.3 目录前置 PATH 跑整条链（官方 zip 解压到 `tmp/bun-1.4.3/extracted/`，按 release 的 SHASUMS256.txt 校验）：
 
@@ -355,39 +366,42 @@ NOVELFORK_HOME="$(mktemp -d)" NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-
 
 产物在 Windows 上绑定的是 IPv6 loopback（`[::1]:<port>`）：脚本探测健康端点时用 `localhost` 或 `[::1]`，`curl 127.0.0.1:<port>` 会被拒（浏览器访问不受影响）。
 
-已知限制：非 Windows 产物在本机只能验证交叉编译成功与目标格式（Mach-O / ELF），真实运行行为需要在对应系统上核验。上游 Runtime 的 `latest*.yml` 自动更新清单与二进制签名不属于 NovelFork 发版流程——产品层未接自动更新服务，不要顺手引入。
+已知限制：非 Windows 产物在本机只能验证交叉编译成功与目标格式（Mach-O / ELF），真实运行行为需要在对应系统上核验。上游 Runtime 的 `latest*.yml`、update-index 分支、zstd 增量补丁与 NarraFork 官方更新服务器都不属于 NovelFork 发版流程。
 
-## 当前方向与近期改动（快照：2026-10-20）
+程序内自动更新（v0.1.1 起）：产品编译把仓库 `vivy1024/novelfork`、产品名 `novelfork`、资产前缀 `novelfork-v` 写入编译期常量，Runtime 更新器经 GitHub Releases API 找 `novelfork-v<版本>-<平台>` 并用同名 `<产物>.metadata.json`（sha256/sha512/size/version/commit）校验后替换 EXE（替换进程沿用 `--serve`）。因此发版硬性要求：**tag 用 `v<semver>`、版本号递增、Release 不能标 prerelease、7 个 `.metadata.json` 必须随产物上传**，缺了该平台就无法自动更新。存量设置里指向 `NarraFork/NarraFork` 或更新服务器的 `settings.update` 会在启动时改写。v0.1.0 的更新器仍指向上游 NarraFork（点更新会被换成 NarraFork），只能手动升级到 v0.1.1。rg/zstd/执行器等辅助组件仍取自 NarraFork 公开 Release（`PRODUCT_HELPER_REPOSITORY`）。
+
+## 当前方向与近期改动（快照：2026-11-22）
 
 本节是状态快照，便于协作者对齐。「后续方向」须经当前用户确认后才执行，不自动构成待办；与当前指令冲突时以当前指令为准。内容过时后直接改写本节，不追加历史。
 
-### 近期改动（v0.0.4 之后）
+### 当前版本
+
+- 最新发版 **v0.1.1**（2026-11-22，tag `v0.1.1`，22 个资产含 7 个 `.metadata.json`）：内嵌 Runtime 0.9.11 → 0.9.15、NovelFork 自有自动更新、重复启动聚焦已有窗口与品牌化启动状态页、长任务实时进度与可中断、文风蒸馏后台化、工作流原生写入越界拦截、内置叙述者提示单一来源，以及阶段 9 专项升级。详见 `CHANGELOG.md` 的 v0.1.1 节。
+- 上一版 v0.1.0（2026-11-07）：内嵌 Runtime 0.8.3 → 0.9.11、可配置写作工作流与 13 位内置写作帮手、百万字长篇记忆。
+- 上游 PR：NarraFork/NarraFork#576（已落盘仍在执行的工具卡显示实时输出）、#577（通用工具运行中进度条），待合并；合并后下次升级 fork 可去掉对应补丁。
+
+### 仍有效的长期事实
 
 | 主题 | 内容 |
 |---|---|
-| 叙事结构 | 场景与剧情线的表、存取、接口与读模型；承载树；叙事结构聚合快照；推进看板以真剧情线为行，可就地新建剧情线；写作管线把场景蓝图落盘为 `narrative_scene`（同章重写幂等，保留作者手建、已确认、已挂线的场景） |
-| 工作台 | 面板归入四大镜头，下线重复入口与四个废弃画布；工具树按写作时机重组；划词 AI 指令注入全书文风基准；字号统一收进 `text-2xs` 令牌 |
+| 主题与设计令牌 | 五套书房主题（绿格稿纸默认 / 书函藏青 / 夜更烛光 / 朱砂印谱 / 天青汝窑），各含浅色深色，嵌入的 Runtime 界面一同切换（`runtime-host-theme.css`）。令牌唯一权威源是根 `DESIGN.md`，`pnpm --dir packages/studio run design:tokens` 生成 `novelfork-themes.css`，测试校验一致 |
+| 叙述者工具 | 小说工具已收口为 25 个精简工具（`fd2ad7f2`）；产品叙述者默认不带 Bash / Write / Terminal / Browser，按套路装载 |
+| 工作流 | 方案是节点图（起点 / 工序 / 汇合 / 终点，按结果分支、打回上游），分草稿 / 已发布并带版本号；越出当前工序的写类小说工具会被拦下（只约束小说工具） |
 | 伏笔 | 债务判定收敛到 `foreshadow-debts`；临近 / 超期阈值按书由作者设置（`book.json` 的 `foreshadowDebtThresholds`，默认 5 / 12 章） |
-| 工作流 | 方案改为节点图（起点 / 工序 / 汇合 / 终点，下一步 / 打回连线，按结果分支），按图运行：并行、分支、汇合、打回上游（迁移 0038 记录工序结果）；方案分草稿 / 已发布并带版本号。叙述者可列出、查看、用编辑指令改草稿、启动已发布方案；越出当前工序的写类小说工具被拦下。「故事推进 › 执行」的工作流画布编辑、发布与监视运行（并行时每道待确认 / 受阻工序各一张卡）；「套路 › 工作流装配」已下线。限制：只约束小说工具，Runtime 自带工具不受约束；运行状态靠轮询 |
-| 画布 | 三张画布统一用 React Flow：工作流画布、因果画布（故事树 › 因果树：剧情线 × 场景泳道，场景只画一次、拖动换主剧情线、伏笔回收线）、其余故事树（tidy 自动排版不变，换引擎后有小地图、适应视图、展开自动平移）。视口按「作品 + 视图」记在浏览器里，节点坐标不存（工作流方案的节点位置除外，存在方案里）。叙述者结果卡「在画布打开」可打开对应章节 |
-| 接口安全 | 场景挂载 / 摘除接口核对场景与剧情线属于路径上的书（此前可跨书改挂载）；新增 `PUT …/scenes/:sceneId/primary-storyline` |
-| 协作者贡献 | 产品数据目录由 `NOVELFORK_HOME` 决定；NUG 等未填默认模型的配置不再判为未配置；Runtime 全局技能跟随 `NOVELFORK_HOME`（fork `dda73094`） |
-| 主题 | 三套书房主题（绿格稿纸默认 / 书函藏青 / 夜更烛光），各含浅色深色，在「设置 › 书房主题」切换，嵌入的 Runtime 界面一同切换（`runtime-host-theme.css` 把 `--mantine-*` 接到 Studio 令牌，明暗经 fork 层 `colorScheme` 参数强制跟随）。令牌唯一权威源是根 `DESIGN.md`（Google DESIGN.md 格式，`designmd lint` 零告警），`pnpm --dir packages/studio run design:tokens` 生成 `novelfork-themes.css`，测试校验一致；纹样（稿面格线 / 烛光、书封、函套）在 `novelfork-motifs.css`，全部写成 `--nf-*` 变量。字体随产品打包（思源宋体、站酷小薇、JetBrains Mono），界面文字用系统字体。顺带修复：Tailwind 带透明度的令牌色（`bg-primary/10` 等）此前从不生成；OLED 纯黑重启后失效 |
-| 工程 | react / react-dom 统一 19.2.5（修复全新安装下的双 React）；公开边界检查（脚本 + `.githooks` + 公开 CI）；`pnpm runtime:sync`；公开 CI 跑 core / novel-plugin（装 bun 仅供测试）；`NOTICE` 写明许可证边界 |
-| 仓库历史 | 2026-09-27 改写了本仓库全部分支与标签的历史，清除不应公开的本地资料。**此前的提交号全部失效**：旧 clone 不要再推送，请重新 clone；查历史以新提交号为准 |
-| 第二轮审计（v0.0.5 之后） | 冲突只在作者显式裁决时解除，move / 批量 / 自动回写不替作者清冲突；回收站撤销把「已在队列」视为成功；演变台账与字段更新同事务；高风险闸门共用且计数取真实总数；章节正文与索引原子写；启动完整性告警记录但不阻断启动 |
+| 画布 | 工作流画布、因果画布与其余故事树统一用 React Flow；视口按「作品 + 视图」记在浏览器里，节点坐标不存（工作流方案的节点位置除外） |
+| 仓库历史 | 2026-09-27 改写过本仓库全部分支与标签的历史，此前的提交号全部失效：旧 clone 不要再推送，查历史以新提交号为准 |
 
 ### 后续方向
 
-完整任务与完成标准见 [`docs/路线与任务.md`](docs/路线与任务.md)，依据见 [`docs/90-参考资料/参考项目学习-2026-09.md`](docs/90-参考资料/参考项目学习-2026-09.md)。要点：
+完整任务与完成标准见 [`docs/路线与任务.md`](docs/路线与任务.md)，参考依据见 [`docs/90-参考资料/参考项目学习-2026-09.md`](docs/90-参考资料/参考项目学习-2026-09.md)：
 
-- 2026-09-28 与作者确认：面向公开用户发布；上游不做小说方向（团队协作用官方插件 `NarraFork/narrator-team`，需宿主 0.7.7+）。通用能力归 Runtime，NovelFork 只做小说领域；OpenWrite 已按同样边界改为宿主插件。
-- 阶段：0 准备（本地并入 fork 提交 `006bf829`）→ 1 边界与升级到 v0.7.10（先评估 fork 层能否改用官方插件接口；上游 v0.7.9 / v0.7.10 无 tag，按 `upstream/main` 的 `24f2436a` 合并）→ 2 人味链（重定文风预设、自动蒸馏、角色声线、人文化环节、文风金库、朱雀检测验收）→ 3 自有技能（创作预设只留约 8 个作者入口，内置 378 个技能目录收到约 15–20 个）→ 4 记忆链（实体身份、正文接纳、状态与知识边界、关系图谱、重做故事推进）→ 5 工作流交给 narrator-team 执行 → 6 公开发布必需项（项目档案、保存可靠性）→ 7 基线与试用（推送、七平台编译、EXE 核验、作者真书试用）。作者决定先做完阶段 1–6 再统一出基线，中途不单独发版。
-- 学参考项目的机制不抄原文：PlotPilot（Commons Clause）、笔枢 / Scriverse / InkOS（AGPL）、MuMuAINovel（GPL）的代码与提示词不进仓库。
+- 阶段 10 · v0.2.0 发版抛光：阶段 9 改动实机验收与 CHANGELOG、浮层与表单控件巡检、章后新会话轻提示、多平台发版准备（发版须作者明确指令）。
+- 阶段 11 叙事时空可视化 → 阶段 12 本体与双时态记忆 → 阶段 13 生态增值出口（卷末视频、人物档案卡、分镜预演）。
+- 2026-09-28 与作者确认的定位不变：面向公开用户发布；通用能力归 Runtime，NovelFork 只做小说领域。学参考项目的机制不抄原文：PlotPilot（Commons Clause）、笔枢 / Scriverse / InkOS（AGPL）、MuMuAINovel（GPL）的代码与提示词不进仓库。
 
 ## 持久记忆
 
-Engram 用于保存对后续工作有长期价值的信息，例如：
+Engram 仅在宿主提供时使用（Claude Code 已配置；Devin Desktop 当前没有），用于保存对后续工作有长期价值的信息，例如：
 
 - 已验证的 bug 根因和修复；
 - 已确认的架构或产品决策；
@@ -405,8 +419,8 @@ Engram 用于保存对后续工作有长期价值的信息，例如：
 |---|---|---|
 | Node | v25.2.1 | Remotion / HyperFrames 宿主 |
 | npx | 11.6.2 | 运行视频 CLI |
-| Bun | 1.3.13 | 项目构建 |
-| FFmpeg | 8.1.1 full build | 转码、拼接、压制、音频合流 |
+| Bun | PATH 上 1.3.13；编译用 1.4.3（`tmp/bun-1.4.3/`，见「多平台发版流程」） | 项目构建 |
+| FFmpeg | 不在 PATH；可用 `D:\DESKTOP\career-ops-1.5.0\yt_dlp_rc\ffbin\ffmpeg.exe`（OpenClaw `video/mg.ps1` 同一份） | 转码、拼接、压制、音频合流 |
 | Python | 3.14.2 | Manim / ASCII-video / 脚本 |
 
 ### 出片引擎选择
@@ -438,7 +452,7 @@ Engram 用于保存对后续工作有长期价值的信息，例如：
 1. **全程 headless**：不启动 Remotion Studio、不开 HyperFrames preview、不打开浏览器窗口。只用 CLI `render` / `still` / `inspect`。用户明确授权 GUI 时例外。
 2. **不操作用户屏幕**：不移动鼠标、不使用 computer-use、不进行屏幕捕获。录屏由用户手动完成。
 3. **渲染前先验证**：Remotion 先 `npx remotion still` 一帧确认编译通过；HyperFrames 先 `lint` + `inspect`；Manim 先 `-ql` 草稿。
-4. **物料独立目录**：视频项目放在 `D:/DESKTOP/novelfork-video/`（或用户指定目录），不写入产品 git 仓库。
+4. **物料独立目录**：视频项目不写入产品 git 仓库。当前 NovelFork 宣传片在 OpenClaw 视频管线里（`D:/DESKTOP/openclaw/video/projects/novelfork-intro/`，规则见 `D:/DESKTOP/openclaw/video/RULES.md`）。
 5. **事实来源唯一**：所有数字（版本号、平台数、能力数）从 `01-事实核查表.md` 或代码中的 `theme.ts` / `FACTS` 常量取，不手写。
 6. **未提交功能禁止出镜**：录屏和动效均不得展示不属于当前 tag 版本的 UI 或工具。
 7. **交付必须含 MP4**：视频任务不以"写完代码"结束，必须 headless 渲染出实际 MP4 文件并报告路径和参数。
@@ -494,16 +508,13 @@ ffmpeg -y -i video.mp4 -i voiceover.wav \
 
 ### 当前视频物料位置
 
+旧的 `D:/DESKTOP/novelfork-video/`（Remotion 项目与 01–05 文档）已不存在。当前物料：
+
 ```text
-D:/DESKTOP/novelfork-video/
-├── 00-README.md             总览
-├── 01-事实核查表.md          口径与证据
-├── 02-脚本-主片90秒.md       主片分镜与旁白
-├── 03-脚本-技术向补充片.md    NarraFork 技术片
-├── 04-录屏清单.md            素材编号与脱敏
-├── 05-发布文案包.md          标题/简介/社媒/QA
-└── remotion/                Remotion 项目（已渲染 novelfork-promo-v1.mp4）
+D:/DESKTOP/openclaw/video/projects/novelfork-intro/   index.html（renderAt）+ cues.json + lines.json + audio.py
 ```
+
+用法：`pwsh -File video/mg.ps1 probe|audio|render|qa projects/novelfork-intro`（在 `D:/DESKTOP/openclaw` 下执行，详见 OpenClaw `CLAUDE.md` 的「视频制作」）。
 
 ## 常用事实来源
 
@@ -513,7 +524,7 @@ D:/DESKTOP/novelfork-video/
 | 运行、构建与打包命令 | 根 `package.json` |
 | 颜色、字体、圆角等设计令牌 | 根 `DESIGN.md`（生成 `packages/studio/src/styles/novelfork-themes.css`） |
 | 产品与包边界 | 本文件与当前源码 |
-| 函数位置、调用链、影响范围 | 代码图谱工具或 `docs/codegraph/CODEMAP.md` |
+| 函数位置、调用链、影响范围 | 代码图谱工具或 `docs/codegraph/CODEMAP.md`（当前未生成，先跑 `pnpm codegraph`） |
 | 小说写作流程 | `packages/novel-plugin/` 的当前实现与测试 |
 | Runtime 行为 | 本地 `packages/narrafork-runtime-private/`（勿提交） |
 | Runtime 物化来源与升级历史 | `packages/narrafork-runtime-private/UPSTREAM.lock.json` 的 `provenance` 字段 |
